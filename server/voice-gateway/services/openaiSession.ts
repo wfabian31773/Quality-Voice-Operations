@@ -226,6 +226,7 @@ export interface RealtimeSessionResult {
   callSessionId: string;
   sendAudioToOpenAI: (audio: ArrayBuffer) => void;
   onOpenAIAudio: (handler: (audioEvent: TransportLayerAudio) => void) => void;
+  triggerGreeting: () => void;
 }
 
 export async function createRealtimeSession(
@@ -453,5 +454,23 @@ export async function createRealtimeSession(
     wsTransport.on('audio', handler);
   };
 
-  return { session, callSessionId, sendAudioToOpenAI, onOpenAIAudio };
+  const triggerGreeting = (): void => {
+    if (!agentConfig.greeting) return;
+    try {
+      wsTransport.send({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]` }],
+        },
+      } as any);
+      wsTransport.send({ type: 'response.create' } as any);
+      slog.info('Greeting triggered', { greeting: agentConfig.greeting.substring(0, 50) });
+    } catch (err) {
+      slog.error('Failed to trigger greeting', { error: String(err) });
+    }
+  };
+
+  return { session, callSessionId, sendAudioToOpenAI, onOpenAIAudio, triggerGreeting };
 }
