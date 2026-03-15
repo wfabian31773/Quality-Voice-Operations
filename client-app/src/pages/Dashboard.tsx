@@ -63,9 +63,20 @@ function useSSEActiveCalls(): { activeCalls: ActiveCall[]; connected: boolean } 
         const data = JSON.parse(event.data) as ActiveCall[];
         setActiveCalls(data);
         setConnected(true);
-        queryClient.invalidateQueries({ queryKey: ['calls', 'recent'] });
       } catch {}
     });
+
+    const handleLifecycleEvent = () => {
+      setConnected(true);
+      queryClient.invalidateQueries({ queryKey: ['calls', 'recent'] });
+    };
+
+    es.addEventListener('call_started', handleLifecycleEvent);
+    es.addEventListener('call_connected', handleLifecycleEvent);
+    es.addEventListener('call_completed', handleLifecycleEvent);
+    es.addEventListener('call_failed', handleLifecycleEvent);
+    es.addEventListener('call_escalated', handleLifecycleEvent);
+    es.addEventListener('call_updated', handleLifecycleEvent);
 
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);
