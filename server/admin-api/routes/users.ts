@@ -168,14 +168,16 @@ router.post('/users/invite', requireAuth, requireRole('admin'), async (req, res)
       expiresInHours: INVITE_EXPIRY_HOURS,
     });
 
-    sendEmail({
+    const emailResult = await sendEmail({
       to: email.toLowerCase(),
       subject: emailContent.subject,
       html: emailContent.html,
       text: emailContent.text,
-    }).catch((err) => {
-      logger.error('Invitation email failed', { tenantId, email: email.toLowerCase(), error: String(err) });
     });
+
+    if (!emailResult.success) {
+      logger.error('Invitation email failed', { tenantId, email: email.toLowerCase(), error: emailResult.error });
+    }
 
     writeAuditLog({
       tenantId,
@@ -190,7 +192,11 @@ router.post('/users/invite', requireAuth, requireRole('admin'), async (req, res)
     });
 
     logger.info('User invited', { tenantId, userId: user.id, email: user.email });
-    return res.status(201).json({ user: { ...user, role }, invitationSent: true });
+    return res.status(201).json({
+      user: { ...user, role },
+      invitationSent: emailResult.success,
+      emailError: emailResult.success ? undefined : 'Invitation created but email delivery failed',
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error('Failed to invite user', { tenantId, error: String(err) });

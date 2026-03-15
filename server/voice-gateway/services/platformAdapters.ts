@@ -37,6 +37,8 @@ export function createCallerMemoryStorage(): CallerMemoryStorage {
       limit: number,
     ): Promise<CallHistoryRecord[]> {
       return withTenant(tenantId, async (client) => {
+        const e164 = phone.startsWith('+') ? phone : `+1${phone}`;
+        const digits10 = phone.replace(/\D/g, '').replace(/^1(\d{10})$/, '$1');
         const { rows } = await client.query(
           `SELECT
              created_at AS "createdAt",
@@ -51,10 +53,11 @@ export function createCallerMemoryStorage(): CallerMemoryStorage {
              context->>'lastProviderSeen' AS "lastProviderSeen",
              context->>'lastLocationSeen' AS "lastLocationSeen"
            FROM call_sessions
-           WHERE tenant_id = $1 AND caller_number = $2
+           WHERE tenant_id = $1
+             AND (caller_number = $2 OR caller_number = $3 OR caller_number = $4)
            ORDER BY created_at DESC
-           LIMIT $3`,
-          [tenantId, phone, limit],
+           LIMIT $5`,
+          [tenantId, phone, e164, digits10, limit],
         );
         return rows as unknown as CallHistoryRecord[];
       });
