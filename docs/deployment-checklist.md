@@ -113,7 +113,7 @@ APP_ENV=production PLATFORM_DB_POOL_URL="your-url" \
 
 ### Build Step
 
-The build step compiles TypeScript (type-check only) and builds the Vite frontend:
+The build step should compile TypeScript and build the Vite frontend:
 
 ```bash
 npx tsc --noEmit && npx vite build --config client-app/vite.config.ts
@@ -131,6 +131,8 @@ APP_ENV=production npx tsx server/admin-api/start.ts & APP_ENV=production npx ts
 
 In production, the Admin API serves the pre-built Vite frontend from `client-app/dist/` as static files (with SPA fallback to `index.html`).
 
+Both servers run `validateEnvironment({ exitOnFailure: true })` at startup in production — if any required env var is missing, the process exits immediately.
+
 ### Port Mappings
 
 | Service | Internal Port | Purpose |
@@ -141,13 +143,17 @@ In production, the Admin API serves the pre-built Vite frontend from `client-app
 
 In production, the Vite dev server is NOT started. The Admin API serves the frontend directly.
 
-### Replit Deployment
+### Current `.replit` Deployment Configuration
 
-The `.replit` file configures:
-- `[deployment].build`: Type-check + Vite build
-- `[deployment].run`: Start both servers with `APP_ENV=production`
+The `.replit` file currently configures:
+- `[deployment].build`: `npx tsc --noEmit` (type-check only)
+- `[deployment].run`: Vite build + start both servers (combined in run step)
+- `[deployment].deploymentTarget`: `vm`
 - Port 80 (external) maps to port 5000 (internal) for the main web preview
 - Ports 3001 and 3002 are exposed directly
+- `[userenv.production]` sets `APP_ENV=production` and `PORT=5000`
+
+To optimize the deployment, move the Vite build from the run step to the build step so the frontend is pre-built during deployment compilation rather than at runtime start.
 
 ## 5. Webhook Configuration
 

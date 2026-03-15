@@ -7,8 +7,15 @@ import { createLogger } from '../../platform/core/logger';
 import { logError } from '../../platform/core/observability';
 import { createTwilioAdapterFromEnv } from './services/twilioAdapter';
 import { setTwilioAdapter } from './routes/twilio';
+import { validateEnvironment } from '../../scripts/validate-env';
 
 const logger = createLogger('VOICE_GATEWAY');
+
+const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
+const envResult = validateEnvironment({ exitOnFailure: isProd });
+if (!envResult.passed && !isProd) {
+  logger.warn('Environment validation has warnings — some features may be unavailable');
+}
 
 const twilioAdapter = createTwilioAdapterFromEnv();
 if (twilioAdapter) {
