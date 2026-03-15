@@ -4,39 +4,39 @@
 
 ### Required (all environments)
 
-| Variable | Purpose | Example |
-|---|---|---|
-| `APP_ENV` | Environment selector | `production` |
-| `OPENAI_API_KEY` | OpenAI Realtime API key for voice AI | `sk-...` |
-| `TWILIO_ACCOUNT_SID` | Twilio account SID | `AC...` |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token | `...` |
-| `TWILIO_OUTBOUND_NUMBER` | Default outbound caller ID (E.164) | `+1234567890` |
-| `ADMIN_JWT_SECRET` | JWT signing secret for admin API auth | Random 64+ char string |
-| `CONNECTOR_ENCRYPTION_KEY` | 32-byte hex key for encrypting tenant secrets | 64 hex characters |
+| Variable | Purpose | Source | Example |
+|---|---|---|---|
+| `APP_ENV` | Environment selector | Set manually | `production` |
+| `OPENAI_API_KEY` | OpenAI Realtime API key for voice AI | OpenAI Dashboard > API Keys | `sk-...` |
+| `TWILIO_ACCOUNT_SID` | Twilio account SID | Twilio Console > Account Info | `AC...` |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token | Twilio Console > Account Info | `...` |
+| `TWILIO_OUTBOUND_NUMBER` | Default outbound caller ID (E.164) | Twilio Console > Phone Numbers | `+1234567890` |
+| `ADMIN_JWT_SECRET` | JWT signing secret for admin API auth | Generate: `openssl rand -base64 48` | Random 64+ char string |
+| `CONNECTOR_ENCRYPTION_KEY` | 32-byte hex key for encrypting tenant secrets | Generate: `openssl rand -hex 32` | 64 hex characters |
 
 ### Required (production/staging only)
 
-| Variable | Purpose | Example |
-|---|---|---|
-| `PLATFORM_DB_POOL_URL` | Supabase transaction pooler URL (port 6543, SSL) | `postgresql://user:pass@host:6543/db` |
-| `STRIPE_SECRET_KEY` | Stripe API secret key (live key for production) | `sk_live_...` |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | `whsec_...` |
-| `STRIPE_PRICE_STARTER_MONTHLY` | Stripe Price ID for Starter monthly plan | `price_...` |
-| `STRIPE_PRICE_STARTER_ANNUAL` | Stripe Price ID for Starter annual plan | `price_...` |
-| `STRIPE_PRICE_PRO_MONTHLY` | Stripe Price ID for Pro monthly plan | `price_...` |
-| `STRIPE_PRICE_PRO_ANNUAL` | Stripe Price ID for Pro annual plan | `price_...` |
-| `STRIPE_PRICE_ENTERPRISE_MONTHLY` | Stripe Price ID for Enterprise monthly plan | `price_...` |
-| `STRIPE_PRICE_ENTERPRISE_ANNUAL` | Stripe Price ID for Enterprise annual plan | `price_...` |
-| `STRIPE_METER_EVENT_CALLS` | Stripe meter event name for call usage | `call_minutes` |
-| `STRIPE_METER_EVENT_AI_MINUTES` | Stripe meter event name for AI minute usage | `ai_minutes` |
-| `VOICE_GATEWAY_BASE_URL` | Public URL of the voice gateway | `https://your-domain.replit.app:3001` |
-| `ADMIN_API_BASE_URL` | Public URL of the admin API | `https://your-domain.replit.app:3002` |
+| Variable | Purpose | Source | Example |
+|---|---|---|---|
+| `PLATFORM_DB_POOL_URL` | Supabase transaction pooler URL (port 6543, SSL) | Supabase Dashboard > Project Settings > Database > Connection string (Transaction pooler) | `postgresql://user:pass@host:6543/db` |
+| `STRIPE_SECRET_KEY` | Stripe API secret key (live key for production) | Stripe Dashboard > Developers > API keys | `sk_live_...` |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | Stripe Dashboard > Developers > Webhooks > Signing secret | `whsec_...` |
+| `STRIPE_PRICE_STARTER_MONTHLY` | Stripe Price ID for Starter monthly plan | Stripe Dashboard > Products > Price ID | `price_...` |
+| `STRIPE_PRICE_STARTER_ANNUAL` | Stripe Price ID for Starter annual plan | Stripe Dashboard > Products > Price ID | `price_...` |
+| `STRIPE_PRICE_PRO_MONTHLY` | Stripe Price ID for Pro monthly plan | Stripe Dashboard > Products > Price ID | `price_...` |
+| `STRIPE_PRICE_PRO_ANNUAL` | Stripe Price ID for Pro annual plan | Stripe Dashboard > Products > Price ID | `price_...` |
+| `STRIPE_PRICE_ENTERPRISE_MONTHLY` | Stripe Price ID for Enterprise monthly plan | Stripe Dashboard > Products > Price ID | `price_...` |
+| `STRIPE_PRICE_ENTERPRISE_ANNUAL` | Stripe Price ID for Enterprise annual plan | Stripe Dashboard > Products > Price ID | `price_...` |
+| `STRIPE_METER_EVENT_CALLS` | Stripe meter event name for call usage | Stripe Dashboard > Billing > Meters | `call_minutes` |
+| `STRIPE_METER_EVENT_AI_MINUTES` | Stripe meter event name for AI minute usage | Stripe Dashboard > Billing > Meters | `ai_minutes` |
+| `VOICE_GATEWAY_BASE_URL` | Public URL of the voice gateway | Your deployment domain | `https://your-domain.replit.app:3001` |
+| `ADMIN_API_BASE_URL` | Public URL of the admin API | Your deployment domain | `https://your-domain.replit.app:3002` |
 
 ### Required (development only)
 
-| Variable | Purpose | Example |
-|---|---|---|
-| `DATABASE_URL` | Local PostgreSQL connection string | `postgresql://...` (auto-set by Replit) |
+| Variable | Purpose | Source | Example |
+|---|---|---|---|
+| `DATABASE_URL` | Local PostgreSQL connection string | Auto-set by Replit | `postgresql://...` |
 
 ### Optional
 
@@ -216,3 +216,18 @@ Copy the webhook signing secret to `STRIPE_WEBHOOK_SECRET`.
 - [ ] `DISABLE_PHI_LOGGING` is set to `true` in production
 - [ ] All Twilio webhook URLs use HTTPS
 - [ ] Stripe webhook signing secret is configured and verified
+
+## 8. Migration Validation Record
+
+All 28 migrations have been validated to apply cleanly from a completely empty database (fresh `public` schema with no tables).
+
+To reproduce:
+
+```bash
+psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+npx tsx scripts/run-migrations.ts
+```
+
+Expected output: all 28 files (001_tenants.sql through 028_add_welcome_greeting.sql) apply with `DONE` status and "All migrations complete." at the end.
+
+Last validated: 2026-03-15 (Task #27 deployment readiness audit).
