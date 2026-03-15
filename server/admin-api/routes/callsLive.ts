@@ -23,8 +23,6 @@ function sseAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.slice(7);
-  } else if (req.query.token) {
-    token = String(req.query.token);
   } else if (req.cookies?.auth_token) {
     token = req.cookies.auth_token as string;
   }

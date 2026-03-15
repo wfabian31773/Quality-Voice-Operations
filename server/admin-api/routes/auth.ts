@@ -237,6 +237,164 @@ router.post('/auth/signup', async (req, res) => {
   }
 });
 
+router.get('/auth/invite-info', async (req, res) => {
+  const { token } = req.query as { token?: string };
+  if (!token) return res.status(400).json({ error: 'token is required' });
+
+  const pool = getPlatformPool();
+  try {
+    const { rows } = await pool.query(
+      `SELECT ui.email, ui.role, ui.expires_at, ui.accepted_at,
+              t.name AS tenant_name,
+              inv.email AS inviter_email
+       FROM user_invitations ui
+       LEFT JOIN tenants t ON t.id = ui.tenant_id
+       LEFT JOIN users inv ON inv.id = ui.invited_by
+       WHERE ui.token = $1`,
+      [token],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Invitation not found' });
+    }
+
+    const inv = rows[0];
+    if (inv.accepted_at) {
+      return res.status(410).json({ error: 'This invitation has already been accepted' });
+    }
+    if (new Date(inv.expires_at as string) < new Date()) {
+      return res.status(410).json({ error: 'This invitation has expired' });
+    }
+
+    return res.json({
+      email: inv.email,
+      role: inv.role,
+      tenantName: inv.tenant_name ?? 'Organization',
+      inviterEmail: inv.inviter_email ?? '',
+      expiresAt: inv.expires_at,
+    });
+  } catch (err) {
+    logger.error('Failed to fetch invite info', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch invitation' });
+  }
+});
+
+router.post('/auth/accept-invite', async (req, res) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+  if (!token || !password) {
+    return res.status(400).json({ error: 'token and password are required' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const { rows } = await client.query(
+      `SELECT ui.id, ui.email, ui.role, ui.tenant_id, ui.expires_at, ui.accepted_at
+       FROM user_invitations ui
+       WHERE ui.token = $1
+       FOR UPDATE`,
+      [token],
+    );
+
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Invitation not found' });
+    }
+
+    const inv = rows[0];
+    if (inv.accepted_at) {
+      await client.query('ROLLBACK');
+      return res.status(410).json({ error: 'This invitation has already been accepted' });
+    }
+    if (new Date(inv.expires_at as string) < new Date()) {
+      await client.query('ROLLBACK');
+      return res.status(410).json({ error: 'This invitation has expired' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    await client.query(
+      `UPDATE users SET password_hash = $1, email_verified = true, is_active = true, updated_at = NOW()
+       WHERE email = $2`,
+      [passwordHash, (inv.email as string).toLowerCase()],
+    );
+
+    await client.query(
+      `UPDATE user_invitations SET accepted_at = NOW() WHERE id = $1`,
+      [inv.id],
+    );
+
+    await client.query('COMMIT');
+
+    const { rows: userRows } = await pool.query(
+      `SELECT u.id, u.email, u.is_platform_admin, ur.role, ur.tenant_id
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = $1
+       WHERE u.email = $2
+       LIMIT 1`,
+      [inv.tenant_id, (inv.email as string).toLowerCase()],
+    );
+
+    if (userRows.length === 0) {
+      return res.status(500).json({ error: 'Failed to resolve user after invitation acceptance' });
+    }
+
+    const user = userRows[0];
+
+    await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
+
+    const jwt = issueToken({
+      userId: user.id as string,
+      tenantId: user.tenant_id as string,
+      email: user.email as string,
+      role: user.role as string,
+      isPlatformAdmin: (user.is_platform_admin as boolean) ?? false,
+    });
+
+    const isProd = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod');
+    res.cookie('auth_token', jwt, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: 8 * 60 * 60 * 1000,
+      path: '/',
+    });
+
+    logger.info('Invitation accepted', { userId: user.id, tenantId: user.tenant_id, email: user.email });
+
+    writeAuditLog({
+      tenantId: user.tenant_id as string,
+      actorUserId: user.id as string,
+      actorRole: user.role as string,
+      action: 'user.invitation_accepted',
+      resourceType: 'user',
+      resourceId: user.id as string,
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({
+      token: jwt,
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenant_id,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to accept invitation', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to accept invitation' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/auth/refresh', requireAuth, (req, res) => {
   const user = req.user!;
   const token = issueToken(user);

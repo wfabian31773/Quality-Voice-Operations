@@ -17,11 +17,13 @@ import Quality from './pages/Quality';
 import AuditLog from './pages/AuditLog';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
+import AcceptInvite from './pages/AcceptInvite';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/demo" element={<Demo />} />
       <Route
         path="/onboarding"

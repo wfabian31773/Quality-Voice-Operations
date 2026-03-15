@@ -55,11 +55,7 @@ function useSSEActiveCalls(): { activeCalls: ActiveCall[]; connected: boolean } 
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-
-    const url = `/api/calls/live?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url, { withCredentials: true });
+    const es = new EventSource('/api/calls/live', { withCredentials: true });
     esRef.current = es;
 
     es.addEventListener('active_calls', (event: MessageEvent) => {

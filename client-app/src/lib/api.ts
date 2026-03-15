@@ -31,7 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 401) {
     if (token === tokenAtStart) {
       setToken(null);
-      const publicPaths = ['/demo', '/login'];
+      const publicPaths = ['/demo', '/login', '/accept-invite'];
       const isPublicPage = publicPaths.some((p) => window.location.pathname.startsWith(p));
       if (!isPublicPage) {
         window.location.href = '/login';
