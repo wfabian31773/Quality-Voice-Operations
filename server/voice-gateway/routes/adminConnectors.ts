@@ -17,13 +17,8 @@ function requireAdminToken(req: Request, res: Response, next: NextFunction): voi
   const adminToken = process.env.ADMIN_INTERNAL_TOKEN;
 
   if (!adminToken) {
-    if (IS_PROD) {
-      logger.error('ADMIN_INTERNAL_TOKEN not configured — rejecting admin request in production');
-      res.status(503).json({ error: 'Admin endpoint not available: missing server configuration' });
-      return;
-    }
-    logger.warn('ADMIN_INTERNAL_TOKEN not set — passing through in non-production (insecure)');
-    next();
+    logger.error('ADMIN_INTERNAL_TOKEN not configured — rejecting admin request');
+    res.status(503).json({ error: 'Admin endpoint not available: missing server configuration' });
     return;
   }
 

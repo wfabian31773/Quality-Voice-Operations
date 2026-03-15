@@ -55,11 +55,11 @@ export function validateBillingConfig(): { valid: boolean; warnings: string[] } 
     }
   }
 
-  if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY === 'sk_test_placeholder') {
+  if (!process.env.STRIPE_SECRET_KEY) {
     warnings.push('STRIPE_SECRET_KEY is not configured — billing operations will fail');
   }
 
-  if (!process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET === 'whsec_placeholder') {
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
     warnings.push('STRIPE_WEBHOOK_SECRET is not configured — webhook verification will fail');
   }
 

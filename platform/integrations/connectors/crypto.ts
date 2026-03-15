@@ -17,11 +17,9 @@ function deriveKey(): Buffer {
 
   if (!secret) {
     if (IS_DEV) {
-      logger.warn(
-        'CONNECTOR_ENCRYPTION_KEY not set — using insecure dev-only key. ' +
-          'THIS MUST NOT HAPPEN IN PRODUCTION.',
-      );
-      return scryptSync('dev-only-insecure-key-DO-NOT-USE-IN-PROD', SALT, 32) as Buffer;
+      const devKey = 'qvo-dev-connector-' + (process.env.REPL_ID ?? 'local');
+      logger.warn('CONNECTOR_ENCRYPTION_KEY not set — using auto-generated dev key (NOT for production)');
+      return scryptSync(devKey, SALT, 32) as Buffer;
     }
     throw new Error(
       'CONNECTOR_ENCRYPTION_KEY environment variable is required in production. ' +

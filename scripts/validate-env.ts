@@ -28,6 +28,12 @@ const ENV_VARS: EnvVar[] = [
   { name: 'STRIPE_METER_EVENT_AI_MINUTES', required: 'production', purpose: 'Stripe meter event name for AI minute usage' },
   { name: 'VOICE_GATEWAY_BASE_URL', required: 'production', purpose: 'Public URL of the voice gateway (for Twilio webhooks)' },
   { name: 'ADMIN_API_BASE_URL', required: 'production', purpose: 'Public URL of the admin API' },
+  { name: 'SMTP_HOST', required: 'production', purpose: 'SMTP server hostname for transactional email' },
+  { name: 'SMTP_PORT', required: 'production', purpose: 'SMTP server port (e.g. 587 for STARTTLS)' },
+  { name: 'SMTP_USER', required: 'production', purpose: 'SMTP authentication username' },
+  { name: 'SMTP_PASS', required: 'production', purpose: 'SMTP authentication password' },
+  { name: 'EMAIL_FROM', required: 'production', purpose: 'Default sender address for outbound email' },
+  { name: 'APP_URL', required: 'production', purpose: 'Public application URL (for invite links, redirects)' },
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
@@ -92,6 +98,10 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   if (isProd && process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
     warnings.push('STRIPE_SECRET_KEY appears to be a test key in production');
+  }
+
+  if (isProd && process.env.ADMIN_JWT_SECRET?.startsWith('qvo-dev-')) {
+    warnings.push('ADMIN_JWT_SECRET appears to be an auto-generated dev secret — use a strong random secret in production');
   }
 
   if (isProd && process.env.PLATFORM_DB_POOL_URL && !process.env.PLATFORM_DB_POOL_URL.includes('6543')) {

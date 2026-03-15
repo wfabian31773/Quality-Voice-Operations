@@ -14,11 +14,8 @@ export function getStripeClient(): Stripe {
     if (IS_PROD) {
       throw new Error('STRIPE_SECRET_KEY is required in production');
     }
-    logger.warn('STRIPE_SECRET_KEY not set — Stripe calls will fail (dev mode)');
-    _stripe = new Stripe('sk_test_placeholder', {
-      apiVersion: '2026-02-25.clover' as const,
-    });
-    return _stripe;
+    logger.warn('STRIPE_SECRET_KEY not set — Stripe client unavailable (dev mode). Billing features will not work.');
+    throw new Error('STRIPE_SECRET_KEY is not configured. Set the secret to enable billing features.');
   }
 
   _stripe = new Stripe(apiKey, { apiVersion: '2026-02-25.clover' as const });
@@ -30,7 +27,7 @@ export function getWebhookSecret(): string {
   if (!secret) {
     if (IS_PROD) throw new Error('STRIPE_WEBHOOK_SECRET is required in production');
     logger.warn('STRIPE_WEBHOOK_SECRET not set — webhook verification disabled (dev mode)');
-    return 'whsec_placeholder';
+    throw new Error('STRIPE_WEBHOOK_SECRET is not configured. Set the secret to enable webhook verification.');
   }
   return secret;
 }

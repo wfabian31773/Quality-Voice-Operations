@@ -13,8 +13,9 @@ function getJwtSecret(): string {
     if (IS_PROD) {
       throw new Error('ADMIN_JWT_SECRET is required in production');
     }
-    logger.warn('ADMIN_JWT_SECRET not set — using insecure dev secret');
-    return 'dev-only-insecure-jwt-secret-DO-NOT-USE';
+    const devSecret = 'qvo-dev-jwt-' + (process.env.REPL_ID ?? 'local');
+    logger.warn('ADMIN_JWT_SECRET not set — using auto-generated dev secret (NOT for production)');
+    return devSecret;
   }
   return secret;
 }
