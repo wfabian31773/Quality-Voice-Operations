@@ -48,6 +48,7 @@ platform/
   telephony/        Phone number management
   messaging/        SMS messaging
   runtime/          Voice agent runtime
+  email/            Email service (nodemailer SMTP + console-log fallback) + HTML templates
   tools/            Agent tool definitions
   workflow/         Workflow engine
 migrations/         SQL migration files (001-028)
@@ -64,7 +65,7 @@ scripts/            Migration runner, seed scripts, startup script
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events
@@ -103,6 +104,9 @@ See `docs/deployment-checklist.md` for the complete reference. Key variables:
 - `TWILIO_COST_PER_MINUTE_CENTS` — Twilio cost per minute in cents (default: 2)
 - `AI_COST_PER_MINUTE_CENTS` — AI cost per minute in cents (default: 6)
 - `SMS_COST_PER_MESSAGE_CENTS` — SMS cost per message in cents (default: 1)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` — SMTP config for email (optional; falls back to console logging)
+- `EMAIL_FROM` — sender address for emails (default: noreply@qualityvoiceops.com)
+- `APP_URL` — base URL for email links (default: derived from REPLIT_DEV_DOMAIN)
 - `DISABLE_PHI_LOGGING` — set to "true" to suppress PHI in logs
 
 Startup validation: `scripts/validate-env.ts` runs automatically on server start. Fails fast in production if any required variable is missing.

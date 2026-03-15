@@ -22,6 +22,7 @@ import publicApiRoutes from './routes/publicApi';
 import qualityRoutes from './routes/quality';
 import auditLogRoutes from './routes/auditLog';
 import platformAdminRoutes from './routes/platformAdmin';
+import callsLiveRoutes from './routes/callsLive';
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use('/', authRoutes);
 app.use('/', tenantRoutes);
 app.use('/', agentRoutes);
 app.use('/', phoneNumberRoutes);
+app.use('/', callsLiveRoutes);
 app.use('/', callRoutes);
 app.use('/', userRoutes);
 app.use('/', connectorRoutes);

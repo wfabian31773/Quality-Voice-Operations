@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
-import { PhoneCall, Bot, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import { PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface CallSession {
@@ -12,6 +13,17 @@ interface CallSession {
   duration_seconds: number | null;
   agent_id: string;
   agent_name: string | null;
+  escalation_target: string | null;
+}
+
+interface ActiveCall {
+  id: string;
+  direction: string;
+  lifecycle_state: string;
+  start_time: string;
+  agent_id: string;
+  agent_name: string | null;
+  caller_number: string | null;
   escalation_target: string | null;
 }
 
@@ -36,13 +48,49 @@ function todayIso(): string {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 }
 
+function useSSEActiveCalls(): { activeCalls: ActiveCall[]; connected: boolean } {
+  const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
+  const [connected, setConnected] = useState(false);
+  const queryClient = useQueryClient();
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    const url = `/api/calls/live?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url, { withCredentials: true });
+    esRef.current = es;
+
+    es.addEventListener('active_calls', (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data) as ActiveCall[];
+        setActiveCalls(data);
+        setConnected(true);
+        queryClient.invalidateQueries({ queryKey: ['calls', 'recent'] });
+      } catch {}
+    });
+
+    es.onopen = () => setConnected(true);
+    es.onerror = () => setConnected(false);
+
+    return () => {
+      es.close();
+      esRef.current = null;
+    };
+  }, [queryClient]);
+
+  return { activeCalls, connected };
+}
+
 export default function Dashboard() {
   const todaySince = todayIso();
+  const { activeCalls: liveActiveCalls, connected: sseConnected } = useSSEActiveCalls();
 
   const { data: callsData, isLoading: callsLoading } = useQuery({
     queryKey: ['calls', 'recent'],
     queryFn: () => api.get<{ calls: CallSession[]; total: number }>('/calls?limit=50'),
-    refetchInterval: 5000,
+    refetchInterval: 10000,
   });
 
   const { data: todayData } = useQuery({
@@ -57,20 +105,29 @@ export default function Dashboard() {
   });
 
   const calls = callsData?.calls ?? [];
-  const activeCalls = calls.filter((c) => ['active', 'CALL_CONNECTED'].includes(c.lifecycle_state)).length;
+  const activeCallCount = liveActiveCalls.length;
   const totalToday = todayData?.total ?? 0;
   const agentCount = agentsData?.total ?? 0;
   const escalations = calls.filter((c) => c.escalation_target).length;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
-        <p className="text-sm text-text-secondary mt-1">Real-time overview of your voice operations</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
+          <p className="text-sm text-text-secondary mt-1">Real-time overview of your voice operations</p>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          {sseConnected ? (
+            <><Wifi className="h-3.5 w-3.5 text-green-500" /><span className="text-green-600 dark:text-green-400">Live</span></>
+          ) : (
+            <><WifiOff className="h-3.5 w-3.5 text-gray-400" /><span className="text-text-secondary">Connecting…</span></>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard icon={PhoneCall} label="Active Calls" value={activeCalls} color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
+        <StatCard icon={PhoneCall} label="Active Calls" value={activeCallCount} color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
         <StatCard icon={TrendingUp} label="Today's Volume" value={totalToday} color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" />
         <StatCard icon={AlertTriangle} label="Escalations" value={escalations} color="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" />
         <StatCard icon={Bot} label="Agents" value={agentCount} color="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" />

@@ -163,14 +163,20 @@ Always remind callers this is a demonstration. Be calm, professional, and empath
     await client.query(
       `INSERT INTO demo_agents (tenant_id, name, description, agent_template, voice_id, is_active)
        VALUES ($1, 'Answering Service', 'Professional answering service for general business use', 'answering-service', 'sage', true)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (tenant_id, agent_template) DO UPDATE SET
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         is_active = EXCLUDED.is_active`,
       [DEMO_TENANT_ID],
     );
 
     await client.query(
       `INSERT INTO demo_agents (tenant_id, name, description, agent_template, voice_id, is_active)
        VALUES ($1, 'Medical After Hours', 'HIPAA-aware medical after-hours answering service', 'medical-after-hours', 'shimmer', true)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (tenant_id, agent_template) DO UPDATE SET
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         is_active = EXCLUDED.is_active`,
       [DEMO_TENANT_ID],
     );
 
