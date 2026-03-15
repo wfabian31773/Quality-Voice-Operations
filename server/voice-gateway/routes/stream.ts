@@ -344,9 +344,9 @@ export function attachWebSocket(server: HTTPServer): void {
 
               const apiKey = process.env.OPENAI_API_KEY;
               if (apiKey) {
+                sessionResult.triggerGreeting();
                 await sessionResult.session.connect({ apiKey });
                 slog.info('OpenAI Realtime session connected', { agentId });
-                sessionResult.triggerGreeting();
               } else {
                 slog.error('OPENAI_API_KEY not set — cannot connect realtime session');
               }
