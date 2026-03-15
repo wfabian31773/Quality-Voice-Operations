@@ -169,7 +169,7 @@ function buildTemplateConfig(
   meta: Record<string, unknown>,
   dbTools: AgentToolDef[],
 ): LoadedAgentConfig | null {
-  const { tenantId, callerPhone, callerMemorySummary, dbAgent } = ctx;
+  const { tenantId, agentId, callerPhone, callerMemorySummary, dbAgent } = ctx;
 
   switch (templateKey) {
     case 'dental': {
@@ -178,7 +178,7 @@ function buildTemplateConfig(
         ? dbAgent.system_prompt
         : buildDentalSystemPrompt({ practiceName, callerPhone, callerMemorySummary });
       return {
-        agentId: 'dental',
+        agentId,
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getDentalGreeting(practiceName),
@@ -196,7 +196,7 @@ function buildTemplateConfig(
         ? dbAgent.system_prompt
         : buildPropertyManagementSystemPrompt({ companyName, callerPhone, callerMemorySummary });
       return {
-        agentId: 'property-management',
+        agentId,
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getPropertyManagementGreeting(companyName),
@@ -215,7 +215,7 @@ function buildTemplateConfig(
         ? dbAgent.system_prompt
         : buildHomeServicesSystemPrompt({ companyName, serviceTypes, callerPhone, callerMemorySummary });
       return {
-        agentId: 'home-services',
+        agentId,
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getHomeServicesGreeting(companyName),
@@ -234,7 +234,7 @@ function buildTemplateConfig(
         ? dbAgent.system_prompt
         : buildLegalSystemPrompt({ firmName, practiceAreas, callerPhone, callerMemorySummary });
       return {
-        agentId: 'legal',
+        agentId,
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getLegalGreeting(firmName),
@@ -271,7 +271,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
           });
       const mergedTools = mergeTools(ANSWERING_SERVICE_TOOLS, dbTools);
       return {
-        agentId: 'answering-service',
+        agentId,
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? `Thank you for calling ${practiceName}. How can I help you today?`,
@@ -296,7 +296,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
           });
       const mergedTools = mergeTools(AFTER_HOURS_TOOLS, dbTools);
       return {
-        agentId: 'medical-after-hours',
+        agentId,
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getAfterHoursGreeting(practiceName),
