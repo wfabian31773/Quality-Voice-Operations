@@ -38,6 +38,7 @@ export interface SessionContext {
   callerNumber: string;
   calledNumber: string;
   callSid: string;
+  direction?: 'inbound' | 'outbound';
   lifecycleCoordinator: CallLifecycleCoordinator;
   workflowEngine?: WorkflowEngine;
   budgetGuard?: BudgetGuardService;
@@ -261,7 +262,7 @@ export async function createRealtimeSession(
     tenantId,
     agentId: agentConfig.agentId,
     callSid,
-    direction: 'inbound',
+    direction: ctx.direction ?? 'inbound',
     callerNumber,
     calledNumber,
   });

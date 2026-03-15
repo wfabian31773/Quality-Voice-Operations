@@ -5,6 +5,7 @@ import { createLogger } from '../../platform/core/logger';
 import { startUsageMeteringWorker, stopUsageMeteringWorker } from '../../platform/billing/stripe/usage';
 import { startCampaignScheduler, stopCampaignScheduler } from '../../platform/campaigns';
 import { startMetricsRollup, stopMetricsRollup, startSystemMetricsWriter, stopSystemMetricsWriter, logError } from '../../platform/core/observability';
+import { validateBillingConfig } from '../../platform/billing/stripe/plans';
 
 const logger = createLogger('ADMIN_API');
 const PORT = parseInt(process.env.ADMIN_API_PORT ?? process.env.PORT ?? '3002', 10);
@@ -17,6 +18,13 @@ server.listen(PORT, '0.0.0.0', () => {
     env: process.env.APP_ENV ?? 'development',
     nodeVersion: process.version,
   });
+
+  const billingCheck = validateBillingConfig();
+  if (!billingCheck.valid) {
+    for (const warning of billingCheck.warnings) {
+      logger.warn(`[BILLING CONFIG] ${warning}`);
+    }
+  }
 
   startUsageMeteringWorker();
   startMetricsRollup();

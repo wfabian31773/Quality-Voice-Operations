@@ -2,6 +2,7 @@ import { createLogger } from '../../../core/logger';
 import { redactPHI } from '../../../core/phi/redact';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult, SendSmsPayload } from '../types';
 import type { TenantId } from '../../../core/types';
+import { recordSmsUsage } from '../../../billing/usage/UsageRecorder';
 
 const logger = createLogger('SMS_CONNECTOR');
 
@@ -64,6 +65,11 @@ export class TwilioSmsConnectorAdapter implements ConnectorAdapter {
       const data = await response.json() as Record<string, unknown>;
       const messageSid = data.sid as string;
       logger.info('SMS sent successfully', { tenantId, messageSid });
+
+      recordSmsUsage(tenantId, 1).catch((err) => {
+        logger.error('Failed to record SMS usage', { tenantId, error: String(err) });
+      });
+
       return { success: true, externalId: messageSid, meta: { messageSid } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);

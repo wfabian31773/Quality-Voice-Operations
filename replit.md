@@ -18,7 +18,7 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
 - **Dev:** Replit local PostgreSQL via `DATABASE_URL` (no SSL)
 - **Production:** Supabase via `PLATFORM_DB_POOL_URL` (SSL, transaction pooler port 6543)
 - **Module:** `platform/db/index.ts` — auto-switches based on `APP_ENV`
-- **Migrations:** `migrations/001_*.sql` through `migrations/027_*.sql` — 27 numbered SQL files
+- **Migrations:** `migrations/001_*.sql` through `migrations/028_*.sql` — 28 numbered SQL files
 - **Runner:** `scripts/run-migrations.ts` — idempotent, applies only files matching `\d{3}_*.sql`
 - **Seed:** `scripts/seed-demo.ts` (demo tenant + agents), `scripts/seed-admin.ts` (platform admin user)
 - **RLS:** Row-Level Security on all tenant-scoped tables; policy uses `current_setting('app.tenant_id')`
@@ -34,7 +34,7 @@ server/
   voice-gateway/    Twilio + OpenAI Realtime voice gateway (port 3001)
 platform/
   audit/            Audit logging service
-  billing/          Stripe billing, budget guards, usage metering
+  billing/          Stripe billing, budget guards, usage metering, usage recording
   campaigns/        Outbound campaign management
   core/             Env config, logger, PHI redact, resilience, observability
   db/               Database connection pool (dev/prod auto-switch)
@@ -48,7 +48,7 @@ platform/
   runtime/          Voice agent runtime
   tools/            Agent tool definitions
   workflow/         Workflow engine
-migrations/         SQL migration files (001-027)
+migrations/         SQL migration files (001-028)
 scripts/            Migration runner, seed scripts, startup script
 ```
 
@@ -65,13 +65,15 @@ scripts/            Migration runner, seed scripts, startup script
 - Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
-- Usage metering: hourly job reports AI minutes to Stripe meter events
+- Usage metering: hourly job reports AI minutes + call counts to Stripe meter events
+- Usage recording: call finalization writes `usage_metrics` (calls_inbound/outbound, ai_minutes); SMS connector writes sms_sent
+- Billing config validation: startup warns about missing Stripe price IDs and secrets
 
 ### server/voice-gateway/ (port 3001)
 - Twilio webhook + OpenAI Realtime WebSocket bridge
 - Phone routing: DB-based lookup via `phone_numbers` + `number_routing` tables
 - Agent templates: answering-service, medical-after-hours, dental, property-management, home-services, legal
-- Call lifecycle: writes `call_sessions` and `call_events` records
+- Call lifecycle: writes `call_sessions` and `call_events` records; populates `total_cost_cents` on finalization
 - Graceful shutdown: SIGTERM/SIGINT drain active WebSocket sessions
 
 ## Key Rules
@@ -90,6 +92,10 @@ scripts/            Migration runner, seed scripts, startup script
 - `OPENAI_API_KEY` — OpenAI API key for voice agents
 - `OPENAI_ADMIN_API_KEY` — OpenAI admin API key
 - `VOICE_AGENT_WEBHOOK_SECRET` — webhook authentication
+- `STRIPE_PRICE_STARTER_MONTHLY`, `STRIPE_PRICE_PRO_MONTHLY`, etc. — Stripe price IDs per plan/interval
+- `TWILIO_COST_PER_MINUTE_CENTS` — Twilio cost per minute in cents (default: 2)
+- `AI_COST_PER_MINUTE_CENTS` — AI cost per minute in cents (default: 6)
+- `SMS_COST_PER_MESSAGE_CENTS` — SMS cost per message in cents (default: 1)
 - `DISABLE_PHI_LOGGING` — set to "true" to suppress PHI in logs
 
 ## SIP Audio Format Rules (DO NOT CHANGE)

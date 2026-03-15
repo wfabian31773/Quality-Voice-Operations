@@ -293,6 +293,28 @@ export async function getAgentAnalytics(
       [tenantId, from, to],
     );
 
+    const agentIds = rows.map((r) => r.agent_id as string);
+    const qualityByAgent = new Map<string, number>();
+
+    if (agentIds.length > 0) {
+      const { rows: qualityRows } = await client.query(
+        `SELECT
+           cs.agent_id,
+           COALESCE(AVG(cqs.score), 0) AS avg_score
+         FROM call_quality_scores cqs
+         JOIN call_sessions cs ON cs.id = cqs.call_session_id AND cs.tenant_id = cqs.tenant_id
+         WHERE cqs.tenant_id = $1
+           AND cs.agent_id = ANY($2)
+           AND cqs.scored_at >= $3
+           AND cqs.scored_at < $4
+         GROUP BY cs.agent_id`,
+        [tenantId, agentIds, from, to],
+      );
+      for (const qr of qualityRows) {
+        qualityByAgent.set(qr.agent_id as string, parseFloat(String(qr.avg_score ?? 0)));
+      }
+    }
+
     await client.query('COMMIT');
 
     return {
@@ -303,7 +325,7 @@ export async function getAgentAnalytics(
         avgDurationSeconds: parseFloat(String(r.avg_duration ?? 0)),
         completedCalls: (r.completed_calls as number) ?? 0,
         failedCalls: (r.failed_calls as number) ?? 0,
-        avgQualityScore: 0,
+        avgQualityScore: qualityByAgent.get(r.agent_id as string) ?? 0,
       })),
     };
   } catch (err) {

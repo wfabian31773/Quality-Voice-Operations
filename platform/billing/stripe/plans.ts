@@ -34,7 +34,36 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
 
 export function getPlanPriceId(tier: PlanTier, interval: 'monthly' | 'annual' = 'monthly'): string {
   const key = `STRIPE_PRICE_${tier.toUpperCase()}_${interval.toUpperCase()}`;
-  return process.env[key] ?? `price_${tier}_${interval}_placeholder`;
+  const priceId = process.env[key];
+  if (!priceId) {
+    throw new Error(`Missing Stripe price ID: environment variable ${key} is not set. Configure it in your environment before using billing.`);
+  }
+  return priceId;
+}
+
+export function validateBillingConfig(): { valid: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+  const tiers: PlanTier[] = ['starter', 'pro', 'enterprise'];
+  const intervals = ['MONTHLY', 'ANNUAL'];
+
+  for (const tier of tiers) {
+    for (const interval of intervals) {
+      const key = `STRIPE_PRICE_${tier.toUpperCase()}_${interval}`;
+      if (!process.env[key]) {
+        warnings.push(`${key} is not set — ${tier} ${interval.toLowerCase()} plan checkout will fail`);
+      }
+    }
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY === 'sk_test_placeholder') {
+    warnings.push('STRIPE_SECRET_KEY is not configured — billing operations will fail');
+  }
+
+  if (!process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET === 'whsec_placeholder') {
+    warnings.push('STRIPE_WEBHOOK_SECRET is not configured — webhook verification will fail');
+  }
+
+  return { valid: warnings.length === 0, warnings };
 }
 
 const PRICE_ID_TO_PLAN: Map<string, PlanTier> = new Map();

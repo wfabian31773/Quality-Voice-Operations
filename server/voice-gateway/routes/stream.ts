@@ -19,6 +19,7 @@ import { createSessionLogger, type SessionLogger } from '../services/sessionLogg
 import { updateContactStatus, classifyCallOutcome, addToDnc } from '../../../platform/campaigns';
 import { writeCallMetric } from '../../../platform/core/observability';
 import { scoreCall } from '../../../platform/analytics/QualityScorerService';
+import { recordCallUsage, estimateCallCost } from '../../../platform/billing/usage/UsageRecorder';
 
 const logger = createLogger('WS_STREAM');
 
@@ -95,6 +96,7 @@ export function attachWebSocket(server: HTTPServer): void {
     let campaignId: string | undefined;
     let campaignContactId: string | undefined;
     let streamAgentId: string | undefined;
+    let callDirection: 'inbound' | 'outbound' = 'inbound';
     let sessionResult: RealtimeSessionResult | undefined;
     let sessionClosed = false;
     const streamStartedAt = Date.now();
@@ -114,15 +116,21 @@ export function attachWebSocket(server: HTTPServer): void {
         }
 
         const durationSeconds = Math.round((Date.now() - streamStartedAt) / 1000);
+        const costEstimate = estimateCallCost(durationSeconds);
 
         try {
-          await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds);
+          await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
           await writeCallEvent(tenantId, callSessionId, 'call_completed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
             durationSeconds,
+            totalCostCents: costEstimate.totalCostCents,
           });
         } catch (err) {
           slog.error('Error finalizing call session', { error: String(err) });
         }
+
+        recordCallUsage(tenantId, callDirection, durationSeconds).catch((err) => {
+          slog.error('Failed to record call usage metrics', { error: String(err) });
+        });
 
         const coordinator = getCoordinator(tenantId);
 
@@ -196,6 +204,7 @@ export function attachWebSocket(server: HTTPServer): void {
             const agentId = params.agentId;
             streamAgentId = agentId;
             const agentType = params.agentType ?? 'general';
+            callDirection = agentType === 'outbound' || params.direction === 'outbound' ? 'outbound' : 'inbound';
             twilioCallSid = params.callSid;
             campaignId = params.campaignId || undefined;
             campaignContactId = params.contactId || undefined;
@@ -304,6 +313,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 callerNumber,
                 calledNumber,
                 callSid: twilioCallSid,
+                direction: callDirection,
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
                 budgetGuard,
