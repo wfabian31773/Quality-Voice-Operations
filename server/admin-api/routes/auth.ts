@@ -173,7 +173,11 @@ router.post('/auth/signup', async (req, res) => {
       const stripe = getStripeClient();
       const priceId = getPlanPriceId(plan as PlanTier);
 
-      const baseUrl = process.env.APP_BASE_URL ?? `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`;
+      const isProd = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod') || process.env.APP_ENV === 'staging';
+      const baseUrl = process.env.APP_URL ?? process.env.APP_BASE_URL ?? (isProd ? '' : `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`);
+      if (isProd && !baseUrl) {
+        throw new Error('APP_URL is required in production for Stripe checkout redirects');
+      }
 
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
