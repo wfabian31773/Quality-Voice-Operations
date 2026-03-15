@@ -363,14 +363,14 @@ export async function getCostAnalytics(
 
     const { rows: telRows } = await client.query(
       `SELECT
-         DATE(created_at) AS day,
-         COALESCE(SUM(amount_cents), 0)::int AS cost_cents
-       FROM billing_events
+         DATE(period_start) AS day,
+         COALESCE(SUM(total_cost_cents), 0)::int AS cost_cents
+       FROM usage_metrics
        WHERE tenant_id = $1
-         AND event_type = 'usage_charged'
-         AND created_at >= $2
-         AND created_at < $3
-       GROUP BY DATE(created_at)
+         AND metric_type IN ('calls_inbound', 'calls_outbound')
+         AND period_start >= $2
+         AND period_start < $3
+       GROUP BY DATE(period_start)
        ORDER BY day`,
       [tenantId, from, to],
     );
