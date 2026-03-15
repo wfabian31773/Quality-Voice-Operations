@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Phone, Activity, BarChart3, Headphones, Stethoscope } from 'lucide-react';
+import { Phone, Activity, BarChart3, Headphones, Stethoscope, AlertCircle } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -9,6 +9,21 @@ interface DemoEvent {
   agentName: string;
   durationSeconds: number | null;
   timestamp: string;
+}
+
+interface DemoPhone {
+  phoneNumber: string;
+  friendlyName: string;
+  agentTemplate: string | null;
+  isPlaceholder: boolean;
+}
+
+function formatPhoneNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return raw;
 }
 
 function formatEventType(type: string): string {
@@ -38,9 +53,51 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function PhoneDisplay({ phone, accentColor }: { phone: DemoPhone | undefined; accentColor: 'blue' | 'purple' }) {
+  const bgClass = accentColor === 'blue' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-purple-500/10 border-purple-500/20';
+  const iconClass = accentColor === 'blue' ? 'text-blue-400' : 'text-purple-400';
+  const labelClass = accentColor === 'blue' ? 'text-blue-300' : 'text-purple-300';
+
+  if (!phone) {
+    return (
+      <div className={`flex items-center gap-3 ${bgClass} rounded-xl px-5 py-4 border`}>
+        <AlertCircle className={`h-5 w-5 ${iconClass} shrink-0`} />
+        <div>
+          <p className={`text-xs ${labelClass} mb-0.5`}>Demo line</p>
+          <p className="text-sm text-gray-400">Not configured</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phone.isPlaceholder) {
+    return (
+      <div className={`flex items-center gap-3 ${bgClass} rounded-xl px-5 py-4 border`}>
+        <Phone className={`h-5 w-5 ${iconClass} shrink-0`} />
+        <div>
+          <p className={`text-xs ${labelClass} mb-0.5`}>Demo line — awaiting real number</p>
+          <p className="text-sm text-gray-400">Contact your administrator to provision a Twilio number</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex items-center gap-3 ${bgClass} rounded-xl px-5 py-4 border`}>
+      <Phone className={`h-5 w-5 ${iconClass} shrink-0`} />
+      <div>
+        <p className={`text-xs ${labelClass} mb-0.5`}>Call to try it</p>
+        <p className="text-lg font-mono font-bold text-white">{formatPhoneNumber(phone.phoneNumber)}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Demo() {
   const [events, setEvents] = useState<DemoEvent[]>([]);
   const [totalCalls, setTotalCalls] = useState(0);
+  const [phones, setPhones] = useState<DemoPhone[]>([]);
+  const [demoConfigured, setDemoConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchActivity = useCallback(async () => {
@@ -58,10 +115,21 @@ export default function Demo() {
         setTotalCalls(data.totalCalls ?? 0);
       }
     } catch {
-      // silently retry on next poll
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/demo/phones`)
+      .then((r) => r.json())
+      .then((data) => {
+        setPhones(data.phones ?? []);
+        setDemoConfigured(data.configured ?? false);
+      })
+      .catch(() => {
+        setDemoConfigured(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -69,6 +137,13 @@ export default function Demo() {
     const interval = setInterval(fetchActivity, 5000);
     return () => clearInterval(interval);
   }, [fetchActivity]);
+
+  const answeringPhone = phones.find(
+    (p) => p.agentTemplate === 'answering-service' || p.friendlyName.toLowerCase().includes('answering'),
+  );
+  const medicalPhone = phones.find(
+    (p) => p.agentTemplate === 'medical-after-hours' || p.friendlyName.toLowerCase().includes('medical'),
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
@@ -95,6 +170,12 @@ export default function Demo() {
           </p>
         </div>
 
+        {demoConfigured === false && (
+          <div className="mb-8 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-center text-yellow-300 text-sm">
+            Demo phone lines are not yet provisioned. The demo system is ready but requires real Twilio phone numbers to accept calls.
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-8 mb-12">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-blue-500/50 transition-colors">
             <div className="flex items-center gap-3 mb-4">
@@ -107,13 +188,7 @@ export default function Demo() {
               A professional answering service demo. Aria will greet you, take a
               message, and demonstrate professional call handling.
             </p>
-            <div className="flex items-center gap-3 bg-blue-500/10 rounded-xl px-5 py-4 border border-blue-500/20">
-              <Phone className="h-5 w-5 text-blue-400 shrink-0" />
-              <div>
-                <p className="text-xs text-blue-300 mb-0.5">Call to try it</p>
-                <p className="text-lg font-mono font-bold text-white">+1 (555) 000-0001</p>
-              </div>
-            </div>
+            <PhoneDisplay phone={answeringPhone} accentColor="blue" />
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-purple-500/50 transition-colors">
@@ -127,13 +202,7 @@ export default function Demo() {
               An after-hours medical answering demo. Aria will collect your
               concern, assess urgency, and take a callback number.
             </p>
-            <div className="flex items-center gap-3 bg-purple-500/10 rounded-xl px-5 py-4 border border-purple-500/20">
-              <Phone className="h-5 w-5 text-purple-400 shrink-0" />
-              <div>
-                <p className="text-xs text-purple-300 mb-0.5">Call to try it</p>
-                <p className="text-lg font-mono font-bold text-white">+1 (555) 000-0002</p>
-              </div>
-            </div>
+            <PhoneDisplay phone={medicalPhone} accentColor="purple" />
           </div>
         </div>
 

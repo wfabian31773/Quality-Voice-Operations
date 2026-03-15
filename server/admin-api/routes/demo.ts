@@ -98,4 +98,53 @@ router.get('/demo/stats', demoActivityLimiter, async (_req: Request, res: Respon
   }
 });
 
+router.get('/demo/phones', demoActivityLimiter, async (_req: Request, res: Response) => {
+  try {
+    const pool = getPlatformPool();
+
+    const { rows: tenantCheck } = await pool.query(
+      `SELECT id FROM tenants WHERE id = $1 AND is_demo = true`,
+      [DEMO_TENANT_ID],
+    );
+
+    if (tenantCheck.length === 0) {
+      res.json({ configured: false, phones: [], message: 'Demo system is not configured.' });
+      return;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT
+         pn.phone_number,
+         pn.friendly_name,
+         da.agent_template
+       FROM phone_numbers pn
+       LEFT JOIN number_routing nr ON nr.phone_number_id = pn.id AND nr.is_active = true
+       LEFT JOIN agents a ON a.id = nr.agent_id
+       LEFT JOIN demo_agents da ON da.tenant_id = pn.tenant_id AND da.name = a.name
+       WHERE pn.tenant_id = $1
+         AND pn.is_demo = true
+         AND pn.status = 'active'
+       ORDER BY pn.friendly_name`,
+      [DEMO_TENANT_ID],
+    );
+
+    const isPlaceholder = (num: string) => num.startsWith('+1555') || num.startsWith('+15550');
+
+    const phones = rows.map((r) => ({
+      phoneNumber: r.phone_number as string,
+      friendlyName: r.friendly_name as string,
+      agentTemplate: (r.agent_template as string) ?? null,
+      isPlaceholder: isPlaceholder(r.phone_number as string),
+    }));
+
+    res.json({
+      configured: phones.some((p) => !p.isPlaceholder),
+      phones,
+    });
+  } catch (err) {
+    console.error('[DEMO] Failed to fetch phones:', err);
+    res.status(500).json({ error: 'Failed to fetch demo phones' });
+  }
+});
+
 export default router;

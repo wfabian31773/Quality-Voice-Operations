@@ -231,3 +231,72 @@ npx tsx scripts/run-migrations.ts
 Expected output: all 28 files (001_tenants.sql through 028_add_welcome_greeting.sql) apply with `DONE` status and "All migrations complete." at the end.
 
 Last validated: 2026-03-15 (Task #27 deployment readiness audit).
+
+## 9. Demo System Setup
+
+The demo system allows prospective customers to try the platform by calling live AI agents without signing up.
+
+### Prerequisites
+
+- Demo tenant and agents are seeded via `scripts/seed-demo.ts`
+- Two Twilio phone numbers provisioned for demo use
+
+### Step 1: Seed Demo Data
+
+```bash
+npx tsx scripts/seed-demo.ts
+```
+
+This creates:
+- A `demo` tenant with enterprise plan and unlimited limits
+- Two demo agents: Answering Service (voice: sage) and Medical After-Hours (voice: shimmer)
+- Placeholder phone numbers `+15550000001` and `+15550000002` with routing to the agents
+- Entries in the `demo_agents` table for the demo page display
+
+### Step 2: Provision Real Twilio Numbers
+
+1. Purchase two phone numbers in the Twilio Console
+2. Update the demo phone numbers in the database:
+
+```sql
+UPDATE phone_numbers SET phone_number = '+1XXXXXXXXXX'
+WHERE tenant_id = 'demo' AND friendly_name LIKE '%Answering%';
+
+UPDATE phone_numbers SET phone_number = '+1XXXXXXXXXX'
+WHERE tenant_id = 'demo' AND friendly_name LIKE '%Medical%';
+```
+
+3. Configure Twilio webhooks for each number:
+   - Voice URL: `https://{VOICE_GATEWAY_BASE_URL}/twilio/voice` (POST)
+   - Status callback: `https://{VOICE_GATEWAY_BASE_URL}/twilio/status` (POST)
+
+### Step 3: Verify
+
+1. Visit the `/demo` page — it should show the real phone numbers (not placeholder text)
+2. Call either number — the AI agent should answer with the demo greeting
+3. Check `/api/demo/stats` — the `totalCalls` counter should increment
+4. Check `/api/demo/activity` — call events should appear in the feed
+
+### Demo Call Flow
+
+1. Caller dials the demo phone number
+2. Twilio sends a webhook to `/twilio/voice`
+3. The voice gateway looks up the phone number routing and finds the demo tenant + agent
+4. Rate limiter checks: max 5 calls per hour per IP address
+5. If allowed, `demo_call_count` on the tenant is incremented
+6. A WebSocket stream is established between Twilio and OpenAI Realtime API
+7. The AI agent (Aria) greets the caller and handles the conversation
+8. On call completion, call session and events are written to the database
+9. The demo activity feed shows the call events in real time (polls every 5s)
+
+### Rate Limiting
+
+- Demo calls are rate limited to **5 calls per hour** per caller IP address
+- When exceeded, callers hear: "Thank you for your interest in Voice AI. You have reached the maximum number of demo calls per hour. Please try again later."
+- The demo API endpoints (`/demo/activity`, `/demo/stats`, `/demo/phones`) are also rate limited to 30 requests per minute per IP
+
+### Error Handling
+
+- If the demo tenant is missing, `/demo/phones` returns `{ configured: false, phones: [] }` and the demo page shows a yellow banner
+- If phone numbers are still placeholder (555) numbers, the page shows "awaiting real number" with instructions to contact the administrator
+- If the voice gateway has no routing for a number, callers hear: "This number is not currently configured. Goodbye."
