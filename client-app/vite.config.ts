@@ -20,6 +20,20 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/twilio': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const originalHost = req.headers.host || req.headers['x-forwarded-host'];
+            if (originalHost) {
+              proxyReq.setHeader('x-forwarded-host', originalHost);
+            }
+            proxyReq.setHeader('x-forwarded-proto', 'https');
+          });
+        },
+      },
     },
   },
 });

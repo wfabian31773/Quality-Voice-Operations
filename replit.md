@@ -78,6 +78,14 @@ scripts/            Migration runner, seed scripts, startup script
 - Agent templates: answering-service, medical-after-hours, dental, property-management, home-services, legal
 - Call lifecycle: writes `call_sessions` and `call_events` records; populates `total_cost_cents` on finalization
 - Graceful shutdown: SIGTERM/SIGINT drain active WebSocket sessions
+- API proxy: /twilio/* → http://localhost:3001/* (with forwarded headers for Twilio signature validation)
+
+### Test Phone Number
+- **+16263821543** — Twilio number registered for admin-org tenant
+- Routed to "Quality Voice Operations Agent" (answering-service, voice: sage)
+- Twilio webhook pointed to `https://<REPLIT_DEV_DOMAIN>/twilio/voice`
+- Status callback: `https://<REPLIT_DEV_DOMAIN>/twilio/status`
+- Note: If Replit dev domain changes, run the Twilio API update script again
 
 ## Key Rules
 - ALL tenant-scoped DB ops use `withTenantContext(client, tenantId, ...)` for RLS
