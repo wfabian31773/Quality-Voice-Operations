@@ -10,9 +10,11 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
   - Voice Gateway on port 3001 — Twilio webhooks + OpenAI Realtime bridge
 
 ## Deployment
-- **Build:** `npx tsc --noEmit` (TypeScript check)
-- **Run:** `npx vite build --config client-app/vite.config.ts` → `npx tsx server/admin-api/start.ts` + `npx tsx server/voice-gateway/start.ts`
-- Admin API reads `PORT` env var in production (defaults to 5000)
+- **Build:** `npx tsc --noEmit && npx vite build --config client-app/vite.config.ts`
+- **Run:** `APP_ENV=production npx tsx server/admin-api/start.ts & APP_ENV=production npx tsx server/voice-gateway/start.ts & wait`
+- Admin API serves pre-built Vite frontend in production from `client-app/dist/`
+- **Pre-deploy validation:** `APP_ENV=production npx tsx scripts/validate-env.ts`
+- **Full checklist:** `docs/deployment-checklist.md`
 
 ## Database
 - **Dev:** Replit local PostgreSQL via `DATABASE_URL` (no SSL)
@@ -85,18 +87,25 @@ scripts/            Migration runner, seed scripts, startup script
 - STRIPE_SECRET_KEY required in production
 
 ## Environment Variables
+See `docs/deployment-checklist.md` for the complete reference. Key variables:
 - `APP_ENV` — `development` or `production` (controls DB routing, SSL, error verbosity)
-- `DATABASE_URL` — Replit local PostgreSQL (dev)
-- `PLATFORM_DB_POOL_URL` — Supabase transaction pooler (production)
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` — Twilio credentials
+- `DATABASE_URL` — Replit local PostgreSQL (dev only)
+- `PLATFORM_DB_POOL_URL` — Supabase transaction pooler (production, port 6543)
 - `OPENAI_API_KEY` — OpenAI API key for voice agents
-- `OPENAI_ADMIN_API_KEY` — OpenAI admin API key
-- `VOICE_AGENT_WEBHOOK_SECRET` — webhook authentication
-- `STRIPE_PRICE_STARTER_MONTHLY`, `STRIPE_PRICE_PRO_MONTHLY`, etc. — Stripe price IDs per plan/interval
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` — Twilio credentials
+- `TWILIO_OUTBOUND_NUMBER` — Default outbound caller ID (E.164)
+- `ADMIN_JWT_SECRET` — JWT signing secret (required in production)
+- `CONNECTOR_ENCRYPTION_KEY` — 32-byte hex key for tenant secret encryption (required in production)
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — Stripe keys (required in production)
+- `STRIPE_PRICE_{TIER}_{INTERVAL}` — Stripe price IDs per plan (required in production)
+- `VOICE_GATEWAY_BASE_URL` — Public voice gateway URL for Twilio webhooks (production)
+- `ADMIN_API_BASE_URL` — Public admin API URL (production)
 - `TWILIO_COST_PER_MINUTE_CENTS` — Twilio cost per minute in cents (default: 2)
 - `AI_COST_PER_MINUTE_CENTS` — AI cost per minute in cents (default: 6)
 - `SMS_COST_PER_MESSAGE_CENTS` — SMS cost per message in cents (default: 1)
 - `DISABLE_PHI_LOGGING` — set to "true" to suppress PHI in logs
+
+Startup validation: `scripts/validate-env.ts` runs automatically on server start. Fails fast in production if any required variable is missing.
 
 ## SIP Audio Format Rules (DO NOT CHANGE)
 **Problem solved (Feb 22, 2026):** Dead air / screeching audio caused by codec mismatch between Twilio SIP and OpenAI Realtime API.

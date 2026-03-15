@@ -6,18 +6,27 @@ import { startUsageMeteringWorker, stopUsageMeteringWorker } from '../../platfor
 import { startCampaignScheduler, stopCampaignScheduler } from '../../platform/campaigns';
 import { startMetricsRollup, stopMetricsRollup, startSystemMetricsWriter, stopSystemMetricsWriter, logError } from '../../platform/core/observability';
 import { validateBillingConfig } from '../../platform/billing/stripe/plans';
+import { validateEnvironment, validateDatabaseConnection } from '../../scripts/validate-env';
 
 const logger = createLogger('ADMIN_API');
 const PORT = parseInt(process.env.ADMIN_API_PORT ?? process.env.PORT ?? '3002', 10);
 
+const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
+const envResult = validateEnvironment({ exitOnFailure: isProd });
+if (!envResult.passed && !isProd) {
+  logger.warn('Environment validation has warnings — some features may be unavailable');
+}
+
 const server = http.createServer(app);
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
   logger.info(`Admin API listening on port ${PORT}`, {
     port: PORT,
     env: process.env.APP_ENV ?? 'development',
     nodeVersion: process.version,
   });
+
+  await validateDatabaseConnection();
 
   const billingCheck = validateBillingConfig();
   if (!billingCheck.valid) {
