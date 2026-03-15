@@ -1,0 +1,80 @@
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import path from 'path';
+import fs from 'fs';
+import { errorHandler } from './middleware/errorHandler';
+import healthRoutes from './routes/health';
+import authRoutes from './routes/auth';
+import tenantRoutes from './routes/tenants';
+import agentRoutes from './routes/agents';
+import phoneNumberRoutes from './routes/phoneNumbers';
+import callRoutes from './routes/calls';
+import userRoutes from './routes/users';
+import connectorRoutes from './routes/connectors';
+import billingRoutes from './routes/billing';
+import campaignRoutes from './routes/campaigns';
+import observabilityRoutes from './routes/observability';
+import analyticsRoutes from './routes/analytics';
+import demoRoutes from './routes/demo';
+import apiKeyRoutes from './routes/apiKeys';
+import publicApiRoutes from './routes/publicApi';
+import qualityRoutes from './routes/quality';
+import auditLogRoutes from './routes/auditLog';
+import platformAdminRoutes from './routes/platformAdmin';
+
+const app = express();
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser());
+
+app.use(
+  '/billing/stripe-webhook',
+  express.raw({ type: 'application/json' }),
+);
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  if (req.method !== 'GET' || req.path.includes('auth')) {
+    console.log(`[REQ] ${req.method} ${req.path} from ${req.ip}`);
+  }
+  next();
+});
+
+app.use('/', healthRoutes);
+app.use('/', authRoutes);
+app.use('/', tenantRoutes);
+app.use('/', agentRoutes);
+app.use('/', phoneNumberRoutes);
+app.use('/', callRoutes);
+app.use('/', userRoutes);
+app.use('/', connectorRoutes);
+app.use('/', billingRoutes);
+app.use('/', campaignRoutes);
+app.use('/', observabilityRoutes);
+app.use('/', analyticsRoutes);
+app.use('/', demoRoutes);
+app.use('/', apiKeyRoutes);
+app.use('/', qualityRoutes);
+app.use('/', auditLogRoutes);
+app.use('/', platformAdminRoutes);
+app.use('/', publicApiRoutes);
+
+const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
+const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
+
+if (isProduction && fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
+app.use(errorHandler);
+
+export default app;

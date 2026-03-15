@@ -1,0 +1,108 @@
+# Voice AI Operations Hub (Multi-Tenant SaaS)
+
+## Overview
+Multi-tenant SaaS platform for managing AI-powered voice operations at enterprise scale. Built per a 35-part enterprise blueprint.
+
+## Active Workflows
+- **Platform Dev** — starts all services together via `scripts/start-platform-dev.sh`:
+  - Vite dev server on port 5000 (external 80) — React admin dashboard
+  - Admin API on port 3002 — multi-tenant REST API + Stripe billing
+  - Voice Gateway on port 3001 — Twilio webhooks + OpenAI Realtime bridge
+
+## Deployment
+- **Build:** `npx tsc --noEmit` (TypeScript check)
+- **Run:** `npx vite build --config client-app/vite.config.ts` → `npx tsx server/admin-api/start.ts` + `npx tsx server/voice-gateway/start.ts`
+- Admin API reads `PORT` env var in production (defaults to 5000)
+
+## Database
+- **Dev:** Replit local PostgreSQL via `DATABASE_URL` (no SSL)
+- **Production:** Supabase via `PLATFORM_DB_POOL_URL` (SSL, transaction pooler port 6543)
+- **Module:** `platform/db/index.ts` — auto-switches based on `APP_ENV`
+- **Migrations:** `migrations/001_*.sql` through `migrations/027_*.sql` — 27 numbered SQL files
+- **Runner:** `scripts/run-migrations.ts` — idempotent, applies only files matching `\d{3}_*.sql`
+- **Seed:** `scripts/seed-demo.ts` (demo tenant + agents), `scripts/seed-admin.ts` (platform admin user)
+- **RLS:** Row-Level Security on all tenant-scoped tables; policy uses `current_setting('app.tenant_id')`
+- **Admin seed:** `ADMIN_PASSWORD=YourPassword npx tsx scripts/seed-admin.ts` (dev only, requires ADMIN_PASSWORD env var)
+- **Current dev admin:** `admin@voiceaihub.dev` (password set via ADMIN_PASSWORD at seed time)
+
+## Project Structure
+
+```
+client-app/         React 19 + Vite 6 + Tailwind CSS 4 + Zustand
+server/
+  admin-api/        Express 5 admin REST API (port 3002)
+  voice-gateway/    Twilio + OpenAI Realtime voice gateway (port 3001)
+platform/
+  audit/            Audit logging service
+  billing/          Stripe billing, budget guards, usage metering
+  campaigns/        Outbound campaign management
+  core/             Env config, logger, PHI redact, resilience, observability
+  db/               Database connection pool (dev/prod auto-switch)
+  integrations/     Connectors, outbox, ticketing/SMS adapters
+  rbac/             API key service, role-based access
+  tenant/           Tenant provisioning service
+  analytics/        Call analytics, quality scoring
+  agent-templates/  Voice agent template configs
+  telephony/        Phone number management
+  messaging/        SMS messaging
+  runtime/          Voice agent runtime
+  tools/            Agent tool definitions
+  workflow/         Workflow engine
+migrations/         SQL migration files (001-027)
+scripts/            Migration runner, seed scripts, startup script
+```
+
+### client-app/ (port 5000)
+- React 19 + Vite 6 + TypeScript + Tailwind CSS v4
+- Auth: JWT stored in localStorage, Zustand auth store with `initialized` flag
+- Data fetching: React Query (@tanstack/react-query) with auto-refresh
+- Pages: Login, Onboarding, Demo, Dashboard, Agents, Phone Numbers, Call History, Connectors, Users, Analytics, Observability, Quality, API Keys, Audit Log, Platform Admin
+- Dark/light mode toggle, responsive sidebar layout
+- API proxy: /api/* → http://localhost:3002/* (strips /api prefix)
+
+### server/admin-api/ (port 3002)
+- JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
+- Self-service signup: creates pending tenant + user, returns Stripe checkout URL
+- Stripe billing: checkout sessions, webhook handler, portal links
+- Usage metering: hourly job reports AI minutes to Stripe meter events
+
+### server/voice-gateway/ (port 3001)
+- Twilio webhook + OpenAI Realtime WebSocket bridge
+- Phone routing: DB-based lookup via `phone_numbers` + `number_routing` tables
+- Agent templates: answering-service, medical-after-hours, dental, property-management, home-services, legal
+- Call lifecycle: writes `call_sessions` and `call_events` records
+- Graceful shutdown: SIGTERM/SIGINT drain active WebSocket sessions
+
+## Key Rules
+- ALL tenant-scoped DB ops use `withTenantContext(client, tenantId, ...)` for RLS
+- Cross-tenant/system ops use `withPrivilegedClient` (sets `row_security=off`)
+- PHI (phone numbers, names) redacted with `redactPHI()` before any logging
+- CONNECTOR_ENCRYPTION_KEY required in production
+- ADMIN_JWT_SECRET required in production
+- STRIPE_SECRET_KEY required in production
+
+## Environment Variables
+- `APP_ENV` — `development` or `production` (controls DB routing, SSL, error verbosity)
+- `DATABASE_URL` — Replit local PostgreSQL (dev)
+- `PLATFORM_DB_POOL_URL` — Supabase transaction pooler (production)
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` — Twilio credentials
+- `OPENAI_API_KEY` — OpenAI API key for voice agents
+- `OPENAI_ADMIN_API_KEY` — OpenAI admin API key
+- `VOICE_AGENT_WEBHOOK_SECRET` — webhook authentication
+- `DISABLE_PHI_LOGGING` — set to "true" to suppress PHI in logs
+
+## SIP Audio Format Rules (DO NOT CHANGE)
+**Problem solved (Feb 22, 2026):** Dead air / screeching audio caused by codec mismatch between Twilio SIP and OpenAI Realtime API.
+
+**The fix:** Transport monkey-patch strips `audio.input.format` and `audio.output.format` from `session.update` events before they're sent to OpenAI, allowing SIP/SDP negotiation to handle codec selection.
+
+**Rules:**
+- NEVER remove the transport monkey-patch — it prevents codec mismatch
+- NEVER set audio format directly via the REST API for SIP calls
+- Look for `[SIP-FIX]` log lines to confirm stripping is active
+
+## User Preferences
+- Logging: Color-coded, session-scoped, PHI redacted
+- Safety: Medical guardrails strictly enforced (never bypassed)
+- Fail-closed: All auth/crypto/webhook secrets required in production
