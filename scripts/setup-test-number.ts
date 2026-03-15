@@ -3,7 +3,7 @@ import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../pla
 import { randomUUID } from 'crypto';
 
 const AGENT_NAME = 'Quality Voice Operations Agent';
-const PHONE_NUMBER = '+16263821543';
+const PHONE_NUMBER = '+16266056373';
 const TENANT_ID = 'admin-org';
 
 async function main() {

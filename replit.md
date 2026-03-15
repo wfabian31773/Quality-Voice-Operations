@@ -81,7 +81,7 @@ scripts/            Migration runner, seed scripts, startup script
 - API proxy: /twilio/* → http://localhost:3001/* (with forwarded headers for Twilio signature validation)
 
 ### Test Phone Number
-- **+16263821543** — Twilio number registered for admin-org tenant
+- **+16266056373** — Twilio number registered for admin-org tenant
 - Routed to "Quality Voice Operations Agent" (answering-service, voice: sage)
 - Twilio webhook pointed to `https://<REPLIT_DEV_DOMAIN>/twilio/voice`
 - Status callback: `https://<REPLIT_DEV_DOMAIN>/twilio/status`
