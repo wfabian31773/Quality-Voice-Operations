@@ -77,8 +77,6 @@ waitForPort = 5000
 [userenv.shared]
 DISABLE_PHI_LOGGING = "true"
 TWILIO_OUTBOUND_NUMBER = "+16263821543"
-SMTP_HOST = "smtp.office365.com"
-SMTP_PORT = "587"
 
 [userenv.development]
 APP_ENV = "development"
