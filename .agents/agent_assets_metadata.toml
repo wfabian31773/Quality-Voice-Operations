@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "09pqwY-EUniMxQs7RNDod"
+uri = "file://PLATFORM_READINESS_AUDIT.md"
+type = "text"
+title = "Platform Readiness Audit Report"
