@@ -104,12 +104,16 @@ See `docs/deployment-checklist.md` for the complete reference. Key variables:
 - `TWILIO_COST_PER_MINUTE_CENTS` — Twilio cost per minute in cents (default: 2)
 - `AI_COST_PER_MINUTE_CENTS` — AI cost per minute in cents (default: 6)
 - `SMS_COST_PER_MESSAGE_CENTS` — SMS cost per message in cents (default: 1)
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` — SMTP config for email (optional; falls back to console logging)
-- `EMAIL_FROM` — sender address for emails (default: noreply@qualityvoiceops.com)
-- `APP_URL` — base URL for email links (default: derived from REPLIT_DEV_DOMAIN)
+- `SMTP_HOST` — SMTP server (smtp.office365.com, set automatically)
+- `SMTP_PORT` — SMTP port (587, set automatically)
+- `SMTP_USER`, `SMTP_PASS` — SMTP credentials (required in production)
+- `EMAIL_FROM` — sender address for emails (required in production)
+- `APP_URL` — base URL for email links (required in production)
+- `ADMIN_INTERNAL_TOKEN` — bearer token for inter-service calls (auto-generated)
 - `DISABLE_PHI_LOGGING` — set to "true" to suppress PHI in logs
 
 Startup validation: `scripts/validate-env.ts` runs automatically on server start. Fails fast in production if any required variable is missing.
+Production DB verification: `scripts/verify-prod-db.ts` — connects to Supabase, reports migration count, table count, RLS status.
 
 ## SIP Audio Format Rules (DO NOT CHANGE)
 **Problem solved (Feb 22, 2026):** Dead air / screeching audio caused by codec mismatch between Twilio SIP and OpenAI Realtime API.
