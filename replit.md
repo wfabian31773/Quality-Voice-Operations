@@ -85,7 +85,7 @@ scripts/            Migration runner, seed scripts, startup script
 - Routed to "Quality Voice Operations Agent" (answering-service, voice: sage)
 - Twilio webhook pointed to `https://<REPLIT_DEV_DOMAIN>/twilio/voice`
 - Status callback: `https://<REPLIT_DEV_DOMAIN>/twilio/status`
-- Note: If Replit dev domain changes, run the Twilio API update script again
+- **Setup/refresh:** `npx tsx scripts/setup-test-number.ts` (idempotent — creates agent, number, routing, updates Twilio webhooks)
 
 ## Key Rules
 - ALL tenant-scoped DB ops use `withTenantContext(client, tenantId, ...)` for RLS
