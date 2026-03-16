@@ -1,0 +1,2 @@
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS published_workflow_definition JSONB DEFAULT NULL;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS published_version INTEGER DEFAULT NULL;

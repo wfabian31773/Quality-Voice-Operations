@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, X, Bot, Wrench } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow } from 'lucide-react';
 
 interface Agent {
   id: string;
@@ -157,7 +158,7 @@ function ToolsConfigSection({ agentId }: { agentId: string }) {
   );
 }
 
-function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: () => void; onSaved: () => void }) {
+function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: () => void; onSaved: (newAgentId?: string) => void }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<AgentFormData>({
     name: '',
@@ -190,10 +191,15 @@ function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: 
 
   const mutation = useMutation({
     mutationFn: (data: AgentFormData) =>
-      agentId ? api.patch(`/agents/${agentId}`, data) : api.post('/agents', data),
-    onSuccess: () => {
+      agentId
+        ? api.patch<Record<string, unknown>>(`/agents/${agentId}`, data)
+        : api.post<{ agent: { id: string } }>('/agents', data),
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      onSaved();
+      const newId = !agentId && result && typeof result === 'object' && 'agent' in result
+        ? (result as { agent: { id: string } }).agent.id
+        : undefined;
+      onSaved(newId);
       onClose();
     },
   });
@@ -316,6 +322,7 @@ function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: 
 
 export default function Agents() {
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['agents'],
@@ -366,8 +373,11 @@ export default function Agents() {
                 <p className="text-xs text-text-secondary line-clamp-2 mb-4">{agent.system_prompt}</p>
               )}
               <div className="flex items-center gap-2 pt-2 border-t border-border">
-                <button onClick={() => setEditingId(agent.id)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
+                <button onClick={() => navigate(`/agents/${agent.id}/builder`)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
                   <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+                <button onClick={() => setEditingId(agent.id)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
+                  <Workflow className="h-3.5 w-3.5" /> Quick Settings
                 </button>
                 <button onClick={() => { if (confirm('Delete this agent?')) deleteMut.mutate(agent.id); }}
                   className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition ml-auto">
@@ -383,7 +393,11 @@ export default function Agents() {
         <AgentModal
           agentId={editingId === 'new' ? undefined : editingId}
           onClose={() => setEditingId(null)}
-          onSaved={() => {}}
+          onSaved={(newAgentId?: string) => {
+            if (newAgentId) {
+              navigate(`/agents/${newAgentId}/builder`);
+            }
+          }}
         />
       )}
     </div>

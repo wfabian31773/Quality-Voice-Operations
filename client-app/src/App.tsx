@@ -20,6 +20,7 @@ import Quality from './pages/Quality';
 import AuditLog from './pages/AuditLog';
 import KnowledgeBase from './pages/KnowledgeBase';
 import Widget from './pages/Widget';
+import AgentBuilder from './pages/AgentBuilder';
 import Marketplace from './pages/Marketplace';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
@@ -81,6 +82,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/agents/:id/builder"
+        element={
+          <ProtectedRoute>
+            <AgentBuilder />
           </ProtectedRoute>
         }
       />
