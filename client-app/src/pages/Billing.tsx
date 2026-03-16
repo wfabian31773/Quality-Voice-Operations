@@ -297,6 +297,28 @@ export default function Billing() {
             )}
           </div>
 
+          {sub && isAdmin && (
+            <div className="bg-surface border border-border rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-text-primary">Invoices</h2>
+                  <p className="text-sm text-text-muted mt-0.5">View and download your billing history</p>
+                </div>
+                <button
+                  onClick={() => portalMutation.mutate()}
+                  disabled={portalMutation.isPending}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border hover:bg-surface-hover text-text-primary text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {portalMutation.isPending ? 'Opening...' : 'View Invoices'}
+                  <ExternalLink className="h-3.5 w-3.5 text-text-muted" />
+                </button>
+              </div>
+              <p className="text-xs text-text-muted mt-3">
+                Invoices are managed through Stripe. Click "View Invoices" to see your full billing history, download PDF invoices, and review past charges.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-surface border border-border rounded-xl p-6">
               <h2 className="text-lg font-semibold text-text-primary mb-1">Cost Breakdown</h2>
