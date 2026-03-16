@@ -435,9 +435,19 @@ export async function createRealtimeSession(
   });
 
   session.on('error', (event) => {
-    const errorEvent = event as { error?: unknown };
+    const errorEvent = event as { error?: unknown; message?: string; code?: string; type?: string };
+    let errorStr: string;
+    try {
+      errorStr = typeof errorEvent.error === 'object' && errorEvent.error !== null
+        ? JSON.stringify(errorEvent.error)
+        : String(errorEvent.error ?? errorEvent.message ?? JSON.stringify(event));
+    } catch {
+      errorStr = String(event);
+    }
     slog.error('Realtime session error', {
-      error: String(errorEvent.error ?? event),
+      error: errorStr,
+      code: errorEvent.code,
+      type: errorEvent.type,
     });
   });
 
