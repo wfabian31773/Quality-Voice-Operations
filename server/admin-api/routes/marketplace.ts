@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getPlatformPool } from '../../../platform/db';
+import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
-import { requireRole } from '../middleware/rbac';
+import { requireRole, requirePlatformAdmin } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import {
@@ -11,6 +11,14 @@ import {
   updateInstallation,
 } from '../../../platform/marketplace/InstallationService';
 import { checkEntitlement } from '../../../platform/marketplace/EntitlementService';
+import {
+  isNewerVersion,
+  getUpgradeType,
+  isMajorUpgrade,
+  validateVersionFormat,
+  runPrePublicationValidation,
+  validateUpgradeCompatibility,
+} from '../../../platform/agent-templates/versioningService';
 
 const router = Router();
 const logger = createLogger('ADMIN_MARKETPLACE');
@@ -143,12 +151,19 @@ router.get('/marketplace/templates/:id', requireAuth, async (req, res) => {
 
     const template = templateResult.rows[0];
 
+    const isPlatformAdmin = req.user?.isPlatformAdmin === true;
+
     const [versionsResult, categoriesResult, changelogsResult, entitlementsResult] = await Promise.all([
       pool.query(
-        `SELECT id, version, changelog, package_ref, release_notes, is_latest, published_at
-         FROM template_versions
-         WHERE template_id = $1
-         ORDER BY published_at DESC`,
+        isPlatformAdmin
+          ? `SELECT id, version, changelog, package_ref, release_notes, is_latest, status, published_at
+             FROM template_versions
+             WHERE template_id = $1
+             ORDER BY published_at DESC`
+          : `SELECT id, version, changelog, release_notes, is_latest, status, published_at
+             FROM template_versions
+             WHERE template_id = $1 AND status = 'published'
+             ORDER BY published_at DESC`,
         [template.id],
       ),
       pool.query(
@@ -184,9 +199,10 @@ router.get('/marketplace/templates/:id', requireAuth, async (req, res) => {
         id: v.id,
         version: v.version,
         changelog: v.changelog,
-        packageRef: v.package_ref,
+        ...(isPlatformAdmin ? { packageRef: v.package_ref } : {}),
         releaseNotes: v.release_notes,
         isLatest: v.is_latest,
+        status: v.status,
         publishedAt: v.published_at,
       })),
       categories: categoriesResult.rows.map((c) => ({
@@ -241,6 +257,441 @@ router.get('/marketplace/categories', requireAuth, async (_req, res) => {
   } catch (err) {
     logger.error('Failed to list categories', { error: (err as Error).message });
     res.status(500).json({ error: 'Failed to list categories' });
+  }
+});
+
+router.get('/marketplace/updates', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: installations } = await client.query(
+      `SELECT
+        tai.id AS installation_id,
+        tai.template_id,
+        tai.installed_version,
+        tai.config,
+        tr.slug AS template_slug,
+        tr.display_name AS template_name,
+        tr.current_version,
+        tr.config_schema
+       FROM tenant_agent_installations tai
+       JOIN template_registry tr ON tr.id = tai.template_id
+       WHERE tai.tenant_id = $1 AND tai.status = 'active'`,
+      [tenantId],
+    );
+
+    await client.query('COMMIT');
+
+    const updates = [];
+    for (const inst of installations) {
+      if (!isNewerVersion(inst.installed_version, inst.current_version)) continue;
+
+      const upgradeType = getUpgradeType(inst.installed_version, inst.current_version);
+      if (!upgradeType) continue;
+
+      const changelogResult = await pool.query(
+        `SELECT version, change_type, summary, details, created_at
+         FROM template_changelogs
+         WHERE template_id = $1
+         ORDER BY created_at DESC
+         LIMIT 50`,
+        [inst.template_id],
+      );
+
+      const relevantChangelogs = changelogResult.rows.filter(
+        (c) => isNewerVersion(inst.installed_version, c.version as string),
+      );
+
+      updates.push({
+        installationId: inst.installation_id,
+        templateId: inst.template_id,
+        templateSlug: inst.template_slug,
+        templateName: inst.template_name,
+        installedVersion: inst.installed_version,
+        availableVersion: inst.current_version,
+        upgradeType,
+        isMajor: isMajorUpgrade(inst.installed_version, inst.current_version),
+        changelog: relevantChangelogs.map((c) => ({
+          version: c.version,
+          changeType: c.change_type,
+          summary: c.summary,
+          details: c.details,
+          createdAt: c.created_at,
+        })),
+        requiresConfirmation: isMajorUpgrade(inst.installed_version, inst.current_version),
+      });
+    }
+
+    return res.json({ updates });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to check for updates', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to check for updates' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/marketplace/installations/:id/upgrade', requireAuth, async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const { confirmed } = req.body as { confirmed?: boolean };
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: instRows } = await client.query(
+      `SELECT tai.*, tr.current_version, tr.config_schema, tr.slug, tr.display_name,
+              tr.required_tools
+       FROM tenant_agent_installations tai
+       JOIN template_registry tr ON tr.id = tai.template_id
+       WHERE tai.id = $1 AND tai.tenant_id = $2`,
+      [id, tenantId],
+    );
+
+    if (instRows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    const installation = instRows[0];
+    const targetVersion = installation.current_version as string;
+    const installedVersion = installation.installed_version as string;
+
+    if (!isNewerVersion(installedVersion, targetVersion)) {
+      await client.query('COMMIT');
+      return res.status(400).json({ error: 'Already on the latest version' });
+    }
+
+    const isMajor = isMajorUpgrade(installedVersion, targetVersion);
+    if (isMajor && !confirmed) {
+      await client.query('COMMIT');
+      return res.status(400).json({
+        error: 'Major version upgrade requires explicit confirmation',
+        requiresConfirmation: true,
+        upgradeType: 'major',
+        from: installedVersion,
+        to: targetVersion,
+      });
+    }
+
+    const compatibility = validateUpgradeCompatibility(
+      installedVersion,
+      targetVersion,
+      (installation.config ?? {}) as Record<string, unknown>,
+      (installation.config_schema ?? {}) as Record<string, unknown>,
+    );
+
+    if (!compatibility.valid) {
+      await client.query('COMMIT');
+      return res.status(400).json({
+        error: 'Upgrade compatibility check failed',
+        validation: compatibility,
+      });
+    }
+
+    await client.query(
+      `UPDATE tenant_agent_installations
+       SET installed_version = $1,
+           rollback_version = $2,
+           previous_config = config,
+           status = 'active',
+           upgraded_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $3 AND tenant_id = $4`,
+      [targetVersion, installedVersion, id, tenantId],
+    );
+
+    await client.query(
+      `INSERT INTO template_install_events (tenant_id, template_id, event_type, version, metadata)
+       VALUES ($1, $2, 'upgraded', $3, $4)`,
+      [tenantId, installation.template_id, targetVersion, JSON.stringify({
+        previousVersion: installedVersion,
+        upgradeType: getUpgradeType(installedVersion, targetVersion),
+        userId,
+      })],
+    );
+
+    await client.query('COMMIT');
+
+    logger.info('Template installation upgraded', {
+      tenantId,
+      installationId: id,
+      from: installedVersion,
+      to: targetVersion,
+    });
+
+    return res.json({
+      success: true,
+      installation: {
+        id,
+        templateId: installation.template_id,
+        templateSlug: installation.slug,
+        previousVersion: installedVersion,
+        newVersion: targetVersion,
+        upgradeType: getUpgradeType(installedVersion, targetVersion),
+        compatibility,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to upgrade installation', { tenantId, installationId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to upgrade installation' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/platform/templates/:id/versions', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { version, changelog, releaseNotes, packageRef } = req.body as {
+    version?: string;
+    changelog?: string;
+    releaseNotes?: string;
+    packageRef?: string;
+  };
+
+  if (!version || !validateVersionFormat(version)) {
+    return res.status(400).json({ error: 'Valid semantic version required (e.g. 1.2.3)' });
+  }
+
+  const pool = getPlatformPool();
+
+  try {
+    const { rows: templateRows } = await pool.query(
+      `SELECT id, slug FROM template_registry WHERE id = $1`,
+      [id],
+    );
+
+    if (templateRows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM template_versions WHERE template_id = $1 AND version = $2`,
+      [id, version],
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({ error: `Version ${version} already exists for this template` });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO template_versions (template_id, version, changelog, release_notes, package_ref, status, is_latest, created_by)
+       VALUES ($1, $2, $3, $4, $5, 'draft', FALSE, $6)
+       RETURNING *`,
+      [id, version, changelog ?? '', releaseNotes ?? '', packageRef ?? '', req.user!.userId],
+    );
+
+    logger.info('Draft template version created', { templateId: id, version });
+
+    return res.status(201).json({
+      version: {
+        id: rows[0].id,
+        templateId: rows[0].template_id,
+        version: rows[0].version,
+        changelog: rows[0].changelog,
+        releaseNotes: rows[0].release_notes,
+        packageRef: rows[0].package_ref,
+        status: rows[0].status,
+        isLatest: rows[0].is_latest,
+        publishedAt: rows[0].published_at,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to create template version', { templateId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to create template version' });
+  }
+});
+
+router.post('/platform/templates/:id/versions/:versionId/validate', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, versionId } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows: templateRows } = await pool.query(
+      `SELECT id, slug, description, required_tools, config_schema
+       FROM template_registry WHERE id = $1`,
+      [id],
+    );
+
+    if (templateRows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const { rows: versionRows } = await pool.query(
+      `SELECT id, version, changelog FROM template_versions WHERE id = $1 AND template_id = $2`,
+      [versionId, id],
+    );
+
+    if (versionRows.length === 0) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    const template = templateRows[0];
+    const versionData = versionRows[0];
+
+    const result = runPrePublicationValidation(
+      {
+        slug: template.slug as string,
+        requiredTools: (template.required_tools ?? []) as string[],
+        configSchema: (template.config_schema ?? {}) as Record<string, unknown>,
+        description: template.description as string,
+      },
+      {
+        version: versionData.version as string,
+        changelog: versionData.changelog as string,
+      },
+    );
+
+    return res.json({ validation: result });
+  } catch (err) {
+    logger.error('Failed to validate template version', { templateId: id, versionId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to validate template version' });
+  }
+});
+
+router.post('/platform/templates/:id/versions/:versionId/publish', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, versionId } = req.params;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const { rows: templateRows } = await client.query(
+      `SELECT id, slug, description, required_tools, config_schema
+       FROM template_registry WHERE id = $1`,
+      [id],
+    );
+
+    if (templateRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const { rows: versionRows } = await client.query(
+      `SELECT id, version, changelog, status FROM template_versions WHERE id = $1 AND template_id = $2`,
+      [versionId, id],
+    );
+
+    if (versionRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    if (versionRows[0].status === 'published') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Version is already published' });
+    }
+
+    const template = templateRows[0];
+    const versionData = versionRows[0];
+
+    const validation = runPrePublicationValidation(
+      {
+        slug: template.slug as string,
+        requiredTools: (template.required_tools ?? []) as string[],
+        configSchema: (template.config_schema ?? {}) as Record<string, unknown>,
+        description: template.description as string,
+      },
+      {
+        version: versionData.version as string,
+        changelog: versionData.changelog as string,
+      },
+    );
+
+    if (!validation.valid) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Pre-publication validation failed',
+        validation,
+      });
+    }
+
+    await client.query(
+      `UPDATE template_versions SET is_latest = FALSE WHERE template_id = $1 AND is_latest = TRUE`,
+      [id],
+    );
+
+    await client.query(
+      `UPDATE template_versions
+       SET status = 'published', is_latest = TRUE, published_at = NOW()
+       WHERE id = $1`,
+      [versionId],
+    );
+
+    await client.query(
+      `UPDATE template_registry
+       SET current_version = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [versionData.version, id],
+    );
+
+    await client.query('COMMIT');
+
+    logger.info('Template version published', {
+      templateId: id,
+      templateSlug: template.slug,
+      version: versionData.version,
+      publishedBy: req.user!.userId,
+    });
+
+    return res.json({
+      success: true,
+      version: versionData.version,
+      templateSlug: template.slug,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to publish template version', { templateId: id, versionId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to publish template version' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/platform/templates/:id/versions/:versionId/deprecate', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, versionId } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows: versionRows } = await pool.query(
+      `SELECT id, version, status, is_latest FROM template_versions WHERE id = $1 AND template_id = $2`,
+      [versionId, id],
+    );
+
+    if (versionRows.length === 0) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    if (versionRows[0].is_latest) {
+      return res.status(400).json({ error: 'Cannot deprecate the current latest version' });
+    }
+
+    await pool.query(
+      `UPDATE template_versions SET status = 'deprecated' WHERE id = $1`,
+      [versionId],
+    );
+
+    logger.info('Template version deprecated', {
+      templateId: id,
+      versionId,
+      version: versionRows[0].version,
+    });
+
+    return res.json({ success: true, version: versionRows[0].version, status: 'deprecated' });
+  } catch (err) {
+    logger.error('Failed to deprecate template version', { templateId: id, versionId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to deprecate template version' });
   }
 });
 
