@@ -9,11 +9,13 @@ import { createTwilioAdapterFromEnv } from './services/twilioAdapter';
 import { setTwilioAdapter } from './routes/twilio';
 import { validateEnvironment } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
+import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { registerRetrieveKnowledgeTool } from '../../platform/tools/knowledge/retrieveKnowledgeTool';
 
 const logger = createLogger('VOICE_GATEWAY');
 
 registerCoreTools();
+registerTemplateTools();
 registerRetrieveKnowledgeTool();
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';

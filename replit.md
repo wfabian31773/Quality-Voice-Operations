@@ -50,11 +50,11 @@ platform/
   messaging/        SMS messaging
   runtime/          Voice agent runtime
   email/            Email service (nodemailer SMTP + console-log fallback) + HTML templates
-  tools/            Agent tool definitions + knowledge retrieval tool
+  tools/            Agent tool definitions + knowledge retrieval tool + unified ToolRegistry + ToolExecutionService
   knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
   workflow/         Workflow engine
   widget/             Website voice/chat widget service (token auth, config)
-migrations/         SQL migration files (001-035, plus 009_trial_guardrails.sql)
+migrations/         SQL migration files (001-037, plus 009_trial_guardrails.sql)
 widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```
@@ -70,13 +70,13 @@ scripts/            Migration runner, seed scripts, startup script
 - **Note:** `/agents` is used by both the public showcase and the protected dashboard sidebar. The public route takes priority in React Router; authenticated agent management remains accessible via the dashboard layout.
 - **Route structure:** Dashboard moved from `/` to `/dashboard`. Root `/` is the public landing page. Login redirects to `/dashboard`.
 - **Agent Builder (Agent Studio):** Full-page visual workflow builder at `/agents/:id/builder` (outside Layout, full-screen). Uses `@xyflow/react` (React Flow) for drag-and-drop workflow canvas. Features: Node Library sidebar (Conversation/Logic/Action categories), Node Configuration panels, Voice & Agent Config panel, Test Console, Deployment Manager with version history/rollback, Industry Templates (Medical, Dental, HVAC, Legal, Customer Support).
-- Pages: Login, Onboarding, Demo, Dashboard, Agents, Agent Builder, Phone Numbers, Call History, Connectors, Users, Campaigns, Billing, Knowledge Base, Analytics, Observability, Quality, Widget, Settings (General/Security/API Keys tabs), Audit Log, Update Center (/marketplace/updates), Platform Admin (with Template Versions tab)
+- Pages: Login, Onboarding, Demo, Dashboard, Agents, Agent Builder, Phone Numbers, Call History, Connectors, Users, Campaigns, Billing, Knowledge Base, Analytics, Observability (Overview/Tool Activity/Tool Registry tabs), Quality, Widget, Settings (General/Security/API Keys tabs), Audit Log, Update Center (/marketplace/updates), Platform Admin (with Template Versions tab)
 - Dark/light mode toggle, responsive sidebar layout
 - API proxy: /api/* → http://localhost:3002/* (strips /api prefix)
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /agents/:id/workflow (PATCH), /agents/:id/publish (POST), /agents/:id/versions (GET), /agents/:id/rollback (POST), /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install, updates, upgrades), /platform/templates/:id/versions (create draft, validate, publish, deprecate), /demo/live/:callId (SSE for real-time demo call visualization), /demo/active-call (poll for active demo calls)
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /agents/:id/workflow (PATCH), /agents/:id/publish (POST), /agents/:id/versions (GET), /agents/:id/rollback (POST), /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install, updates, upgrades), /platform/templates/:id/versions (create draft, validate, publish, deprecate), /demo/live/:callId (SSE for real-time demo call visualization), /demo/active-call (poll for active demo calls), /tool-executions (list/detail/replay), /tools/registry (list available tools with schemas)
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events

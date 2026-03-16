@@ -8,11 +8,13 @@ import { startMetricsRollup, stopMetricsRollup, startSystemMetricsWriter, stopSy
 import { validateBillingConfig } from '../../platform/billing/stripe/plans';
 import { validateEnvironment, validateDatabaseConnection } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
+import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
 
 const logger = createLogger('ADMIN_API');
 
 registerCoreTools();
+registerTemplateTools();
 const PORT = parseInt(process.env.ADMIN_API_PORT ?? process.env.PORT ?? '3002', 10);
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';

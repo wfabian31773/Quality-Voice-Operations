@@ -1,0 +1,160 @@
+import { unifiedToolRegistry, type EnhancedToolDefinition } from './ToolRegistry';
+
+const TEMPLATE_TOOL_DEFINITIONS: EnhancedToolDefinition[] = [
+  {
+    name: 'createServiceTicket',
+    description: 'Create a service ticket for the answering service. Captures caller details and reason for call.',
+    category: 'answering-service',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        patientFirstName: { type: 'string' },
+        patientLastName: { type: 'string' },
+        patientPhone: { type: 'string' },
+        patientDob: { type: 'string' },
+        reasonForCall: { type: 'string' },
+        callbackNumber: { type: 'string' },
+        preferredContactMethod: { type: 'string' },
+        lastProviderSeen: { type: 'string' },
+        locationOfLastVisit: { type: 'string' },
+        additionalNotes: { type: 'string' },
+      },
+      required: ['patientFirstName', 'patientLastName', 'patientPhone', 'reasonForCall'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If ticket creation fails, inform the caller that you were unable to create the ticket and ask them to call back or try again shortly.',
+  },
+  {
+    name: 'createAfterHoursTicket',
+    description: 'Create an after-hours triage ticket for medical after-hours service.',
+    category: 'medical-after-hours',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        patientFirstName: { type: 'string' },
+        patientLastName: { type: 'string' },
+        patientDob: { type: 'string' },
+        callbackNumber: { type: 'string' },
+        symptomDescription: { type: 'string' },
+        triageOutcome: { type: 'string', enum: ['urgent_transfer', 'callback_next_business_day', 'self_care_advice', 'emergency_services'] },
+        lastProviderSeen: { type: 'string' },
+        locationOfLastVisit: { type: 'string' },
+        additionalNotes: { type: 'string' },
+      },
+      required: ['patientFirstName', 'patientLastName', 'patientDob', 'callbackNumber', 'symptomDescription', 'triageOutcome'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If the after-hours ticket cannot be created, assure the caller their concern has been noted and someone will follow up during business hours.',
+  },
+  {
+    name: 'triageEscalate',
+    description: 'Escalate an urgent medical call to the on-call provider.',
+    category: 'medical-after-hours',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        patientFirstName: { type: 'string' },
+        patientLastName: { type: 'string' },
+        patientDob: { type: 'string' },
+        callbackNumber: { type: 'string' },
+        urgentConcern: { type: 'string' },
+      },
+      required: ['patientFirstName', 'patientLastName', 'patientDob', 'callbackNumber', 'urgentConcern'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If escalation fails, stay on the line with the caller and provide any immediate guidance available. Note the situation for manual follow-up.',
+  },
+  {
+    name: 'scheduleDentalAppointment',
+    description: 'Schedule a dental appointment for a patient.',
+    category: 'dental',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        patientFirstName: { type: 'string' },
+        patientLastName: { type: 'string' },
+        patientPhone: { type: 'string' },
+        isNewPatient: { type: 'boolean' },
+        preferredDate: { type: 'string' },
+        preferredTime: { type: 'string' },
+        reasonForVisit: { type: 'string' },
+        insuranceProvider: { type: 'string' },
+        additionalNotes: { type: 'string' },
+      },
+      required: ['patientFirstName', 'patientLastName', 'patientPhone', 'isNewPatient', 'reasonForVisit'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If scheduling fails, ask the patient to call back during office hours or offer to take their information for a callback.',
+  },
+  {
+    name: 'submitMaintenanceRequest',
+    description: 'Submit a maintenance request for a property management tenant.',
+    category: 'property-management',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tenantName: { type: 'string' },
+        unitAddress: { type: 'string' },
+        issueDescription: { type: 'string' },
+        urgency: { type: 'string', enum: ['low', 'medium', 'high', 'emergency'] },
+        contactPhone: { type: 'string' },
+        preferredAccessTime: { type: 'string' },
+        additionalNotes: { type: 'string' },
+      },
+      required: ['tenantName', 'unitAddress', 'issueDescription', 'urgency', 'contactPhone'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If the maintenance request cannot be submitted, assure the tenant the issue has been noted and will be addressed.',
+  },
+  {
+    name: 'bookServiceAppointment',
+    description: 'Book a service appointment for home services.',
+    category: 'home-services',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        customerFirstName: { type: 'string' },
+        customerLastName: { type: 'string' },
+        customerPhone: { type: 'string' },
+        serviceAddress: { type: 'string' },
+        serviceType: { type: 'string' },
+        issueDescription: { type: 'string' },
+        urgency: { type: 'string', enum: ['routine', 'urgent', 'emergency'] },
+        preferredDate: { type: 'string' },
+        preferredTimeWindow: { type: 'string' },
+        additionalNotes: { type: 'string' },
+      },
+      required: ['customerFirstName', 'customerLastName', 'customerPhone', 'serviceAddress', 'serviceType', 'issueDescription', 'urgency'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If booking fails, take the customer details and assure them someone will call back to confirm the appointment.',
+  },
+  {
+    name: 'scheduleConsultation',
+    description: 'Schedule a legal consultation appointment.',
+    category: 'legal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        callerFirstName: { type: 'string' },
+        callerLastName: { type: 'string' },
+        callerPhone: { type: 'string' },
+        matterDescription: { type: 'string' },
+        matterType: { type: 'string' },
+        opposingPartyNames: { type: 'array', items: { type: 'string' } },
+        preferredDate: { type: 'string' },
+        preferredTime: { type: 'string' },
+        additionalNotes: { type: 'string' },
+      },
+      required: ['callerFirstName', 'callerLastName', 'callerPhone', 'matterDescription', 'opposingPartyNames'],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If the consultation cannot be scheduled, take the caller details and let them know someone from the office will follow up.',
+  },
+];
+
+export function registerTemplateTools(): void {
+  for (const tool of TEMPLATE_TOOL_DEFINITIONS) {
+    unifiedToolRegistry.registerEnhanced(tool);
+  }
+}

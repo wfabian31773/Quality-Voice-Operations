@@ -56,10 +56,16 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
     queryFn: () => api.get<{ events: CallEvent[] }>(`/calls/${callId}/events`),
   });
 
+  const { data: toolExecData, isLoading: toolExecLoading } = useQuery({
+    queryKey: ['call-tool-executions', callId],
+    queryFn: () => api.get<{ executions: Array<{ id: string; toolName: string; status: string; durationMs: number | null; invokedAt: string; errorMessage: string | null; recoveryAction: string | null; result: unknown }> }>(`/tool-executions?callSessionId=${callId}`),
+  });
+
   const call = callData?.call;
   const transcript = transcriptData?.transcript ?? [];
   const events = eventsData?.events ?? [];
-  const [tab, setTab] = useState<'transcript' | 'events'>('transcript');
+  const toolExecutions = toolExecData?.executions ?? [];
+  const [tab, setTab] = useState<'transcript' | 'events' | 'tools'>('transcript');
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
@@ -93,6 +99,10 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
             <button onClick={() => setTab('events')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === 'events' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
               Events ({events.length})
+            </button>
+            <button onClick={() => setTab('tools')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === 'tools' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
+              Tools ({toolExecutions.length})
             </button>
           </div>
         </div>
@@ -148,6 +158,39 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === 'tools' && (
+            <>
+              {toolExecLoading ? (
+                <p className="text-sm text-text-secondary">Loading tool executions...</p>
+              ) : toolExecutions.length === 0 ? (
+                <p className="text-sm text-text-secondary">No tool executions for this call</p>
+              ) : (
+                <div className="space-y-3">
+                  {toolExecutions.map((exec) => (
+                    <div key={exec.id} className="bg-surface-hover rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-text-primary font-mono">{exec.toolName}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${exec.status === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : exec.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                          {exec.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-text-muted mt-1">
+                        <span>{exec.invokedAt ? format(new Date(exec.invokedAt), 'h:mm:ss a') : '--'}</span>
+                        {exec.durationMs != null && <span>{exec.durationMs}ms</span>}
+                      </div>
+                      {exec.errorMessage && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-2">{exec.errorMessage}</p>
+                      )}
+                      {exec.recoveryAction && (
+                        <p className="text-xs text-text-secondary mt-1 italic">Recovery: {exec.recoveryAction}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </>

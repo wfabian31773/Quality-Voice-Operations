@@ -18,6 +18,8 @@ import type { OutboxService } from '../../../platform/integrations/outbox/Outbox
 import { globalToolRegistry } from '../../../platform/tools/registry';
 import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeContext';
 import { isToolDenied, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
+import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
+import { createToolExecution, completeToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { handleDemoToolCall } from './demoToolHandler';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
@@ -66,26 +68,71 @@ function buildToolHandler(
 ) {
   return async (toolName: string, args: Record<string, unknown>): Promise<string> => {
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
+    const startTime = Date.now();
 
     if (ctx.templateKey && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
+      const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+      await completeToolExecution({ tenantId, executionId: deniedId, result: { success: false, reason: 'denied' }, status: 'failed', errorMessage: 'Tool denied by template permissions', durationMs: Date.now() - startTime });
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+    }
+
+    const validation = unifiedToolRegistry.validateToolInput(toolName, args);
+    if (!validation.valid) {
+      logger.warn('Tool input validation failed', { tenantId, callId: callSessionId, tool: toolName, errors: validation.errors });
+      const valId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+      await completeToolExecution({ tenantId, executionId: valId, result: { success: false, reason: 'validation_failed' }, status: 'failed', errorMessage: `Validation failed: ${validation.errors.join(', ')}`, durationMs: Date.now() - startTime });
+      return JSON.stringify({ success: false, message: `Invalid input: ${validation.errors.join(', ')}` });
+    }
+
+    if (!unifiedToolRegistry.checkRateLimit(tenantId, toolName)) {
+      logger.warn('Tool rate limit exceeded', { tenantId, callId: callSessionId, tool: toolName });
+      const rlId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+      await completeToolExecution({ tenantId, executionId: rlId, result: { success: false, reason: 'rate_limited' }, status: 'failed', errorMessage: 'Rate limit exceeded', durationMs: Date.now() - startTime });
+      return JSON.stringify({ success: false, message: 'Rate limit exceeded for this tool. Please wait a moment before trying again.' });
     }
 
     const demoResult = handleDemoToolCall(tenantId, toolName, args);
     if (demoResult !== null) {
+      const demoStartTime = Date.now();
+      const demoExecId = await createToolExecution({
+        tenantId,
+        callSessionId,
+        agentId: agentConfig.agentId,
+        agentSlug: agentConfig.agentId,
+        toolName,
+        parameters: args,
+      });
       await updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION');
       await writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
         tool: toolName,
         demo: true,
+        executionId: demoExecId,
+      });
+      await completeToolExecution({
+        tenantId,
+        executionId: demoExecId,
+        result: (() => { try { return JSON.parse(demoResult); } catch { return { raw: demoResult }; } })(),
+        status: 'success',
+        durationMs: Date.now() - demoStartTime,
       });
       await writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
         tool: toolName,
         demo: true,
+        executionId: demoExecId,
       });
       await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
       return demoResult;
     }
+
+    const executionId = await createToolExecution({
+      tenantId,
+      callSessionId,
+      agentId: agentConfig.agentId,
+      agentSlug: agentConfig.agentId,
+      toolName,
+      parameters: args,
+    });
 
     if (ctx.workflowEngine) {
       await updateCallState(tenantId, callSessionId, 'WORKFLOW_EXECUTION');
@@ -97,9 +144,12 @@ function buildToolHandler(
     await updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION');
     await writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
       tool: toolName,
+      executionId,
     });
 
     let result: string;
+    let executionStatus: 'success' | 'failed' = 'success';
+    let executionError: string | undefined;
 
     try {
       switch (toolName) {
@@ -199,13 +249,57 @@ function buildToolHandler(
         }
       }
     } catch (err) {
-      logger.error('Tool execution failed', { tenantId, callId: callSessionId, tool: toolName, error: String(err) });
-      result = JSON.stringify({ success: false, message: 'Tool execution failed. Please try again.' });
+      executionStatus = 'failed';
+      executionError = String(err);
+      const recoveryInstructions = unifiedToolRegistry.getRecoveryInstructions(toolName);
+      logger.error('Tool execution failed', { tenantId, callId: callSessionId, tool: toolName, error: executionError });
+      result = JSON.stringify({
+        success: false,
+        message: 'Tool execution failed. Please try again.',
+        recovery: recoveryInstructions,
+      });
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    let parsedResult: unknown;
+    try { parsedResult = JSON.parse(result); } catch { parsedResult = { raw: result }; }
+
+    if (executionStatus === 'success' && parsedResult && typeof parsedResult === 'object') {
+      const r = parsedResult as Record<string, unknown>;
+      if (r.success === false) {
+        executionStatus = 'failed';
+        executionError = executionError ?? (typeof r.message === 'string' ? r.message : 'Tool returned success: false');
+      }
+    }
+
+    await completeToolExecution({
+      tenantId,
+      executionId,
+      result: parsedResult,
+      status: executionStatus,
+      errorMessage: executionError,
+      recoveryAction: executionStatus === 'failed' ? unifiedToolRegistry.getRecoveryInstructions(toolName) : undefined,
+      durationMs,
+    });
+
+    if (executionStatus === 'failed') {
+      try {
+        const { logError } = await import('../../../platform/core/observability');
+        logError(tenantId, 'error', `Tool "${toolName}" failed: ${executionError ?? 'unknown error'}`, {
+          service: 'tool_execution',
+          errorCode: 'TOOL_EXEC_FAILURE',
+          callSessionId: callSessionId,
+        });
+      } catch {}
     }
 
     await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
     await writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
       tool: toolName,
+      executionId,
+      durationMs,
+      status: executionStatus,
     });
 
     try {
