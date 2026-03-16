@@ -15,11 +15,18 @@ function getClientIp(req: Request): string {
   return req.socket?.remoteAddress ?? 'unknown';
 }
 
-const demoSSELimiter = createRateLimiter({
+const demoSSEStreamLimiter = createRateLimiter({
   windowMs: 60_000,
-  maxRequests: 10,
+  maxRequests: 5,
   message: 'Too many SSE connections. Please try again shortly.',
-  keyGenerator: (req) => `demo-sse:${getClientIp(req)}`,
+  keyGenerator: (req) => `demo-sse-stream:${getClientIp(req)}`,
+});
+
+const demoSSEPollLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 20,
+  message: 'Too many polling requests. Please try again shortly.',
+  keyGenerator: (req) => `demo-sse-poll:${getClientIp(req)}`,
 });
 
 interface CallEventRow {
@@ -63,7 +70,7 @@ function findPairedToolStart(
   return null;
 }
 
-router.get('/demo/live/:callId', demoSSELimiter, async (req: Request, res: Response) => {
+router.get('/demo/live/:callId', demoSSEStreamLimiter, async (req: Request, res: Response) => {
   const { callId } = req.params;
 
   if (!callId || typeof callId !== 'string' || callId.length > 100) {
@@ -234,7 +241,7 @@ router.get('/demo/live/:callId', demoSSELimiter, async (req: Request, res: Respo
   });
 });
 
-router.get('/demo/active-call', demoSSELimiter, async (_req: Request, res: Response) => {
+router.get('/demo/active-call', demoSSEPollLimiter, async (_req: Request, res: Response) => {
   try {
     const pool = getPlatformPool();
     const { rows } = await pool.query(
