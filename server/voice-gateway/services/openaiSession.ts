@@ -51,6 +51,7 @@ export interface SessionContext {
   outboxService?: OutboxService;
   onEscalation?: (callSessionId: string, callSid: string, reason: string) => Promise<void>;
   onToolCall?: (name: string, args: unknown, callSessionId: string) => Promise<string>;
+  isTrial?: boolean;
 }
 
 interface RealtimeMessageItem {
@@ -206,6 +207,25 @@ function buildToolHandler(
     await writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
       tool: toolName,
     });
+
+    try {
+      const { recordToolExecution } = await import('../../../platform/billing/usage/UsageRecorder');
+      await recordToolExecution(tenantId, 1);
+    } catch (meterErr) {
+      logger.error('Failed to record tool execution', { tenantId, callId: callSessionId, error: String(meterErr) });
+    }
+
+    if (ctx.isTrial) {
+      try {
+        const { checkTrialLimits } = await import('../../../platform/billing/guardrails/TrialGuard');
+        const trialCheck = await checkTrialLimits(tenantId);
+        if (trialCheck.isTrial && !trialCheck.allowed && trialCheck.usage.toolExecutions >= trialCheck.usage.maxToolExecutions) {
+          logger.warn('Trial tool execution limit reached mid-session', { tenantId, callId: callSessionId, toolExecutions: trialCheck.usage.toolExecutions });
+        }
+      } catch (trialErr) {
+        logger.error('Failed to check trial tool limits', { tenantId, error: String(trialErr) });
+      }
+    }
 
     return result;
   };
@@ -368,6 +388,7 @@ export async function createRealtimeSession(
     agentSlug: agentConfig.agentId,
     from: callerNumber,
     to: calledNumber,
+    isTrial: ctx.isTrial,
   });
 
   await updateCallState(tenantId, callSessionId, 'AGENT_CONNECTED');

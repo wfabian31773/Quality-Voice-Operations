@@ -98,6 +98,44 @@ interface TemplateAnalytics {
   completedCampaigns: number;
 }
 
+interface CostMonitoringData {
+  daily: {
+    callMinutes: number;
+    aiCostCents: number;
+    twilioCostCents: number;
+    smsCostCents: number;
+    callCount: number;
+    toolExecutions: number;
+    apiRequests: number;
+    totalCostCents: number;
+  };
+  monthly: {
+    callMinutes: number;
+    callCount: number;
+    totalCostCents: number;
+    aiCostCents: number;
+    twilioCostCents: number;
+    revenueCents: number;
+  };
+  trials: {
+    activeTrials: number;
+    paidAccounts: number;
+    totalAccounts: number;
+    conversionRate: number;
+  };
+  economics: {
+    costPerCallCents: number;
+    revenuePerCallCents: number;
+    marginPerCallCents: number;
+  };
+  trend: Array<{
+    day: string;
+    callMinutes: number;
+    callCount: number;
+    totalCostCents: number;
+  }>;
+}
+
 type SortField = 'displayName' | 'totalInstalls' | 'activationRate' | 'callsLast30d' | 'uninstallRate' | 'avgSatisfaction' | 'totalCampaigns' | 'upgradeAdoption';
 type SortDir = 'asc' | 'desc';
 
@@ -424,7 +462,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -452,6 +490,13 @@ export default function PlatformAdmin() {
     queryFn: () => api.get<{ templates: TemplateAnalytics[] }>('/platform/template-analytics'),
     enabled: activeTab === 'analytics',
     refetchInterval: 60_000,
+  });
+
+  const { data: costData, isLoading: costLoading } = useQuery({
+    queryKey: ['platform-cost-monitoring'],
+    queryFn: () => api.get<{ monitoring: CostMonitoringData }>('/platform/cost-monitoring'),
+    enabled: activeTab === 'cost-monitoring',
+    refetchInterval: 30_000,
   });
 
   const statusMutation = useMutation({
@@ -527,6 +572,16 @@ export default function PlatformAdmin() {
           }`}
         >
           <span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Template Analytics</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('cost-monitoring')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'cost-monitoring'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><DollarSign className="h-4 w-4" /> Cost Monitoring</span>
         </button>
       </div>
 
@@ -702,6 +757,163 @@ export default function PlatformAdmin() {
             }
           }}
         />
+      )}
+
+      {activeTab === 'cost-monitoring' && (
+        <CostMonitoringTab data={costData} loading={costLoading} />
+      )}
+    </div>
+  );
+}
+
+function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitoringData } | undefined; loading: boolean }) {
+  if (loading) return <div className="text-center py-12 text-muted">Loading cost data...</div>;
+  if (!data) return <div className="text-center py-12 text-muted">No data available</div>;
+
+  const m = data.monitoring;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="h-4 w-4 text-muted" />
+            <span className="text-sm text-muted">Daily Call Minutes</span>
+          </div>
+          <div className="text-2xl font-bold">{m.daily.callMinutes.toLocaleString()}</div>
+          <div className="text-xs text-muted mt-1">{m.daily.callCount} calls today</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign className="h-4 w-4 text-muted" />
+            <span className="text-sm text-muted">Daily AI Cost</span>
+          </div>
+          <div className="text-2xl font-bold">{formatCents(String(m.daily.aiCostCents))}</div>
+          <div className="text-xs text-muted mt-1">{formatCents(String(m.daily.totalCostCents))} total cost</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <PhoneCall className="h-4 w-4 text-muted" />
+            <span className="text-sm text-muted">Daily Twilio Spend</span>
+          </div>
+          <div className="text-2xl font-bold">{formatCents(String(m.daily.twilioCostCents))}</div>
+          <div className="text-xs text-muted mt-1">SMS: {formatCents(String(m.daily.smsCostCents))}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="h-4 w-4 text-muted" />
+            <span className="text-sm text-muted">Active Trials</span>
+          </div>
+          <div className="text-2xl font-bold">{m.trials.activeTrials}</div>
+          <div className="text-xs text-muted mt-1">{m.trials.paidAccounts} paid accounts</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-surface border border-border rounded-xl p-6">
+          <h3 className="font-semibold mb-4">Trial-to-Paid Conversion</h3>
+          <div className="flex items-center gap-4">
+            <div className="text-4xl font-bold text-primary">{m.trials.conversionRate}%</div>
+            <div className="text-sm text-muted">
+              <div>{m.trials.paidAccounts} paid / {m.trials.totalAccounts} total</div>
+              <div>{m.trials.activeTrials} active trials</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-surface border border-border rounded-xl p-6">
+          <h3 className="font-semibold mb-4">Unit Economics</h3>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xs text-muted mb-1">Cost/Call</div>
+              <div className="text-lg font-bold">{formatCents(String(m.economics.costPerCallCents))}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted mb-1">Revenue/Call</div>
+              <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.economics.revenuePerCallCents))}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted mb-1">Margin/Call</div>
+              <div className={`text-lg font-bold ${m.economics.marginPerCallCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatCents(String(m.economics.marginPerCallCents))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <h3 className="font-semibold mb-4">Monthly Summary</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div>
+            <div className="text-xs text-muted mb-1">Call Minutes</div>
+            <div className="text-lg font-bold">{m.monthly.callMinutes.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-1">Total Calls</div>
+            <div className="text-lg font-bold">{m.monthly.callCount.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-1">AI Cost</div>
+            <div className="text-lg font-bold">{formatCents(String(m.monthly.aiCostCents))}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-1">Twilio Cost</div>
+            <div className="text-lg font-bold">{formatCents(String(m.monthly.twilioCostCents))}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-1">Total Cost</div>
+            <div className="text-lg font-bold">{formatCents(String(m.monthly.totalCostCents))}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-1">Revenue</div>
+            <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.monthly.revenueCents))}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <h3 className="font-semibold mb-4">Daily Usage (Tool & API)</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs text-muted mb-1">Tool Executions Today</div>
+            <div className="text-lg font-bold">{m.daily.toolExecutions.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-1">API Requests Today</div>
+            <div className="text-lg font-bold">{m.daily.apiRequests.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+
+      {m.trend.length > 0 && (
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="font-semibold">30-Day Trend</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-3 font-medium text-muted">Date</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted">Calls</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted">Minutes</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.trend.map((day) => (
+                  <tr key={day.day} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2 text-muted">{new Date(day.day).toLocaleDateString()}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{day.callCount}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{day.callMinutes}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{formatCents(String(day.totalCostCents))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

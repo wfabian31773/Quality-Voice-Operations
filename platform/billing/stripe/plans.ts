@@ -1,4 +1,5 @@
 export type PlanTier = 'starter' | 'pro' | 'enterprise';
+export type SubscriptionState = 'trialing' | 'active' | 'past_due' | 'paused' | 'cancelled';
 
 export interface PlanLimits {
   monthlyCallLimit: number;
@@ -7,6 +8,27 @@ export interface PlanLimits {
   overageEnabled: boolean;
   maxAgents: number;
 }
+
+export interface TrialLimits {
+  durationDays: number;
+  maxTotalCalls: number;
+  maxCallDurationMs: number;
+  maxAgents: number;
+  maxToolExecutions: number;
+}
+
+export interface RateLimits {
+  hourlyCallLimit: number;
+  dailyCallMinuteCap: number;
+}
+
+export const TRIAL_LIMITS: TrialLimits = {
+  durationDays: 7,
+  maxTotalCalls: 20,
+  maxCallDurationMs: 3 * 60 * 1000,
+  maxAgents: 2,
+  maxToolExecutions: 10,
+};
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   starter: {
@@ -30,6 +52,26 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     overageEnabled: true,
     maxAgents: 999,
   },
+};
+
+export const PLAN_RATE_LIMITS: Record<PlanTier, RateLimits> = {
+  starter: {
+    hourlyCallLimit: 10,
+    dailyCallMinuteCap: 60,
+  },
+  pro: {
+    hourlyCallLimit: 50,
+    dailyCallMinuteCap: 500,
+  },
+  enterprise: {
+    hourlyCallLimit: 999_999,
+    dailyCallMinuteCap: 999_999,
+  },
+};
+
+export const TRIAL_RATE_LIMITS: RateLimits = {
+  hourlyCallLimit: 5,
+  dailyCallMinuteCap: 15,
 };
 
 export function getPlanPriceId(tier: PlanTier, interval: 'monthly' | 'annual' = 'monthly'): string {

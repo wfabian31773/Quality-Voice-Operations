@@ -3,6 +3,7 @@ import { PLAN_LIMITS } from '../stripe/plans';
 import type { PlanTier } from '../stripe/plans';
 import type { TenantId } from '../../core/types';
 import { createLogger } from '../../core/logger';
+import { checkTrialLimits } from '../guardrails/TrialGuard';
 
 const logger = createLogger('BUDGET_CHECK');
 
@@ -11,11 +12,14 @@ export interface BudgetCheckResult {
   reason?: string;
   plan: string;
   status: string;
+  isTrial: boolean;
   usage: {
     callsUsed: number;
     callLimit: number;
     aiMinutesUsed: number;
     aiMinuteLimit: number;
+    toolExecutions?: number;
+    toolExecutionLimit?: number;
   };
 }
 
@@ -33,6 +37,32 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
        FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
+
+    const sub = subRows[0];
+    const plan = (sub?.plan as string) ?? 'starter';
+    const subStatus = (sub?.status as string) ?? 'none';
+    const isTrial = subRows.length === 0 || subStatus === 'trialing';
+
+    if (isTrial) {
+      await client.query('COMMIT');
+      const trialResult = await checkTrialLimits(tenantId);
+      return {
+        allowed: trialResult.allowed,
+        reason: trialResult.reason,
+        plan: 'trial',
+        status: 'trialing',
+        isTrial: true,
+        usage: {
+          callsUsed: trialResult.usage.totalCalls,
+          callLimit: trialResult.usage.maxCalls,
+          aiMinutesUsed: 0,
+          aiMinuteLimit: 0,
+          toolExecutions: trialResult.usage.toolExecutions,
+          toolExecutionLimit: trialResult.usage.maxToolExecutions,
+        },
+      };
+    }
+
     if (subRows.length === 0) {
       await client.query('COMMIT');
       const defaultLimits = PLAN_LIMITS.starter;
@@ -40,6 +70,7 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
         allowed: true,
         plan: 'starter',
         status: 'none',
+        isTrial: false,
         usage: {
           callsUsed: 0,
           callLimit: defaultLimits.monthlyCallLimit,
@@ -49,9 +80,6 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
       };
     }
 
-    const sub = subRows[0];
-    const plan = (sub.plan as string) ?? 'starter';
-    const subStatus = (sub.status as string) ?? 'active';
     const callLimit = (sub.monthly_call_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyCallLimit ?? 500;
     const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? 250;
     const overageEnabled = (sub.overage_enabled as boolean) ?? false;
@@ -63,6 +91,7 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
         reason: `Subscription is ${subStatus}. Please update your billing to continue.`,
         plan,
         status: subStatus,
+        isTrial: false,
         usage: { callsUsed: 0, callLimit, aiMinutesUsed: 0, aiMinuteLimit },
       };
     }
@@ -95,6 +124,7 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
         reason: `Monthly call limit reached (${callsUsed}/${callLimit}). Upgrade your plan or wait until next billing cycle.`,
         plan,
         status: subStatus,
+        isTrial: false,
         usage,
       };
     }
@@ -106,11 +136,12 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
         reason: `Monthly AI minute limit reached (${aiMinutesUsed}/${aiMinuteLimit}). Upgrade your plan or wait until next billing cycle.`,
         plan,
         status: subStatus,
+        isTrial: false,
         usage,
       };
     }
 
-    return { allowed: true, plan, status: subStatus, usage };
+    return { allowed: true, plan, status: subStatus, isTrial: false, usage };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('Budget check failed', { tenantId, error: String(err), failOpen });
@@ -121,6 +152,7 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
         : 'Budget check failed — blocking call for safety (fail-closed mode)',
       plan: 'unknown',
       status: 'error',
+      isTrial: false,
       usage: { callsUsed: 0, callLimit: 0, aiMinutesUsed: 0, aiMinuteLimit: 0 },
     };
   } finally {

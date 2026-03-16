@@ -1,9 +1,4 @@
-/**
- * Per-agent-type max call duration policies.
- *
- * Tenant-overridable: the platform provides sensible defaults here.
- * A tenant's AgentConfig can include a `maxDurationMs` field to override these.
- */
+import { TRIAL_LIMITS } from '../../billing/stripe/plans';
 
 const AGENT_MAX_DURATION_MS: Record<string, number> = {
   'appointment-confirmation': 3 * 60 * 1000,
@@ -16,7 +11,10 @@ const DEFAULT_MAX_DURATION_MS = 10 * 60 * 1000;
 const DEMO_MAX_DURATION_MS = 3 * 60 * 1000;
 const DEMO_WARNING_MS = 2 * 60 * 1000 + 30 * 1000;
 
-export function getMaxDurationMs(agentSlug?: string, tenantOverrideMs?: number): number {
+export function getMaxDurationMs(agentSlug?: string, tenantOverrideMs?: number, isTrial?: boolean): number {
+  if (isTrial) {
+    return TRIAL_LIMITS.maxCallDurationMs;
+  }
   if (tenantOverrideMs && tenantOverrideMs > 0) return tenantOverrideMs;
   if (agentSlug && agentSlug in AGENT_MAX_DURATION_MS) {
     return AGENT_MAX_DURATION_MS[agentSlug];

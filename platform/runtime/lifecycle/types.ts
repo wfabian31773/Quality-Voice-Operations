@@ -43,6 +43,7 @@ export interface RegisterCallParams {
   agentSlug?: string;
   from?: string;
   to?: string;
+  isTrial?: boolean;
 }
 
 export type TerminalTwilioStatus = 'completed' | 'busy' | 'failed' | 'no-answer' | 'canceled';

@@ -338,6 +338,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 callerMemory,
                 outboxService,
                 onEscalation,
+                isTrial: budgetResult.isTrial,
               });
 
               callSessionId = sessionResult.callSessionId;

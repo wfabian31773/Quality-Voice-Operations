@@ -36,7 +36,7 @@ server/
   voice-gateway/    Twilio + OpenAI Realtime voice gateway (port 3001)
 platform/
   audit/            Audit logging service
-  billing/          Stripe billing, budget guards, usage metering, usage recording
+  billing/          Stripe billing, budget guards, usage metering, usage recording, trial guardrails (guardrails/)
   campaigns/        Outbound campaign management
   core/             Env config, logger, PHI redact, resilience, observability
   db/               Database connection pool (dev/prod auto-switch)
@@ -54,7 +54,7 @@ platform/
   knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
   workflow/         Workflow engine
   widget/             Website voice/chat widget service (token auth, config)
-migrations/         SQL migration files (001-033)
+migrations/         SQL migration files (001-033, plus 009_trial_guardrails.sql)
 widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```
@@ -78,7 +78,10 @@ scripts/            Migration runner, seed scripts, startup script
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events
-- Usage recording: call finalization writes `usage_metrics` (calls_inbound/outbound, ai_minutes); SMS connector writes sms_sent
+- Usage recording: call finalization writes `usage_metrics` (calls_inbound/outbound, ai_minutes, tool_executions, api_requests); SMS connector writes sms_sent
+- Trial guardrails: 7-day trial, 20 calls, 3-min/call cap, 2 agents, 10 tool executions; email verification required; phone verification for outbound; CAPTCHA (Turnstile) on signup
+- Rate limiting: per-tenant hourly call limits (Starter 10/hr, Pro 50/hr, Enterprise unlimited); daily call minute caps
+- Auto-suspension: 2x overage on non-enterprise accounts triggers automatic suspension; 80% threshold grace notifications
 - Billing config validation: startup warns about missing Stripe price IDs and secrets
 
 ### server/voice-gateway/ (port 3001)
@@ -129,6 +132,8 @@ See `docs/deployment-checklist.md` for the complete reference. Key variables:
 - `APP_URL` — base URL for email links (required in production)
 - `ADMIN_INTERNAL_TOKEN` — bearer token for inter-service calls (auto-generated)
 - `DISABLE_PHI_LOGGING` — set to "true" to suppress PHI in logs
+- `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for CAPTCHA verification (optional; skipped if not set)
+- `VITE_TURNSTILE_SITE_KEY` — Cloudflare Turnstile site key for frontend CAPTCHA widget (optional)
 
 Startup validation: `scripts/validate-env.ts` runs automatically on server start. Fails fast in production if any required variable is missing.
 Production DB verification: `scripts/verify-prod-db.ts` — connects to Supabase, reports migration count, table count, RLS status.

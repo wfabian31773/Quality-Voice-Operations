@@ -52,6 +52,24 @@ export function invitationEmail(params: {
   return { subject: `You're invited to join ${org}`, html, text };
 }
 
+export function emailVerificationEmail(params: {
+  verificationUrl: string;
+  name?: string;
+}): { subject: string; html: string; text: string } {
+  const greeting = params.name ? `Hi ${params.name},` : 'Hi,';
+
+  const html = baseLayout(`
+    <p>${greeting}</p>
+    <p>Welcome to Quality Voice Operations! Please verify your email address to activate your trial account.</p>
+    <p><a href="${params.verificationUrl}" class="btn">Verify Email Address</a></p>
+    <p class="muted">If you didn't create an account, you can safely ignore this email.</p>
+  `);
+
+  const text = `${greeting}\n\nWelcome to Quality Voice Operations! Please verify your email address to activate your trial account.\n\nVerify here: ${params.verificationUrl}`;
+
+  return { subject: 'Verify your email address', html, text };
+}
+
 export function passwordResetEmail(params: {
   resetUrl: string;
   expiresInMinutes: number;

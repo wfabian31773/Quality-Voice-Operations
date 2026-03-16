@@ -81,7 +81,7 @@ export class CallLifecycleCoordinator extends EventEmitter {
       callerPhone: params.from,
     });
 
-    this.scheduleMaxDurationTimeout(params.callLogId, params.twilioCallSid, params.agentSlug);
+    this.scheduleMaxDurationTimeout(params.callLogId, params.twilioCallSid, params.agentSlug, params.isTrial);
 
     if (params.openAiCallId && this.pendingMappings.has(params.openAiCallId)) {
       const pending = this.pendingMappings.get(params.openAiCallId)!;
@@ -315,9 +315,10 @@ export class CallLifecycleCoordinator extends EventEmitter {
     callLogId: string,
     twilioCallSid?: string,
     agentSlug?: string,
+    isTrial?: boolean,
   ): void {
     const isDemo = this.tenantId === 'demo';
-    const maxMs = isDemo ? getDemoMaxDurationMs() : getMaxDurationMs(agentSlug);
+    const maxMs = isDemo ? getDemoMaxDurationMs() : getMaxDurationMs(agentSlug, undefined, isTrial);
     const timeout = setTimeout(() => {
       logger.warn('Max call duration reached — forcing termination', {
         callId: callLogId,

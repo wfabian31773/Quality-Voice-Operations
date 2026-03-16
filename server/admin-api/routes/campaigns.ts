@@ -251,6 +251,20 @@ router.patch('/campaigns/:id', requireAuth, requireRole('admin'), async (req, re
     return res.status(400).json({ error: `status must be one of: ${allowedStatuses.join(', ')}` });
   }
 
+  if (status === 'running' || status === 'scheduled') {
+    const userId = req.user!.userId;
+    const pool = (await import('../../../platform/db')).getPlatformPool();
+    const { rows: userRows } = await pool.query(
+      `SELECT phone_verified FROM users WHERE id = $1`,
+      [userId],
+    );
+    if (userRows.length > 0 && !(userRows[0].phone_verified as boolean)) {
+      return res.status(403).json({
+        error: 'Phone verification required before activating outbound campaigns. Verify your phone number in Settings.',
+      });
+    }
+  }
+
   const configErrors = validateScheduleConfig(config);
   if (configErrors) {
     return res.status(400).json({ error: configErrors });

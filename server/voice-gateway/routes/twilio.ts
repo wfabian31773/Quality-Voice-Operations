@@ -23,6 +23,11 @@ import { createRateLimitChecker } from '../../../platform/infra/rate-limit/creat
 import { getPlatformPool } from '../../../platform/db';
 import crypto from 'crypto';
 import { recordDemoAnalyticsEvent, scheduleDemoDataCleanup } from '../../admin-api/routes/demo';
+import {
+  checkHourlyCallLimit,
+  incrementHourlyCallCount,
+  checkDailyMinuteCap,
+} from '../../../platform/billing/guardrails';
 
 const logger = createLogger('TWILIO_WEBHOOK');
 
@@ -96,6 +101,33 @@ export function getTwilioAdapter(): TwilioTransferAdapter | undefined {
   return twilioAdapterInstance;
 }
 
+async function resolveTenantPlan(tenantId: string): Promise<'trial' | 'starter' | 'pro' | 'enterprise'> {
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query(
+      `SELECT plan, status FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    if (rows.length === 0 || rows[0].status === 'trialing') return 'trial';
+    return (rows[0].plan as 'starter' | 'pro' | 'enterprise') || 'starter';
+  } catch {
+    return 'starter';
+  }
+}
+
+async function checkTenantSuspended(tenantId: string): Promise<boolean> {
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query(
+      `SELECT status FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    return rows.length > 0 && rows[0].status === 'suspended';
+  } catch {
+    return false;
+  }
+}
+
 const router = Router();
 
 router.use('/twilio/voice', twilioSignatureMiddleware);
@@ -137,6 +169,15 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
 
     const { tenantId, agentId, agentType } = routing;
 
+    if (await checkTenantSuspended(tenantId)) {
+      logger.warn('Call rejected — tenant suspended', { tenantId, callSid });
+      res.type('text/xml').send(
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Say>This service is temporarily unavailable. Please contact support.</Say><Hangup/></Response>`,
+      );
+      return;
+    }
+
     if (tenantId === DEMO_TENANT_ID) {
       const visitorIp = getDemoCallerIp(req);
       const ipHash = hashIp(visitorIp);
@@ -170,6 +211,42 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       activeDemoCalls.set(visitorIp, { callSid, startedAt: Date.now(), ipHash, agentType });
       incrementDemoCallCount();
       recordDemoAnalyticsEvent('call_started', ipHash, agentType).catch(() => {});
+    }
+
+    if (tenantId !== DEMO_TENANT_ID) {
+      const plan = await resolveTenantPlan(tenantId);
+
+      const hourlyCheck = checkHourlyCallLimit(tenantId, plan);
+      if (!hourlyCheck.allowed) {
+        logger.warn('Inbound call blocked by hourly rate limit', { tenantId, callSid, reason: hourlyCheck.reason });
+        res.type('text/xml').send(
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Say>Call limit reached. Please try again later.</Say><Hangup/></Response>`,
+        );
+        return;
+      }
+
+      const dailyCheck = await checkDailyMinuteCap(tenantId, plan);
+      if (!dailyCheck.allowed) {
+        logger.warn('Inbound call blocked by daily minute cap', { tenantId, callSid, reason: dailyCheck.reason });
+        res.type('text/xml').send(
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Say>Daily call limit reached. Service will resume tomorrow.</Say><Hangup/></Response>`,
+        );
+        return;
+      }
+
+      const budgetResult = await checkBudget(tenantId);
+      if (!budgetResult.allowed) {
+        logger.warn('Inbound call blocked by budget check', { tenantId, callSid, reason: budgetResult.reason });
+        res.type('text/xml').send(
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Say>Service limit reached. Please contact your administrator.</Say><Hangup/></Response>`,
+        );
+        return;
+      }
+
+      incrementHourlyCallCount(tenantId);
     }
 
     let campaignParams = '';
@@ -315,6 +392,63 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     return;
   }
 
+  if (await checkTenantSuspended(tenantId)) {
+    logger.warn('Outbound call blocked — tenant suspended', { tenantId, callSid });
+    if (contactId) {
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Account suspended', 'failed').catch(() => {});
+    }
+    res.type('text/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+    );
+    return;
+  }
+
+  try {
+    const pool = (await import('../../../platform/db')).getPlatformPool();
+    const { rows: phoneRows } = await pool.query(
+      `SELECT phone_verified FROM users WHERE tenant_id = $1 AND role = 'admin' ORDER BY created_at ASC LIMIT 1`,
+      [tenantId],
+    );
+    if (phoneRows.length > 0 && !(phoneRows[0].phone_verified as boolean)) {
+      logger.warn('Outbound call blocked — phone not verified', { tenantId, callSid });
+      if (contactId) {
+        updateContactStatus(tenantId, contactId, 'failed', callSid, 'Phone not verified', 'failed').catch(() => {});
+      }
+      res.type('text/xml').send(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+      );
+      return;
+    }
+  } catch (err) {
+    logger.error('Phone verification check failed — allowing call', { tenantId, error: String(err) });
+  }
+
+  const plan = await resolveTenantPlan(tenantId);
+
+  const hourlyCheck = checkHourlyCallLimit(tenantId, plan);
+  if (!hourlyCheck.allowed) {
+    logger.warn('Outbound call blocked by hourly rate limit', { tenantId, callSid, reason: hourlyCheck.reason });
+    if (contactId) {
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Hourly rate limit exceeded', 'failed').catch(() => {});
+    }
+    res.type('text/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+    );
+    return;
+  }
+
+  const dailyCheck = await checkDailyMinuteCap(tenantId, plan);
+  if (!dailyCheck.allowed) {
+    logger.warn('Outbound call blocked by daily minute cap', { tenantId, callSid, reason: dailyCheck.reason });
+    if (contactId) {
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Daily minute cap exceeded', 'failed').catch(() => {});
+    }
+    res.type('text/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+    );
+    return;
+  }
+
   const budgetResult = await checkBudget(tenantId);
   if (!budgetResult.allowed) {
     logger.warn('Outbound call blocked by subscription budget', {
@@ -331,6 +465,8 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     );
     return;
   }
+
+  incrementHourlyCallCount(tenantId);
 
   const answeredBy = (req.body.AnsweredBy ?? req.query.AnsweredBy ?? '') as string;
 

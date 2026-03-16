@@ -93,6 +93,69 @@ export async function recordCallUsage(
   }
 }
 
+export async function recordToolExecution(
+  tenantId: string,
+  count: number = 1,
+): Promise<void> {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { periodStart, periodEnd } = getHourBucket();
+
+    await client.query(
+      `INSERT INTO usage_metrics (id, tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
+       VALUES (gen_random_uuid(), $1, 'tool_executions'::usage_metric_type, $2, $3, $4, 0, 0)
+       ON CONFLICT (tenant_id, metric_type, period_start)
+       DO UPDATE SET
+         quantity = usage_metrics.quantity + EXCLUDED.quantity,
+         updated_at = NOW()`,
+      [tenantId, periodStart.toISOString(), periodEnd.toISOString(), count],
+    );
+
+    await client.query('COMMIT');
+    logger.info('Tool execution recorded', { tenantId, count });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to record tool execution', { tenantId, error: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+export async function recordApiRequest(
+  tenantId: string,
+  count: number = 1,
+): Promise<void> {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { periodStart, periodEnd } = getHourBucket();
+
+    await client.query(
+      `INSERT INTO usage_metrics (id, tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
+       VALUES (gen_random_uuid(), $1, 'api_requests'::usage_metric_type, $2, $3, $4, 0, 0)
+       ON CONFLICT (tenant_id, metric_type, period_start)
+       DO UPDATE SET
+         quantity = usage_metrics.quantity + EXCLUDED.quantity,
+         updated_at = NOW()`,
+      [tenantId, periodStart.toISOString(), periodEnd.toISOString(), count],
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to record API request', { tenantId, error: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
 export async function recordSmsUsage(
   tenantId: string,
   count: number = 1,

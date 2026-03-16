@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
-import { withPrivilegedClient } from '../../../platform/db';
+import { withPrivilegedClient, getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 
 const router = Router();
@@ -186,6 +186,164 @@ router.get('/platform/template-analytics', requireAuth, requirePlatformAdmin, as
   } catch (err) {
     logger.error('Failed to get template analytics', { error: String(err) });
     return res.status(500).json({ error: 'Failed to get template analytics' });
+  }
+});
+
+router.get('/platform/cost-monitoring', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const data = await withPrivilegedClient(async (client) => {
+      const { rows: [dailyStats] } = await client.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN quantity ELSE 0 END), 0) AS daily_call_minutes,
+          COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN total_cost_cents ELSE 0 END), 0) AS daily_ai_cost_cents,
+          COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN total_cost_cents ELSE 0 END), 0) AS daily_twilio_cost_cents,
+          COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN quantity ELSE 0 END), 0) AS daily_call_count,
+          COALESCE(SUM(CASE WHEN metric_type = 'sms_sent' THEN total_cost_cents ELSE 0 END), 0) AS daily_sms_cost_cents,
+          COALESCE(SUM(CASE WHEN metric_type = 'tool_executions' THEN quantity ELSE 0 END), 0) AS daily_tool_executions,
+          COALESCE(SUM(CASE WHEN metric_type = 'api_requests' THEN quantity ELSE 0 END), 0) AS daily_api_requests,
+          COALESCE(SUM(total_cost_cents), 0) AS daily_total_cost_cents
+        FROM usage_metrics
+        WHERE period_start >= date_trunc('day', NOW())
+      `);
+
+      const { rows: [monthlyStats] } = await client.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN quantity ELSE 0 END), 0) AS monthly_call_minutes,
+          COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN quantity ELSE 0 END), 0) AS monthly_call_count,
+          COALESCE(SUM(total_cost_cents), 0) AS monthly_total_cost_cents,
+          COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN total_cost_cents ELSE 0 END), 0) AS monthly_ai_cost_cents,
+          COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN total_cost_cents ELSE 0 END), 0) AS monthly_twilio_cost_cents
+        FROM usage_metrics
+        WHERE period_start >= date_trunc('month', NOW())
+      `);
+
+      const { rows: [trialStats] } = await client.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE s.status = 'trialing') AS active_trials,
+          COUNT(*) FILTER (WHERE s.status = 'active') AS paid_accounts,
+          COUNT(*) FILTER (WHERE s.status IN ('trialing', 'active', 'past_due', 'cancelled')) AS total_accounts
+        FROM subscriptions s
+      `);
+
+      const totalAccounts = parseInt(String(trialStats.total_accounts), 10) || 0;
+      const activeTrials = parseInt(String(trialStats.active_trials), 10) || 0;
+      const paidAccounts = parseInt(String(trialStats.paid_accounts), 10) || 0;
+      const conversionRate = totalAccounts > 0
+        ? Math.round((paidAccounts / totalAccounts) * 100)
+        : 0;
+
+      const monthlyCallCount = parseInt(String(monthlyStats.monthly_call_count), 10) || 0;
+      const monthlyTotalCostCents = parseInt(String(monthlyStats.monthly_total_cost_cents), 10) || 0;
+      const costPerCall = monthlyCallCount > 0
+        ? Math.round(monthlyTotalCostCents / monthlyCallCount)
+        : 0;
+
+      const { rows: [revenueStats] } = await client.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN event_type = 'invoice_paid' THEN amount_cents ELSE 0 END), 0) AS monthly_revenue_cents
+        FROM billing_events
+        WHERE created_at >= date_trunc('month', NOW())
+      `);
+
+      const monthlyRevenueCents = parseInt(String(revenueStats.monthly_revenue_cents), 10) || 0;
+      const revenuePerCall = monthlyCallCount > 0
+        ? Math.round(monthlyRevenueCents / monthlyCallCount)
+        : 0;
+
+      const { rows: dailyTrend } = await client.query(`
+        SELECT
+          date_trunc('day', period_start) AS day,
+          COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN quantity ELSE 0 END), 0) AS call_minutes,
+          COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN quantity ELSE 0 END), 0) AS call_count,
+          COALESCE(SUM(total_cost_cents), 0) AS total_cost_cents
+        FROM usage_metrics
+        WHERE period_start >= NOW() - INTERVAL '30 days'
+        GROUP BY date_trunc('day', period_start)
+        ORDER BY day DESC
+        LIMIT 30
+      `);
+
+      return {
+        daily: {
+          callMinutes: parseInt(String(dailyStats.daily_call_minutes), 10) || 0,
+          aiCostCents: parseInt(String(dailyStats.daily_ai_cost_cents), 10) || 0,
+          twilioCostCents: parseInt(String(dailyStats.daily_twilio_cost_cents), 10) || 0,
+          smsCostCents: parseInt(String(dailyStats.daily_sms_cost_cents), 10) || 0,
+          callCount: parseInt(String(dailyStats.daily_call_count), 10) || 0,
+          toolExecutions: parseInt(String(dailyStats.daily_tool_executions), 10) || 0,
+          apiRequests: parseInt(String(dailyStats.daily_api_requests), 10) || 0,
+          totalCostCents: parseInt(String(dailyStats.daily_total_cost_cents), 10) || 0,
+        },
+        monthly: {
+          callMinutes: parseInt(String(monthlyStats.monthly_call_minutes), 10) || 0,
+          callCount: monthlyCallCount,
+          totalCostCents: monthlyTotalCostCents,
+          aiCostCents: parseInt(String(monthlyStats.monthly_ai_cost_cents), 10) || 0,
+          twilioCostCents: parseInt(String(monthlyStats.monthly_twilio_cost_cents), 10) || 0,
+          revenueCents: monthlyRevenueCents,
+        },
+        trials: {
+          activeTrials,
+          paidAccounts,
+          totalAccounts,
+          conversionRate,
+        },
+        economics: {
+          costPerCallCents: costPerCall,
+          revenuePerCallCents: revenuePerCall,
+          marginPerCallCents: revenuePerCall - costPerCall,
+        },
+        trend: dailyTrend.map((row) => ({
+          day: row.day,
+          callMinutes: parseInt(String(row.call_minutes), 10) || 0,
+          callCount: parseInt(String(row.call_count), 10) || 0,
+          totalCostCents: parseInt(String(row.total_cost_cents), 10) || 0,
+        })),
+      };
+    });
+
+    return res.json({ monitoring: data });
+  } catch (err) {
+    logger.error('Failed to get cost monitoring data', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to get cost monitoring data' });
+  }
+});
+
+router.get('/platform/notifications', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, type, title, message, metadata, read, created_at
+       FROM tenant_notifications
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [tenantId],
+    );
+
+    return res.json({ notifications: rows });
+  } catch (err) {
+    logger.error('Failed to get notifications', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get notifications' });
+  }
+});
+
+router.patch('/platform/notifications/:id/read', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    await pool.query(
+      `UPDATE tenant_notifications SET read = TRUE WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to mark notification read', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update notification' });
   }
 });
 

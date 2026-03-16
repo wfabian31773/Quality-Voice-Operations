@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { api, setToken } from '../../lib/api';
@@ -14,12 +14,14 @@ const plans = [
 ];
 
 const benefits = [
-  '14-day free trial on all plans',
+  '7-day free trial on all plans',
   'No credit card required to start',
   'Pre-built industry agent templates',
   'Full analytics and call transcripts',
   'Cancel anytime, no contracts',
 ];
+
+const TURNSTILE_SITE_KEY = (import.meta as Record<string, Record<string, string>>).env?.VITE_TURNSTILE_SITE_KEY || '';
 
 export default function Signup() {
   const [searchParams] = useSearchParams();
@@ -29,8 +31,46 @@ export default function Signup() {
   const [plan, setPlan] = useState(searchParams.get('plan') || 'starter');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const captchaRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || !captchaRef.current) return;
+
+    const win = window as Record<string, unknown>;
+    if (typeof win.turnstile !== 'undefined') {
+      const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
+      turnstile.render(captchaRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        callback: (token: string) => setCaptchaToken(token),
+        'expired-callback': () => setCaptchaToken(''),
+      });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
+    script.async = true;
+
+    win.onTurnstileLoad = () => {
+      if (captchaRef.current && typeof win.turnstile !== 'undefined') {
+        const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
+        turnstile.render(captchaRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (token: string) => setCaptchaToken(token),
+          'expired-callback': () => setCaptchaToken(''),
+        });
+      }
+    };
+
+    document.head.appendChild(script);
+    return () => {
+      script.remove();
+      delete win.onTurnstileLoad;
+    };
+  }, []);
 
   if (user) {
     return <Navigate to="/dashboard" replace />;
@@ -45,13 +85,19 @@ export default function Signup() {
       return;
     }
 
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setError('Please complete the CAPTCHA verification.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await api.post<{ checkoutUrl: string; token: string }>('/auth/signup', {
+      const res = await api.post<{ checkoutUrl: string; token: string; emailVerificationRequired?: boolean }>('/auth/signup', {
         name: orgName,
         email,
         password,
         plan,
+        captchaToken: captchaToken || undefined,
       });
       if (res.token) {
         setToken(res.token);
@@ -72,7 +118,7 @@ export default function Signup() {
     <div>
       <SEO
         title="Sign Up — Start Your Free Trial"
-        description="Create your QVO account and start your 14-day free trial. Set up AI voice agents for your business in minutes. No credit card required."
+        description="Create your QVO account and start your 7-day free trial. Set up AI voice agents for your business in minutes. No credit card required."
         canonicalPath="/signup"
       />
       <section className="bg-harbor text-white py-16 lg:py-20">
@@ -111,7 +157,7 @@ export default function Signup() {
                 </div>
                 <div>
                   <h2 className="font-display text-lg font-bold text-harbor">Create your account</h2>
-                  <p className="text-xs text-slate-ink/60">Free for 14 days, no commitment</p>
+                  <p className="text-xs text-slate-ink/60">Free for 7 days, no commitment</p>
                 </div>
               </div>
 
@@ -185,6 +231,12 @@ export default function Signup() {
                   </div>
                 </div>
 
+                {TURNSTILE_SITE_KEY && (
+                  <div className="flex justify-center">
+                    <div ref={captchaRef} />
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -199,6 +251,10 @@ export default function Signup() {
                     </>
                   )}
                 </button>
+
+                <p className="text-center text-[10px] text-slate-ink/40 mt-1">
+                  Email verification required to activate your trial.
+                </p>
 
                 <p className="text-center text-xs text-slate-ink/50 mt-3">
                   Already have an account?{' '}

@@ -35,6 +35,7 @@ import Contact from './pages/public/Contact';
 import Docs from './pages/public/Docs';
 import AgentsShowcase from './pages/public/AgentsShowcase';
 import Signup from './pages/public/Signup';
+import VerifyEmail from './pages/public/VerifyEmail';
 import Blog from './pages/public/Blog';
 import BlogArticle from './pages/public/BlogArticle';
 import Resources from './pages/public/Resources';
@@ -56,6 +57,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
+      <Route path="/auth/verify-email" element={<VerifyEmail />} />
 
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />

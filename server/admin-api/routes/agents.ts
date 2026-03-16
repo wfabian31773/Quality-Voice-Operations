@@ -100,6 +100,12 @@ router.post('/agents', requireAuth, requireRole('admin'), async (req, res) => {
   const validationError = validateAgentInput(body, true);
   if (validationError) return res.status(400).json({ error: validationError });
 
+  const { checkTrialAgentLimit } = await import('../../../platform/billing/guardrails/TrialGuard');
+  const agentLimitCheck = await checkTrialAgentLimit(tenantId);
+  if (!agentLimitCheck.allowed) {
+    return res.status(403).json({ error: agentLimitCheck.reason });
+  }
+
   const pool = getPlatformPool();
   const client = await pool.connect();
 

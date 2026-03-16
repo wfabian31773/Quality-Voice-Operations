@@ -8,6 +8,7 @@ import { startMetricsRollup, stopMetricsRollup, startSystemMetricsWriter, stopSy
 import { validateBillingConfig } from '../../platform/billing/stripe/plans';
 import { validateEnvironment, validateDatabaseConnection } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
+import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
 
 const logger = createLogger('ADMIN_API');
 
@@ -46,6 +47,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   const defaultGatewayUrl = devDomain ? `https://${devDomain}` : 'http://localhost:3001';
   const voiceGatewayBaseUrl = process.env.VOICE_GATEWAY_BASE_URL ?? defaultGatewayUrl;
   const adminApiBaseUrl = process.env.ADMIN_API_BASE_URL ?? `http://localhost:${PORT}`;
+  startUsageGuardrailsScheduler();
   startCampaignScheduler({
     outboundCallbackBaseUrl: voiceGatewayBaseUrl,
     statusCallbackUrl: `${voiceGatewayBaseUrl}/twilio/status`,
@@ -62,6 +64,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   });
 
   stopUsageMeteringWorker();
+  stopUsageGuardrailsScheduler();
   stopCampaignScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
