@@ -19,6 +19,7 @@ import Settings from './pages/Settings';
 import Quality from './pages/Quality';
 import AuditLog from './pages/AuditLog';
 import KnowledgeBase from './pages/KnowledgeBase';
+import Widget from './pages/Widget';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import AcceptInvite from './pages/AcceptInvite';
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/settings/api-keys" element={<Settings />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/quality" element={<Quality />} />
+        <Route path="/widget" element={<Widget />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
       </Route>

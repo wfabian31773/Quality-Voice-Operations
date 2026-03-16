@@ -52,7 +52,9 @@ platform/
   tools/            Agent tool definitions + knowledge retrieval tool
   knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
   workflow/         Workflow engine
+  widget/             Website voice/chat widget service (token auth, config)
 migrations/         SQL migration files (001-029)
+widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```
 
@@ -64,13 +66,13 @@ scripts/            Migration runner, seed scripts, startup script
 - **Public marketing pages (PublicLayout):** `/` (Landing), `/product`, `/pricing`, `/use-cases`, `/integrations`, `/demo`, `/contact`, `/docs`
 - **Protected dashboard pages (Layout):** `/dashboard`, `/agents`, `/phone-numbers`, `/calls`, etc.
 - **Route structure:** Dashboard moved from `/` to `/dashboard`. Root `/` is the public landing page. Login redirects to `/dashboard`.
-- Pages: Login, Onboarding, Demo, Dashboard, Agents, Phone Numbers, Call History, Connectors, Users, Campaigns, Billing, Knowledge Base, Analytics, Observability, Quality, Settings (General/Security/API Keys tabs), Audit Log, Platform Admin
+- Pages: Login, Onboarding, Demo, Dashboard, Agents, Phone Numbers, Call History, Connectors, Users, Campaigns, Billing, Knowledge Base, Analytics, Observability, Quality, Widget, Settings (General/Security/API Keys tabs), Audit Log, Platform Admin
 - Dark/light mode toggle, responsive sidebar layout
 - API proxy: /api/* → http://localhost:3002/* (strips /api prefix)
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js)
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events
@@ -83,6 +85,7 @@ scripts/            Migration runner, seed scripts, startup script
 - Agent templates: answering-service, medical-after-hours, dental, property-management, home-services, legal
 - Call lifecycle: writes `call_sessions` and `call_events` records; populates `total_cost_cents` on finalization
 - Graceful shutdown: SIGTERM/SIGINT drain active WebSocket sessions
+- Widget WebSocket: `/widget/stream?token=xxx` — browser-to-gateway audio streaming for embedded website widget
 - API proxy: /twilio/* → http://localhost:3001/* (with forwarded headers for Twilio signature validation)
 
 ### Test Phone Number

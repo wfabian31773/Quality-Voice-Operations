@@ -20,8 +20,10 @@ import { updateContactStatus, classifyCallOutcome, addToDnc } from '../../../pla
 import { writeCallMetric } from '../../../platform/core/observability';
 import { scoreCall } from '../../../platform/analytics/QualityScorerService';
 import { recordCallUsage, estimateCallCost } from '../../../platform/billing/usage/UsageRecorder';
+import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../../../platform/widget/WidgetTokenService';
 
 const logger = createLogger('WS_STREAM');
+const widgetLogger = createLogger('WS_WIDGET');
 
 const STREAM_AUTH_TOKEN = process.env.VOICE_GATEWAY_STREAM_TOKEN;
 
@@ -68,6 +70,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export function attachWebSocket(server: HTTPServer): void {
   const wss = new WebSocketServer({ noServer: true });
+  const widgetWss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
@@ -82,6 +85,16 @@ export function attachWebSocket(server: HTTPServer): void {
       }
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
+      });
+    } else if (url.pathname === '/widget/stream') {
+      const widgetToken = url.searchParams.get('token');
+      if (!widgetToken) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      widgetWss.handleUpgrade(request, socket, head, (ws) => {
+        widgetWss.emit('connection', ws, request);
       });
     } else {
       socket.destroy();
@@ -409,6 +422,226 @@ export function attachWebSocket(server: HTTPServer): void {
 
     ws.on('error', (err) => {
       slog.error('WebSocket error', { error: String(err) });
+    });
+  });
+
+  widgetWss.on('connection', async (ws: WebSocket, request: IncomingMessage) => {
+    const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
+    const token = url.searchParams.get('token');
+    let tenantId: string | undefined;
+    let callSessionId: string | undefined;
+    let sessionResult: RealtimeSessionResult | undefined;
+    let sessionClosed = false;
+    const startedAt = Date.now();
+    let slog: SessionLogger = widgetLogger;
+
+    if (!token) {
+      ws.close(4001, 'Missing token');
+      return;
+    }
+
+    let validated: { tenantId: string; tokenId: string } | null = null;
+    try {
+      validated = await validateWidgetToken(token);
+    } catch (err) {
+      widgetLogger.error('Widget token validation error', { error: String(err) });
+      ws.close(4001, 'Token validation failed');
+      return;
+    }
+
+    if (!validated) {
+      ws.close(4001, 'Invalid token');
+      return;
+    }
+
+    tenantId = validated.tenantId;
+
+    try {
+      const widgetCfg = await getWidgetConfig(tenantId);
+      if (widgetCfg && widgetCfg.allowed_domains && widgetCfg.allowed_domains.length > 0) {
+        const origin = request.headers.origin || '';
+        const originHost = origin ? new URL(origin).hostname : '';
+        const domainAllowed = widgetCfg.allowed_domains.some(
+          (d: string) => originHost === d || originHost.endsWith('.' + d),
+        );
+        if (!domainAllowed) {
+          widgetLogger.warn('Widget WS from unauthorized domain', { tenantId, origin });
+          ws.close(4003, 'Domain not authorized');
+          return;
+        }
+      }
+    } catch (err) {
+      widgetLogger.error('Widget domain check error', { error: String(err) });
+    }
+
+    widgetLogger.info('Widget WebSocket connected', { tenantId });
+
+    async function finalizeWidgetStream(): Promise<void> {
+      if (callSessionId && tenantId && !sessionClosed) {
+        sessionClosed = true;
+        if (sessionResult) {
+          try {
+            await sessionResult.session.close();
+            slog.info('Widget OpenAI session closed');
+          } catch (err) {
+            slog.error('Error closing widget OpenAI session', { error: String(err) });
+          }
+        }
+        const durationSeconds = Math.round((Date.now() - startedAt) / 1000);
+        const costEstimate = estimateCallCost(durationSeconds);
+        try {
+          await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
+        } catch (err) {
+          slog.error('Error finalizing widget session', { error: String(err) });
+        }
+        recordCallUsage(tenantId, 'inbound', durationSeconds).catch((err) => {
+          slog.error('Failed to record widget usage', { error: String(err) });
+        });
+        writeCallMetric(tenantId, durationSeconds, {
+          callSessionId,
+          outcome: 'completed',
+        }).catch(() => {});
+        sessionManager.unregister(callSessionId);
+      }
+    }
+
+    ws.on('message', async (data: Buffer) => {
+      try {
+        const msg = JSON.parse(data.toString());
+
+        switch (msg.type) {
+          case 'start': {
+            if (!tenantId) { ws.close(4001, 'Not authenticated'); return; }
+
+            const budgetResult = await checkBudget(tenantId);
+            if (!budgetResult.allowed) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Service temporarily unavailable' }));
+              ws.close(4003, 'Budget exceeded');
+              return;
+            }
+
+            const widgetConfig = await getWidgetConfig(tenantId);
+            if (!widgetConfig || !widgetConfig.enabled || !widgetConfig.agent_id) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Widget not configured' }));
+              ws.close(4004, 'Widget not configured');
+              return;
+            }
+
+            const dbAgent = await getAgentConfig(tenantId, widgetConfig.agent_id);
+            const agentCfg = loadAgentConfig({
+              tenantId,
+              agentId: widgetConfig.agent_id,
+              agentType: dbAgent?.type || 'general',
+              callerPhone: 'widget',
+              dbAgent,
+            });
+
+            const coordinator = getCoordinator(tenantId);
+            const workflowEngine = createWorkflowEngine();
+            const budgetGuard = createBudgetGuard(tenantId);
+            const callerMemory = new CallerMemoryService(createCallerMemoryStorage());
+            const { persistence: outboxDb, integration: outboxIntegration } = createOutboxAdapters();
+            const outboxService = new OutboxService(outboxDb, outboxIntegration);
+
+            try {
+              sessionResult = await createRealtimeSession({
+                tenantId,
+                agentConfig: agentCfg,
+                callerNumber: 'widget-visitor',
+                calledNumber: 'widget',
+                callSid: `widget-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                direction: 'inbound',
+                lifecycleCoordinator: coordinator,
+                workflowEngine,
+                budgetGuard,
+                callerMemory,
+                outboxService,
+              });
+
+              callSessionId = sessionResult.callSessionId;
+              slog = createSessionLogger('WS_WIDGET', {
+                tenantId: tenantId!,
+                callId: callSessionId,
+                callSid: 'widget',
+              });
+
+              sessionResult.onOpenAIAudio((audioEvent) => {
+                if (ws.readyState !== WebSocket.OPEN) return;
+                if (!audioEvent.data) return;
+                const base64Audio = arrayBufferToBase64(audioEvent.data);
+                ws.send(JSON.stringify({ type: 'audio', data: base64Audio }));
+              });
+
+              const apiKey = process.env.OPENAI_API_KEY;
+              if (apiKey) {
+                sessionResult.triggerGreeting();
+                await sessionResult.session.connect({ apiKey });
+                slog.info('Widget OpenAI session connected');
+              } else {
+                slog.error('OPENAI_API_KEY not set');
+                ws.close(4005, 'Server configuration error');
+                return;
+              }
+
+              ws.send(JSON.stringify({ type: 'ready', callSessionId }));
+              slog.info('Widget stream established');
+            } catch (err) {
+              slog.error('Failed to create widget session', { error: String(err) });
+              ws.send(JSON.stringify({ type: 'error', message: 'Failed to start session' }));
+              ws.close(4005, 'Session creation failed');
+            }
+            break;
+          }
+
+          case 'audio': {
+            if (!sessionResult || !msg.data) break;
+            const audioBuffer = base64ToArrayBuffer(msg.data);
+            sessionResult.sendAudioToOpenAI(audioBuffer);
+            break;
+          }
+
+          case 'text': {
+            if (!sessionResult || !msg.text) break;
+            try {
+              const transport = (sessionResult.session as unknown as { transport: { sendEvent: (e: unknown) => void } }).transport;
+              transport.sendEvent({
+                type: 'conversation.item.create',
+                item: {
+                  type: 'message',
+                  role: 'user',
+                  content: [{ type: 'input_text', text: msg.text }],
+                },
+              });
+              transport.sendEvent({ type: 'response.create' });
+            } catch (err) {
+              slog.error('Failed to send text to OpenAI', { error: String(err) });
+            }
+            break;
+          }
+
+          case 'stop': {
+            slog.info('Widget stream stopped');
+            await finalizeWidgetStream();
+            ws.close(1000, 'Session ended');
+            break;
+          }
+
+          default:
+            break;
+        }
+      } catch (err) {
+        widgetLogger.error('Error processing widget message', { error: String(err) });
+      }
+    });
+
+    ws.on('close', () => {
+      finalizeWidgetStream().catch((err) => {
+        widgetLogger.error('Error during widget close', { error: String(err) });
+      });
+    });
+
+    ws.on('error', (err) => {
+      widgetLogger.error('Widget WebSocket error', { error: String(err) });
     });
   });
 }

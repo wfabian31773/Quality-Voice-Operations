@@ -25,6 +25,7 @@ import platformAdminRoutes from './routes/platformAdmin';
 import callsLiveRoutes from './routes/callsLive';
 import contactRoutes from './routes/contact';
 import knowledgeBaseRoutes from './routes/knowledgeBase';
+import widgetRoutes from './routes/widget';
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use('/', auditLogRoutes);
 app.use('/', platformAdminRoutes);
 app.use('/', knowledgeBaseRoutes);
 app.use('/', publicApiRoutes);
+app.use('/', widgetRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
