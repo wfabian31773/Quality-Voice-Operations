@@ -16,6 +16,7 @@ import { BudgetGuardService } from '../../../platform/billing/budget/BudgetGuard
 import { CallerMemoryService } from '../../../platform/infra/memory/CallerMemoryService';
 import type { OutboxService } from '../../../platform/integrations/outbox/OutboxService';
 import { globalToolRegistry } from '../../../platform/tools/registry';
+import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeContext';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
@@ -279,9 +280,20 @@ export async function createRealtimeSession(
   const toolHandler = buildToolHandler(ctx, callSessionId);
   const agentTools = buildRealtimeTools(agentConfig.tools, toolHandler);
 
-  const systemPromptWithMemory = callerMemorySummary
-    ? `${agentConfig.systemPrompt}\n\n===== CALLER MEMORY =====\n${callerMemorySummary}`
-    : agentConfig.systemPrompt;
+  let knowledgeAvailable = false;
+  try {
+    knowledgeAvailable = await hasKnowledgeArticles(tenantId);
+  } catch (err) {
+    logger.error('Failed to check knowledge availability', { tenantId, error: String(err) });
+  }
+
+  let systemPromptWithMemory = agentConfig.systemPrompt;
+  if (callerMemorySummary) {
+    systemPromptWithMemory += `\n\n===== CALLER MEMORY =====\n${callerMemorySummary}`;
+  }
+  if (knowledgeAvailable) {
+    systemPromptWithMemory += `\n\n===== KNOWLEDGE BASE =====\nYou have access to a company knowledge base. When a caller asks about products, services, policies, procedures, or FAQs, use the retrieve_knowledge tool to search for relevant information before answering.`;
+  }
 
   const agent = new RealtimeAgent({
     name: `${agentConfig.agentId}-${tenantId}`,

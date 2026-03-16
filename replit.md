@@ -49,9 +49,10 @@ platform/
   messaging/        SMS messaging
   runtime/          Voice agent runtime
   email/            Email service (nodemailer SMTP + console-log fallback) + HTML templates
-  tools/            Agent tool definitions
+  tools/            Agent tool definitions + knowledge retrieval tool
+  knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
   workflow/         Workflow engine
-migrations/         SQL migration files (001-028)
+migrations/         SQL migration files (001-029)
 scripts/            Migration runner, seed scripts, startup script
 ```
 
@@ -63,13 +64,13 @@ scripts/            Migration runner, seed scripts, startup script
 - **Public marketing pages (PublicLayout):** `/` (Landing), `/product`, `/pricing`, `/use-cases`, `/integrations`, `/demo`, `/contact`, `/docs`
 - **Protected dashboard pages (Layout):** `/dashboard`, `/agents`, `/phone-numbers`, `/calls`, etc.
 - **Route structure:** Dashboard moved from `/` to `/dashboard`. Root `/` is the public landing page. Login redirects to `/dashboard`.
-- Pages: Login, Onboarding, Demo, Dashboard, Agents, Phone Numbers, Call History, Connectors, Users, Campaigns, Billing, Analytics, Observability, Quality, Settings (General/Security/API Keys tabs), Audit Log, Platform Admin
+- Pages: Login, Onboarding, Demo, Dashboard, Agents, Phone Numbers, Call History, Connectors, Users, Campaigns, Billing, Knowledge Base, Analytics, Observability, Quality, Settings (General/Security/API Keys tabs), Audit Log, Platform Admin
 - Dark/light mode toggle, responsive sidebar layout
 - API proxy: /api/* → http://localhost:3002/* (strips /api prefix)
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events

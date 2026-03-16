@@ -24,6 +24,7 @@ import auditLogRoutes from './routes/auditLog';
 import platformAdminRoutes from './routes/platformAdmin';
 import callsLiveRoutes from './routes/callsLive';
 import contactRoutes from './routes/contact';
+import knowledgeBaseRoutes from './routes/knowledgeBase';
 
 const app = express();
 
@@ -66,6 +67,7 @@ app.use('/', apiKeyRoutes);
 app.use('/', qualityRoutes);
 app.use('/', auditLogRoutes);
 app.use('/', platformAdminRoutes);
+app.use('/', knowledgeBaseRoutes);
 app.use('/', publicApiRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';

@@ -9,10 +9,12 @@ import { createTwilioAdapterFromEnv } from './services/twilioAdapter';
 import { setTwilioAdapter } from './routes/twilio';
 import { validateEnvironment } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
+import { registerRetrieveKnowledgeTool } from '../../platform/tools/knowledge/retrieveKnowledgeTool';
 
 const logger = createLogger('VOICE_GATEWAY');
 
 registerCoreTools();
+registerRetrieveKnowledgeTool();
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
 const envResult = validateEnvironment({ exitOnFailure: isProd });
