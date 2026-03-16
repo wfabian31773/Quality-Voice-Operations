@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
+  FileText, Download, Clock,
 } from 'lucide-react';
 
 interface Subscription {
@@ -21,6 +22,17 @@ interface Subscription {
   overage_enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface Invoice {
+  id: string;
+  date: string | null;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  invoice_pdf: string | null;
+  number: string | null;
+  description: string | null;
 }
 
 interface BudgetResult {
@@ -65,6 +77,22 @@ function formatDate(d: string | null): string {
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+const INVOICE_STATUS_STYLES: Record<string, string> = {
+  paid: 'bg-success/10 text-success',
+  open: 'bg-primary/10 text-primary',
+  draft: 'bg-text-muted/10 text-text-muted',
+  void: 'bg-text-muted/10 text-text-muted',
+  uncollectible: 'bg-danger/10 text-danger',
+};
+
+function InvoiceStatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${INVOICE_STATUS_STYLES[status] ?? 'bg-text-muted/10 text-text-muted'}`}>
+      {status}
+    </span>
+  );
 }
 
 function UsageBar({ label, icon: Icon, used, limit, color }: {
@@ -124,6 +152,12 @@ export default function Billing() {
     queryKey: ['billing-budget'],
     queryFn: () => api.get<BudgetResult>('/billing/budget'),
     refetchInterval: 60_000,
+  });
+
+  const { data: invoiceData, isLoading: invoiceLoading, error: invoiceError } = useQuery({
+    queryKey: ['billing-invoices'],
+    queryFn: () => api.get<{ invoices: Invoice[] }>('/billing/invoices'),
+    enabled: isAdmin,
   });
 
   const portalMutation = useMutation({
@@ -298,24 +332,85 @@ export default function Billing() {
           </div>
 
           {sub && isAdmin && (
-            <div className="bg-surface border border-border rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-text-primary">Invoices</h2>
-                  <p className="text-sm text-text-muted mt-0.5">View and download your billing history</p>
+            <div className="bg-surface border border-border rounded-xl">
+              <div className="p-6 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-text-primary">Invoice History</h2>
+                    <p className="text-sm text-text-muted mt-0.5">Your recent invoices and payment history</p>
+                  </div>
+                  <button
+                    onClick={() => portalMutation.mutate()}
+                    disabled={portalMutation.isPending}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border hover:bg-surface-hover text-text-primary text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                  >
+                    {portalMutation.isPending ? 'Opening...' : 'View All in Stripe'}
+                    <ExternalLink className="h-3.5 w-3.5 text-text-muted" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => portalMutation.mutate()}
-                  disabled={portalMutation.isPending}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border hover:bg-surface-hover text-text-primary text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
-                >
-                  {portalMutation.isPending ? 'Opening...' : 'View Invoices'}
-                  <ExternalLink className="h-3.5 w-3.5 text-text-muted" />
-                </button>
               </div>
-              <p className="text-xs text-text-muted mt-3">
-                Invoices are managed through Stripe. Click "View Invoices" to see your full billing history, download PDF invoices, and review past charges.
-              </p>
+
+              {invoiceLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" />
+                </div>
+              ) : invoiceError ? (
+                <div className="p-6 text-center text-sm">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-danger/50" />
+                  <p className="text-danger">Failed to load invoices: {invoiceError.message}</p>
+                  <p className="text-xs text-text-muted mt-1">Try refreshing the page or view invoices in Stripe.</p>
+                </div>
+              ) : !invoiceData?.invoices?.length ? (
+                <div className="p-6 text-center text-sm text-text-muted">
+                  <FileText className="h-8 w-8 mx-auto mb-2 text-text-muted/50" />
+                  No invoices yet. Invoices will appear here once your first billing cycle completes.
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {invoiceData.invoices.map((inv) => (
+                    <div key={inv.id} className="px-6 py-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-surface-hover">
+                          <FileText className="h-4 w-4 text-text-muted" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-primary">
+                              {inv.number ?? inv.id.slice(0, 12)}
+                            </span>
+                            <InvoiceStatusBadge status={inv.status} />
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Clock className="h-3 w-3 text-text-muted" />
+                            <span className="text-xs text-text-muted">
+                              {inv.date ? formatDate(inv.date) : '—'}
+                            </span>
+                            {inv.description && (
+                              <span className="text-xs text-text-muted">· {inv.description}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm font-semibold text-text-primary">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency || 'usd' }).format(inv.amount_cents / 100)}
+                        </span>
+                        {inv.invoice_pdf && (
+                          <a
+                            href={inv.invoice_pdf}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            PDF
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
   MessageSquare, Mic, Copy, Check, Plus, Trash2, Eye, EyeOff,
-  Save, AlertCircle, CheckCircle, RefreshCw, Code, Palette,
+  Save, AlertCircle, CheckCircle, RefreshCw, Code, Palette, Shield, Gauge,
 } from 'lucide-react';
 
 interface WidgetConfig {
@@ -508,6 +508,105 @@ export default function Widget() {
                     : 'None'}
                 </span>
               </div>
+            </div>
+          </div>
+
+          <div className="bg-surface border border-border rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <Shield className="h-4 w-4 text-text-muted" />
+              Security: CSP Headers
+            </h3>
+            <p className="text-xs text-text-muted mb-3">
+              If your website uses Content Security Policy headers, add these directives to allow the widget to load and function correctly.
+            </p>
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs font-medium text-text-primary mb-1">Required CSP Directives</p>
+                <pre className="bg-surface-hover border border-border rounded-lg p-3 text-xs font-mono text-text-primary whitespace-pre-wrap break-all overflow-x-auto">{`Content-Security-Policy:
+  script-src 'self' ${window.location.origin};
+  connect-src 'self' ${window.location.origin}
+    wss://${window.location.host};
+  style-src 'self' 'unsafe-inline';
+  frame-src 'none';`}</pre>
+              </div>
+              <div className="mt-3">
+                <p className="text-xs font-medium text-text-primary mb-1">Nginx Example</p>
+                <pre className="bg-surface-hover border border-border rounded-lg p-3 text-xs font-mono text-text-primary whitespace-pre-wrap break-all overflow-x-auto">{`add_header Content-Security-Policy
+  "script-src 'self' ${window.location.origin};
+   connect-src 'self' ${window.location.origin}
+   wss://${window.location.host};
+   style-src 'self' 'unsafe-inline';"
+  always;`}</pre>
+              </div>
+              <p className="text-xs text-text-muted mt-2">
+                The <code className="px-1 py-0.5 bg-surface-hover rounded text-[10px]">connect-src</code> directive must include the WebSocket endpoint if voice mode is enabled. Adjust the <code className="px-1 py-0.5 bg-surface-hover rounded text-[10px]">script-src</code> origin to match your API domain.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-surface border border-border rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-text-muted" />
+              Rate Limiting
+            </h3>
+            <p className="text-xs text-text-muted mb-3">
+              Recommended rate limiting configuration to protect your widget endpoints from abuse.
+            </p>
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 pr-4 font-medium text-text-muted">Endpoint</th>
+                      <th className="text-left py-2 pr-4 font-medium text-text-muted">Limit</th>
+                      <th className="text-left py-2 font-medium text-text-muted">Window</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-text-primary">
+                    <tr className="border-b border-border">
+                      <td className="py-2 pr-4 font-mono">Widget Chat Init</td>
+                      <td className="py-2 pr-4">10 requests</td>
+                      <td className="py-2">per minute per IP</td>
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="py-2 pr-4 font-mono">Message Send</td>
+                      <td className="py-2 pr-4">30 requests</td>
+                      <td className="py-2">per minute per session</td>
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="py-2 pr-4 font-mono">Voice Session</td>
+                      <td className="py-2 pr-4">5 sessions</td>
+                      <td className="py-2">per hour per IP</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-4 font-mono">Lead Capture</td>
+                      <td className="py-2 pr-4">5 submissions</td>
+                      <td className="py-2">per hour per IP</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-text-primary mb-1">Nginx Rate Limiting Example</p>
+                <pre className="bg-surface-hover border border-border rounded-lg p-3 text-xs font-mono text-text-primary whitespace-pre-wrap break-all overflow-x-auto">{`# Define rate limit zones
+limit_req_zone $binary_remote_addr
+  zone=widget_init:10m rate=10r/m;
+limit_req_zone $binary_remote_addr
+  zone=widget_voice:10m rate=5r/h;
+
+# Apply to widget routes
+location /api/widget/chat {
+  limit_req zone=widget_init burst=5
+    nodelay;
+}
+location /api/widget/voice {
+  limit_req zone=widget_voice burst=2
+    nodelay;
+}`}</pre>
+              </div>
+              <p className="text-xs text-text-muted">
+                These are recommended defaults. Adjust limits based on your expected traffic patterns. The platform also enforces server-side rate limits based on your subscription plan.
+              </p>
             </div>
           </div>
         </div>

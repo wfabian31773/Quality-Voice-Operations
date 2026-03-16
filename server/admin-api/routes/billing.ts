@@ -138,6 +138,53 @@ router.get('/billing/budget', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/billing/invoices', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT stripe_customer_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    await client.query('COMMIT');
+
+    const customerId = rows[0]?.stripe_customer_id as string | undefined;
+    if (!customerId) {
+      return res.json({ invoices: [] });
+    }
+
+    const { getStripeClient } = await import('../../../platform/billing/stripe/client');
+    const stripe = getStripeClient();
+    const stripeInvoices = await stripe.invoices.list({
+      customer: customerId,
+      limit: 10,
+    });
+
+    const invoices = stripeInvoices.data.map((inv) => ({
+      id: inv.id,
+      date: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+      amount_cents: inv.status === 'paid' ? (inv.amount_paid ?? inv.total ?? 0) : (inv.amount_due ?? inv.total ?? 0),
+      currency: inv.currency ?? 'usd',
+      status: inv.status ?? 'unknown',
+      invoice_pdf: inv.invoice_pdf ?? null,
+      number: inv.number ?? null,
+      description: inv.description ?? (inv.lines?.data?.[0]?.description || null),
+    }));
+
+    return res.json({ invoices });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to fetch invoices', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch invoices' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/billing/stripe-webhook', async (req, res) => {
   const signature = req.headers['stripe-signature'];
   if (!signature || typeof signature !== 'string') {

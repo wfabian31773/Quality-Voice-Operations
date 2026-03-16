@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import {
   Building2, Users, PhoneCall, DollarSign, ChevronDown, ChevronRight,
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
+  BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
 } from 'lucide-react';
 
 interface PlatformStats {
@@ -74,6 +75,31 @@ interface TemplateDetail {
   requiredTools: string[];
   versions: TemplateVersion[];
 }
+
+interface TemplateAnalytics {
+  id: string;
+  slug: string;
+  displayName: string;
+  currentVersion: string;
+  status: string;
+  installCount: number;
+  activeInstalls: number;
+  totalInstalls: number;
+  uninstallCount: number;
+  upgradeCount: number;
+  activationRate: number;
+  uninstallRate: number;
+  upgradeAdoption: number;
+  totalCalls: number;
+  callsLast30d: number;
+  avgCallDuration: number;
+  avgSatisfaction: number;
+  totalCampaigns: number;
+  completedCampaigns: number;
+}
+
+type SortField = 'displayName' | 'totalInstalls' | 'activationRate' | 'callsLast30d' | 'uninstallRate' | 'avgSatisfaction' | 'totalCampaigns' | 'upgradeAdoption';
+type SortDir = 'asc' | 'desc';
 
 interface ValidationCheck {
   name: string;
@@ -398,8 +424,10 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('totalInstalls');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['platform-stats'],
@@ -417,6 +445,13 @@ export default function PlatformAdmin() {
     queryKey: ['platform-templates-list'],
     queryFn: () => api.get<{ templates: TemplateListItem[] }>('/marketplace/templates?status=active&limit=100'),
     enabled: activeTab === 'templates',
+  });
+
+  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['platform-template-analytics'],
+    queryFn: () => api.get<{ templates: TemplateAnalytics[] }>('/platform/template-analytics'),
+    enabled: activeTab === 'analytics',
+    refetchInterval: 60_000,
   });
 
   const statusMutation = useMutation({
@@ -482,6 +517,16 @@ export default function PlatformAdmin() {
           }`}
         >
           <span className="flex items-center gap-2"><Package className="h-4 w-4" /> Template Versions</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'analytics'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Template Analytics</span>
         </button>
       </div>
 
@@ -641,6 +686,262 @@ export default function PlatformAdmin() {
           </div>
         </div>
       )}
+
+      {activeTab === 'analytics' && (
+        <TemplateAnalyticsTab
+          data={analyticsData}
+          loading={analyticsLoading}
+          sortField={sortField}
+          sortDir={sortDir}
+          onSort={(field) => {
+            if (field === sortField) {
+              setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+            } else {
+              setSortField(field);
+              setSortDir('desc');
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SortableHeader({ label, field, currentField, currentDir, onSort }: {
+  label: string;
+  field: SortField;
+  currentField: SortField;
+  currentDir: SortDir;
+  onSort: (f: SortField) => void;
+}) {
+  const active = field === currentField;
+  return (
+    <th
+      className="text-right px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-foreground transition-colors"
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1 justify-end">
+        {label}
+        {active ? (
+          <span className="text-primary text-[10px]">{currentDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
+        ) : (
+          <span className="text-muted/40 text-[10px]">{'\u25BC'}</span>
+        )}
+      </span>
+    </th>
+  );
+}
+
+function BarChart({ data, labelKey, valueKey, secondaryKey, barColor, secondaryColor }: {
+  data: TemplateAnalytics[];
+  labelKey: keyof TemplateAnalytics;
+  valueKey: keyof TemplateAnalytics;
+  secondaryKey?: keyof TemplateAnalytics;
+  barColor: string;
+  secondaryColor?: string;
+}) {
+  const maxVal = Math.max(...data.map(d => Number(d[valueKey]) || 0), 1);
+  return (
+    <div className="space-y-2">
+      {data.map((d) => {
+        const val = Number(d[valueKey]) || 0;
+        const secVal = secondaryKey ? (Number(d[secondaryKey]) || 0) : 0;
+        const pct = (val / maxVal) * 100;
+        const secPct = secondaryKey ? (secVal / maxVal) * 100 : 0;
+        return (
+          <div key={d.id} className="flex items-center gap-3">
+            <div className="w-32 truncate text-xs text-muted text-right" title={String(d[labelKey])}>
+              {String(d[labelKey])}
+            </div>
+            <div className="flex-1 flex items-center gap-1">
+              <div className="flex-1 h-5 bg-surface-hover rounded overflow-hidden relative">
+                {secondaryKey && (
+                  <div
+                    className={`absolute top-0 left-0 h-full rounded ${secondaryColor ?? 'bg-primary/30'}`}
+                    style={{ width: `${secPct}%` }}
+                  />
+                )}
+                <div
+                  className={`absolute top-0 left-0 h-full rounded ${barColor}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="text-xs tabular-nums text-muted w-12 text-right">{val.toLocaleString()}</span>
+              {secondaryKey && (
+                <span className="text-xs tabular-nums text-muted/60 w-12 text-right">{secVal.toLocaleString()}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
+  data: { templates: TemplateAnalytics[] } | undefined;
+  loading: boolean;
+  sortField: SortField;
+  sortDir: SortDir;
+  onSort: (f: SortField) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!data?.templates?.length) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-12 text-center">
+        <BarChart3 className="h-10 w-10 text-muted mx-auto mb-3" />
+        <p className="text-muted">No template analytics data available yet.</p>
+        <p className="text-xs text-muted mt-1">Analytics will populate as tenants install and use templates.</p>
+      </div>
+    );
+  }
+
+  const templates = data.templates;
+  const sorted = [...templates].sort((a, b) => {
+    const aVal = a[sortField];
+    const bVal = b[sortField];
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    }
+    return sortDir === 'asc' ? (Number(aVal) - Number(bVal)) : (Number(bVal) - Number(aVal));
+  });
+
+  const chartData = [...templates].sort((a, b) => b.totalInstalls - a.totalInstalls).slice(0, 10);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={DownloadIcon}
+          label="Total Installs"
+          value={String(templates.reduce((s, t) => s + t.totalInstalls, 0))}
+          sub={`${templates.reduce((s, t) => s + t.activeInstalls, 0)} active`}
+        />
+        <StatCard
+          icon={Activity}
+          label="Avg Activation Rate"
+          value={`${templates.length > 0 ? Math.round(templates.reduce((s, t) => s + t.activationRate, 0) / templates.length) : 0}%`}
+        />
+        <StatCard
+          icon={PhoneCall}
+          label="Template Calls (30d)"
+          value={String(templates.reduce((s, t) => s + t.callsLast30d, 0))}
+          sub={`${templates.reduce((s, t) => s + t.totalCalls, 0)} total`}
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="Avg Satisfaction"
+          value={(() => {
+            const withScores = templates.filter(t => t.avgSatisfaction > 0);
+            return withScores.length > 0
+              ? (withScores.reduce((s, t) => s + t.avgSatisfaction, 0) / withScores.length).toFixed(1)
+              : '\u2014';
+          })()}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-surface border border-border rounded-xl p-5">
+          <h3 className="font-semibold text-sm mb-1">Installs by Template</h3>
+          <p className="text-xs text-muted mb-4">Total installs (dark) vs active installs (light)</p>
+          <BarChart data={chartData} labelKey="displayName" valueKey="activeInstalls" secondaryKey="totalInstalls" barColor="bg-primary" secondaryColor="bg-primary/25" />
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-5">
+          <h3 className="font-semibold text-sm mb-1">Call Volume by Template (30d)</h3>
+          <p className="text-xs text-muted mb-4">Calls generated through template-installed agents</p>
+          <BarChart data={[...templates].sort((a, b) => b.callsLast30d - a.callsLast30d).slice(0, 10)} labelKey="displayName" valueKey="callsLast30d" barColor="bg-green-500" />
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h2 className="font-semibold">Template Performance</h2>
+          <p className="text-xs text-muted mt-0.5">Click column headers to sort. Includes call and campaign metrics.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-foreground" onClick={() => onSort('displayName')}>
+                  <span className="inline-flex items-center gap-1">
+                    Template
+                    {sortField === 'displayName' ? <span className="text-primary text-[10px]">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-muted/40 text-[10px]">{'\u25BC'}</span>}
+                  </span>
+                </th>
+                <SortableHeader label="Installs" field="totalInstalls" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <th className="text-right px-4 py-3 font-medium text-muted">Active</th>
+                <SortableHeader label="Activation" field="activationRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Upgrade Adoption" field="upgradeAdoption" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Uninstalls" field="uninstallRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Calls (30d)" field="callsLast30d" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Campaigns" field="totalCampaigns" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <th className="text-right px-4 py-3 font-medium text-muted">Avg Duration</th>
+                <SortableHeader label="CSAT" field="avgSatisfaction" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((t) => (
+                <tr key={t.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{t.displayName}</div>
+                    <div className="text-xs text-muted font-mono">{t.slug} · v{t.currentVersion}</div>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.totalInstalls}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.activeInstalls}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`inline-flex items-center gap-1 ${t.activationRate >= 70 ? 'text-green-600 dark:text-green-400' : t.activationRate >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {t.activationRate >= 70 ? <TrendingUp className="h-3 w-3" /> : t.activationRate < 40 ? <TrendingDown className="h-3 w-3" /> : null}
+                      {t.activationRate}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    <span className={`inline-flex items-center gap-1 ${t.upgradeAdoption >= 50 ? 'text-green-600 dark:text-green-400' : t.upgradeAdoption >= 20 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted'}`}>
+                      {t.upgradeAdoption}%
+                      <span className="text-muted/60">({t.upgradeCount})</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    <span className={t.uninstallRate > 30 ? 'text-red-600 dark:text-red-400' : ''}>{t.uninstallCount} ({t.uninstallRate}%)</span>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.callsLast30d.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.totalCampaigns > 0 ? `${t.completedCampaigns}/${t.totalCampaigns}` : '\u2014'}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.avgCallDuration > 0 ? `${Math.floor(t.avgCallDuration / 60)}m ${t.avgCallDuration % 60}s` : '\u2014'}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.avgSatisfaction > 0 ? t.avgSatisfaction.toFixed(1) : '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {templates.map((t) => (
+          <div key={t.id} className="bg-surface border border-border rounded-xl p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h3 className="font-semibold text-sm">{t.displayName}</h3>
+                <p className="text-xs text-muted">v{t.currentVersion}</p>
+              </div>
+              <StatusBadge status={t.status} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <MetricItem label="Conversion Rate" value={`${t.activationRate}%`} trend={t.activationRate >= 50 ? 'up' : t.activationRate >= 20 ? 'neutral' : 'down'} />
+              <MetricItem label="Avg Call Duration" value={t.avgCallDuration > 0 ? `${Math.floor(t.avgCallDuration / 60)}m ${t.avgCallDuration % 60}s` : '\u2014'} />
+              <MetricItem label="CSAT Score" value={t.avgSatisfaction > 0 ? t.avgSatisfaction.toFixed(1) : '\u2014'} trend={t.avgSatisfaction >= 4 ? 'up' : t.avgSatisfaction >= 3 ? 'neutral' : t.avgSatisfaction > 0 ? 'down' : undefined} />
+              <MetricItem label="Calls (30d)" value={t.callsLast30d.toLocaleString()} />
+              <MetricItem label="Upgrade Adoption" value={`${t.upgradeAdoption}%`} trend={t.upgradeAdoption >= 50 ? 'up' : t.upgradeAdoption >= 20 ? 'neutral' : 'down'} />
+              <MetricItem label="Uninstall Rate" value={`${t.uninstallRate}%`} trend={t.uninstallRate <= 10 ? 'up' : t.uninstallRate <= 30 ? 'neutral' : 'down'} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -654,6 +955,19 @@ function StatCard({ icon: Icon, label, value, sub }: { icon: typeof Building2; l
       </div>
       <div className="text-2xl font-bold">{value}</div>
       {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+function MetricItem({ label, value, trend }: { label: string; value: string; trend?: 'up' | 'down' | 'neutral' }) {
+  return (
+    <div>
+      <p className="text-xs text-muted mb-0.5">{label}</p>
+      <div className="flex items-center gap-1">
+        <span className="text-sm font-semibold">{value}</span>
+        {trend === 'up' && <TrendingUp className="h-3 w-3 text-green-500" />}
+        {trend === 'down' && <TrendingDown className="h-3 w-3 text-red-500" />}
+      </div>
     </div>
   );
 }

@@ -109,4 +109,84 @@ router.patch('/platform/tenants/:id/status', requireAuth, requirePlatformAdmin, 
   }
 });
 
+router.get('/platform/template-analytics', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const analytics = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(`
+        SELECT
+          tr.id,
+          tr.slug,
+          tr.display_name,
+          tr.current_version,
+          tr.status,
+          tr.install_count,
+          (SELECT COUNT(*) FROM tenant_agent_installations tai WHERE tai.template_id = tr.id AND tai.status = 'active') AS active_installs,
+          (SELECT COUNT(*) FROM tenant_agent_installations tai WHERE tai.template_id = tr.id) AS total_installs,
+          (SELECT COUNT(*) FROM template_install_events tie WHERE tie.template_id = tr.id AND tie.event_type = 'uninstalled') AS uninstall_count,
+          (SELECT COUNT(*) FROM template_install_events tie WHERE tie.template_id = tr.id AND tie.event_type = 'upgraded') AS upgrade_count,
+          (SELECT COUNT(DISTINCT cs.id) FROM tenant_agent_installations tai
+            JOIN call_sessions cs ON cs.agent_id = tai.agent_id AND cs.tenant_id = tai.tenant_id
+            WHERE tai.template_id = tr.id) AS total_calls,
+          (SELECT COUNT(DISTINCT cs.id) FROM tenant_agent_installations tai
+            JOIN call_sessions cs ON cs.agent_id = tai.agent_id AND cs.tenant_id = tai.tenant_id
+            WHERE tai.template_id = tr.id AND cs.created_at > NOW() - INTERVAL '30 days') AS calls_last_30d,
+          (SELECT COALESCE(AVG(cs.duration_seconds), 0) FROM tenant_agent_installations tai
+            JOIN call_sessions cs ON cs.agent_id = tai.agent_id AND cs.tenant_id = tai.tenant_id
+            WHERE tai.template_id = tr.id AND cs.duration_seconds > 0) AS avg_call_duration,
+          (SELECT COALESCE(AVG(cs.customer_satisfaction_score), 0) FROM tenant_agent_installations tai
+            JOIN call_sessions cs ON cs.agent_id = tai.agent_id AND cs.tenant_id = tai.tenant_id
+            WHERE tai.template_id = tr.id AND cs.customer_satisfaction_score IS NOT NULL) AS avg_satisfaction,
+          (SELECT COUNT(DISTINCT c.id) FROM tenant_agent_installations tai
+            JOIN campaigns c ON c.agent_id = tai.agent_id AND c.tenant_id = tai.tenant_id
+            WHERE tai.template_id = tr.id) AS total_campaigns,
+          (SELECT COUNT(DISTINCT c.id) FROM tenant_agent_installations tai
+            JOIN campaigns c ON c.agent_id = tai.agent_id AND c.tenant_id = tai.tenant_id
+            WHERE tai.template_id = tr.id AND c.status = 'completed') AS completed_campaigns
+        FROM template_registry tr
+        WHERE tr.status IN ('active', 'draft')
+        ORDER BY tr.install_count DESC, tr.display_name ASC
+      `);
+      return rows;
+    });
+
+    const templates = analytics.map((row: Record<string, unknown>) => {
+      const totalInstalls = parseInt(String(row.total_installs), 10) || 0;
+      const activeInstalls = parseInt(String(row.active_installs), 10) || 0;
+      const uninstallCount = parseInt(String(row.uninstall_count), 10) || 0;
+      const upgradeCount = parseInt(String(row.upgrade_count), 10) || 0;
+
+      const activationRate = totalInstalls > 0 ? Math.min(100, Math.round((activeInstalls / totalInstalls) * 100)) : 0;
+      const uninstallRate = totalInstalls > 0 ? Math.min(100, Math.round((uninstallCount / totalInstalls) * 100)) : 0;
+      const upgradeAdoption = totalInstalls > 0 ? Math.min(100, Math.round((upgradeCount / totalInstalls) * 100)) : 0;
+
+      return {
+        id: row.id,
+        slug: row.slug,
+        displayName: row.display_name,
+        currentVersion: row.current_version,
+        status: row.status,
+        installCount: parseInt(String(row.install_count), 10) || 0,
+        activeInstalls,
+        totalInstalls,
+        uninstallCount,
+        upgradeCount,
+        activationRate,
+        uninstallRate,
+        upgradeAdoption,
+        totalCalls: parseInt(String(row.total_calls), 10) || 0,
+        callsLast30d: parseInt(String(row.calls_last_30d), 10) || 0,
+        avgCallDuration: Math.round(parseFloat(String(row.avg_call_duration)) || 0),
+        avgSatisfaction: parseFloat(parseFloat(String(row.avg_satisfaction) || '0').toFixed(1)),
+        totalCampaigns: parseInt(String(row.total_campaigns), 10) || 0,
+        completedCampaigns: parseInt(String(row.completed_campaigns), 10) || 0,
+      };
+    });
+
+    return res.json({ templates });
+  } catch (err) {
+    logger.error('Failed to get template analytics', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to get template analytics' });
+  }
+});
+
 export default router;
