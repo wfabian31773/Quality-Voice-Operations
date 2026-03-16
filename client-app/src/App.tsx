@@ -20,6 +20,7 @@ import Quality from './pages/Quality';
 import AuditLog from './pages/AuditLog';
 import KnowledgeBase from './pages/KnowledgeBase';
 import Widget from './pages/Widget';
+import Marketplace from './pages/Marketplace';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import UpdateCenter from './pages/UpdateCenter';
@@ -92,6 +93,9 @@ export default function App() {
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/quality" element={<Quality />} />
         <Route path="/widget" element={<Widget />} />
+        <Route path="/marketplace" element={<Marketplace />} />
+        <Route path="/marketplace/installed" element={<Marketplace />} />
+        <Route path="/marketplace/:id" element={<Marketplace />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />

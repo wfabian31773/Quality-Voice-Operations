@@ -450,6 +450,147 @@ router.post('/marketplace/installations/:id/upgrade', requireAuth, async (req, r
   }
 });
 
+router.get('/marketplace/installations', requireAuth, async (req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const tenantId = req.user!.tenantId;
+
+    const result = await pool.query(
+      `SELECT
+        tai.id, tai.tenant_id, tai.template_id, tai.installed_version,
+        tai.status, tai.config, tai.agent_id, tai.installed_at, tai.updated_at,
+        tr.display_name AS template_name, tr.short_description AS template_description,
+        tr.icon_url AS template_icon, tr.current_version AS latest_version,
+        tr.supported_channels, tr.agent_type, tr.slug AS template_slug,
+        COALESCE(
+          (SELECT json_agg(json_build_object('name', tc.name, 'displayName', tc.display_name))
+           FROM template_category_map tcm
+           JOIN template_categories tc ON tc.id = tcm.category_id
+           WHERE tcm.template_id = tr.id),
+          '[]'
+        ) AS categories
+      FROM tenant_agent_installations tai
+      JOIN template_registry tr ON tr.id = tai.template_id
+      WHERE tai.tenant_id = $1
+      ORDER BY tai.installed_at DESC`,
+      [tenantId],
+    );
+
+    res.json({
+      installations: result.rows.map((row) => ({
+        id: row.id,
+        tenantId: row.tenant_id,
+        templateId: row.template_id,
+        installedVersion: row.installed_version,
+        status: row.status,
+        config: row.config,
+        agentId: row.agent_id,
+        installedAt: row.installed_at,
+        updatedAt: row.updated_at,
+        templateName: row.template_name,
+        templateDescription: row.template_description,
+        templateIcon: row.template_icon,
+        latestVersion: row.latest_version,
+        supportedChannels: row.supported_channels,
+        agentType: row.agent_type,
+        templateSlug: row.template_slug,
+        categories: row.categories,
+        updateAvailable: row.installed_version !== row.latest_version,
+      })),
+    });
+  } catch (err) {
+    logger.error('Failed to list installations', { error: (err as Error).message });
+    res.status(500).json({ error: 'Failed to list installations' });
+  }
+});
+
+router.post('/marketplace/templates/:id/install', requireAuth, async (req, res) => {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    const tenantId = req.user!.tenantId;
+    const templateId = req.params.id;
+    const { agentName, greeting, phoneNumberId } = req.body || {};
+
+    const templateResult = await client.query(
+      `SELECT id, current_version, display_name, agent_type, default_voice, min_plan
+       FROM template_registry WHERE (id = $1 OR slug = $1) AND status = 'active'`,
+      [templateId],
+    );
+
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found or not active' });
+    }
+
+    const template = templateResult.rows[0];
+
+    const existingResult = await client.query(
+      `SELECT id FROM tenant_agent_installations WHERE tenant_id = $1 AND template_id = $2`,
+      [tenantId, template.id],
+    );
+
+    if (existingResult.rows.length > 0) {
+      return res.status(409).json({ error: 'Template already installed' });
+    }
+
+    if (phoneNumberId) {
+      const phoneCheck = await client.query(
+        `SELECT id FROM phone_numbers WHERE id = $1 AND tenant_id = $2`,
+        [phoneNumberId, tenantId],
+      );
+      if (phoneCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid or unauthorized phone number' });
+      }
+    }
+
+    await client.query('BEGIN');
+
+    const agentResult = await client.query(
+      `INSERT INTO agents (tenant_id, name, type, voice, status, welcome_greeting)
+       VALUES ($1, $2, $3, $4, 'active', $5)
+       RETURNING id`,
+      [tenantId, agentName || template.display_name, template.agent_type === 'outbound' ? 'outbound-sales' : 'general', template.default_voice, greeting || ''],
+    );
+    const agentId = agentResult.rows[0].id;
+
+    const installResult = await client.query(
+      `INSERT INTO tenant_agent_installations (tenant_id, template_id, installed_version, status, config, agent_id)
+       VALUES ($1, $2, $3, 'active', $4, $5)
+       RETURNING id`,
+      [tenantId, template.id, template.current_version, JSON.stringify({ phoneNumberId: phoneNumberId || null }), agentId],
+    );
+
+    await client.query(
+      `UPDATE template_registry SET install_count = install_count + 1 WHERE id = $1`,
+      [template.id],
+    );
+
+    await client.query(
+      `INSERT INTO template_install_events (tenant_id, template_id, event_type, version)
+       VALUES ($1, $2, 'installed', $3)`,
+      [tenantId, template.id, template.current_version],
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      installationId: installResult.rows[0].id,
+      agentId,
+      message: 'Template installed successfully',
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to install template', { error: (err as Error).message });
+    res.status(500).json({ error: 'Failed to install template' });
+  } finally {
+    client.release();
+  }
+});
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/platform/templates/:id/versions', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const { version, changelog, releaseNotes, packageRef } = req.body as {
@@ -694,7 +835,6 @@ router.patch('/platform/templates/:id/versions/:versionId/deprecate', requireAut
     return res.status(500).json({ error: 'Failed to deprecate template version' });
   }
 });
-
 function formatTemplateRow(row: Record<string, unknown>) {
   return {
     id: row.id,
