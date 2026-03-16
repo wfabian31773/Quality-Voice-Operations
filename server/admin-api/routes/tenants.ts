@@ -11,6 +11,11 @@ import { PLAN_LIMITS } from '../../../platform/billing/stripe/plans';
 const router = Router();
 const logger = createLogger('ADMIN_TENANTS');
 
+function isProd(): boolean {
+  const env = process.env.APP_ENV ?? process.env.NODE_ENV ?? '';
+  return env.startsWith('prod') || env === 'staging';
+}
+
 router.get('/tenants/me', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
@@ -40,10 +45,22 @@ router.get('/tenants/me', requireAuth, async (req, res) => {
 });
 
 router.get('/tenants/me/provisioning-status', requireAuth, async (req, res) => {
-  const { tenantId } = req.user!;
+  const { tenantId, userId } = req.user!;
 
   try {
     const status = await getProvisioningStatus(tenantId);
+
+    if (status.status === 'pending' && !isProd()) {
+      try {
+        await provisionTenant(tenantId, userId, 'starter');
+        logger.info('Dev-mode auto-provision triggered for pending tenant', { tenantId });
+        const updated = await getProvisioningStatus(tenantId);
+        return res.json(updated);
+      } catch (provErr) {
+        logger.warn('Dev-mode auto-provision failed', { tenantId, error: String(provErr) });
+      }
+    }
+
     return res.json(status);
   } catch (err) {
     logger.error('Failed to get provisioning status', { tenantId, error: String(err) });

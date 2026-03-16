@@ -109,7 +109,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
             const pool = (await import('../../../platform/db')).getPlatformPool();
             const { rows } = await pool.query(`SELECT status FROM tenants WHERE id = $1`, [tenantId]);
             if (rows.length > 0 && rows[0].status === 'pending') {
-              res.status(403).json({ error: 'Tenant is not yet provisioned. Complete checkout first.' });
+              res.status(403).json({ error: 'TENANT_NOT_PROVISIONED', message: 'Your account setup is not complete. Please finish checkout.' });
               return;
             }
           } catch (checkErr) {

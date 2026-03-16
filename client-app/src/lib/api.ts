@@ -42,6 +42,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 403 && body.error === 'TENANT_NOT_PROVISIONED') {
+      const isOnboarding = window.location.pathname.startsWith('/onboarding');
+      if (!isOnboarding) {
+        window.location.href = '/onboarding';
+      }
+      throw new Error('Account setup incomplete');
+    }
     throw new Error(body.error || body.message || `Request failed: ${res.status}`);
   }
 

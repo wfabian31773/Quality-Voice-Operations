@@ -130,7 +130,13 @@ function GeneralSettings() {
     return (
       <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
         <AlertCircle className="h-4 w-4 shrink-0" />
-        Failed to load organization settings
+        <span>Failed to load organization settings. Please check your connection and try again.</span>
+        <button
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['tenant-settings'] })}
+          className="ml-auto text-xs font-medium underline hover:no-underline"
+        >
+          Retry
+        </button>
       </div>
     );
   }

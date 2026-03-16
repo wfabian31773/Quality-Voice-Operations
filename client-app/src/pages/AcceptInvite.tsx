@@ -81,8 +81,8 @@ export default function AcceptInvite() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-6">
-          <div className="p-3 rounded-xl bg-indigo-100 dark:bg-indigo-900/30">
-            <KeyRound className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
+          <div className="p-3 rounded-xl bg-primary-light">
+            <KeyRound className="h-8 w-8 text-primary" />
           </div>
         </div>
 
@@ -92,7 +92,7 @@ export default function AcceptInvite() {
 
         {loading && (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         )}
 
@@ -102,7 +102,7 @@ export default function AcceptInvite() {
             <p className="text-text-secondary">{error}</p>
             <button
               onClick={() => navigate('/login')}
-              className="mt-4 text-sm text-indigo-600 hover:underline"
+              className="mt-4 text-sm text-primary hover:underline"
             >
               Go to login
             </button>
@@ -142,7 +142,7 @@ export default function AcceptInvite() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Choose a password (min 8 chars)"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary focus:ring-2 focus:ring-primary/50 focus:border-transparent"
                   required
                   minLength={8}
                 />
@@ -155,7 +155,7 @@ export default function AcceptInvite() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm your password"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary focus:ring-2 focus:ring-primary/50 focus:border-transparent"
                   required
                   minLength={8}
                 />
@@ -168,7 +168,7 @@ export default function AcceptInvite() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white rounded-lg font-medium disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {submitting ? 'Activating...' : 'Set Password & Join'}
