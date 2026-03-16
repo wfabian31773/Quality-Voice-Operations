@@ -105,7 +105,7 @@ const verticals = [
   },
   {
     icon: Wrench,
-    title: 'HVAC & home services',
+    title: 'HVAC / Home Services',
     subtitle: 'Service calls, dispatch, and emergency triage',
     pains: [
       'After-hours emergency calls go unanswered or to generic voicemail',
