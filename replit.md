@@ -20,7 +20,7 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
 - **Dev:** Replit local PostgreSQL via `DATABASE_URL` (no SSL)
 - **Production:** Supabase via `PLATFORM_DB_POOL_URL` (SSL, transaction pooler port 6543)
 - **Module:** `platform/db/index.ts` — auto-switches based on `APP_ENV`
-- **Migrations:** `migrations/001_*.sql` through `migrations/031_*.sql` — 31 numbered SQL files
+- **Migrations:** `migrations/001_*.sql` through `migrations/032_*.sql` — 32 numbered SQL files
 - **Runner:** `scripts/run-migrations.ts` — idempotent, applies only files matching `\d{3}_*.sql`
 - **Seed:** `scripts/seed-demo.ts` (demo tenant + agents), `scripts/seed-admin.ts` (platform admin user), `scripts/seed-template-registry.ts` (marketplace template registry)
 - **RLS:** Row-Level Security on all tenant-scoped tables; policy uses `current_setting('app.tenant_id')`
@@ -45,6 +45,7 @@ platform/
   tenant/           Tenant provisioning service
   analytics/        Call analytics, quality scoring
   agent-templates/  Voice agent template configs + manifest.json per template
+  marketplace/      Marketplace installation engine (entitlement + install services)
   telephony/        Phone number management
   messaging/        SMS messaging
   runtime/          Voice agent runtime
@@ -53,7 +54,7 @@ platform/
   knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
   workflow/         Workflow engine
   widget/             Website voice/chat widget service (token auth, config)
-migrations/         SQL migration files (001-031)
+migrations/         SQL migration files (001-032)
 widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```
@@ -72,7 +73,7 @@ scripts/            Migration runner, seed scripts, startup script
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js), /marketplace/templates, /marketplace/templates/:id, /marketplace/categories
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install)
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events

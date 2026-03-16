@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import { getPlatformPool } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
+import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import {
+  getTemplate,
+  installTemplate,
+  listInstallations,
+  updateInstallation,
+} from '../../../platform/marketplace/InstallationService';
+import { checkEntitlement } from '../../../platform/marketplace/EntitlementService';
 
 const router = Router();
 const logger = createLogger('ADMIN_MARKETPLACE');
@@ -260,5 +269,151 @@ function formatTemplateRow(row: Record<string, unknown>) {
     updatedAt: row.updated_at,
   };
 }
+
+router.get('/marketplace/templates/:id/compatibility', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+
+  try {
+    const template = await getTemplate(req.params.id);
+    if (!template) return res.status(404).json({ error: 'Template not found' });
+
+    const result = await checkEntitlement(tenantId, {
+      minPlan: template.min_plan,
+      requiredIntegrations: template.required_integrations,
+    });
+
+    return res.json({
+      compatible: result.allowed,
+      errors: result.errors,
+      warnings: result.warnings,
+      plan: result.plan,
+      agentCount: result.agentCount,
+      maxAgents: result.maxAgents,
+    });
+  } catch (err) {
+    logger.error('Failed to check compatibility', { tenantId, templateId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to check compatibility' });
+  }
+});
+
+router.post('/marketplace/templates/:id/install', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const templateId = req.params.id;
+  const body = req.body as Record<string, unknown>;
+
+  const name = body.name as string | undefined;
+  const welcomeGreeting = body.welcomeGreeting as string | undefined;
+  const escalationConfig = body.escalationConfig as Record<string, unknown> | undefined;
+  const metadata = body.metadata as Record<string, unknown> | undefined;
+
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
+    return res.status(400).json({ error: 'name must be a non-empty string' });
+  }
+  if (welcomeGreeting !== undefined && typeof welcomeGreeting !== 'string') {
+    return res.status(400).json({ error: 'welcomeGreeting must be a string' });
+  }
+
+  try {
+    const result = await installTemplate({
+      tenantId,
+      templateId,
+      userId,
+      name: name?.trim(),
+      welcomeGreeting,
+      escalationConfig,
+      metadata,
+    });
+
+    if (!result.success) {
+      return res.status(result.errors && result.errors.length > 1 ? 422 : 400).json({
+        error: result.error,
+        errors: result.errors,
+      });
+    }
+
+    writeAuditLog({
+      tenantId,
+      actorUserId: userId,
+      actorRole: req.user!.role,
+      action: 'marketplace.template_installed',
+      resourceType: 'installation',
+      resourceId: result.installation!.id,
+      changes: {
+        templateId,
+        agentId: result.installation!.agentId,
+        templateVersion: result.installation!.templateVersion,
+      },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.status(201).json({ installation: result.installation });
+  } catch (err) {
+    logger.error('Install endpoint failed', { tenantId, templateId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to install template' });
+  }
+});
+
+router.get('/marketplace/installations', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+
+  try {
+    const installations = await listInstallations(tenantId);
+    return res.json({ installations });
+  } catch (err) {
+    logger.error('Failed to list installations', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list installations' });
+  }
+});
+
+router.patch('/marketplace/installations/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const installationId = req.params.id;
+  const body = req.body as Record<string, unknown>;
+
+  const name = body.name as string | undefined;
+  const welcomeGreeting = body.welcomeGreeting as string | undefined;
+  const escalationConfig = body.escalationConfig as Record<string, unknown> | undefined;
+
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
+    return res.status(400).json({ error: 'name must be a non-empty string' });
+  }
+  if (welcomeGreeting !== undefined && typeof welcomeGreeting !== 'string') {
+    return res.status(400).json({ error: 'welcomeGreeting must be a string' });
+  }
+
+  if (name === undefined && welcomeGreeting === undefined && escalationConfig === undefined) {
+    return res.status(400).json({ error: 'No valid fields to update. Supported: name, welcomeGreeting, escalationConfig' });
+  }
+
+  try {
+    const result = await updateInstallation(tenantId, installationId, {
+      name: name?.trim(),
+      welcomeGreeting,
+      escalationConfig,
+    });
+
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+
+    writeAuditLog({
+      tenantId,
+      actorUserId: userId,
+      actorRole: req.user!.role,
+      action: 'marketplace.installation_updated',
+      resourceType: 'installation',
+      resourceId: installationId,
+      changes: { name, welcomeGreeting, escalationConfig },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({ installation: result.installation });
+  } catch (err) {
+    logger.error('Failed to update installation', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update installation' });
+  }
+});
 
 export default router;
