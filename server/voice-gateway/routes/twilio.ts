@@ -21,6 +21,8 @@ import type { ContactStatus, ContactOutcome } from '../../../platform/campaigns'
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { createRateLimitChecker } from '../../../platform/infra/rate-limit/createRateLimiter';
 import { getPlatformPool } from '../../../platform/db';
+import crypto from 'crypto';
+import { recordDemoAnalyticsEvent, scheduleDemoDataCleanup } from '../../admin-api/routes/demo';
 
 const logger = createLogger('TWILIO_WEBHOOK');
 
@@ -31,14 +33,35 @@ const isDemoCallAllowed = createRateLimitChecker({
   maxRequests: 5,
 });
 
-function getDemoCallKey(req: import('express').Request): string {
+const activeDemoCalls = new Map<string, { callSid: string; startedAt: number; ipHash: string; agentType?: string }>();
+const DEMO_ACTIVE_CALL_TTL_MS = 4 * 60 * 1000;
+
+function getDemoCallerIp(req: import('express').Request): string {
   const forwarded = req.headers['x-forwarded-for'];
-  const ip = typeof forwarded === 'string'
+  return typeof forwarded === 'string'
     ? forwarded.split(',')[0].trim()
     : Array.isArray(forwarded)
       ? forwarded[0]
       : req.socket?.remoteAddress ?? 'unknown';
-  return `demo-call:${ip}`;
+}
+
+function getDemoCallKey(req: import('express').Request): string {
+  return `demo-call:${getDemoCallerIp(req)}`;
+}
+
+function cleanStaleDemoCallEntries(): void {
+  const now = Date.now();
+  for (const [key, entry] of activeDemoCalls) {
+    if (now - entry.startedAt > DEMO_ACTIVE_CALL_TTL_MS) {
+      activeDemoCalls.delete(key);
+    }
+  }
+}
+
+setInterval(cleanStaleDemoCallEntries, 60_000);
+
+function hashIp(ip: string): string {
+  return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
 }
 
 async function incrementDemoCallCount(): Promise<void> {
@@ -115,8 +138,24 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
     const { tenantId, agentId, agentType } = routing;
 
     if (tenantId === DEMO_TENANT_ID) {
-      const key = getDemoCallKey(req);
-      if (!isDemoCallAllowed(key)) {
+      const visitorIp = getDemoCallerIp(req);
+      const ipHash = hashIp(visitorIp);
+      const rateLimitKey = getDemoCallKey(req);
+
+      cleanStaleDemoCallEntries();
+      if (activeDemoCalls.has(visitorIp)) {
+        logger.warn('Demo call rejected — already has active call from this IP', {
+          callSid,
+          callerPhone: redactPHI(callerNumber),
+        });
+        res.type('text/xml').send(
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Say>You already have an active demo call. Please wait for it to finish before starting another.</Say><Hangup/></Response>`,
+        );
+        return;
+      }
+
+      if (!isDemoCallAllowed(rateLimitKey)) {
         logger.warn('Demo call rate limit exceeded', {
           callSid,
           callerPhone: redactPHI(callerNumber),
@@ -127,7 +166,10 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
         );
         return;
       }
+
+      activeDemoCalls.set(visitorIp, { callSid, startedAt: Date.now(), ipHash, agentType });
       incrementDemoCallCount();
+      recordDemoAnalyticsEvent('call_started', ipHash, agentType).catch(() => {});
     }
 
     let campaignParams = '';
@@ -195,12 +237,38 @@ function mapTwilioTerminalStatus(twilioStatus: string): { status: ContactStatus;
 router.post('/twilio/status', async (req: Request, res: Response) => {
   const callSid = req.body.CallSid as string;
   const callStatus = req.body.CallStatus as string;
+  const callDuration = parseInt(req.body.CallDuration as string, 10) || 0;
 
   logger.info('Twilio status callback', { callSid, callStatus });
 
   tenantCoordinators.forEach((coordinator) => {
     coordinator.handleTwilioStatusCallback(callSid, callStatus);
   });
+
+  const terminalStatuses = ['completed', 'busy', 'no-answer', 'canceled', 'failed'];
+  if (terminalStatuses.includes(callStatus)) {
+    for (const [visitorIp, entry] of activeDemoCalls) {
+      if (entry.callSid === callSid) {
+        activeDemoCalls.delete(visitorIp);
+        const eventType = callStatus === 'completed' ? 'call_completed' : 'call_abandoned';
+        recordDemoAnalyticsEvent(eventType, entry.ipHash, entry.agentType, callDuration).catch(() => {});
+
+        try {
+          const pool = getPlatformPool();
+          const { rows } = await pool.query(
+            `SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2 LIMIT 1`,
+            [DEMO_TENANT_ID, callSid],
+          );
+          if (rows.length > 0) {
+            scheduleDemoDataCleanup(rows[0].id as string);
+          }
+        } catch (err) {
+          logger.warn('Failed to schedule demo data cleanup', { callSid, error: String(err) });
+        }
+        break;
+      }
+    }
+  }
 
   const mapping = mapTwilioTerminalStatus(callStatus);
   if (mapping) {

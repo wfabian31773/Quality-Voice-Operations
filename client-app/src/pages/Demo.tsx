@@ -221,7 +221,7 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
   );
 }
 
-function ConversionCTA({ visible }: { visible: boolean }) {
+function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAgentRef?: string }) {
   if (!visible) return null;
 
   return (
@@ -273,7 +273,7 @@ function ConversionCTA({ visible }: { visible: boolean }) {
           <Link
             to="/signup"
             className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-teal/20 hover:shadow-xl hover:shadow-teal/30 text-base"
-            onClick={() => trackDemoCTA('start_free_trial')}
+            onClick={() => trackDemoCTA('start_free_trial', activeAgentRef)}
           >
             Start Free Trial
             <ArrowRight className="h-4 w-4" />
@@ -281,7 +281,7 @@ function ConversionCTA({ visible }: { visible: boolean }) {
           <Link
             to="/contact"
             className="inline-flex items-center gap-2 bg-white border border-soft-steel/50 hover:border-teal/30 text-harbor font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
-            onClick={() => trackDemoCTA('book_demo')}
+            onClick={() => trackDemoCTA('book_demo', activeAgentRef)}
           >
             Book a Demo
           </Link>
@@ -291,18 +291,14 @@ function ConversionCTA({ visible }: { visible: boolean }) {
   );
 }
 
-function trackDemoEvent(action: string) {
+function trackDemoCTA(ctaType: string, agentType?: string) {
   try {
-    fetch(`${API_BASE}/demo/analytics`, {
+    fetch(`${API_BASE}/demo/track-cta`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, timestamp: new Date().toISOString() }),
+      body: JSON.stringify({ ctaType, agentType }),
     }).catch(() => {});
   } catch {}
-}
-
-function trackDemoCTA(ctaType: string) {
-  trackDemoEvent(`cta_click_${ctaType}`);
 }
 
 export default function Demo() {
@@ -314,15 +310,7 @@ export default function Demo() {
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [showCTA, setShowCTA] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
-  const hasTrackedPageView = useRef(false);
   const prevCallStatus = useRef<string>('idle');
-
-  useEffect(() => {
-    if (!hasTrackedPageView.current) {
-      trackDemoEvent('page_view');
-      hasTrackedPageView.current = true;
-    }
-  }, []);
 
   const {
     callStatus,
@@ -347,13 +335,9 @@ export default function Demo() {
         setCallStartTime(Date.now());
         setShowCTA(false);
         setShowCelebration(false);
-        if (prev === 'idle' || prev === 'ended') {
-          trackDemoEvent('call_started');
-        }
       } else if (callStatus === 'ended' && (prev === 'connected' || prev === 'ringing')) {
         setCallStartTime(null);
         setShowCelebration(true);
-        trackDemoEvent('call_completed');
         setTimeout(() => {
           setShowCelebration(false);
           setShowCTA(true);
@@ -564,7 +548,7 @@ export default function Demo() {
         </div>
       </section>
 
-      <ConversionCTA visible={showCTA} />
+      <ConversionCTA visible={showCTA} activeAgentRef={activeAgent?.template} />
     </div>
   );
 }

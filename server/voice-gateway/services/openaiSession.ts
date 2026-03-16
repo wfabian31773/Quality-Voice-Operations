@@ -252,6 +252,7 @@ export interface RealtimeSessionResult {
   sendAudioToOpenAI: (audio: ArrayBuffer) => void;
   onOpenAIAudio: (handler: (audioEvent: TransportLayerAudio) => void) => void;
   triggerGreeting: () => void;
+  sendSystemMessage: (message: string) => void;
 }
 
 export async function createRealtimeSession(
@@ -500,19 +501,29 @@ export async function createRealtimeSession(
     wsTransport.on('audio', handler);
   };
 
+  const sendRealtimeEvent = (event: Record<string, unknown>): void => {
+    (wsTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
+  };
+
+  const injectConversationItem = (text: string): void => {
+    sendRealtimeEvent({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text }],
+      },
+    });
+    sendRealtimeEvent({ type: 'response.create' });
+  };
+
   const triggerGreeting = (): void => {
     if (!agentConfig.greeting) return;
     wsTransport.on('session.created', () => {
       try {
-        wsTransport.sendEvent({
-          type: 'conversation.item.create',
-          item: {
-            type: 'message',
-            role: 'user',
-            content: [{ type: 'input_text', text: `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]` }],
-          },
-        } as any);
-        wsTransport.sendEvent({ type: 'response.create' } as any);
+        injectConversationItem(
+          `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]`,
+        );
         slog.info('Greeting triggered', { greeting: agentConfig.greeting.substring(0, 50) });
       } catch (err) {
         slog.error('Failed to trigger greeting', { error: String(err) });
@@ -520,5 +531,14 @@ export async function createRealtimeSession(
     });
   };
 
-  return { session, callSessionId, sendAudioToOpenAI, onOpenAIAudio, triggerGreeting };
+  const sendSystemMessage = (message: string): void => {
+    try {
+      injectConversationItem(`[System: Say exactly: "${message}"]`);
+      slog.info('System message injected', { message: message.substring(0, 80) });
+    } catch (err) {
+      slog.error('Failed to inject system message', { error: String(err) });
+    }
+  };
+
+  return { session, callSessionId, sendAudioToOpenAI, onOpenAIAudio, triggerGreeting, sendSystemMessage };
 }

@@ -384,6 +384,39 @@ export function attachWebSocket(server: HTTPServer): void {
                 });
               }
 
+              if (tenantId === 'demo') {
+                const demoWarningHandler = (evt: { callLogId: string; message: string }) => {
+                  if (evt.callLogId === callSessionId && sessionResult) {
+                    sessionResult.sendSystemMessage(evt.message);
+                  }
+                };
+                const demoTerminateHandler = async (evt: { callLogId: string; twilioCallSid?: string }) => {
+                  if (evt.callLogId === callSessionId) {
+                    slog.info('Demo hard cap reached — terminating call', { callSessionId });
+                    if (evt.twilioCallSid) {
+                      try {
+                        const { createTwilioAdapterFromEnv } = await import('../services/twilioAdapter');
+                        const adapter = createTwilioAdapterFromEnv();
+                        if (adapter) {
+                          await adapter.terminateCall(evt.twilioCallSid);
+                        }
+                      } catch (err) {
+                        slog.error('Failed to terminate demo call via Twilio', { error: String(err) });
+                      }
+                    }
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.close();
+                    }
+                  }
+                };
+                coordinator.on('demo-warning', demoWarningHandler);
+                coordinator.on('demo-force-terminate', demoTerminateHandler);
+                ws.on('close', () => {
+                  coordinator.removeListener('demo-warning', demoWarningHandler);
+                  coordinator.removeListener('demo-force-terminate', demoTerminateHandler);
+                });
+              }
+
               slog.info('Bidirectional media bridge established', {
                 agentId,
                 streamSid,

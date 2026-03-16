@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../../core/logger';
-import { getMaxDurationMs } from './agentPolicy';
+import { getMaxDurationMs, getDemoMaxDurationMs, getDemoWarningMs } from './agentPolicy';
 import { detectOptOutInTranscript, addToDnc } from '../../campaigns/DncService';
 import type {
   CallRecord,
@@ -38,6 +38,7 @@ export class CallLifecycleCoordinator extends EventEmitter {
   private callIdMappings = new Map<string, string>();
   private cleanupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private maxDurationTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  private demoWarningTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private pendingMappings = new Map<string, string[]>();
   private pendingTranscripts = new Map<string, string[]>();
   private bufferedTerminations = new Map<string, BufferedTerminationSignal[]>();
@@ -315,7 +316,8 @@ export class CallLifecycleCoordinator extends EventEmitter {
     twilioCallSid?: string,
     agentSlug?: string,
   ): void {
-    const maxMs = getMaxDurationMs(agentSlug);
+    const isDemo = this.tenantId === 'demo';
+    const maxMs = isDemo ? getDemoMaxDurationMs() : getMaxDurationMs(agentSlug);
     const timeout = setTimeout(() => {
       logger.warn('Max call duration reached — forcing termination', {
         callId: callLogId,
@@ -323,9 +325,33 @@ export class CallLifecycleCoordinator extends EventEmitter {
         agentSlug,
         maxMs,
       });
+      if (isDemo) {
+        const record = this.activeCalls.get(callLogId);
+        this.emit('demo-force-terminate', {
+          callLogId,
+          tenantId: this.tenantId,
+          twilioCallSid: record?.twilioCallSid,
+        });
+      }
       this.finalizeCall(callLogId, 'completed');
     }, maxMs);
     this.maxDurationTimeouts.set(callLogId, timeout);
+
+    if (isDemo) {
+      const warningMs = getDemoWarningMs();
+      const warningTimeout = setTimeout(() => {
+        logger.info('Demo call warning — 30 seconds remaining', {
+          callId: callLogId,
+          tenantId: this.tenantId,
+        });
+        this.emit('demo-warning', {
+          callLogId,
+          tenantId: this.tenantId,
+          message: 'This demo call will end in 30 seconds.',
+        });
+      }, warningMs);
+      this.demoWarningTimeouts.set(callLogId, warningTimeout);
+    }
   }
 
   private cancelMaxDurationTimeout(callLogId: string): void {
@@ -333,6 +359,11 @@ export class CallLifecycleCoordinator extends EventEmitter {
     if (timeout) {
       clearTimeout(timeout);
       this.maxDurationTimeouts.delete(callLogId);
+    }
+    const warningTimeout = this.demoWarningTimeouts.get(callLogId);
+    if (warningTimeout) {
+      clearTimeout(warningTimeout);
+      this.demoWarningTimeouts.delete(callLogId);
     }
   }
 
