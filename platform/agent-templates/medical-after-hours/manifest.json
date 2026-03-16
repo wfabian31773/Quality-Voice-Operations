@@ -5,22 +5,75 @@
   "shortDescription": "After-hours medical triage with urgent symptom routing and safety guardrails.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["healthcare"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["createAfterHoursTicket", "triageEscalate"],
+  "category": [
+    "healthcare"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "createAfterHoursTicket",
+    "triageEscalate"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "pro",
-  "tags": ["medical", "triage", "after-hours", "healthcare", "hipaa"],
+  "tags": [
+    "medical",
+    "triage",
+    "after-hours",
+    "healthcare",
+    "hipaa"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "practiceName": { "type": "string", "description": "Name of the medical practice" },
-      "onCallTransferNumber": { "type": "string", "description": "Phone number for on-call provider" },
-      "afterHoursDepartmentId": { "type": "number", "description": "Department ID for after-hours routing" }
+      "practiceName": {
+        "type": "string",
+        "description": "Name of the medical practice"
+      },
+      "onCallTransferNumber": {
+        "type": "string",
+        "description": "Phone number for on-call provider"
+      },
+      "afterHoursDepartmentId": {
+        "type": "number",
+        "description": "Department ID for after-hours routing"
+      }
     },
-    "required": ["practiceName", "onCallTransferNumber"]
+    "required": [
+      "practiceName",
+      "onCallTransferNumber"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      },
+      {
+        "key": "temperature",
+        "lockReason": "Medical templates require a fixed temperature for safety compliance"
+      }
+    ]
   },
   "sortOrder": 1
 }

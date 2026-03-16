@@ -5,21 +5,69 @@
   "shortDescription": "Service appointment booking with emergency detection for home services.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["home-services"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["bookServiceAppointment"],
+  "category": [
+    "home-services"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "bookServiceAppointment"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "starter",
-  "tags": ["home-services", "hvac", "plumbing", "electrical", "booking"],
+  "tags": [
+    "home-services",
+    "hvac",
+    "plumbing",
+    "electrical",
+    "booking"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "businessName": { "type": "string", "description": "Home services business name" },
-      "serviceTypes": { "type": "array", "items": { "type": "string" }, "description": "Types of services offered" }
+      "businessName": {
+        "type": "string",
+        "description": "Home services business name"
+      },
+      "serviceTypes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Types of services offered"
+      }
     },
-    "required": ["businessName"]
+    "required": [
+      "businessName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 5
 }

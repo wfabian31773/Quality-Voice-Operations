@@ -5,21 +5,71 @@
   "shortDescription": "Legal intake, consultation scheduling, and case categorization.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["professional-services"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["scheduleConsultation"],
+  "category": [
+    "professional-services"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "scheduleConsultation"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "pro",
-  "tags": ["legal", "intake", "consultation", "law-firm"],
+  "tags": [
+    "legal",
+    "intake",
+    "consultation",
+    "law-firm"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "firmName": { "type": "string", "description": "Name of the law firm" },
-      "practiceAreas": { "type": "array", "items": { "type": "string" }, "description": "Areas of legal practice" }
+      "firmName": {
+        "type": "string",
+        "description": "Name of the law firm"
+      },
+      "practiceAreas": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Areas of legal practice"
+      }
     },
-    "required": ["firmName"]
+    "required": [
+      "firmName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      },
+      {
+        "key": "temperature",
+        "lockReason": "Legal templates require a fixed temperature for compliance accuracy"
+      }
+    ]
   },
   "sortOrder": 3
 }

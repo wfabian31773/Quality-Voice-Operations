@@ -87,7 +87,7 @@ export default function Layout() {
     );
   }
 
-  const onboardingAllowedPaths = ['/onboarding', '/phone-numbers', '/agents'];
+  const onboardingAllowedPaths = ['/onboarding', '/phone-numbers', '/agents', '/marketplace'];
   const isOnboardingAllowedPath = onboardingAllowedPaths.some(
     (p) => location.pathname === p || location.pathname.startsWith(p + '/'),
   );

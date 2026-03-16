@@ -5,22 +5,70 @@
   "shortDescription": "Outbound lead qualification and sales with DNC compliance.",
   "version": "1.0.0",
   "agentType": "outbound",
-  "category": ["sales"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["qualifyLead"],
+  "category": [
+    "sales"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "qualifyLead"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "pro",
-  "tags": ["sales", "outbound", "lead-qualification", "dialer"],
+  "tags": [
+    "sales",
+    "outbound",
+    "lead-qualification",
+    "dialer"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "companyName": { "type": "string", "description": "Company name" },
-      "productName": { "type": "string", "description": "Product or service being sold" },
-      "qualificationCriteria": { "type": "object", "description": "Lead qualification criteria" }
+      "companyName": {
+        "type": "string",
+        "description": "Company name"
+      },
+      "productName": {
+        "type": "string",
+        "description": "Product or service being sold"
+      },
+      "qualificationCriteria": {
+        "type": "object",
+        "description": "Lead qualification criteria"
+      }
     },
-    "required": ["companyName", "productName"]
+    "required": [
+      "companyName",
+      "productName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 8
 }

@@ -45,7 +45,7 @@ platform/
   tenant/           Tenant provisioning service
   analytics/        Call analytics, quality scoring
   agent-templates/  Voice agent template configs + manifest.json per template
-  marketplace/      Marketplace installation engine (entitlement + install services)
+  marketplace/      Marketplace installation engine (entitlement + install + checklist + customization services)
   telephony/        Phone number management
   messaging/        SMS messaging
   runtime/          Voice agent runtime
@@ -54,7 +54,7 @@ platform/
   knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
   workflow/         Workflow engine
   widget/             Website voice/chat widget service (token auth, config)
-migrations/         SQL migration files (001-032)
+migrations/         SQL migration files (001-033)
 widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```

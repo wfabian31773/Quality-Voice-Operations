@@ -5,21 +5,65 @@
   "shortDescription": "Maintenance requests, emergency routing, and tenant communication.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["real-estate"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["submitMaintenanceRequest"],
+  "category": [
+    "real-estate"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "submitMaintenanceRequest"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "starter",
-  "tags": ["property", "maintenance", "real-estate", "tenant"],
+  "tags": [
+    "property",
+    "maintenance",
+    "real-estate",
+    "tenant"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "companyName": { "type": "string", "description": "Property management company name" },
-      "emergencyNumber": { "type": "string", "description": "Emergency maintenance number" }
+      "companyName": {
+        "type": "string",
+        "description": "Property management company name"
+      },
+      "emergencyNumber": {
+        "type": "string",
+        "description": "Emergency maintenance number"
+      }
     },
-    "required": ["companyName"]
+    "required": [
+      "companyName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 4
 }

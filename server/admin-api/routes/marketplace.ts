@@ -12,6 +12,15 @@ import {
 } from '../../../platform/marketplace/InstallationService';
 import { checkEntitlement } from '../../../platform/marketplace/EntitlementService';
 import {
+  getChecklistState,
+  markStepComplete,
+  markStepIncomplete,
+} from '../../../platform/marketplace/ChecklistService';
+import {
+  buildCustomizationSchema,
+  validateCustomizationUpdate,
+} from '../../../platform/marketplace/CustomizationSchema';
+import {
   isNewerVersion,
   getUpgradeType,
   isMajorUpgrade,
@@ -450,147 +459,6 @@ router.post('/marketplace/installations/:id/upgrade', requireAuth, async (req, r
   }
 });
 
-router.get('/marketplace/installations', requireAuth, async (req, res) => {
-  try {
-    const pool = getPlatformPool();
-    const tenantId = req.user!.tenantId;
-
-    const result = await pool.query(
-      `SELECT
-        tai.id, tai.tenant_id, tai.template_id, tai.installed_version,
-        tai.status, tai.config, tai.agent_id, tai.installed_at, tai.updated_at,
-        tr.display_name AS template_name, tr.short_description AS template_description,
-        tr.icon_url AS template_icon, tr.current_version AS latest_version,
-        tr.supported_channels, tr.agent_type, tr.slug AS template_slug,
-        COALESCE(
-          (SELECT json_agg(json_build_object('name', tc.name, 'displayName', tc.display_name))
-           FROM template_category_map tcm
-           JOIN template_categories tc ON tc.id = tcm.category_id
-           WHERE tcm.template_id = tr.id),
-          '[]'
-        ) AS categories
-      FROM tenant_agent_installations tai
-      JOIN template_registry tr ON tr.id = tai.template_id
-      WHERE tai.tenant_id = $1
-      ORDER BY tai.installed_at DESC`,
-      [tenantId],
-    );
-
-    res.json({
-      installations: result.rows.map((row) => ({
-        id: row.id,
-        tenantId: row.tenant_id,
-        templateId: row.template_id,
-        installedVersion: row.installed_version,
-        status: row.status,
-        config: row.config,
-        agentId: row.agent_id,
-        installedAt: row.installed_at,
-        updatedAt: row.updated_at,
-        templateName: row.template_name,
-        templateDescription: row.template_description,
-        templateIcon: row.template_icon,
-        latestVersion: row.latest_version,
-        supportedChannels: row.supported_channels,
-        agentType: row.agent_type,
-        templateSlug: row.template_slug,
-        categories: row.categories,
-        updateAvailable: row.installed_version !== row.latest_version,
-      })),
-    });
-  } catch (err) {
-    logger.error('Failed to list installations', { error: (err as Error).message });
-    res.status(500).json({ error: 'Failed to list installations' });
-  }
-});
-
-router.post('/marketplace/templates/:id/install', requireAuth, async (req, res) => {
-  const pool = getPlatformPool();
-  const client = await pool.connect();
-  try {
-    const tenantId = req.user!.tenantId;
-    const templateId = req.params.id;
-    const { agentName, greeting, phoneNumberId } = req.body || {};
-
-    const templateResult = await client.query(
-      `SELECT id, current_version, display_name, agent_type, default_voice, min_plan
-       FROM template_registry WHERE (id = $1 OR slug = $1) AND status = 'active'`,
-      [templateId],
-    );
-
-    if (templateResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Template not found or not active' });
-    }
-
-    const template = templateResult.rows[0];
-
-    const existingResult = await client.query(
-      `SELECT id FROM tenant_agent_installations WHERE tenant_id = $1 AND template_id = $2`,
-      [tenantId, template.id],
-    );
-
-    if (existingResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Template already installed' });
-    }
-
-    if (phoneNumberId) {
-      const phoneCheck = await client.query(
-        `SELECT id FROM phone_numbers WHERE id = $1 AND tenant_id = $2`,
-        [phoneNumberId, tenantId],
-      );
-      if (phoneCheck.rows.length === 0) {
-        return res.status(400).json({ error: 'Invalid or unauthorized phone number' });
-      }
-    }
-
-    await client.query('BEGIN');
-
-    const agentResult = await client.query(
-      `INSERT INTO agents (tenant_id, name, type, voice, status, welcome_greeting)
-       VALUES ($1, $2, $3, $4, 'active', $5)
-       RETURNING id`,
-      [tenantId, agentName || template.display_name, template.agent_type === 'outbound' ? 'outbound-sales' : 'general', template.default_voice, greeting || ''],
-    );
-    const agentId = agentResult.rows[0].id;
-
-    const installResult = await client.query(
-      `INSERT INTO tenant_agent_installations (tenant_id, template_id, installed_version, status, config, agent_id)
-       VALUES ($1, $2, $3, 'active', $4, $5)
-       RETURNING id`,
-      [tenantId, template.id, template.current_version, JSON.stringify({ phoneNumberId: phoneNumberId || null }), agentId],
-    );
-
-    await client.query(
-      `UPDATE template_registry SET install_count = install_count + 1 WHERE id = $1`,
-      [template.id],
-    );
-
-    await client.query(
-      `INSERT INTO template_install_events (tenant_id, template_id, event_type, version)
-       VALUES ($1, $2, 'installed', $3)`,
-      [tenantId, template.id, template.current_version],
-    );
-
-    await client.query('COMMIT');
-
-    res.json({
-      installationId: installResult.rows[0].id,
-      agentId,
-      message: 'Template installed successfully',
-    });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    logger.error('Failed to install template', { error: (err as Error).message });
-    res.status(500).json({ error: 'Failed to install template' });
-  } finally {
-    client.release();
-  }
-});
-  } finally {
-    client.release();
-  }
-});
-
 router.post('/platform/templates/:id/versions', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const { version, changelog, releaseNotes, packageRef } = req.body as {
@@ -961,6 +829,7 @@ router.patch('/marketplace/installations/:id', requireAuth, requireRole('admin')
   const { tenantId, userId } = req.user!;
   const installationId = req.params.id;
   const body = req.body as Record<string, unknown>;
+  const pool = getPlatformPool();
 
   const name = body.name as string | undefined;
   const welcomeGreeting = body.welcomeGreeting as string | undefined;
@@ -978,6 +847,38 @@ router.patch('/marketplace/installations/:id', requireAuth, requireRole('admin')
   }
 
   try {
+    const { rows: instRows } = await pool.query(
+      `SELECT tr.config_schema
+       FROM tenant_agent_installations tai
+       JOIN template_registry tr ON tr.id = tai.template_id
+       WHERE tai.id = $1 AND tai.tenant_id = $2 AND tai.status = 'active'`,
+      [installationId, tenantId],
+    );
+
+    if (instRows.length > 0) {
+      const configSchema = instRows[0].config_schema as Record<string, unknown> | null;
+      const normalized: Record<string, unknown> = {};
+      if (name !== undefined) normalized.name = name;
+      if (welcomeGreeting !== undefined) normalized.welcome_greeting = welcomeGreeting;
+      if (escalationConfig !== undefined) normalized.escalation_config = escalationConfig;
+
+      const validation = validateCustomizationUpdate(configSchema, normalized);
+      if (!validation.valid) {
+        const errors: string[] = [];
+        if (validation.rejectedFields.length > 0) {
+          errors.push(`Restricted fields: ${validation.rejectedFields.join(', ')}`);
+        }
+        if (validation.valueErrors.length > 0) {
+          errors.push(...validation.valueErrors);
+        }
+        return res.status(validation.rejectedFields.length > 0 ? 403 : 400).json({
+          error: errors[0] ?? 'Validation failed',
+          rejectedFields: validation.rejectedFields,
+          valueErrors: validation.valueErrors,
+        });
+      }
+    }
+
     const result = await updateInstallation(tenantId, installationId, {
       name: name?.trim(),
       welcomeGreeting,
@@ -1004,6 +905,422 @@ router.patch('/marketplace/installations/:id', requireAuth, requireRole('admin')
   } catch (err) {
     logger.error('Failed to update installation', { tenantId, installationId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update installation' });
+  }
+});
+
+router.get('/marketplace/installations/:id/checklist', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const installationId = req.params.id;
+
+  try {
+    const checklist = await getChecklistState(tenantId, installationId);
+    if (!checklist) {
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+    return res.json({ checklist });
+  } catch (err) {
+    logger.error('Failed to get checklist', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get checklist' });
+  }
+});
+
+router.patch('/marketplace/installations/:id/checklist', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const installationId = req.params.id;
+  const { stepKey, completed } = req.body as { stepKey?: string; completed?: boolean };
+
+  if (!stepKey || typeof stepKey !== 'string') {
+    return res.status(400).json({ error: 'stepKey is required' });
+  }
+
+  try {
+    const result = completed === false
+      ? await markStepIncomplete(tenantId, installationId, stepKey)
+      : await markStepComplete(tenantId, installationId, stepKey);
+
+    if (!result.success) {
+      return res.status(result.error === 'Installation not found' ? 404 : 400).json({ error: result.error });
+    }
+
+    return res.json({ checklist: result.checklist });
+  } catch (err) {
+    logger.error('Failed to update checklist', { tenantId, installationId, stepKey, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update checklist' });
+  }
+});
+
+router.get('/marketplace/installations/:id/customization-schema', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const installationId = req.params.id;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT tai.id, tai.agent_id, tai.template_id, tr.slug AS template_slug,
+              tr.config_schema, a.type AS agent_type,
+              a.name, a.voice, a.model, a.temperature, a.welcome_greeting,
+              a.system_prompt, a.escalation_config, a.metadata, a.status AS agent_status
+       FROM tenant_agent_installations tai
+       JOIN template_registry tr ON tr.id = tai.template_id
+       JOIN agents a ON a.id = tai.agent_id AND a.tenant_id = tai.tenant_id
+       WHERE tai.id = $1 AND tai.tenant_id = $2 AND tai.status = 'active'`,
+      [installationId, tenantId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    const configSchema = rows[0].config_schema as Record<string, unknown> | null;
+    const schema = buildCustomizationSchema(configSchema);
+    const agentMeta = (rows[0].metadata as Record<string, unknown>) ?? {};
+
+    return res.json({
+      schema,
+      currentValues: {
+        name: rows[0].name,
+        voice: rows[0].voice,
+        model: rows[0].model,
+        temperature: rows[0].temperature,
+        welcome_greeting: rows[0].welcome_greeting,
+        system_prompt: rows[0].system_prompt,
+        escalation_config: rows[0].escalation_config,
+        type: rows[0].agent_type,
+        status: rows[0].agent_status,
+        business_details: agentMeta.business_details ?? '',
+        working_hours: agentMeta.working_hours ?? null,
+        enabled_tools: agentMeta.enabled_tools ?? null,
+        knowledge_base: agentMeta.knowledge_base ?? null,
+      },
+      agentId: rows[0].agent_id,
+      agentType: rows[0].agent_type,
+      templateSlug: rows[0].template_slug,
+    });
+  } catch (err) {
+    logger.error('Failed to get customization schema', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get customization schema' });
+  }
+});
+
+router.patch('/marketplace/installations/:id/customize', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const installationId = req.params.id;
+  const body = req.body as Record<string, unknown>;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows } = await client.query(
+      `SELECT tai.id, tai.agent_id, tr.config_schema, a.metadata AS agent_metadata
+       FROM tenant_agent_installations tai
+       JOIN template_registry tr ON tr.id = tai.template_id
+       JOIN agents a ON a.id = tai.agent_id AND a.tenant_id = tai.tenant_id
+       WHERE tai.id = $1 AND tai.tenant_id = $2 AND tai.status = 'active'`,
+      [installationId, tenantId],
+    );
+
+    if (rows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    const configSchema = rows[0].config_schema as Record<string, unknown> | null;
+    const agentId = rows[0].agent_id as string;
+
+    const validation = validateCustomizationUpdate(configSchema, body);
+    if (!validation.valid) {
+      await client.query('COMMIT');
+      const errors: string[] = [];
+      if (validation.rejectedFields.length > 0) {
+        errors.push(`Restricted fields: ${validation.rejectedFields.join(', ')}`);
+      }
+      if (validation.valueErrors.length > 0) {
+        errors.push(...validation.valueErrors);
+      }
+      return res.status(validation.rejectedFields.length > 0 ? 403 : 400).json({
+        error: errors[0] ?? 'Validation failed',
+        rejectedFields: validation.rejectedFields,
+        valueErrors: validation.valueErrors,
+      });
+    }
+
+    const agentColumnFields = ['name', 'welcome_greeting', 'voice', 'temperature', 'escalation_config'];
+    const metadataFields = ['business_details', 'working_hours', 'enabled_tools', 'knowledge_base'];
+    const updates: string[] = ['updated_at = NOW()'];
+    const values: unknown[] = [agentId, tenantId];
+
+    for (const key of agentColumnFields) {
+      if (key in body) {
+        const val = key === 'escalation_config' ? JSON.stringify(body[key]) : body[key];
+        values.push(val);
+        updates.push(`${key} = $${values.length}`);
+      }
+    }
+
+    const metaUpdates: Record<string, unknown> = {};
+    let hasMetaUpdates = false;
+    for (const key of metadataFields) {
+      if (key in body) {
+        metaUpdates[key] = body[key];
+        hasMetaUpdates = true;
+      }
+    }
+
+    if (hasMetaUpdates) {
+      const existingMeta = (rows[0].agent_metadata as Record<string, unknown>) ?? {};
+      const newMeta = { ...existingMeta, ...metaUpdates };
+      values.push(JSON.stringify(newMeta));
+      updates.push(`metadata = $${values.length}`);
+    }
+
+    if (updates.length > 1) {
+      await client.query(
+        `UPDATE agents SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2`,
+        values,
+      );
+    }
+
+    await client.query(
+      `UPDATE tenant_agent_installations SET customization_overrides = $1, updated_at = NOW()
+       WHERE id = $2 AND tenant_id = $3`,
+      [JSON.stringify(body), installationId, tenantId],
+    );
+
+    await client.query('COMMIT');
+
+    writeAuditLog({
+      tenantId,
+      actorUserId: userId,
+      actorRole: req.user!.role,
+      action: 'marketplace.installation_customized',
+      resourceType: 'installation',
+      resourceId: installationId,
+      changes: body,
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to customize installation', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to customize installation' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/marketplace/installations/:id/assign-phone', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const installationId = req.params.id;
+  const { phoneNumberId } = req.body as { phoneNumberId?: string };
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: instRows } = await client.query(
+      `SELECT tai.id, tai.agent_id
+       FROM tenant_agent_installations tai
+       WHERE tai.id = $1 AND tai.tenant_id = $2 AND tai.status = 'active'`,
+      [installationId, tenantId],
+    );
+
+    if (instRows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    const agentId = instRows[0].agent_id as string;
+
+    let selectedPhoneId = phoneNumberId;
+    if (!selectedPhoneId) {
+      const { rows: phoneRows } = await client.query(
+        `SELECT pn.id FROM phone_numbers pn
+         WHERE pn.tenant_id = $1 AND pn.status = 'active'
+         AND NOT EXISTS (
+           SELECT 1 FROM number_routing nr WHERE nr.phone_number_id = pn.id AND nr.is_active = TRUE
+         )
+         ORDER BY pn.created_at ASC
+         LIMIT 1`,
+        [tenantId],
+      );
+
+      if (phoneRows.length === 0) {
+        await client.query('COMMIT');
+        return res.status(400).json({ error: 'No available phone numbers. Please purchase or assign a number first.' });
+      }
+
+      selectedPhoneId = phoneRows[0].id as string;
+    } else {
+      const { rows: phoneRows } = await client.query(
+        `SELECT id FROM phone_numbers WHERE id = $1 AND tenant_id = $2 AND status = 'active'`,
+        [selectedPhoneId, tenantId],
+      );
+      if (phoneRows.length === 0) {
+        await client.query('COMMIT');
+        return res.status(404).json({ error: 'Phone number not found or not active' });
+      }
+    }
+
+    await client.query(
+      `UPDATE number_routing SET is_active = FALSE
+       WHERE phone_number_id = $1 AND tenant_id = $2`,
+      [selectedPhoneId, tenantId],
+    );
+
+    const { rows: existingRoute } = await client.query(
+      `SELECT id FROM number_routing
+       WHERE phone_number_id = $1 AND agent_id = $2 AND tenant_id = $3`,
+      [selectedPhoneId, agentId, tenantId],
+    );
+
+    if (existingRoute.length > 0) {
+      await client.query(
+        `UPDATE number_routing SET is_active = TRUE, priority = 1, updated_at = NOW()
+         WHERE phone_number_id = $1 AND agent_id = $2 AND tenant_id = $3`,
+        [selectedPhoneId, agentId, tenantId],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO number_routing (phone_number_id, agent_id, priority, is_active, tenant_id)
+         VALUES ($1, $2, 1, TRUE, $3)`,
+        [selectedPhoneId, agentId, tenantId],
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const { rows: phoneInfo } = await pool.query(
+      `SELECT id, phone_number, friendly_name FROM phone_numbers WHERE id = $1`,
+      [selectedPhoneId],
+    );
+
+    return res.json({
+      success: true,
+      phoneNumber: phoneInfo[0] ?? { id: selectedPhoneId },
+      agentId,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to assign phone', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to assign phone number' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/marketplace/installations/:id/enable-widget', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const installationId = req.params.id;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: instRows } = await client.query(
+      `SELECT tai.id, tai.agent_id
+       FROM tenant_agent_installations tai
+       WHERE tai.id = $1 AND tai.tenant_id = $2 AND tai.status = 'active'`,
+      [installationId, tenantId],
+    );
+
+    if (instRows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    const agentId = instRows[0].agent_id as string;
+
+    const { rows: existing } = await client.query(
+      `SELECT id, enabled FROM widget_configs WHERE tenant_id = $1`,
+      [tenantId],
+    );
+
+    if (existing.length > 0) {
+      await client.query(
+        `UPDATE widget_configs SET agent_id = $1, enabled = TRUE, updated_at = NOW()
+         WHERE tenant_id = $2`,
+        [agentId, tenantId],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO widget_configs (tenant_id, agent_id, enabled, greeting, primary_color, text_chat_enabled, voice_enabled)
+         VALUES ($1, $2, TRUE, 'Hello! How can I help you today?', '#6366f1', TRUE, TRUE)`,
+        [tenantId, agentId],
+      );
+    }
+
+    await client.query('COMMIT');
+
+    return res.json({ success: true, agentId });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to enable widget', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to enable widget' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/marketplace/installations/:id/publish-agent', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const installationId = req.params.id;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: instRows } = await client.query(
+      `SELECT tai.id, tai.agent_id, a.status
+       FROM tenant_agent_installations tai
+       JOIN agents a ON a.id = tai.agent_id AND a.tenant_id = tai.tenant_id
+       WHERE tai.id = $1 AND tai.tenant_id = $2 AND tai.status = 'active'`,
+      [installationId, tenantId],
+    );
+
+    if (instRows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    const agentId = instRows[0].agent_id as string;
+
+    await client.query(
+      `UPDATE agents SET status = 'active', updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+      [agentId, tenantId],
+    );
+
+    await client.query('COMMIT');
+
+    writeAuditLog({
+      tenantId,
+      actorUserId: userId,
+      actorRole: req.user!.role,
+      action: 'marketplace.agent_published',
+      resourceType: 'installation',
+      resourceId: installationId,
+      changes: { agentId, status: 'active' },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({ success: true, agentId });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to publish agent', { tenantId, installationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to publish agent' });
+  } finally {
+    client.release();
   }
 });
 

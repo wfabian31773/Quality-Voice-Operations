@@ -5,21 +5,71 @@
   "shortDescription": "Guided troubleshooting with diagnostics, ticketing, and tiered escalation.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["customer-service"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["collectDiagnostics", "createTechTicket"],
-  "optionalTools": ["lookupKnowledgeBase"],
+  "category": [
+    "customer-service"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "collectDiagnostics",
+    "createTechTicket"
+  ],
+  "optionalTools": [
+    "lookupKnowledgeBase"
+  ],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "pro",
-  "tags": ["technical-support", "troubleshooting", "diagnostics", "tier-2"],
+  "tags": [
+    "technical-support",
+    "troubleshooting",
+    "diagnostics",
+    "tier-2"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "companyName": { "type": "string", "description": "Company name" },
-      "productNames": { "type": "array", "items": { "type": "string" }, "description": "Supported product names" }
+      "companyName": {
+        "type": "string",
+        "description": "Company name"
+      },
+      "productNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Supported product names"
+      }
     },
-    "required": ["companyName"]
+    "required": [
+      "companyName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 9
 }

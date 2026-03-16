@@ -5,21 +5,65 @@
   "shortDescription": "Professional call answering with ticketing and priority routing.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["general"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["createServiceTicket"],
+  "category": [
+    "general"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "createServiceTicket"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "starter",
-  "tags": ["answering-service", "receptionist", "messages", "ticketing"],
+  "tags": [
+    "answering-service",
+    "receptionist",
+    "messages",
+    "ticketing"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "practiceName": { "type": "string", "description": "Business or practice name" },
-      "ticketingConfig": { "type": "object", "description": "Custom ticketing configuration" }
+      "practiceName": {
+        "type": "string",
+        "description": "Business or practice name"
+      },
+      "ticketingConfig": {
+        "type": "object",
+        "description": "Custom ticketing configuration"
+      }
     },
-    "required": ["practiceName"]
+    "required": [
+      "practiceName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 6
 }

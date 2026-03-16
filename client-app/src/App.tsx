@@ -24,6 +24,7 @@ import Marketplace from './pages/Marketplace';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import UpdateCenter from './pages/UpdateCenter';
+import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -98,6 +99,7 @@ export default function App() {
         <Route path="/marketplace/:id" element={<Marketplace />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
+        <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

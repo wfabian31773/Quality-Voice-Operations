@@ -5,21 +5,71 @@
   "shortDescription": "Full-featured customer support with ticketing, FAQ, and escalation.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["customer-service"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["createSupportTicket"],
-  "optionalTools": ["lookupFaq", "escalateToAgent"],
+  "category": [
+    "customer-service"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "createSupportTicket"
+  ],
+  "optionalTools": [
+    "lookupFaq",
+    "escalateToAgent"
+  ],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "starter",
-  "tags": ["customer-support", "ticketing", "faq", "escalation"],
+  "tags": [
+    "customer-support",
+    "ticketing",
+    "faq",
+    "escalation"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "companyName": { "type": "string", "description": "Company name" },
-      "supportCategories": { "type": "array", "items": { "type": "string" }, "description": "Available support categories" }
+      "companyName": {
+        "type": "string",
+        "description": "Company name"
+      },
+      "supportCategories": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Available support categories"
+      }
     },
-    "required": ["companyName"]
+    "required": [
+      "companyName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 7
 }

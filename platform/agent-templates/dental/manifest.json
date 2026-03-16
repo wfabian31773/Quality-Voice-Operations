@@ -5,21 +5,65 @@
   "shortDescription": "Dental office scheduling and patient intake with emergency detection.",
   "version": "1.0.0",
   "agentType": "inbound",
-  "category": ["healthcare"],
-  "supportedChannels": ["voice"],
-  "requiredTools": ["scheduleDentalAppointment"],
+  "category": [
+    "healthcare"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "scheduleDentalAppointment"
+  ],
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
   "minPlan": "starter",
-  "tags": ["dental", "scheduling", "healthcare", "appointments"],
+  "tags": [
+    "dental",
+    "scheduling",
+    "healthcare",
+    "appointments"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
-      "practiceName": { "type": "string", "description": "Name of the dental practice" },
-      "operatingHours": { "type": "string", "description": "Practice operating hours" }
+      "practiceName": {
+        "type": "string",
+        "description": "Name of the dental practice"
+      },
+      "operatingHours": {
+        "type": "string",
+        "description": "Practice operating hours"
+      }
     },
-    "required": ["practiceName"]
+    "required": [
+      "practiceName"
+    ],
+    "customizable": [
+      "name",
+      "welcome_greeting",
+      "business_details",
+      "voice",
+      "temperature",
+      "escalation_config",
+      "enabled_tools",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "Set by template — changing the agent type would break workflow guardrails"
+      },
+      {
+        "key": "model",
+        "lockReason": "Controlled by template to ensure consistent performance"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "Core prompt is managed by the template to maintain guardrails and compliance"
+      }
+    ]
   },
   "sortOrder": 2
 }

@@ -178,16 +178,20 @@ function InstallModal({
   const phoneNumbers = phoneData?.phoneNumbers ?? [];
   const selectedPhone = phoneNumbers.find((p) => p.id === phoneNumberId);
 
+  const navigate = useNavigate();
   const mutation = useMutation({
     mutationFn: () =>
-      api.post(`/marketplace/templates/${template.id}/install`, {
+      api.post<{ installation: { id: string } }>(`/marketplace/templates/${template.id}/install`, {
         name,
         welcomeGreeting: welcomeGreeting || undefined,
         metadata: phoneNumberId ? { assignedPhoneNumberId: phoneNumberId } : undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       onInstalled();
       onClose();
+      if (data?.installation?.id) {
+        navigate(`/marketplace/installations/${data.installation.id}/setup`);
+      }
     },
   });
 

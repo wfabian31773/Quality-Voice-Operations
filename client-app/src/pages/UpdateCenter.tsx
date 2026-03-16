@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { ArrowUpCircle, AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { ArrowUpCircle, AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RefreshCw, Settings2, Bot } from 'lucide-react';
 
 interface ChangelogEntry {
   version: string;
@@ -169,12 +170,29 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
   );
 }
 
+interface InstallationItem {
+  id: string;
+  template_name: string;
+  template_slug: string;
+  agent_name: string;
+  agent_id: string;
+  agent_type: string;
+  agent_status: string;
+  installed_version: string;
+  status: string;
+}
+
 export default function UpdateCenter() {
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['marketplace-updates'],
     queryFn: () => api.get<{ updates: AvailableUpdate[] }>('/marketplace/updates'),
+  });
+
+  const { data: installationsData } = useQuery({
+    queryKey: ['marketplace-installations'],
+    queryFn: () => api.get<{ installations: InstallationItem[] }>('/marketplace/installations'),
   });
 
   const upgradeMutation = useMutation({
@@ -186,6 +204,7 @@ export default function UpdateCenter() {
   });
 
   const updates = data?.updates ?? [];
+  const installations = (installationsData?.installations ?? []) as InstallationItem[];
 
   return (
     <div className="space-y-6">
@@ -194,7 +213,7 @@ export default function UpdateCenter() {
           <ArrowUpCircle className="h-6 w-6 text-primary" />
           <div>
             <h1 className="text-2xl font-bold">Update Center</h1>
-            <p className="text-sm text-muted">Manage template updates for your installed agents</p>
+            <p className="text-sm text-muted">Manage template updates and post-install setup for your agents</p>
           </div>
         </div>
         <button
@@ -240,6 +259,34 @@ export default function UpdateCenter() {
               isUpgrading={upgradeMutation.isPending}
             />
           ))}
+        </div>
+      )}
+
+      {installations.length > 0 && (
+        <div className="space-y-4 mt-8">
+          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+            <Bot className="h-5 w-5 text-text-muted" />
+            Installed Agents
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {installations.map((inst) => (
+              <div key={inst.id} className="bg-surface border border-border rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-text-primary">{inst.agent_name ?? inst.template_name}</h3>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {inst.template_name} &middot; v{inst.installed_version}
+                  </p>
+                </div>
+                <Link
+                  to={`/marketplace/installations/${inst.id}/setup`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary hover:text-primary-hover border border-primary/30 rounded-lg hover:bg-primary/5 transition"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Setup
+                </Link>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
