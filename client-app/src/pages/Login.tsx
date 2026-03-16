@@ -6,18 +6,20 @@ import { LogIn, UserPlus } from 'lucide-react';
 
 export default function Login() {
   const [searchParams] = useSearchParams();
-  const [mode, setMode] = useState<'login' | 'signup'>(searchParams.get('cancelled') ? 'login' : 'login');
+  const [mode, setMode] = useState<'login' | 'signup'>(
+    searchParams.get('mode') === 'signup' ? 'signup' : 'login'
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [plan, setPlan] = useState('starter');
+  const [plan, setPlan] = useState(searchParams.get('plan') || 'starter');
   const [error, setError] = useState(searchParams.get('cancelled') ? 'Checkout was cancelled. You can try again.' : '');
   const [loading, setLoading] = useState(false);
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -26,7 +28,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -62,7 +64,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-white mb-4">
             {mode === 'login' ? <LogIn className="h-6 w-6" /> : <UserPlus className="h-6 w-6" />}
           </div>
-          <h1 className="text-2xl font-bold text-text-primary">Voice AI Operations Hub</h1>
+          <h1 className="text-2xl font-bold text-text-primary font-display">Quality Voice Operations</h1>
           <p className="text-sm text-text-secondary mt-1">
             {mode === 'login' ? 'Sign in to your account' : 'Create your account'}
           </p>

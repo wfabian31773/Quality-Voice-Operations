@@ -1,7 +1,7 @@
-# Voice AI Operations Hub (Multi-Tenant SaaS)
+# Quality Voice Operations (QVO) — Multi-Tenant SaaS
 
 ## Overview
-Multi-tenant SaaS platform for managing AI-powered voice operations at enterprise scale. Built per a 35-part enterprise blueprint.
+Multi-tenant SaaS platform for managing AI-powered voice operations at enterprise scale. Built per a 35-part enterprise blueprint. Rebranded to QVO (Quality Voice Operations).
 
 ## Active Workflows
 - **Platform Dev** — starts all services together via `scripts/start-platform-dev.sh`:
@@ -59,6 +59,10 @@ scripts/            Migration runner, seed scripts, startup script
 - React 19 + Vite 6 + TypeScript + Tailwind CSS v4
 - Auth: JWT stored in localStorage, Zustand auth store with `initialized` flag
 - Data fetching: React Query (@tanstack/react-query) with auto-refresh
+- **QVO Brand:** Deep Harbor (#123047), Signal Teal (#2E8C83), Clinic Mist (#F3F7F7). Fonts: Sora (display), Manrope (body), Inter (UI).
+- **Public marketing pages (PublicLayout):** `/` (Landing), `/product`, `/pricing`, `/use-cases`, `/integrations`, `/demo`, `/contact`, `/docs`
+- **Protected dashboard pages (Layout):** `/dashboard`, `/agents`, `/phone-numbers`, `/calls`, etc.
+- **Route structure:** Dashboard moved from `/` to `/dashboard`. Root `/` is the public landing page. Login redirects to `/dashboard`.
 - Pages: Login, Onboarding, Demo, Dashboard, Agents, Phone Numbers, Call History, Connectors, Users, Analytics, Observability, Quality, API Keys, Audit Log, Platform Admin
 - Dark/light mode toggle, responsive sidebar layout
 - API proxy: /api/* → http://localhost:3002/* (strips /api prefix)

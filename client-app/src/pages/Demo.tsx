@@ -36,10 +36,10 @@ function formatEventType(type: string): string {
 }
 
 function eventColor(type: string): string {
-  if (type === 'call_ended') return 'text-green-400';
-  if (type === 'call_started') return 'text-blue-400';
-  if (type === 'workflow_triggered') return 'text-yellow-400';
-  return 'text-gray-400';
+  if (type === 'call_ended') return 'text-calm-green';
+  if (type === 'call_started') return 'text-teal';
+  if (type === 'workflow_triggered') return 'text-warm-amber';
+  return 'text-soft-steel';
 }
 
 function timeAgo(ts: string): string {
@@ -53,10 +53,10 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function PhoneDisplay({ phone, accentColor }: { phone: DemoPhone | undefined; accentColor: 'blue' | 'purple' }) {
-  const bgClass = accentColor === 'blue' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-purple-500/10 border-purple-500/20';
-  const iconClass = accentColor === 'blue' ? 'text-blue-400' : 'text-purple-400';
-  const labelClass = accentColor === 'blue' ? 'text-blue-300' : 'text-purple-300';
+function PhoneDisplay({ phone, variant }: { phone: DemoPhone | undefined; variant: 'teal' | 'harbor' }) {
+  const bgClass = variant === 'teal' ? 'bg-teal/10 border-teal/20' : 'bg-harbor/10 border-harbor/20';
+  const iconClass = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
+  const labelClass = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
 
   if (!phone) {
     return (
@@ -64,7 +64,7 @@ function PhoneDisplay({ phone, accentColor }: { phone: DemoPhone | undefined; ac
         <AlertCircle className={`h-5 w-5 ${iconClass} shrink-0`} />
         <div>
           <p className={`text-xs ${labelClass} mb-0.5`}>Demo line</p>
-          <p className="text-sm text-gray-400">Not configured</p>
+          <p className="text-sm text-slate-ink/50">Not configured</p>
         </div>
       </div>
     );
@@ -76,7 +76,7 @@ function PhoneDisplay({ phone, accentColor }: { phone: DemoPhone | undefined; ac
         <Phone className={`h-5 w-5 ${iconClass} shrink-0`} />
         <div>
           <p className={`text-xs ${labelClass} mb-0.5`}>Demo line — awaiting real number</p>
-          <p className="text-sm text-gray-400">Contact your administrator to provision a Twilio number</p>
+          <p className="text-sm text-slate-ink/50">Contact your administrator to provision a Twilio number</p>
         </div>
       </div>
     );
@@ -87,7 +87,7 @@ function PhoneDisplay({ phone, accentColor }: { phone: DemoPhone | undefined; ac
       <Phone className={`h-5 w-5 ${iconClass} shrink-0`} />
       <div>
         <p className={`text-xs ${labelClass} mb-0.5`}>Call to try it</p>
-        <p className="text-lg font-mono font-bold text-white">{formatPhoneNumber(phone.phoneNumber)}</p>
+        <p className="text-lg font-mono font-bold text-harbor">{formatPhoneNumber(phone.phoneNumber)}</p>
       </div>
     </div>
   );
@@ -146,136 +146,121 @@ export default function Demo() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-      <header className="border-b border-white/10 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight">Voice AI Operations Hub</h1>
-          <a
-            href="/login"
-            className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            Sign In
-          </a>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-6 py-12">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Experience Voice AI Live
-          </h2>
-          <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-            Call one of our demo agents and experience the power of AI-driven
-            voice interactions. No signup required.
+    <div>
+      <section className="bg-harbor text-white py-16 lg:py-24">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center">
+          <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            Live Demo
+          </p>
+          <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
+            Experience QVO live.
+          </h1>
+          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto">
+            Call one of our demo agents and hear what professional voice operations sound like. No signup required.
           </p>
         </div>
+      </section>
 
-        {demoConfigured === false && (
-          <div className="mb-8 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-center text-yellow-300 text-sm">
-            Demo phone lines are not yet provisioned. The demo system is ready but requires real Twilio phone numbers to accept calls.
-          </div>
-        )}
+      <section className="py-12 lg:py-16">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+          {demoConfigured === false && (
+            <div className="mb-8 p-4 bg-warm-amber/10 border border-warm-amber/30 rounded-xl text-center text-warm-amber text-sm font-body">
+              Demo phone lines are not yet provisioned. The demo system is ready but requires phone numbers to accept calls.
+            </div>
+          )}
 
-        <div className="grid md:grid-cols-2 gap-8 mb-12">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-blue-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <Headphones className="h-5 w-5 text-blue-400" />
+          <div className="grid md:grid-cols-2 gap-8 mb-12">
+            <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 hover:border-teal/30 transition-colors">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
+                  <Headphones className="h-5 w-5 text-teal" />
+                </div>
+                <h3 className="font-display text-xl font-semibold text-harbor">Answering Service</h3>
               </div>
-              <h3 className="text-xl font-semibold">Answering Service</h3>
-            </div>
-            <p className="text-gray-400 mb-6">
-              A professional answering service demo. Aria will greet you, take a
-              message, and demonstrate professional call handling.
-            </p>
-            <PhoneDisplay phone={answeringPhone} accentColor="blue" />
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-purple-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <Stethoscope className="h-5 w-5 text-purple-400" />
-              </div>
-              <h3 className="text-xl font-semibold">Medical After-Hours</h3>
-            </div>
-            <p className="text-gray-400 mb-6">
-              An after-hours medical answering demo. Aria will collect your
-              concern, assess urgency, and take a callback number.
-            </p>
-            <PhoneDisplay phone={medicalPhone} accentColor="purple" />
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          <div className="md:col-span-1 bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="h-5 w-5 text-green-400" />
-              <h3 className="font-semibold">Demo Stats</h3>
-            </div>
-            <div className="text-center py-6">
-              <p className="text-5xl font-bold text-green-400">
-                {loading ? '...' : totalCalls.toLocaleString()}
+              <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
+                A professional answering service demo. The agent will greet you, take a message, and demonstrate professional call handling.
               </p>
-              <p className="text-sm text-gray-400 mt-2">Total Demo Calls</p>
+              <PhoneDisplay phone={answeringPhone} variant="teal" />
             </div>
-            <p className="text-xs text-gray-500 text-center">
-              Rate limited to 5 calls per hour per caller
+
+            <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 hover:border-harbor/30 transition-colors">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
+                  <Stethoscope className="h-5 w-5 text-harbor" />
+                </div>
+                <h3 className="font-display text-xl font-semibold text-harbor">Medical After-Hours</h3>
+              </div>
+              <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
+                An after-hours medical answering demo. The agent will collect your concern, assess urgency, and take a callback number.
+              </p>
+              <PhoneDisplay phone={medicalPhone} variant="harbor" />
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            <div className="md:col-span-1 bg-white rounded-2xl border border-soft-steel/50 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="h-5 w-5 text-calm-green" />
+                <h3 className="font-display font-semibold text-harbor">Demo Stats</h3>
+              </div>
+              <div className="text-center py-6">
+                <p className="text-5xl font-display font-bold text-teal">
+                  {loading ? '...' : totalCalls.toLocaleString()}
+                </p>
+                <p className="text-sm text-slate-ink/50 font-body mt-2">Total Demo Calls</p>
+              </div>
+              <p className="text-xs text-slate-ink/40 font-body text-center">
+                Rate limited to 5 calls per hour per caller
+              </p>
+            </div>
+
+            <div className="md:col-span-2 bg-white rounded-2xl border border-soft-steel/50 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Activity className="h-5 w-5 text-teal" />
+                <h3 className="font-display font-semibold text-harbor">Live Activity Feed</h3>
+                <span className="ml-auto text-xs text-slate-ink/40 font-body">Updates every 5s</span>
+              </div>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin h-6 w-6 border-2 border-teal border-t-transparent rounded-full" />
+                </div>
+              ) : events.length === 0 ? (
+                <div className="text-center py-12 text-slate-ink/40 font-body">
+                  <p>No demo calls yet. Be the first to try it!</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-80 overflow-y-auto">
+                  {events.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-center justify-between px-4 py-3 bg-mist rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-medium font-body ${eventColor(event.eventType)}`}>
+                          {formatEventType(event.eventType)}
+                        </span>
+                        <span className="text-sm text-slate-ink/70 font-body">{event.agentName}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-slate-ink/40 font-body">
+                        {event.durationSeconds != null && (
+                          <span>{event.durationSeconds}s</span>
+                        )}
+                        <span>{timeAgo(event.timestamp)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="text-center text-sm text-slate-ink/50 font-body space-y-2">
+            <p>
+              Demo calls are handled by the same system used in production.
             </p>
           </div>
-
-          <div className="md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Activity className="h-5 w-5 text-blue-400" />
-              <h3 className="font-semibold">Live Activity Feed</h3>
-              <span className="ml-auto text-xs text-gray-500">Updates every 5s</span>
-            </div>
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin h-6 w-6 border-2 border-blue-400 border-t-transparent rounded-full" />
-              </div>
-            ) : events.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <p>No demo calls yet. Be the first to try it!</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {events.map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex items-center justify-between px-4 py-3 bg-white/5 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`text-xs font-medium ${eventColor(event.eventType)}`}>
-                        {formatEventType(event.eventType)}
-                      </span>
-                      <span className="text-sm text-gray-300">{event.agentName}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      {event.durationSeconds != null && (
-                        <span>{event.durationSeconds}s</span>
-                      )}
-                      <span>{timeAgo(event.timestamp)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
-
-        <div className="text-center text-sm text-gray-500 space-y-2">
-          <p>
-            Demo calls are handled by the same AI engine used in production.
-          </p>
-          <p>
-            Ready to get started?{' '}
-            <a href="/login" className="text-blue-400 hover:text-blue-300 transition-colors">
-              Create your account
-            </a>{' '}
-            and deploy your own voice AI agents.
-          </p>
-        </div>
-      </main>
+      </section>
     </div>
   );
 }

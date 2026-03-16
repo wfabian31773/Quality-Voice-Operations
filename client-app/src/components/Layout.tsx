@@ -19,7 +19,7 @@ interface NavItem {
 }
 
 const links: NavItem[] = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
   { to: '/calls', icon: PhoneCall, label: 'Call History' },
@@ -98,7 +98,7 @@ export default function Layout() {
   const sidebar = (
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-white/10">
-        <h1 className="text-lg font-bold text-white tracking-tight">Voice AI Hub</h1>
+        <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
         <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
       </div>
 
@@ -117,7 +117,7 @@ export default function Layout() {
           <NavLink
             key={link.to}
             to={link.to}
-            end={link.to === '/'}
+            end={link.to === '/dashboard'}
             onClick={() => setMobileOpen(false)}
             className={({ isActive }) =>
               clsx(
@@ -173,7 +173,7 @@ export default function Layout() {
           <button onClick={() => setMobileOpen(true)}>
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <span className="font-semibold text-sm">Voice AI Hub</span>
+          <span className="font-semibold text-sm font-display">QVO</span>
           <div className="w-5" />
         </header>
 

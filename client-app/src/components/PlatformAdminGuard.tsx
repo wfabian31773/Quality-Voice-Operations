@@ -5,7 +5,7 @@ export default function PlatformAdminGuard({ children }: { children: React.React
   const { user } = useAuth();
 
   if (!user?.isPlatformAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
