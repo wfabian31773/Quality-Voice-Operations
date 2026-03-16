@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Phone,
+  PhoneOff,
   BarChart3,
   Headphones,
   Stethoscope,
@@ -10,13 +12,18 @@ import {
   Scale,
   HelpCircle,
   DollarSign,
+  CheckCircle2,
+  ArrowRight,
+  Sparkles,
+  Clock,
+  Zap,
+  Shield,
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import ConversationTranscript from '../components/demo/ConversationTranscript';
 import ToolExecutionPanel from '../components/demo/ToolExecutionPanel';
 import CalendarToolVisual from '../components/demo/CalendarToolVisual';
 import SystemActivityFeed from '../components/demo/SystemActivityFeed';
-import CallStatusIndicator from '../components/demo/CallStatusIndicator';
 import { useDemoSSE } from '../hooks/useDemoSSE';
 
 const API_BASE = '/api';
@@ -62,6 +69,65 @@ function formatPhoneNumber(raw: string): string {
   return raw;
 }
 
+function VoiceWaveform({ active }: { active: boolean }) {
+  return (
+    <div className="flex items-center gap-[3px] h-8" aria-hidden="true">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-[3px] rounded-full transition-all duration-300 ${
+            active
+              ? 'bg-teal demo-waveform-bar'
+              : 'bg-soft-steel/30 h-1'
+          }`}
+          style={
+            active
+              ? {
+                  animationDelay: `${i * 0.08}s`,
+                  animationDuration: `${0.6 + Math.random() * 0.4}s`,
+                }
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function CallTimer({ startTime }: { startTime: number }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return (
+    <span className="font-mono text-sm text-teal tabular-nums">
+      {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+    </span>
+  );
+}
+
+function DemoCompletionCelebration({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <div className="demo-celebration-overlay">
+      <div className="demo-celebration-content">
+        <div className="w-16 h-16 rounded-full bg-calm-green/20 flex items-center justify-center mx-auto mb-4 demo-celebration-icon">
+          <CheckCircle2 className="h-8 w-8 text-calm-green" />
+        </div>
+        <p className="font-display text-lg font-semibold text-harbor">Demo Complete!</p>
+        <p className="text-sm text-slate-ink/60 font-body mt-1">Great experience, right?</p>
+      </div>
+    </div>
+  );
+}
+
 function AgentCard({
   agent,
   colorIndex,
@@ -80,7 +146,7 @@ function AgentCard({
     ? variant === 'teal'
       ? 'border-teal ring-2 ring-teal/20'
       : 'border-harbor ring-2 ring-harbor/20'
-    : 'border-soft-steel/50 hover:border-teal/30';
+    : 'border-white/20 hover:border-teal/30';
 
   const iconBg = variant === 'teal' ? 'bg-teal/10' : 'bg-harbor/10';
   const iconColor = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
@@ -90,7 +156,7 @@ function AgentCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`bg-white rounded-2xl border ${borderClass} p-6 text-left transition-all cursor-pointer w-full`}
+      className={`demo-glass-card rounded-2xl border ${borderClass} p-6 text-left transition-all duration-300 cursor-pointer w-full hover:scale-[1.02] hover:shadow-lg`}
     >
       <div className="flex items-center gap-3 mb-3">
         <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
@@ -152,12 +218,108 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
   );
 }
 
+function ConversionCTA({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+
+  return (
+    <section className="demo-cta-section py-16 lg:py-24">
+      <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
+        <div className="inline-flex items-center gap-2 bg-teal/10 text-teal text-sm font-medium px-4 py-1.5 rounded-full mb-6">
+          <Sparkles className="h-4 w-4" />
+          You just experienced QVO
+        </div>
+        <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+          Deploy your own AI voice agents in minutes
+        </h2>
+        <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto mb-8">
+          What you just heard is the same technology powering hundreds of businesses.
+          Get started with your own custom voice agents today.
+        </p>
+
+        <div className="grid sm:grid-cols-3 gap-6 mb-10 text-left max-w-2xl mx-auto">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Zap className="h-4 w-4 text-teal" />
+            </div>
+            <div>
+              <p className="font-display text-sm font-semibold text-harbor">5-Minute Setup</p>
+              <p className="text-xs text-slate-ink/50 font-body">Deploy your first agent in minutes, not weeks</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Shield className="h-4 w-4 text-teal" />
+            </div>
+            <div>
+              <p className="font-display text-sm font-semibold text-harbor">HIPAA Ready</p>
+              <p className="text-xs text-slate-ink/50 font-body">Enterprise-grade security built in</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Clock className="h-4 w-4 text-teal" />
+            </div>
+            <div>
+              <p className="font-display text-sm font-semibold text-harbor">24/7 Coverage</p>
+              <p className="text-xs text-slate-ink/50 font-body">Never miss a call again</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Link
+            to="/signup"
+            className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-teal/20 hover:shadow-xl hover:shadow-teal/30 text-base"
+            onClick={() => trackDemoCTA('start_free_trial')}
+          >
+            Start Free Trial
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            to="/contact"
+            className="inline-flex items-center gap-2 bg-white border border-soft-steel/50 hover:border-teal/30 text-harbor font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
+            onClick={() => trackDemoCTA('book_demo')}
+          >
+            Book a Demo
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function trackDemoEvent(action: string) {
+  try {
+    fetch(`${API_BASE}/demo/analytics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, timestamp: new Date().toISOString() }),
+    }).catch(() => {});
+  } catch {}
+}
+
+function trackDemoCTA(ctaType: string) {
+  trackDemoEvent(`cta_click_${ctaType}`);
+}
+
 export default function Demo() {
   const [totalCalls, setTotalCalls] = useState(0);
   const [agents, setAgents] = useState<DemoAgent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [demoConfigured, setDemoConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [showCTA, setShowCTA] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const hasTrackedPageView = useRef(false);
+  const prevCallStatus = useRef<string>('idle');
+
+  useEffect(() => {
+    if (!hasTrackedPageView.current) {
+      trackDemoEvent('page_view');
+      hasTrackedPageView.current = true;
+    }
+  }, []);
 
   const {
     callStatus,
@@ -173,6 +335,29 @@ export default function Demo() {
   const hasCalendarTool = tools.some(
     (t) => t.tool === 'checkAvailability' || t.tool === 'scheduleAppointment',
   );
+
+  useEffect(() => {
+    const prev = prevCallStatus.current;
+    if (callStatus !== prev) {
+      if (callStatus === 'connected' || callStatus === 'ringing') {
+        setCallStartTime(Date.now());
+        setShowCTA(false);
+        setShowCelebration(false);
+        if (prev === 'idle' || prev === 'ended') {
+          trackDemoEvent('call_started');
+        }
+      } else if (callStatus === 'ended' && (prev === 'connected' || prev === 'ringing')) {
+        setCallStartTime(null);
+        setShowCelebration(true);
+        trackDemoEvent('call_completed');
+        setTimeout(() => {
+          setShowCelebration(false);
+          setShowCTA(true);
+        }, 2500);
+      }
+      prevCallStatus.current = callStatus;
+    }
+  }, [callStatus]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -223,17 +408,25 @@ export default function Demo() {
         description="Experience QVO's AI voice agents live. Watch real-time call handling, see how conversations flow, and explore the analytics dashboard."
         canonicalPath="/demo"
       />
-      <section className="bg-harbor text-white py-16 lg:py-24">
-        <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center">
+
+      <DemoCompletionCelebration show={showCelebration} />
+
+      <section className="bg-harbor text-white py-16 lg:py-24 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-harbor via-harbor to-harbor-light opacity-80" />
+        <div className="absolute inset-0 demo-grid-pattern opacity-5" />
+        <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center relative z-10">
           <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
             Live Demo
           </p>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
             Experience QVO live.
           </h1>
-          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto">
+          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-8">
             Choose an agent below and call to watch the conversation unfold in real-time. No signup required.
           </p>
+          <div className="flex items-center justify-center">
+            <VoiceWaveform active={isActive} />
+          </div>
         </div>
       </section>
 
@@ -246,17 +439,13 @@ export default function Demo() {
           )}
 
           <div className="mb-8">
-            <CallStatusIndicator status={callStatus} agentName={agentName} duration={duration} />
-          </div>
-
-          <div className="mb-8">
             <h2 className="font-display text-2xl font-bold text-harbor mb-2">Choose a Demo Agent</h2>
             <p className="text-sm text-slate-ink/60 font-body">
               Select an agent to see its details and try it out.
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-10">
             {agents.map((agent, idx) => (
               <AgentCard
                 key={agent.id}
@@ -274,24 +463,60 @@ export default function Demo() {
           </div>
 
           {activeAgent && (
-            <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 mb-8">
-              <div className="flex items-center gap-3 mb-4">
-                {(() => {
-                  const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
-                  return (
-                    <div className="w-12 h-12 rounded-xl bg-teal/10 flex items-center justify-center">
-                      <IconComponent className="h-6 w-6 text-teal" />
-                    </div>
-                  );
-                })()}
-                <div>
-                  <h3 className="font-display text-xl font-semibold text-harbor">{activeAgent.name}</h3>
-                  <span className="text-xs font-medium text-teal">{activeAgent.category}</span>
+            <div className={`demo-glass-card rounded-2xl border p-8 mb-10 transition-all duration-500 ${
+              isActive
+                ? 'border-teal/40 shadow-lg shadow-teal/10'
+                : 'border-white/20'
+            }`}>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
+                    return (
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-300 ${
+                        isActive ? 'bg-teal/20' : 'bg-teal/10'
+                      }`}>
+                        <IconComponent className="h-6 w-6 text-teal" />
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <h3 className="font-display text-xl font-semibold text-harbor">{activeAgent.name}</h3>
+                    <span className="text-xs font-medium text-teal">{activeAgent.category}</span>
+                  </div>
+                </div>
+
+                <div className={`demo-call-status-bar ${
+                  isActive ? 'demo-call-status-active' : 'demo-call-status-idle'
+                }`}>
+                  {isActive ? (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-calm-green animate-pulse" />
+                      <Phone className="h-4 w-4 text-calm-green" />
+                      <span className="text-sm font-medium text-calm-green">Call Active</span>
+                      {callStartTime && <CallTimer startTime={callStartTime} />}
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-soft-steel/40" />
+                      <PhoneOff className="h-4 w-4 text-slate-ink/40" />
+                      <span className="text-sm text-slate-ink/40">Idle</span>
+                    </>
+                  )}
                 </div>
               </div>
+
               <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
                 {activeAgent.description}
               </p>
+
+              <div className="flex items-center gap-4 mb-4">
+                <VoiceWaveform active={isActive} />
+                {isActive && (
+                  <span className="text-xs text-teal font-body animate-pulse">Listening...</span>
+                )}
+              </div>
+
               <AgentPhoneDisplay agent={activeAgent} />
             </div>
           )}
@@ -306,7 +531,7 @@ export default function Demo() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 mb-12">
-            <div className="md:col-span-1 bg-white rounded-2xl border border-soft-steel/50 p-6">
+            <div className="md:col-span-1 demo-glass-card rounded-2xl border border-white/20 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="h-5 w-5 text-calm-green" />
                 <h3 className="font-display font-semibold text-harbor">Demo Stats</h3>
@@ -334,6 +559,8 @@ export default function Demo() {
           </div>
         </div>
       </section>
+
+      <ConversionCTA visible={showCTA} />
     </div>
   );
 }
