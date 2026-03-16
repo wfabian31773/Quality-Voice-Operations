@@ -183,6 +183,11 @@ const DEMO_AGENT_METADATA: Record<string, { icon: string; category: string; useC
     category: 'Financial',
     useCases: ['Account lookup', 'Payment arrangements', 'FDCPA compliance'],
   },
+  'home-services': {
+    icon: 'wrench',
+    category: 'Home Services',
+    useCases: ['Book repair appointments', 'Qualify emergencies', 'Dispatch technicians'],
+  },
 };
 
 router.get('/demo/agents', demoActivityLimiter, async (_req: Request, res: Response) => {

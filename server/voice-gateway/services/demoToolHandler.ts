@@ -114,6 +114,50 @@ const DEMO_TOOL_RESPONSES: Record<string, (args: Record<string, unknown>) => unk
     disposition: (args.disposition as string) || 'contact_made',
     demo: true,
   }),
+
+  bookServiceAppointment: (args) => ({
+    success: true,
+    bookingId: `DEMO-SVC-${Math.floor(1000 + Math.random() * 9000)}`,
+    confirmationMessage: `Demo service appointment booked for ${(args.customerFirstName as string) || 'customer'} ${(args.customerLastName as string) || ''}. Service: ${(args.serviceType as string) || 'HVAC repair'}. Address: ${(args.serviceAddress as string) || 'provided'}. A technician would be dispatched in a real scenario.`,
+    serviceType: (args.serviceType as string) || 'HVAC repair',
+    urgency: (args.urgency as string) || 'routine',
+    appointmentDate: (args.preferredDate as string) || '2026-03-20',
+    appointmentWindow: (args.preferredTimeWindow as string) || '8:00 AM - 12:00 PM',
+    technicianAssigned: 'Mike R. — Senior HVAC Technician',
+    demo: true,
+  }),
+
+  checkTechnicianAvailability: (args) => ({
+    success: true,
+    availableSlots: [
+      { date: (args.preferredDate as string) || '2026-03-20', window: '8:00 AM - 12:00 PM', technician: 'Mike R.' },
+      { date: (args.preferredDate as string) || '2026-03-20', window: '1:00 PM - 5:00 PM', technician: 'Sarah T.' },
+      { date: '2026-03-21', window: '8:00 AM - 12:00 PM', technician: 'Mike R.' },
+      { date: '2026-03-21', window: '1:00 PM - 5:00 PM', technician: 'James K.' },
+    ],
+    serviceType: (args.serviceType as string) || 'HVAC',
+    message: 'Demo technician availability retrieved. In a real scenario, this would check the live dispatch calendar.',
+    demo: true,
+  }),
+
+  createHomeServiceTicket: (args) => ({
+    success: true,
+    ticketId: `DEMO-HST-${Math.floor(1000 + Math.random() * 9000)}`,
+    confirmationMessage: `Demo service ticket created for ${(args.customerName as string) || 'customer'}. Issue: ${(args.issueDescription as string) || 'service request'}. Priority: ${(args.urgency as string) || 'routine'}. A dispatcher would be notified in a real scenario.`,
+    urgency: (args.urgency as string) || 'routine',
+    serviceType: (args.serviceType as string) || 'HVAC',
+    estimatedArrival: (args.urgency as string) === 'emergency' ? '30-60 minutes' : 'scheduled appointment',
+    demo: true,
+  }),
+
+  sendServiceConfirmationSms: (args) => ({
+    success: true,
+    messageId: `DEMO-SMS-${Math.floor(1000 + Math.random() * 9000)}`,
+    confirmationMessage: `Demo SMS confirmation would be sent to ${(args.phoneNumber as string) || 'customer phone'}. Booking ID: ${(args.bookingId as string) || 'N/A'}.`,
+    recipient: (args.phoneNumber as string) || 'customer',
+    message: 'Your service appointment has been confirmed. A technician will arrive during your scheduled window.',
+    demo: true,
+  }),
 };
 
 export function isDemoTenant(tenantId: string): boolean {

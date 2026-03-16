@@ -12,6 +12,7 @@ import {
   Scale,
   HelpCircle,
   DollarSign,
+  Wrench,
   CheckCircle2,
   ArrowRight,
   Sparkles,
@@ -49,6 +50,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   scale: Scale,
   'help-circle': HelpCircle,
   'dollar-sign': DollarSign,
+  wrench: Wrench,
 };
 
 const AGENT_COLORS: string[] = [
@@ -59,6 +61,7 @@ const AGENT_COLORS: string[] = [
   'teal',
   'harbor',
   'teal',
+  'harbor',
 ];
 
 function formatPhoneNumber(raw: string): string {
@@ -333,7 +336,8 @@ export default function Demo() {
 
   const isActive = callStatus === 'ringing' || callStatus === 'connected';
   const hasCalendarTool = tools.some(
-    (t) => t.tool === 'checkAvailability' || t.tool === 'scheduleAppointment',
+    (t) => t.tool === 'checkAvailability' || t.tool === 'scheduleAppointment' ||
+           t.tool === 'bookServiceAppointment' || t.tool === 'checkTechnicianAvailability',
   );
 
   useEffect(() => {
