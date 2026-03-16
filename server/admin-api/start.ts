@@ -39,7 +39,9 @@ server.listen(PORT, '0.0.0.0', async () => {
   startMetricsRollup();
   startSystemMetricsWriter();
 
-  const voiceGatewayBaseUrl = process.env.VOICE_GATEWAY_BASE_URL ?? 'http://localhost:3001';
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  const defaultGatewayUrl = devDomain ? `https://${devDomain}` : 'http://localhost:3001';
+  const voiceGatewayBaseUrl = process.env.VOICE_GATEWAY_BASE_URL ?? defaultGatewayUrl;
   const adminApiBaseUrl = process.env.ADMIN_API_BASE_URL ?? `http://localhost:${PORT}`;
   startCampaignScheduler({
     outboundCallbackBaseUrl: voiceGatewayBaseUrl,

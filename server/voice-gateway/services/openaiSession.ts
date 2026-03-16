@@ -458,7 +458,7 @@ export async function createRealtimeSession(
     if (!agentConfig.greeting) return;
     wsTransport.on('session.created', () => {
       try {
-        wsTransport.send({
+        wsTransport.sendEvent({
           type: 'conversation.item.create',
           item: {
             type: 'message',
@@ -466,7 +466,7 @@ export async function createRealtimeSession(
             content: [{ type: 'input_text', text: `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]` }],
           },
         } as any);
-        wsTransport.send({ type: 'response.create' } as any);
+        wsTransport.sendEvent({ type: 'response.create' } as any);
         slog.info('Greeting triggered', { greeting: agentConfig.greeting.substring(0, 50) });
       } catch (err) {
         slog.error('Failed to trigger greeting', { error: String(err) });

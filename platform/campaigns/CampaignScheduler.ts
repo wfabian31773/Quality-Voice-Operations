@@ -25,28 +25,35 @@ export interface CampaignSchedulerConfig {
 
 function isWithinCallWindow(config: Record<string, unknown>): boolean {
   const timezone = (config.timezone as string) || 'America/Chicago';
-  const windowStart = (config.callWindowStart as string) || '09:00';
-  const windowEnd = (config.callWindowEnd as string) || '18:00';
-  const daysOfWeek = (config.daysOfWeek as number[]) || [1, 2, 3, 4, 5];
 
   try {
     const now = new Date();
     const localStr = now.toLocaleString('en-US', { timeZone: timezone });
     const localDate = new Date(localStr);
-
     const dayOfWeek = localDate.getDay();
-    if (!daysOfWeek.includes(dayOfWeek)) return false;
-
     const hours = localDate.getHours();
     const minutes = localDate.getMinutes();
     const currentMinutes = hours * 60 + minutes;
 
+    const callWindows = config.callWindows as Array<{ start: string; end: string; days: number[] }> | undefined;
+    if (callWindows && Array.isArray(callWindows) && callWindows.length > 0) {
+      return callWindows.some((w) => {
+        if (!w.days.includes(dayOfWeek)) return false;
+        const [startH, startM] = w.start.split(':').map(Number);
+        const [endH, endM] = w.end.split(':').map(Number);
+        return currentMinutes >= startH * 60 + startM && currentMinutes < endH * 60 + endM;
+      });
+    }
+
+    const windowStart = (config.callWindowStart as string) || '09:00';
+    const windowEnd = (config.callWindowEnd as string) || '18:00';
+    const daysOfWeek = (config.daysOfWeek as number[]) || [1, 2, 3, 4, 5];
+
+    if (!daysOfWeek.includes(dayOfWeek)) return false;
+
     const [startH, startM] = windowStart.split(':').map(Number);
     const [endH, endM] = windowEnd.split(':').map(Number);
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-
-    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    return currentMinutes >= startH * 60 + startM && currentMinutes < endH * 60 + endM;
   } catch (err) {
     logger.warn('Failed to check call window timezone', { timezone, error: String(err) });
     return true;
@@ -128,7 +135,7 @@ export class CampaignScheduler {
           continue;
         }
 
-        const maxConcurrent = (campaign.config.maxConcurrentCalls as number) ?? DEFAULT_MAX_CONCURRENT;
+        const maxConcurrent = (campaign.config.maxConcurrent as number) ?? (campaign.config.maxConcurrentCalls as number) ?? DEFAULT_MAX_CONCURRENT;
         const maxAttempts = (campaign.config.maxAttempts as number) ?? 3;
         const retryDelayMinutes = (campaign.config.retryDelayMinutes as number) ?? 30;
 
