@@ -8,8 +8,11 @@ import { logError } from '../../platform/core/observability';
 import { createTwilioAdapterFromEnv } from './services/twilioAdapter';
 import { setTwilioAdapter } from './routes/twilio';
 import { validateEnvironment } from '../../scripts/validate-env';
+import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 
 const logger = createLogger('VOICE_GATEWAY');
+
+registerCoreTools();
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
 const envResult = validateEnvironment({ exitOnFailure: isProd });
