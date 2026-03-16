@@ -3,7 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createLogger } from '../../../platform/core/logger';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { loadAgentConfig } from '../services/agentLoader';
-import { getAgentConfig } from '../services/numberLookup';
+import { getAgentConfig, getAgentToolOverrides } from '../services/numberLookup';
 import { createRealtimeSession, type RealtimeSessionResult } from '../services/openaiSession';
 import { writeCallEvent, updateCallState, finalizeCallSession } from '../services/callPersistence';
 import { sessionManager } from '../services/sessionManager';
@@ -254,11 +254,14 @@ export function attachWebSocket(server: HTTPServer): void {
 
             const coordinator = getCoordinator(tenantId);
             const dbAgent = await getAgentConfig(tenantId, agentId);
+            const toolOverrides = await getAgentToolOverrides(tenantId, agentId);
+            const trustedAgentType = dbAgent?.type || agentType || 'general';
             const agentCfg = loadAgentConfig({
               tenantId,
               agentId,
-              agentType: agentType || dbAgent?.type || 'general',
+              agentType: trustedAgentType,
               callerPhone: callerNumber,
+              toolOverrides,
               dbAgent,
             });
 
@@ -327,6 +330,8 @@ export function attachWebSocket(server: HTTPServer): void {
                 calledNumber,
                 callSid: twilioCallSid,
                 direction: callDirection,
+                templateKey: trustedAgentType,
+                toolOverrides,
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
                 budgetGuard,

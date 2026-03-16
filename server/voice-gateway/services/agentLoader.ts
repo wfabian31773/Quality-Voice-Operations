@@ -57,6 +57,7 @@ import {
 } from '../../../platform/agent-templates/collections';
 import { createLogger } from '../../../platform/core/logger';
 import type { TenantId } from '../../../platform/core/types';
+import { filterToolsByPermissions, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -84,6 +85,7 @@ export interface AgentLoadContext {
   agentType: string;
   callerPhone?: string;
   callerMemorySummary?: string;
+  toolOverrides?: ToolOverride[];
   dbAgent?: {
     name: string;
     system_prompt?: string;
@@ -200,7 +202,7 @@ function buildTemplateConfig(
   meta: Record<string, unknown>,
   dbTools: AgentToolDef[],
 ): LoadedAgentConfig | null {
-  const { tenantId, agentId, callerPhone, callerMemorySummary, dbAgent } = ctx;
+  const { tenantId, agentId, callerPhone, callerMemorySummary, dbAgent, toolOverrides } = ctx;
 
   switch (templateKey) {
     case 'dental': {
@@ -215,7 +217,7 @@ function buildTemplateConfig(
         greeting: (meta.greeting as string) ?? getDentalGreeting(practiceName),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
-        tools: mergeTools(DENTAL_TOOLS, dbTools),
+        tools: filterToolsByPermissions(mergeTools(DENTAL_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: DENTAL_SAFETY_GUARDRAILS,
         metadata: { practiceName },
       };
@@ -233,7 +235,7 @@ function buildTemplateConfig(
         greeting: (meta.greeting as string) ?? getPropertyManagementGreeting(companyName),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
-        tools: mergeTools(PROPERTY_MANAGEMENT_TOOLS, dbTools),
+        tools: filterToolsByPermissions(mergeTools(PROPERTY_MANAGEMENT_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: PROPERTY_MANAGEMENT_GUARDRAILS,
         metadata: { companyName },
       };
@@ -252,7 +254,7 @@ function buildTemplateConfig(
         greeting: (meta.greeting as string) ?? getHomeServicesGreeting(companyName),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
-        tools: mergeTools(HOME_SERVICES_TOOLS, dbTools),
+        tools: filterToolsByPermissions(mergeTools(HOME_SERVICES_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: HOME_SERVICES_GUARDRAILS,
         metadata: { companyName, serviceTypes },
       };
@@ -271,7 +273,7 @@ function buildTemplateConfig(
         greeting: (meta.greeting as string) ?? getLegalGreeting(firmName),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
-        tools: mergeTools(LEGAL_TOOLS, dbTools),
+        tools: filterToolsByPermissions(mergeTools(LEGAL_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: LEGAL_SAFETY_GUARDRAILS,
         metadata: { firmName, practiceAreas },
       };
@@ -357,7 +359,7 @@ function buildTemplateConfig(
 }
 
 export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
-  const { tenantId, agentId, agentType, callerPhone, callerMemorySummary, dbAgent } = ctx;
+  const { tenantId, agentId, agentType, callerPhone, callerMemorySummary, dbAgent, toolOverrides } = ctx;
 
   const templateKey = resolveTemplateKey(agentType, agentId);
   const meta = (dbAgent?.metadata ?? {}) as Record<string, unknown>;
@@ -382,7 +384,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         greeting: (meta.greeting as string) ?? `Thank you for calling ${practiceName}. How can I help you today?`,
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
-        tools: mergedTools,
+        tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
         guardrails: [],
         metadata: { practiceName },
       };
@@ -407,7 +409,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         greeting: (meta.greeting as string) ?? getAfterHoursGreeting(practiceName),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
-        tools: mergedTools,
+        tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
         guardrails: MEDICAL_SAFETY_GUARDRAILS,
         metadata: { practiceName, onCallTransferNumber: onCallNumber },
       };
@@ -426,7 +428,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
           greeting: (meta.greeting as string) ?? 'Hello, how can I help you today?',
           voice: dbAgent.voice ?? 'sage',
           model: dbAgent.model ?? 'gpt-4o-realtime-preview',
-          tools: dbTools,
+          tools: filterToolsByPermissions(dbTools, templateKey, toolOverrides),
           guardrails: [],
           metadata: meta,
         };

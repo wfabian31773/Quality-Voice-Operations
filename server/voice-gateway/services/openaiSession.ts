@@ -17,6 +17,7 @@ import { CallerMemoryService } from '../../../platform/infra/memory/CallerMemory
 import type { OutboxService } from '../../../platform/integrations/outbox/OutboxService';
 import { globalToolRegistry } from '../../../platform/tools/registry';
 import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeContext';
+import { isToolDenied, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
@@ -40,6 +41,8 @@ export interface SessionContext {
   calledNumber: string;
   callSid: string;
   direction?: 'inbound' | 'outbound';
+  templateKey?: string;
+  toolOverrides?: ToolOverride[];
   lifecycleCoordinator: CallLifecycleCoordinator;
   workflowEngine?: WorkflowEngine;
   budgetGuard?: BudgetGuardService;
@@ -61,6 +64,11 @@ function buildToolHandler(
 ) {
   return async (toolName: string, args: Record<string, unknown>): Promise<string> => {
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
+
+    if (ctx.templateKey && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
+      logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
+      return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+    }
 
     if (ctx.workflowEngine) {
       await updateCallState(tenantId, callSessionId, 'WORKFLOW_EXECUTION');

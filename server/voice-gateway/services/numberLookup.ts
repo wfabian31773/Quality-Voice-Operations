@@ -1,5 +1,6 @@
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import type { ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 
 const logger = createLogger('NUMBER_LOOKUP');
 
@@ -89,6 +90,26 @@ export async function getAgentConfig(tenantId: string, agentId: string) {
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function getAgentToolOverrides(tenantId: string, agentId: string): Promise<ToolOverride[]> {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT tool_name, is_enabled FROM agent_tools WHERE agent_id = $1 AND tenant_id = $2`,
+      [agentId, tenantId],
+    );
+    await client.query('COMMIT');
+    return rows.map((r) => ({ toolName: r.tool_name as string, enabled: r.is_enabled as boolean }));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return [];
   } finally {
     client.release();
   }

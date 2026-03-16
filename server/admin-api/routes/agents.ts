@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import { getTemplatePermissions, getAllKnownTools } from '../../../platform/agent-templates/toolPermissions';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -350,6 +351,151 @@ router.post('/agents/:id/prompt-versions/:version/restore', requireAuth, require
     await client.query('ROLLBACK');
     logger.error('Failed to restore prompt version', { tenantId, agentId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to restore prompt version' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/agents/:id/tools', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: agentRows } = await client.query(
+      `SELECT id, type FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (agentRows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const agentType = agentRows[0].type as string;
+    const permissions = getTemplatePermissions(agentType);
+    const allTools = getAllKnownTools();
+
+    const { rows: overrideRows } = await client.query(
+      `SELECT tool_name, is_enabled FROM agent_tools WHERE agent_id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    await client.query('COMMIT');
+
+    const overrideMap = new Map<string, boolean>();
+    for (const row of overrideRows) {
+      overrideMap.set(row.tool_name as string, row.is_enabled as boolean);
+    }
+
+    const tools = allTools.map((toolName) => {
+      const override = overrideMap.get(toolName);
+      const isAllowedByTemplate = permissions.allowedTools.includes(toolName);
+      const isDeniedByTemplate = permissions.deniedTools.includes(toolName);
+
+      let enabled: boolean;
+      if (override !== undefined) {
+        enabled = override;
+      } else if (isAllowedByTemplate) {
+        enabled = true;
+      } else if (isDeniedByTemplate) {
+        enabled = false;
+      } else {
+        enabled = permissions.allowedTools.length === 0;
+      }
+
+      return {
+        name: toolName,
+        enabled,
+        allowedByTemplate: isAllowedByTemplate,
+        deniedByTemplate: isDeniedByTemplate,
+        hasOverride: override !== undefined,
+      };
+    });
+
+    return res.json({ tools, agentType, templatePermissions: permissions });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to get agent tools', { tenantId, agentId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get agent tools' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/agents/:id/tools', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const body = req.body as Record<string, unknown>;
+
+  const overrides = body.overrides;
+  if (!Array.isArray(overrides)) {
+    return res.status(400).json({ error: 'overrides must be an array of { toolName: string, enabled: boolean }' });
+  }
+
+  const knownTools = new Set(getAllKnownTools());
+
+  for (let i = 0; i < overrides.length; i++) {
+    const o = overrides[i] as Record<string, unknown>;
+    if (typeof o.toolName !== 'string' || typeof o.enabled !== 'boolean') {
+      return res.status(400).json({ error: `overrides[${i}] must have toolName (string) and enabled (boolean)` });
+    }
+    if (!knownTools.has(o.toolName as string)) {
+      return res.status(400).json({ error: `overrides[${i}].toolName "${o.toolName}" is not a recognized tool` });
+    }
+  }
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: agentRows } = await client.query(
+      `SELECT id FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (agentRows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    await client.query(
+      `DELETE FROM agent_tools WHERE agent_id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+
+    for (const o of overrides as Array<{ toolName: string; enabled: boolean }>) {
+      await client.query(
+        `INSERT INTO agent_tools (tenant_id, agent_id, tool_name, is_enabled)
+         VALUES ($1, $2, $3, $4)`,
+        [tenantId, id, o.toolName, o.enabled],
+      );
+    }
+
+    await client.query('COMMIT');
+
+    writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'agent.tools_updated',
+      resourceType: 'agent',
+      resourceId: id,
+      changes: { overrides },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    logger.info('Agent tool overrides updated', { tenantId, agentId: id, overrideCount: overrides.length });
+    return res.json({ success: true, overrides });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to update agent tools', { tenantId, agentId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update agent tools' });
   } finally {
     client.release();
   }
