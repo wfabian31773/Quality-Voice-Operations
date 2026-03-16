@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Mail, Phone, MapPin, CheckCircle2 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
@@ -31,6 +32,11 @@ export default function Contact() {
 
   return (
     <div>
+      <SEO
+        title="Contact Us — Get in Touch with QVO"
+        description="Have questions about QVO? Contact our team for demos, pricing information, or technical support. We're here to help your business succeed."
+        canonicalPath="/contact"
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">

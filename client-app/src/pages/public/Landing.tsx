@@ -9,6 +9,7 @@ import {
   CheckCircle2, Star,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
+import SEO from '../../components/SEO';
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -201,8 +202,28 @@ export default function Landing() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'QVO',
+    url: window.location.origin,
+    description: 'Quality Voice Operations — the voice operations hub for small businesses.',
+    logo: `${window.location.origin}/og-default.png`,
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'sales',
+      url: `${window.location.origin}/contact`,
+    },
+  };
+
   return (
     <div className="overflow-hidden">
+      <SEO
+        title="QVO — AI Voice Agents for Small Business"
+        description="QVO is the voice operations hub for small businesses. AI-powered call handling, scheduling, routing, and analytics — never miss a call again."
+        canonicalPath="/"
+        structuredData={organizationSchema}
+      />
       <section className="relative bg-harbor text-white overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-harbor via-harbor-light/30 to-harbor" />
         <div className="absolute inset-0 opacity-10">

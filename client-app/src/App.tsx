@@ -35,6 +35,8 @@ import Contact from './pages/public/Contact';
 import Docs from './pages/public/Docs';
 import AgentsShowcase from './pages/public/AgentsShowcase';
 import Signup from './pages/public/Signup';
+import Blog from './pages/public/Blog';
+import BlogArticle from './pages/public/BlogArticle';
 
 const SETTINGS_TABS = ['general', 'security', 'api-keys'];
 
@@ -64,6 +66,8 @@ export default function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:slug" element={<BlogArticle />} />
       </Route>
 
       <Route

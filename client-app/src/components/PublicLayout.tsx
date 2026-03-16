@@ -150,6 +150,7 @@ export default function PublicLayout() {
               <h4 className="font-display text-sm font-semibold text-white mb-4">Company</h4>
               <ul className="space-y-2.5">
                 <li><Link to="/contact" className="text-sm hover:text-white transition-colors">Contact</Link></li>
+                <li><Link to="/blog" className="text-sm hover:text-white transition-colors">Blog</Link></li>
                 <li><Link to="/docs" className="text-sm hover:text-white transition-colors">Documentation</Link></li>
                 <li><Link to="/login" className="text-sm hover:text-white transition-colors">Sign In</Link></li>
               </ul>

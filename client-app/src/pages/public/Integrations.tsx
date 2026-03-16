@@ -3,6 +3,7 @@ import {
   ArrowRight, Database, Calendar, Ticket, MessageSquare,
   Mail, Webhook, Phone, FileText, Shield, Plug,
 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 const integrations = [
   {
@@ -73,6 +74,11 @@ const integrations = [
 export default function Integrations() {
   return (
     <div>
+      <SEO
+        title="Integrations — Connect QVO to Your Tools"
+        description="QVO integrates with your CRM, calendar, helpdesk, and more. Connect Salesforce, Google Calendar, Zendesk, and dozens of other tools."
+        canonicalPath="/integrations"
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">

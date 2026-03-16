@@ -3,6 +3,7 @@ import {
   BookOpen, Zap, Key, Phone, Bot, BarChart3,
   FileText, Shield, ArrowRight, Webhook, Users,
 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 const gettingStarted = [
   {
@@ -81,6 +82,11 @@ const platformDocs = [
 export default function Docs() {
   return (
     <div>
+      <SEO
+        title="Documentation — QVO Developer & User Guides"
+        description="Get started with QVO: setup guides, API reference, webhook documentation, and best practices for configuring your AI voice agents."
+        canonicalPath="/docs"
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">

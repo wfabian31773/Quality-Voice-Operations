@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Phone, Activity, BarChart3, Headphones, Stethoscope, AlertCircle } from 'lucide-react';
+import SEO from '../components/SEO';
 
 const API_BASE = '/api';
 
@@ -147,6 +148,11 @@ export default function Demo() {
 
   return (
     <div>
+      <SEO
+        title="Live Demo — See QVO AI Voice Agents in Action"
+        description="Experience QVO's AI voice agents live. Watch real-time call handling, see how conversations flow, and explore the analytics dashboard."
+        canonicalPath="/demo"
+      />
       <section className="bg-harbor text-white py-16 lg:py-24">
         <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center">
           <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">

@@ -6,6 +6,7 @@ import {
   CheckCircle2, AlertTriangle, Bot, Zap, Calendar, Shield,
   Clock, BarChart3, FileText,
 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 type Category = 'All' | 'Healthcare' | 'Legal' | 'Sales & Marketing' | 'Operations' | 'Support';
 
@@ -359,6 +360,11 @@ export default function AgentsShowcase() {
 
   return (
     <div>
+      <SEO
+        title="AI Voice Agents — Pre-Built Templates for Every Industry"
+        description="Browse QVO's library of pre-built AI voice agent templates for healthcare, legal, sales, support, and operations. Customize and deploy in minutes."
+        canonicalPath="/agents"
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">

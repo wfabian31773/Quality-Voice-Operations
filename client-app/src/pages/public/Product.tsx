@@ -8,6 +8,7 @@ import {
   Lock, Eye, Database, ShieldCheck,
   Plug, Link2,
 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 const capabilities = [
   {
@@ -349,8 +350,29 @@ function SecuritySection() {
 }
 
 export default function Product() {
+  const productSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: 'QVO Voice Operations Platform',
+    description: 'AI-powered voice operations platform for small businesses featuring intelligent call handling, appointment scheduling, and real-time analytics.',
+    brand: { '@type': 'Organization', name: 'QVO' },
+    offers: {
+      '@type': 'AggregateOffer',
+      priceCurrency: 'USD',
+      lowPrice: '99',
+      highPrice: '999',
+      offerCount: '3',
+    },
+  };
+
   return (
     <div>
+      <SEO
+        title="Product — AI Voice Operations Platform"
+        description="Explore QVO's AI voice operations platform: intelligent call handling, appointment scheduling, outbound campaigns, and real-time analytics for small businesses."
+        canonicalPath="/product"
+        structuredData={productSchema}
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">

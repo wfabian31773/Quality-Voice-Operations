@@ -5,6 +5,7 @@ import { api, setToken } from '../../lib/api';
 import {
   UserPlus, ArrowRight, Phone, CheckCircle2, Loader2,
 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 const plans = [
   { key: 'starter', name: 'Starter', price: 99, desc: 'For small practices getting started.' },
@@ -69,6 +70,11 @@ export default function Signup() {
 
   return (
     <div>
+      <SEO
+        title="Sign Up — Start Your Free Trial"
+        description="Create your QVO account and start your 14-day free trial. Set up AI voice agents for your business in minutes. No credit card required."
+        canonicalPath="/signup"
+      />
       <section className="bg-harbor text-white py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">

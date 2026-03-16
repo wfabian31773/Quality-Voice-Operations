@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 interface Feature {
   name: string;
@@ -143,8 +144,36 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
 }
 
 export default function Pricing() {
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'How much does QVO cost?',
+        acceptedAnswer: { '@type': 'Answer', text: 'QVO offers three plans: Starter at $99/month, Pro at $399/month, and Enterprise at $999/month. All plans include a 14-day free trial.' },
+      },
+      {
+        '@type': 'Question',
+        name: 'What is included in the free trial?',
+        acceptedAnswer: { '@type': 'Answer', text: 'Every QVO plan includes a 14-day free trial with full access to all features in your chosen tier. No credit card required to start.' },
+      },
+      {
+        '@type': 'Question',
+        name: 'Can I change my plan later?',
+        acceptedAnswer: { '@type': 'Answer', text: 'Yes, you can upgrade or downgrade your plan at any time. Changes take effect at the start of your next billing cycle.' },
+      },
+    ],
+  };
+
   return (
     <div>
+      <SEO
+        title="Pricing — Simple Plans for Every Business"
+        description="QVO pricing starts at $99/month. Compare Starter, Pro, and Enterprise plans. 14-day free trial on all plans, no contracts, no hidden fees."
+        canonicalPath="/pricing"
+        structuredData={faqSchema}
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">

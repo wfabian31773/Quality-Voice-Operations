@@ -3,6 +3,7 @@ import {
   Stethoscope, Headphones, Scale, Home, Users, Megaphone,
   ArrowRight, CheckCircle2,
 } from 'lucide-react';
+import SEO from '../../components/SEO';
 
 const verticals = [
   {
@@ -106,6 +107,11 @@ const verticals = [
 export default function UseCases() {
   return (
     <div>
+      <SEO
+        title="Use Cases — AI Voice Agents by Industry"
+        description="See how medical, dental, legal, property management, and service businesses use QVO's AI voice agents to handle calls, reduce no-shows, and grow revenue."
+        canonicalPath="/use-cases"
+      />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
