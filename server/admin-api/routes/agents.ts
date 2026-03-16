@@ -13,7 +13,8 @@ const MAX_SYSTEM_PROMPT_LENGTH = 32_000;
 const VALID_AGENT_TYPES = new Set([
   'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
   'appointment-confirmation', 'custom', 'dental', 'property-management',
-  'home-services', 'legal',
+  'home-services', 'legal', 'customer-support', 'outbound-sales',
+  'technical-support', 'collections',
 ]);
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {

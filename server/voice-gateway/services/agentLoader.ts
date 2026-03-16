@@ -31,6 +31,30 @@ import {
   LEGAL_SAFETY_GUARDRAILS,
   LEGAL_TOOLS,
 } from '../../../platform/agent-templates/legal';
+import {
+  buildCustomerSupportSystemPrompt,
+  getCustomerSupportGreeting,
+  CUSTOMER_SUPPORT_GUARDRAILS,
+  CUSTOMER_SUPPORT_TOOLS,
+} from '../../../platform/agent-templates/customer-support';
+import {
+  buildOutboundSalesSystemPrompt,
+  getOutboundSalesGreeting,
+  OUTBOUND_SALES_GUARDRAILS,
+  OUTBOUND_SALES_TOOLS,
+} from '../../../platform/agent-templates/outbound-sales';
+import {
+  buildTechnicalSupportSystemPrompt,
+  getTechnicalSupportGreeting,
+  TECHNICAL_SUPPORT_GUARDRAILS,
+  TECHNICAL_SUPPORT_TOOLS,
+} from '../../../platform/agent-templates/technical-support';
+import {
+  buildCollectionsSystemPrompt,
+  getCollectionsGreeting,
+  COLLECTIONS_GUARDRAILS,
+  COLLECTIONS_TOOLS,
+} from '../../../platform/agent-templates/collections';
 import { createLogger } from '../../../platform/core/logger';
 import type { TenantId } from '../../../platform/core/types';
 
@@ -152,6 +176,13 @@ function resolveTemplateKey(agentType: string, agentId: string): string {
     'home_services': 'home-services',
     'home-services': 'home-services',
     'legal': 'legal',
+    'customer_support': 'customer-support',
+    'customer-support': 'customer-support',
+    'outbound_sales': 'outbound-sales',
+    'outbound-sales': 'outbound-sales',
+    'technical_support': 'technical-support',
+    'technical-support': 'technical-support',
+    'collections': 'collections',
   };
 
   const fromType = typeMap[agentType];
@@ -243,6 +274,80 @@ function buildTemplateConfig(
         tools: mergeTools(LEGAL_TOOLS, dbTools),
         guardrails: LEGAL_SAFETY_GUARDRAILS,
         metadata: { firmName, practiceAreas },
+      };
+    }
+
+    case 'customer-support': {
+      const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our company';
+      const systemPrompt = dbAgent?.system_prompt
+        ? dbAgent.system_prompt
+        : buildCustomerSupportSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      return {
+        agentId,
+        tenantId,
+        systemPrompt,
+        greeting: (meta.greeting as string) ?? getCustomerSupportGreeting(companyName),
+        voice: dbAgent?.voice ?? 'sage',
+        model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
+        tools: mergeTools(CUSTOMER_SUPPORT_TOOLS, dbTools),
+        guardrails: CUSTOMER_SUPPORT_GUARDRAILS,
+        metadata: { companyName },
+      };
+    }
+
+    case 'outbound-sales': {
+      const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our company';
+      const productOrService = (meta.productOrService as string) ?? undefined;
+      const systemPrompt = dbAgent?.system_prompt
+        ? dbAgent.system_prompt
+        : buildOutboundSalesSystemPrompt({ companyName, productOrService, callerPhone, callerMemorySummary });
+      return {
+        agentId,
+        tenantId,
+        systemPrompt,
+        greeting: (meta.greeting as string) ?? getOutboundSalesGreeting(companyName),
+        voice: dbAgent?.voice ?? 'sage',
+        model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
+        tools: mergeTools(OUTBOUND_SALES_TOOLS, dbTools),
+        guardrails: OUTBOUND_SALES_GUARDRAILS,
+        metadata: { companyName, productOrService },
+      };
+    }
+
+    case 'technical-support': {
+      const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our company';
+      const productName = (meta.productName as string) ?? undefined;
+      const systemPrompt = dbAgent?.system_prompt
+        ? dbAgent.system_prompt
+        : buildTechnicalSupportSystemPrompt({ companyName, productName, callerPhone, callerMemorySummary });
+      return {
+        agentId,
+        tenantId,
+        systemPrompt,
+        greeting: (meta.greeting as string) ?? getTechnicalSupportGreeting(companyName),
+        voice: dbAgent?.voice ?? 'sage',
+        model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
+        tools: mergeTools(TECHNICAL_SUPPORT_TOOLS, dbTools),
+        guardrails: TECHNICAL_SUPPORT_GUARDRAILS,
+        metadata: { companyName, productName },
+      };
+    }
+
+    case 'collections': {
+      const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our collections office';
+      const systemPrompt = dbAgent?.system_prompt
+        ? dbAgent.system_prompt
+        : buildCollectionsSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      return {
+        agentId,
+        tenantId,
+        systemPrompt,
+        greeting: (meta.greeting as string) ?? getCollectionsGreeting(companyName),
+        voice: dbAgent?.voice ?? 'sage',
+        model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
+        tools: mergeTools(COLLECTIONS_TOOLS, dbTools),
+        guardrails: COLLECTIONS_GUARDRAILS,
+        metadata: { companyName },
       };
     }
 

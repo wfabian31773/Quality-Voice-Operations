@@ -19,7 +19,12 @@ interface Agent {
 
 const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse'];
 const MODELS = ['gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview'];
-const AGENT_TYPES = ['general', 'answering-service', 'medical-after-hours', 'outbound-scheduling', 'appointment-confirmation', 'custom'];
+const AGENT_TYPES = [
+  'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
+  'appointment-confirmation', 'custom', 'dental', 'property-management',
+  'home-services', 'legal', 'customer-support', 'outbound-sales',
+  'technical-support', 'collections',
+];
 
 interface AgentFormData {
   name: string;
