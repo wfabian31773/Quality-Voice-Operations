@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, Sparkles } from 'lucide-react';
 
@@ -20,11 +20,28 @@ const AGENT_TEMPLATES = [
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
   const [provisioningStatus, setProvisioningStatus] = useState<ProvisioningStatus | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState('answering-service');
   const [updatingAgent, setUpdatingAgent] = useState(false);
   const [pollCount, setPollCount] = useState(0);
+  const verifyAttempted = useRef(false);
+
+  const verifyCheckout = useCallback(async () => {
+    const sessionId = searchParams.get('session_id');
+    if (!sessionId || verifyAttempted.current) return;
+    verifyAttempted.current = true;
+    try {
+      const result = await api.post<{ status: string }>('/tenants/me/verify-checkout', { sessionId });
+      if (result.status === 'ready') {
+        setProvisioningStatus({ status: 'ready', agentCount: 1, phoneNumberCount: 0 });
+        setStep(2);
+      }
+    } catch {
+      // Fall through to polling
+    }
+  }, [searchParams]);
 
   const pollStatus = useCallback(async () => {
     try {
@@ -39,8 +56,9 @@ export default function Onboarding() {
   }, []);
 
   useEffect(() => {
+    verifyCheckout();
     pollStatus();
-  }, [pollStatus]);
+  }, [verifyCheckout, pollStatus]);
 
   useEffect(() => {
     if (provisioningStatus?.status === 'ready') return;

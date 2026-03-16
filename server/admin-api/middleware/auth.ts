@@ -99,7 +99,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         }
         req.user = { userId, tenantId, email, role: auth.role, isPlatformAdmin: auth.isPlatformAdmin };
 
-        const allowedPendingPaths = ['/tenants/me/provisioning-status', '/tenants/me', '/auth/me'];
+        const allowedPendingPaths = ['/tenants/me/provisioning-status', '/tenants/me/verify-checkout', '/tenants/me', '/auth/me'];
         const path = req.path;
         const isAllowedForPending =
           allowedPendingPaths.some((p) => path === p) ||
