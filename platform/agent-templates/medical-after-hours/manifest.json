@@ -1,0 +1,26 @@
+{
+  "slug": "medical-after-hours",
+  "displayName": "Medical After-Hours Triage",
+  "description": "An AI-powered after-hours medical triage agent that handles patient calls when offices are closed. Routes urgent symptoms to on-call providers, collects patient information, and creates after-hours tickets for next-day follow-up. Includes medical safety guardrails and emergency detection.",
+  "shortDescription": "After-hours medical triage with urgent symptom routing and safety guardrails.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["healthcare"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["createAfterHoursTicket", "triageEscalate"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "pro",
+  "tags": ["medical", "triage", "after-hours", "healthcare", "hipaa"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "practiceName": { "type": "string", "description": "Name of the medical practice" },
+      "onCallTransferNumber": { "type": "string", "description": "Phone number for on-call provider" },
+      "afterHoursDepartmentId": { "type": "number", "description": "Department ID for after-hours routing" }
+    },
+    "required": ["practiceName", "onCallTransferNumber"]
+  },
+  "sortOrder": 1
+}

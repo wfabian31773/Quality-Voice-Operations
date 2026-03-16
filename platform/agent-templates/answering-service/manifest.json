@@ -1,0 +1,25 @@
+{
+  "slug": "answering-service",
+  "displayName": "General Answering Service",
+  "description": "A versatile answering service agent that handles incoming calls, takes messages, creates service tickets, and routes calls based on priority and department. Configurable ticketing system with automatic priority detection. Suitable for any business needing professional call handling.",
+  "shortDescription": "Professional call answering with ticketing and priority routing.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["general"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["createServiceTicket"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "starter",
+  "tags": ["answering-service", "receptionist", "messages", "ticketing"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "practiceName": { "type": "string", "description": "Business or practice name" },
+      "ticketingConfig": { "type": "object", "description": "Custom ticketing configuration" }
+    },
+    "required": ["practiceName"]
+  },
+  "sortOrder": 6
+}

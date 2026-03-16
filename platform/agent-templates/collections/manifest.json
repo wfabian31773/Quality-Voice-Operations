@@ -1,0 +1,25 @@
+{
+  "slug": "collections",
+  "displayName": "Collections & Account Recovery",
+  "description": "A collections agent that handles debt collection calls with full regulatory compliance. Looks up account status, processes payment arrangements, and detects cease-and-desist requests. Includes FDCPA compliance guardrails and mini-Miranda disclosure requirements.",
+  "shortDescription": "Compliant debt collection with account lookup and payment arrangements.",
+  "version": "1.0.0",
+  "agentType": "outbound",
+  "category": ["financial"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["lookupAccountStatus"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "enterprise",
+  "tags": ["collections", "debt", "compliance", "fdcpa", "financial"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "companyName": { "type": "string", "description": "Collections agency name" },
+      "miniMirandaText": { "type": "string", "description": "Mini-Miranda disclosure text" }
+    },
+    "required": ["companyName"]
+  },
+  "sortOrder": 10
+}

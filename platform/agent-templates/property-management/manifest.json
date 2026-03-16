@@ -1,0 +1,25 @@
+{
+  "slug": "property-management",
+  "displayName": "Property Management Assistant",
+  "description": "A property management agent that handles tenant maintenance requests, emergency property issues, and general property inquiries. Detects property emergencies like flooding or gas leaks and routes them appropriately. Supports multi-property portfolios.",
+  "shortDescription": "Maintenance requests, emergency routing, and tenant communication.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["real-estate"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["submitMaintenanceRequest"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "starter",
+  "tags": ["property", "maintenance", "real-estate", "tenant"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "companyName": { "type": "string", "description": "Property management company name" },
+      "emergencyNumber": { "type": "string", "description": "Emergency maintenance number" }
+    },
+    "required": ["companyName"]
+  },
+  "sortOrder": 4
+}

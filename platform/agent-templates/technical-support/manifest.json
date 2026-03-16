@@ -1,0 +1,25 @@
+{
+  "slug": "technical-support",
+  "displayName": "Technical Support Agent",
+  "description": "A technical support agent that performs guided troubleshooting, collects diagnostic information, creates support tickets, and searches the knowledge base for solutions. Supports tiered escalation (Tier 2/3) and severity-based routing. Ideal for software and hardware support teams.",
+  "shortDescription": "Guided troubleshooting with diagnostics, ticketing, and tiered escalation.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["customer-service"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["collectDiagnostics", "createTechTicket"],
+  "optionalTools": ["lookupKnowledgeBase"],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "pro",
+  "tags": ["technical-support", "troubleshooting", "diagnostics", "tier-2"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "companyName": { "type": "string", "description": "Company name" },
+      "productNames": { "type": "array", "items": { "type": "string" }, "description": "Supported product names" }
+    },
+    "required": ["companyName"]
+  },
+  "sortOrder": 9
+}

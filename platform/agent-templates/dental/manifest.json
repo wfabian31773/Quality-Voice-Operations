@@ -1,0 +1,25 @@
+{
+  "slug": "dental",
+  "displayName": "Dental Office Assistant",
+  "description": "A dental office virtual receptionist that schedules appointments, handles patient inquiries, and manages new patient intake. Includes dental emergency detection and insurance verification prompts. Designed for dental practices of all sizes.",
+  "shortDescription": "Dental office scheduling and patient intake with emergency detection.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["healthcare"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["scheduleDentalAppointment"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "starter",
+  "tags": ["dental", "scheduling", "healthcare", "appointments"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "practiceName": { "type": "string", "description": "Name of the dental practice" },
+      "operatingHours": { "type": "string", "description": "Practice operating hours" }
+    },
+    "required": ["practiceName"]
+  },
+  "sortOrder": 2
+}

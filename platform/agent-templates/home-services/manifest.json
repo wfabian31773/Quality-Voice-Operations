@@ -1,0 +1,25 @@
+{
+  "slug": "home-services",
+  "displayName": "Home Services Booking",
+  "description": "A home services booking agent for HVAC, plumbing, electrical, and general contractor businesses. Books service appointments, collects job details, and handles emergency service detection. Supports seasonal service scheduling and recurring maintenance plans.",
+  "shortDescription": "Service appointment booking with emergency detection for home services.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["home-services"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["bookServiceAppointment"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "starter",
+  "tags": ["home-services", "hvac", "plumbing", "electrical", "booking"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "businessName": { "type": "string", "description": "Home services business name" },
+      "serviceTypes": { "type": "array", "items": { "type": "string" }, "description": "Types of services offered" }
+    },
+    "required": ["businessName"]
+  },
+  "sortOrder": 5
+}

@@ -1,0 +1,26 @@
+{
+  "slug": "outbound-sales",
+  "displayName": "Outbound Sales Dialer",
+  "description": "An outbound sales agent that qualifies leads, delivers sales pitches, and handles objections. Includes Do Not Call list detection and compliance guardrails. Supports lead qualification scoring and automatic CRM updates. Designed for B2B and B2C outbound campaigns.",
+  "shortDescription": "Outbound lead qualification and sales with DNC compliance.",
+  "version": "1.0.0",
+  "agentType": "outbound",
+  "category": ["sales"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["qualifyLead"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "pro",
+  "tags": ["sales", "outbound", "lead-qualification", "dialer"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "companyName": { "type": "string", "description": "Company name" },
+      "productName": { "type": "string", "description": "Product or service being sold" },
+      "qualificationCriteria": { "type": "object", "description": "Lead qualification criteria" }
+    },
+    "required": ["companyName", "productName"]
+  },
+  "sortOrder": 8
+}

@@ -1,0 +1,25 @@
+{
+  "slug": "customer-support",
+  "displayName": "Customer Support Center",
+  "description": "A comprehensive customer support agent that handles support tickets, FAQ lookups, and escalation to human agents. Categorizes issues by type (billing, technical, product, shipping, account), prioritizes them, and routes escalations to the appropriate team. Includes knowledge base integration.",
+  "shortDescription": "Full-featured customer support with ticketing, FAQ, and escalation.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["customer-service"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["createSupportTicket"],
+  "optionalTools": ["lookupFaq", "escalateToAgent"],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "starter",
+  "tags": ["customer-support", "ticketing", "faq", "escalation"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "companyName": { "type": "string", "description": "Company name" },
+      "supportCategories": { "type": "array", "items": { "type": "string" }, "description": "Available support categories" }
+    },
+    "required": ["companyName"]
+  },
+  "sortOrder": 7
+}

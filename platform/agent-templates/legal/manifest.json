@@ -1,0 +1,25 @@
+{
+  "slug": "legal",
+  "displayName": "Legal Intake & Consultation",
+  "description": "A legal intake agent that handles initial client consultations, schedules appointments with attorneys, and performs preliminary case categorization. Includes safety guardrails for urgent legal matters and proper disclaimers about legal advice limitations.",
+  "shortDescription": "Legal intake, consultation scheduling, and case categorization.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": ["professional-services"],
+  "supportedChannels": ["voice"],
+  "requiredTools": ["scheduleConsultation"],
+  "optionalTools": [],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "pro",
+  "tags": ["legal", "intake", "consultation", "law-firm"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "firmName": { "type": "string", "description": "Name of the law firm" },
+      "practiceAreas": { "type": "array", "items": { "type": "string" }, "description": "Areas of legal practice" }
+    },
+    "required": ["firmName"]
+  },
+  "sortOrder": 3
+}
