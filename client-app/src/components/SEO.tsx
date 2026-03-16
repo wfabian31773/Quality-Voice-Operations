@@ -25,7 +25,9 @@ export default function SEO({
   const path = canonicalPath ?? location.pathname;
   const canonicalUrl = `${BASE_URL}${path}`;
   const fullTitle = title.includes('QVO') ? title : `${title} | QVO`;
-  const image = ogImage || `${BASE_URL}${DEFAULT_OG_IMAGE}`;
+  const image = ogImage
+    ? ogImage.startsWith('http') ? ogImage : `${BASE_URL}${ogImage}`
+    : `${BASE_URL}${DEFAULT_OG_IMAGE}`;
 
   useEffect(() => {
     document.title = fullTitle;

@@ -87,6 +87,7 @@ const agentTemplates = [
     example: '"I\'d like to schedule a checkup." → Books appointment, sends confirmation SMS',
     color: 'from-teal/20 to-calm-green/10',
     iconBg: 'bg-teal/15 text-teal',
+    avatar: '/assets/avatars/medical.png',
   },
   {
     icon: Scale,
@@ -96,6 +97,7 @@ const agentTemplates = [
     example: '"I need help with a car accident claim." → Captures details, books consultation',
     color: 'from-harbor/10 to-frost-blue/20',
     iconBg: 'bg-harbor/15 text-harbor',
+    avatar: '/assets/avatars/legal.png',
   },
   {
     icon: Home,
@@ -105,6 +107,7 @@ const agentTemplates = [
     example: '"Is the house on Oak St still available?" → Answers questions, schedules showing',
     color: 'from-warm-amber/10 to-mineral-sand/30',
     iconBg: 'bg-warm-amber/15 text-warm-amber',
+    avatar: '/assets/avatars/real-estate.png',
   },
   {
     icon: HeadphonesIcon,
@@ -114,6 +117,7 @@ const agentTemplates = [
     example: '"Where\'s my order #4521?" → Checks status, provides ETA and tracking link',
     color: 'from-teal/10 to-frost-blue/15',
     iconBg: 'bg-teal/15 text-teal',
+    avatar: '/assets/avatars/customer-support.png',
   },
   {
     icon: DollarSign,
@@ -123,6 +127,7 @@ const agentTemplates = [
     example: '"Can I set up a payment plan?" → Negotiates terms, sends payment link',
     color: 'from-controlled-red/10 to-warm-amber/10',
     iconBg: 'bg-controlled-red/15 text-controlled-red',
+    avatar: '/assets/avatars/collections.png',
   },
 ];
 
@@ -392,9 +397,15 @@ export default function Landing() {
             {agentTemplates.map((agent, i) => (
               <RevealSection key={agent.name} delay={`scroll-delay-${(i % 3) + 1}`}>
                 <div className={`relative rounded-2xl p-7 bg-gradient-to-br ${agent.color} border border-soft-steel/30 hover:shadow-lg transition-all h-full group`}>
-                  <div className={`w-12 h-12 rounded-xl ${agent.iconBg} flex items-center justify-center mb-4`}>
-                    <agent.icon className="h-6 w-6" />
-                  </div>
+                  {agent.avatar ? (
+                    <div className="w-12 h-12 rounded-xl overflow-hidden mb-4 border border-soft-steel/20">
+                      <img src={agent.avatar} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
+                    </div>
+                  ) : (
+                    <div className={`w-12 h-12 rounded-xl ${agent.iconBg} flex items-center justify-center mb-4`}>
+                      <agent.icon className="h-6 w-6" />
+                    </div>
+                  )}
                   <h3 className="font-display text-lg font-semibold text-harbor mb-2">{agent.name}</h3>
                   <p className="text-sm text-slate-ink/60 leading-relaxed font-body mb-3">{agent.desc}</p>
                   <div className="bg-white/50 rounded-lg p-3 mb-4 border border-soft-steel/15">

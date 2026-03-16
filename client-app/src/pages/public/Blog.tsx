@@ -60,6 +60,16 @@ export default function Blog() {
                 to={`/blog/${article.slug}`}
                 className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow"
               >
+                {article.headerImage && (
+                  <div className="aspect-[16/9] overflow-hidden">
+                    <img
+                      src={article.headerImage}
+                      alt={`${article.title} header image`}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                    />
+                  </div>
+                )}
                 <div className="p-6 flex flex-col h-full">
                   <span className="text-xs font-semibold text-teal uppercase tracking-wider mb-3">
                     {article.category}

@@ -104,18 +104,42 @@ const dashboardScreenshots = [
     title: 'Call History',
     desc: 'Complete log of every call with transcripts, outcomes, and quality scores.',
     gradient: 'from-teal/20 to-teal/5',
+    image: '/assets/screenshots/call-history.png',
   },
   {
     icon: Activity,
     title: 'Analytics Dashboard',
     desc: 'Real-time metrics on call volume, conversion rates, and agent performance.',
     gradient: 'from-calm-green/20 to-calm-green/5',
+    image: '/assets/screenshots/analytics-dashboard.png',
   },
   {
     icon: Sliders,
     title: 'Agent Configuration',
     desc: 'Visual editor for prompts, routing rules, and voice personality settings.',
     gradient: 'from-warm-amber/20 to-warm-amber/5',
+    image: '/assets/screenshots/agent-config.png',
+  },
+  {
+    icon: Bot,
+    title: 'Agent Creation',
+    desc: 'Step-by-step wizard to configure and deploy a new AI voice agent from industry templates.',
+    gradient: 'from-teal/15 to-harbor/10',
+    image: '/assets/screenshots/agent-creation.png',
+  },
+  {
+    icon: FileText,
+    title: 'Prompt Editor',
+    desc: 'Version-controlled prompt editor with test playground for refining agent behavior.',
+    gradient: 'from-harbor/15 to-frost-blue/10',
+    image: '/assets/screenshots/prompt-editor.png',
+  },
+  {
+    icon: PhoneCall,
+    title: 'Transcript View',
+    desc: 'Full conversation transcripts with tool execution indicators and call metadata.',
+    gradient: 'from-calm-green/15 to-teal/10',
+    image: '/assets/screenshots/transcript-view.png',
   },
 ];
 
@@ -243,20 +267,18 @@ function ScreenshotsSection() {
             Every call, every outcome, every metric — visible from one dashboard.
           </p>
         </div>
-        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
           {dashboardScreenshots.map((s) => (
             <div key={s.title} className="group">
               <div
-                className={`bg-gradient-to-br ${s.gradient} rounded-2xl border border-soft-steel/30 aspect-[4/3] flex items-center justify-center mb-4 transition-all duration-300 group-hover:shadow-lg group-hover:scale-[1.02]`}
+                className="rounded-2xl border border-soft-steel/30 aspect-[4/3] overflow-hidden mb-4 transition-all duration-300 group-hover:shadow-lg group-hover:scale-[1.02]"
               >
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-white/80 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 shadow-sm">
-                    <s.icon className="h-8 w-8 text-harbor/60" />
-                  </div>
-                  <span className="text-xs font-display font-semibold text-harbor/50 uppercase tracking-wider">
-                    Preview
-                  </span>
-                </div>
+                <img
+                  src={s.image}
+                  alt={`${s.title} — QVO dashboard screenshot`}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <h3 className="font-display text-base font-semibold text-harbor mb-1">{s.title}</h3>
               <p className="text-sm text-slate-ink/60 font-body leading-relaxed">{s.desc}</p>
@@ -419,7 +441,133 @@ export default function Product() {
       </section>
 
       <WorkflowSection />
+
+      <section className="py-16 lg:py-20 bg-white">
+        <div className="max-w-5xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-10">
+              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+                Agent Workflow
+              </p>
+              <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+                From call to resolution, fully automated.
+              </h2>
+            </div>
+            <div className="rounded-2xl border border-soft-steel/30 overflow-hidden shadow-sm mb-10">
+              <img
+                src="/assets/workflows/agent-workflow-generic.png"
+                alt="AI agent workflow diagram showing call flow from greeting through issue identification, tool execution, and resolution"
+                loading="lazy"
+                className="w-full h-auto"
+              />
+            </div>
+            <h3 className="font-display text-xl font-semibold text-harbor text-center mb-6">
+              Industry-specific workflows
+            </h3>
+            <div className="grid md:grid-cols-2 gap-6">
+              {[
+                { src: '/assets/workflows/workflow-medical.png', title: 'Healthcare', alt: 'Medical AI agent workflow: patient greeting, symptom triage, appointment scheduling, prescription handling, SMS confirmation' },
+                { src: '/assets/workflows/workflow-legal.png', title: 'Legal', alt: 'Legal AI agent workflow: caller greeting, case intake, conflict check, attorney scheduling, follow-up confirmation' },
+                { src: '/assets/workflows/workflow-real-estate.png', title: 'Real Estate', alt: 'Real estate AI agent workflow: lead greeting, property inquiry, showing scheduling, CRM update, follow-up' },
+                { src: '/assets/workflows/workflow-support.png', title: 'Customer Support', alt: 'Support AI agent workflow: customer greeting, issue classification, knowledge base lookup, ticket creation, satisfaction survey' },
+              ].map((wf) => (
+                <div key={wf.title} className="group">
+                  <div className="rounded-xl border border-soft-steel/30 overflow-hidden mb-2 group-hover:shadow-md transition-shadow">
+                    <img src={wf.src} alt={wf.alt} loading="lazy" className="w-full h-auto" />
+                  </div>
+                  <p className="text-sm font-display font-semibold text-harbor text-center">{wf.title}</p>
+                </div>
+              ))}
+            </div>
+          </RevealSection>
+        </div>
+      </section>
+
+      <section className="py-20 lg:py-28 bg-mist">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-14">
+              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+                Built-in Tools
+              </p>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Every tool your agent needs, ready to go.
+              </h2>
+              <p className="text-slate-ink/60 font-body leading-relaxed max-w-2xl mx-auto">
+                Your AI agents don't just talk — they take action. Scheduling, CRM updates, ticket creation, and SMS follow-ups happen in real time.
+              </p>
+            </div>
+          </RevealSection>
+          <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+            {[
+              { src: '/assets/tools/calendar-scheduling.png', title: 'Calendar Scheduling', desc: 'Book, reschedule, and confirm appointments directly within the call flow.' },
+              { src: '/assets/tools/crm-lookup.png', title: 'CRM Lookup', desc: 'Pull caller history, contact details, and interaction records instantly.' },
+              { src: '/assets/tools/ticket-creation.png', title: 'Ticket Creation', desc: 'Auto-create support tickets with full context from the conversation.' },
+              { src: '/assets/tools/sms-confirmation.png', title: 'SMS Confirmation', desc: 'Send instant text confirmations, reminders, and follow-ups after every call.' },
+            ].map((tool) => (
+              <RevealSection key={tool.title}>
+                <div className="bg-white rounded-2xl border border-soft-steel/30 overflow-hidden hover:shadow-lg transition-shadow group">
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src={tool.src}
+                      alt={`${tool.title} tool visualization`}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-5">
+                    <h3 className="font-display text-base font-semibold text-harbor mb-1">{tool.title}</h3>
+                    <p className="text-sm text-slate-ink/60 font-body leading-relaxed">{tool.desc}</p>
+                  </div>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <ScreenshotsSection />
+
+      <section className="py-20 lg:py-28 bg-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-14">
+              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+                Platform Features
+              </p>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Built for voice operations at scale.
+              </h2>
+            </div>
+          </RevealSection>
+          <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+            {[
+              { src: '/assets/features/voice-ai-automation.png', title: 'Voice AI Automation', desc: 'Natural language understanding with real-time speech synthesis powers every conversation.' },
+              { src: '/assets/features/tool-integration.png', title: 'Tool Integration Ecosystem', desc: 'Connect to 50+ tools including CRMs, calendars, EHRs, and custom webhooks.' },
+              { src: '/assets/features/multi-agent.png', title: 'Multi-Agent Orchestration', desc: 'Deploy specialized agents for different use cases, all managed from one platform.' },
+              { src: '/assets/features/realtime-analytics.png', title: 'Real-Time Analytics', desc: 'Track call volume, outcomes, agent performance, and ROI in real-time dashboards.' },
+            ].map((feature) => (
+              <RevealSection key={feature.title}>
+                <div className="bg-mist rounded-2xl border border-soft-steel/30 overflow-hidden hover:shadow-lg transition-shadow group">
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src={feature.src}
+                      alt={`${feature.title} feature illustration`}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-5">
+                    <h3 className="font-display text-base font-semibold text-harbor mb-1">{feature.title}</h3>
+                    <p className="text-sm text-slate-ink/60 font-body leading-relaxed">{feature.desc}</p>
+                  </div>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <IntegrationsSection />
       <SecuritySection />
 

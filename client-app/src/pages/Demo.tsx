@@ -53,6 +53,17 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   wrench: Wrench,
 };
 
+const AVATAR_MAP: Record<string, string> = {
+  stethoscope: '/assets/avatars/medical.png',
+  headphones: '/assets/avatars/answering-service.png',
+  calendar: '/assets/avatars/dental.png',
+  building: '/assets/avatars/hvac.png',
+  scale: '/assets/avatars/legal.png',
+  'help-circle': '/assets/avatars/customer-support.png',
+  'dollar-sign': '/assets/avatars/collections.png',
+  wrench: '/assets/avatars/automotive.png',
+};
+
 const AGENT_COLORS: string[] = [
   'teal',
   'harbor',
@@ -162,9 +173,15 @@ function AgentCard({
       className={`demo-glass-card rounded-2xl border ${borderClass} p-6 text-left transition-all duration-300 cursor-pointer w-full hover:scale-[1.02] hover:shadow-lg`}
     >
       <div className="flex items-center gap-3 mb-3">
-        <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
-          <IconComponent className={`h-5 w-5 ${iconColor}`} />
-        </div>
+        {AVATAR_MAP[agent.icon] ? (
+          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-soft-steel/20">
+            <img src={AVATAR_MAP[agent.icon]} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
+          </div>
+        ) : (
+          <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
+            <IconComponent className={`h-5 w-5 ${iconColor}`} />
+          </div>
+        )}
         <div className="min-w-0">
           <h3 className="font-display text-lg font-semibold text-harbor truncate">{agent.name}</h3>
           <span className={`text-xs font-medium ${categoryColor}`}>{agent.category}</span>
@@ -458,7 +475,11 @@ export default function Demo() {
             }`}>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
-                  {(() => {
+                  {AVATAR_MAP[activeAgent.icon] ? (
+                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-soft-steel/20">
+                      <img src={AVATAR_MAP[activeAgent.icon]} alt={`${activeAgent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
+                    </div>
+                  ) : (() => {
                     const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
                     return (
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-300 ${

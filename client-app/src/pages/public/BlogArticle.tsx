@@ -58,6 +58,7 @@ export default function BlogArticle() {
         title={article.title}
         description={article.excerpt}
         ogType="article"
+        ogImage={article.headerImage}
         canonicalPath={`/blog/${article.slug}`}
         structuredData={structuredData}
       />
@@ -70,6 +71,17 @@ export default function BlogArticle() {
           <ArrowLeft className="h-4 w-4" />
           Back to Blog
         </Link>
+
+        {article.headerImage && (
+          <div className="rounded-2xl overflow-hidden mb-8 border border-gray-200">
+            <img
+              src={article.headerImage}
+              alt={`${article.title} header illustration`}
+              loading="lazy"
+              className="w-full h-auto"
+            />
+          </div>
+        )}
 
         <header className="mb-10">
           <span className="text-xs font-semibold text-teal uppercase tracking-wider">

@@ -9,6 +9,7 @@ export interface BlogArticle {
   category: string;
   readTime: number;
   tags: string[];
+  headerImage?: string;
 }
 
 export const blogCategories = [
@@ -77,6 +78,7 @@ AI voice agents aren't replacing human workers — they're augmenting them. By h
     category: 'Industry Guides',
     readTime: 6,
     tags: ['AI voice agents', 'small business', 'phone automation', 'customer service'],
+    headerImage: '/assets/blog/ai-voice-agents-guide.png',
   },
   {
     title: 'AI Call Center Automation: The Complete Guide',
@@ -140,6 +142,7 @@ The businesses seeing the best results treat AI as a force multiplier for their 
     category: 'Industry Guides',
     readTime: 7,
     tags: ['call center', 'automation', 'AI', 'customer experience', 'ROI'],
+    headerImage: '/assets/blog/call-center-automation.png',
   },
   {
     title: 'Voice AI for Healthcare: Reducing No-Shows and Improving Patient Access',
@@ -211,6 +214,7 @@ Voice AI in healthcare isn't about removing the human element from patient care.
     category: 'Healthcare',
     readTime: 7,
     tags: ['healthcare', 'HIPAA', 'patient access', 'no-shows', 'medical practice'],
+    headerImage: '/assets/blog/healthcare-voice-ai.png',
   },
   {
     title: 'Outbound Call Automation Best Practices',
@@ -300,6 +304,7 @@ The goal of outbound call automation isn't to blast as many calls as possible. I
     category: 'Best Practices',
     readTime: 7,
     tags: ['outbound calls', 'automation', 'campaigns', 'compliance', 'best practices'],
+    headerImage: '/assets/blog/outbound-automation.png',
   },
   {
     title: 'How AI Receptionists Reduce Missed Calls by 90%',
@@ -385,6 +390,7 @@ The question isn't whether your business can afford an AI receptionist. Given th
     category: 'Product',
     readTime: 7,
     tags: ['AI receptionist', 'missed calls', 'small business', 'ROI', 'phone answering'],
+    headerImage: '/assets/blog/ai-receptionist-missed-calls.png',
   },
 ];
 

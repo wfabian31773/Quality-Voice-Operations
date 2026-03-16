@@ -64,6 +64,7 @@ scripts/            Migration runner, seed scripts, startup script
 - Auth: JWT stored in localStorage, Zustand auth store with `initialized` flag
 - Data fetching: React Query (@tanstack/react-query) with auto-refresh
 - **QVO Brand:** Deep Harbor (#123047), Signal Teal (#2E8C83), Clinic Mist (#F3F7F7). Fonts: Sora (display), Manrope (body), Inter (UI).
+- **Visual assets:** `client-app/public/assets/` — screenshots (6), avatars (10), tools (4), workflows (1), features (4), blog headers (5), plus `og-default.png` for social previews. All images lazy-loaded with proper alt text.
 - **Public marketing pages (PublicLayout):** `/` (Landing), `/product`, `/agents` (showcase), `/pricing`, `/use-cases`, `/integrations`, `/demo` (with real-time visualization panels: transcript, tools, calendar, activity feed via SSE), `/resources` (guides hub), `/resources/:slug` (guide detail), `/contact`, `/docs`, `/signup`
 - **Protected dashboard pages (Layout):** `/dashboard`, `/agents`, `/phone-numbers`, `/calls`, etc.
 - **Note:** `/agents` is used by both the public showcase and the protected dashboard sidebar. The public route takes priority in React Router; authenticated agent management remains accessible via the dashboard layout.

@@ -20,6 +20,7 @@ interface AgentTemplate {
   capabilities: string[];
   icon: React.ElementType;
   color: string;
+  avatar?: string;
   conversationExample: { role: 'caller' | 'agent'; text: string }[];
   workflowSteps: string[];
   toolsUsed: string[];
@@ -53,6 +54,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Clinical triage', 'Appointment scheduling', 'Prescription refill requests', 'Insurance verification', 'HIPAA-compliant transcription'],
     icon: Stethoscope,
     color: 'bg-teal/10 text-teal border-teal/20',
+    avatar: '/assets/avatars/medical.png',
     conversationExample: [
       { role: 'caller', text: 'Hi, I need to schedule a follow-up appointment with Dr. Chen.' },
       { role: 'agent', text: 'Of course! I can help you schedule that. Could you provide your date of birth so I can pull up your records?' },
@@ -74,6 +76,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Appointment booking', 'Hygiene recall outreach', 'Insurance pre-authorization', 'Cancellation management', 'New patient intake'],
     icon: Headphones,
     color: 'bg-harbor/10 text-harbor border-harbor/20',
+    avatar: '/assets/avatars/dental.png',
     conversationExample: [
       { role: 'caller', text: 'I need to reschedule my cleaning appointment.' },
       { role: 'agent', text: 'I\'d be happy to help with that. Can I get your name and the date of your current appointment?' },
@@ -95,6 +98,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Case intake interviews', 'Lead qualification', 'Conflict checks', 'Statute of limitations alerts', 'Attorney matching'],
     icon: Scale,
     color: 'bg-amber-100/80 text-amber-700 border-amber-200',
+    avatar: '/assets/avatars/legal.png',
     conversationExample: [
       { role: 'caller', text: 'I was in a car accident last week and I think I need a lawyer.' },
       { role: 'agent', text: 'I\'m sorry to hear about your accident. I can help connect you with the right attorney. Can you tell me when and where the accident occurred?' },
@@ -116,6 +120,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Maintenance request intake', 'Emergency triage', 'Vendor dispatch', 'Tenant communication', 'Work order tracking'],
     icon: Home,
     color: 'bg-emerald-100/80 text-emerald-700 border-emerald-200',
+    avatar: '/assets/avatars/hvac.png',
     conversationExample: [
       { role: 'caller', text: 'There\'s water leaking from the ceiling in my apartment.' },
       { role: 'agent', text: 'I\'m sorry about that — let me help right away. Can you tell me your unit number and the building address?' },
@@ -137,6 +142,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Automated dialing', 'Lead qualification', 'Appointment setting', 'Answering machine detection', 'CRM integration'],
     icon: Megaphone,
     color: 'bg-purple-100/80 text-purple-700 border-purple-200',
+    avatar: '/assets/avatars/collections.png',
     conversationExample: [
       { role: 'agent', text: 'Hi, this is Alex calling from Bright Solutions. We spoke briefly at the trade show last week. Do you have a moment?' },
       { role: 'caller', text: 'Oh yes, I remember. We were interested in your scheduling product.' },
@@ -159,6 +165,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['FAQ handling', 'Ticket creation', 'Account lookup', 'Basic troubleshooting', 'Satisfaction surveys'],
     icon: Users,
     color: 'bg-blue-100/80 text-blue-700 border-blue-200',
+    avatar: '/assets/avatars/customer-support.png',
     conversationExample: [
       { role: 'caller', text: 'I\'m having trouble logging into my account.' },
       { role: 'agent', text: 'I can help with that. Could you provide the email address associated with your account?' },
@@ -180,6 +187,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Eligibility verification', 'Benefits breakdown', 'Prior auth tracking', 'Patient cost estimates', 'Payer communication'],
     icon: Shield,
     color: 'bg-teal/10 text-teal border-teal/20',
+    avatar: '/assets/avatars/insurance.png',
     conversationExample: [
       { role: 'caller', text: 'I need to check if my insurance covers an MRI.' },
       { role: 'agent', text: 'I can look into that for you. May I have your insurance provider and member ID number?' },
@@ -199,6 +207,7 @@ const agentTemplates: AgentTemplate[] = [
     capabilities: ['Automated reminders', 'Confirmation collection', 'Rescheduling', 'Waitlist management', 'No-show follow-up'],
     icon: Calendar,
     color: 'bg-emerald-100/80 text-emerald-700 border-emerald-200',
+    avatar: '/assets/avatars/answering-service.png',
     conversationExample: [
       { role: 'agent', text: 'Hi, this is a reminder from Westside Medical. You have an appointment with Dr. Patel tomorrow at 10:30 AM. Can you confirm you\'ll be there?' },
       { role: 'caller', text: 'Actually, I need to push it back. Can I come in the afternoon instead?' },
@@ -232,9 +241,15 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
     <div className="bg-white rounded-xl border border-steel/30 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
       <div className="p-6">
         <div className="flex items-start gap-4 mb-4">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${agent.color}`}>
-            <Icon className="h-6 w-6" />
-          </div>
+          {agent.avatar ? (
+            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-soft-steel/20">
+              <img src={agent.avatar} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
+            </div>
+          ) : (
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${agent.color}`}>
+              <Icon className="h-6 w-6" />
+            </div>
+          )}
           <div className="min-w-0">
             <h3 className="font-display text-lg font-bold text-harbor mb-1">{agent.name}</h3>
             <span className="text-xs font-medium text-teal uppercase tracking-wide">{agent.category}</span>
