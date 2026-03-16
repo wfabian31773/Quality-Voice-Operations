@@ -29,13 +29,19 @@ const VOICES = [
   'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse',
 ];
 
-const COMMON_TIMEZONES = [
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu',
-  'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-  'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata',
-  'Australia/Sydney', 'UTC',
-];
+const ALL_TIMEZONES = (() => {
+  try {
+    return Intl.supportedValuesOf('timeZone');
+  } catch {
+    return [
+      'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+      'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu',
+      'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+      'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata',
+      'Australia/Sydney', 'UTC',
+    ];
+  }
+})();
 
 const ADMIN_ROLES = ['tenant_owner', 'operations_manager', 'billing_admin', 'agent_developer'];
 
@@ -163,7 +169,7 @@ function GeneralSettings() {
             disabled={!isAdmin}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {COMMON_TIMEZONES.map((tz) => (
+            {ALL_TIMEZONES.map((tz) => (
               <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
             ))}
           </select>
@@ -344,7 +350,7 @@ function SecuritySettings() {
 
       <div className="bg-surface-hover border border-border rounded-lg p-4">
         <p className="text-xs text-text-muted">
-          Security policies are configured at the platform level. Contact support for SSO/SAML configuration,
+          Values shown reflect platform-level defaults for your current plan. Contact support for SSO/SAML configuration,
           custom IP allowlists, or advanced security policy changes.
         </p>
       </div>
