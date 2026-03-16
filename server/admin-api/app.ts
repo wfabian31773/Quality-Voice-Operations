@@ -23,6 +23,7 @@ import qualityRoutes from './routes/quality';
 import auditLogRoutes from './routes/auditLog';
 import platformAdminRoutes from './routes/platformAdmin';
 import callsLiveRoutes from './routes/callsLive';
+import contactRoutes from './routes/contact';
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/', campaignRoutes);
 app.use('/', observabilityRoutes);
 app.use('/', analyticsRoutes);
 app.use('/', demoRoutes);
+app.use('/', contactRoutes);
 app.use('/', apiKeyRoutes);
 app.use('/', qualityRoutes);
 app.use('/', auditLogRoutes);

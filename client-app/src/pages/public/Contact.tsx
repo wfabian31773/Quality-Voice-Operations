@@ -3,11 +3,30 @@ import { Mail, Phone, MapPin, CheckCircle2 } from 'lucide-react';
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', email: '', company: '', message: '' });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError('');
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to send message');
+      }
+      setSubmitted(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send message. Please try emailing us directly.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -91,11 +110,17 @@ export default function Contact() {
                         placeholder="Tell us about your call volume, current setup, and what you'd like to improve."
                       />
                     </div>
+                    {error && (
+                      <div className="bg-controlled-red/10 border border-controlled-red/20 text-controlled-red text-sm px-4 py-3 rounded-lg font-body">
+                        {error}
+                      </div>
+                    )}
                     <button
                       type="submit"
-                      className="bg-teal hover:bg-teal-hover text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors"
+                      disabled={submitting}
+                      className="bg-teal hover:bg-teal-hover text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors disabled:opacity-50"
                     >
-                      Send message
+                      {submitting ? 'Sending...' : 'Send message'}
                     </button>
                   </div>
                 </form>

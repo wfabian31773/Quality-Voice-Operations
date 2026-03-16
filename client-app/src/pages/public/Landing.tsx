@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   Phone, Clock, BarChart3, Shield, Calendar, ArrowRight,
   Headphones, Building2, Stethoscope, Scale, Home, Users, Megaphone,
   Plug, MessageSquare, CheckCircle2,
 } from 'lucide-react';
+import { useAuth } from '../../lib/auth';
 
 const features = [
   {
@@ -72,6 +73,12 @@ const testimonials = [
 ];
 
 export default function Landing() {
+  const { user, initialized } = useAuth();
+
+  if (initialized && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <div>
       <section className="bg-harbor text-white">
