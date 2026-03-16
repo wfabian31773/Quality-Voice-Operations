@@ -33,6 +33,8 @@ import UseCases from './pages/public/UseCases';
 import Integrations from './pages/public/Integrations';
 import Contact from './pages/public/Contact';
 import Docs from './pages/public/Docs';
+import AgentsShowcase from './pages/public/AgentsShowcase';
+import Signup from './pages/public/Signup';
 
 const SETTINGS_TABS = ['general', 'security', 'api-keys'];
 
@@ -54,12 +56,14 @@ export default function App() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/product" element={<Product />} />
+        <Route path="/agents" element={<AgentsShowcase />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/use-cases" element={<UseCases />} />
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/demo" element={<Demo />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/docs" element={<Docs />} />
+        <Route path="/signup" element={<Signup />} />
       </Route>
 
       <Route

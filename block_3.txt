@@ -1,0 +1,43 @@
+          <div className="flex flex-wrap items-center justify-center gap-6 mt-6 pt-6 border-t border-white/5">
+            <span className="text-xs text-white/30 uppercase tracking-wider font-medium">Trusted by</span>
+            {industryLogos.map((logo) => (
+              <div key={logo.name} className="flex items-center gap-1.5 opacity-40 hover:opacity-60 transition-opacity">
+                <logo.icon className="h-4 w-4 text-white" />
+                <span className="text-xs font-medium text-white">{logo.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+<<<<<<< HEAD
+      <section className="py-20 lg:py-28 bg-mist">
+=======
+      <section className="bg-harbor text-white py-20 lg:py-24">
+        <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
+          <h2 className="font-display text-3xl lg:text-4xl font-bold mb-4">
+            Ready to stop missing calls?
+          </h2>
+          <p className="text-lg text-white/60 font-body mb-10">
+            Set up your voice operations hub in minutes. No contracts, cancel anytime.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              to="/signup"
+              className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
+            >
+              Start free trial
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/contact"
+              className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
+            >
+              Talk to sales
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16">
+>>>>>>> 79307d4 (Task #49: Public Agents Page & Signup Flow)

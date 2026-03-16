@@ -1,0 +1,9 @@
+          <div className="grid md:grid-cols-3 gap-8">
+            {testimonials.map((t, i) => (
+              <div key={i} className="bg-mist rounded-2xl p-8 border border-soft-steel/30">
+                <p className="text-slate-ink/70 font-body leading-relaxed mb-6 text-sm italic">
+                  "{t.quote}"
+>>>>>>> 79307d4 (Task #49: Public Agents Page & Signup Flow)
+                </p>
+                <p className="text-xs md:text-sm text-white/50 font-body mt-1">{stat.label}</p>
+              </div>

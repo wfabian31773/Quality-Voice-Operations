@@ -1,0 +1,8 @@
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                to="/login?mode=signup"
+                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
+              >
+                Start Free Trial
+                <ArrowRight className="h-4 w-4" />
+              </Link>

@@ -189,7 +189,7 @@ export default function UseCases() {
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              to="/login?mode=signup"
+              to="/signup"
               className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
             >
               Start free trial

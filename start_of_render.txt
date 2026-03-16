@@ -1,0 +1,38 @@
+  return (
+<<<<<<< HEAD
+    <div className="overflow-hidden">
+      <section className="relative bg-harbor text-white overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-harbor via-harbor-light/30 to-harbor" />
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-teal rounded-full blur-[128px]" />
+          <div className="absolute bottom-10 right-20 w-96 h-96 bg-teal rounded-full blur-[160px]" />
+        </div>
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-36">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-teal/15 border border-teal/25 rounded-full px-4 py-1.5 mb-6">
+                <span className="w-2 h-2 rounded-full bg-teal animate-pulse" />
+                <span className="text-teal text-sm font-medium">AI-Powered Voice Platform</span>
+              </div>
+              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] mb-6">
+                <span className="hero-gradient-text">AI Voice Agents</span> That Answer Calls, Run Campaigns, And Automate Your Business
+              </h1>
+              <p className="text-lg lg:text-xl text-white/65 leading-relaxed mb-10 max-w-xl font-body">
+                Deploy intelligent voice agents that handle inbound calls, run outbound campaigns, and integrate with your CRM — all while you focus on growing your business.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link
+                  to="/login?mode=signup"
+                  className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25 hover:shadow-teal/40"
+                >
+                  Start Free Trial
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  to="/demo"
+                  className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                >
+                  Watch Demo
+                </Link>
+              </div>
+            </div>

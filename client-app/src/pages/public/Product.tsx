@@ -154,7 +154,7 @@ export default function Product() {
               Try the demo
             </Link>
             <Link
-              to="/login?mode=signup"
+              to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
             >
               Start free trial

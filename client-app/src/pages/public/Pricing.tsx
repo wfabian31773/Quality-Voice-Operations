@@ -86,7 +86,7 @@ export default function Pricing() {
                   <span className="text-sm text-slate-ink/50 font-body">/month</span>
                 </div>
                 <Link
-                  to={`/login?mode=signup&plan=${tier.key}`}
+                  to={`/signup?plan=${tier.key}`}
                   className={`block text-center font-semibold py-3 px-4 rounded-lg text-sm transition-colors ${
                     tier.popular
                       ? 'bg-teal hover:bg-teal-hover text-white'

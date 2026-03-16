@@ -4,6 +4,7 @@ import { Menu, X, Phone } from 'lucide-react';
 
 const navLinks = [
   { to: '/product', label: 'Product' },
+  { to: '/agents', label: 'Agents' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/use-cases', label: 'Use Cases' },
   { to: '/integrations', label: 'Integrations' },
@@ -51,7 +52,7 @@ export default function PublicLayout() {
                 Sign In
               </Link>
               <Link
-                to="/login?mode=signup"
+                to="/signup"
                 className="text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2 rounded-lg transition-colors"
               >
                 Start Free Trial
@@ -93,7 +94,7 @@ export default function PublicLayout() {
                   Sign In
                 </Link>
                 <Link
-                  to="/login?mode=signup"
+                  to="/signup"
                   onClick={() => setMobileOpen(false)}
                   className="block text-center text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2.5 rounded-lg"
                 >
@@ -128,6 +129,7 @@ export default function PublicLayout() {
               <h4 className="font-display text-sm font-semibold text-white mb-4">Product</h4>
               <ul className="space-y-2.5">
                 <li><Link to="/product" className="text-sm hover:text-white transition-colors">Features</Link></li>
+                <li><Link to="/agents" className="text-sm hover:text-white transition-colors">Agents</Link></li>
                 <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">Pricing</Link></li>
                 <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">Integrations</Link></li>
                 <li><Link to="/demo" className="text-sm hover:text-white transition-colors">Live Demo</Link></li>

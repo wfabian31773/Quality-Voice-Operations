@@ -1,0 +1,220 @@
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-16">
+              <span className="inline-block text-sm font-semibold text-controlled-red bg-controlled-red/10 px-4 py-1.5 rounded-full mb-4">The Problem</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Every Missed Call Is a Missed Opportunity
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                Small businesses lose thousands in revenue every month to unanswered calls, slow response times, and overwhelmed front desks.
+              </p>
+            </div>
+          </RevealSection>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+            {painPoints.map((point, i) => (
+              <RevealSection key={point.title} delay={`scroll-delay-${i + 1}`}>
+                <div className="bg-white rounded-2xl border border-controlled-red/10 p-6 hover:shadow-lg transition-shadow h-full">
+                  <div className="w-11 h-11 rounded-xl bg-controlled-red/10 flex items-center justify-center mb-4">
+                    <point.icon className="h-5 w-5 text-controlled-red" />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{point.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{point.desc}</p>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+
+          <RevealSection>
+            <div className="text-center mb-12">
+              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">The Solution</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                QVO Handles It All
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                One platform to answer calls, run campaigns, and automate your entire voice operations.
+              </p>
+            </div>
+          </RevealSection>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {solutionFeatures.map((f, i) => (
+              <RevealSection key={f.title} delay={`scroll-delay-${(i % 3) + 1}`}>
+                <div className="glass-card-light rounded-2xl p-7 hover:shadow-lg transition-all border border-teal/10 hover:border-teal/25 h-full">
+                  <div className="w-11 h-11 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
+                    <f.icon className="h-5 w-5 text-teal" />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{f.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{f.desc}</p>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 lg:py-28 bg-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-14">
+              <span className="inline-block text-sm font-semibold text-harbor bg-harbor/10 px-4 py-1.5 rounded-full mb-4">Agent Marketplace</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Pre-Built Agents, Ready to Deploy
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                Choose from industry-specific agent templates. Customize scripts, personality, and integrations — then go live in minutes.
+              </p>
+            </div>
+          </RevealSection>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+            {agentTemplates.map((agent, i) => (
+              <RevealSection key={agent.name} delay={`scroll-delay-${(i % 3) + 1}`}>
+                <div className={`relative rounded-2xl p-7 bg-gradient-to-br ${agent.color} border border-soft-steel/30 hover:shadow-lg transition-all h-full group`}>
+                  <div className={`w-12 h-12 rounded-xl ${agent.iconBg} flex items-center justify-center mb-4`}>
+                    <agent.icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{agent.name}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body mb-3">{agent.desc}</p>
+                  <div className="bg-white/50 rounded-lg p-3 mb-4 border border-soft-steel/15">
+                    <p className="text-xs text-slate-ink/70 font-body italic leading-relaxed">{agent.example}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {agent.capabilities.map((cap) => (
+                      <span key={cap} className="text-xs font-medium bg-white/70 text-harbor/80 px-2.5 py-1 rounded-full border border-soft-steel/20">
+                        {cap}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+
+          <RevealSection>
+            <div className="text-center">
+              <Link
+                to="/agents"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-teal hover:text-teal-hover transition-colors"
+              >
+                Explore Marketplace
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </RevealSection>
+        </div>
+      </section>
+
+      <section className="py-20 lg:py-28 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-mist via-frost-blue/30 to-mist" />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-14">
+              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">Platform Capabilities</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Everything You Need to Automate Voice Operations
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                A complete toolkit for managing AI voice agents, campaigns, and analytics in one place.
+              </p>
+            </div>
+          </RevealSection>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {featureGrid.map((f, i) => (
+              <RevealSection key={f.title} delay={`scroll-delay-${(i % 3) + 1}`}>
+                <div className="bg-white rounded-2xl p-7 border border-soft-steel/30 hover:border-teal/25 hover:shadow-lg transition-all h-full">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal/15 to-harbor/10 flex items-center justify-center mb-4">
+                    <f.icon className="h-5 w-5 text-teal" />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{f.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{f.desc}</p>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 lg:py-28 bg-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-14">
+              <span className="inline-block text-sm font-semibold text-calm-green bg-calm-green/10 px-4 py-1.5 rounded-full mb-4">Customer Results</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Real Businesses, Real Results
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                See how businesses across industries are transforming their operations with QVO.
+              </p>
+            </div>
+          </RevealSection>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {customerResults.map((result, i) => (
+              <RevealSection key={result.industry} delay={`scroll-delay-${i + 1}`}>
+                <div className="relative bg-mist rounded-2xl p-8 border border-soft-steel/30 hover:shadow-lg transition-all h-full">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
+                      <result.icon className="h-5 w-5 text-teal" />
+                    </div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-ink/40">{result.industry}</span>
+                  </div>
+                  <div className="mb-5">
+                    <span className="font-display text-4xl font-bold text-teal">{result.metric}</span>
+                    <span className="block text-sm font-semibold text-harbor mt-1">{result.metricLabel}</span>
+                  </div>
+                  <p className="text-sm text-slate-ink/60 font-body leading-relaxed mb-6 italic">
+                    "{result.quote}"
+                  </p>
+                  <div className="flex items-center gap-1 mb-3">
+                    {[...Array(5)].map((_, j) => (
+                      <Star key={j} className="w-3.5 h-3.5 fill-warm-amber text-warm-amber" />
+                    ))}
+                  </div>
+                  <div>
+                    <p className="font-display text-sm font-semibold text-harbor">{result.name}</p>
+                    <p className="text-xs text-slate-ink/50 font-body mt-0.5">{result.role}</p>
+                  </div>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative py-20 lg:py-24 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor-light/40 to-harbor" />
+        <div className="absolute inset-0 opacity-15">
+          <div className="absolute top-0 left-1/4 w-64 h-64 bg-teal rounded-full blur-[100px]" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-teal rounded-full blur-[120px]" />
+        </div>
+        <RevealSection>
+          <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
+            <h2 className="font-display text-3xl lg:text-4xl font-bold text-white mb-4">
+              Deploy Your First AI Voice Agent Today
+            </h2>
+            <p className="text-lg text-white/60 font-body mb-10 max-w-xl mx-auto">
+              Join hundreds of businesses using QVO to automate calls, capture leads, and grow revenue. No contracts, cancel anytime.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                to="/login?mode=signup"
+                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
+              >
+                Start Free Trial
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/contact"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+              >
+                Book a Demo
+              </Link>
+            </div>
+          </div>
+        </RevealSection>
+      </section>
+    </div>
+  );
+}
