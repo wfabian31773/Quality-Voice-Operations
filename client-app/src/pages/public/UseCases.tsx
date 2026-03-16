@@ -4,6 +4,7 @@ import {
   ArrowRight, CheckCircle2,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 const verticals = [
   {
@@ -131,8 +132,8 @@ export default function UseCases() {
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 space-y-16">
           {verticals.map((v, idx) => (
+            <RevealSection key={v.title}>
             <div
-              key={v.title}
               className="bg-white rounded-2xl border border-soft-steel/50 overflow-hidden"
             >
               <div className="p-8 lg:p-10">
@@ -174,6 +175,7 @@ export default function UseCases() {
                 </div>
               </div>
             </div>
+            </RevealSection>
           ))}
         </div>
       </section>

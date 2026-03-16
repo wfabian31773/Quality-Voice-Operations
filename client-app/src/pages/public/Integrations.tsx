@@ -4,6 +4,7 @@ import {
   Mail, Webhook, Phone, FileText, Shield, Plug,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 const integrations = [
   {
@@ -97,9 +98,10 @@ export default function Integrations() {
 
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {integrations.map((int) => (
-              <div key={int.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 transition-colors">
+              <div key={int.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
                     <int.icon className="h-5 w-5 text-teal" />
@@ -114,6 +116,7 @@ export default function Integrations() {
               </div>
             ))}
           </div>
+          </RevealSection>
         </div>
       </section>
 

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 interface Feature {
   name: string;
@@ -190,6 +191,7 @@ export default function Pricing() {
 
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-20">
             {tiers.map((tier) => (
               <div
@@ -232,7 +234,9 @@ export default function Pricing() {
               </div>
             ))}
           </div>
+          </RevealSection>
 
+          <RevealSection>
           <div className="max-w-5xl mx-auto">
             <h2 className="font-display text-2xl font-bold text-harbor mb-8 text-center">
               Compare all features
@@ -272,6 +276,7 @@ export default function Pricing() {
               </div>
             </div>
           </div>
+          </RevealSection>
         </div>
       </section>
 

@@ -37,6 +37,8 @@ import AgentsShowcase from './pages/public/AgentsShowcase';
 import Signup from './pages/public/Signup';
 import Blog from './pages/public/Blog';
 import BlogArticle from './pages/public/BlogArticle';
+import Resources from './pages/public/Resources';
+import GuideDetail from './pages/public/GuideDetail';
 
 const SETTINGS_TABS = ['general', 'security', 'api-keys'];
 
@@ -65,6 +67,8 @@ export default function App() {
         <Route path="/demo" element={<Demo />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/docs" element={<Docs />} />
+        <Route path="/resources" element={<Resources />} />
+        <Route path="/resources/:slug" element={<GuideDetail />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/blog" element={<Blog />} />
         <Route path="/blog/:slug" element={<BlogArticle />} />

@@ -7,6 +7,7 @@ import {
   Clock, BarChart3, FileText,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 type Category = 'All' | 'Healthcare' | 'Legal' | 'Sales & Marketing' | 'Operations' | 'Support';
 
@@ -418,11 +419,13 @@ export default function AgentsShowcase() {
             })}
           </div>
 
+          <RevealSection>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filtered.map((agent) => (
               <AgentCard key={agent.id} agent={agent} />
             ))}
           </div>
+          </RevealSection>
 
           {filtered.length === 0 && (
             <div className="text-center py-16">

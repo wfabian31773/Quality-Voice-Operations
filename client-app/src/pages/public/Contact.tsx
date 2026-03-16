@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mail, Phone, MapPin, CheckCircle2 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
@@ -55,6 +56,7 @@ export default function Contact() {
 
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
           <div className="grid lg:grid-cols-5 gap-12">
             <div className="lg:col-span-3">
               {submitted ? (
@@ -172,6 +174,7 @@ export default function Contact() {
               </div>
             </div>
           </div>
+          </RevealSection>
         </div>
       </section>
     </div>

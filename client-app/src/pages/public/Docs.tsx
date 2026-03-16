@@ -4,6 +4,7 @@ import {
   FileText, Shield, ArrowRight, Webhook, Users,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 const gettingStarted = [
   {
@@ -105,59 +106,65 @@ export default function Docs() {
 
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
-              <BookOpen className="h-5 w-5 text-teal" />
-            </div>
-            <h2 className="font-display text-2xl font-bold text-harbor">Getting started</h2>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-20">
-            {gettingStarted.map((item, idx) => (
-              <div key={item.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7">
-                <div className="w-8 h-8 rounded-lg bg-teal text-white font-display text-sm font-bold flex items-center justify-center mb-4">
-                  {idx + 1}
-                </div>
-                <h3 className="font-display text-base font-semibold text-harbor mb-2">{item.title}</h3>
-                <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{item.desc}</p>
+          <RevealSection>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
+                <BookOpen className="h-5 w-5 text-teal" />
               </div>
-            ))}
-          </div>
+              <h2 className="font-display text-2xl font-bold text-harbor">Getting started</h2>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-20">
+              {gettingStarted.map((item, idx) => (
+                <div key={item.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
+                  <div className="w-8 h-8 rounded-lg bg-teal text-white font-display text-sm font-bold flex items-center justify-center mb-4">
+                    {idx + 1}
+                  </div>
+                  <h3 className="font-display text-base font-semibold text-harbor mb-2">{item.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </RevealSection>
 
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
-              <Key className="h-5 w-5 text-harbor" />
-            </div>
-            <h2 className="font-display text-2xl font-bold text-harbor">API reference</h2>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
-            {apiSections.map((item) => (
-              <div key={item.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 transition-colors">
-                <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
-                  <item.icon className="h-5 w-5 text-teal" />
-                </div>
-                <h3 className="font-display text-base font-semibold text-harbor mb-2">{item.title}</h3>
-                <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{item.desc}</p>
+          <RevealSection>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
+                <Key className="h-5 w-5 text-harbor" />
               </div>
-            ))}
-          </div>
+              <h2 className="font-display text-2xl font-bold text-harbor">API reference</h2>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
+              {apiSections.map((item) => (
+                <div key={item.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
+                  <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
+                    <item.icon className="h-5 w-5 text-teal" />
+                  </div>
+                  <h3 className="font-display text-base font-semibold text-harbor mb-2">{item.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </RevealSection>
 
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
-              <Shield className="h-5 w-5 text-harbor" />
-            </div>
-            <h2 className="font-display text-2xl font-bold text-harbor">Platform</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {platformDocs.map((item) => (
-              <div key={item.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 transition-colors">
-                <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center mb-4">
-                  <item.icon className="h-5 w-5 text-harbor" />
-                </div>
-                <h3 className="font-display text-base font-semibold text-harbor mb-2">{item.title}</h3>
-                <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{item.desc}</p>
+          <RevealSection>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
+                <Shield className="h-5 w-5 text-harbor" />
               </div>
-            ))}
-          </div>
+              <h2 className="font-display text-2xl font-bold text-harbor">Platform</h2>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {platformDocs.map((item) => (
+                <div key={item.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
+                  <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center mb-4">
+                    <item.icon className="h-5 w-5 text-harbor" />
+                  </div>
+                  <h3 className="font-display text-base font-semibold text-harbor mb-2">{item.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </RevealSection>
         </div>
       </section>
 

@@ -9,6 +9,7 @@ import {
   Plug, Link2,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import RevealSection from '../../components/RevealSection';
 
 const capabilities = [
   {
@@ -391,25 +392,29 @@ export default function Product() {
 
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="max-w-2xl mb-14">
-            <h2 className="font-display text-3xl font-bold text-harbor mb-4">
-              Everything your front desk does, automated and visible.
-            </h2>
-            <p className="text-slate-ink/60 font-body leading-relaxed">
-              From the first ring to the follow-up task, QVO handles the complete voice operations workflow.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {capabilities.map((c) => (
-              <div key={c.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md transition-all duration-300 group">
-                <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center mb-4 group-hover:bg-teal/15 transition-colors">
-                  <c.icon className="h-5 w-5 text-teal" />
+          <RevealSection>
+            <div className="max-w-2xl mb-14">
+              <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+                Everything your front desk does, automated and visible.
+              </h2>
+              <p className="text-slate-ink/60 font-body leading-relaxed">
+                From the first ring to the follow-up task, QVO handles the complete voice operations workflow.
+              </p>
+            </div>
+          </RevealSection>
+          <RevealSection>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {capabilities.map((c) => (
+                <div key={c.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300 group">
+                  <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center mb-4 group-hover:bg-teal/15 transition-colors">
+                    <c.icon className="h-5 w-5 text-teal" />
+                  </div>
+                  <h3 className="font-display text-base font-semibold text-harbor mb-2">{c.title}</h3>
+                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{c.desc}</p>
                 </div>
-                <h3 className="font-display text-base font-semibold text-harbor mb-2">{c.title}</h3>
-                <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{c.desc}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </RevealSection>
         </div>
       </section>
 
