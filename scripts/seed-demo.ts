@@ -35,7 +35,7 @@ professional call handling. Be concise, friendly, and professional.
 Do not share any real patient data, financial information, or sensitive details.
 If asked about pricing or sales, let them know a team member will follow up.
 Always maintain a helpful and professional tone.`,
-    phoneNumber: '+15550000001',
+    phoneNumber: '+18186193692',
     phoneFriendlyName: 'Demo Line - Answering Service',
   },
   {
@@ -58,7 +58,7 @@ For this demo, you should:
 - Provide reassurance that a provider would be notified in a real scenario
 Do NOT provide actual medical advice. Do NOT collect real patient health information.
 Always remind callers this is a demonstration. Be calm, professional, and empathetic.`,
-    phoneNumber: '+15550000002',
+    phoneNumber: '+15625611218',
     phoneFriendlyName: 'Demo Line - Medical After Hours',
   },
   {
@@ -83,7 +83,7 @@ For this demo, you should:
 Do NOT collect real patient health records or insurance information.
 When scheduling, confirm the fictional appointment details before ending the call.
 Always remind callers this is a demonstration. Be warm, professional, and reassuring.`,
-    phoneNumber: '+15550000003',
+    phoneNumber: '+17604376683',
     phoneFriendlyName: 'Demo Line - Dental Scheduler',
   },
   {
@@ -108,7 +108,7 @@ For this demo, you should:
 - Collect a name and callback number (remind them this is a demo)
 Do NOT provide real property listings or actual market data.
 Always remind callers this is a demonstration. Be enthusiastic, knowledgeable, and professional.`,
-    phoneNumber: '+15550000004',
+    phoneNumber: '+16266353027',
     phoneFriendlyName: 'Demo Line - Real Estate',
   },
   {
@@ -134,7 +134,7 @@ For this demo, you should:
 IMPORTANT: Always state clearly that you cannot provide legal advice and this is for demonstration purposes only.
 Do NOT collect sensitive case details or real personal information.
 Always remind callers this is a demonstration. Be calm, professional, and empathetic.`,
-    phoneNumber: '+15550000005',
+    phoneNumber: '+18189388394',
     phoneFriendlyName: 'Demo Line - Legal Intake',
   },
   {
@@ -160,7 +160,7 @@ For this demo, you should:
 - Collect a name and reference number (remind them this is a demo)
 Do NOT access real customer accounts or provide actual technical support.
 Always remind callers this is a demonstration. Be patient, helpful, and solution-oriented.`,
-    phoneNumber: '+15550000006',
+    phoneNumber: '+16266572702',
     phoneFriendlyName: 'Demo Line - Customer Support',
   },
   {
@@ -187,7 +187,7 @@ For this demo, you should:
 - Maintain full FDCPA compliance language throughout
 Do NOT reference real debts, real account numbers, or real financial information.
 Always remind callers this is a demonstration. Be firm but respectful, and maintain compliance at all times.`,
-    phoneNumber: '+15550000007',
+    phoneNumber: '+17602923017',
     phoneFriendlyName: 'Demo Line - Collections',
   },
 ];
@@ -300,8 +300,44 @@ async function main() {
       );
     }
 
+    const EXTRA_DEMO_NUMBERS = [
+      { phoneNumber: '+17147092449', friendlyName: 'Demo Line - Extra 1' },
+      { phoneNumber: '+19096374843', friendlyName: 'Demo Line - Extra 2' },
+    ];
+
+    for (const extra of EXTRA_DEMO_NUMBERS) {
+      console.log(`[SEED] Registering extra demo number ${extra.phoneNumber}...`);
+      await client.query(
+        `INSERT INTO phone_numbers (tenant_id, phone_number, friendly_name, status, is_demo, capabilities, provisioned_at)
+         VALUES ($1, $2, $3, 'active', true,
+                 '{"voice": true, "sms": true}'::jsonb, NOW())
+         ON CONFLICT (tenant_id, phone_number) DO UPDATE SET
+           friendly_name = EXCLUDED.friendly_name,
+           is_demo = true,
+           status = 'active',
+           updated_at = NOW()`,
+        [DEMO_TENANT_ID, extra.phoneNumber, extra.friendlyName],
+      );
+    }
+
+    console.log('[SEED] Cleaning up old placeholder numbers...');
+    await client.query(
+      `DELETE FROM number_routing
+       WHERE tenant_id = $1
+         AND phone_number_id IN (
+           SELECT id FROM phone_numbers
+           WHERE tenant_id = $1 AND phone_number LIKE '+1555%' AND is_demo = true
+         )`,
+      [DEMO_TENANT_ID],
+    );
+    await client.query(
+      `DELETE FROM phone_numbers
+       WHERE tenant_id = $1 AND phone_number LIKE '+1555%' AND is_demo = true`,
+      [DEMO_TENANT_ID],
+    );
+
     await client.query('COMMIT');
-    console.log(`[SEED] Demo data seeded successfully (${DEMO_AGENTS.length} agents).`);
+    console.log(`[SEED] Demo data seeded successfully (${DEMO_AGENTS.length} agents + ${EXTRA_DEMO_NUMBERS.length} extra numbers).`);
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[SEED] Failed:', err);
