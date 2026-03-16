@@ -15,7 +15,7 @@ import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
 import Campaigns from './pages/Campaigns';
 import Billing from './pages/Billing';
-import ApiKeys from './pages/ApiKeys';
+import Settings from './pages/Settings';
 import Quality from './pages/Quality';
 import AuditLog from './pages/AuditLog';
 import PlatformAdmin from './pages/PlatformAdmin';
@@ -71,7 +71,8 @@ export default function App() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/analytics" element={<Analytics />} />
-        <Route path="/settings/api-keys" element={<ApiKeys />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/api-keys" element={<Settings />} />
         <Route path="/quality" element={<Quality />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />

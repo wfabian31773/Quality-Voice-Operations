@@ -4,7 +4,7 @@ import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users,
-  LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Key, Star,
+  LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
   Shield, Building2, Megaphone, CreditCard,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -30,7 +30,7 @@ const links: NavItem[] = [
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/observability', icon: Activity, label: 'Observability' },
   { to: '/quality', icon: Star, label: 'Quality' },
-  { to: '/settings/api-keys', icon: Key, label: 'API Keys' },
+  { to: '/settings', icon: Settings2, label: 'Settings' },
   { to: '/audit-log', icon: Shield, label: 'Audit Log', adminOnly: true },
   { to: '/platform-admin', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },
 ];
