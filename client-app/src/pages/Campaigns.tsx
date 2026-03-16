@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   Plus, ArrowLeft, Play, Pause, XCircle, Upload, Trash2, X,
-  Megaphone, Phone, Users, Clock, BarChart3, ShieldOff,
-  ChevronLeft, ChevronRight, FileText, AlertCircle,
+  Megaphone, Users, ShieldOff, AlertCircle,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled';
@@ -410,14 +410,14 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
   });
   const campaign = campaignData?.campaign;
 
-  const { data: metricsData } = useQuery({
+  const { data: metricsData, error: metricsError } = useQuery({
     queryKey: ['campaign-metrics', campaignId],
     queryFn: () => api.get<{ metrics: CampaignMetrics }>(`/campaigns/${campaignId}/metrics`),
     refetchInterval: campaign?.status === 'running' ? 5000 : 30000,
   });
   const metrics = metricsData?.metrics;
 
-  const { data: contactsData } = useQuery({
+  const { data: contactsData, error: contactsError, isLoading: loadingContacts } = useQuery({
     queryKey: ['campaign-contacts', campaignId, contactPage],
     queryFn: () => api.get<{ contacts: CampaignContact[]; total: number }>(`/campaigns/${campaignId}/contacts?page=${contactPage}&limit=20`),
     enabled: tab === 'contacts',
@@ -486,6 +486,12 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
 
       {tab === 'overview' && (
         <div className="space-y-6">
+          {metricsError && (
+            <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Failed to load metrics: {metricsError.message}
+            </div>
+          )}
           {metrics && (
             <div>
               <h3 className="text-sm font-semibold text-text-primary mb-3">Campaign Metrics</h3>
@@ -581,7 +587,13 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
             )}
           </div>
 
-          {!contactsData ? (
+          {contactsError ? (
+            <div className="text-center py-12 text-danger">
+              <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-70" />
+              <p className="text-sm">Failed to load contacts</p>
+              <p className="text-xs text-text-muted mt-1">{contactsError.message}</p>
+            </div>
+          ) : loadingContacts || !contactsData ? (
             <div className="flex items-center justify-center py-12"><div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" /></div>
           ) : contactsData.contacts.length === 0 ? (
             <div className="text-center py-12 text-text-muted">
@@ -651,7 +663,7 @@ function DncPanel() {
   const [addReason, setAddReason] = useState('');
   const [error, setError] = useState('');
 
-  const { data: dncData, isLoading } = useQuery({
+  const { data: dncData, isLoading, error: dncError } = useQuery({
     queryKey: ['dnc', page],
     queryFn: () => api.get<{ entries: DncEntry[]; total: number }>(`/campaigns/dnc?page=${page}&limit=50`),
   });
@@ -697,7 +709,13 @@ function DncPanel() {
       </div>
       {error && <div className="bg-danger/10 text-danger text-sm px-3 py-2 rounded-lg mb-3">{error}</div>}
 
-      {isLoading ? (
+      {dncError ? (
+        <div className="text-center py-12 text-danger">
+          <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-70" />
+          <p className="text-sm">Failed to load DNC list</p>
+          <p className="text-xs text-text-muted mt-1">{dncError.message}</p>
+        </div>
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12"><div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" /></div>
       ) : !dncData || dncData.entries.length === 0 ? (
         <div className="text-center py-12 text-text-muted">
