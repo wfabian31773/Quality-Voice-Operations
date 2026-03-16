@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store,
+  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -20,6 +20,7 @@ interface NavItem {
 
 const links: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/operations', icon: Radio, label: 'Operations' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
   { to: '/calls', icon: PhoneCall, label: 'Call History' },

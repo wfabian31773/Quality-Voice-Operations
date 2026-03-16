@@ -24,6 +24,7 @@ import AgentBuilder from './pages/AgentBuilder';
 import Marketplace from './pages/Marketplace';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
+import Operations from './pages/Operations';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
@@ -101,6 +102,7 @@ export default function App() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/operations" element={<Operations />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/phone-numbers" element={<PhoneNumbers />} />
         <Route path="/calls" element={<Calls />} />
