@@ -39,6 +39,19 @@ async function main() {
       )
     `);
 
+    const { rowCount: has030 } = await client.query(
+      `SELECT 1 FROM schema_migrations WHERE filename = '030_widget.sql'`,
+    );
+    if (!has030) {
+      await client.query(
+        `UPDATE schema_migrations SET filename = '030_widget.sql' WHERE filename = '029_widget.sql'`,
+      );
+    } else {
+      await client.query(
+        `DELETE FROM schema_migrations WHERE filename = '029_widget.sql'`,
+      );
+    }
+
     const migrationsDir = path.join(process.cwd(), 'migrations');
     const files = fs
       .readdirSync(migrationsDir)

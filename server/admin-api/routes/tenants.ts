@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { getProvisioningStatus } from '../../../platform/tenant/provisioning/TenantProvisioningService';
+import { getRegisteredTemplates } from '../../../platform/agent-templates/registry';
 
 const router = Router();
 const logger = createLogger('ADMIN_TENANTS');
@@ -48,6 +49,28 @@ router.get('/tenants/me/provisioning-status', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/agent-types', requireAuth, (_req, res) => {
+  return res.json({ agentTypes: getRegisteredTemplates() });
+});
+
+const VALID_IANA_TIMEZONES = (() => {
+  try {
+    return new Set(Intl.supportedValuesOf('timeZone'));
+  } catch {
+    return null;
+  }
+})();
+
+function isValidTimezone(tz: string): boolean {
+  if (VALID_IANA_TIMEZONES) return VALID_IANA_TIMEZONES.has(tz);
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 router.patch('/tenants/me', requireAuth, requireRole('admin'), async (req, res) => {
   const { tenantId } = req.user!;
   const { name, domain, settings } = req.body as {
@@ -55,6 +78,12 @@ router.patch('/tenants/me', requireAuth, requireRole('admin'), async (req, res) 
     domain?: string;
     settings?: Record<string, unknown>;
   };
+
+  if (settings && settings.timezone !== undefined) {
+    if (typeof settings.timezone !== 'string' || !isValidTimezone(settings.timezone)) {
+      return res.status(400).json({ error: `Invalid timezone: "${settings.timezone}". Must be a valid IANA timezone identifier.` });
+    }
+  }
 
   const pool = getPlatformPool();
   const client = await pool.connect();

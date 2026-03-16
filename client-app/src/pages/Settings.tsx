@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -53,6 +53,11 @@ const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
   { key: 'api-keys', label: 'API Keys', icon: Key },
 ];
 
+interface AgentType {
+  value: string;
+  label: string;
+}
+
 function GeneralSettings() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -63,6 +68,14 @@ function GeneralSettings() {
     queryKey: ['tenant-settings'],
     queryFn: () => api.get<{ tenant: Tenant }>('/tenants/me'),
   });
+
+  const { data: agentTypesData } = useQuery({
+    queryKey: ['agent-types'],
+    queryFn: () => api.get<{ agentTypes: AgentType[] }>('/agent-types'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const agentTypes = agentTypesData?.agentTypes ?? [{ value: 'general', label: 'General' }];
 
   const [form, setForm] = useState({
     name: '',
@@ -214,8 +227,8 @@ function GeneralSettings() {
             disabled={!isAdmin}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {['general', 'answering-service', 'medical-after-hours', 'outbound-scheduling', 'appointment-confirmation', 'custom'].map((t) => (
-              <option key={t} value={t}>{t.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+            {agentTypes.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
           <p className="text-xs text-text-muted mt-1.5">Template used when creating new agents</p>
@@ -361,14 +374,12 @@ function SecuritySettings() {
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
-  const isApiKeysPath = location.pathname === '/settings/api-keys';
-  const tabParam = searchParams.get('tab') as Tab | null;
-  const tab = isApiKeysPath ? 'api-keys' : (tabParam && TABS.some((t) => t.key === tabParam) ? tabParam : 'general');
+  const pathSegment = location.pathname.replace('/settings/', '').replace('/settings', '') as Tab;
+  const tab: Tab = TABS.some((t) => t.key === pathSegment) ? pathSegment : 'general';
 
   const setTab = (t: Tab) => {
-    navigate(`/settings?tab=${t}`, { replace: true });
+    navigate(`/settings/${t}`, { replace: true });
   };
 
   return (

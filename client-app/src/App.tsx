@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import PublicLayout from './components/PublicLayout';
@@ -30,6 +30,17 @@ import UseCases from './pages/public/UseCases';
 import Integrations from './pages/public/Integrations';
 import Contact from './pages/public/Contact';
 import Docs from './pages/public/Docs';
+
+const SETTINGS_TABS = ['general', 'security', 'api-keys'];
+
+function SettingsRedirect() {
+  const [searchParams] = useSearchParams();
+  const tab = searchParams.get('tab');
+  if (tab && SETTINGS_TABS.includes(tab)) {
+    return <Navigate to={`/settings/${tab}`} replace />;
+  }
+  return <Navigate to="/settings/general" replace />;
+}
 
 export default function App() {
   return (
@@ -73,7 +84,9 @@ export default function App() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/analytics" element={<Analytics />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/settings" element={<SettingsRedirect />} />
+        <Route path="/settings/general" element={<Settings />} />
+        <Route path="/settings/security" element={<Settings />} />
         <Route path="/settings/api-keys" element={<Settings />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/quality" element={<Quality />} />
