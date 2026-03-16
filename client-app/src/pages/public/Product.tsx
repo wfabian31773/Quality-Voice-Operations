@@ -10,6 +10,13 @@ import {
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
+import WorkflowDiagram, {
+  genericWorkflowSteps,
+  healthcareWorkflow,
+  legalWorkflow,
+  realEstateWorkflow,
+  customerSupportWorkflow,
+} from '../../components/WorkflowDiagram';
 
 const capabilities = [
   {
@@ -442,41 +449,35 @@ export default function Product() {
 
       <WorkflowSection />
 
-      <section className="py-16 lg:py-20 bg-white">
-        <div className="max-w-5xl mx-auto px-6 lg:px-8">
+      <section className="py-16 lg:py-24 bg-white">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
               <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 Agent Workflow
               </p>
-              <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
                 From call to resolution, fully automated.
               </h2>
+              <p className="text-slate-ink/60 font-body leading-relaxed max-w-2xl mx-auto">
+                Every call follows a proven flow — your AI agent handles each step in real time.
+              </p>
             </div>
-            <div className="rounded-2xl border border-soft-steel/30 overflow-hidden shadow-sm mb-10">
-              <img
-                src="/assets/workflows/agent-workflow-generic.png"
-                alt="AI agent workflow diagram showing call flow from greeting through issue identification, tool execution, and resolution"
-                loading="lazy"
-                className="w-full h-auto"
-              />
+            <div className="mb-14">
+              <WorkflowDiagram steps={genericWorkflowSteps} />
             </div>
-            <h3 className="font-display text-xl font-semibold text-harbor text-center mb-6">
+            <h3 className="font-display text-xl lg:text-2xl font-semibold text-harbor text-center mb-8">
               Industry-specific workflows
             </h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              {[
-                { src: '/assets/workflows/workflow-medical.png', title: 'Healthcare', alt: 'Medical AI agent workflow: patient greeting, symptom triage, appointment scheduling, prescription handling, SMS confirmation' },
-                { src: '/assets/workflows/workflow-legal.png', title: 'Legal', alt: 'Legal AI agent workflow: caller greeting, case intake, conflict check, attorney scheduling, follow-up confirmation' },
-                { src: '/assets/workflows/workflow-real-estate.png', title: 'Real Estate', alt: 'Real estate AI agent workflow: lead greeting, property inquiry, showing scheduling, CRM update, follow-up' },
-                { src: '/assets/workflows/workflow-support.png', title: 'Customer Support', alt: 'Support AI agent workflow: customer greeting, issue classification, knowledge base lookup, ticket creation, satisfaction survey' },
-              ].map((wf) => (
-                <div key={wf.title} className="group">
-                  <div className="rounded-xl border border-soft-steel/30 overflow-hidden mb-2 group-hover:shadow-md transition-shadow">
-                    <img src={wf.src} alt={wf.alt} loading="lazy" className="w-full h-auto" />
-                  </div>
-                  <p className="text-sm font-display font-semibold text-harbor text-center">{wf.title}</p>
-                </div>
+            <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
+              {[healthcareWorkflow, legalWorkflow, realEstateWorkflow, customerSupportWorkflow].map((wf) => (
+                <WorkflowDiagram
+                  key={wf.title}
+                  steps={wf.steps}
+                  title={wf.title}
+                  accent={wf.accent}
+                  compact
+                />
               ))}
             </div>
           </RevealSection>
