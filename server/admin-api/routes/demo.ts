@@ -120,7 +120,7 @@ router.get('/demo/phones', demoActivityLimiter, async (_req: Request, res: Respo
        FROM phone_numbers pn
        LEFT JOIN number_routing nr ON nr.phone_number_id = pn.id AND nr.is_active = true
        LEFT JOIN agents a ON a.id = nr.agent_id
-       LEFT JOIN demo_agents da ON da.tenant_id = pn.tenant_id AND da.name = a.name
+       LEFT JOIN demo_agents da ON da.tenant_id = pn.tenant_id AND da.agent_template = a.type
        WHERE pn.tenant_id = $1
          AND pn.is_demo = true
          AND pn.status = 'active'
@@ -144,6 +144,107 @@ router.get('/demo/phones', demoActivityLimiter, async (_req: Request, res: Respo
   } catch (err) {
     console.error('[DEMO] Failed to fetch phones:', err);
     res.status(500).json({ error: 'Failed to fetch demo phones' });
+  }
+});
+
+const DEMO_AGENT_METADATA: Record<string, { icon: string; category: string; useCases: string[] }> = {
+  'answering-service': {
+    icon: 'headphones',
+    category: 'General',
+    useCases: ['Take messages', 'Route calls by priority', 'After-hours coverage'],
+  },
+  'medical-after-hours': {
+    icon: 'stethoscope',
+    category: 'Healthcare',
+    useCases: ['Triage urgency levels', 'Collect callback info', 'Notify on-call providers'],
+  },
+  'dental': {
+    icon: 'calendar',
+    category: 'Healthcare',
+    useCases: ['Schedule appointments', 'New patient intake', 'Emergency detection'],
+  },
+  'property-management': {
+    icon: 'building',
+    category: 'Real Estate',
+    useCases: ['Qualify buyer/seller leads', 'Schedule showings', 'Property inquiries'],
+  },
+  'legal': {
+    icon: 'scale',
+    category: 'Professional Services',
+    useCases: ['Case intake & categorization', 'Schedule consultations', 'Practice area routing'],
+  },
+  'customer-support': {
+    icon: 'help-circle',
+    category: 'Support',
+    useCases: ['Create support tickets', 'Troubleshoot issues', 'Escalation handling'],
+  },
+  'collections': {
+    icon: 'dollar-sign',
+    category: 'Financial',
+    useCases: ['Account lookup', 'Payment arrangements', 'FDCPA compliance'],
+  },
+};
+
+router.get('/demo/agents', demoActivityLimiter, async (_req: Request, res: Response) => {
+  try {
+    const pool = getPlatformPool();
+
+    const { rows: tenantCheck } = await pool.query(
+      `SELECT id FROM tenants WHERE id = $1 AND is_demo = true`,
+      [DEMO_TENANT_ID],
+    );
+
+    if (tenantCheck.length === 0) {
+      res.json({ agents: [], message: 'Demo system is not configured.' });
+      return;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT
+         da.id,
+         da.name,
+         da.description,
+         da.agent_template,
+         da.voice_id,
+         da.is_active,
+         pn.phone_number
+       FROM demo_agents da
+       LEFT JOIN agents a ON a.tenant_id = da.tenant_id AND a.type = da.agent_template AND a.status = 'active'
+       LEFT JOIN number_routing nr ON nr.agent_id = a.id AND nr.is_active = true
+       LEFT JOIN phone_numbers pn ON pn.id = nr.phone_number_id AND pn.is_demo = true AND pn.status = 'active'
+       WHERE da.tenant_id = $1
+         AND da.is_active = true
+       ORDER BY da.name`,
+      [DEMO_TENANT_ID],
+    );
+
+    const isPlaceholder = (num: string) => num.startsWith('+1555') || num.startsWith('+15550');
+
+    const agents = rows.map((r) => {
+      const template = r.agent_template as string;
+      const meta = DEMO_AGENT_METADATA[template] ?? { icon: 'phone', category: 'General', useCases: [] };
+      const phoneNumber = (r.phone_number as string) ?? null;
+
+      return {
+        id: r.id as string,
+        name: r.name as string,
+        type: template,
+        description: r.description as string,
+        template,
+        voiceId: r.voice_id as string,
+        phoneNumber,
+        isPlaceholder: phoneNumber ? isPlaceholder(phoneNumber) : true,
+        icon: meta.icon,
+        category: meta.category,
+        capabilities: meta.useCases,
+        useCases: meta.useCases,
+      };
+    });
+
+    res.json({ agents });
+  } catch (err) {
+    console.error('[DEMO] Failed to fetch agents:', err);
+    res.status(500).json({ error: 'Failed to fetch demo agents' });
   }
 });
 

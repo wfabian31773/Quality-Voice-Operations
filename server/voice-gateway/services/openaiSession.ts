@@ -18,6 +18,7 @@ import type { OutboxService } from '../../../platform/integrations/outbox/Outbox
 import { globalToolRegistry } from '../../../platform/tools/registry';
 import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeContext';
 import { isToolDenied, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
+import { handleDemoToolCall } from './demoToolHandler';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
@@ -68,6 +69,21 @@ function buildToolHandler(
     if (ctx.templateKey && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+    }
+
+    const demoResult = handleDemoToolCall(tenantId, toolName, args);
+    if (demoResult !== null) {
+      await updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION');
+      await writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
+        tool: toolName,
+        demo: true,
+      });
+      await writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
+        tool: toolName,
+        demo: true,
+      });
+      await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+      return demoResult;
     }
 
     if (ctx.workflowEngine) {

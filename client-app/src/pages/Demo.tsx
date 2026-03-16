@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Phone, Activity, BarChart3, Headphones, Stethoscope, AlertCircle } from 'lucide-react';
+import {
+  Phone,
+  Activity,
+  BarChart3,
+  Headphones,
+  Stethoscope,
+  AlertCircle,
+  Calendar,
+  Building2,
+  Scale,
+  HelpCircle,
+  DollarSign,
+} from 'lucide-react';
 import SEO from '../components/SEO';
 
 const API_BASE = '/api';
@@ -12,12 +24,38 @@ interface DemoEvent {
   timestamp: string;
 }
 
-interface DemoPhone {
-  phoneNumber: string;
-  friendlyName: string;
-  agentTemplate: string | null;
+interface DemoAgent {
+  id: string;
+  name: string;
+  description: string;
+  template: string;
+  voiceId: string;
+  phoneNumber: string | null;
   isPlaceholder: boolean;
+  icon: string;
+  category: string;
+  useCases: string[];
 }
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  headphones: Headphones,
+  stethoscope: Stethoscope,
+  calendar: Calendar,
+  building: Building2,
+  scale: Scale,
+  'help-circle': HelpCircle,
+  'dollar-sign': DollarSign,
+};
+
+const AGENT_COLORS: string[] = [
+  'teal',
+  'harbor',
+  'teal',
+  'harbor',
+  'teal',
+  'harbor',
+  'teal',
+];
 
 function formatPhoneNumber(raw: string): string {
   const digits = raw.replace(/\D/g, '');
@@ -54,29 +92,79 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function PhoneDisplay({ phone, variant }: { phone: DemoPhone | undefined; variant: 'teal' | 'harbor' }) {
-  const bgClass = variant === 'teal' ? 'bg-teal/10 border-teal/20' : 'bg-harbor/10 border-harbor/20';
-  const iconClass = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
-  const labelClass = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
+function AgentCard({
+  agent,
+  colorIndex,
+  selected,
+  onSelect,
+}: {
+  agent: DemoAgent;
+  colorIndex: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const variant = AGENT_COLORS[colorIndex % AGENT_COLORS.length];
+  const IconComponent = ICON_MAP[agent.icon] ?? Headphones;
 
-  if (!phone) {
+  const borderClass = selected
+    ? variant === 'teal'
+      ? 'border-teal ring-2 ring-teal/20'
+      : 'border-harbor ring-2 ring-harbor/20'
+    : 'border-soft-steel/50 hover:border-teal/30';
+
+  const iconBg = variant === 'teal' ? 'bg-teal/10' : 'bg-harbor/10';
+  const iconColor = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
+  const categoryColor = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`bg-white rounded-2xl border ${borderClass} p-6 text-left transition-all cursor-pointer w-full`}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
+          <IconComponent className={`h-5 w-5 ${iconColor}`} />
+        </div>
+        <div className="min-w-0">
+          <h3 className="font-display text-lg font-semibold text-harbor truncate">{agent.name}</h3>
+          <span className={`text-xs font-medium ${categoryColor}`}>{agent.category}</span>
+        </div>
+      </div>
+      <p className="text-sm text-slate-ink/60 font-body mb-4 leading-relaxed line-clamp-2">
+        {agent.description}
+      </p>
+      <div className="space-y-1">
+        {agent.useCases.map((uc) => (
+          <div key={uc} className="flex items-center gap-2 text-xs text-slate-ink/50 font-body">
+            <span className={`w-1 h-1 rounded-full ${variant === 'teal' ? 'bg-teal' : 'bg-harbor'} shrink-0`} />
+            {uc}
+          </div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
+  if (!agent.phoneNumber) {
     return (
-      <div className={`flex items-center gap-3 ${bgClass} rounded-xl px-5 py-4 border`}>
-        <AlertCircle className={`h-5 w-5 ${iconClass} shrink-0`} />
+      <div className="flex items-center gap-3 bg-warm-amber/10 border border-warm-amber/20 rounded-xl px-5 py-4">
+        <AlertCircle className="h-5 w-5 text-warm-amber shrink-0" />
         <div>
-          <p className={`text-xs ${labelClass} mb-0.5`}>Demo line</p>
+          <p className="text-xs text-warm-amber mb-0.5">Demo line</p>
           <p className="text-sm text-slate-ink/50">Not configured</p>
         </div>
       </div>
     );
   }
 
-  if (phone.isPlaceholder) {
+  if (agent.isPlaceholder) {
     return (
-      <div className={`flex items-center gap-3 ${bgClass} rounded-xl px-5 py-4 border`}>
-        <Phone className={`h-5 w-5 ${iconClass} shrink-0`} />
+      <div className="flex items-center gap-3 bg-teal/10 border border-teal/20 rounded-xl px-5 py-4">
+        <Phone className="h-5 w-5 text-teal shrink-0" />
         <div>
-          <p className={`text-xs ${labelClass} mb-0.5`}>Demo line — awaiting real number</p>
+          <p className="text-xs text-teal mb-0.5">Demo line — awaiting real number</p>
           <p className="text-sm text-slate-ink/50">Contact your administrator to provision a Twilio number</p>
         </div>
       </div>
@@ -84,11 +172,11 @@ function PhoneDisplay({ phone, variant }: { phone: DemoPhone | undefined; varian
   }
 
   return (
-    <div className={`flex items-center gap-3 ${bgClass} rounded-xl px-5 py-4 border`}>
-      <Phone className={`h-5 w-5 ${iconClass} shrink-0`} />
+    <div className="flex items-center gap-3 bg-teal/10 border border-teal/20 rounded-xl px-5 py-4">
+      <Phone className="h-5 w-5 text-teal shrink-0" />
       <div>
-        <p className={`text-xs ${labelClass} mb-0.5`}>Call to try it</p>
-        <p className="text-lg font-mono font-bold text-harbor">{formatPhoneNumber(phone.phoneNumber)}</p>
+        <p className="text-xs text-teal mb-0.5">Call to try it</p>
+        <p className="text-lg font-mono font-bold text-harbor">{formatPhoneNumber(agent.phoneNumber)}</p>
       </div>
     </div>
   );
@@ -97,7 +185,8 @@ function PhoneDisplay({ phone, variant }: { phone: DemoPhone | undefined; varian
 export default function Demo() {
   const [events, setEvents] = useState<DemoEvent[]>([]);
   const [totalCalls, setTotalCalls] = useState(0);
-  const [phones, setPhones] = useState<DemoPhone[]>([]);
+  const [agents, setAgents] = useState<DemoAgent[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [demoConfigured, setDemoConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -122,15 +211,24 @@ export default function Demo() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/demo/phones`)
-      .then((r) => r.json())
-      .then((data) => {
-        setPhones(data.phones ?? []);
-        setDemoConfigured(data.configured ?? false);
-      })
-      .catch(() => {
-        setDemoConfigured(false);
-      });
+    Promise.all([
+      fetch(`${API_BASE}/demo/agents`)
+        .then((r) => r.json())
+        .then((data) => {
+          const agentList = data.agents ?? [];
+          setAgents(agentList);
+          if (agentList.length > 0 && !selectedAgent) {
+            setSelectedAgent(agentList[0].id);
+          }
+        }),
+      fetch(`${API_BASE}/demo/phones`)
+        .then((r) => r.json())
+        .then((data) => {
+          setDemoConfigured(data.configured ?? false);
+        }),
+    ]).catch(() => {
+      setDemoConfigured(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -139,12 +237,7 @@ export default function Demo() {
     return () => clearInterval(interval);
   }, [fetchActivity]);
 
-  const answeringPhone = phones.find(
-    (p) => p.agentTemplate === 'answering-service' || p.friendlyName.toLowerCase().includes('answering'),
-  );
-  const medicalPhone = phones.find(
-    (p) => p.agentTemplate === 'medical-after-hours' || p.friendlyName.toLowerCase().includes('medical'),
-  );
+  const activeAgent = agents.find((a) => a.id === selectedAgent) ?? null;
 
   return (
     <div>
@@ -162,7 +255,7 @@ export default function Demo() {
             Experience QVO live.
           </h1>
           <p className="text-lg text-white/70 font-body max-w-2xl mx-auto">
-            Call one of our demo agents and hear what professional voice operations sound like. No signup required.
+            Choose an agent below and call to hear what professional voice operations sound like. No signup required.
           </p>
         </div>
       </section>
@@ -175,33 +268,52 @@ export default function Demo() {
             </div>
           )}
 
-          <div className="grid md:grid-cols-2 gap-8 mb-12">
-            <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 hover:border-teal/30 transition-colors">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
-                  <Headphones className="h-5 w-5 text-teal" />
-                </div>
-                <h3 className="font-display text-xl font-semibold text-harbor">Answering Service</h3>
-              </div>
-              <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
-                A professional answering service demo. The agent will greet you, take a message, and demonstrate professional call handling.
-              </p>
-              <PhoneDisplay phone={answeringPhone} variant="teal" />
-            </div>
-
-            <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 hover:border-harbor/30 transition-colors">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
-                  <Stethoscope className="h-5 w-5 text-harbor" />
-                </div>
-                <h3 className="font-display text-xl font-semibold text-harbor">Medical After-Hours</h3>
-              </div>
-              <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
-                An after-hours medical answering demo. The agent will collect your concern, assess urgency, and take a callback number.
-              </p>
-              <PhoneDisplay phone={medicalPhone} variant="harbor" />
-            </div>
+          <div className="mb-8">
+            <h2 className="font-display text-2xl font-bold text-harbor mb-2">Choose a Demo Agent</h2>
+            <p className="text-sm text-slate-ink/60 font-body">
+              Select an agent to see its details and try it out.
+            </p>
           </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+            {agents.map((agent, idx) => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                colorIndex={idx}
+                selected={selectedAgent === agent.id}
+                onSelect={() => setSelectedAgent(agent.id)}
+              />
+            ))}
+            {agents.length === 0 && !loading && (
+              <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-12 text-slate-ink/40 font-body">
+                <p>No demo agents configured yet.</p>
+              </div>
+            )}
+          </div>
+
+          {activeAgent && (
+            <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                {(() => {
+                  const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
+                  return (
+                    <div className="w-12 h-12 rounded-xl bg-teal/10 flex items-center justify-center">
+                      <IconComponent className="h-6 w-6 text-teal" />
+                    </div>
+                  );
+                })()}
+                <div>
+                  <h3 className="font-display text-xl font-semibold text-harbor">{activeAgent.name}</h3>
+                  <span className="text-xs font-medium text-teal">{activeAgent.category}</span>
+                </div>
+              </div>
+              <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
+                {activeAgent.description}
+              </p>
+              <AgentPhoneDisplay agent={activeAgent} />
+            </div>
+          )}
 
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             <div className="md:col-span-1 bg-white rounded-2xl border border-soft-steel/50 p-6">
