@@ -6,7 +6,7 @@ import {
   Mic, Megaphone, Plug, MessageSquare, Bot,
   Zap, Settings, Lock, TrendingUp, PhoneCall,
   PhoneOff, DollarSign, UserX, Timer,
-  CheckCircle2, Star,
+  CheckCircle2, Star, Wrench,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import SEO from '../../components/SEO';
@@ -57,6 +57,7 @@ const industryLogos = [
   { name: 'Healthcare', icon: Stethoscope },
   { name: 'Legal', icon: Scale },
   { name: 'Real Estate', icon: Home },
+  { name: 'Home Services', icon: Wrench },
   { name: 'Finance', icon: DollarSign },
   { name: 'Support', icon: HeadphonesIcon },
   { name: 'Insurance', icon: Shield },
@@ -128,6 +129,16 @@ const agentTemplates = [
     color: 'from-controlled-red/10 to-warm-amber/10',
     iconBg: 'bg-controlled-red/15 text-controlled-red',
     avatar: '/assets/avatars/collections.png',
+  },
+  {
+    icon: Wrench,
+    name: 'HVAC / Home Services',
+    desc: 'Handles service calls, triages emergencies, dispatches technicians, and sends customers real-time ETAs via SMS.',
+    capabilities: ['Service call intake', 'Emergency triage', 'Tech dispatch', 'SMS ETAs'],
+    example: '"My AC stopped working." → Captures details, dispatches tech, sends ETA',
+    color: 'from-orange-100/80 to-warm-amber/10',
+    iconBg: 'bg-orange-100 text-orange-700',
+    avatar: '/assets/avatars/hvac.png',
   },
 ];
 

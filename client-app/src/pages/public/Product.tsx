@@ -16,6 +16,7 @@ import WorkflowDiagram, {
   legalWorkflow,
   realEstateWorkflow,
   customerSupportWorkflow,
+  hvacWorkflow,
 } from '../../components/WorkflowDiagram';
 
 const capabilities = [
@@ -479,6 +480,14 @@ export default function Product() {
                   compact
                 />
               ))}
+            </div>
+            <div className="mt-6 lg:mt-8 max-w-xl mx-auto">
+              <WorkflowDiagram
+                steps={hvacWorkflow.steps}
+                title={hvacWorkflow.title}
+                accent={hvacWorkflow.accent}
+                compact
+              />
             </div>
           </RevealSection>
         </div>

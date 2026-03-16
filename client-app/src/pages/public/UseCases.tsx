@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   Stethoscope, Headphones, Scale, Home, Users, Megaphone,
-  ArrowRight, CheckCircle2,
+  ArrowRight, CheckCircle2, Wrench,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
@@ -101,6 +101,22 @@ const verticals = [
       'AI agent qualifies leads and schedules follow-up appointments',
       'Configurable retry logic ensures persistent but respectful outreach',
       'Campaign analytics track connect rates, outcomes, and ROI',
+    ],
+  },
+  {
+    icon: Wrench,
+    title: 'HVAC & home services',
+    subtitle: 'Service calls, dispatch, and emergency triage',
+    pains: [
+      'After-hours emergency calls go unanswered or to generic voicemail',
+      'Dispatchers manually coordinate technicians with no visibility into availability',
+      'Customers are left waiting with no ETA or status updates',
+    ],
+    solutions: [
+      'AI agent answers service calls 24/7 and captures issue details',
+      'Emergency triage identifies gas leaks, no-heat, and safety risks instantly',
+      'Technician dispatch with real-time availability and automated SMS ETAs',
+      'Service tickets are created automatically with full call context',
     ],
   },
 ];

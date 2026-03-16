@@ -6,6 +6,7 @@ import {
   Home, Building, CalendarDays, Database, BellRing,
   Headphones, HelpCircle, BookOpen, Ticket, SmilePlus,
   PhoneIncoming, Bot, Wrench, Send, ClipboardCheck,
+  AlertTriangle, Truck,
 } from 'lucide-react';
 
 export interface WorkflowStep {
@@ -19,6 +20,7 @@ const ACCENT_TOKENS = {
   gold: { color: '#8B6914', bg: '#FDF6E3' },
   green: { color: '#1a6b4a', bg: '#e6f5ee' },
   blue: { color: '#2D5F96', bg: '#E8F0FA' },
+  orange: { color: '#B45309', bg: '#FEF3C7' },
 } as const;
 
 type AccentKey = keyof typeof ACCENT_TOKENS;
@@ -179,6 +181,18 @@ export const customerSupportWorkflow = {
     { icon: <BookOpen />, label: 'Knowledge Base Lookup', description: 'Search for solutions' },
     { icon: <Ticket />, label: 'Ticket Creation', description: 'Track the issue' },
     { icon: <SmilePlus />, label: 'Satisfaction Survey', description: 'Capture feedback' },
+  ] as WorkflowStep[],
+};
+
+export const hvacWorkflow = {
+  title: 'HVAC / Home Services',
+  accent: 'orange' as AccentKey,
+  steps: [
+    { icon: <Phone />, label: 'Service Call', description: 'Capture issue details' },
+    { icon: <AlertTriangle />, label: 'Emergency Detection', description: 'Prioritize urgent jobs' },
+    { icon: <Truck />, label: 'Technician Dispatch', description: 'Route to available tech' },
+    { icon: <ClipboardCheck />, label: 'Service Ticket', description: 'Work order created' },
+    { icon: <Smartphone />, label: 'SMS Confirmation', description: 'ETA sent to customer' },
   ] as WorkflowStep[],
 };
 
