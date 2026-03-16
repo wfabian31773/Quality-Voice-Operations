@@ -23,6 +23,7 @@ interface Campaign {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  contactCount?: number;
 }
 
 interface CampaignMetrics {
@@ -259,11 +260,12 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
 }
 
 function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string; onClose: () => void; onAdded: () => void }) {
-  const [mode, setMode] = useState<'manual' | 'csv'>('manual');
+  const [mode, setMode] = useState<'manual' | 'csv' | 'json'>('manual');
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
   const [manualEntries, setManualEntries] = useState<Array<{ phone: string; name: string }>>([]);
   const [csvText, setCsvText] = useState('');
+  const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState('');
 
   const mutation = useMutation({
@@ -287,6 +289,14 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
     if (mode === 'csv') {
       if (!csvText.trim()) { setError('Paste CSV data'); return; }
       mutation.mutate({ csv: csvText });
+    } else if (mode === 'json') {
+      if (!jsonText.trim()) { setError('Paste JSON data'); return; }
+      try {
+        const parsed = JSON.parse(jsonText);
+        const contacts = Array.isArray(parsed) ? parsed : parsed.contacts;
+        if (!Array.isArray(contacts)) { setError('JSON must be an array or { contacts: [...] }'); return; }
+        mutation.mutate({ contacts: contacts.map((c: Record<string, string>) => ({ phoneNumber: c.phoneNumber || c.phone || c.phone_number, name: c.name || undefined })) });
+      } catch { setError('Invalid JSON'); }
     } else {
       if (manualEntries.length === 0) { setError('Add at least one contact'); return; }
       mutation.mutate({ contacts: manualEntries.map((e) => ({ phoneNumber: e.phone, name: e.name || undefined })) });
@@ -314,9 +324,21 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
           <div className="flex gap-2">
             <button onClick={() => setMode('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'manual' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>Manual Entry</button>
             <button onClick={() => setMode('csv')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'csv' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>CSV Upload</button>
+            <button onClick={() => setMode('json')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'json' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>JSON</button>
           </div>
 
-          {mode === 'manual' ? (
+          {mode === 'json' ? (
+            <>
+              <textarea
+                rows={8}
+                value={jsonText}
+                onChange={(e) => setJsonText(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                placeholder={'[\n  { "phoneNumber": "2125551234", "name": "Jane Smith" },\n  { "phoneNumber": "3105559876", "name": "Bob Jones" }\n]'}
+              />
+              <p className="text-xs text-text-muted">JSON array of objects with "phoneNumber" (or "phone") and optional "name" fields.</p>
+            </>
+          ) : mode === 'manual' ? (
             <>
               <div className="flex gap-2">
                 <input type="text" placeholder="Phone number" value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
@@ -642,14 +664,19 @@ function DncPanel() {
 
   const handleRemove = async (phone: string) => {
     try {
-      await fetch('/api/campaigns/dnc', {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/campaigns/dnc', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
         body: JSON.stringify({ phone }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed: ${res.status}`);
+      }
       queryClient.invalidateQueries({ queryKey: ['dnc'] });
     } catch (err) {
-      setError('Failed to remove number from DNC list');
+      setError(err instanceof Error ? err.message : 'Failed to remove number from DNC list');
     }
   };
 
@@ -792,9 +819,9 @@ export default function Campaigns() {
                 <tr className="border-b border-border bg-surface-secondary">
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Contacts</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Type</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Created</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Started</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -806,9 +833,9 @@ export default function Campaigns() {
                   >
                     <td className="px-4 py-3 text-sm font-medium text-text-primary">{c.name}</td>
                     <td className="px-4 py-3"><StatusBadge status={c.status} colors={STATUS_COLORS} /></td>
+                    <td className="px-4 py-3 text-sm text-text-muted">{(c.contactCount ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-sm text-text-muted capitalize">{c.type.replace(/_/g, ' ')}</td>
                     <td className="px-4 py-3 text-sm text-text-muted">{formatDate(c.createdAt)}</td>
-                    <td className="px-4 py-3 text-sm text-text-muted">{formatDate(c.startedAt)}</td>
                   </tr>
                 ))}
               </tbody>

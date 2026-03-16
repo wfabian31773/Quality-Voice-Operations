@@ -93,21 +93,21 @@ export async function listCampaigns(
 ): Promise<{ campaigns: Campaign[]; total: number }> {
   return withTenant(tenantId, async (client) => {
     const { limit = 20, offset = 0, status } = opts;
-    const conditions = ['tenant_id = $1'];
+    const conditions = ['c.tenant_id = $1'];
+    const countConditions = ['tenant_id = $1'];
     const values: unknown[] = [tenantId];
-    if (status) { values.push(status); conditions.push(`status = $${values.length}`); }
+    if (status) { values.push(status); conditions.push(`c.status = $${values.length}`); countConditions.push(`status = $${values.length}`); }
 
-    const where = conditions.join(' AND ');
     const { rows } = await client.query(
-      `SELECT * FROM campaigns WHERE ${where} ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      `SELECT c.*, (SELECT COUNT(*)::int FROM campaign_contacts cc WHERE cc.campaign_id = c.id AND cc.tenant_id = c.tenant_id) AS contact_count FROM campaigns c WHERE ${conditions.join(' AND ')} ORDER BY c.created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, limit, offset],
     );
     const { rows: countRows } = await client.query(
-      `SELECT COUNT(*) AS total FROM campaigns WHERE ${where}`,
+      `SELECT COUNT(*) AS total FROM campaigns WHERE ${countConditions.join(' AND ')}`,
       values,
     );
     return {
-      campaigns: rows.map(rowToCampaign),
+      campaigns: rows.map((r) => ({ ...rowToCampaign(r), contactCount: (r.contact_count as number) ?? 0 })),
       total: parseInt(countRows[0].total as string),
     };
   });
