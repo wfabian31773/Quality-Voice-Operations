@@ -27,6 +27,7 @@ import contactRoutes from './routes/contact';
 import knowledgeBaseRoutes from './routes/knowledgeBase';
 import widgetRoutes from './routes/widget';
 import marketplaceRoutes from './routes/marketplace';
+import demoLiveRoutes from './routes/demoLive';
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use('/', campaignRoutes);
 app.use('/', observabilityRoutes);
 app.use('/', analyticsRoutes);
 app.use('/', demoRoutes);
+app.use('/', demoLiveRoutes);
 app.use('/', contactRoutes);
 app.use('/', apiKeyRoutes);
 app.use('/', qualityRoutes);

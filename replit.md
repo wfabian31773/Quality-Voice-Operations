@@ -64,7 +64,7 @@ scripts/            Migration runner, seed scripts, startup script
 - Auth: JWT stored in localStorage, Zustand auth store with `initialized` flag
 - Data fetching: React Query (@tanstack/react-query) with auto-refresh
 - **QVO Brand:** Deep Harbor (#123047), Signal Teal (#2E8C83), Clinic Mist (#F3F7F7). Fonts: Sora (display), Manrope (body), Inter (UI).
-- **Public marketing pages (PublicLayout):** `/` (Landing), `/product`, `/agents` (showcase), `/pricing`, `/use-cases`, `/integrations`, `/demo`, `/resources` (guides hub), `/resources/:slug` (guide detail), `/contact`, `/docs`, `/signup`
+- **Public marketing pages (PublicLayout):** `/` (Landing), `/product`, `/agents` (showcase), `/pricing`, `/use-cases`, `/integrations`, `/demo` (with real-time visualization panels: transcript, tools, calendar, activity feed via SSE), `/resources` (guides hub), `/resources/:slug` (guide detail), `/contact`, `/docs`, `/signup`
 - **Protected dashboard pages (Layout):** `/dashboard`, `/agents`, `/phone-numbers`, `/calls`, etc.
 - **Note:** `/agents` is used by both the public showcase and the protected dashboard sidebar. The public route takes priority in React Router; authenticated agent management remains accessible via the dashboard layout.
 - **Route structure:** Dashboard moved from `/` to `/dashboard`. Root `/` is the public landing page. Login redirects to `/dashboard`.
@@ -74,7 +74,7 @@ scripts/            Migration runner, seed scripts, startup script
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install, updates, upgrades), /platform/templates/:id/versions (create draft, validate, publish, deprecate)
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /agents, /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install, updates, upgrades), /platform/templates/:id/versions (create draft, validate, publish, deprecate), /demo/live/:callId (SSE for real-time demo call visualization), /demo/active-call (poll for active demo calls)
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events

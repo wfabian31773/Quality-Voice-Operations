@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Phone,
-  Activity,
   BarChart3,
   Headphones,
   Stethoscope,
@@ -13,16 +12,14 @@ import {
   DollarSign,
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import ConversationTranscript from '../components/demo/ConversationTranscript';
+import ToolExecutionPanel from '../components/demo/ToolExecutionPanel';
+import CalendarToolVisual from '../components/demo/CalendarToolVisual';
+import SystemActivityFeed from '../components/demo/SystemActivityFeed';
+import CallStatusIndicator from '../components/demo/CallStatusIndicator';
+import { useDemoSSE } from '../hooks/useDemoSSE';
 
 const API_BASE = '/api';
-
-interface DemoEvent {
-  id: string;
-  eventType: string;
-  agentName: string;
-  durationSeconds: number | null;
-  timestamp: string;
-}
 
 interface DemoAgent {
   id: string;
@@ -63,33 +60,6 @@ function formatPhoneNumber(raw: string): string {
     return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
   }
   return raw;
-}
-
-function formatEventType(type: string): string {
-  const map: Record<string, string> = {
-    call_started: 'Call Started',
-    call_ended: 'Call Ended',
-    workflow_triggered: 'Workflow Triggered',
-  };
-  return map[type] ?? type.replace(/_/g, ' ');
-}
-
-function eventColor(type: string): string {
-  if (type === 'call_ended') return 'text-calm-green';
-  if (type === 'call_started') return 'text-teal';
-  if (type === 'workflow_triggered') return 'text-warm-amber';
-  return 'text-soft-steel';
-}
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function AgentCard({
@@ -183,25 +153,32 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
 }
 
 export default function Demo() {
-  const [events, setEvents] = useState<DemoEvent[]>([]);
   const [totalCalls, setTotalCalls] = useState(0);
   const [agents, setAgents] = useState<DemoAgent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [demoConfigured, setDemoConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchActivity = useCallback(async () => {
+  const {
+    callStatus,
+    agentName,
+    duration,
+    transcript,
+    tools,
+    activityEvents,
+    connected: sseConnected,
+  } = useDemoSSE();
+
+  const isActive = callStatus === 'ringing' || callStatus === 'connected';
+  const hasCalendarTool = tools.some(
+    (t) => t.tool === 'checkAvailability' || t.tool === 'scheduleAppointment',
+  );
+
+  const fetchStats = useCallback(async () => {
     try {
-      const [activityRes, statsRes] = await Promise.all([
-        fetch(`${API_BASE}/demo/activity`),
-        fetch(`${API_BASE}/demo/stats`),
-      ]);
-      if (activityRes.ok) {
-        const data = await activityRes.json();
-        setEvents(data.events ?? []);
-      }
-      if (statsRes.ok) {
-        const data = await statsRes.json();
+      const res = await fetch(`${API_BASE}/demo/stats`);
+      if (res.ok) {
+        const data = await res.json();
         setTotalCalls(data.totalCalls ?? 0);
       }
     } catch {
@@ -232,10 +209,10 @@ export default function Demo() {
   }, []);
 
   useEffect(() => {
-    fetchActivity();
-    const interval = setInterval(fetchActivity, 5000);
+    fetchStats();
+    const interval = setInterval(fetchStats, 15000);
     return () => clearInterval(interval);
-  }, [fetchActivity]);
+  }, [fetchStats]);
 
   const activeAgent = agents.find((a) => a.id === selectedAgent) ?? null;
 
@@ -255,7 +232,7 @@ export default function Demo() {
             Experience QVO live.
           </h1>
           <p className="text-lg text-white/70 font-body max-w-2xl mx-auto">
-            Choose an agent below and call to hear what professional voice operations sound like. No signup required.
+            Choose an agent below and call to watch the conversation unfold in real-time. No signup required.
           </p>
         </div>
       </section>
@@ -267,6 +244,10 @@ export default function Demo() {
               Demo phone lines are not yet provisioned. The demo system is ready but requires phone numbers to accept calls.
             </div>
           )}
+
+          <div className="mb-8">
+            <CallStatusIndicator status={callStatus} agentName={agentName} duration={duration} />
+          </div>
 
           <div className="mb-8">
             <h2 className="font-display text-2xl font-bold text-harbor mb-2">Choose a Demo Agent</h2>
@@ -315,6 +296,15 @@ export default function Demo() {
             </div>
           )}
 
+          <div className="grid lg:grid-cols-2 gap-6 mb-8">
+            <ConversationTranscript messages={transcript} isActive={isActive} />
+
+            <div className="space-y-6">
+              <ToolExecutionPanel tools={tools} isActive={isActive} />
+              {hasCalendarTool && <CalendarToolVisual visible={true} />}
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             <div className="md:col-span-1 bg-white rounded-2xl border border-soft-steel/50 p-6">
               <div className="flex items-center gap-2 mb-4">
@@ -332,43 +322,8 @@ export default function Demo() {
               </p>
             </div>
 
-            <div className="md:col-span-2 bg-white rounded-2xl border border-soft-steel/50 p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Activity className="h-5 w-5 text-teal" />
-                <h3 className="font-display font-semibold text-harbor">Live Activity Feed</h3>
-                <span className="ml-auto text-xs text-slate-ink/40 font-body">Updates every 5s</span>
-              </div>
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin h-6 w-6 border-2 border-teal border-t-transparent rounded-full" />
-                </div>
-              ) : events.length === 0 ? (
-                <div className="text-center py-12 text-slate-ink/40 font-body">
-                  <p>No demo calls yet. Be the first to try it!</p>
-                </div>
-              ) : (
-                <div className="space-y-2.5 max-h-80 overflow-y-auto">
-                  {events.map((event) => (
-                    <div
-                      key={event.id}
-                      className="flex items-center justify-between px-4 py-3 bg-mist rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className={`text-xs font-medium font-body ${eventColor(event.eventType)}`}>
-                          {formatEventType(event.eventType)}
-                        </span>
-                        <span className="text-sm text-slate-ink/70 font-body">{event.agentName}</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-slate-ink/40 font-body">
-                        {event.durationSeconds != null && (
-                          <span>{event.durationSeconds}s</span>
-                        )}
-                        <span>{timeAgo(event.timestamp)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="md:col-span-2">
+              <SystemActivityFeed events={activityEvents} isActive={isActive} />
             </div>
           </div>
 
