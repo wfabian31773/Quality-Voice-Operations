@@ -61,7 +61,7 @@ const AVATAR_MAP: Record<string, string> = {
   scale: '/assets/avatars/legal.png',
   'help-circle': '/assets/avatars/customer-support.png',
   'dollar-sign': '/assets/avatars/collections.png',
-  wrench: '/assets/avatars/automotive.png',
+  wrench: '/assets/avatars/hvac.png',
 };
 
 const AGENT_COLORS: string[] = [
