@@ -1,11 +1,11 @@
 import { type ReactNode } from 'react';
 import {
-  Phone, Search, Calendar, CheckCircle,
-  Stethoscope, CalendarCheck, Pill, Smartphone,
-  FileText, ShieldCheck, Mail,
-  Home, CalendarDays, Database, BellRing,
+  Phone, MessageSquare, Search, Calendar, CheckCircle,
+  Stethoscope, Brain, CalendarCheck, Pill, Smartphone,
+  Scale, FileText, ShieldCheck, Clock, Mail,
+  Home, Building, CalendarDays, Database, BellRing,
   Headphones, HelpCircle, BookOpen, Ticket, SmilePlus,
-  PhoneIncoming, Bot, Wrench, Send,
+  PhoneIncoming, Bot, Wrench, Send, ClipboardCheck,
 } from 'lucide-react';
 
 export interface WorkflowStep {
@@ -30,10 +30,10 @@ interface WorkflowDiagramProps {
   compact?: boolean;
 }
 
-function ArrowConnector({ color }: { color: string }) {
+function ArrowConnector({ color, compact }: { color: string; compact?: boolean }) {
   return (
     <li className="flex items-center justify-center shrink-0" role="presentation" aria-hidden="true">
-      <div className="hidden md:flex items-center w-10 lg:w-14">
+      <div className={`hidden md:flex items-center ${compact ? 'w-6 lg:w-8' : 'w-10 lg:w-14'}`}>
         <div className="h-0.5 flex-1 rounded-full" style={{ backgroundColor: color, opacity: 0.4 }} />
         <svg width="10" height="12" viewBox="0 0 10 12" fill="none" className="shrink-0 -ml-0.5" aria-hidden="true">
           <path d="M1 1L8 6L1 11" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
@@ -61,7 +61,7 @@ function StepCard({ step, color, bg, compact, stepNumber, totalSteps }: {
 
   return (
     <li
-      className="group/step flex flex-col items-center text-center flex-1 min-w-0"
+      className={`group/step flex flex-col items-center text-center flex-1 min-w-0 ${compact ? 'px-1' : 'px-2'}`}
       aria-label={`Step ${stepNumber} of ${totalSteps}: ${step.label}${step.description ? ` — ${step.description}` : ''}`}
     >
       <div
@@ -71,11 +71,11 @@ function StepCard({ step, color, bg, compact, stepNumber, totalSteps }: {
       >
         {step.icon}
       </div>
-      <p className="font-display text-sm lg:text-base font-semibold text-harbor leading-tight mb-1">
+      <p className={`font-display font-semibold text-harbor leading-tight mb-1 ${compact ? 'text-xs lg:text-sm' : 'text-sm lg:text-base'}`}>
         {step.label}
       </p>
       {step.description && (
-        <p className="text-xs lg:text-sm text-slate-ink/70 font-body leading-snug max-w-[160px]">
+        <p className={`text-slate-ink/70 font-body leading-snug ${compact ? 'text-[10px] lg:text-xs max-w-[110px]' : 'text-xs lg:text-sm max-w-[160px]'}`}>
           {step.description}
         </p>
       )}
@@ -93,7 +93,7 @@ export default function WorkflowDiagram({
 
   return (
     <div
-      className={`rounded-2xl border border-soft-steel/20 bg-white overflow-hidden transition-shadow duration-300 hover:shadow-md ${compact ? 'p-5 lg:p-6' : 'p-6 lg:p-10'}`}
+      className={`rounded-2xl border border-soft-steel/20 bg-white overflow-hidden transition-all duration-300 shadow-sm hover:shadow-lg hover:border-soft-steel/30 ${compact ? 'p-5 lg:p-6' : 'p-6 lg:p-10'}`}
       role="figure"
       aria-label={title ? `${title} workflow diagram` : 'Agent workflow diagram'}
     >
@@ -102,7 +102,7 @@ export default function WorkflowDiagram({
           {title}
         </h4>
       )}
-      <ol className="flex flex-col md:flex-row items-center md:items-start justify-between gap-2 md:gap-0 list-none p-0 m-0">
+      <ol className={`flex flex-col md:flex-row items-center md:items-start justify-between list-none p-0 m-0 ${compact ? 'gap-2 md:gap-1' : 'gap-2 md:gap-0'}`}>
         {steps.flatMap((step, i) => {
           const items = [
             <StepCard
@@ -116,7 +116,7 @@ export default function WorkflowDiagram({
             />,
           ];
           if (i < steps.length - 1) {
-            items.push(<ArrowConnector key={`arrow-${i}`} color={tokens.color} />);
+            items.push(<ArrowConnector key={`arrow-${i}`} color={tokens.color} compact={compact} />);
           }
           return items;
         })}
@@ -181,3 +181,4 @@ export const customerSupportWorkflow = {
     { icon: <SmilePlus />, label: 'Satisfaction Survey', description: 'Capture feedback' },
   ] as WorkflowStep[],
 };
+
