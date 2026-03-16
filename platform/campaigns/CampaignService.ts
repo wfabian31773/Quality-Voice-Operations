@@ -253,6 +253,33 @@ export async function addContacts(
   });
 }
 
+export async function listContacts(
+  tenantId: string,
+  campaignId: string,
+  opts: { limit?: number; offset?: number; status?: ContactStatus } = {},
+): Promise<{ contacts: CampaignContact[]; total: number }> {
+  return withTenant(tenantId, async (client) => {
+    const { limit = 20, offset = 0, status } = opts;
+    const conditions = ['campaign_id = $1', 'tenant_id = $2'];
+    const values: unknown[] = [campaignId, tenantId];
+    if (status) { values.push(status); conditions.push(`status = $${values.length}`); }
+
+    const where = conditions.join(' AND ');
+    const { rows } = await client.query(
+      `SELECT * FROM campaign_contacts WHERE ${where} ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, limit, offset],
+    );
+    const { rows: countRows } = await client.query(
+      `SELECT COUNT(*)::int AS total FROM campaign_contacts WHERE ${where}`,
+      values,
+    );
+    return {
+      contacts: rows.map(rowToContact),
+      total: parseInt(countRows[0].total as string),
+    };
+  });
+}
+
 export async function getNextPendingContact(
   tenantId: string,
   campaignId: string,

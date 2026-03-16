@@ -6,6 +6,7 @@ export {
   deleteCampaign,
   getCampaignMetrics,
   addContacts,
+  listContacts,
   getNextPendingContact,
   updateContactStatus,
   checkCampaignCompletion,

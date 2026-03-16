@@ -13,6 +13,7 @@ import Observability from './pages/Observability';
 import Analytics from './pages/Analytics';
 import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
+import Campaigns from './pages/Campaigns';
 import ApiKeys from './pages/ApiKeys';
 import Quality from './pages/Quality';
 import AuditLog from './pages/AuditLog';
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/connectors" element={<Connectors />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/observability" element={<Observability />} />
+        <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings/api-keys" element={<ApiKeys />} />
         <Route path="/quality" element={<Quality />} />

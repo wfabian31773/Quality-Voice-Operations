@@ -10,6 +10,7 @@ import {
   deleteCampaign,
   getCampaignMetrics,
   addContacts,
+  listContacts,
   addToDnc,
   listDnc,
   removeFromDnc,
@@ -357,5 +358,20 @@ export const addContactsHandler: import('express').RequestHandler = async (req, 
 };
 
 router.post('/campaigns/:id/contacts', requireAuth, requireRole('admin'), addContactsHandler);
+
+router.get('/campaigns/:id/contacts', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const { limit, offset } = paginate(req);
+  const { status } = req.query as Record<string, string>;
+
+  try {
+    const result = await listContacts(tenantId, id, { limit, offset, status: status as import('../../../platform/campaigns').ContactStatus });
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to list contacts', { tenantId, campaignId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list contacts' });
+  }
+});
 
 export default router;
