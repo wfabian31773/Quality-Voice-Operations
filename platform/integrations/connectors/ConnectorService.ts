@@ -2,6 +2,7 @@ import { createLogger } from '../../core/logger';
 import { getConnectorConfig } from './db';
 import { TicketingConnectorAdapter } from './adapters/ticketing';
 import { TwilioSmsConnectorAdapter } from './adapters/sms';
+import { recordIntegrationEvent } from '../../core/observability/traceLogger';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -52,7 +53,26 @@ export class ConnectorService {
 
     logger.info('Dispatching to connector', { tenantId, connectorType, provider: config.provider, payloadType: payload.type });
 
+    const startTime = Date.now();
     const result = await adapter.execute(tenantId, config, payload);
+    const latencyMs = Date.now() - startTime;
+
+    const callSessionId = (payload as Record<string, unknown>).callSessionId as string | undefined;
+    const toolInvocationId = (payload as Record<string, unknown>).toolInvocationId as string | undefined;
+
+    recordIntegrationEvent({
+      tenantId,
+      callSessionId,
+      toolInvocationId,
+      requestMethod: 'POST',
+      requestUrl: `connector://${connectorType}/${config.provider}`,
+      requestBody: { type: payload.type },
+      responseStatus: result.success ? 200 : 500,
+      responseBody: { success: result.success, error: result.error ?? null },
+      latencyMs,
+      errorMessage: result.error ?? undefined,
+      serviceName: `${connectorType}:${config.provider}`,
+    }).catch(() => {});
 
     if (!result.success && config.fallbackConnectorType) {
       logger.info('Primary connector failed, attempting fallback', {
@@ -83,7 +103,27 @@ export class ConnectorService {
     }
 
     logger.info('Executing fallback connector', { tenantId, fallbackType, provider: config.provider });
+    const startTime = Date.now();
     const result = await adapter.execute(tenantId, config, payload);
+    const latencyMs = Date.now() - startTime;
+
+    const callSessionId = (payload as Record<string, unknown>).callSessionId as string | undefined;
+    const toolInvocationId = (payload as Record<string, unknown>).toolInvocationId as string | undefined;
+
+    recordIntegrationEvent({
+      tenantId,
+      callSessionId,
+      toolInvocationId,
+      requestMethod: 'POST',
+      requestUrl: `connector://${fallbackType}/${config.provider}`,
+      requestBody: { type: payload.type },
+      responseStatus: result.success ? 200 : 500,
+      responseBody: { success: result.success, error: result.error ?? null },
+      latencyMs,
+      errorMessage: result.error ?? undefined,
+      serviceName: `${fallbackType}:${config.provider}`,
+    }).catch(() => {});
+
     return { ...result, meta: { ...result.meta, usedFallback: true } };
   }
 

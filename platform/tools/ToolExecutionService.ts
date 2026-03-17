@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import { redactToolParameters, unifiedToolRegistry } from './ToolRegistry';
+import { recordTrace } from '../core/observability/traceLogger';
 import type { TenantId } from '../core/types';
 
 const logger = createLogger('TOOL_EXECUTION_SERVICE');
@@ -94,12 +95,29 @@ export async function createToolExecution(params: {
     });
   }
 
+  if (params.callSessionId) {
+    recordTrace({
+      tenantId: params.tenantId,
+      callSessionId: params.callSessionId,
+      traceType: 'tool_invoked',
+      stepName: 'ToolExecutionService',
+      inputData: {
+        executionId: id,
+        toolName: params.toolName,
+        parameters: redactToolParameters(params.parameters),
+        agentId: params.agentId ?? null,
+        agentSlug: params.agentSlug ?? null,
+      },
+    }).catch(() => {});
+  }
+
   return id;
 }
 
 export async function completeToolExecution(params: {
   tenantId: TenantId;
   executionId: string;
+  callSessionId?: string;
   result: unknown;
   status: 'success' | 'failed' | 'timeout';
   errorMessage?: string;
@@ -144,6 +162,30 @@ export async function completeToolExecution(params: {
       executionId: params.executionId,
       error: String(err),
     });
+  }
+
+  if (params.callSessionId) {
+    recordTrace({
+      tenantId: params.tenantId,
+      callSessionId: params.callSessionId,
+      traceType: 'tool_responded',
+      stepName: 'ToolExecutionService',
+      outputData: {
+        executionId: params.executionId,
+        status: params.status,
+        durationMs: params.durationMs,
+        errorMessage: params.errorMessage ?? null,
+        recoveryAction: params.recoveryAction ?? null,
+      },
+    }).catch(() => {});
+
+    if (params.status === 'failed' || params.status === 'timeout') {
+      const pool = getPlatformPool();
+      pool.query(
+        `UPDATE call_sessions SET has_tool_failure = true WHERE id = $1 AND tenant_id = $2`,
+        [params.callSessionId, params.tenantId],
+      ).catch(() => {});
+    }
   }
 }
 

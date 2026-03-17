@@ -514,6 +514,7 @@ export function attachWebSocket(server: HTTPServer): void {
               });
 
               callSessionId = sessionResult.callSessionId;
+              workflowEngine.setTraceContext(tenantId, callSessionId);
               slog = createSessionLogger('WS_STREAM', {
                 tenantId: tenantId!,
                 callId: callSessionId,
@@ -799,13 +800,15 @@ export function attachWebSocket(server: HTTPServer): void {
             const { persistence: outboxDb, integration: outboxIntegration } = createOutboxAdapters();
             const outboxService = new OutboxService(outboxDb, outboxIntegration);
 
+            const widgetCallSid = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
             try {
               sessionResult = await createRealtimeSession({
                 tenantId,
                 agentConfig: agentCfg,
                 callerNumber: 'widget-visitor',
                 calledNumber: 'widget',
-                callSid: `widget-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                callSid: widgetCallSid,
                 direction: 'inbound',
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
@@ -815,6 +818,7 @@ export function attachWebSocket(server: HTTPServer): void {
               });
 
               callSessionId = sessionResult.callSessionId;
+              workflowEngine.setTraceContext(tenantId, callSessionId);
               slog = createSessionLogger('WS_WIDGET', {
                 tenantId: tenantId!,
                 callId: callSessionId,

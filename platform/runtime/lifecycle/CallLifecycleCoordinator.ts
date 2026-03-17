@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { createLogger } from '../../core/logger';
 import { getMaxDurationMs, getDemoMaxDurationMs, getDemoWarningMs } from './agentPolicy';
 import { detectOptOutInTranscript, addToDnc } from '../../campaigns/DncService';
+import { recordTrace } from '../../core/observability/traceLogger';
 import type {
   CallRecord,
   RegisterCallParams,
@@ -80,6 +81,17 @@ export class CallLifecycleCoordinator extends EventEmitter {
       agentSlug: params.agentSlug,
       callerPhone: params.from,
     });
+
+    recordTrace({
+      tenantId: this.tenantId,
+      callSessionId: params.callLogId,
+      traceType: 'call_started',
+      stepName: 'call_registered',
+      inputData: {
+        agentSlug: params.agentSlug,
+        direction: params.from ? 'inbound' : 'outbound',
+      },
+    }).catch(() => {});
 
     this.scheduleMaxDurationTimeout(params.callLogId, params.twilioCallSid, params.agentSlug, params.isTrial);
 
@@ -291,6 +303,20 @@ export class CallLifecycleCoordinator extends EventEmitter {
       duration: Math.round(duration / 1000),
       endReason: status,
     });
+
+    recordTrace({
+      tenantId: this.tenantId,
+      callSessionId: callLogId,
+      traceType: 'call_ended',
+      stepName: 'call_finalized',
+      durationMs: duration,
+      inputData: { status },
+      outputData: {
+        durationSeconds: Math.round(duration / 1000),
+        transcriptLines: record.transcriptLines.length,
+        transferredToHuman: record.transferredToHuman,
+      },
+    }).catch(() => {});
 
     let voiceOptOut = false;
     if (record.transcriptLines.length > 0 && record.from) {

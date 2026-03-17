@@ -1,7 +1,7 @@
 # Quality Voice Operations (QVO) — Multi-Tenant SaaS
 
 ## Overview
-QVO is a multi-tenant SaaS platform designed for managing AI-powered voice operations at an enterprise scale. It provides comprehensive solutions for deploying and managing AI agents, handling customer interactions, and delivering advanced analytics. The platform aims to revolutionize customer service and sales by enabling businesses to efficiently leverage AI for voice interactions. Key capabilities include a visual agent builder, a real-time voice gateway, robust analytics, AI workforce orchestration, cost optimization, and a marketplace for agent templates. The business vision is to revolutionize how enterprises manage their voice channels, driving efficiency, improving customer satisfaction, and unlocking new revenue opportunities through AI. All components are built to enterprise blueprint standards.
+QVO is a multi-tenant SaaS platform designed for managing AI-powered voice operations at an enterprise scale. It provides comprehensive solutions for deploying and managing AI agents, handling customer interactions, and delivering advanced analytics. The platform aims to revolutionize customer service and sales by enabling businesses to efficiently leverage AI for voice interactions. Key capabilities include a visual agent builder, a real-time voice gateway, robust analytics, AI workforce orchestration, cost optimization, advanced observability, and a marketplace for agent templates. The business vision is to revolutionize how enterprises manage their voice channels, driving efficiency, improving customer satisfaction, and unlocking new revenue opportunities through AI. All components are built to enterprise blueprint standards.
 
 ## User Preferences
 - Logging: Color-coded, session-scoped, PHI redacted
@@ -34,17 +34,18 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
     - **Runtime:** Provides the voice agent runtime environment.
     - **Email:** Utilizes Nodemailer for email services with HTML templates.
     - **Tools:** Defines agent tools, knowledge retrieval, and a unified `ToolRegistry`.
+    - **Knowledge Management:** Includes an embedding service (OpenAI `text-embedding-3-small`), vector search, and a document ingestion pipeline (PDF/URL/text/FAQ extraction, chunking).
+    - **Reasoning Framework:** Provides AI agent intelligence, including confidence scoring, decision-making, workflow planning, and safety gates.
+    - **Workflow:** Manages the workflow engine with structured execution trace logging.
+    - **Advanced Observability:** Full call debugging system with execution traces, integration event logs, call replay UI with timeline visualization, agent reasoning inspection, advanced filtering (by tool failure, escalation, sentiment, cost), and a live operations board. PII masking applied to all trace and API payloads.
+    - **Activation:** Tracks activation events and tooltip dismissals.
+    - **Widget:** Provides an embeddable website voice/chat widget.
+    - **Website Agent:** A public-facing AI sales assistant for websites, including lead capture and analytics.
     - **AI Workforce Operating System:** Manages multi-agent team orchestration, including AI-to-AI mid-call handoffs and configurable intent-based routing.
     - **AI Business Autopilot:** A proactive intelligence layer that monitors operational signals, detects issues/opportunities, and can auto-execute low-risk actions or present recommendations for human approval.
     - **Global Intelligence Network (GIN):** Aggregates anonymized cross-tenant data to provide collective intelligence, benchmarking, and recommendations while maintaining data privacy.
     - **Operations Intelligence:** An AI-powered insights engine that analyzes call data, transcripts, and quality scores to generate recommendations, detect anomalies, and produce reports.
     - **Agent Self-Improvement Engine:** An automated pipeline that analyzes low-scoring call transcripts to suggest prompt improvements and validate them via simulation scoring.
-    - **Knowledge Management:** Includes an embedding service (OpenAI `text-embedding-3-small`), vector search, and a document ingestion pipeline (PDF/URL/text/FAQ extraction, chunking).
-    - **Reasoning Framework:** Provides AI agent intelligence, including confidence scoring, decision-making, workflow planning, and safety gates.
-    - **Workflow:** Manages the workflow engine.
-    - **Activation:** Tracks activation events and tooltip dismissals.
-    - **Widget:** Provides an embeddable website voice/chat widget.
-    - **Website Agent:** A public-facing AI sales assistant for websites, including lead capture and analytics.
 - **Security:** Incorporates PHI redaction, encryption of tenant secrets, and strict enforcement of JWT, Stripe, and connector encryption keys in production environments.
 - **Frontend/Backend Communication:** Utilizes an API proxy for simplified routing and Server-Sent Events (SSE) for real-time data updates.
 - **Website Widget:** An embeddable voice/chat widget for websites, integrated with the voice gateway and AI sales assistant.

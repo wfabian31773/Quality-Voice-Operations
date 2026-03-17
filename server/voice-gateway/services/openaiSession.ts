@@ -23,6 +23,7 @@ import { createToolExecution, completeToolExecution } from '../../../platform/to
 import { executeWithRetry, getToolRetryConfig } from '../../../platform/tools/RetryOrchestrator';
 import { buildFallbackResponse } from '../../../platform/tools/ConversationFallbackService';
 import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
+import { recordTrace } from '../../../platform/core/observability/traceLogger';
 import { handleDemoToolCall } from './demoToolHandler';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
@@ -85,7 +86,15 @@ function buildToolHandler(
     if (ctx.templateKey && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName) && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
       const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-      await completeToolExecution({ tenantId, executionId: deniedId, result: { success: false, reason: 'denied' }, status: 'failed', errorMessage: 'Tool denied by template permissions', durationMs: Date.now() - startTime });
+      await completeToolExecution({
+        tenantId,
+        executionId: deniedId,
+        callSessionId,
+        result: { success: false, reason: 'denied' },
+        status: 'failed',
+        errorMessage: 'Tool denied by template permissions',
+        durationMs: Date.now() - startTime
+      });
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
     }
 
@@ -93,14 +102,30 @@ function buildToolHandler(
     if (!validation.valid) {
       logger.warn('Tool input validation failed', { tenantId, callId: callSessionId, tool: toolName, errors: validation.errors });
       const valId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-      await completeToolExecution({ tenantId, executionId: valId, result: { success: false, reason: 'validation_failed' }, status: 'failed', errorMessage: `Validation failed: ${validation.errors.join(', ')}`, durationMs: Date.now() - startTime });
+      await completeToolExecution({
+        tenantId,
+        executionId: valId,
+        callSessionId,
+        result: { success: false, reason: 'validation_failed' },
+        status: 'failed',
+        errorMessage: `Validation failed: ${validation.errors.join(', ')}`,
+        durationMs: Date.now() - startTime
+      });
       return JSON.stringify({ success: false, message: `Invalid input: ${validation.errors.join(', ')}` });
     }
 
     if (!unifiedToolRegistry.checkRateLimit(tenantId, toolName)) {
       logger.warn('Tool rate limit exceeded', { tenantId, callId: callSessionId, tool: toolName });
       const rlId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-      await completeToolExecution({ tenantId, executionId: rlId, result: { success: false, reason: 'rate_limited' }, status: 'failed', errorMessage: 'Rate limit exceeded', durationMs: Date.now() - startTime });
+      await completeToolExecution({
+        tenantId,
+        executionId: rlId,
+        callSessionId,
+        result: { success: false, reason: 'rate_limited' },
+        status: 'failed',
+        errorMessage: 'Rate limit exceeded',
+        durationMs: Date.now() - startTime
+      });
       return JSON.stringify({ success: false, message: 'Rate limit exceeded for this tool. Please wait a moment before trying again.' });
     }
 
@@ -140,7 +165,15 @@ function buildToolHandler(
               reason: latestDecision.reasoning,
             });
             const rdId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-            await completeToolExecution({ tenantId, executionId: rdId, result: { success: false, reason: 'reasoning_blocked', requiredAction: latestDecision.action }, status: 'failed', errorMessage: `Reasoning engine requires ${latestDecision.action}: ${latestDecision.reasoning}`, durationMs: Date.now() - startTime });
+            await completeToolExecution({
+              tenantId,
+              executionId: rdId,
+              callSessionId,
+              result: { success: false, reason: 'reasoning_blocked', requiredAction: latestDecision.action },
+              status: 'failed',
+              errorMessage: `Reasoning engine requires ${latestDecision.action}: ${latestDecision.reasoning}`,
+              durationMs: Date.now() - startTime
+            });
             await writeCallEvent(tenantId, callSessionId, 'reasoning_tool_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, requiredAction: latestDecision.action, reason: latestDecision.reasoning });
             const blockMessage = latestDecision.action === 'escalate_to_human'
               ? 'This action cannot be performed. The call needs to be transferred to a human agent.'
@@ -153,7 +186,15 @@ function buildToolHandler(
       } catch (decisionErr) {
         logger.error('Reasoning decision gate check failed, blocking tool (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(decisionErr) });
         const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({ tenantId, executionId: fgId, result: { success: false, reason: 'reasoning_gate_error' }, status: 'failed', errorMessage: `Reasoning gate error: ${String(decisionErr)}`, durationMs: Date.now() - startTime });
+        await completeToolExecution({
+          tenantId,
+          executionId: fgId,
+          callSessionId,
+          result: { success: false, reason: 'reasoning_gate_error' },
+          status: 'failed',
+          errorMessage: `Reasoning gate error: ${String(decisionErr)}`,
+          durationMs: Date.now() - startTime
+        });
         return JSON.stringify({ success: false, message: 'Unable to verify reasoning state. Please try again.' });
       }
 
@@ -163,14 +204,30 @@ function buildToolHandler(
           const criticalViolations = safetyResult.violations.filter((v) => v.severity === 'critical');
           logger.warn('Reasoning safety gate blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
           const sgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-          await completeToolExecution({ tenantId, executionId: sgId, result: { success: false, reason: 'safety_blocked', violations: criticalViolations.map((v) => v.description) }, status: 'failed', errorMessage: `Safety gate: ${criticalViolations.map((v) => v.description).join('; ')}`, durationMs: Date.now() - startTime });
+          await completeToolExecution({
+            tenantId,
+            executionId: sgId,
+            callSessionId,
+            result: { success: false, reason: 'safety_blocked', violations: criticalViolations.map((v) => v.description) },
+            status: 'failed',
+            errorMessage: `Safety gate: ${criticalViolations.map((v) => v.description).join('; ')}`,
+            durationMs: Date.now() - startTime
+          });
           await writeCallEvent(tenantId, callSessionId, 'safety_gate_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, violations: criticalViolations.map((v) => ({ type: v.type, description: v.description })) });
           return JSON.stringify({ success: false, message: `This action was blocked by safety policy: ${criticalViolations.map((v) => v.description).join('. ')}` });
         }
       } catch (safetyErr) {
         logger.error('Safety gate check failed, blocking tool execution (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(safetyErr) });
         const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({ tenantId, executionId: fgId, result: { success: false, reason: 'safety_gate_error' }, status: 'failed', errorMessage: `Safety gate error: ${String(safetyErr)}`, durationMs: Date.now() - startTime });
+        await completeToolExecution({
+          tenantId,
+          executionId: fgId,
+          callSessionId,
+          result: { success: false, reason: 'safety_gate_error' },
+          status: 'failed',
+          errorMessage: `Safety gate error: ${String(safetyErr)}`,
+          durationMs: Date.now() - startTime
+        });
         return JSON.stringify({ success: false, message: 'Unable to verify safety policy. Please try again.' });
       }
     }
@@ -194,7 +251,14 @@ function buildToolHandler(
             } else {
               await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
             }
-            await completeToolExecution({ tenantId, executionId: execId, result: { success: true, message: handoffResult.message }, status: 'success', durationMs: Date.now() - startTime });
+            await completeToolExecution({
+              tenantId,
+              executionId: execId,
+              callSessionId,
+              result: { success: true, message: handoffResult.message },
+              status: 'success',
+              durationMs: Date.now() - startTime
+            });
             await writeCallEvent(tenantId, callSessionId, 'handoff_success', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent });
             return JSON.stringify({ success: true, message: handoffResult.message });
           } catch (swapErr) {
@@ -202,23 +266,53 @@ function buildToolHandler(
             if (handoffResult.routingInfo) {
               await workforceRouter.recordHandoff(tenantId, { ...handoffResult.routingInfo, reason: `Session swap failed: ${String(swapErr)}`, duration_ms: Date.now() - startTime, outcome: 'failed' }).catch(() => {});
             }
-            await completeToolExecution({ tenantId, executionId: execId, result: { success: false }, status: 'failed', errorMessage: `Session swap failed: ${String(swapErr)}`, durationMs: Date.now() - startTime });
+            await completeToolExecution({
+              tenantId,
+              executionId: execId,
+              callSessionId,
+              result: { success: false },
+              status: 'failed',
+              errorMessage: `Session swap failed: ${String(swapErr)}`,
+              durationMs: Date.now() - startTime
+            });
             await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(swapErr) });
             await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
             return JSON.stringify({ success: false, message: 'Transfer failed. Continuing with current agent.' });
           }
         } else if (handoffResult.success) {
-          await completeToolExecution({ tenantId, executionId: execId, result: { success: true, message: handoffResult.message }, status: 'success', durationMs: Date.now() - startTime });
+          await completeToolExecution({
+            tenantId,
+            executionId: execId,
+            callSessionId,
+            result: { success: true, message: handoffResult.message },
+            status: 'success',
+            durationMs: Date.now() - startTime
+          });
           await writeCallEvent(tenantId, callSessionId, 'handoff_success', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent });
           return JSON.stringify({ success: true, message: handoffResult.message });
         } else {
-          await completeToolExecution({ tenantId, executionId: execId, result: { success: false, message: handoffResult.message }, status: 'failed', durationMs: Date.now() - startTime });
+          await completeToolExecution({
+            tenantId,
+            executionId: execId,
+            callSessionId,
+            result: { success: false, message: handoffResult.message },
+            status: 'failed',
+            durationMs: Date.now() - startTime
+          });
           await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, reason: handoffResult.message });
           await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
           return JSON.stringify({ success: false, message: handoffResult.message });
         }
       } catch (handoffErr) {
-        await completeToolExecution({ tenantId, executionId: execId, result: { success: false }, status: 'failed', errorMessage: String(handoffErr), durationMs: Date.now() - startTime });
+        await completeToolExecution({
+          tenantId,
+          executionId: execId,
+          callSessionId,
+          result: { success: false },
+          status: 'failed',
+          errorMessage: String(handoffErr),
+          durationMs: Date.now() - startTime
+        });
         await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(handoffErr) });
         await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
         return JSON.stringify({ success: false, message: 'Handoff failed. Continuing with current agent.' });
@@ -244,7 +338,9 @@ function buildToolHandler(
       });
       await completeToolExecution({
         tenantId,
+        callSessionId,
         executionId: demoExecId,
+        callSessionId,
         result: (() => { try { return JSON.parse(demoResult); } catch { return { raw: demoResult }; } })(),
         status: 'success',
         durationMs: Date.now() - demoStartTime,
@@ -515,6 +611,7 @@ function buildToolHandler(
     await completeToolExecution({
       tenantId,
       executionId,
+      callSessionId,
       result: parsedResult,
       status: executionStatus,
       errorMessage: executionError,
@@ -972,6 +1069,21 @@ export async function createRealtimeSession(
               }).catch(() => {});
             }
 
+            recordTrace({
+              tenantId,
+              callSessionId,
+              traceType: 'model_prompted',
+              stepName: 'OpenAIRealtimeSession',
+              inputData: {
+                utterance: redactPHI(text),
+                role: 'user',
+                systemInstructions: redactPHI(systemPromptWithMemory.slice(0, 2000)),
+                conversationHistory: (workflowContext?.transcript ?? []).slice(-5).map(t => redactPHI(t)),
+                activeTools: agentTools.map(t => (t as { name?: string }).name ?? 'unknown'),
+              },
+              metadata: { model: agentConfig.model, agentId: agentConfig.agentId, voice: agentConfig.voice },
+            }).catch(() => {});
+
             let classifiedIntent = 'unknown';
             let classifiedConfidence: 'high' | 'medium' | 'low' = 'low';
 
@@ -1107,6 +1219,15 @@ export async function createRealtimeSession(
                 slog.warn('Failed to inject compression summary', { error: String(compErr) });
               }
             }
+
+            recordTrace({
+              tenantId,
+              callSessionId,
+              traceType: 'model_responded',
+              stepName: 'OpenAIRealtimeSession',
+              outputData: { response: redactPHI(c.text), role: 'assistant' },
+              metadata: { model: agentConfig.model, agentId: agentConfig.agentId },
+            }).catch(() => {});
 
             if (reasoningEngine) {
               try {
