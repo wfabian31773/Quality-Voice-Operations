@@ -20,7 +20,7 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
 - **Dev:** Replit local PostgreSQL via `DATABASE_URL` (no SSL)
 - **Production:** Supabase via `PLATFORM_DB_POOL_URL` (SSL, transaction pooler port 6543)
 - **Module:** `platform/db/index.ts` — auto-switches based on `APP_ENV`
-- **Migrations:** `migrations/001_*.sql` through `migrations/045_*.sql` — numbered SQL files
+- **Migrations:** `migrations/001_*.sql` through `migrations/046_*.sql` — numbered SQL files
 - **Runner:** `scripts/run-migrations.ts` — idempotent, applies only files matching `\d{3}_*.sql`
 - **Seed:** `scripts/seed-demo.ts` (demo tenant + agents), `scripts/seed-admin.ts` (platform admin user), `scripts/seed-template-registry.ts` (marketplace template registry), `scripts/seed-vertical-prompt-library.ts` (vertical prompt libraries, starter knowledge packs, demo flows)
 - **RLS:** Row-Level Security on all tenant-scoped tables; policy uses `current_setting('app.tenant_id')`
@@ -64,7 +64,8 @@ platform/
   autopilot/        AI Business Autopilot — proactive intelligence layer (AutopilotEngine, ActionEngine, NotificationService, industry-packs/)
   gin/              Global Intelligence Network (AggregationPipeline, GlobalInsightEngine, BenchmarkingService, RecommendationDistributor, GovernanceService, GinScheduler)
   command-center/   Executive Command Center (Real-time aggregation, cross-tenant data scoping for admins, role-based modules, SSE stream)
-migrations/         SQL migration files (001-045)
+  evolution/        Autonomous Platform Evolution Engine (SignalCollector, OpportunityDetectionEngine, RoadmapRecommendationEngine, ExperimentManager — AI product strategist)
+migrations/         SQL migration files (001-046)
 widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```

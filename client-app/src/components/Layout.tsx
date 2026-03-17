@@ -48,6 +48,7 @@ const links: NavItem[] = [
   { to: '/developer', icon: Code2, label: 'Developer Portal' },
   { to: '/settings', icon: Settings2, label: 'Settings' },
   { to: '/audit-log', icon: Shield, label: 'Audit Log', adminOnly: true },
+  { to: '/evolution', icon: Cpu, label: 'Evolution Engine', platformAdminOnly: true },
   { to: '/platform-admin', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },
 ];
 

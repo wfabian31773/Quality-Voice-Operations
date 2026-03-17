@@ -648,6 +648,112 @@ function ExecutiveActionPanel() {
   );
 }
 
+function EvolutionEngineModule() {
+  const { data } = useQuery<{ dashboard: {
+    opportunities: { total: number; highValue: number; top5: Array<{ id: string; title: string; composite_score: number; opportunity_type: string; signal_count: number; affected_tenant_count: number }> };
+    recommendations: { total: number; pending: number; approved: number; approvedRevenueCents: number; topRecommendation: { title: string; recommended_priority: string; estimated_revenue_impact_cents: number; ai_explanation: string | null } | null };
+    verticalGrowth: Array<{ vertical_name: string; current_tenant_count: number; expansion_score: number }>;
+    topIntegrations: Array<{ integration_name: string; demand_score: number; unique_tenant_count: number }>;
+  } }>({
+    queryKey: ['ecc', 'evolution'],
+    queryFn: () => api.get('/evolution/dashboard'),
+    refetchInterval: 120000,
+  });
+
+  const dash = data?.dashboard;
+
+  return (
+    <Panel>
+      <SectionHeader icon={Brain} title="Evolution Engine" />
+      {!dash ? (
+        <p className="text-xs text-gray-500 py-4 text-center">Loading evolution data...</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-2 bg-gray-800/50 rounded-lg">
+              <p className="text-xs text-gray-400">Opportunities</p>
+              <p className="text-lg font-bold text-white">{dash.opportunities.total}</p>
+              <p className="text-[10px] text-gray-500">{dash.opportunities.highValue} high value</p>
+            </div>
+            <div className="p-2 bg-gray-800/50 rounded-lg">
+              <p className="text-xs text-gray-400">Pending Review</p>
+              <p className="text-lg font-bold text-white">{dash.recommendations.pending}</p>
+              <p className="text-[10px] text-gray-500">{dash.recommendations.total} total recs</p>
+            </div>
+            <div className="p-2 bg-gray-800/50 rounded-lg">
+              <p className="text-xs text-gray-400">Approved</p>
+              <p className="text-lg font-bold text-emerald-400">{dash.recommendations.approved}</p>
+              <p className="text-[10px] text-gray-500">recommendations</p>
+            </div>
+            <div className="p-2 bg-gray-800/50 rounded-lg">
+              <p className="text-xs text-gray-400">Revenue Impact</p>
+              <p className="text-lg font-bold text-emerald-400">${(dash.recommendations.approvedRevenueCents / 100).toLocaleString()}</p>
+              <p className="text-[10px] text-gray-500">from approved</p>
+            </div>
+          </div>
+
+          {dash.recommendations.topRecommendation && (
+            <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Brain className="w-3.5 h-3.5 text-purple-400" />
+                <span className="text-[10px] font-semibold text-purple-300 uppercase tracking-wider">Top Recommendation</span>
+              </div>
+              <p className="text-sm font-medium text-white">{dash.recommendations.topRecommendation.title}</p>
+              {dash.recommendations.topRecommendation.ai_explanation && (
+                <p className="text-xs text-gray-400 mt-1 line-clamp-2">{dash.recommendations.topRecommendation.ai_explanation}</p>
+              )}
+              <div className="flex items-center gap-3 mt-2 text-[10px]">
+                <span className={clsx('px-1.5 py-0.5 rounded font-medium',
+                  dash.recommendations.topRecommendation.recommended_priority === 'critical' ? 'bg-red-500/20 text-red-300' :
+                  dash.recommendations.topRecommendation.recommended_priority === 'high' ? 'bg-orange-500/20 text-orange-300' :
+                  'bg-yellow-500/20 text-yellow-300'
+                )}>{dash.recommendations.topRecommendation.recommended_priority}</span>
+                {dash.recommendations.topRecommendation.estimated_revenue_impact_cents > 0 && (
+                  <span className="text-emerald-400">Est. ${(dash.recommendations.topRecommendation.estimated_revenue_impact_cents / 100).toLocaleString()}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {dash.verticalGrowth.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Fastest-Growing Verticals</p>
+              <div className="space-y-1.5">
+                {dash.verticalGrowth.slice(0, 3).map((v, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-300 capitalize">{v.vertical_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">{v.current_tenant_count} tenants</span>
+                      <span className="font-medium text-white">{v.expansion_score.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dash.topIntegrations.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Most Requested Integrations</p>
+              <div className="space-y-1.5">
+                {dash.topIntegrations.slice(0, 3).map((integ, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-300">{integ.integration_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">{integ.unique_tenant_count} tenants</span>
+                      <span className="font-medium text-white">{integ.demand_score.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function useECCStream() {
   const queryClient = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
@@ -743,6 +849,8 @@ export default function CommandCenter() {
             <ExecutiveActionPanel />
           </div>
         )}
+
+        {eccRole === 'platform_admin' && <EvolutionEngineModule />}
 
         {showCsView && (
           <>

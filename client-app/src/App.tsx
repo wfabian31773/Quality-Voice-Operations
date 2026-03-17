@@ -38,6 +38,7 @@ import Autopilot from './pages/Autopilot';
 import DigitalTwin from './pages/DigitalTwin';
 import GlobalIntelligence from './pages/GlobalIntelligence';
 import CommandCenter from './pages/CommandCenter';
+import EvolutionEngine from './pages/EvolutionEngine';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -154,6 +155,7 @@ export default function App() {
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
+        <Route path="/evolution" element={<PlatformAdminGuard><EvolutionEngine /></PlatformAdminGuard>} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
