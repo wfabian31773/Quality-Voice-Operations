@@ -49,6 +49,10 @@ import complianceRoutes from './routes/compliance';
 import caseStudyRoutes from './routes/caseStudies';
 import conversionRoutes from './routes/conversion';
 import workflowRoutes from './routes/workflows';
+import smsInboxRoutes from './routes/smsInbox';
+import schedulingRoutes from './routes/scheduling';
+import ticketRoutes from './routes/tickets';
+import dispatchRoutes from './routes/dispatch';
 
 const app = express();
 
@@ -119,6 +123,10 @@ app.use('/', complianceRoutes);
 app.use('/', caseStudyRoutes);
 app.use('/', conversionRoutes);
 app.use('/', workflowRoutes);
+app.use('/', smsInboxRoutes);
+app.use('/', schedulingRoutes);
+app.use('/', ticketRoutes);
+app.use('/', dispatchRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

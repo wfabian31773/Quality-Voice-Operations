@@ -55,6 +55,20 @@ export function requirePlatformAdmin(req: Request, res: Response, next: NextFunc
   next();
 }
 
+const MINI_SYSTEM_WRITE_ROLES = ['tenant_owner', 'operations_manager'];
+
+export function requireMiniSystemWrite(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  if (!MINI_SYSTEM_WRITE_ROLES.includes(req.user.role)) {
+    res.status(403).json({ error: 'Owner or Manager role required for this action' });
+    return;
+  }
+  next();
+}
+
 export function requireRole(minimumRole: SimpleRole) {
   return function (req: Request, res: Response, next: NextFunction): void {
     if (!req.user) {

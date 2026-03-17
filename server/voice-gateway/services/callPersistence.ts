@@ -159,6 +159,26 @@ export async function updateCallState(
       `UPDATE call_sessions SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2`,
       values,
     );
+
+    if (newState === 'ESCALATED') {
+      try {
+        const { rows: existingTickets } = await client.query(
+          `SELECT id FROM tickets WHERE tenant_id = $1 AND call_id = $2 LIMIT 1`,
+          [tenantId, callSessionId],
+        );
+        if (existingTickets.length === 0) {
+          const reason = extra?.escalationReason || 'Call escalated';
+          await client.query(
+            `INSERT INTO tickets (id, tenant_id, call_id, subject, description, status, priority)
+             VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'open', 'high')`,
+            [tenantId, callSessionId, `Escalated call: ${reason}`, `Auto-created from escalated call ${callSessionId}. Reason: ${reason}`],
+          );
+          logger.info('Auto-created ticket for escalated call', { tenantId, callSessionId });
+        }
+      } catch (ticketErr) {
+        logger.error('Failed to auto-create ticket for escalated call', { tenantId, callSessionId, error: String(ticketErr) });
+      }
+    }
   });
 }
 

@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
   Shield, ShieldCheck, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu, Monitor, Globe, Coins, Bug, Filter,
+  Inbox, Calendar, Ticket, Truck,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -18,6 +19,7 @@ interface NavItem {
   label: string;
   minRole?: 'viewer' | 'operator' | 'manager' | 'owner';
   platformAdminOnly?: boolean;
+  group?: string;
 }
 
 const links: NavItem[] = [
@@ -48,6 +50,10 @@ const links: NavItem[] = [
   { to: '/simulation-lab', icon: FlaskConical, label: 'Simulation Lab' },
   { to: '/improvements', icon: Lightbulb, label: 'Improvements' },
   { to: '/digital-twin', icon: Cpu, label: 'Digital Twin' },
+  { to: '/sms-inbox', icon: Inbox, label: 'SMS Inbox', group: 'Mini Systems' },
+  { to: '/scheduling', icon: Calendar, label: 'Scheduling', group: 'Mini Systems' },
+  { to: '/tickets', icon: Ticket, label: 'Tickets', group: 'Mini Systems' },
+  { to: '/dispatch', icon: Truck, label: 'Dispatch', group: 'Mini Systems' },
   { to: '/widget', icon: MessageSquare, label: 'Widget' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
@@ -129,31 +135,43 @@ export default function Layout() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {links
-          .filter((link) => {
+        {(() => {
+          const filtered = links.filter((link) => {
             if (link.platformAdminOnly && !user?.isPlatformAdmin) return false;
             if (link.minRole && !hasMinRole(user?.role ?? '', link.minRole)) return false;
             return true;
-          })
-          .map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end={link.to === '/dashboard'}
-            onClick={() => setMobileOpen(false)}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-sidebar-active text-white'
-                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
-              )
-            }
-          >
-            <link.icon className="h-4.5 w-4.5 shrink-0" />
-            {link.label}
-          </NavLink>
-        ))}
+          });
+          let lastGroup: string | undefined;
+          return filtered.map((link) => {
+            const showGroupHeader = link.group && link.group !== lastGroup;
+            lastGroup = link.group;
+            return (
+              <div key={link.to}>
+                {showGroupHeader && (
+                  <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-text/50">
+                    {link.group}
+                  </div>
+                )}
+                <NavLink
+                  to={link.to}
+                  end={link.to === '/dashboard'}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-sidebar-active text-white'
+                        : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                    )
+                  }
+                >
+                  <link.icon className="h-4.5 w-4.5 shrink-0" />
+                  {link.label}
+                </NavLink>
+              </div>
+            );
+          });
+        })()}
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10 space-y-1">

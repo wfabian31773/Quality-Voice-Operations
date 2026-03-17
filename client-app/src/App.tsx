@@ -65,6 +65,10 @@ import CaseStudies from './pages/public/CaseStudies';
 import ConversionFunnel from './pages/ConversionFunnel';
 import Workflows from './pages/Workflows';
 import RoleGuard from './components/RoleGuard';
+import SmsInbox from './pages/SmsInbox';
+import Scheduling from './pages/Scheduling';
+import Tickets from './pages/Tickets';
+import Dispatch from './pages/Dispatch';
 
 const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys'];
 
@@ -177,6 +181,10 @@ export default function App() {
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
         <Route path="/conversion-funnel" element={<ConversionFunnel />} />
         <Route path="/workflows" element={<RoleGuard allowedRoles={['tenant_owner', 'operations_manager']}><Workflows /></RoleGuard>} />
+        <Route path="/sms-inbox" element={<SmsInbox />} />
+        <Route path="/scheduling" element={<Scheduling />} />
+        <Route path="/tickets" element={<Tickets />} />
+        <Route path="/dispatch" element={<Dispatch />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
