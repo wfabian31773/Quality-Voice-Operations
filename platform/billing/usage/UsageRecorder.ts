@@ -85,6 +85,10 @@ export async function recordCallUsage(
       metricType,
       hourBucket: periodStart.toISOString(),
     });
+
+    import('../../../platform/activation/ActivationService')
+      .then(({ recordActivationEvent }) => recordActivationEvent(tenantId, 'tenant_first_call', { direction }))
+      .catch(() => {});
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to record call usage', { tenantId, direction, error: String(err) });

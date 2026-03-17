@@ -106,6 +106,9 @@ router.post('/phone-numbers', requireAuth, requireRole('admin'), async (req, res
 
     await client.query('COMMIT');
     logger.info('Phone number added', { tenantId, phoneId: pn.id });
+    import('../../../platform/activation/ActivationService')
+      .then(({ recordActivationEvent }) => recordActivationEvent(tenantId, 'tenant_phone_connected', { phoneId: pn.id }))
+      .catch(() => {});
     return res.status(201).json({ phoneNumber: redactPhoneRow(pn as Record<string, unknown>) });
   } catch (err) {
     await client.query('ROLLBACK');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Trash2, Phone, X } from 'lucide-react';
+import TooltipWalkthrough from '../components/TooltipWalkthrough';
 
 interface PhoneNumber {
   id: string;
@@ -147,10 +148,17 @@ export default function PhoneNumbers() {
           <h1 className="text-2xl font-bold text-text-primary">Phone Numbers</h1>
           <p className="text-sm text-text-secondary mt-1">Manage Twilio phone numbers and agent routing</p>
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-          <Plus className="h-4 w-4" /> Add Number
-        </button>
+        <TooltipWalkthrough
+          tooltipKey="phone-setup"
+          title="Connect a Phone Number"
+          description="Add a Twilio phone number and route it to your agent. Inbound calls to this number will be answered by your AI agent automatically."
+          position="left"
+        >
+          <button onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+            <Plus className="h-4 w-4" /> Add Number
+          </button>
+        </TooltipWalkthrough>
       </div>
 
       {isLoading ? (

@@ -98,6 +98,24 @@ interface TemplateAnalytics {
   completedCampaigns: number;
 }
 
+interface ActivationMetricRow {
+  tenant_id: string;
+  tenant_name: string;
+  tenant_plan: string;
+  tenant_status: string;
+  tenant_created_at: string;
+  agent_created_at: string | null;
+  agent_deployed_at: string | null;
+  phone_connected_at: string | null;
+  tools_connected_at: string | null;
+  first_call_at: string | null;
+  first_workflow_at: string | null;
+  time_to_agent_hours: number | null;
+  time_to_call_hours: number | null;
+  time_to_workflow_hours: number | null;
+  milestones_completed: number;
+}
+
 interface CostMonitoringData {
   daily: {
     callMinutes: number;
@@ -462,7 +480,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -497,6 +515,13 @@ export default function PlatformAdmin() {
     queryFn: () => api.get<{ monitoring: CostMonitoringData }>('/platform/cost-monitoring'),
     enabled: activeTab === 'cost-monitoring',
     refetchInterval: 30_000,
+  });
+
+  const { data: activationData, isLoading: activationLoading } = useQuery({
+    queryKey: ['platform-activation-metrics'],
+    queryFn: () => api.get<{ metrics: ActivationMetricRow[] }>('/platform/activation-metrics'),
+    enabled: activeTab === 'activation',
+    refetchInterval: 60_000,
   });
 
   const statusMutation = useMutation({
@@ -582,6 +607,16 @@ export default function PlatformAdmin() {
           }`}
         >
           <span className="flex items-center gap-2"><DollarSign className="h-4 w-4" /> Cost Monitoring</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('activation')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'activation'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><Activity className="h-4 w-4" /> Activation</span>
         </button>
       </div>
 
@@ -761,6 +796,10 @@ export default function PlatformAdmin() {
 
       {activeTab === 'cost-monitoring' && (
         <CostMonitoringTab data={costData} loading={costLoading} />
+      )}
+
+      {activeTab === 'activation' && (
+        <ActivationMetricsTab data={activationData} loading={activationLoading} />
       )}
     </div>
   );
@@ -1179,6 +1218,132 @@ function MetricItem({ label, value, trend }: { label: string; value: string; tre
         <span className="text-sm font-semibold">{value}</span>
         {trend === 'up' && <TrendingUp className="h-3 w-3 text-green-500" />}
         {trend === 'down' && <TrendingDown className="h-3 w-3 text-red-500" />}
+      </div>
+    </div>
+  );
+}
+
+function MilestoneIcon({ done }: { done: boolean }) {
+  if (done) return <CheckCircle className="h-4 w-4 text-green-500" />;
+  return <AlertCircle className="h-4 w-4 text-gray-300 dark:text-gray-600" />;
+}
+
+function formatHours(hours: number | null): string {
+  if (hours === null) return '\u2014';
+  if (hours < 1) return `${Math.round(hours * 60)}m`;
+  if (hours < 24) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
+}
+
+function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMetricRow[] } | undefined; loading: boolean }) {
+  if (loading) return <div className="text-center py-12 text-muted">Loading activation metrics...</div>;
+  if (!data) return <div className="text-center py-12 text-muted">No data available</div>;
+
+  const metrics = data.metrics;
+  const totalTenants = metrics.length;
+  const withAgent = metrics.filter((m) => m.agent_created_at).length;
+  const withCall = metrics.filter((m) => m.first_call_at).length;
+  const withWorkflow = metrics.filter((m) => m.first_workflow_at).length;
+  const stuckTenants = metrics.filter((m) => m.milestones_completed < 2 && m.milestones_completed > 0);
+
+  const TOTAL_MILESTONES = 6;
+  const avgTimeToAgent = metrics
+    .filter((m) => m.time_to_agent_hours !== null)
+    .reduce((sum, m, _, arr) => sum + (m.time_to_agent_hours ?? 0) / arr.length, 0);
+  const avgTimeToCall = metrics
+    .filter((m) => m.time_to_call_hours !== null)
+    .reduce((sum, m, _, arr) => sum + (m.time_to_call_hours ?? 0) / arr.length, 0);
+  const avgTimeToWorkflow = metrics
+    .filter((m) => m.time_to_workflow_hours !== null)
+    .reduce((sum, m, _, arr) => sum + (m.time_to_workflow_hours ?? 0) / arr.length, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-sm text-muted mb-1">Agent Created</div>
+          <div className="text-2xl font-bold">{withAgent} <span className="text-sm text-muted font-normal">/ {totalTenants}</span></div>
+          <div className="text-xs text-muted mt-1">Avg time: {formatHours(avgTimeToAgent)}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-sm text-muted mb-1">First Call</div>
+          <div className="text-2xl font-bold">{withCall} <span className="text-sm text-muted font-normal">/ {totalTenants}</span></div>
+          <div className="text-xs text-muted mt-1">Avg time: {formatHours(avgTimeToCall)}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-sm text-muted mb-1">First Workflow</div>
+          <div className="text-2xl font-bold">{withWorkflow} <span className="text-sm text-muted font-normal">/ {totalTenants}</span></div>
+          <div className="text-xs text-muted mt-1">Avg time: {formatHours(avgTimeToWorkflow)}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-sm text-muted mb-1">Stuck Tenants</div>
+          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stuckTenants.length}</div>
+          <div className="text-xs text-muted mt-1">Started but stalled (&lt;2 milestones)</div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h2 className="font-semibold">Tenant Activation Progress</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-3 font-medium text-muted">Tenant</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
+                <th className="text-center px-4 py-3 font-medium text-muted">Agent</th>
+                <th className="text-center px-4 py-3 font-medium text-muted">Deploy</th>
+                <th className="text-center px-4 py-3 font-medium text-muted">Phone</th>
+                <th className="text-center px-4 py-3 font-medium text-muted">Tools</th>
+                <th className="text-center px-4 py-3 font-medium text-muted">1st Call</th>
+                <th className="text-center px-4 py-3 font-medium text-muted">Workflow</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Time to Agent</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Time to Call</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Time to Workflow</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Progress</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.map((m) => (
+                <tr key={m.tenant_id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{m.tenant_name}</div>
+                    <div className="text-xs text-muted">{new Date(m.tenant_created_at).toLocaleDateString()}</div>
+                  </td>
+                  <td className="px-4 py-3"><PlanBadge plan={m.tenant_plan} /></td>
+                  <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.agent_created_at} /></td>
+                  <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.agent_deployed_at} /></td>
+                  <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.phone_connected_at} /></td>
+                  <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.tools_connected_at} /></td>
+                  <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.first_call_at} /></td>
+                  <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.first_workflow_at} /></td>
+                  <td className="px-4 py-3 text-muted">{formatHours(m.time_to_agent_hours)}</td>
+                  <td className="px-4 py-3 text-muted">{formatHours(m.time_to_call_hours)}</td>
+                  <td className="px-4 py-3 text-muted">{formatHours(m.time_to_workflow_hours)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${
+                            m.milestones_completed >= 5 ? 'bg-green-500' :
+                            m.milestones_completed >= 3 ? 'bg-blue-500' :
+                            m.milestones_completed >= 1 ? 'bg-amber-500' : 'bg-gray-400'
+                          }`}
+                          style={{ width: `${Math.round((m.milestones_completed / TOTAL_MILESTONES) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted">{m.milestones_completed}/{TOTAL_MILESTONES}</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {metrics.length === 0 && (
+                <tr><td colSpan={12} className="text-center py-12 text-muted">No tenant data yet</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

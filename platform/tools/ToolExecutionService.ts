@@ -129,6 +129,15 @@ export async function completeToolExecution(params: {
         ],
       );
     });
+    if (params.status === 'success') {
+      import('../activation/ActivationService')
+        .then(({ recordActivationEvent }) =>
+          recordActivationEvent(params.tenantId, 'tenant_first_workflow_execution', {
+            executionId: params.executionId,
+          }),
+        )
+        .catch(() => {});
+    }
   } catch (err) {
     logger.error('Failed to complete tool execution record', {
       tenantId: params.tenantId,

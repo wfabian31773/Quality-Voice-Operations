@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { getTemplatePermissions, getAllKnownTools } from '../../../platform/agent-templates/toolPermissions';
+import { recordActivationEvent } from '../../../platform/activation/ActivationService';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -123,6 +124,7 @@ router.post('/agents', requireAuth, requireRole('admin'), async (req, res) => {
     await client.query('COMMIT');
 
     logger.info('Agent created', { tenantId, agentId: rows[0].id });
+    recordActivationEvent(tenantId, 'tenant_agent_created', { agentId: rows[0].id }).catch(() => {});
     return res.status(201).json({ agent: rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -828,6 +830,9 @@ router.post('/agents/:id/publish', requireAuth, requireRole('admin'), async (req
     });
 
     logger.info('Agent published', { tenantId, agentId: id, version: nextVersion });
+    import('../../../platform/activation/ActivationService')
+      .then(({ recordActivationEvent }) => recordActivationEvent(tenantId, 'tenant_agent_deployed', { agentId: id, version: nextVersion }))
+      .catch(() => {});
     return res.json({ version: nextVersion, status: 'published' });
   } catch (err) {
     await client.query('ROLLBACK');

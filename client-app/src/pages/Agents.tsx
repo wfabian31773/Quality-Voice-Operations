@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow } from 'lucide-react';
+import TooltipWalkthrough from '../components/TooltipWalkthrough';
 
 interface Agent {
   id: string;
@@ -343,10 +344,17 @@ export default function Agents() {
           <h1 className="text-2xl font-bold text-text-primary">Agents</h1>
           <p className="text-sm text-text-secondary mt-1">Manage your AI voice agents</p>
         </div>
-        <button onClick={() => setEditingId('new')}
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-          <Plus className="h-4 w-4" /> New Agent
-        </button>
+        <TooltipWalkthrough
+          tooltipKey="agents-create"
+          title="Create Your First Agent"
+          description="Start by creating an AI voice agent. Choose a template that matches your business type, then customize the greeting, tools, and escalation rules."
+          position="left"
+        >
+          <button onClick={() => setEditingId('new')}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+            <Plus className="h-4 w-4" /> New Agent
+          </button>
+        </TooltipWalkthrough>
       </div>
 
       {isLoading ? (

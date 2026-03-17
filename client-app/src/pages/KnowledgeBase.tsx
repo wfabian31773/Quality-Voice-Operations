@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search } from 'lucide-react';
+import TooltipWalkthrough from '../components/TooltipWalkthrough';
 
 interface Article {
   id: number;
@@ -162,10 +163,17 @@ export default function KnowledgeBase() {
           <h1 className="text-2xl font-bold text-text-primary">Knowledge Base</h1>
           <p className="text-sm text-text-secondary mt-1">Manage articles and documentation for your AI agents</p>
         </div>
-        <button onClick={() => setEditingId('new')}
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-          <Plus className="h-4 w-4" /> New Article
-        </button>
+        <TooltipWalkthrough
+          tooltipKey="knowledge-base-intro"
+          title="Build Your Knowledge Base"
+          description="Add articles and FAQs that your AI agent can reference during calls. This helps your agent provide accurate, context-aware responses to callers."
+          position="left"
+        >
+          <button onClick={() => setEditingId('new')}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+            <Plus className="h-4 w-4" /> New Article
+          </button>
+        </TooltipWalkthrough>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

@@ -5,8 +5,11 @@ import { api } from '../lib/api';
 import {
   PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
   ArrowRight, Zap, BarChart3, Phone, Plus, CheckCircle2,
+  Stethoscope, Building2, Wrench, Scale, Headphones,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import OnboardingChecklist from '../components/OnboardingChecklist';
+import TrialConversionNudge from '../components/TrialConversionNudge';
 
 interface CallSession {
   id: string;
@@ -187,6 +190,89 @@ function QuickStartCard({ navigate, agentCount, hasPhoneNumbers }: {
   );
 }
 
+const exampleWorkflows = [
+  {
+    icon: Stethoscope,
+    title: 'Medical After-Hours',
+    description: 'Handle patient calls after hours with appointment scheduling, triage, and on-call doctor routing.',
+    template: 'medical-after-hours',
+    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  },
+  {
+    icon: Building2,
+    title: 'Property Management',
+    description: 'Manage tenant inquiries, maintenance requests, and showing schedules for property managers.',
+    template: 'property-management',
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  },
+  {
+    icon: Wrench,
+    title: 'Home Services',
+    description: 'Book HVAC, plumbing, or electrical appointments with smart scheduling and dispatch.',
+    template: 'home-services',
+    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  },
+  {
+    icon: Scale,
+    title: 'Legal Intake',
+    description: 'Capture new client details, route by practice area, and schedule consultations automatically.',
+    template: 'legal',
+    color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  },
+  {
+    icon: Headphones,
+    title: 'Customer Support',
+    description: 'Handle support tickets, FAQs, and escalations with knowledge-base-backed AI responses.',
+    template: 'customer-support',
+    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  },
+];
+
+function ExampleWorkflowCards({ navigate }: { navigate: (path: string) => void }) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem('dismissed_workflow_cards') === 'true'; } catch { return false; }
+  });
+  if (dismissed) return null;
+
+  return (
+    <div className="bg-surface border border-border rounded-xl shadow-sm">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">Example Workflows</h2>
+          <p className="text-xs text-text-secondary mt-0.5">Start from a proven template for your industry</p>
+        </div>
+        <button
+          onClick={() => { setDismissed(true); try { localStorage.setItem('dismissed_workflow_cards', 'true'); } catch {} }}
+          className="text-xs text-text-secondary hover:text-text-primary transition-colors"
+        >
+          Dismiss
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 p-5">
+        {exampleWorkflows.map((wf) => {
+          const Icon = wf.icon;
+          return (
+            <div
+              key={wf.template}
+              className="border border-border rounded-lg p-4 hover:bg-surface-hover transition-colors cursor-pointer group"
+              onClick={() => navigate('/agents')}
+            >
+              <div className={`p-2 rounded-lg ${wf.color} inline-flex mb-3`}>
+                <Icon className="h-4 w-4" />
+              </div>
+              <h3 className="text-sm font-semibold text-text-primary mb-1">{wf.title}</h3>
+              <p className="text-xs text-text-secondary leading-relaxed">{wf.description}</p>
+              <span className="inline-flex items-center gap-1 text-xs text-primary font-medium mt-3 group-hover:underline">
+                Use Template <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const todaySince = todayIso();
@@ -261,9 +347,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {(agentCount === 0 || !hasPhoneNumbers) && (
-        <QuickStartCard navigate={navigate} agentCount={agentCount} hasPhoneNumbers={hasPhoneNumbers} />
-      )}
+      <OnboardingChecklist />
+
+      <TrialConversionNudge />
+
+      <ExampleWorkflowCards navigate={navigate} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard icon={PhoneCall} label="Active Calls" value={activeCallCount} color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />

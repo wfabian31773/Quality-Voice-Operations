@@ -29,6 +29,7 @@ import {
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
   RotateCcw, Eye, Trash2,
 } from 'lucide-react';
+import TooltipWalkthrough from '../components/TooltipWalkthrough';
 
 interface Agent {
   id: string;
@@ -1311,17 +1312,24 @@ function AgentBuilderInner() {
           >
             <Play className="h-3.5 w-3.5" /> Test
           </button>
-          <button
-            onClick={() => {
-              setRightPanel(rightPanel === 'deploy' ? 'none' : 'deploy');
-              refetchVersions();
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition ${
-              rightPanel === 'deploy' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
-            }`}
+          <TooltipWalkthrough
+            tooltipKey="builder-deploy"
+            title="Deploy Your Agent"
+            description="When your workflow is ready, click Deploy to publish your agent. Published agents go live immediately and can start handling calls."
+            position="bottom"
           >
-            <Rocket className="h-3.5 w-3.5" /> Deploy
-          </button>
+            <button
+              onClick={() => {
+                setRightPanel(rightPanel === 'deploy' ? 'none' : 'deploy');
+                refetchVersions();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition ${
+                rightPanel === 'deploy' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+              }`}
+            >
+              <Rocket className="h-3.5 w-3.5" /> Deploy
+            </button>
+          </TooltipWalkthrough>
           <button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending || !hasChanges}

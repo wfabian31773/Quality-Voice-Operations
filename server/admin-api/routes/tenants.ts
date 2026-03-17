@@ -7,6 +7,7 @@ import { getProvisioningStatus, provisionTenant } from '../../../platform/tenant
 import { getRegisteredTemplates } from '../../../platform/agent-templates/registry';
 import { getStripeClient } from '../../../platform/billing/stripe/client';
 import { PLAN_LIMITS } from '../../../platform/billing/stripe/plans';
+import { getActivationMilestones, dismissTooltip, getDismissedTooltips } from '../../../platform/activation/ActivationService';
 
 const router = Router();
 const logger = createLogger('ADMIN_TENANTS');
@@ -209,6 +210,43 @@ router.patch('/tenants/me', requireAuth, requireRole('admin'), async (req, res) 
     return res.status(500).json({ error: 'Failed to update tenant' });
   } finally {
     client.release();
+  }
+});
+
+router.get('/tenants/me/activation', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const milestones = await getActivationMilestones(tenantId);
+    return res.json({ milestones });
+  } catch (err) {
+    logger.error('Failed to get activation milestones', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to retrieve activation milestones' });
+  }
+});
+
+router.get('/tenants/me/tooltips', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  try {
+    const dismissed = await getDismissedTooltips(userId);
+    return res.json({ dismissed });
+  } catch (err) {
+    logger.error('Failed to get tooltip dismissals', { userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to retrieve tooltip state' });
+  }
+});
+
+router.post('/tenants/me/tooltips/dismiss', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  const { tooltipKey } = req.body as { tooltipKey?: string };
+  if (!tooltipKey || typeof tooltipKey !== 'string') {
+    return res.status(400).json({ error: 'tooltipKey is required' });
+  }
+  try {
+    await dismissTooltip(userId, tooltipKey);
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to dismiss tooltip', { userId, tooltipKey, error: String(err) });
+    return res.status(500).json({ error: 'Failed to dismiss tooltip' });
   }
 });
 

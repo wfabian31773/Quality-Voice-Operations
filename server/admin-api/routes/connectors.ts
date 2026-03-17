@@ -65,6 +65,9 @@ router.post('/connectors', requireAuth, requireRole('admin'), async (req, res) =
       isEnabled,
     });
     logger.info('Connector upserted', { tenantId, connectorType, provider, integrationId });
+    import('../../../platform/activation/ActivationService')
+      .then(({ recordActivationEvent }) => recordActivationEvent(tenantId, 'tenant_tools_connected', { connectorType, provider }))
+      .catch(() => {});
     return res.status(201).json({ integrationId });
   } catch (err) {
     logger.error('Failed to upsert connector', { tenantId, error: String(err) });

@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { withPrivilegedClient, getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { getAllTenantsActivationMetrics } from '../../../platform/activation/ActivationService';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -306,6 +307,16 @@ router.get('/platform/cost-monitoring', requireAuth, requirePlatformAdmin, async
   } catch (err) {
     logger.error('Failed to get cost monitoring data', { error: String(err) });
     return res.status(500).json({ error: 'Failed to get cost monitoring data' });
+  }
+});
+
+router.get('/platform/activation-metrics', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const metrics = await getAllTenantsActivationMetrics();
+    return res.json({ metrics });
+  } catch (err) {
+    logger.error('Failed to get activation metrics', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to get activation metrics' });
   }
 });
 
