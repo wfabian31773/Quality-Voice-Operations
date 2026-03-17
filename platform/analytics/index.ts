@@ -12,6 +12,7 @@ export type {
   CostAnalyticsResult,
 } from './AnalyticsService';
 export {
+  QUALITY_SCORING_RUBRIC,
   scoreCall,
   getCallQualityScore,
   getQualityAnalytics,

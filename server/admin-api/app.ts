@@ -34,6 +34,7 @@ import operationsRoutes from './routes/operations';
 import websiteAgentRoutes from './routes/websiteAgent';
 import assistantRoutes from './routes/assistant';
 import insightsRoutes from './routes/insights';
+import simulationRoutes from './routes/simulations';
 
 const app = express();
 
@@ -87,6 +88,7 @@ app.use('/', operationsRoutes);
 app.use('/', websiteAgentRoutes);
 app.use('/', assistantRoutes);
 app.use('/', insightsRoutes);
+app.use('/', simulationRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

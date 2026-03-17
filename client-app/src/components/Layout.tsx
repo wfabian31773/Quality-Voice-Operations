@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles,
+  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -35,6 +35,7 @@ const links: NavItem[] = [
   { to: '/observability', icon: Activity, label: 'Observability' },
   { to: '/quality', icon: Star, label: 'Quality' },
   { to: '/insights', icon: Sparkles, label: 'Intelligence' },
+  { to: '/simulation-lab', icon: FlaskConical, label: 'Simulation Lab' },
   { to: '/widget', icon: MessageSquare, label: 'Widget' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },

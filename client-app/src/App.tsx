@@ -31,6 +31,7 @@ import Insights from './pages/Insights';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
+import SimulationLab from './pages/SimulationLab';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -132,6 +133,7 @@ export default function App() {
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/quality" element={<Quality />} />
         <Route path="/insights" element={<Insights />} />
+        <Route path="/simulation-lab" element={<SimulationLab />} />
         <Route path="/widget" element={<Widget />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />

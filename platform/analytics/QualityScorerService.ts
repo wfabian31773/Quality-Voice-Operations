@@ -3,7 +3,7 @@ import { createLogger } from '../core/logger';
 
 const logger = createLogger('QUALITY_SCORER');
 
-const SCORING_RUBRIC = `You are a call quality analyst. Score this AI voice agent call transcript on a 0-10 scale.
+export const QUALITY_SCORING_RUBRIC = `You are a call quality analyst. Score this AI voice agent call transcript on a 0-10 scale.
 
 Evaluate these dimensions:
 1. Helpfulness (0-10): Did the agent address the caller's needs effectively?
@@ -72,7 +72,7 @@ export async function scoreCall(
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: SCORING_RUBRIC },
+          { role: 'system', content: QUALITY_SCORING_RUBRIC },
           { role: 'user', content: `Score this call transcript:\n\n${transcriptText}` },
         ],
         temperature: 0.3,
