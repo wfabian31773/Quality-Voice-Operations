@@ -32,6 +32,7 @@ import demoLiveRoutes from './routes/demoLive';
 import toolExecutionRoutes from './routes/toolExecutions';
 import operationsRoutes from './routes/operations';
 import websiteAgentRoutes from './routes/websiteAgent';
+import assistantRoutes from './routes/assistant';
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use('/', marketplaceRoutes);
 app.use('/', toolExecutionRoutes);
 app.use('/', operationsRoutes);
 app.use('/', websiteAgentRoutes);
+app.use('/', assistantRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

@@ -29,6 +29,7 @@ import Operations from './pages/Operations';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
+import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
 import Features from './pages/public/Features';
@@ -85,7 +86,10 @@ export default function App() {
         path="/onboarding"
         element={
           <ProtectedRoute>
-            <Onboarding />
+            <>
+              <Onboarding />
+              <PlatformAssistant />
+            </>
           </ProtectedRoute>
         }
       />
@@ -93,7 +97,10 @@ export default function App() {
         path="/agents/:id/builder"
         element={
           <ProtectedRoute>
-            <AgentBuilder />
+            <>
+              <AgentBuilder />
+              <PlatformAssistant />
+            </>
           </ProtectedRoute>
         }
       />

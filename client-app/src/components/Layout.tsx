@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
+import PlatformAssistant from './PlatformAssistant';
 
 interface NavItem {
   to: string;
@@ -189,6 +190,8 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <PlatformAssistant />
     </div>
   );
 }
