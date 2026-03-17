@@ -7,7 +7,7 @@ import {
   LogOut, Moon, Sun, Menu, X, BarChart3, Settings2,
   Megaphone, CreditCard, BookOpen, MessageSquare, Store,
   TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Monitor,
-  ArrowUpCircle, Code2, Star,
+  ArrowUpCircle, Code2, Star, Inbox, Calendar, Ticket, Truck,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -38,6 +38,10 @@ const tenantLinks: NavItem[] = [
   { to: '/autopilot', icon: Brain, label: 'Autopilot' },
   { to: '/simulation-lab', icon: FlaskConical, label: 'Simulation Lab' },
   { to: '/improvements', icon: Lightbulb, label: 'Improvements' },
+  { to: '/sms-inbox', icon: Inbox, label: 'SMS Inbox' },
+  { to: '/scheduling', icon: Calendar, label: 'Scheduling' },
+  { to: '/tickets', icon: Ticket, label: 'Tickets' },
+  { to: '/dispatch', icon: Truck, label: 'Dispatch' },
   { to: '/widget', icon: MessageSquare, label: 'Widget' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
