@@ -9,6 +9,7 @@ import type { ConnectorType } from '../../../platform/integrations/connectors';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
 const router = Router();
 const logger = createLogger('ADMIN_CONNECTORS');
@@ -65,6 +66,17 @@ router.post('/connectors', requireAuth, requireRole('admin'), async (req, res) =
       isEnabled,
     });
     logger.info('Connector upserted', { tenantId, connectorType, provider, integrationId });
+    writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'connector.created',
+      resourceType: 'connector',
+      resourceId: integrationId,
+      changes: { connectorType, provider, name },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     import('../../../platform/activation/ActivationService')
       .then(({ recordActivationEvent }) => recordActivationEvent(tenantId, 'tenant_tools_connected', { connectorType, provider }))
       .catch(() => {});
@@ -112,6 +124,16 @@ router.delete('/connectors/:integrationId', requireAuth, requireRole('admin'), a
   try {
     await deleteConnector(tenantId, integrationId);
     logger.info('Connector deleted', { tenantId, integrationId });
+    writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'connector.deleted',
+      resourceType: 'connector',
+      resourceId: integrationId,
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     return res.json({ deleted: true });
   } catch (err) {
     logger.error('Failed to delete connector', { tenantId, integrationId, error: String(err) });

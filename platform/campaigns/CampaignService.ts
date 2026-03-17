@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
+import { encryptSensitiveField, decryptSensitiveField } from '../security/FieldEncryption';
 import type {
   Campaign, CampaignContact, CampaignMetrics, CampaignStatus,
   ContactStatus, ContactOutcome, CreateCampaignParams, UpdateCampaignParams,
@@ -63,6 +64,17 @@ function rowToContact(r: Record<string, unknown>): CampaignContact {
     createdAt: new Date(r.created_at as string),
     updatedAt: new Date(r.updated_at as string),
   };
+}
+
+async function decryptContact(contact: CampaignContact): Promise<CampaignContact> {
+  if (contact.phoneNumber && contact.phoneNumber.startsWith('env1:')) {
+    try {
+      contact.phoneNumber = await decryptSensitiveField(contact.tenantId, contact.phoneNumber);
+    } catch {
+      contact.phoneNumber = '[encrypted]';
+    }
+  }
+  return contact;
 }
 
 export async function createCampaign(params: CreateCampaignParams): Promise<Campaign> {
@@ -243,11 +255,12 @@ export async function addContacts(
 
     let inserted = 0;
     for (const c of contacts) {
+      const encryptedPhone = await encryptSensitiveField(tenantId, c.phoneNumber);
       const { rowCount } = await client.query(
         `INSERT INTO campaign_contacts (id, tenant_id, campaign_id, phone_number, name, status, metadata)
          VALUES ($1, $2, $3, $4, $5, 'pending', $6)
          ON CONFLICT DO NOTHING`,
-        [randomUUID(), tenantId, campaignId, c.phoneNumber, c.name ?? null, JSON.stringify(c.metadata ?? {})],
+        [randomUUID(), tenantId, campaignId, encryptedPhone, c.name ?? null, JSON.stringify(c.metadata ?? {})],
       );
       if ((rowCount ?? 0) > 0) inserted++;
     }
@@ -265,7 +278,8 @@ export async function getContact(
       `SELECT * FROM campaign_contacts WHERE id = $1 AND campaign_id = $2 AND tenant_id = $3 LIMIT 1`,
       [contactId, campaignId, tenantId],
     );
-    return rows.length > 0 ? rowToContact(rows[0]) : null;
+    if (rows.length === 0) return null;
+    return decryptContact(rowToContact(rows[0]));
   });
 }
 
@@ -289,8 +303,9 @@ export async function listContacts(
       `SELECT COUNT(*)::int AS total FROM campaign_contacts WHERE ${where}`,
       values,
     );
+    const contacts = await Promise.all(rows.map(r => decryptContact(rowToContact(r))));
     return {
-      contacts: rows.map(rowToContact),
+      contacts,
       total: parseInt(countRows[0].total as string),
     };
   });

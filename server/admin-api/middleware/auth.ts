@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { requireTenantContext } from './tenantGuard';
 
 const logger = createLogger('ADMIN_AUTH');
 
@@ -32,6 +33,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthenticatedUser;
+      apiKeyScopes?: string[];
     }
   }
 }
@@ -119,7 +121,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
           }
         }
 
-        next();
+        requireTenantContext(req, res, next);
       })
       .catch((err) => {
         logger.error('Failed to resolve user role from DB', { error: String(err) });

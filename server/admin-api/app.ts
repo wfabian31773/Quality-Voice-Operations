@@ -45,6 +45,7 @@ import evolutionRoutes from './routes/evolution';
 import toolHealthRoutes from './routes/toolHealth';
 import costOptimizationRoutes from './routes/costOptimization';
 import callDebugRoutes from './routes/callDebug';
+import complianceRoutes from './routes/compliance';
 
 const app = express();
 
@@ -70,6 +71,8 @@ app.use((req, res, next) => {
 
 app.use('/', healthRoutes);
 app.use('/', authRoutes);
+
+
 app.use('/', tenantRoutes);
 app.use('/', agentRoutes);
 app.use('/', phoneNumberRoutes);
@@ -109,6 +112,7 @@ app.use('/', evolutionRoutes);
 app.use('/', toolHealthRoutes);
 app.use('/', costOptimizationRoutes);
 app.use('/', callDebugRoutes);
+app.use('/', complianceRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

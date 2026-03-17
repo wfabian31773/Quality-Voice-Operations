@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { createLogger } from '../../../platform/core/logger';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
 const router = Router();
 const logger = createLogger('ADMIN_PHONE_NUMBERS');
@@ -106,6 +107,17 @@ router.post('/phone-numbers', requireAuth, requireRole('admin'), async (req, res
 
     await client.query('COMMIT');
     logger.info('Phone number added', { tenantId, phoneId: pn.id });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'phone_number.created',
+      resourceType: 'phone_number',
+      resourceId: pn.id as string,
+      afterState: { phoneNumber: phone_number, agentId: agent_id ?? null },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     import('../../../platform/activation/ActivationService')
       .then(({ recordActivationEvent }) => recordActivationEvent(tenantId, 'tenant_phone_connected', { phoneId: pn.id }))
       .catch(() => {});
@@ -155,6 +167,17 @@ router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('admin'), as
 
     await client.query('COMMIT');
     logger.info('Phone number routing updated', { tenantId, phoneId: id, agentId: agent_id ?? null });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'phone_number.routing_updated',
+      resourceType: 'phone_number',
+      resourceId: id,
+      changes: { agentId: agent_id ?? null },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     return res.json({ updated: true, phoneNumberId: id, agentId: agent_id ?? null });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -181,6 +204,17 @@ router.delete('/phone-numbers/:id', requireAuth, requireRole('admin'), async (re
     await client.query('COMMIT');
 
     if (!rowCount) return res.status(404).json({ error: 'Phone number not found' });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'phone_number.deleted',
+      resourceType: 'phone_number',
+      resourceId: id,
+      severity: 'warning',
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     return res.json({ deleted: true });
   } catch (err) {
     await client.query('ROLLBACK');

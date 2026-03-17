@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import {
   createCampaign,
   getCampaign,
@@ -172,6 +173,17 @@ router.post('/campaigns', requireAuth, requireRole('admin'), async (req, res) =>
       scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
     });
     logger.info('Campaign created via API', { tenantId, campaignId: campaign.id });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'campaign.created',
+      resourceType: 'campaign',
+      resourceId: campaign.id,
+      afterState: { name, type: type || 'outbound_call', agentId },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     return res.status(201).json({ campaign });
   } catch (err) {
     logger.error('Failed to create campaign', { tenantId, error: String(err) });
@@ -311,6 +323,17 @@ router.delete('/campaigns/:id', requireAuth, requireRole('admin'), async (req, r
       return res.status(400).json({ error: 'Campaign not found or cannot be deleted (must be draft or cancelled)' });
     }
     logger.info('Campaign deleted', { tenantId, campaignId: id });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'campaign.deleted',
+      resourceType: 'campaign',
+      resourceId: id,
+      severity: 'warning',
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     return res.json({ deleted: true });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to delete campaign' });

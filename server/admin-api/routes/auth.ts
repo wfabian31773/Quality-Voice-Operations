@@ -105,7 +105,7 @@ router.post('/auth/login', async (req, res) => {
 
     logger.info('User logged in', { userId: user.id, tenantId: user.tenant_id });
 
-    writeAuditLog({
+    await writeAuditLog({
       tenantId: user.tenant_id as string,
       actorUserId: user.id as string,
       actorRole: user.role as string,
@@ -661,7 +661,7 @@ router.post('/auth/accept-invite', async (req, res) => {
 
     logger.info('Invitation accepted', { userId: user.id, tenantId: user.tenant_id, email: user.email });
 
-    writeAuditLog({
+    await writeAuditLog({
       tenantId: user.tenant_id as string,
       actorUserId: user.id as string,
       actorRole: user.role as string,

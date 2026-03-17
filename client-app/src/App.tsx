@@ -42,6 +42,7 @@ import EvolutionEngine from './pages/EvolutionEngine';
 import ToolHealth from './pages/ToolHealth';
 import CostOptimization from './pages/CostOptimization';
 import CallDebug from './pages/CallDebug';
+import Compliance from './pages/Compliance';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -159,6 +160,7 @@ export default function App() {
         <Route path="/marketplace/:id" element={<Marketplace />} />
         <Route path="/developer" element={<DeveloperPortal />} />
         <Route path="/audit-log" element={<AuditLog />} />
+        <Route path="/compliance" element={<Compliance />} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/evolution" element={<PlatformAdminGuard><EvolutionEngine /></PlatformAdminGuard>} />

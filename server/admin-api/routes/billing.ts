@@ -6,6 +6,7 @@ import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
 const router = Router();
 const logger = createLogger('ADMIN_BILLING');
@@ -103,6 +104,17 @@ router.post('/billing/checkout', requireAuth, requireRole('admin'), async (req, 
       cancelUrl: cancelUrl ?? `${baseUrl}/dashboard?checkout=cancelled`,
       customerEmail: email,
     });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'billing.checkout_created',
+      resourceType: 'billing',
+      changes: { plan, interval },
+      severity: 'warning',
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
     return res.json(result);
   } catch (err) {
     logger.error('Checkout session creation failed', { tenantId, error: String(err) });
@@ -119,6 +131,15 @@ router.post('/billing/portal', requireAuth, requireRole('admin'), async (req, re
     const result = await createPortalSession({
       tenantId,
       returnUrl: returnUrl ?? `${baseUrl}/dashboard`,
+    });
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'billing.portal_accessed',
+      resourceType: 'billing',
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
     });
     return res.json(result);
   } catch (err) {

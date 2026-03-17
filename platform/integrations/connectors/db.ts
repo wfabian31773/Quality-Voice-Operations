@@ -1,5 +1,6 @@
 import { getPlatformPool, withTenantContext } from '../../db';
 import { decryptValue } from './crypto';
+import { isEnvelopeEncrypted } from '../../security/EncryptionService';
 import type { ConnectorConfig, ConnectorType } from './types';
 import type { TenantId } from '../../core/types';
 import { createLogger } from '../../core/logger';
@@ -57,12 +58,24 @@ export async function getConnectorConfig(
     );
 
     const credentials: Record<string, string> = {};
+    let envelopeDecrypt: ((ciphertext: string) => Promise<string>) | null = null;
+    try {
+      const { decryptSensitiveField } = await import('../../security/FieldEncryption');
+      envelopeDecrypt = (ciphertext: string) => decryptSensitiveField(tenantId, ciphertext);
+    } catch {
+      // Envelope decryption not available
+    }
+
     for (const row of configRows) {
       const key = row.config_key as string;
       const val = row.encrypted_value as string | null;
       if (val) {
         try {
-          credentials[key] = decryptValue(val);
+          if (isEnvelopeEncrypted(val) && envelopeDecrypt) {
+            credentials[key] = await envelopeDecrypt(val);
+          } else {
+            credentials[key] = decryptValue(val);
+          }
         } catch {
           logger.warn('Failed to decrypt connector config value', { tenantId, key });
           credentials[key] = val;
@@ -153,6 +166,13 @@ export async function upsertConnector(
   },
 ): Promise<string> {
   const { encryptValue } = await import('./crypto');
+  let envelopeEncrypt: ((value: string) => Promise<string>) | null = null;
+  try {
+    const { encryptSensitiveField } = await import('../../security/FieldEncryption');
+    envelopeEncrypt = (value: string) => encryptSensitiveField(tenantId, value);
+  } catch {
+    // Envelope encryption not available, fall back to connector crypto
+  }
 
   return withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
@@ -167,7 +187,16 @@ export async function upsertConnector(
     const integrationId = rows[0].id as string;
 
     for (const [key, value] of Object.entries(params.credentials)) {
-      const encrypted = encryptValue(value);
+      let encrypted: string;
+      if (envelopeEncrypt) {
+        try {
+          encrypted = await envelopeEncrypt(value);
+        } catch {
+          encrypted = encryptValue(value);
+        }
+      } else {
+        encrypted = encryptValue(value);
+      }
       await client.query(
         `INSERT INTO connector_configs (tenant_id, integration_id, config_key, encrypted_value)
          VALUES ($1, $2, $3, $4)

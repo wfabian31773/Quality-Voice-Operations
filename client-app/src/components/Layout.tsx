@@ -50,6 +50,7 @@ const links: NavItem[] = [
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
   { to: '/developer', icon: Code2, label: 'Developer Portal' },
   { to: '/settings', icon: Settings2, label: 'Settings' },
+  { to: '/compliance', icon: Shield, label: 'Security & Compliance', adminOnly: true },
   { to: '/audit-log', icon: Shield, label: 'Audit Log', adminOnly: true },
   { to: '/evolution', icon: Cpu, label: 'Evolution Engine', platformAdminOnly: true },
   { to: '/platform-admin', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },

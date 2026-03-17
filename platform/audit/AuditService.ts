@@ -11,6 +11,9 @@ export interface AuditEvent {
   resourceType: string;
   resourceId?: string;
   changes?: Record<string, unknown>;
+  beforeState?: Record<string, unknown>;
+  afterState?: Record<string, unknown>;
+  severity?: 'info' | 'warning' | 'critical';
   ipAddress?: string;
   userAgent?: string;
 }
@@ -22,8 +25,8 @@ export async function writeAuditLog(event: AuditEvent): Promise<void> {
     await client.query('BEGIN');
     await withTenantContext(client, event.tenantId, async () => {
       await client.query(
-        `INSERT INTO audit_logs (tenant_id, actor_user_id, actor_role, action, resource_type, resource_id, changes, ip_address, user_agent)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::inet, $9)`,
+        `INSERT INTO audit_logs (tenant_id, actor_user_id, actor_role, action, resource_type, resource_id, changes, before_state, after_state, severity, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::inet, $12)`,
         [
           event.tenantId,
           event.actorUserId,
@@ -32,6 +35,9 @@ export async function writeAuditLog(event: AuditEvent): Promise<void> {
           event.resourceType,
           event.resourceId ?? null,
           JSON.stringify(event.changes ?? {}),
+          event.beforeState ? JSON.stringify(event.beforeState) : null,
+          event.afterState ? JSON.stringify(event.afterState) : null,
+          event.severity ?? 'info',
           event.ipAddress ?? null,
           event.userAgent ?? null,
         ],
@@ -41,6 +47,9 @@ export async function writeAuditLog(event: AuditEvent): Promise<void> {
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error('Failed to write audit log', { action: event.action, error: String(err) });
+    if (event.severity === 'critical') {
+      throw new Error(`Critical audit log write failed for action ${event.action}: ${String(err)}`);
+    }
   } finally {
     client.release();
   }

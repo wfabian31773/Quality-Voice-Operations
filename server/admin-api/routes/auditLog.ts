@@ -10,6 +10,7 @@ const logger = createLogger('ADMIN_AUDIT');
 router.get('/audit-log', requireAuth, requireRole('admin'), async (req, res) => {
   const { tenantId } = req.user!;
   const action = req.query.action as string | undefined;
+  const userId = req.query.userId as string | undefined;
   const since = req.query.since as string | undefined;
   const until = req.query.until as string | undefined;
   const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 100);
@@ -32,6 +33,11 @@ router.get('/audit-log', requireAuth, requireRole('admin'), async (req, res) => 
       values.push(action);
       paramIdx++;
     }
+    if (userId) {
+      conditions.push(`a.actor_user_id = $${paramIdx}`);
+      values.push(userId);
+      paramIdx++;
+    }
     if (since) {
       conditions.push(`a.occurred_at >= $${paramIdx}`);
       values.push(since);
@@ -47,6 +53,7 @@ router.get('/audit-log', requireAuth, requireRole('admin'), async (req, res) => 
 
     const { rows } = await client.query(
       `SELECT a.id, a.action, a.resource_type, a.resource_id, a.changes,
+              a.before_state, a.after_state, a.severity,
               a.ip_address, a.occurred_at,
               a.actor_user_id, a.actor_role,
               u.email AS actor_email

@@ -3,6 +3,7 @@ import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import type { CallPersistenceAdapter } from '../../../platform/runtime/lifecycle/CallLifecycleCoordinator';
 import { recordConversionStage } from '../../../platform/analytics/ConversionFunnelService';
+import { encryptTranscript, encryptSensitiveField, decryptSensitiveField } from '../../../platform/security/FieldEncryption';
 
 const logger = createLogger('CALL_PERSISTENCE');
 
@@ -58,6 +59,10 @@ export async function createCallSession(
   const id = randomUUID();
   const sessionId = `session-${id}`;
 
+  const encryptedCallerNumber = params.callerNumber
+    ? await encryptSensitiveField(params.tenantId, params.callerNumber)
+    : null;
+
   await withTenant(params.tenantId, async (client) => {
     await client.query(
       `INSERT INTO call_sessions
@@ -71,7 +76,7 @@ export async function createCallSession(
         params.callSid,
         sessionId,
         params.direction,
-        params.callerNumber,
+        encryptedCallerNumber,
         params.calledNumber,
         'CALL_RECEIVED' as LifecycleState,
         params.environment ?? process.env.APP_ENV ?? 'development',
@@ -183,11 +188,12 @@ export async function finalizeCallSession(
 export function createPlatformPersistenceAdapter(tenantId: string): CallPersistenceAdapter {
   return {
     async updateTranscript(_tid: string, callLogId: string, transcript: string): Promise<void> {
+      const encryptedTranscript = await encryptTranscript(tenantId, transcript);
       await withTenant(tenantId, async (client) => {
         await client.query(
           `UPDATE call_sessions SET context = jsonb_set(COALESCE(context, '{}'), '{transcript}', to_jsonb($3::text)), updated_at = NOW()
            WHERE tenant_id = $1 AND id = $2`,
-          [tenantId, callLogId, transcript],
+          [tenantId, callLogId, encryptedTranscript],
         );
       });
     },

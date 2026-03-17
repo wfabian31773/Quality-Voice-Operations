@@ -24,6 +24,7 @@ export function requireApiKeyOrJwt(
           role: 'tenant_owner',
           isPlatformAdmin: false,
         };
+        req.apiKeyScopes = result.scopes;
         next();
         return;
       } catch (err) {
