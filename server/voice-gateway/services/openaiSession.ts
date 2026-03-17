@@ -20,6 +20,9 @@ import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeConte
 import { isToolDenied, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { createToolExecution, completeToolExecution } from '../../../platform/tools/ToolExecutionService';
+import { executeWithRetry, getToolRetryConfig } from '../../../platform/tools/RetryOrchestrator';
+import { buildFallbackResponse } from '../../../platform/tools/ConversationFallbackService';
+import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
 import { handleDemoToolCall } from './demoToolHandler';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
@@ -285,12 +288,28 @@ function buildToolHandler(
     let executionStatus: 'success' | 'failed' = 'success';
     let executionError: string | undefined;
 
-    try {
+    const NON_RETRYABLE_TOOLS = ['triageEscalate'];
+
+    const assertToolSuccess = (jsonResult: string, tool: string): string => {
+      if (NON_RETRYABLE_TOOLS.includes(tool)) return jsonResult;
+      try {
+        const parsed = JSON.parse(jsonResult);
+        if (parsed && typeof parsed === 'object' && parsed.success === false) {
+          const msg = parsed.message || parsed.confirmationMessage || parsed.error || 'Tool returned success: false';
+          throw new Error(`ToolExecutionFailed: ${msg}`);
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message.startsWith('ToolExecutionFailed:')) throw parseErr;
+      }
+      return jsonResult;
+    };
+
+    const dispatchToolExecution = async (): Promise<string> => {
+      let rawResult: string;
       switch (toolName) {
         case 'createServiceTicket': {
           if (!outboxService) {
-            result = JSON.stringify({ success: false, confirmationMessage: 'Outbox service not configured.' });
-            break;
+            throw new Error('ToolExecutionFailed: Outbox service not configured');
           }
           const ticketResult = await createServiceTicket(
             args as unknown as Parameters<typeof createServiceTicket>[0],
@@ -302,14 +321,13 @@ function buildToolHandler(
               config: DEFAULT_ANSWERING_SERVICE_CONFIG,
             },
           );
-          result = JSON.stringify(ticketResult);
-          break;
+          rawResult = JSON.stringify(ticketResult);
+          return assertToolSuccess(rawResult, toolName);
         }
 
         case 'createAfterHoursTicket': {
           if (!outboxService) {
-            result = JSON.stringify({ success: false, confirmationMessage: 'Outbox service not configured.' });
-            break;
+            throw new Error('ToolExecutionFailed: Outbox service not configured');
           }
           const agentMeta = agentConfig.metadata as Record<string, unknown>;
           const afterHoursResult = await createAfterHoursTicket(
@@ -322,8 +340,8 @@ function buildToolHandler(
               afterHoursDepartmentId: (agentMeta.afterHoursDepartmentId as number) ?? 1,
             },
           );
-          result = JSON.stringify(afterHoursResult);
-          break;
+          rawResult = JSON.stringify(afterHoursResult);
+          return assertToolSuccess(rawResult, toolName);
         }
 
         case 'triageEscalate': {
@@ -341,8 +359,8 @@ function buildToolHandler(
                   try {
                     await onEscalation(callSessionId, callSid, (args as Record<string, string>).urgentConcern ?? 'urgent');
                     return { success: true };
-                  } catch (err) {
-                    logger.error('Transfer initiation failed', { tenantId, callId: callSessionId, error: String(err) });
+                  } catch (transferErr) {
+                    logger.error('Transfer initiation failed', { tenantId, callId: callSessionId, error: String(transferErr) });
                     return { success: false };
                   }
                 }
@@ -361,8 +379,50 @@ function buildToolHandler(
             });
           }
 
-          result = JSON.stringify(escalateResult);
-          break;
+          return JSON.stringify(escalateResult);
+        }
+
+        case 'escalate_to_human': {
+          const reason = (args.reason as string) ?? 'Agent requested human escalation';
+          const priority = (args.priority as string) ?? 'high';
+          const task = await createEscalationTask({
+            tenantId,
+            callSessionId,
+            agentSlug: agentConfig.agentId,
+            callerPhone: (args.caller_phone as string) ?? undefined,
+            reason,
+            priority: priority as 'low' | 'medium' | 'high' | 'critical',
+            metadata: { source: 'agent_tool', args },
+          });
+
+          if (onEscalation) {
+            const transferTarget = (args.transfer_number as string) ?? '';
+            if (transferTarget) {
+              try {
+                await onEscalation(callSessionId, callSid, reason);
+                return JSON.stringify({
+                  success: true,
+                  message: "I'm connecting you with our team now. Please hold.",
+                  escalationTaskId: task.id,
+                  transferred: true,
+                });
+              } catch {
+                return JSON.stringify({
+                  success: true,
+                  message: "I've created a follow-up task for our team. Someone will reach out to you shortly.",
+                  escalationTaskId: task.id,
+                  transferred: false,
+                });
+              }
+            }
+          }
+
+          return JSON.stringify({
+            success: true,
+            message: "I've noted your concern and created a follow-up task. A team member will contact you shortly.",
+            escalationTaskId: task.id,
+            transferred: false,
+          });
         }
 
         default: {
@@ -374,23 +434,57 @@ function buildToolHandler(
               callSid,
               agentSlug: agentConfig.agentId,
             });
-            result = JSON.stringify(toolResult);
+            rawResult = JSON.stringify(toolResult);
+            return assertToolSuccess(rawResult, toolName);
           } else {
             logger.warn('Unknown tool called', { tenantId, callId: callSessionId, tool: toolName });
-            result = JSON.stringify({ success: false, message: `Unknown tool: ${toolName}` });
+            return JSON.stringify({ success: false, message: `Unknown tool: ${toolName}` });
           }
-          break;
         }
       }
-    } catch (err) {
+    };
+
+    const retryConfig = getToolRetryConfig(toolName);
+    const retryResult = await executeWithRetry<string>(
+      dispatchToolExecution,
+      {
+        tenantId,
+        toolName,
+        callSessionId,
+        agentSlug: agentConfig.agentId,
+        retryConfig,
+      },
+    );
+
+    if (retryResult.success && retryResult.result !== undefined) {
+      result = retryResult.result;
+    } else {
       executionStatus = 'failed';
-      executionError = String(err);
-      const recoveryInstructions = unifiedToolRegistry.getRecoveryInstructions(toolName);
-      logger.error('Tool execution failed', { tenantId, callId: callSessionId, tool: toolName, error: executionError });
+      executionError = retryResult.error ?? 'Unknown tool failure';
+      const fallback = buildFallbackResponse(tenantId, toolName, callSessionId, executionError);
+      logger.error('Tool execution failed after retries', {
+        tenantId, callId: callSessionId, tool: toolName,
+        error: executionError, attempts: retryResult.attempts,
+        usedFallback: retryResult.usedFallback,
+      });
+
       result = JSON.stringify({
         success: false,
-        message: 'Tool execution failed. Please try again.',
-        recovery: recoveryInstructions,
+        message: fallback.message,
+        recovery: unifiedToolRegistry.getRecoveryInstructions(toolName),
+        flaggedForFollowUp: true,
+      });
+
+      createEscalationTask({
+        tenantId,
+        callSessionId,
+        agentSlug: agentConfig.agentId,
+        reason: `Tool "${toolName}" failed after ${retryResult.attempts} attempt(s): ${executionError.substring(0, 200)}`,
+        priority: 'high',
+        toolName,
+        metadata: { error: executionError, attempts: retryResult.attempts },
+      }).catch((escErr) => {
+        logger.warn('Failed to create escalation task for tool failure', { error: String(escErr) });
       });
 
       if (ctx.reasoningEngine) {

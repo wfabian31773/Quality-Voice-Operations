@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu, Monitor, Globe,
+  Shield, ShieldCheck, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu, Monitor, Globe,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -35,6 +35,7 @@ const links: NavItem[] = [
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/revenue-analytics', icon: TrendingUp, label: 'Revenue & Performance' },
   { to: '/observability', icon: Activity, label: 'Observability' },
+  { to: '/reliability', icon: ShieldCheck, label: 'Reliability' },
   { to: '/quality', icon: Star, label: 'Quality' },
   { to: '/insights', icon: Sparkles, label: 'Intelligence' },
   { to: '/autopilot', icon: Brain, label: 'Autopilot' },

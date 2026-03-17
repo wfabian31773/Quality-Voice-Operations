@@ -11,12 +11,20 @@ import { validateEnvironment } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { registerRetrieveKnowledgeTool } from '../../platform/tools/knowledge/retrieveKnowledgeTool';
+import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
+import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
+import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
 
 const logger = createLogger('VOICE_GATEWAY');
 
 registerCoreTools();
 registerTemplateTools();
 registerRetrieveKnowledgeTool();
+initOperatorNotificationPipeline();
+initToolHealthTracking();
+ensureReliabilityTables().catch((err) => {
+  logger.warn('Reliability tables setup deferred', { error: String(err) });
+});
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
 const envResult = validateEnvironment({ exitOnFailure: isProd });

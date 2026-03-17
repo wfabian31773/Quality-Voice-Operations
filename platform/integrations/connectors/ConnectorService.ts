@@ -52,7 +52,39 @@ export class ConnectorService {
 
     logger.info('Dispatching to connector', { tenantId, connectorType, provider: config.provider, payloadType: payload.type });
 
-    return adapter.execute(tenantId, config, payload);
+    const result = await adapter.execute(tenantId, config, payload);
+
+    if (!result.success && config.fallbackConnectorType) {
+      logger.info('Primary connector failed, attempting fallback', {
+        tenantId,
+        primaryType: connectorType,
+        fallbackType: config.fallbackConnectorType,
+        payloadType: payload.type,
+      });
+      return this.executeFallback(tenantId, config.fallbackConnectorType, payload);
+    }
+
+    return result;
+  }
+
+  private async executeFallback(
+    tenantId: TenantId,
+    fallbackType: ConnectorType,
+    payload: ConnectorPayload,
+  ): Promise<ConnectorResult> {
+    const adapter = ADAPTER_REGISTRY[fallbackType];
+    if (!adapter) {
+      return { success: false, error: `No fallback adapter for connector type: ${fallbackType}` };
+    }
+
+    const config = await getConnectorConfig(tenantId, fallbackType);
+    if (!config || !config.isEnabled) {
+      return { success: false, error: `Fallback connector ${fallbackType} not available` };
+    }
+
+    logger.info('Executing fallback connector', { tenantId, fallbackType, provider: config.provider });
+    const result = await adapter.execute(tenantId, config, payload);
+    return { ...result, meta: { ...result.meta, usedFallback: true } };
   }
 
   async executeByPayload(

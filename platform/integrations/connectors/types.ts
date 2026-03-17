@@ -9,6 +9,8 @@ export interface ConnectorConfig {
   provider: string;
   isEnabled: boolean;
   credentials: Record<string, string>;
+  fallbackConnectorType?: ConnectorType;
+  fallbackProvider?: string;
 }
 
 export interface ConnectorPayload {

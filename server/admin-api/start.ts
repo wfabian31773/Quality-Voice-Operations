@@ -13,11 +13,19 @@ import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../
 import { startInsightsScheduler, stopInsightsScheduler } from '../../platform/analytics';
 import { startWorkforceScheduler, stopWorkforceScheduler } from '../../platform/workforce/WorkforceScheduler';
 import { startGinScheduler, stopGinScheduler } from '../../platform/gin';
+import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
+import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
+import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
 
 const logger = createLogger('ADMIN_API');
 
 registerCoreTools();
 registerTemplateTools();
+initOperatorNotificationPipeline();
+initToolHealthTracking();
+ensureReliabilityTables().catch((err) => {
+  logger.warn('Reliability tables setup deferred', { error: String(err) });
+});
 const PORT = parseInt(process.env.ADMIN_API_PORT ?? process.env.PORT ?? '3002', 10);
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';

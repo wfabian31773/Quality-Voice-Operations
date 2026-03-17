@@ -33,7 +33,8 @@ export async function getConnectorConfig(
 ): Promise<ConnectorConfig | null> {
   return withTenant(tenantId, async (client) => {
     const { rows: integRows } = await client.query(
-      `SELECT id, integration_type, provider, is_enabled, config
+      `SELECT id, integration_type, provider, is_enabled, config,
+              fallback_connector_type, fallback_provider
        FROM integrations
        WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE
        LIMIT 1`,
@@ -80,6 +81,8 @@ export async function getConnectorConfig(
       provider: integration.provider as string,
       isEnabled: integration.is_enabled as boolean,
       credentials: { ...staticConfig, ...credentials },
+      fallbackConnectorType: (integration.fallback_connector_type as ConnectorType) ?? undefined,
+      fallbackProvider: (integration.fallback_provider as string) ?? undefined,
     };
   });
 }

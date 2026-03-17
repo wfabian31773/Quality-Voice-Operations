@@ -1,10 +1,30 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+
+interface ToolHealthMetric {
+  toolName: string;
+  totalExecutions: number;
+  successCount: number;
+  failureCount: number;
+  successRate: number;
+  retryCount: number;
+  avgDurationMs: number;
+}
+
+interface ToolHealthResponse {
+  tools: ToolHealthMetric[];
+  overallSuccessRate: number;
+  totalExecutions: number;
+  totalFailures: number;
+  callCompletionRate: number;
+  escalationStats: { pending: number; inProgress: number; total: number };
+}
 
 interface CallAnalytics {
   totalCalls: number;
@@ -73,6 +93,14 @@ export default function Analytics() {
     queryFn: () => api.get<CostAnalytics>(`/analytics/costs?range=${range}`),
     refetchInterval: 120_000,
   });
+
+  const { data: toolHealth, isLoading: healthLoading } = useQuery({
+    queryKey: ['tool-health-summary', range],
+    queryFn: () => api.get<ToolHealthResponse>(`/tool-health/metrics?window=${range}`),
+    refetchInterval: 120_000,
+  });
+
+  const navigate = useNavigate();
 
   const formatCents = (cents: number) =>
     `$${(cents / 100).toFixed(2)}`;
@@ -194,6 +222,50 @@ export default function Analytics() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Tool Reliability</h2>
+          <button
+            onClick={() => navigate('/reliability')}
+            className="text-xs text-primary hover:underline"
+          >
+            View Details →
+          </button>
+        </div>
+        {healthLoading ? (
+          <div className="text-muted-foreground">Loading...</div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Tool Success Rate</p>
+              <p className="text-xl font-bold">
+                {toolHealth?.overallSuccessRate != null
+                  ? `${toolHealth.overallSuccessRate.toFixed(1)}%`
+                  : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Retries</p>
+              <p className="text-xl font-bold">
+                {toolHealth?.tools?.reduce((a, m) => a + m.retryCount, 0) ?? 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Pending Escalations</p>
+              <p className="text-xl font-bold">{toolHealth?.escalationStats?.pending ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Call Completion</p>
+              <p className="text-xl font-bold">
+                {toolHealth?.callCompletionRate != null
+                  ? `${toolHealth.callCompletionRate.toFixed(1)}%`
+                  : '—'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6">

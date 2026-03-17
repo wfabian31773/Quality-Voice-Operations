@@ -159,11 +159,34 @@ const AFTER_HOURS_TOOLS: AgentToolDef[] = [
   },
 ];
 
+const PLATFORM_TOOLS: AgentToolDef[] = [
+  {
+    name: 'escalate_to_human',
+    description:
+      'Create an escalation task for a human operator to follow up with the caller. Use this when the caller explicitly requests to speak with a person, when you cannot resolve their issue, or when the situation requires human judgment. Provide a clear reason and priority level.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: 'Why this call needs human follow-up' },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Urgency level of the escalation' },
+        caller_phone: { type: 'string', description: 'Callback phone number for the caller' },
+        transfer_number: { type: 'string', description: 'Optional: number to transfer the call to immediately' },
+      },
+      required: ['reason'],
+    },
+  },
+];
+
 function mergeTools(templateTools: AgentToolDef[], dbTools: AgentToolDef[]): AgentToolDef[] {
-  if (dbTools.length === 0) return templateTools;
-  const templateNames = new Set(templateTools.map((t) => t.name));
-  const extras = dbTools.filter((t) => !templateNames.has(t.name));
-  return [...templateTools, ...extras];
+  const allTools = [...templateTools];
+  const names = new Set(allTools.map((t) => t.name));
+  for (const t of dbTools) {
+    if (!names.has(t.name)) { allTools.push(t); names.add(t.name); }
+  }
+  for (const t of PLATFORM_TOOLS) {
+    if (!names.has(t.name)) { allTools.push(t); names.add(t.name); }
+  }
+  return allTools;
 }
 
 function resolveTemplateKey(agentType: string, agentId: string): string {
