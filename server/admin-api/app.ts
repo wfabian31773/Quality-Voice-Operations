@@ -40,6 +40,7 @@ import workforceRoutes from './routes/workforce';
 import improvementsRoutes from './routes/improvements';
 import autopilotRoutes from './routes/autopilot';
 import ginRoutes from './routes/gin';
+import commandCenterRoutes from './routes/commandCenter';
 
 const app = express();
 
@@ -99,6 +100,7 @@ app.use('/', workforceRoutes);
 app.use('/', improvementsRoutes);
 app.use('/', autopilotRoutes);
 app.use('/', ginRoutes);
+app.use('/', commandCenterRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

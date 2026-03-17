@@ -5,11 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-<<<<<<< HEAD
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu,
-=======
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Globe,
->>>>>>> 6c4ef12 (feat: Global Intelligence Network (GIN) - cross-tenant anonymized learning system)
+  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu, Monitor, Globe,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -25,6 +21,7 @@ interface NavItem {
 
 const links: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/command-center', icon: Monitor, label: 'Command Center' },
   { to: '/operations', icon: Radio, label: 'Operations' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/workforce', icon: Network, label: 'AI Workforce' },
