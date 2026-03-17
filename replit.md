@@ -195,7 +195,7 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
     - **Audit:** Provides comprehensive audit logging.
     - **Billing & Usage:** Integrates with Stripe for checkout, webhooks, and metered billing of AI minutes, call counts, and tool executions. Includes a **Cost Optimization Engine** (`platform/billing/cost/`) providing per-conversation cost breakdowns (STT/LLM/TTS/infra), intelligent model routing (economy/standard/premium tiers), knowledge response caching, token compression, cost analytics dashboard, and per-conversation budget caps with alerting and auto-downgrade/end-call enforcement.
     - **Stability & Reliability Engine:** Implements tool execution retries (`RetryOrchestrator`), secondary integration fallback via `ConnectorService`, graceful conversation fallback messages, human escalation queue (`escalation_tasks` table + `escalate_to_human` tool), operator notifications (in-app + Twilio SMS), and a Tool Health dashboard at `/reliability`.
-    - **Analytics:** Provides revenue and performance analytics, customer sentiment analysis, topic clustering, booking funnel tracking, and unified dashboards.
+    - **Analytics:** Provides revenue and performance analytics, customer sentiment analysis, topic clustering, booking funnel tracking, case study generation, website conversion funnel tracking, and unified dashboards.
     - **Campaigns:** Manages outbound campaigns with optimized prompt templates, type-specific dispositions, and dedicated metrics.
     - **Core:** Handles environmental configuration, logging, PHI redaction, resilience, and observability.
     - **Integrations:** Manages connectors, outbox, and adapters for ticketing/SMS.
@@ -234,7 +234,7 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Database:** PostgreSQL (Replit for development, Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).
 - **Telephony:** Twilio (voice calls, SMS messaging, webhooks).
-- **AI/ML:** OpenAI (Realtime API, `text-embedding-3-small`, GPT models).
+- **AI/ML:** OpenAI (Realtime API, `text-embedding-3-small`, various GPT models).
 - **Email:** Nodemailer (SMTP service).
 - **CAPTCHA:** Cloudflare Turnstile (for signup verification).
 - **Frontend Libraries:** Zustand, `@tanstack/react-query`, `@xyflow/react`.

@@ -26,7 +26,7 @@ import ToolExecutionPanel from '../components/demo/ToolExecutionPanel';
 import CalendarToolVisual from '../components/demo/CalendarToolVisual';
 import SystemActivityFeed from '../components/demo/SystemActivityFeed';
 import { useDemoSSE } from '../hooks/useDemoSSE';
-import { trackPageView, trackDemoInteraction, trackCTAClick } from '../lib/analytics';
+import { trackPageView, trackDemoInteraction, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../lib/analytics';
 
 const API_BASE = '/api';
 
@@ -349,6 +349,8 @@ export default function Demo() {
 
   useEffect(() => {
     trackPageView('/demo');
+    captureUtmOnLoad();
+    trackConversionEvent('demo_started', '/demo');
   }, []);
 
   useEffect(() => {
@@ -362,6 +364,7 @@ export default function Demo() {
       } else if (callStatus === 'ended' && (prev === 'connected' || prev === 'ringing')) {
         const callDuration = callStartTime ? Math.round((Date.now() - callStartTime) / 1000) : 0;
         trackDemoInteraction('call_completed', activeAgent?.name ?? 'unknown', callDuration);
+        trackConversionEvent('demo_completed', '/demo', { agent: activeAgent?.name });
         setCallStartTime(null);
         setShowCelebration(true);
         setTimeout(() => {

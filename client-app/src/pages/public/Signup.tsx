@@ -6,7 +6,7 @@ import {
   UserPlus, ArrowRight, Phone, CheckCircle2, Loader2,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
-import { trackPageView, trackSignupConversion, trackCTAClick } from '../../lib/analytics';
+import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
 
 const plans = [
   { key: 'starter', name: 'Starter', price: 99, desc: 'For small practices getting started.' },
@@ -39,6 +39,8 @@ export default function Signup() {
 
   useEffect(() => {
     trackPageView('/signup');
+    captureUtmOnLoad();
+    trackConversionEvent('signup_started', '/signup');
   }, []);
 
   useEffect(() => {
@@ -104,11 +106,13 @@ export default function Signup() {
         password,
         plan,
         captchaToken: captchaToken || undefined,
+        visitorId: getVisitorId(),
       });
       if (res.token) {
         setToken(res.token);
       }
       trackSignupConversion(plan, res.checkoutUrl ? 'checkout' : 'onboarding');
+      trackConversionEvent('signup_completed', '/signup', { plan });
       if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {

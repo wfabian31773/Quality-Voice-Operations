@@ -69,6 +69,21 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
   switch (event.type) {
     case 'checkout.session.completed':
       await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session, stripeEventId);
+      try {
+        const { recordConversionEvent, getVisitorAttribution } = await import('../../analytics/WebsiteConversionService');
+        const checkoutSession = event.data.object as Stripe.Checkout.Session;
+        const visitorId = checkoutSession.metadata?.visitorId || checkoutSession.client_reference_id || `stripe_${checkoutSession.id}`;
+        const attribution = await getVisitorAttribution(visitorId);
+        const landingPage = attribution?.landingPage ?? '/signup';
+        const utm = attribution ? {
+          source: attribution.utmSource ?? undefined,
+          medium: attribution.utmMedium ?? undefined,
+          campaign: attribution.utmCampaign ?? undefined,
+        } : undefined;
+        await recordConversionEvent(visitorId, 'paid', landingPage, utm, { stripeSessionId: checkoutSession.id, tenantId: checkoutSession.metadata?.tenantId });
+      } catch (convErr) {
+        logger.warn('Failed to record paid conversion event', { error: String(convErr) });
+      }
       break;
     case 'invoice.payment_succeeded':
       await handleInvoiceSucceeded(event.data.object as Stripe.Invoice, stripeEventId);

@@ -145,11 +145,12 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-white mb-4">Solutions</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">HVAC / Home Services</Link></li>
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Medical & Dental</Link></li>
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Legal & Real Estate</Link></li>
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Restaurants</Link></li>
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Property Mgmt</Link></li>
+                <li><Link to="/industries/healthcare" className="text-sm hover:text-white transition-colors">Healthcare</Link></li>
+                <li><Link to="/industries/dental" className="text-sm hover:text-white transition-colors">Dental</Link></li>
+                <li><Link to="/industries/legal" className="text-sm hover:text-white transition-colors">Legal</Link></li>
+                <li><Link to="/industries/real-estate" className="text-sm hover:text-white transition-colors">Real Estate</Link></li>
+                <li><Link to="/industries/home-services" className="text-sm hover:text-white transition-colors">Home Services</Link></li>
+                <li><Link to="/case-studies" className="text-sm hover:text-white transition-colors">Case Studies</Link></li>
               </ul>
             </div>
 

@@ -13,7 +13,7 @@ import { useAuth } from '../../lib/auth';
 import SEO from '../../components/SEO';
 import { reducedMotion } from '../../hooks/useScrollReveal';
 import RevealSection from '../../components/RevealSection';
-import { trackPageView, trackCTAClick } from '../../lib/analytics';
+import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 
 function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(reducedMotion ? end : 0);
@@ -188,6 +188,8 @@ export default function Landing() {
 
   useEffect(() => {
     trackPageView('/');
+    captureUtmOnLoad();
+    trackConversionEvent('page_view', '/');
   }, []);
 
   if (initialized && user) {

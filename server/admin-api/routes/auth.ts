@@ -137,12 +137,13 @@ router.post('/auth/login', async (req, res) => {
 });
 
 router.post('/auth/signup', async (req, res) => {
-  const { name, email, password, plan = 'starter', captchaToken } = req.body as {
+  const { name, email, password, plan = 'starter', captchaToken, visitorId } = req.body as {
     name?: string;
     email?: string;
     password?: string;
     plan?: string;
     captchaToken?: string;
+    visitorId?: string;
   };
 
   if (!name || !email || !password) {
@@ -230,7 +231,8 @@ router.post('/auth/signup', async (req, res) => {
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
-        metadata: { tenantId, userId, plan },
+        metadata: { tenantId, userId, plan, ...(visitorId ? { visitorId } : {}) },
+        client_reference_id: visitorId || undefined,
         success_url: `${baseUrl}/onboarding?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/login?cancelled=true`,
         customer_email: email.toLowerCase(),

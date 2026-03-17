@@ -59,6 +59,9 @@ import Blog from './pages/public/Blog';
 import BlogArticle from './pages/public/BlogArticle';
 import Resources from './pages/public/Resources';
 import GuideDetail from './pages/public/GuideDetail';
+import VerticalLanding from './pages/public/VerticalLanding';
+import CaseStudies from './pages/public/CaseStudies';
+import ConversionFunnel from './pages/ConversionFunnel';
 
 const SETTINGS_TABS = ['general', 'security', 'api-keys'];
 
@@ -94,6 +97,9 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/blog" element={<Blog />} />
         <Route path="/blog/:slug" element={<BlogArticle />} />
+        <Route path="/industries/:vertical" element={<VerticalLanding />} />
+        <Route path="/case-studies" element={<CaseStudies />} />
+        <Route path="/case-studies/:slug" element={<CaseStudies />} />
       </Route>
 
       <Route
@@ -165,6 +171,7 @@ export default function App() {
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/evolution" element={<PlatformAdminGuard><EvolutionEngine /></PlatformAdminGuard>} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
+        <Route path="/conversion-funnel" element={<ConversionFunnel />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

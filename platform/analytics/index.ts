@@ -99,3 +99,29 @@ export type {
   ImprovementMetrics,
   ImprovementVelocity,
 } from './SelfImprovementService';
+export {
+  checkMilestones,
+  generateCaseStudy,
+  getCaseStudies,
+  getPublicCaseStudy,
+  getPublishedCaseStudies,
+  updateCaseStudyStatus,
+  DEFAULT_MILESTONES,
+} from './CaseStudyService';
+export type {
+  CaseStudy,
+  PublicCaseStudy,
+  CaseStudyMetrics,
+  MilestoneThreshold,
+} from './CaseStudyService';
+export {
+  recordConversionEvent,
+  getWebsiteFunnel,
+  getConversionTrends as getWebsiteConversionTrends,
+  WEBSITE_FUNNEL_STAGES,
+} from './WebsiteConversionService';
+export type {
+  ConversionEvent,
+  ConversionStage,
+  WebsiteFunnelMetrics,
+} from './WebsiteConversionService';

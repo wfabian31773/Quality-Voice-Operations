@@ -16,6 +16,7 @@ import { startGinScheduler, stopGinScheduler } from '../../platform/gin';
 import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
 import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
 import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
+import { startMilestoneScheduler, stopMilestoneScheduler } from '../../platform/analytics/MilestoneScheduler';
 
 const logger = createLogger('ADMIN_API');
 
@@ -69,6 +70,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startInsightsScheduler();
   startWorkforceScheduler();
   startGinScheduler();
+  startMilestoneScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
 
@@ -85,6 +87,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopInsightsScheduler();
   stopWorkforceScheduler();
   stopGinScheduler();
+  stopMilestoneScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
 

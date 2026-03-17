@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
-import { trackPageView, trackCTAClick } from '../../lib/analytics';
+import ROICalculator from '../../components/ROICalculator';
+import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 
 interface Feature {
   name: string;
@@ -149,6 +150,8 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
 export default function Pricing() {
   useEffect(() => {
     trackPageView('/pricing');
+    captureUtmOnLoad();
+    trackConversionEvent('page_view', '/pricing');
   }, []);
 
   const faqSchema = {
@@ -305,6 +308,16 @@ export default function Pricing() {
               <FAQItem key={faq.q} q={faq.q} a={faq.a} id={String(i)} />
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="bg-mist py-16">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-2xl font-bold text-harbor mb-3">Calculate Your ROI</h2>
+            <p className="text-slate-600">See how much your business could save with QVO AI voice agents.</p>
+          </div>
+          <ROICalculator />
         </div>
       </section>
 
