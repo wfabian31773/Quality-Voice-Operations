@@ -27,7 +27,8 @@ import {
   MessageSquare, HelpCircle, CheckCircle, GitBranch, Route,
   Ticket, UserPlus, Calendar, Send, Truck, Phone,
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
-  RotateCcw, Eye, Trash2,
+  RotateCcw, Eye, Trash2, Lightbulb, Check, XCircle, TrendingUp,
+  AlertTriangle,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 
@@ -501,6 +502,208 @@ function NodeConfigPanel({
             <Trash2 className="h-3.5 w-3.5" /> Delete Node
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface ImprovementSuggestion {
+  id: string;
+  agentId: string;
+  status: 'pending' | 'accepted' | 'dismissed';
+  weaknessCategory: string;
+  weaknessDescription: string;
+  currentPromptSection: string;
+  suggestedPromptSection: string;
+  rationale: string;
+  simulationScoreBefore: number | null;
+  simulationScoreAfter: number | null;
+  createdAt: string;
+}
+
+function categoryLabel(cat: string): string {
+  const labels: Record<string, string> = {
+    prompt_structure: 'Prompt Structure',
+    question_ordering: 'Question Ordering',
+    objection_handling: 'Objection Handling',
+    workflow_efficiency: 'Workflow Efficiency',
+    tone: 'Tone',
+    accuracy: 'Accuracy',
+    resolution: 'Resolution',
+  };
+  return labels[cat] || cat;
+}
+
+function categoryColor(cat: string): string {
+  const colors: Record<string, string> = {
+    prompt_structure: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    question_ordering: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    objection_handling: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+    workflow_efficiency: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+    tone: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+    accuracy: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    resolution: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  };
+  return colors[cat] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400';
+}
+
+function ImprovementSuggestionsPanel({
+  agentId,
+  onClose,
+}: {
+  agentId: string;
+  onClose: () => void;
+}) {
+  const [suggestions, setSuggestions] = useState<ImprovementSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    api
+      .get<{ suggestions: ImprovementSuggestion[] }>(`/improvements/suggestions?agentId=${agentId}&status=pending`)
+      .then((data) => setSuggestions(data.suggestions || []))
+      .catch(() => setSuggestions([]))
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  const handleAccept = async (id: string) => {
+    setActionLoading(id);
+    try {
+      await api.post(`/improvements/suggestions/${id}/accept`, {});
+      setSuggestions((prev) => prev.filter((s) => s.id !== id));
+      queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
+    } catch { /* ignore */ }
+    setActionLoading(null);
+  };
+
+  const handleDismiss = async (id: string) => {
+    setActionLoading(id);
+    try {
+      await api.post(`/improvements/suggestions/${id}/dismiss`, {});
+      setSuggestions((prev) => prev.filter((s) => s.id !== id));
+    } catch { /* ignore */ }
+    setActionLoading(null);
+  };
+
+  return (
+    <div className="w-96 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-amber-500" /> Improvement Suggestions
+        </h3>
+        <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="p-3">
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+          </div>
+        ) : suggestions.length === 0 ? (
+          <div className="text-center py-8">
+            <Lightbulb className="h-8 w-8 text-text-muted mx-auto mb-2" />
+            <p className="text-sm text-text-secondary">No pending suggestions</p>
+            <p className="text-xs text-text-muted mt-1">
+              Suggestions are generated automatically when low-scoring calls are detected.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-text-secondary">
+              {suggestions.length} pending suggestion{suggestions.length !== 1 ? 's' : ''}
+            </p>
+            {suggestions.map((s) => (
+              <div key={s.id} className="border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
+                  className="w-full text-left px-3 py-2.5 hover:bg-surface-hover/50 transition"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mb-1 ${categoryColor(s.weaknessCategory)}`}>
+                        {categoryLabel(s.weaknessCategory)}
+                      </span>
+                      <p className="text-xs text-text-primary line-clamp-2">{s.weaknessDescription}</p>
+                    </div>
+                    {s.simulationScoreBefore != null && s.simulationScoreAfter != null && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-[10px] text-red-500">{s.simulationScoreBefore.toFixed(1)}</span>
+                        <TrendingUp className="h-3 w-3 text-green-500" />
+                        <span className="text-[10px] text-green-500">{s.simulationScoreAfter.toFixed(1)}</span>
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                {expandedId === s.id && (
+                  <div className="px-3 pb-3 border-t border-border">
+                    <div className="mt-2 space-y-2">
+                      <div>
+                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Current</p>
+                        <pre className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
+                          {s.currentPromptSection}
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Suggested</p>
+                        <pre className="text-[11px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/10 rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
+                          {s.suggestedPromptSection}
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Rationale</p>
+                        <p className="text-xs text-text-secondary">{s.rationale}</p>
+                      </div>
+
+                      {s.simulationScoreBefore != null && s.simulationScoreAfter != null && (
+                        <div className="flex items-center gap-3 bg-surface-secondary rounded-lg p-2">
+                          <div className="text-center">
+                            <p className="text-[10px] text-text-muted">Before</p>
+                            <p className="text-sm font-bold text-red-500">{s.simulationScoreBefore.toFixed(1)}</p>
+                          </div>
+                          <TrendingUp className="h-4 w-4 text-green-500" />
+                          <div className="text-center">
+                            <p className="text-[10px] text-text-muted">After</p>
+                            <p className="text-sm font-bold text-green-500">{s.simulationScoreAfter.toFixed(1)}</p>
+                          </div>
+                          <div className="ml-auto text-center">
+                            <p className="text-[10px] text-text-muted">Delta</p>
+                            <p className="text-sm font-bold text-green-500">
+                              +{(s.simulationScoreAfter - s.simulationScoreBefore).toFixed(1)}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => handleAccept(s.id)}
+                          disabled={actionLoading === s.id}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:opacity-50"
+                        >
+                          <Check className="h-3 w-3" />
+                          {actionLoading === s.id ? 'Applying...' : 'Apply'}
+                        </button>
+                        <button
+                          onClick={() => handleDismiss(s.id)}
+                          disabled={actionLoading === s.id}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border text-text-secondary rounded-lg hover:bg-surface-hover transition disabled:opacity-50"
+                        >
+                          <XCircle className="h-3 w-3" />
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1022,7 +1225,7 @@ function AgentBuilderInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [rightPanel, setRightPanel] = useState<'none' | 'config' | 'voice' | 'test' | 'deploy'>('none');
+  const [rightPanel, setRightPanel] = useState<'none' | 'config' | 'voice' | 'test' | 'deploy' | 'improve'>('none');
   const [hasChanges, setHasChanges] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -1312,6 +1515,14 @@ function AgentBuilderInner() {
           >
             <Play className="h-3.5 w-3.5" /> Test
           </button>
+          <button
+            onClick={() => setRightPanel(rightPanel === 'improve' ? 'none' : 'improve')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition ${
+              rightPanel === 'improve' ? 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+            }`}
+          >
+            <Lightbulb className="h-3.5 w-3.5" /> Improve
+          </button>
           <TooltipWalkthrough
             tooltipKey="builder-deploy"
             title="Deploy Your Agent"
@@ -1439,6 +1650,12 @@ function AgentBuilderInner() {
               }
             }}
             isPublishing={publishMutation.isPending}
+            onClose={() => setRightPanel('none')}
+          />
+        )}
+        {rightPanel === 'improve' && (
+          <ImprovementSuggestionsPanel
+            agentId={id || ''}
             onClose={() => setRightPanel('none')}
           />
         )}

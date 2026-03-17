@@ -79,3 +79,23 @@ export type {
   OperationsAlert,
 } from './InsightsEngine';
 export { startInsightsScheduler, stopInsightsScheduler } from './InsightsScheduler';
+export {
+  detectWeaknesses,
+  generatePromptImprovement,
+  simulateImprovement,
+  analyzeCallAndGenerateSuggestions,
+  getSuggestions,
+  getSuggestionById,
+  acceptSuggestion,
+  dismissSuggestion,
+  getImprovementVelocity,
+  getCategoryBreakdown,
+} from './SelfImprovementService';
+export type {
+  WeaknessCategory,
+  SuggestionStatus,
+  WeaknessDetection,
+  PromptImprovementSuggestion,
+  ImprovementMetrics,
+  ImprovementVelocity,
+} from './SelfImprovementService';

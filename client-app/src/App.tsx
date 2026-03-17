@@ -29,6 +29,7 @@ import PlatformAdminGuard from './components/PlatformAdminGuard';
 import Operations from './pages/Operations';
 import Insights from './pages/Insights';
 import Workforce from './pages/Workforce';
+import Improvements from './pages/Improvements';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
@@ -136,6 +137,7 @@ export default function App() {
         <Route path="/quality" element={<Quality />} />
         <Route path="/insights" element={<Insights />} />
         <Route path="/simulation-lab" element={<SimulationLab />} />
+        <Route path="/improvements" element={<Improvements />} />
         <Route path="/widget" element={<Widget />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
