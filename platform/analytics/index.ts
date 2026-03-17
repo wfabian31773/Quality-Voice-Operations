@@ -59,3 +59,22 @@ export type {
   FunnelMetrics,
   FunnelTrend,
 } from './ConversionFunnelService';
+export {
+  runInsightsAnalysis,
+  getInsights,
+  getInsightsSummary,
+  updateInsightStatus,
+  generateWeeklyReport,
+  getWeeklyReports,
+  detectAnomalies,
+  getAlertHistory,
+  acknowledgeAlert,
+  measureInsightImpact,
+} from './InsightsEngine';
+export type {
+  AiInsight,
+  WeeklyReport,
+  InsightsSummary,
+  OperationsAlert,
+} from './InsightsEngine';
+export { startInsightsScheduler, stopInsightsScheduler } from './InsightsScheduler';

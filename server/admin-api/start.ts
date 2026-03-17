@@ -10,6 +10,7 @@ import { validateEnvironment, validateDatabaseConnection } from '../../scripts/v
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
+import { startInsightsScheduler, stopInsightsScheduler } from '../../platform/analytics';
 
 const logger = createLogger('ADMIN_API');
 
@@ -55,6 +56,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     statusCallbackUrl: `${voiceGatewayBaseUrl}/twilio/status`,
     pollIntervalMs: 15_000,
   });
+  startInsightsScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
 
@@ -68,6 +70,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopUsageMeteringWorker();
   stopUsageGuardrailsScheduler();
   stopCampaignScheduler();
+  stopInsightsScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
 

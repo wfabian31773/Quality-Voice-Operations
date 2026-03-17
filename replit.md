@@ -42,12 +42,19 @@ The `client-app` utilizes React 19, Vite 6, Tailwind CSS 4, TypeScript, and Zust
     - **Widget:** Embeddable website voice/chat widget for websites.
     - **Website Agent:** Public-facing website AI sales assistant with lead capture and analytics.
 - **Security:** PHI redaction before logging, encryption of tenant secrets, and strict requirement of JWT, Stripe, and connector encryption keys in production.
+- **AI Agent Framework:** Supports various agent templates, a knowledge retrieval tool, and an Agent Intelligence & Reasoning Framework for confidence scoring, decision making, and safety gates.
+- **Billing & Usage:** Integrated with Stripe for checkout, webhooks, and metered billing for AI minutes, call counts, and tool executions.
+- **Observability:** Audit logging, usage recording, and tools for real-time operations monitoring and alerts.
+- **Revenue & Performance Analytics:** Revenue attribution per agent (appointments booked × configurable ticket value), customer sentiment analysis via LLM, automated topic clustering/classification, booking conversion funnel tracking (call → qualified → offered → booked → confirmed), and unified dashboard with date range filtering and JSON export. Services: `RevenueAttributionService`, `SentimentAnalysisService`, `TopicClusteringService`, `ConversionFunnelService`. Tables: `call_sentiment_scores`, `call_topic_classifications`, `call_conversion_stages`. API routes: `/analytics/revenue`, `/analytics/sentiment`, `/analytics/topics`, `/analytics/funnel`, `/analytics/performance`. UI: `/revenue-analytics` page.
+- **Operations Intelligence:** AI-powered insights engine that analyzes call data, transcripts, quality scores, and tool executions to generate categorized recommendations (missed opportunities, performance, cost optimization, agent improvement, workflow, scheduling). Includes weekly report generation, anomaly detection against rolling baselines (every 30 min via background scheduler), recommendation acceptance/dismissal tracking, alert history with acknowledge flow, and deep-linked action paths to platform features (agent prompt editing, tool config, call review). Background scheduler runs anomaly detection every 30min, insights analysis daily, and weekly reports on Sundays. All DB operations use `withTenantContext` for RLS compliance. Dashboard at `/insights` with 4 tabs: Recommendations, Weekly Reports, Alert History, Impact Tracking. Services: `InsightsEngine`, `InsightsScheduler`. Tables: `ai_insights`, `weekly_reports`. API routes: `/insights/*`.
+- **Frontend/Backend Communication:** API proxy for simplified routing and SSE for real-time data updates (e.g., live calls, demo visualization).
+- **Website Widget:** Provides an embeddable voice/chat widget for websites, integrating with the voice gateway and AI sales assistant.
 
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for dev, Supabase for production).
 - **Payment Processing:** Stripe (checkout sessions, webhooks, customer portal, metered billing).
 - **Telephony:** Twilio (voice calls, SMS messaging, webhooks).
-- **AI/ML:** OpenAI (Realtime API for voice agents, text-embedding-3-small for knowledge base, function calling for Platform Assistant, chat completions for website agents).
+- **AI/ML:** OpenAI (Realtime API for voice agents, text-embedding-3-small for knowledge base, GPT for Platform Assistant and Website Agent).
 - **Email:** Nodemailer (SMTP service, with console-log fallback).
 - **CAPTCHA:** Cloudflare Turnstile (for signup verification).
 - **Frontend Libraries:** Zustand (state management), `@tanstack/react-query` (data fetching), `@xyflow/react` (Agent Builder canvas).

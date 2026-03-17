@@ -27,6 +27,7 @@ import DeveloperPortal from './pages/DeveloperPortal';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import Operations from './pages/Operations';
+import Insights from './pages/Insights';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
@@ -130,6 +131,7 @@ export default function App() {
         <Route path="/settings/api-keys" element={<Settings />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/quality" element={<Quality />} />
+        <Route path="/insights" element={<Insights />} />
         <Route path="/widget" element={<Widget />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
