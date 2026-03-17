@@ -9,11 +9,16 @@ import {
   updateCampaign,
   deleteCampaign,
   getCampaignMetrics,
+  getTypeSpecificMetrics,
+  updateContactTypeDisposition,
   addContacts,
   listContacts,
   addToDnc,
   listDnc,
   removeFromDnc,
+  getAllCampaignTypes,
+  getValidCampaignTypes,
+  isValidDisposition,
 } from '../../../platform/campaigns';
 import type { CampaignStatus } from '../../../platform/campaigns';
 
@@ -128,6 +133,11 @@ export const listCampaignsHandler: import('express').RequestHandler = async (req
 
 router.get('/campaigns', requireAuth, listCampaignsHandler);
 
+router.get('/campaigns/types', requireAuth, (_req, res) => {
+  const types = getAllCampaignTypes();
+  return res.json({ types });
+});
+
 router.post('/campaigns', requireAuth, requireRole('admin'), async (req, res) => {
   const { tenantId } = req.user!;
   const { agentId, name, type, config, scheduledAt } = req.body as {
@@ -142,6 +152,11 @@ router.post('/campaigns', requireAuth, requireRole('admin'), async (req, res) =>
     return res.status(400).json({ error: 'agentId and name are required' });
   }
 
+  const validTypes = getValidCampaignTypes();
+  if (type && !validTypes.includes(type)) {
+    return res.status(400).json({ error: `type must be one of: ${validTypes.join(', ')}` });
+  }
+
   const configErrors = validateScheduleConfig(config);
   if (configErrors) {
     return res.status(400).json({ error: configErrors });
@@ -152,7 +167,7 @@ router.post('/campaigns', requireAuth, requireRole('admin'), async (req, res) =>
       tenantId,
       agentId,
       name,
-      type,
+      type: type || 'outbound_call',
       config,
       scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
     });
@@ -325,9 +340,10 @@ export const addContactsHandler: import('express').RequestHandler = async (req, 
 
   if (body.csv && typeof body.csv === 'string') {
     const lines = body.csv.trim().split('\n');
-    const header = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
-    const phoneIdx = header.findIndex((h) => h === 'phone' || h === 'phone_number' || h === 'phonenumber');
-    const nameIdx = header.indexOf('name');
+    const headerRaw = parseCsvLine(lines[0]).map((h) => h.trim());
+    const headerLower = headerRaw.map((h) => h.toLowerCase());
+    const phoneIdx = headerLower.findIndex((h) => h === 'phone' || h === 'phone_number' || h === 'phonenumber');
+    const nameIdx = headerLower.indexOf('name');
 
     if (phoneIdx === -1) {
       return res.status(400).json({ error: 'CSV must have a phone, phone_number, or phoneNumber column' });
@@ -336,9 +352,16 @@ export const addContactsHandler: import('express').RequestHandler = async (req, 
     for (let i = 1; i < lines.length; i++) {
       const cols = parseCsvLine(lines[i]);
       if (!cols[phoneIdx]) continue;
+      const metadata: Record<string, unknown> = {};
+      for (let ci = 0; ci < headerRaw.length; ci++) {
+        if (ci === phoneIdx || ci === nameIdx) continue;
+        const val = cols[ci]?.trim();
+        if (val) metadata[headerRaw[ci]] = val;
+      }
       rawContacts.push({
         phoneNumber: cols[phoneIdx].trim(),
         name: nameIdx !== -1 ? cols[nameIdx]?.trim() : undefined,
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       });
     }
   } else if (Array.isArray(body.contacts)) {
@@ -385,6 +408,47 @@ router.get('/campaigns/:id/contacts', requireAuth, requireRole('admin'), async (
   } catch (err) {
     logger.error('Failed to list contacts', { tenantId, campaignId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to list contacts' });
+  }
+});
+
+router.get('/campaigns/:id/type-metrics', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+
+  try {
+    const typeMetrics = await getTypeSpecificMetrics(tenantId, id);
+    return res.json({ campaignId: id, typeMetrics });
+  } catch (err) {
+    logger.error('Failed to get type-specific metrics', { tenantId, campaignId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to retrieve type-specific metrics' });
+  }
+});
+
+router.patch('/campaigns/:id/contacts/:contactId/disposition', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id: campaignId, contactId } = req.params;
+  const { disposition } = req.body as { disposition?: string };
+
+  if (!disposition || typeof disposition !== 'string') {
+    return res.status(400).json({ error: 'disposition is required' });
+  }
+
+  try {
+    const campaign = await getCampaign(tenantId, campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    if (!isValidDisposition(campaign.type, disposition)) {
+      return res.status(400).json({ error: `Invalid disposition "${disposition}" for campaign type "${campaign.type}"` });
+    }
+
+    const updated = await updateContactTypeDisposition(tenantId, campaignId, contactId, disposition);
+    if (!updated) {
+      return res.status(404).json({ error: 'Contact not found in this campaign' });
+    }
+    return res.json({ updated: true });
+  } catch (err) {
+    logger.error('Failed to update contact disposition', { tenantId, campaignId, contactId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update disposition' });
   }
 });
 

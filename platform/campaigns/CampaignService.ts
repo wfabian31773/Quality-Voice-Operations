@@ -4,7 +4,9 @@ import { createLogger } from '../core/logger';
 import type {
   Campaign, CampaignContact, CampaignMetrics, CampaignStatus,
   ContactStatus, ContactOutcome, CreateCampaignParams, UpdateCampaignParams,
+  TypeSpecificMetrics, CampaignType,
 } from './types';
+import { getCampaignTypeDefinition } from './CampaignTypeRegistry';
 
 const logger = createLogger('CAMPAIGN_SERVICE');
 
@@ -253,6 +255,20 @@ export async function addContacts(
   });
 }
 
+export async function getContact(
+  tenantId: string,
+  campaignId: string,
+  contactId: string,
+): Promise<CampaignContact | null> {
+  return withTenant(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM campaign_contacts WHERE id = $1 AND campaign_id = $2 AND tenant_id = $3 LIMIT 1`,
+      [contactId, campaignId, tenantId],
+    );
+    return rows.length > 0 ? rowToContact(rows[0]) : null;
+  });
+}
+
 export async function listContacts(
   tenantId: string,
   campaignId: string,
@@ -450,6 +466,76 @@ export interface CallbackReconciliation {
   campaignId: string;
   contactId: string;
   contactName: string | null;
+}
+
+export async function getTypeSpecificMetrics(
+  tenantId: string,
+  campaignId: string,
+): Promise<TypeSpecificMetrics | null> {
+  return withTenant(tenantId, async (client) => {
+    const { rows: campaignRows } = await client.query(
+      `SELECT type FROM campaigns WHERE id = $1 AND tenant_id = $2`,
+      [campaignId, tenantId],
+    );
+    if (campaignRows.length === 0) return null;
+    const campaignType = campaignRows[0].type as string;
+
+    const typeDef = getCampaignTypeDefinition(campaignType);
+    if (!typeDef || typeDef.dispositions.length === 0) return null;
+
+    const { rows } = await client.query(
+      `SELECT
+         COALESCE(metadata->>'typeDisposition', 'no_response') AS disposition,
+         COUNT(*)::int AS count
+       FROM campaign_contacts
+       WHERE campaign_id = $1 AND tenant_id = $2
+         AND status IN ('completed', 'voicemail', 'no_answer', 'failed', 'opted_out')
+       GROUP BY disposition`,
+      [campaignId, tenantId],
+    );
+
+    const dispositions: Record<string, number> = {};
+    for (const d of typeDef.dispositions) {
+      dispositions[d.value] = 0;
+    }
+    let completedTotal = 0;
+    for (const r of rows) {
+      const key = r.disposition as string;
+      dispositions[key] = (dispositions[key] ?? 0) + (r.count as number);
+      completedTotal += r.count as number;
+    }
+
+    let primaryCount = 0;
+    for (const pd of typeDef.primaryDispositions) {
+      primaryCount += dispositions[pd] ?? 0;
+    }
+    const primaryRate = completedTotal > 0 ? primaryCount / completedTotal : 0;
+
+    return {
+      campaignType: campaignType as CampaignType,
+      dispositions,
+      primaryRate,
+      primaryRateLabel: typeDef.primaryMetricLabel,
+    };
+  });
+}
+
+export async function updateContactTypeDisposition(
+  tenantId: string,
+  campaignId: string,
+  contactId: string,
+  typeDisposition: string,
+): Promise<boolean> {
+  return withTenant(tenantId, async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE campaign_contacts
+       SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{typeDisposition}', $1::jsonb),
+           updated_at = NOW()
+       WHERE id = $2 AND tenant_id = $3 AND campaign_id = $4`,
+      [JSON.stringify(typeDisposition), contactId, tenantId, campaignId],
+    );
+    return (rowCount ?? 0) > 0;
+  });
 }
 
 export async function reconcileInboundCallback(

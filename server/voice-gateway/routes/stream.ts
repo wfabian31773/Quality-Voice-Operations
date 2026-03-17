@@ -16,7 +16,7 @@ import { CallerMemoryService } from '../../../platform/infra/memory/CallerMemory
 import { OutboxService } from '../../../platform/integrations/outbox/OutboxService';
 import { createCallerMemoryStorage, createOutboxAdapters } from '../services/platformAdapters';
 import { createSessionLogger, type SessionLogger } from '../services/sessionLogger';
-import { updateContactStatus, classifyCallOutcome, addToDnc } from '../../../platform/campaigns';
+import { updateContactStatus, classifyCallOutcome, addToDnc, getCampaign, getContact, buildCampaignTypePromptAugmentation, classifyTypeDisposition, updateContactTypeDisposition } from '../../../platform/campaigns';
 import { writeCallMetric } from '../../../platform/core/observability';
 import { scoreCall } from '../../../platform/analytics/QualityScorerService';
 import { analyzeCallSentiment } from '../../../platform/analytics/SentimentAnalysisService';
@@ -205,6 +205,22 @@ export function attachWebSocket(server: HTTPServer): void {
               slog.error('Failed to update campaign contact status', { error: String(err) });
             });
           }
+
+          try {
+            const campaign = await getCampaign(tenantId, campaignId);
+            if (campaign && campaign.type && campaign.type !== 'outbound_call') {
+              const transcriptText = record?.transcriptLines?.join('\n') ?? '';
+              const typeDisposition = voiceOptOut
+                ? 'no_response'
+                : classifyTypeDisposition(campaign.type, transcriptText);
+              await updateContactTypeDisposition(tenantId, campaignId, campaignContactId, typeDisposition);
+              slog.info('Auto-set campaign type disposition', {
+                campaignType: campaign.type, typeDisposition,
+              });
+            }
+          } catch (err) {
+            slog.warn('Failed to auto-set type disposition', { error: String(err) });
+          }
         }
 
         if (twilioCallSid) {
@@ -272,6 +288,35 @@ export function attachWebSocket(server: HTTPServer): void {
               toolOverrides,
               dbAgent,
             });
+
+            if (campaignId && campaignContactId && tenantId) {
+              try {
+                const campaign = await getCampaign(tenantId, campaignId);
+                if (campaign && campaign.type && campaign.type !== 'outbound_call') {
+                  const contact = await getContact(tenantId, campaignId, campaignContactId);
+                  const contactMeta = (contact as Record<string, unknown>)?.metadata as Record<string, unknown> ?? {};
+                  const contactName = (contact as Record<string, unknown>)?.name as string ?? null;
+                  const campaignConfig = (campaign as Record<string, unknown>).config as Record<string, unknown> ?? {};
+                  const augmentation = buildCampaignTypePromptAugmentation(
+                    campaign.type,
+                    campaignConfig,
+                    contactMeta,
+                    contactName,
+                  );
+                  if (augmentation) {
+                    agentCfg.systemPrompt = agentCfg.systemPrompt + '\n\n--- Campaign Instructions ---\n' + augmentation;
+                    agentCfg.metadata = { ...agentCfg.metadata, campaignType: campaign.type, campaignContactName: contactName };
+                    logger.info('Augmented agent prompt with campaign type template', {
+                      tenantId, campaignId, campaignType: campaign.type,
+                    });
+                  }
+                }
+              } catch (err) {
+                logger.warn('Failed to augment agent prompt with campaign type template', {
+                  tenantId, campaignId, error: String(err),
+                });
+              }
+            }
 
             const workflowEngine = createWorkflowEngine();
             const budgetGuard = createBudgetGuard(tenantId);

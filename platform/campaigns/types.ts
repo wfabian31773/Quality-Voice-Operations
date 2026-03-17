@@ -2,6 +2,27 @@ export type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'com
 export type ContactStatus = 'pending' | 'dialing' | 'connected' | 'completed' | 'failed' | 'skipped' | 'no_answer' | 'voicemail' | 'opted_out';
 export type ContactOutcome = 'human_answered' | 'voicemail_left' | 'no_answer' | 'completed' | 'failed';
 
+export type CampaignType =
+  | 'outbound_call'
+  | 'appointment_reminder'
+  | 'lead_followup'
+  | 'review_request'
+  | 'customer_reactivation'
+  | 'upsell';
+
+export type AppointmentDisposition = 'confirmed' | 'rescheduled' | 'cancelled' | 'no_response';
+export type LeadFollowupDisposition = 'interested' | 'not_interested' | 'callback_requested' | 'converted' | 'no_response';
+export type ReviewRequestDisposition = 'review_left' | 'feedback_given' | 'declined' | 'no_response';
+export type ReactivationDisposition = 'reactivated' | 'interested' | 'not_interested' | 'no_response';
+export type UpsellDisposition = 'accepted' | 'interested' | 'declined' | 'no_response';
+
+export type TypeDisposition =
+  | AppointmentDisposition
+  | LeadFollowupDisposition
+  | ReviewRequestDisposition
+  | ReactivationDisposition
+  | UpsellDisposition;
+
 export interface CampaignScheduleConfig {
   timezone: string;
   callWindowStart: string;
@@ -11,6 +32,45 @@ export interface CampaignScheduleConfig {
   retryDelayMinutes: number;
   maxAttempts: number;
 }
+
+export interface AppointmentReminderConfig {
+  appointmentDateField?: string;
+  appointmentTimeField?: string;
+  providerNameField?: string;
+  locationField?: string;
+  allowReschedule?: boolean;
+}
+
+export interface LeadFollowupConfig {
+  sourceField?: string;
+  productInterestField?: string;
+  followupGoal?: string;
+}
+
+export interface ReviewRequestConfig {
+  serviceNameField?: string;
+  reviewUrl?: string;
+  minimumSatisfactionToAskReview?: number;
+}
+
+export interface ReactivationConfig {
+  inactiveDaysThreshold?: number;
+  offerField?: string;
+  reengagementMessage?: string;
+}
+
+export interface UpsellConfig {
+  currentProductField?: string;
+  upsellProductField?: string;
+  discountField?: string;
+}
+
+export type CampaignTypeConfig =
+  | AppointmentReminderConfig
+  | LeadFollowupConfig
+  | ReviewRequestConfig
+  | ReactivationConfig
+  | UpsellConfig;
 
 export interface Campaign {
   id: string;
@@ -56,18 +116,25 @@ export interface CampaignMetrics {
   optedOut: number;
 }
 
+export interface TypeSpecificMetrics {
+  campaignType: CampaignType;
+  dispositions: Record<string, number>;
+  primaryRate: number;
+  primaryRateLabel: string;
+}
+
 export interface CreateCampaignParams {
   tenantId: string;
   agentId: string;
   name: string;
   type?: string;
-  config?: Partial<CampaignScheduleConfig>;
+  config?: Partial<CampaignScheduleConfig> & Record<string, unknown>;
   scheduledAt?: Date;
 }
 
 export interface UpdateCampaignParams {
   name?: string;
   status?: CampaignStatus;
-  config?: Partial<CampaignScheduleConfig>;
+  config?: Partial<CampaignScheduleConfig> & Record<string, unknown>;
   scheduledAt?: Date;
 }

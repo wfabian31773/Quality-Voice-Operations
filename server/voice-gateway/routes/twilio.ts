@@ -16,6 +16,8 @@ import {
   classifyCallOutcome,
   addToDnc,
   isSmsOptOut,
+  getCampaign,
+  updateContactTypeDisposition,
 } from '../../../platform/campaigns';
 import type { ContactStatus, ContactOutcome } from '../../../platform/campaigns';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
@@ -490,6 +492,14 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
         streamEstablished: false,
       });
       updateContactStatus(tenantId, contactId, 'voicemail', callSid, answeredBy, outcome).catch(() => {});
+
+      if (campaignId) {
+        getCampaign(tenantId, campaignId).then((campaign) => {
+          if (campaign && campaign.type && campaign.type !== 'outbound_call') {
+            updateContactTypeDisposition(tenantId!, campaignId!, contactId!, 'no_response').catch(() => {});
+          }
+        }).catch(() => {});
+      }
     }
 
     if (voicemailMessage && (answeredBy === 'machine_end_other' || answeredBy === 'machine_end_beep' || answeredBy === 'machine_end_silence')) {
