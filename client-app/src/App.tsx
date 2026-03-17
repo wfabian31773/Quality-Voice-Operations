@@ -22,6 +22,7 @@ import KnowledgeBase from './pages/KnowledgeBase';
 import Widget from './pages/Widget';
 import AgentBuilder from './pages/AgentBuilder';
 import Marketplace from './pages/Marketplace';
+import DeveloperPortal from './pages/DeveloperPortal';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import Operations from './pages/Operations';
@@ -124,6 +125,7 @@ export default function App() {
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
         <Route path="/marketplace/:id" element={<Marketplace />} />
+        <Route path="/developer" element={<DeveloperPortal />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />

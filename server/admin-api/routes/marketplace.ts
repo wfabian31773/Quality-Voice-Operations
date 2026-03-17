@@ -28,6 +28,25 @@ import {
   runPrePublicationValidation,
   validateUpgradeCompatibility,
 } from '../../../platform/agent-templates/versioningService';
+import {
+  createReview,
+  getReviewsForTemplate,
+  deleteReview,
+  moderateReview,
+} from '../../../platform/marketplace/MarketplaceReviewService';
+import {
+  createMarketplacePurchase,
+  checkPurchaseAccess,
+  getRevenueStats,
+  reportUsage,
+} from '../../../platform/marketplace/MarketplacePurchaseService';
+import {
+  createSubmission,
+  listSubmissions,
+  reviewSubmission,
+  getDeveloperStats,
+  validateSubmission,
+} from '../../../platform/marketplace/DeveloperSubmissionService';
 
 const router = Router();
 const logger = createLogger('ADMIN_MARKETPLACE');
@@ -93,8 +112,29 @@ router.get('/marketplace/templates', requireAuth, async (req, res) => {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    const sortBy = typeof req.query.sort === 'string' ? req.query.sort : '';
+    let orderClause = 'ORDER BY tr.sort_order ASC, tr.display_name ASC';
+    if (sortBy === 'rating') orderClause = 'ORDER BY tr.avg_rating DESC, tr.review_count DESC';
+    else if (sortBy === 'popular') orderClause = 'ORDER BY tr.install_count DESC';
+    else if (sortBy === 'newest') orderClause = 'ORDER BY tr.created_at DESC';
+    else if (sortBy === 'price_low') orderClause = 'ORDER BY tr.price_cents ASC';
+    else if (sortBy === 'price_high') orderClause = 'ORDER BY tr.price_cents DESC';
+
+    const mktCategory = typeof req.query.marketplace_category === 'string' ? req.query.marketplace_category.trim() : '';
+    if (mktCategory) {
+      conditions.push(`tr.marketplace_category = $${paramIdx++}`);
+      params.push(mktCategory);
+    }
+
+    const featuredOnly = req.query.featured === 'true';
+    if (featuredOnly) {
+      conditions.push(`tr.featured = TRUE`);
+    }
+
+    const updatedWhereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
     const countResult = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM template_registry tr ${whereClause}`,
+      `SELECT COUNT(*)::int AS total FROM template_registry tr ${updatedWhereClause}`,
       params,
     );
     const total = countResult.rows[0].total;
@@ -107,6 +147,8 @@ router.get('/marketplace/templates', requireAuth, async (req, res) => {
         tr.default_voice, tr.default_language, tr.supported_channels,
         tr.required_tools, tr.optional_tools, tr.tags, tr.sort_order,
         tr.install_count, tr.created_at, tr.updated_at,
+        tr.marketplace_category, tr.price_model, tr.price_cents,
+        tr.avg_rating, tr.review_count, tr.featured, tr.developer_name,
         COALESCE(
           (SELECT json_agg(json_build_object('name', tc.name, 'displayName', tc.display_name))
            FROM template_category_map tcm
@@ -115,8 +157,8 @@ router.get('/marketplace/templates', requireAuth, async (req, res) => {
           '[]'
         ) AS categories
       FROM template_registry tr
-      ${whereClause}
-      ORDER BY tr.sort_order ASC, tr.display_name ASC
+      ${updatedWhereClause}
+      ${orderClause}
       LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
       queryParams,
     );
@@ -148,7 +190,9 @@ router.get('/marketplace/templates/:id', requireAuth, async (req, res) => {
         tr.default_voice, tr.default_language, tr.supported_channels,
         tr.required_tools, tr.optional_tools, tr.config_schema,
         tr.tags, tr.sort_order, tr.install_count, tr.metadata,
-        tr.created_at, tr.updated_at
+        tr.created_at, tr.updated_at,
+        tr.marketplace_category, tr.price_model, tr.price_cents,
+        tr.avg_rating, tr.review_count, tr.featured, tr.developer_name
       FROM template_registry tr
       WHERE tr.id = $1 OR tr.slug = $1`,
       [idOrSlug],
@@ -726,6 +770,13 @@ function formatTemplateRow(row: Record<string, unknown>) {
     categories: row.categories ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    marketplaceCategory: row.marketplace_category ?? 'vertical_agent',
+    priceModel: row.price_model ?? 'free',
+    priceCents: row.price_cents ?? 0,
+    avgRating: parseFloat((row.avg_rating as string) ?? '0'),
+    reviewCount: row.review_count ?? 0,
+    featured: row.featured ?? false,
+    developerName: row.developer_name ?? null,
   };
 }
 
@@ -773,6 +824,14 @@ router.post('/marketplace/templates/:id/install', requireAuth, requireRole('admi
   }
 
   try {
+    const purchaseCheck = await checkPurchaseAccess(tenantId, templateId);
+    if (!purchaseCheck.hasAccess) {
+      return res.status(403).json({
+        error: 'Purchase required',
+        message: 'This template requires a purchase before installation. Please complete the checkout process first.',
+      });
+    }
+
     const result = await installTemplate({
       tenantId,
       templateId,
@@ -1470,6 +1529,260 @@ router.get('/marketplace/templates/:id/demo-flows', requireAuth, async (req, res
   } catch (err) {
     logger.error('Failed to get demo flows', { templateId: req.params.id, error: String(err) });
     return res.status(500).json({ error: 'Failed to get demo flows' });
+  }
+});
+
+router.get('/marketplace/templates/:id/reviews', requireAuth, async (req, res) => {
+  try {
+    const templateId = req.params.id;
+    const limit = parseInt(String(req.query.limit ?? '20'), 10);
+    const offset = parseInt(String(req.query.offset ?? '0'), 10);
+
+    const result = await getReviewsForTemplate(templateId, { limit, offset });
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to get reviews', { templateId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get reviews' });
+  }
+});
+
+router.post('/marketplace/templates/:id/reviews', requireAuth, async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const templateId = req.params.id;
+  const { rating, reviewText } = req.body as { rating?: number; reviewText?: string };
+
+  if (!rating || typeof rating !== 'number') {
+    return res.status(400).json({ error: 'Rating is required (1-5)' });
+  }
+
+  try {
+    const result = await createReview({ tenantId, userId, templateId, rating, reviewText });
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    return res.status(201).json({ review: result.review });
+  } catch (err) {
+    logger.error('Failed to create review', { tenantId, templateId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to create review' });
+  }
+});
+
+router.delete('/marketplace/reviews/:reviewId', requireAuth, async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  try {
+    const result = await deleteReview(tenantId, userId, req.params.reviewId);
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to delete review', { reviewId: req.params.reviewId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to delete review' });
+  }
+});
+
+router.patch('/platform/marketplace/reviews/:reviewId/moderate', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { status } = req.body as { status?: string };
+  if (!status || !['active', 'flagged', 'removed'].includes(status)) {
+    return res.status(400).json({ error: 'Status must be active, flagged, or removed' });
+  }
+  try {
+    const result = await moderateReview(req.params.reviewId, status as 'active' | 'flagged' | 'removed');
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to moderate review', { reviewId: req.params.reviewId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to moderate review' });
+  }
+});
+
+router.post('/marketplace/templates/:id/purchase', requireAuth, requireRole('admin'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const templateId = req.params.id;
+  const { successUrl, cancelUrl } = req.body as { successUrl?: string; cancelUrl?: string };
+
+  try {
+    const result = await createMarketplacePurchase({
+      tenantId,
+      userId,
+      templateId,
+      successUrl: successUrl ?? `${req.protocol}://${req.get('host')}/marketplace?purchase=success`,
+      cancelUrl: cancelUrl ?? `${req.protocol}://${req.get('host')}/marketplace?purchase=cancelled`,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    return res.json({
+      checkoutUrl: result.checkoutUrl,
+      purchaseId: result.purchaseId,
+      isFree: result.isFree,
+    });
+  } catch (err) {
+    logger.error('Failed to initiate purchase', { tenantId, templateId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to initiate purchase' });
+  }
+});
+
+router.get('/marketplace/templates/:id/purchase-access', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const result = await checkPurchaseAccess(tenantId, req.params.id);
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to check purchase access', { tenantId, templateId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to check purchase access' });
+  }
+});
+
+router.post('/marketplace/templates/:id/usage', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const templateId = req.params.id;
+  const { quantity } = req.body;
+
+  if (!quantity || typeof quantity !== 'number' || quantity < 1) {
+    return res.status(400).json({ error: 'quantity must be a positive integer' });
+  }
+
+  try {
+    const result = await reportUsage(tenantId, templateId, quantity);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to report usage', { tenantId, templateId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to report usage' });
+  }
+});
+
+router.get('/platform/marketplace/revenue', requireAuth, requirePlatformAdmin, async (req, res) => {
+  try {
+    const days = req.query.days ? parseInt(String(req.query.days), 10) : undefined;
+    const developerId = typeof req.query.developer_id === 'string' ? req.query.developer_id : undefined;
+    const stats = await getRevenueStats({ developerId, days });
+    return res.json(stats);
+  } catch (err) {
+    logger.error('Failed to get revenue stats', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to get revenue stats' });
+  }
+});
+
+router.post('/marketplace/developer/submissions', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  const body = req.body as Record<string, unknown>;
+
+  try {
+    const result = await createSubmission({
+      developerId: userId,
+      developerName: (body.developerName as string) ?? 'Unknown Developer',
+      developerEmail: (body.developerEmail as string) ?? '',
+      packageName: (body.packageName as string) ?? '',
+      packageSlug: (body.packageSlug as string) ?? '',
+      marketplaceCategory: (body.marketplaceCategory as string) ?? 'vertical_agent',
+      description: (body.description as string) ?? '',
+      shortDescription: body.shortDescription as string | undefined,
+      version: body.version as string | undefined,
+      priceModel: body.priceModel as string | undefined,
+      priceCents: body.priceCents as number | undefined,
+      manifest: (body.manifest as Record<string, unknown>) ?? {},
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error, validation: result.validation });
+    }
+
+    return res.status(201).json({ submission: result.submission, validation: result.validation });
+  } catch (err) {
+    logger.error('Failed to create submission', { userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to create submission' });
+  }
+});
+
+router.post('/marketplace/developer/submissions/validate', requireAuth, async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const { userId } = req.user!;
+
+  const validation = validateSubmission({
+    developerId: userId,
+    developerName: (body.developerName as string) ?? '',
+    developerEmail: (body.developerEmail as string) ?? '',
+    packageName: (body.packageName as string) ?? '',
+    packageSlug: (body.packageSlug as string) ?? '',
+    marketplaceCategory: (body.marketplaceCategory as string) ?? 'vertical_agent',
+    description: (body.description as string) ?? '',
+    manifest: (body.manifest as Record<string, unknown>) ?? {},
+  });
+
+  return res.json({ validation });
+});
+
+router.get('/marketplace/developer/submissions', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  try {
+    const result = await listSubmissions({
+      developerId: userId,
+      limit: parseInt(String(req.query.limit ?? '50'), 10),
+      offset: parseInt(String(req.query.offset ?? '0'), 10),
+    });
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to list submissions', { userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list submissions' });
+  }
+});
+
+router.get('/marketplace/developer/stats', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  try {
+    const stats = await getDeveloperStats(userId);
+    return res.json(stats);
+  } catch (err) {
+    logger.error('Failed to get developer stats', { userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get developer stats' });
+  }
+});
+
+router.get('/platform/marketplace/submissions', requireAuth, requirePlatformAdmin, async (req, res) => {
+  try {
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const result = await listSubmissions({
+      status,
+      limit: parseInt(String(req.query.limit ?? '50'), 10),
+      offset: parseInt(String(req.query.offset ?? '0'), 10),
+    });
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to list submissions (admin)', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to list submissions' });
+  }
+});
+
+router.post('/platform/marketplace/submissions/:id/review', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { userId } = req.user!;
+  const { decision, reviewNotes } = req.body as { decision?: string; reviewNotes?: string };
+
+  if (!decision || !['approved', 'rejected'].includes(decision)) {
+    return res.status(400).json({ error: 'Decision must be approved or rejected' });
+  }
+
+  try {
+    const result = await reviewSubmission(
+      req.params.id,
+      userId,
+      decision as 'approved' | 'rejected',
+      reviewNotes,
+    );
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    return res.json({ submission: result.submission });
+  } catch (err) {
+    logger.error('Failed to review submission', { submissionId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to review submission' });
   }
 });
 

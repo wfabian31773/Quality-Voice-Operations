@@ -5,7 +5,9 @@ import { api } from '../lib/api';
 import {
   Search, Store, ArrowLeft, Download, CheckCircle, Phone, MessageSquare,
   Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, Shield,
-  AlertCircle, BookOpen, MessageCircle, PlayCircle,
+  AlertCircle, BookOpen, MessageCircle, PlayCircle, Star, DollarSign,
+  Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
+  ShoppingCart, Filter,
 } from 'lucide-react';
 
 interface TemplateCategory {
@@ -37,6 +39,34 @@ interface MarketplaceTemplate {
   categories: TemplateCategory[];
   createdAt: string;
   updatedAt: string;
+  marketplaceCategory: string;
+  priceModel: string;
+  priceCents: number;
+  avgRating: number;
+  reviewCount: number;
+  featured: boolean;
+  developerName: string | null;
+}
+
+interface ReviewData {
+  id: string;
+  templateId: string;
+  rating: number;
+  reviewText: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ReviewSummary {
+  avgRating: number;
+  reviewCount: number;
+  distribution: Record<number, number>;
+}
+
+interface ReviewsResponse {
+  reviews: ReviewData[];
+  summary: ReviewSummary;
 }
 
 interface TemplateDetail extends MarketplaceTemplate {
@@ -157,6 +187,119 @@ const CHANNEL_ICONS: Record<string, typeof Phone> = {
   sms: MessageSquare,
   web: Globe,
 };
+
+const MARKETPLACE_CATEGORY_LABELS: Record<string, { label: string; icon: typeof Store }> = {
+  vertical_agent: { label: 'AI Agents', icon: Store },
+  workflow_package: { label: 'Workflows', icon: Package },
+  integration_connector: { label: 'Connectors', icon: Puzzle },
+  prompt_pack: { label: 'Prompt Packs', icon: FileText },
+  analytics_pack: { label: 'Analytics', icon: BarChart3 },
+};
+
+const SORT_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'popular', label: 'Most Popular' },
+  { value: 'rating', label: 'Top Rated' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'price_low', label: 'Price: Low to High' },
+  { value: 'price_high', label: 'Price: High to Low' },
+];
+
+function formatPrice(priceCents: number, priceModel: string): string {
+  if (priceModel === 'free' || priceCents === 0) return 'Free';
+  const dollars = (priceCents / 100).toFixed(2);
+  if (priceModel === 'monthly_subscription') return `$${dollars}/mo`;
+  if (priceModel === 'usage_based') return `From $${dollars}`;
+  return `$${dollars}`;
+}
+
+function PriceBadge({ priceCents, priceModel }: { priceCents: number; priceModel: string }) {
+  const isFree = priceModel === 'free' || priceCents === 0;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+      isFree
+        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    }`}>
+      {!isFree && <DollarSign className="h-3 w-3" />}
+      {formatPrice(priceCents, priceModel)}
+    </span>
+  );
+}
+
+function StarRating({ rating, count, size = 'sm' }: { rating: number; count?: number; size?: 'sm' | 'md' }) {
+  const stars = [];
+  const fullStars = Math.floor(rating);
+  const hasHalf = rating - fullStars >= 0.25;
+  const starSize = size === 'md' ? 'h-4 w-4' : 'h-3 w-3';
+
+  for (let i = 0; i < 5; i++) {
+    if (i < fullStars) {
+      stars.push(<Star key={i} className={`${starSize} fill-amber-400 text-amber-400`} />);
+    } else if (i === fullStars && hasHalf) {
+      stars.push(
+        <span key={i} className="relative">
+          <Star className={`${starSize} text-gray-300 dark:text-gray-600`} />
+          <span className="absolute inset-0 overflow-hidden" style={{ width: '50%' }}>
+            <Star className={`${starSize} fill-amber-400 text-amber-400`} />
+          </span>
+        </span>,
+      );
+    } else {
+      stars.push(<Star key={i} className={`${starSize} text-gray-300 dark:text-gray-600`} />);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <div className="flex items-center">{stars}</div>
+      {count !== undefined && (
+        <span className={`text-text-muted ${size === 'md' ? 'text-sm' : 'text-xs'}`}>
+          ({count})
+        </span>
+      )}
+    </div>
+  );
+}
+
+function InteractiveStarRating({
+  rating,
+  onChange,
+}: {
+  rating: number;
+  onChange: (rating: number) => void;
+}) {
+  const [hover, setHover] = useState(0);
+
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onMouseEnter={() => setHover(star)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => onChange(star)}
+          className="p-0.5 transition-transform hover:scale-110"
+        >
+          <Star
+            className={`h-6 w-6 ${
+              star <= (hover || rating)
+                ? 'fill-amber-400 text-amber-400'
+                : 'text-gray-300 dark:text-gray-600'
+            }`}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CategoryIcon({ category }: { category: string }) {
+  const config = MARKETPLACE_CATEGORY_LABELS[category];
+  const Icon = config?.icon ?? Store;
+  return <Icon className="h-5 w-5 text-primary" />;
+}
 
 function PlanBadge({ plan }: { plan: string }) {
   return (
@@ -438,14 +581,20 @@ function TemplateCard({
   return (
     <button
       onClick={onClick}
-      className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left w-full group"
+      className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left w-full group relative"
     >
+      {template.featured && (
+        <div className="absolute -top-2 -right-2 bg-amber-400 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
+          <Sparkles className="h-3 w-3" /> Featured
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-3">
         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-          <Store className="h-5 w-5 text-primary" />
+          <CategoryIcon category={template.marketplaceCategory} />
         </div>
         <div className="flex items-center gap-2">
-          <PlanBadge plan={template.minPlan} />
+          <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} />
           {installed && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
               <CheckCircle className="h-3 w-3" /> Installed
@@ -457,27 +606,29 @@ function TemplateCard({
       <h3 className="font-semibold text-text-primary mb-1 group-hover:text-primary transition-colors">
         {template.displayName}
       </h3>
+      {template.developerName && (
+        <p className="text-[11px] text-text-muted mb-1">by {template.developerName}</p>
+      )}
       <p className="text-xs text-text-secondary line-clamp-2 mb-3">
         {template.shortDescription || template.description}
       </p>
 
-      <div className="flex items-center justify-between">
-        <ChannelBadges channels={template.supportedChannels} />
+      <div className="flex items-center justify-between mb-2">
+        {template.reviewCount > 0 ? (
+          <StarRating rating={template.avgRating} count={template.reviewCount} />
+        ) : (
+          <span className="text-xs text-text-muted">No reviews yet</span>
+        )}
         <div className="flex items-center gap-1 text-text-muted text-xs">
           <Download className="h-3 w-3" />
           {template.installCount}
         </div>
       </div>
 
-      {template.categories.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-3">
-          {template.categories.map((cat) => (
-            <span key={cat.name} className="px-1.5 py-0.5 rounded bg-surface-hover text-text-muted text-xs">
-              {cat.displayName}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="flex items-center justify-between">
+        <ChannelBadges channels={template.supportedChannels} />
+        <PlanBadge plan={template.minPlan} />
+      </div>
     </button>
   );
 }
@@ -493,6 +644,14 @@ function TemplateDetailView({
 }) {
   const queryClient = useQueryClient();
   const [showInstall, setShowInstall] = useState(false);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('purchase') === 'success') {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-purchase-access', templateId] });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [templateId, queryClient]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['marketplace-template', templateId],
@@ -525,6 +684,54 @@ function TemplateDetailView({
     queryKey: ['marketplace-demo-flows', templateId],
     queryFn: () => api.get<DemoFlowResponse>(`/marketplace/templates/${templateId}/demo-flows`),
     enabled: !!template,
+  });
+
+  const { data: reviewsData } = useQuery({
+    queryKey: ['marketplace-reviews', templateId],
+    queryFn: () => api.get<ReviewsResponse>(`/marketplace/templates/${templateId}/reviews`),
+    enabled: !!template,
+  });
+
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewText, setReviewText] = useState('');
+
+  const reviewMutation = useMutation({
+    mutationFn: () =>
+      api.post(`/marketplace/templates/${templateId}/reviews`, {
+        rating: reviewRating,
+        reviewText: reviewText || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-reviews', templateId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-template', templateId] });
+      setReviewRating(0);
+      setReviewText('');
+    },
+  });
+
+  const isPaidTemplate = template && template.priceModel !== 'free' && template.priceCents > 0;
+
+  const { data: purchaseAccessData } = useQuery({
+    queryKey: ['marketplace-purchase-access', templateId],
+    queryFn: () => api.get<{ hasAccess: boolean }>(`/marketplace/templates/${templateId}/purchase-access`),
+    enabled: !!template && isPaidTemplate === true,
+  });
+
+  const hasPurchaseAccess = !isPaidTemplate || purchaseAccessData?.hasAccess === true;
+
+  const purchaseMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ checkoutUrl?: string; isFree?: boolean }>(`/marketplace/templates/${templateId}/purchase`, {
+        successUrl: `${window.location.origin}/marketplace/${templateId}?purchase=success`,
+        cancelUrl: `${window.location.origin}/marketplace/${templateId}?purchase=cancelled`,
+      }),
+    onSuccess: (data) => {
+      if (data?.checkoutUrl && !data.isFree) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['marketplace-purchase-access', templateId] });
+      }
+    },
   });
 
   if (isLoading) {
@@ -565,12 +772,16 @@ function TemplateDetailView({
                 <p className="text-sm text-text-secondary mt-0.5">
                   v{template.currentVersion} &middot; {template.agentType} agent
                 </p>
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <PlanBadge plan={template.minPlan} />
+                  <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} />
                   <ChannelBadges channels={template.supportedChannels} />
                   <span className="text-xs text-text-muted flex items-center gap-1">
                     <Download className="h-3 w-3" /> {template.installCount} installs
                   </span>
+                  {template.reviewCount > 0 && (
+                    <StarRating rating={template.avgRating} count={template.reviewCount} size="md" />
+                  )}
                 </div>
               </div>
             </div>
@@ -801,6 +1012,90 @@ function TemplateDetailView({
               </div>
             </div>
           )}
+
+          <div className="bg-surface border border-border rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Star className="h-5 w-5 text-primary" />
+              <h2 className="text-base font-semibold text-text-primary">Ratings & Reviews</h2>
+            </div>
+
+            {reviewsData?.summary && reviewsData.summary.reviewCount > 0 && (
+              <div className="flex items-center gap-6 mb-4 p-4 bg-surface-hover rounded-lg">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-text-primary">{reviewsData.summary.avgRating.toFixed(1)}</p>
+                  <StarRating rating={reviewsData.summary.avgRating} size="md" />
+                  <p className="text-xs text-text-muted mt-1">{reviewsData.summary.reviewCount} reviews</p>
+                </div>
+                <div className="flex-1 space-y-1">
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const count = reviewsData.summary.distribution[star] ?? 0;
+                    const pct = reviewsData.summary.reviewCount > 0
+                      ? (count / reviewsData.summary.reviewCount) * 100
+                      : 0;
+                    return (
+                      <div key={star} className="flex items-center gap-2 text-xs">
+                        <span className="w-3 text-text-muted">{star}</span>
+                        <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="w-6 text-right text-text-muted">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {isInstalled && (
+              <div className="mb-4 p-4 border border-border rounded-lg">
+                <p className="text-sm font-medium text-text-primary mb-2">Leave a Review</p>
+                <InteractiveStarRating rating={reviewRating} onChange={setReviewRating} />
+                <textarea
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                  rows={3}
+                  placeholder="Share your experience with this template..."
+                  className="w-full mt-2 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => reviewMutation.mutate()}
+                    disabled={reviewRating === 0 || reviewMutation.isPending}
+                    className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50"
+                  >
+                    {reviewMutation.isPending ? 'Submitting...' : 'Submit Review'}
+                  </button>
+                </div>
+                {reviewMutation.error && (
+                  <p className="text-xs text-danger mt-1">{(reviewMutation.error as Error).message}</p>
+                )}
+              </div>
+            )}
+
+            {reviewsData?.reviews && reviewsData.reviews.length > 0 ? (
+              <div className="space-y-3">
+                {reviewsData.reviews.map((review) => (
+                  <div key={review.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <StarRating rating={review.rating} />
+                      <span className="text-xs text-text-muted">
+                        {new Date(review.createdAt).toLocaleDateString('en-US', {
+                          month: 'short', day: 'numeric', year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                    {review.reviewText && (
+                      <p className="text-sm text-text-secondary">{review.reviewText}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-text-muted text-center py-4">
+                No reviews yet. {isInstalled ? 'Be the first to leave a review!' : 'Install this template to leave a review.'}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -828,6 +1123,28 @@ function TemplateDetailView({
                 >
                   <ArrowUpCircle className="h-4 w-4" /> Upgrade Plan
                 </a>
+              </div>
+            ) : isPaidTemplate && !hasPurchaseAccess ? (
+              <div className="space-y-3">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-text-primary">
+                    {formatPrice(template.priceCents, template.priceModel)}
+                  </p>
+                  {template.priceModel === 'monthly_subscription' && (
+                    <p className="text-xs text-text-muted">billed monthly</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => purchaseMutation.mutate()}
+                  disabled={purchaseMutation.isPending}
+                  className="w-full px-4 py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  {purchaseMutation.isPending ? 'Processing...' : 'Purchase'}
+                </button>
+                {purchaseMutation.error && (
+                  <p className="text-xs text-danger">{(purchaseMutation.error as Error).message}</p>
+                )}
               </div>
             ) : (
               <button
@@ -1084,19 +1401,31 @@ export default function Marketplace() {
   const selectedTemplateId = params.id || null;
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedMktCategory, setSelectedMktCategory] = useState('');
+  const [sortBy, setSortBy] = useState('');
 
   const { data: templatesData, isLoading: loadingTemplates, error: templatesError } = useQuery({
-    queryKey: ['marketplace-templates', search, selectedCategory],
+    queryKey: ['marketplace-templates', search, selectedCategory, selectedMktCategory, sortBy],
     queryFn: () => {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
       if (selectedCategory) params.set('category', selectedCategory);
+      if (selectedMktCategory) params.set('marketplace_category', selectedMktCategory);
+      if (sortBy) params.set('sort', sortBy);
       params.set('limit', '50');
       return api.get<{ templates: MarketplaceTemplate[]; pagination: { total: number } }>(
         `/marketplace/templates?${params.toString()}`
       );
     },
     enabled: view === 'browse',
+  });
+
+  const { data: featuredData } = useQuery({
+    queryKey: ['marketplace-featured'],
+    queryFn: () => api.get<{ templates: MarketplaceTemplate[] }>(
+      '/marketplace/templates?featured=true&limit=6'
+    ),
+    enabled: view === 'browse' && !search && !selectedCategory && !selectedMktCategory,
   });
 
   const { data: categoriesData } = useQuery({
@@ -1161,6 +1490,26 @@ export default function Marketplace() {
 
       {view === 'browse' && (
         <>
+          <div className="flex flex-wrap gap-2 items-center">
+            {Object.entries(MARKETPLACE_CATEGORY_LABELS).map(([key, config]) => {
+              const Icon = config.icon;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setSelectedMktCategory(selectedMktCategory === key ? '' : key)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
+                    selectedMktCategory === key
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-surface border-border text-text-secondary hover:text-text-primary hover:border-primary/30'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {config.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
@@ -1168,9 +1517,21 @@ export default function Marketplace() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search templates..."
+                placeholder="Search marketplace..."
                 className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-text-muted" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -1184,7 +1545,7 @@ export default function Marketplace() {
                     : 'bg-surface-hover text-text-secondary hover:text-text-primary'
                 }`}
               >
-                All
+                All Industries
               </button>
               {categories.map((cat) => (
                 <button
@@ -1205,6 +1566,32 @@ export default function Marketplace() {
             </div>
           )}
 
+          {featuredData && featuredData.templates.length > 0 && !search && !selectedCategory && !selectedMktCategory && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-amber-500" />
+                <h2 className="text-lg font-semibold text-text-primary">Featured</h2>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {featuredData.templates.map((template) => (
+                  <TemplateCard
+                    key={`featured-${template.id}`}
+                    template={template}
+                    installed={installedTemplateIds.has(template.id)}
+                    onClick={() => handleViewTemplate(template.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!search && !selectedCategory && !selectedMktCategory && templates.length > 0 && (
+            <div className="flex items-center gap-2 pt-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-text-primary">All Packages</h2>
+            </div>
+          )}
+
           {loadingTemplates ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -1218,8 +1605,8 @@ export default function Marketplace() {
           ) : templates.length === 0 ? (
             <div className="bg-surface border border-border rounded-xl p-12 text-center">
               <Store className="h-12 w-12 text-text-muted mx-auto mb-3" />
-              <p className="text-text-secondary">No templates found.</p>
-              {(search || selectedCategory) && (
+              <p className="text-text-secondary">No packages found.</p>
+              {(search || selectedCategory || selectedMktCategory) && (
                 <p className="text-sm text-text-muted mt-1">Try adjusting your search or filters.</p>
               )}
             </div>

@@ -21,6 +21,11 @@ interface ManifestData {
   iconUrl?: string;
   sortOrder?: number;
   metadata?: Record<string, unknown>;
+  marketplaceCategory?: string;
+  priceModel?: string;
+  priceCents?: number;
+  featured?: boolean;
+  developerName?: string;
 }
 
 const TEMPLATE_DIRS = [
@@ -98,12 +103,19 @@ async function seedTemplateRegistry(): Promise<void> {
 
       console.log(`\nSeeding template: ${manifest.displayName} (${manifest.slug})`);
 
+      const mktCategory = manifest.marketplaceCategory ?? 'vertical_agent';
+      const priceModel = manifest.priceModel ?? 'free';
+      const priceCents = manifest.priceCents ?? 0;
+      const featured = manifest.featured ?? false;
+      const developerName = manifest.developerName ?? null;
+
       const templateResult = await client.query(
         `INSERT INTO template_registry
            (slug, display_name, description, short_description, icon_url, status, current_version,
             min_plan, agent_type, default_voice, default_language, supported_channels,
-            required_tools, optional_tools, config_schema, tags, sort_order, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            required_tools, optional_tools, config_schema, tags, sort_order, metadata,
+            marketplace_category, price_model, price_cents, featured, developer_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
          ON CONFLICT (slug) DO UPDATE SET
            display_name = EXCLUDED.display_name,
            description = EXCLUDED.description,
@@ -120,6 +132,11 @@ async function seedTemplateRegistry(): Promise<void> {
            tags = EXCLUDED.tags,
            sort_order = EXCLUDED.sort_order,
            metadata = EXCLUDED.metadata,
+           marketplace_category = EXCLUDED.marketplace_category,
+           price_model = EXCLUDED.price_model,
+           price_cents = EXCLUDED.price_cents,
+           featured = EXCLUDED.featured,
+           developer_name = EXCLUDED.developer_name,
            updated_at = NOW()
          RETURNING id`,
         [
@@ -141,6 +158,11 @@ async function seedTemplateRegistry(): Promise<void> {
           JSON.stringify(manifest.tags),
           manifest.sortOrder ?? 0,
           JSON.stringify(manifest.metadata ?? {}),
+          mktCategory,
+          priceModel,
+          priceCents,
+          featured,
+          developerName,
         ],
       );
 

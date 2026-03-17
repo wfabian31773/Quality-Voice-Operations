@@ -71,5 +71,9 @@
       }
     ]
   },
-  "sortOrder": 9
+  "sortOrder": 9,
+  "priceModel": "one_time",
+  "priceCents": 2499,
+  "marketplaceCategory": "integration_connector",
+  "developerName": "TechHelp Pro"
 }

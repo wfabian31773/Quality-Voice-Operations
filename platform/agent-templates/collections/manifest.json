@@ -69,5 +69,9 @@
       }
     ]
   },
-  "sortOrder": 10
+  "sortOrder": 10,
+  "priceModel": "usage_based",
+  "priceCents": 999,
+  "marketplaceCategory": "workflow_package",
+  "developerName": "FinCollect AI"
 }

@@ -69,5 +69,8 @@
       }
     ]
   },
-  "sortOrder": 5
+  "sortOrder": 5,
+  "priceModel": "free",
+  "priceCents": 0,
+  "marketplaceCategory": "vertical_agent"
 }

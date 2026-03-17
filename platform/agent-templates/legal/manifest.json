@@ -71,5 +71,9 @@
       }
     ]
   },
-  "sortOrder": 3
+  "sortOrder": 3,
+  "priceModel": "monthly_subscription",
+  "priceCents": 7999,
+  "marketplaceCategory": "vertical_agent",
+  "developerName": "LegalFlow AI"
 }

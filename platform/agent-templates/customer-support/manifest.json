@@ -71,5 +71,9 @@
       }
     ]
   },
-  "sortOrder": 7
+  "sortOrder": 7,
+  "priceModel": "one_time",
+  "priceCents": 1999,
+  "marketplaceCategory": "workflow_package",
+  "developerName": "SupportStack"
 }

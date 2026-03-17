@@ -75,5 +75,10 @@
       }
     ]
   },
-  "sortOrder": 1
+  "sortOrder": 1,
+  "featured": true,
+  "priceModel": "monthly_subscription",
+  "priceCents": 4999,
+  "marketplaceCategory": "vertical_agent",
+  "developerName": "HealthTech Labs"
 }

@@ -94,6 +94,26 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripeE
     return;
   }
 
+  if (session.metadata?.type === 'marketplace_purchase') {
+    const purchaseId = session.metadata?.purchaseId;
+    if (purchaseId) {
+      try {
+        const { completePurchase } = await import('../../marketplace/MarketplacePurchaseService');
+        const paymentId = (session.payment_intent as string) ?? session.id;
+        const subscriptionId = session.subscription ? String(session.subscription) : undefined;
+        const result = await completePurchase(purchaseId, paymentId, subscriptionId);
+        if (result.success) {
+          logger.info('Marketplace purchase completed via webhook', { purchaseId, tenantId });
+        } else {
+          logger.warn('Marketplace purchase completion returned error', { purchaseId, error: result.error });
+        }
+      } catch (err) {
+        logger.error('Failed to complete marketplace purchase via webhook', { purchaseId, error: String(err) });
+      }
+    }
+    return;
+  }
+
   const plan = session.metadata?.plan ?? 'starter';
   const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.starter;
 
@@ -237,6 +257,13 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId
     await appendBillingEvent(client, tenantId, 'subscription_cancelled', { subscriptionId: sub.id }, stripeEventId);
   });
 
+  const pool = getPlatformPool();
+  await pool.query(
+    `UPDATE marketplace_purchases SET subscription_status = 'canceled'
+     WHERE stripe_subscription_id = $1`,
+    [sub.id],
+  );
+
   logger.info('Subscription cancelled', { tenantId, subscriptionId: sub.id });
 }
 
@@ -280,6 +307,18 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     );
     await appendBillingEvent(client, tenantId, 'subscription_updated', { plan, subscriptionId: sub.id }, stripeEventId);
   });
+
+  const marketplaceSubStatus = sub.status === 'active' ? 'active'
+    : sub.status === 'past_due' ? 'past_due'
+    : sub.status === 'canceled' ? 'canceled'
+    : sub.status === 'unpaid' ? 'unpaid'
+    : 'incomplete';
+  const pool = getPlatformPool();
+  await pool.query(
+    `UPDATE marketplace_purchases SET subscription_status = $1
+     WHERE stripe_subscription_id = $2`,
+    [marketplaceSubStatus, sub.id],
+  );
 }
 
 async function getTenantByCustomer(customerId: string): Promise<string | null> {

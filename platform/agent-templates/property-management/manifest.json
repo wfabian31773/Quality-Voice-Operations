@@ -65,5 +65,10 @@
       }
     ]
   },
-  "sortOrder": 4
+  "sortOrder": 4,
+  "featured": true,
+  "priceModel": "one_time",
+  "priceCents": 3999,
+  "marketplaceCategory": "vertical_agent",
+  "developerName": "PropTech Solutions"
 }

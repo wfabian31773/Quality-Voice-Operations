@@ -65,5 +65,10 @@
       }
     ]
   },
-  "sortOrder": 2
+  "sortOrder": 2,
+  "featured": true,
+  "priceModel": "one_time",
+  "priceCents": 2999,
+  "marketplaceCategory": "vertical_agent",
+  "developerName": "DentalAI Inc"
 }

@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio,
+  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -35,6 +35,7 @@ const links: NavItem[] = [
   { to: '/widget', icon: MessageSquare, label: 'Widget' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
+  { to: '/developer', icon: Code2, label: 'Developer Portal' },
   { to: '/settings', icon: Settings2, label: 'Settings' },
   { to: '/audit-log', icon: Shield, label: 'Audit Log', adminOnly: true },
   { to: '/platform-admin', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },

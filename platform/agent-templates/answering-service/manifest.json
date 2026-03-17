@@ -65,5 +65,9 @@
       }
     ]
   },
-  "sortOrder": 6
+  "sortOrder": 6,
+  "priceModel": "free",
+  "priceCents": 0,
+  "marketplaceCategory": "vertical_agent",
+  "featured": true
 }
