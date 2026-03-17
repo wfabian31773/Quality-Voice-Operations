@@ -44,6 +44,7 @@ const PAGE_CONTEXT_PROMPTS: Array<[string, string]> = [
   ['/settings', 'The user is on the Settings page. Help them configure their account settings.'],
   ['/marketplace', 'The user is on the Marketplace page. Help them discover and install agent templates and integrations.'],
   ['/operations', 'The user is on the Operations page. Help them monitor real-time system status and alerts.'],
+  ['/global-intelligence', 'The user is on the Global Intelligence Network page. Help them understand industry benchmarks, best practices from the platform network, and network-sourced recommendations. They can also manage their GIN participation settings here.'],
 ];
 
 function matchPageContext(path: string): string | null {
@@ -257,6 +258,14 @@ const ASSISTANT_TOOLS = [
         },
         required: ['subject', 'description'],
       },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_network_recommendations',
+      description: 'Get actionable recommendations from the Global Intelligence Network based on anonymized cross-tenant insights and industry best practices',
+      parameters: { type: 'object', properties: {}, required: [] },
     },
   },
 ];
@@ -542,6 +551,25 @@ async function executeToolCall(
           status: 'success',
           result: { ticketId, subject, priority, created: new Date().toISOString() },
           message: `Support ticket created (ref: ${ticketId}). Subject: "${subject}". Our team will review it shortly.`,
+        };
+      }
+
+      case 'get_network_recommendations': {
+        const { getNetworkRecommendationsForAssistant } = await import('../gin/RecommendationDistributor');
+        const recs = await getNetworkRecommendationsForAssistant(tenantId, 5);
+        if (recs.length === 0) {
+          return {
+            action: 'get_network_recommendations',
+            status: 'success',
+            result: { recommendations: [] },
+            message: 'No new network recommendations available at this time. Check back later or visit the Global Intelligence page for industry benchmarks.',
+          };
+        }
+        return {
+          action: 'get_network_recommendations',
+          status: 'success',
+          result: { recommendations: recs.map(r => ({ title: r.title, description: r.description, type: r.recommendationType, confidence: r.confidenceScore, industry: r.industryVertical })) },
+          message: `Found ${recs.length} network recommendation(s) based on anonymized insights from the platform network.`,
         };
       }
 

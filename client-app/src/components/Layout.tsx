@@ -5,7 +5,11 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
+<<<<<<< HEAD
   Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu,
+=======
+  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Globe,
+>>>>>>> 6c4ef12 (feat: Global Intelligence Network (GIN) - cross-tenant anonymized learning system)
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -37,6 +41,7 @@ const links: NavItem[] = [
   { to: '/quality', icon: Star, label: 'Quality' },
   { to: '/insights', icon: Sparkles, label: 'Intelligence' },
   { to: '/autopilot', icon: Brain, label: 'Autopilot' },
+  { to: '/global-intelligence', icon: Globe, label: 'Global Intelligence' },
   { to: '/simulation-lab', icon: FlaskConical, label: 'Simulation Lab' },
   { to: '/improvements', icon: Lightbulb, label: 'Improvements' },
   { to: '/digital-twin', icon: Cpu, label: 'Digital Twin' },

@@ -39,6 +39,7 @@ import digitalTwinRoutes from './routes/digitalTwin';
 import workforceRoutes from './routes/workforce';
 import improvementsRoutes from './routes/improvements';
 import autopilotRoutes from './routes/autopilot';
+import ginRoutes from './routes/gin';
 
 const app = express();
 
@@ -97,6 +98,7 @@ app.use('/', digitalTwinRoutes);
 app.use('/', workforceRoutes);
 app.use('/', improvementsRoutes);
 app.use('/', autopilotRoutes);
+app.use('/', ginRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

@@ -36,6 +36,7 @@ import AcceptInvite from './pages/AcceptInvite';
 import SimulationLab from './pages/SimulationLab';
 import Autopilot from './pages/Autopilot';
 import DigitalTwin from './pages/DigitalTwin';
+import GlobalIntelligence from './pages/GlobalIntelligence';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -142,6 +143,7 @@ export default function App() {
         <Route path="/simulation-lab" element={<SimulationLab />} />
         <Route path="/improvements" element={<Improvements />} />
         <Route path="/digital-twin" element={<DigitalTwin />} />
+        <Route path="/global-intelligence" element={<GlobalIntelligence />} />
         <Route path="/widget" element={<Widget />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
