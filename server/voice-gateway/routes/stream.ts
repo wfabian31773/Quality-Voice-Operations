@@ -19,6 +19,8 @@ import { createSessionLogger, type SessionLogger } from '../services/sessionLogg
 import { updateContactStatus, classifyCallOutcome, addToDnc } from '../../../platform/campaigns';
 import { writeCallMetric } from '../../../platform/core/observability';
 import { scoreCall } from '../../../platform/analytics/QualityScorerService';
+import { analyzeCallSentiment } from '../../../platform/analytics/SentimentAnalysisService';
+import { classifyCallTopic } from '../../../platform/analytics/TopicClusteringService';
 import { recordCallUsage, estimateCallCost } from '../../../platform/billing/usage/UsageRecorder';
 import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../../../platform/widget/WidgetTokenService';
 
@@ -158,6 +160,12 @@ export function attachWebSocket(server: HTTPServer): void {
           });
           scoreCall(tenantId!, callSessionId!, transcript).catch((err) => {
             slog.error('Quality scoring failed (fire-and-forget)', { error: String(err) });
+          });
+          analyzeCallSentiment(tenantId!, callSessionId!, transcript).catch((err) => {
+            slog.error('Sentiment analysis failed (fire-and-forget)', { error: String(err) });
+          });
+          classifyCallTopic(tenantId!, callSessionId!, transcript).catch((err) => {
+            slog.error('Topic classification failed (fire-and-forget)', { error: String(err) });
           });
         }
 
@@ -536,6 +544,28 @@ export function attachWebSocket(server: HTTPServer): void {
         recordCallUsage(tenantId, 'inbound', durationSeconds).catch((err) => {
           slog.error('Failed to record widget usage', { error: String(err) });
         });
+
+        const coordinator = getCoordinator(tenantId);
+        const callRecord = coordinator.getCallRecord(callSessionId!);
+        if (callRecord && callRecord.transcriptLines.length >= 2) {
+          const transcript = callRecord.transcriptLines.map((line: string) => {
+            const colonIdx = line.indexOf(':');
+            if (colonIdx > 0) {
+              return { role: line.slice(0, colonIdx).trim(), content: line.slice(colonIdx + 1).trim() };
+            }
+            return { role: 'unknown', content: line };
+          });
+          scoreCall(tenantId!, callSessionId!, transcript).catch((err) => {
+            slog.error('Widget quality scoring failed (fire-and-forget)', { error: String(err) });
+          });
+          analyzeCallSentiment(tenantId!, callSessionId!, transcript).catch((err) => {
+            slog.error('Widget sentiment analysis failed (fire-and-forget)', { error: String(err) });
+          });
+          classifyCallTopic(tenantId!, callSessionId!, transcript).catch((err) => {
+            slog.error('Widget topic classification failed (fire-and-forget)', { error: String(err) });
+          });
+        }
+
         writeCallMetric(tenantId, durationSeconds, {
           callSessionId,
           outcome: 'completed',

@@ -1,6 +1,8 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import type { ToolDefinition, ToolContext } from './registry/types';
+import { recordConversionStage } from '../analytics/ConversionFunnelService';
+import type { FunnelStage } from '../analytics/ConversionFunnelService';
 
 const logger = createLogger('TOOL_CALL_OUTCOME');
 
@@ -84,6 +86,22 @@ async function handler(input: unknown, context: ToolContext): Promise<unknown> {
         callSid,
         disposition: args.disposition,
       });
+
+      const dispositionToStages: Record<string, FunnelStage[]> = {
+        resolved: ['qualified', 'appointment_offered', 'appointment_booked', 'confirmed'],
+        follow_up_needed: ['qualified'],
+        escalated: ['qualified'],
+        callback_requested: ['qualified', 'appointment_offered'],
+      };
+
+      const stagesToRecord = dispositionToStages[args.disposition] ?? [];
+      for (const stage of stagesToRecord) {
+        recordConversionStage(tenantId, callLogId, stage, {
+          disposition: args.disposition,
+        }).catch((err) => {
+          logger.error('Failed to record conversion stage from outcome', { stage, error: String(err) });
+        });
+      }
 
       return {
         success: true,

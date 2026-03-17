@@ -11,6 +11,7 @@ import Connectors from './pages/Connectors';
 import UsersPage from './pages/Users';
 import Observability from './pages/Observability';
 import Analytics from './pages/Analytics';
+import RevenueAnalytics from './pages/RevenueAnalytics';
 import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
 import Campaigns from './pages/Campaigns';
@@ -122,6 +123,7 @@ export default function App() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="/settings" element={<SettingsRedirect />} />
         <Route path="/settings/general" element={<Settings />} />
         <Route path="/settings/security" element={<Settings />} />

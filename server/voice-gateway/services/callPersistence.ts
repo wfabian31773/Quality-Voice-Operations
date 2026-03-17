@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import type { CallPersistenceAdapter } from '../../../platform/runtime/lifecycle/CallLifecycleCoordinator';
+import { recordConversionStage } from '../../../platform/analytics/ConversionFunnelService';
 
 const logger = createLogger('CALL_PERSISTENCE');
 
@@ -81,6 +82,13 @@ export async function createCallSession(
     callId: id,
     tenantId: params.tenantId,
     agentId: params.agentId,
+  });
+
+  recordConversionStage(params.tenantId, id, 'call_received', {
+    direction: params.direction,
+    agentId: params.agentId,
+  }).catch((err) => {
+    logger.error('Failed to record call_received conversion stage', { error: String(err) });
   });
 
   return id;

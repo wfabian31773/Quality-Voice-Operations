@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2,
+  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -31,6 +31,7 @@ const links: NavItem[] = [
   { to: '/billing', icon: CreditCard, label: 'Billing' },
   { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/revenue-analytics', icon: TrendingUp, label: 'Revenue & Performance' },
   { to: '/observability', icon: Activity, label: 'Observability' },
   { to: '/quality', icon: Star, label: 'Quality' },
   { to: '/widget', icon: MessageSquare, label: 'Widget' },

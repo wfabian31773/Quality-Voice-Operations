@@ -22,3 +22,40 @@ export type {
   QualityTrend,
   LowestScoringCall,
 } from './QualityScorerService';
+export {
+  getRevenueAttribution,
+} from './RevenueAttributionService';
+export type {
+  RevenueAttributionResult,
+} from './RevenueAttributionService';
+export {
+  analyzeCallSentiment,
+  getSentimentTrends,
+  getAgentSentiments,
+} from './SentimentAnalysisService';
+export type {
+  SentimentScore,
+  SentimentTrend,
+  AgentSentiment,
+} from './SentimentAnalysisService';
+export {
+  classifyCallTopic,
+  getTopicDistribution,
+  getTopicTrends,
+} from './TopicClusteringService';
+export type {
+  TopicClassification,
+  TopicDistribution,
+  TopicTrend,
+} from './TopicClusteringService';
+export {
+  recordConversionStage,
+  getConversionFunnel,
+  getConversionTrends,
+  FUNNEL_STAGES,
+} from './ConversionFunnelService';
+export type {
+  FunnelStage,
+  FunnelMetrics,
+  FunnelTrend,
+} from './ConversionFunnelService';
