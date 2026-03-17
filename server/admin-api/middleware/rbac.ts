@@ -69,6 +69,23 @@ export function requireMiniSystemWrite(req: Request, res: Response, next: NextFu
   next();
 }
 
+export function requireOpsRole(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  if (req.user.isPlatformAdmin) {
+    next();
+    return;
+  }
+  const opsRoles = ['tenant_owner', 'operations_manager'];
+  if (!opsRoles.includes(req.user.role)) {
+    res.status(403).json({ error: 'Operations access required' });
+    return;
+  }
+  next();
+}
+
 export function requireRole(minimumRole: SimpleRole) {
   return function (req: Request, res: Response, next: NextFunction): void {
     if (!req.user) {

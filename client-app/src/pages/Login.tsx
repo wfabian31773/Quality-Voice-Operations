@@ -18,8 +18,14 @@ export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
+  function getLandingPath(u: { isPlatformAdmin?: boolean; role: string }) {
+    if (u.isPlatformAdmin) return '/admin/dashboard';
+    if (u.role === 'operations_manager') return '/ops/monitor';
+    return '/dashboard';
+  }
+
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={getLandingPath(user)} replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -28,7 +34,12 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/dashboard');
+      const currentUser = useAuth.getState().user;
+      if (currentUser) {
+        navigate(getLandingPath(currentUser));
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

@@ -1,7 +1,11 @@
 import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
+import TenantLayout from './components/TenantLayout';
+import AdminLayout from './components/AdminLayout';
+import OpsLayout from './components/OpsLayout';
 import PublicLayout from './components/PublicLayout';
+import PlatformAdminGuard from './components/PlatformAdminGuard';
+import OpsGuard from './components/OpsGuard';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
@@ -25,8 +29,6 @@ import AgentBuilder from './pages/AgentBuilder';
 import Marketplace from './pages/Marketplace';
 import DeveloperPortal from './pages/DeveloperPortal';
 import PlatformAdmin from './pages/PlatformAdmin';
-import PlatformAdminGuard from './components/PlatformAdminGuard';
-import RoleGuard from './components/RoleGuard';
 import Operations from './pages/Operations';
 import Insights from './pages/Insights';
 import Workforce from './pages/Workforce';
@@ -44,6 +46,7 @@ import ToolHealth from './pages/ToolHealth';
 import CostOptimization from './pages/CostOptimization';
 import CallDebug from './pages/CallDebug';
 import Compliance from './pages/Compliance';
+import IntegrationDiagnostics from './pages/IntegrationDiagnostics';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -131,24 +134,26 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      {/* Tenant Portal */}
       <Route
         element={
           <ProtectedRoute>
-            <Layout />
+            <TenantLayout />
           </ProtectedRoute>
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/operations" element={<Operations />} />
-        <Route path="/workforce" element={<Workforce />} />
+        <Route path="/command-center" element={<CommandCenter />} />
         <Route path="/agents" element={<Agents />} />
+        <Route path="/workforce" element={<Workforce />} />
         <Route path="/phone-numbers" element={<PhoneNumbers />} />
         <Route path="/calls" element={<Calls />} />
         <Route path="/connectors" element={<Connectors />} />
         <Route path="/users" element={<UsersPage />} />
-        <Route path="/observability" element={<Observability />} />
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/billing" element={<Billing />} />
+        <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="/settings" element={<SettingsRedirect />} />
@@ -156,18 +161,11 @@ export default function App() {
         <Route path="/settings/roles" element={<Settings />} />
         <Route path="/settings/security" element={<Settings />} />
         <Route path="/settings/api-keys" element={<Settings />} />
-        <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/quality" element={<Quality />} />
         <Route path="/insights" element={<Insights />} />
         <Route path="/autopilot" element={<Autopilot />} />
         <Route path="/simulation-lab" element={<SimulationLab />} />
         <Route path="/improvements" element={<Improvements />} />
-        <Route path="/digital-twin" element={<DigitalTwin />} />
-        <Route path="/global-intelligence" element={<GlobalIntelligence />} />
-        <Route path="/command-center" element={<CommandCenter />} />
-        <Route path="/reliability" element={<ToolHealth />} />
-        <Route path="/cost-optimization" element={<CostOptimization />} />
-        <Route path="/call-debug" element={<CallDebug />} />
         <Route path="/widget" element={<Widget />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
@@ -177,15 +175,67 @@ export default function App() {
         <Route path="/compliance" element={<RoleGuard minRole="manager"><Compliance /></RoleGuard>} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
-        <Route path="/evolution" element={<PlatformAdminGuard><EvolutionEngine /></PlatformAdminGuard>} />
-        <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
         <Route path="/conversion-funnel" element={<ConversionFunnel />} />
-        <Route path="/workflows" element={<RoleGuard allowedRoles={['tenant_owner', 'operations_manager']}><Workflows /></RoleGuard>} />
+        <Route path="/workflows" element={<RoleGuard minRole="manager"><Workflows /></RoleGuard>} />
         <Route path="/sms-inbox" element={<SmsInbox />} />
         <Route path="/scheduling" element={<Scheduling />} />
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/dispatch" element={<Dispatch />} />
       </Route>
+
+      {/* Platform Admin Console */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <PlatformAdminGuard>
+              <AdminLayout />
+            </PlatformAdminGuard>
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/admin/dashboard" element={<PlatformAdmin />} />
+        <Route path="/admin/analytics" element={<Analytics />} />
+        <Route path="/admin/marketplace" element={<Marketplace />} />
+        <Route path="/admin/autopilot" element={<Autopilot />} />
+        <Route path="/admin/billing" element={<Billing />} />
+        <Route path="/admin/security" element={<Compliance />} />
+        <Route path="/admin/evolution" element={<EvolutionEngine />} />
+        <Route path="/admin/conversion" element={<ConversionFunnel />} />
+        <Route path="/admin/intelligence" element={<GlobalIntelligence />} />
+      </Route>
+
+      {/* Operations Console */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <OpsGuard>
+              <OpsLayout />
+            </OpsGuard>
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/ops/monitor" element={<Operations />} />
+        <Route path="/ops/call-debug" element={<CallDebug />} />
+        <Route path="/ops/tool-logs" element={<Observability />} />
+        <Route path="/ops/integration-diagnostics" element={<IntegrationDiagnostics />} />
+        <Route path="/ops/cost" element={<CostOptimization />} />
+        <Route path="/ops/observability" element={<Observability />} />
+        <Route path="/ops/reliability" element={<ToolHealth />} />
+        <Route path="/ops/digital-twin" element={<DigitalTwin />} />
+      </Route>
+
+      {/* Legacy routes - redirect to new locations */}
+      <Route path="/operations" element={<Navigate to="/ops/monitor" replace />} />
+      <Route path="/call-debug" element={<Navigate to="/ops/call-debug" replace />} />
+      <Route path="/observability" element={<Navigate to="/ops/observability" replace />} />
+      <Route path="/reliability" element={<Navigate to="/ops/reliability" replace />} />
+      <Route path="/cost-optimization" element={<Navigate to="/ops/cost" replace />} />
+      <Route path="/digital-twin" element={<Navigate to="/ops/digital-twin" replace />} />
+      <Route path="/global-intelligence" element={<Navigate to="/admin/intelligence" replace />} />
+      <Route path="/platform-admin" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/evolution" element={<Navigate to="/admin/evolution" replace />} />
+      <Route path="/conversion-funnel" element={<Navigate to="/admin/conversion" replace />} />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

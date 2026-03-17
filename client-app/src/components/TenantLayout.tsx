@@ -2,12 +2,12 @@ import { NavLink, Outlet, useNavigate, Navigate, useLocation } from 'react-route
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
-import { hasMinRole } from '../lib/useRole';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
-  LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu, Monitor, Globe, Coins, Bug, Filter,
-  Inbox, Calendar, Ticket, Truck,
+  LogOut, Moon, Sun, Menu, X, BarChart3, Settings2,
+  Megaphone, CreditCard, BookOpen, MessageSquare, Store,
+  TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Monitor,
+  ArrowUpCircle, Code2, Star,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -17,16 +17,12 @@ interface NavItem {
   to: string;
   icon: typeof LayoutDashboard;
   label: string;
-  minRole?: 'viewer' | 'operator' | 'manager' | 'owner';
-  platformAdminOnly?: boolean;
-  group?: string;
 }
 
-const links: NavItem[] = [
+const tenantLinks: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/command-center', icon: Monitor, label: 'Command Center' },
   { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/workflows', icon: Activity, label: 'Workflows', minRole: 'manager' },
   { to: '/workforce', icon: Network, label: 'AI Workforce' },
   { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
   { to: '/calls', icon: PhoneCall, label: 'Call History' },
@@ -42,23 +38,14 @@ const links: NavItem[] = [
   { to: '/autopilot', icon: Brain, label: 'Autopilot' },
   { to: '/simulation-lab', icon: FlaskConical, label: 'Simulation Lab' },
   { to: '/improvements', icon: Lightbulb, label: 'Improvements' },
-  { to: '/digital-twin', icon: Cpu, label: 'Digital Twin' },
-  { to: '/sms-inbox', icon: Inbox, label: 'SMS Inbox', group: 'Mini Systems' },
-  { to: '/scheduling', icon: Calendar, label: 'Scheduling', group: 'Mini Systems' },
-  { to: '/tickets', icon: Ticket, label: 'Tickets', group: 'Mini Systems' },
-  { to: '/dispatch', icon: Truck, label: 'Dispatch', group: 'Mini Systems' },
   { to: '/widget', icon: MessageSquare, label: 'Widget' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
   { to: '/developer', icon: Code2, label: 'Developer Portal' },
   { to: '/settings', icon: Settings2, label: 'Settings' },
-  { to: '/compliance', icon: Shield, label: 'Security & Compliance', minRole: 'manager' },
-  { to: '/audit-log', icon: Shield, label: 'Audit Log', minRole: 'manager' },
-  { to: '/ops/monitor', icon: Radio, label: 'Operations Console', minRole: 'operator' },
-  { to: '/admin/dashboard', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },
 ];
 
-export default function Layout() {
+export default function TenantLayout() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
@@ -123,48 +110,33 @@ export default function Layout() {
   const sidebar = (
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-white/10">
-        <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase tracking-wider">Tenant</span>
+        </div>
         <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {(() => {
-          const filtered = links.filter((link) => {
-            if (link.platformAdminOnly && !user?.isPlatformAdmin) return false;
-            if (link.minRole && !hasMinRole(user?.role ?? '', link.minRole)) return false;
-            return true;
-          });
-          let lastGroup: string | undefined;
-          return filtered.map((link) => {
-            const showGroupHeader = link.group && link.group !== lastGroup;
-            lastGroup = link.group;
-            return (
-              <div key={link.to}>
-                {showGroupHeader && (
-                  <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-text/50">
-                    {link.group}
-                  </div>
-                )}
-                <NavLink
-                  to={link.to}
-                  end={link.to === '/dashboard'}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) =>
-                    clsx(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-sidebar-active text-white'
-                        : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
-                    )
-                  }
-                >
-                  <link.icon className="h-4.5 w-4.5 shrink-0" />
-                  {link.label}
-                </NavLink>
-              </div>
-            );
-          });
-        })()}
+        {tenantLinks.map((link) => (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            end={link.to === '/dashboard'}
+            onClick={() => setMobileOpen(false)}
+            className={({ isActive }) =>
+              clsx(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-sidebar-active text-white'
+                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+              )
+            }
+          >
+            <link.icon className="h-4.5 w-4.5 shrink-0" />
+            {link.label}
+          </NavLink>
+        ))}
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10 space-y-1">

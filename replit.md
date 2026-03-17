@@ -1,7 +1,31 @@
 # Quality Voice Operations (QVO) — Multi-Tenant SaaS
 
 ## Overview
-QVO is a multi-tenant SaaS platform designed for managing AI-powered voice operations at an enterprise scale. Built per a 35-part enterprise blueprint and rebranded to QVO (Quality Voice Operations), it provides comprehensive solutions for deploying and managing AI agents, handling customer interactions, and delivering advanced analytics. The platform aims to revolutionize customer service and sales by enabling businesses to efficiently leverage AI for voice interactions. Key capabilities include a visual agent builder, a real-time voice gateway, robust analytics, AI workforce orchestration, cost optimization, advanced observability, and a marketplace for agent templates. The business vision is to revolutionize how enterprises manage their voice channels, driving efficiency, improving customer satisfaction, and unlocking new revenue opportunities through AI. All components are built to enterprise blueprint standards.
+QVO is a multi-tenant SaaS platform designed for managing AI-powered voice operations at an enterprise scale. Built per a 35-part enterprise blueprint and rebranded to QVO (Quality Voice Operations), it provides comprehensive solutions for deploying and managing AI agents, handling customer interactions, and delivering advanced analytics. The platform aims to revolutionize customer service and sales by enabling businesses to efficiently leverage AI for voice interactions. Key capabilities include a visual agent builder, a real-time voice gateway, robust analytics, AI workforce orchestration, cost optimization, advanced observability, and a marketplace for agent templates. The platform features three distinct control planes: a **Tenant Portal** for business operations, a **Platform Admin Console** for global governance, and an **Operations Console** for real-time monitoring and diagnostics. Access is managed via a 4-tier RBAC system (Owner → Manager → Operator → Viewer) ensuring granular permission control across all environments. The business vision is to revolutionize how enterprises manage their voice channels, driving efficiency, improving customer satisfaction, and unlocking new revenue opportunities through AI. All components are built to enterprise blueprint standards.
+
+
+## Control Plane Architecture (Three Consoles)
+The app serves three visually distinct environments from a single deployment:
+
+1. **Tenant Portal** (`/dashboard`, `/agents`, etc.) — `TenantLayout.tsx`
+   - Business-oriented sidebar with blue "Tenant" badge
+   - Modules: Dashboard, Agents, Workflows, Calls, Knowledge Base, Connectors, Campaigns, Marketplace, Analytics, Settings
+   - Default landing for regular tenant users
+
+2. **Platform Admin Console** (`/admin/*`) — `AdminLayout.tsx`
+   - Purple accent, "Platform Admin" badge in sidebar and top bar
+   - Modules: Tenants, Global Analytics, Marketplace Management, Autopilot Governance, Billing & Usage, Security Controls, Evolution Engine
+   - Guarded by `PlatformAdminGuard` (requires `isPlatformAdmin`)
+   - Platform admins land here after login
+
+3. **Operations Console** (`/ops/*`) — `OpsLayout.tsx`
+   - Emerald accent, "Operations" badge in sidebar and top bar
+   - Modules: Live Monitor, Conversation Debugger, Tool Execution Logs, Integration Diagnostics, Cost Monitor, Infrastructure Health, Reliability, Digital Twin
+   - Guarded by `OpsGuard` (requires `tenant_owner`, `operations_manager`, or `isPlatformAdmin`)
+   - Operations managers land here after login
+
+Role-based landing redirects are in `Login.tsx` via `getLandingPath()`.
+Legacy routes (e.g. `/operations`, `/platform-admin`) redirect to new paths.
 
 ## Active Workflows
 - **Platform Dev** — starts all services together via `scripts/start-platform-dev.sh`:
@@ -26,7 +50,6 @@ QVO is a multi-tenant SaaS platform designed for managing AI-powered voice opera
 - **RLS:** Row-Level Security on all tenant-scoped tables; policy uses `current_setting('app.tenant_id')`
 - **Admin seed:** `ADMIN_PASSWORD=YourPassword npx tsx scripts/seed-admin.ts` (dev only, requires ADMIN_PASSWORD env var)
 - **Current dev admin:** `admin@voiceaihub.dev` (password set via ADMIN_PASSWORD at seed time)
-
 ## Project Structure
 
 ```

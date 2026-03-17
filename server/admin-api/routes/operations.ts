@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
+import { requireOpsRole } from '../middleware/rbac';
 
 const logger = createLogger('OPERATIONS_API');
 const router = Router();
@@ -380,5 +381,95 @@ function redactPhone(phone: string | null): string {
   if (phone.length <= 4) return '***';
   return '***' + phone.slice(-4);
 }
+
+router.get('/operations/integration-diagnostics', requireAuth, requireOpsRole, async (req, res) => {
+  const { tenantId } = req.user!;
+  const statusFilter = req.query.status as string | undefined;
+  const pool = getPlatformPool();
+
+  try {
+    let webhookQuery = `
+      SELECT oe.id, oe.event_type, oe.status, oe.attempts, oe.max_attempts,
+             oe.last_error, oe.payload, oe.created_at, oe.updated_at,
+             oe.delivered_at, oe.next_attempt_at,
+             i.name AS integration_name
+      FROM outbox_events oe
+      LEFT JOIN integrations i ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
+      WHERE oe.tenant_id = $1
+    `;
+    const params: (string | undefined)[] = [tenantId];
+
+    if (statusFilter && statusFilter !== 'all') {
+      webhookQuery += ` AND oe.status = $2`;
+      params.push(statusFilter);
+    }
+
+    webhookQuery += ` ORDER BY oe.created_at DESC LIMIT 100`;
+
+    const { rows: webhooks } = await pool.query(webhookQuery, params);
+
+    const { rows: health } = await pool.query(`
+      SELECT
+        i.id AS integration_id,
+        i.name,
+        i.provider,
+        i.integration_type::text AS integration_type,
+        i.is_enabled,
+        COUNT(iel.id)::int AS total_events,
+        COUNT(iel.id) FILTER (WHERE iel.response_status BETWEEN 200 AND 299)::int AS successful_events,
+        COUNT(iel.id) FILTER (WHERE iel.response_status IS NULL OR iel.response_status < 200 OR iel.response_status >= 300)::int AS failed_events,
+        COALESCE(AVG(iel.latency_ms) FILTER (WHERE iel.latency_ms IS NOT NULL), 0)::int AS avg_latency_ms,
+        MAX(iel.created_at) AS last_event_at
+      FROM integrations i
+      LEFT JOIN integration_event_logs iel
+        ON iel.service_name LIKE '%' || i.provider || '%'
+        AND iel.tenant_id = i.tenant_id
+        AND iel.created_at > NOW() - INTERVAL '7 days'
+      WHERE i.tenant_id = $1
+      GROUP BY i.id, i.name, i.provider, i.integration_type, i.is_enabled
+      ORDER BY i.name ASC
+    `, [tenantId]);
+
+    const healthWithRate = health.map((h: Record<string, unknown>) => {
+      const total = Number(h.total_events) || 0;
+      const failed = Number(h.failed_events) || 0;
+      return {
+        ...h,
+        error_rate: total > 0 ? Math.round((failed / total) * 1000) / 10 : 0,
+      };
+    });
+
+    res.json({ webhooks, health: healthWithRate });
+  } catch (err) {
+    logger.error('Failed to fetch integration diagnostics', { tenantId, error: String(err) });
+    res.status(500).json({ error: 'Failed to fetch integration diagnostics' });
+  }
+});
+
+router.post('/operations/integration-diagnostics/:outboxId/retry', requireAuth, requireOpsRole, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { outboxId } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const result = await pool.query(
+      `UPDATE outbox_events
+       SET status = 'pending', next_attempt_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND status IN ('failed', 'dead_letter')
+       RETURNING id`,
+      [outboxId, tenantId],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Outbox event not found or not retryable' });
+    }
+
+    logger.info('Outbox event retry queued', { tenantId, outboxId, userId: req.user!.userId });
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to retry outbox event', { tenantId, outboxId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to retry outbox event' });
+  }
+});
 
 export default router;
