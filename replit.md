@@ -51,7 +51,7 @@ platform/
   runtime/          Voice agent runtime
   email/            Email service (nodemailer SMTP + console-log fallback) + HTML templates
   tools/            Agent tool definitions + knowledge retrieval tool + unified ToolRegistry + ToolExecutionService
-  knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search
+  knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search + document ingestion pipeline (PDF/URL/text/FAQ extraction, chunking, embedding)
   workflow/         Workflow engine
   activation/       Activation event tracking + tooltip dismissal service
   widget/             Website voice/chat widget service (token auth, config)
@@ -77,7 +77,7 @@ scripts/            Migration runner, seed scripts, startup script
 
 ### server/admin-api/ (port 3002)
 - JWT auth (`ADMIN_JWT_SECRET`), RBAC via tenant_role enum
-- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /tenants/me/activation, /tenants/me/tooltips, /tenants/me/tooltips/dismiss, /agents, /agents/:id/workflow (PATCH), /agents/:id/publish (POST), /agents/:id/versions (GET), /agents/:id/rollback (POST), /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /platform/activation-metrics, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install, updates, upgrades), /platform/templates/:id/versions (create draft, validate, publish, deprecate), /demo/live/:callId (SSE for real-time demo call visualization), /demo/active-call (poll for active demo calls), /tool-executions (list/detail/replay), /tools/registry (list available tools with schemas), /operations/realtime (live metrics), /operations/alerts (CRUD), /operations/calls/:callId/live (per-call SSE with transcript + tools)
+- Routes: /auth/login, /auth/signup, /auth/me, /tenants/me, /tenants/me/activation, /tenants/me/tooltips, /tenants/me/tooltips/dismiss, /agents, /agents/:id/workflow (PATCH), /agents/:id/publish (POST), /agents/:id/versions (GET), /agents/:id/rollback (POST), /phone-numbers, /calls, /calls/live (SSE), /users, /connectors, /billing/*, /campaigns/*, /observability/*, /analytics/*, /knowledge-articles (CRUD + search), /knowledge-documents (upload/url/text ingestion + list/detail/delete/reindex), /settings/api-keys, /audit-log, /platform/tenants, /platform/stats, /platform/activation-metrics, /widget/* (config, tokens, public-config, embed.js), /marketplace/* (templates, categories, installations, install, updates, upgrades), /platform/templates/:id/versions (create draft, validate, publish, deprecate), /demo/live/:callId (SSE for real-time demo call visualization), /demo/active-call (poll for active demo calls), /tool-executions (list/detail/replay), /tools/registry (list available tools with schemas), /operations/realtime (live metrics), /operations/alerts (CRUD), /operations/calls/:callId/live (per-call SSE with transcript + tools)
 - Self-service signup: creates pending tenant + user, returns Stripe checkout URL
 - Stripe billing: checkout sessions, webhook handler, portal links
 - Usage metering: hourly job reports AI minutes + call counts to Stripe meter events

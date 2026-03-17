@@ -32,17 +32,28 @@ async function handleRetrieveKnowledge(
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
-    let sql = `SELECT id, title, content, category, embedding FROM knowledge_articles WHERE tenant_id = $1 AND status = 'active'`;
-    const values: unknown[] = [tenantId];
+    let articleSql = `SELECT id, title, content, category, embedding FROM knowledge_articles WHERE tenant_id = $1 AND status = 'active'`;
+    const articleValues: unknown[] = [tenantId];
     if (args.category) {
-      values.push(args.category);
-      sql += ` AND category = $${values.length}`;
+      articleValues.push(args.category);
+      articleSql += ` AND category = $${articleValues.length}`;
     }
+    const { rows: articleRows } = await client.query(articleSql, articleValues);
 
-    const { rows } = await client.query(sql, values);
+    let chunkSql = `SELECT kc.id, kd.title, kc.content, kd.category, kc.embedding
+       FROM knowledge_chunks kc
+       JOIN knowledge_documents kd ON kd.id = kc.document_id
+       WHERE kc.tenant_id = $1 AND kd.status = 'ready'`;
+    const chunkValues: unknown[] = [tenantId];
+    if (args.category) {
+      chunkValues.push(args.category);
+      chunkSql += ` AND kd.category = $${chunkValues.length}`;
+    }
+    const { rows: chunkRows } = await client.query(chunkSql, chunkValues);
+
     await client.query('COMMIT');
 
-    const articles = rows.map((r: Record<string, unknown>) => ({
+    const articles = articleRows.map((r: Record<string, unknown>) => ({
       id: r.id as number,
       title: r.title as string,
       content: r.content as string,
@@ -50,7 +61,17 @@ async function handleRetrieveKnowledge(
       embedding: (typeof r.embedding === 'string' ? JSON.parse(r.embedding) : r.embedding) as number[] | null,
     }));
 
-    const results = await searchByEmbedding(queryEmbedding, articles, args.top_k ?? 3);
+    const chunks = chunkRows.map((r: Record<string, unknown>) => ({
+      id: r.id as number,
+      title: r.title as string,
+      content: r.content as string,
+      category: r.category as string | null,
+      embedding: (typeof r.embedding === 'string' ? JSON.parse(r.embedding) : r.embedding) as number[] | null,
+    }));
+
+    const allItems = [...articles, ...chunks];
+    const topK = args.top_k ?? 5;
+    const results = await searchByEmbedding(queryEmbedding, allItems, topK);
 
     if (results.length === 0) {
       return { success: true, found: false, message: 'No relevant knowledge base articles found.' };
@@ -90,11 +111,11 @@ export function registerRetrieveKnowledgeTool(): void {
         },
         category: {
           type: 'string',
-          description: 'Optional category to filter results (e.g., "faq", "policy", "product")',
+          description: 'Optional category to filter results (e.g., "FAQ", "Policies", "Services", "Pricing", "Procedures", "Troubleshooting")',
         },
         top_k: {
           type: 'number',
-          description: 'Maximum number of results to return (default: 3)',
+          description: 'Maximum number of results to return (default: 5)',
         },
       },
       required: ['query'],
