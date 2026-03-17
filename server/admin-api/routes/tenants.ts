@@ -169,7 +169,7 @@ function isValidTimezone(tz: string): boolean {
   }
 }
 
-router.patch('/tenants/me', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/tenants/me', requireAuth, requireRole('owner'), async (req, res) => {
   const { tenantId } = req.user!;
   const { name, domain, settings } = req.body as {
     name?: string;

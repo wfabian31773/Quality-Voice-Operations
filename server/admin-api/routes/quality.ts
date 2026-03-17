@@ -7,7 +7,7 @@ import { createLogger } from '../../../platform/core/logger';
 const router = Router();
 const logger = createLogger('ADMIN_QUALITY');
 
-router.get('/calls/:id/quality', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/calls/:id/quality', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
 
@@ -23,7 +23,7 @@ router.get('/calls/:id/quality', requireAuth, requireRole('admin'), async (req, 
   }
 });
 
-router.get('/analytics/quality', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/analytics/quality', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const parsedDays = parseInt(String(req.query.days ?? '30'), 10);
   if (isNaN(parsedDays) || parsedDays < 1 || parsedDays > 90) {

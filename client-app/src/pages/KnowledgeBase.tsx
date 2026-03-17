@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
+import { useRole } from '../lib/useRole';
 
 interface Article {
   id: number;
@@ -447,6 +448,7 @@ export default function KnowledgeBase() {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const queryClient = useQueryClient();
+  const { isManager } = useRole();
 
   const { data: articlesData, isLoading: articlesLoading } = useQuery({
     queryKey: ['knowledge-articles', categoryFilter],
@@ -503,25 +505,27 @@ export default function KnowledgeBase() {
           <h1 className="text-2xl font-bold text-text-primary">Knowledge Base</h1>
           <p className="text-sm text-text-secondary mt-1">Manage knowledge sources for your AI agents</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-            <Upload className="h-4 w-4" /> Add Source
-          </button>
-          {activeView === 'articles' && (
-            <TooltipWalkthrough
-              tooltipKey="knowledge-base-intro"
-              title="Build Your Knowledge Base"
-              description="Add articles and FAQs that your AI agent can reference during calls. This helps your agent provide accurate, context-aware responses to callers."
-              position="left"
-            >
-              <button onClick={() => setEditingId('new')}
-                className="inline-flex items-center gap-2 bg-surface hover:bg-surface-hover text-text-primary text-sm font-medium px-4 py-2.5 rounded-lg border border-border transition">
-                <Plus className="h-4 w-4" /> New Article
-              </button>
-            </TooltipWalkthrough>
-          )}
-        </div>
+        {isManager && (
+          <div className="flex gap-2">
+            <button onClick={() => setShowUpload(true)}
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+              <Upload className="h-4 w-4" /> Add Source
+            </button>
+            {activeView === 'articles' && (
+              <TooltipWalkthrough
+                tooltipKey="knowledge-base-intro"
+                title="Build Your Knowledge Base"
+                description="Add articles and FAQs that your AI agent can reference during calls. This helps your agent provide accurate, context-aware responses to callers."
+                position="left"
+              >
+                <button onClick={() => setEditingId('new')}
+                  className="inline-flex items-center gap-2 bg-surface hover:bg-surface-hover text-text-primary text-sm font-medium px-4 py-2.5 rounded-lg border border-border transition">
+                  <Plus className="h-4 w-4" /> New Article
+                </button>
+              </TooltipWalkthrough>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3 border-b border-border">
@@ -652,17 +656,21 @@ export default function KnowledgeBase() {
                             className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
                             <Eye className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            onClick={() => reindexMut.mutate(doc.id)}
-                            disabled={reindexMut.isPending || doc.status === 'processing'}
-                            title="Re-index"
-                            className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition disabled:opacity-50">
-                            <RefreshCw className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => { if (confirm('Delete this document and all its chunks?')) deleteDocMut.mutate(doc.id); }}
-                            className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {isManager && (
+                            <>
+                              <button
+                                onClick={() => reindexMut.mutate(doc.id)}
+                                disabled={reindexMut.isPending || doc.status === 'processing'}
+                                title="Re-index"
+                                className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition disabled:opacity-50">
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => { if (confirm('Delete this document and all its chunks?')) deleteDocMut.mutate(doc.id); }}
+                                className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -721,16 +729,18 @@ export default function KnowledgeBase() {
                       {new Date(article.updated_at).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex items-center gap-2 justify-end">
-                        <button onClick={() => setEditingId(article.id)}
-                          className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => { if (confirm('Delete this article?')) deleteArticleMut.mutate(article.id); }}
-                          className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {isManager && (
+                        <div className="flex items-center gap-2 justify-end">
+                          <button onClick={() => setEditingId(article.id)}
+                            className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => { if (confirm('Delete this article?')) deleteArticleMut.mutate(article.id); }}
+                            className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

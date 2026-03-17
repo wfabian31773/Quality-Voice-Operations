@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { useRole } from '../lib/useRole';
 import {
   Plus, ArrowLeft, Play, Pause, XCircle, Upload, Trash2, X,
   Megaphone, Users, ShieldOff, AlertCircle,
@@ -720,6 +721,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
   const [tab, setTab] = useState<'overview' | 'contacts' | 'dnc'>('overview');
   const [showAddContacts, setShowAddContacts] = useState(false);
   const [contactPage, setContactPage] = useState(1);
+  const { isManager } = useRole();
 
   const { data: campaignData, isLoading: loadingCampaign } = useQuery({
     queryKey: ['campaign', campaignId],
@@ -776,28 +778,30 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           </div>
           <p className="text-sm text-text-muted mt-0.5">Created {formatDate(campaign.createdAt)}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {campaign.status === 'draft' && (
-            <button onClick={() => statusMutation.mutate('running')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-              <Play className="h-4 w-4" /> Start
-            </button>
-          )}
-          {campaign.status === 'running' && (
-            <button onClick={() => statusMutation.mutate('paused')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-warning hover:bg-warning/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-              <Pause className="h-4 w-4" /> Pause
-            </button>
-          )}
-          {campaign.status === 'paused' && (
-            <button onClick={() => statusMutation.mutate('running')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-              <Play className="h-4 w-4" /> Resume
-            </button>
-          )}
-          {['draft', 'running', 'paused'].includes(campaign.status) && (
-            <button onClick={() => statusMutation.mutate('cancelled')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-              <XCircle className="h-4 w-4" /> Cancel
-            </button>
-          )}
-        </div>
+        {isManager && (
+          <div className="flex items-center gap-2">
+            {campaign.status === 'draft' && (
+              <button onClick={() => statusMutation.mutate('running')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                <Play className="h-4 w-4" /> Start
+              </button>
+            )}
+            {campaign.status === 'running' && (
+              <button onClick={() => statusMutation.mutate('paused')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-warning hover:bg-warning/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                <Pause className="h-4 w-4" /> Pause
+              </button>
+            )}
+            {campaign.status === 'paused' && (
+              <button onClick={() => statusMutation.mutate('running')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                <Play className="h-4 w-4" /> Resume
+              </button>
+            )}
+            {['draft', 'running', 'paused'].includes(campaign.status) && (
+              <button onClick={() => statusMutation.mutate('cancelled')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                <XCircle className="h-4 w-4" /> Cancel
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex gap-1 mb-6 border-b border-border">
@@ -940,7 +944,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
             <h3 className="text-sm font-semibold text-text-primary">
               Contacts {contactsData && <span className="text-text-muted font-normal">({contactsData.total})</span>}
             </h3>
-            {['draft', 'paused'].includes(campaign.status) && (
+            {isManager && ['draft', 'paused'].includes(campaign.status) && (
               <button onClick={() => setShowAddContacts(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
                 <Upload className="h-3.5 w-3.5" /> Add Contacts
               </button>
@@ -959,7 +963,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
             <div className="text-center py-12 text-text-muted">
               <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No contacts yet</p>
-              {['draft', 'paused'].includes(campaign.status) && (
+              {isManager && ['draft', 'paused'].includes(campaign.status) && (
                 <button onClick={() => setShowAddContacts(true)} className="mt-3 text-sm text-primary hover:underline">Add contacts to get started</button>
               )}
             </div>
@@ -1157,6 +1161,7 @@ export default function Campaigns() {
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | ''>('');
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
+  const { isManager } = useRole();
 
   const { data, isLoading } = useQuery({
     queryKey: ['campaigns', statusFilter, page],
@@ -1185,9 +1190,11 @@ export default function Campaigns() {
           <h1 className="text-xl font-bold text-text-primary">Campaigns</h1>
           <p className="text-sm text-text-muted mt-0.5">Create and manage outbound calling campaigns</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
-          <Plus className="h-4 w-4" /> New Campaign
-        </button>
+        {isManager && (
+          <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
+            <Plus className="h-4 w-4" /> New Campaign
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2 mb-4">
@@ -1211,9 +1218,11 @@ export default function Campaigns() {
           <Megaphone className="h-10 w-10 mx-auto mb-3 opacity-50" />
           <p className="text-lg font-medium text-text-primary mb-1">No campaigns yet</p>
           <p className="text-sm">Create your first outbound campaign to get started.</p>
-          <button onClick={() => setShowCreate(true)} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
-            <Plus className="h-4 w-4" /> New Campaign
-          </button>
+          {isManager && (
+            <button onClick={() => setShowCreate(true)} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
+              <Plus className="h-4 w-4" /> New Campaign
+            </button>
+          )}
         </div>
       ) : (
         <>

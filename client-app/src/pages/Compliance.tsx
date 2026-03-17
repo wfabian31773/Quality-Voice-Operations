@@ -414,10 +414,9 @@ function RolesTab() {
 
   const ROLE_OPTIONS = [
     { value: 'tenant_owner', label: 'Owner' },
-    { value: 'operations_manager', label: 'Admin' },
-    { value: 'billing_admin', label: 'Billing Admin' },
-    { value: 'agent_developer', label: 'Developer' },
-    { value: 'support_reviewer', label: 'Member' },
+    { value: 'operations_manager', label: 'Manager' },
+    { value: 'agent_developer', label: 'Operator' },
+    { value: 'support_reviewer', label: 'Viewer' },
   ];
 
   const roleLabel = (role: string) => {
@@ -426,8 +425,10 @@ function RolesTab() {
 
   const roleColor = (role: string) => {
     if (role === 'tenant_owner') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-    if (['operations_manager', 'billing_admin', 'agent_developer'].includes(role))
+    if (['operations_manager', 'billing_admin'].includes(role))
       return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+    if (role === 'agent_developer')
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
     return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
   };
 

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Users as UsersIcon, X } from 'lucide-react';
+import { Plus, Users as UsersIcon, X, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { useRole, ROLE_LABELS, type SimpleRole } from '../lib/useRole';
 
 interface User {
   id: string;
@@ -12,11 +13,11 @@ interface User {
   created_at: string;
 }
 
-const ROLES = ['owner', 'admin', 'member'];
+const ROLES: SimpleRole[] = ['owner', 'manager', 'operator', 'viewer'];
 
 function InviteModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ email: '', first_name: '', last_name: '', password: '', role: 'member' });
+  const [form, setForm] = useState({ email: '', first_name: '', last_name: '', password: '', role: 'viewer' });
 
   const mutation = useMutation({
     mutationFn: (data: typeof form) => api.post('/users/invite', data),
@@ -59,8 +60,9 @@ function InviteModal({ onClose }: { onClose: () => void }) {
             <label className="block text-sm font-medium text-text-primary mb-1">Role</label>
             <select value={form.role} onChange={(e) => set('role', e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
+            <p className="text-xs text-text-muted mt-1">The role determines what the user can access</p>
           </div>
           {mutation.error && <p className="text-danger text-sm">{(mutation.error as Error).message}</p>}
           <div className="flex justify-end gap-3 pt-2">
@@ -76,9 +78,17 @@ function InviteModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+const ROLE_BADGE_STYLES: Record<SimpleRole, string> = {
+  owner: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  manager: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  operator: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  viewer: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+};
+
 export default function UsersPage() {
   const [showInvite, setShowInvite] = useState(false);
   const queryClient = useQueryClient();
+  const { isOwner } = useRole();
 
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
@@ -99,11 +109,20 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-text-primary">Users</h1>
           <p className="text-sm text-text-secondary mt-1">Manage team members and permissions</p>
         </div>
-        <button onClick={() => setShowInvite(true)}
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-          <Plus className="h-4 w-4" /> Invite User
-        </button>
+        {isOwner && (
+          <button onClick={() => setShowInvite(true)}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+            <Plus className="h-4 w-4" /> Invite User
+          </button>
+        )}
       </div>
+
+      {!isOwner && (
+        <div className="bg-surface-hover border border-border rounded-lg px-4 py-3 flex items-center gap-2">
+          <ShieldAlert className="h-4 w-4 text-text-muted shrink-0" />
+          <p className="text-sm text-text-muted">Only Owners can invite users and change roles.</p>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-12 text-text-secondary">Loading...</div>
@@ -128,13 +147,20 @@ export default function UsersPage() {
                   <td className="px-5 py-3 text-text-primary">{user.email}</td>
                   <td className="px-5 py-3 text-text-secondary">{[user.first_name, user.last_name].filter(Boolean).join(' ') || '--'}</td>
                   <td className="px-5 py-3">
-                    <select
-                      value={user.role}
-                      onChange={(e) => roleMut.mutate({ id: user.id, role: e.target.value })}
-                      className="px-2 py-1 rounded border border-border bg-surface text-text-primary text-xs"
-                    >
-                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    {isOwner ? (
+                      <select
+                        value={user.role}
+                        onChange={(e) => roleMut.mutate({ id: user.id, role: e.target.value })}
+                        className="px-2 py-1 rounded border border-border bg-surface text-text-primary text-xs"
+                      >
+                        {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                      </select>
+                    ) : (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${ROLE_BADGE_STYLES[user.role as SimpleRole] ?? ROLE_BADGE_STYLES.viewer}`}>
+                        <ShieldCheck className="h-3 w-3" />
+                        {ROLE_LABELS[user.role as SimpleRole] ?? user.role}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

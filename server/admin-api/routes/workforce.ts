@@ -82,7 +82,7 @@ router.get('/workforce/teams/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/workforce/teams', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const { name, description, metadata } = req.body;
 
@@ -114,7 +114,7 @@ router.post('/workforce/teams', requireAuth, requireRole('admin'), async (req, r
   }
 });
 
-router.patch('/workforce/teams/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/workforce/teams/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const { name, description, status, metadata } = req.body;
@@ -162,7 +162,7 @@ router.patch('/workforce/teams/:id', requireAuth, requireRole('admin'), async (r
   }
 });
 
-router.delete('/workforce/teams/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/workforce/teams/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const pool = getPlatformPool();
@@ -183,7 +183,7 @@ router.delete('/workforce/teams/:id', requireAuth, requireRole('admin'), async (
   }
 });
 
-router.post('/workforce/teams/:id/members', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/members', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const { agent_id, role, is_receptionist, priority, metadata } = req.body;
@@ -243,7 +243,7 @@ router.post('/workforce/teams/:id/members', requireAuth, requireRole('admin'), a
   }
 });
 
-router.patch('/workforce/members/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/workforce/members/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const memberId = req.params.id;
   const { role, is_receptionist, priority, status, metadata } = req.body;
@@ -299,7 +299,7 @@ router.patch('/workforce/members/:id', requireAuth, requireRole('admin'), async 
   }
 });
 
-router.delete('/workforce/members/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/workforce/members/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const memberId = req.params.id;
   const pool = getPlatformPool();
@@ -320,7 +320,7 @@ router.delete('/workforce/members/:id', requireAuth, requireRole('admin'), async
   }
 });
 
-router.post('/workforce/teams/:id/routing-rules', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/routing-rules', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const { intent, target_member_id, fallback_member_id, priority, conditions } = req.body;
@@ -385,7 +385,7 @@ router.post('/workforce/teams/:id/routing-rules', requireAuth, requireRole('admi
   }
 });
 
-router.patch('/workforce/routing-rules/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/workforce/routing-rules/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const ruleId = req.params.id;
   const { intent, target_member_id, fallback_member_id, priority, conditions, status } = req.body;
@@ -429,7 +429,7 @@ router.patch('/workforce/routing-rules/:id', requireAuth, requireRole('admin'), 
   }
 });
 
-router.delete('/workforce/routing-rules/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/workforce/routing-rules/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const ruleId = req.params.id;
   const pool = getPlatformPool();
@@ -524,7 +524,7 @@ router.get('/workforce/templates', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/workforce/templates', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/templates', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const { name, description, vertical, template_config } = req.body;
 
@@ -571,7 +571,7 @@ router.get('/workforce/teams/:id/optimization-insights', requireAuth, async (req
   }
 });
 
-router.post('/workforce/teams/:id/optimization-insights/analyze', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/optimization-insights/analyze', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
 
@@ -584,7 +584,7 @@ router.post('/workforce/teams/:id/optimization-insights/analyze', requireAuth, r
   }
 });
 
-router.patch('/workforce/optimization-insights/:id/acknowledge', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/workforce/optimization-insights/:id/acknowledge', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const insightId = req.params.id;
   const userId = req.user!.userId;
@@ -602,7 +602,7 @@ router.patch('/workforce/optimization-insights/:id/acknowledge', requireAuth, re
   }
 });
 
-router.patch('/workforce/optimization-insights/:id/dismiss', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/workforce/optimization-insights/:id/dismiss', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const insightId = req.params.id;
 
@@ -632,7 +632,7 @@ router.get('/workforce/teams/:id/revenue-metrics', requireAuth, async (req, res)
   }
 });
 
-router.post('/workforce/teams/:id/revenue-metrics/calculate', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/revenue-metrics/calculate', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const { avgTicketValueCents } = req.body;
@@ -711,7 +711,7 @@ const VALID_CAMPAIGN_TYPES = [
 
 const VALID_OUTBOUND_STATUSES = ['draft', 'scheduled', 'running', 'paused', 'completed', 'cancelled'] as const;
 
-router.post('/workforce/teams/:id/outbound-tasks', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/outbound-tasks', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const { campaignType, name, config, scheduledAt } = req.body;
@@ -741,7 +741,7 @@ router.post('/workforce/teams/:id/outbound-tasks', requireAuth, requireRole('adm
   }
 });
 
-router.patch('/workforce/outbound-tasks/:id/status', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/workforce/outbound-tasks/:id/status', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const taskId = req.params.id;
   const { status, campaignId, totalContacts, contactsReached } = req.body;
@@ -781,7 +781,7 @@ router.patch('/workforce/outbound-tasks/:id/status', requireAuth, requireRole('a
   }
 });
 
-router.post('/workforce/outbound-tasks/:id/launch', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/outbound-tasks/:id/launch', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const taskId = req.params.id;
   const { agentId, contacts } = req.body;
@@ -810,7 +810,7 @@ router.post('/workforce/outbound-tasks/:id/launch', requireAuth, requireRole('ad
   }
 });
 
-router.post('/workforce/outbound-tasks/:id/sync', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/outbound-tasks/:id/sync', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const taskId = req.params.id;
 
@@ -827,7 +827,7 @@ router.post('/workforce/outbound-tasks/:id/sync', requireAuth, requireRole('admi
   }
 });
 
-router.delete('/workforce/outbound-tasks/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/workforce/outbound-tasks/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const taskId = req.params.id;
 
@@ -844,7 +844,7 @@ router.delete('/workforce/outbound-tasks/:id', requireAuth, requireRole('admin')
   }
 });
 
-router.post('/workforce/teams/:id/prompt-proposals', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/prompt-proposals', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
 
@@ -857,7 +857,7 @@ router.post('/workforce/teams/:id/prompt-proposals', requireAuth, requireRole('a
   }
 });
 
-router.post('/workforce/teams/:id/validate-proposal', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/teams/:id/validate-proposal', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const teamId = req.params.id;
   const { agentId } = req.body;
@@ -893,7 +893,7 @@ router.get('/workforce/teams/:id/deployment-recommendations', requireAuth, async
   }
 });
 
-router.post('/workforce/templates/:id/deploy', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/workforce/templates/:id/deploy', requireAuth, requireRole('manager'), async (req, res) => {
   const tenantId = req.user!.tenantId;
   const templateId = req.params.id;
   const { teamName, agentAssignments } = req.body;

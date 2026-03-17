@@ -77,7 +77,7 @@ router.get('/billing/usage', requireAuth, async (req, res) => {
 const VALID_PLANS = new Set(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set(['monthly', 'annual']);
 
-router.post('/billing/checkout', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, email } = req.user!;
   const { plan = 'pro', interval = 'monthly', successUrl, cancelUrl } = req.body as {
     plan?: string;
@@ -122,7 +122,7 @@ router.post('/billing/checkout', requireAuth, requireRole('admin'), async (req, 
   }
 });
 
-router.post('/billing/portal', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/billing/portal', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { returnUrl } = req.body as { returnUrl?: string };
   const baseUrl = `${req.protocol}://${req.hostname}`;
@@ -159,7 +159,7 @@ router.get('/billing/budget', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/billing/invoices', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const client = await pool.connect();

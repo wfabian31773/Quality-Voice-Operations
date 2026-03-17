@@ -8,7 +8,7 @@ import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 const router = Router();
 const logger = createLogger('ADMIN_API_KEYS');
 
-router.get('/settings/api-keys', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/settings/api-keys', requireAuth, requireRole('manager'), async (req, res) => {
   try {
     const keys = await listApiKeys(req.user!.tenantId);
     res.json({ keys });
@@ -18,7 +18,7 @@ router.get('/settings/api-keys', requireAuth, requireRole('admin'), async (req, 
   }
 });
 
-router.post('/settings/api-keys', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/settings/api-keys', requireAuth, requireRole('manager'), async (req, res) => {
   const { name, scopes, expiresAt } = req.body as {
     name?: string;
     scopes?: string[];
@@ -57,7 +57,7 @@ router.post('/settings/api-keys', requireAuth, requireRole('admin'), async (req,
   }
 });
 
-router.delete('/settings/api-keys/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/settings/api-keys/:id', requireAuth, requireRole('manager'), async (req, res) => {
   try {
     const revoked = await revokeApiKey(req.user!.tenantId, req.params.id);
     if (!revoked) {

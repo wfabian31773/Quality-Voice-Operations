@@ -67,7 +67,7 @@ router.get('/phone-numbers', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/phone-numbers', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/phone-numbers', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { phone_number, friendly_name, twilio_sid, agent_id, capabilities } = req.body as Record<string, unknown>;
 
@@ -131,7 +131,7 @@ router.post('/phone-numbers', requireAuth, requireRole('admin'), async (req, res
   }
 });
 
-router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const { agent_id } = req.body as Record<string, unknown>;
@@ -188,7 +188,7 @@ router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('admin'), as
   }
 });
 
-router.delete('/phone-numbers/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/phone-numbers/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();

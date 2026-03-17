@@ -29,7 +29,7 @@ router.get('/case-studies', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/case-studies/milestones', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/case-studies/milestones', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   try {
     const milestones = await getTenantMilestoneConfig(tenantId);
@@ -64,7 +64,7 @@ router.put('/case-studies/milestones', requireAuth, requireRole('owner'), async 
   }
 });
 
-router.post('/case-studies/check-milestones', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/case-studies/check-milestones', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   try {
     const milestones = await checkMilestones(tenantId);
@@ -101,7 +101,7 @@ router.patch('/case-studies/:id/status', requireAuth, requireRole('owner'), asyn
   }
 });
 
-router.post('/case-studies/check-all-milestones', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/case-studies/check-all-milestones', requireAuth, requireRole('manager'), async (req, res) => {
   if (!req.user!.isPlatformAdmin) {
     return res.status(403).json({ error: 'Platform admin access required' });
   }

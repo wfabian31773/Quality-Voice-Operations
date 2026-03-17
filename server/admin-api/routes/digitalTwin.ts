@@ -30,7 +30,7 @@ import type { ForecastType } from '../../../platform/digital-twin/ForecastingSer
 const router = Router();
 const logger = createLogger('ADMIN_DIGITAL_TWIN');
 
-router.post('/digital-twin/models', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/digital-twin/models', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { name, dataRangeStart, dataRangeEnd } = req.body;
 
@@ -81,7 +81,7 @@ router.get('/digital-twin/models/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.delete('/digital-twin/models/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/digital-twin/models/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   try {
     const deleted = await deleteDigitalTwinModel(tenantId, req.params.id);
@@ -118,7 +118,7 @@ router.get('/digital-twin/scenarios/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/digital-twin/scenarios', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/digital-twin/scenarios', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { name, description, category, scenarioType, parameters } = req.body;
 
@@ -137,7 +137,7 @@ router.post('/digital-twin/scenarios', requireAuth, requireRole('admin'), async 
   }
 });
 
-router.post('/digital-twin/simulate', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/digital-twin/simulate', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { modelId, scenarioId, name, parameters } = req.body;
 
@@ -214,7 +214,7 @@ router.post('/digital-twin/compare', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/digital-twin/forecasts', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/digital-twin/forecasts', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { modelId, forecastType, horizonDays, confidenceLevel } = req.body;
 
@@ -278,7 +278,7 @@ router.get('/digital-twin/forecasts/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/digital-twin/validate', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/digital-twin/validate', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { recommendationId, modelId, scenarioId, parameters } = req.body;
 

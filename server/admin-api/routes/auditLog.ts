@@ -7,7 +7,7 @@ import { createLogger } from '../../../platform/core/logger';
 const router = Router();
 const logger = createLogger('ADMIN_AUDIT');
 
-router.get('/audit-log', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/audit-log', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const action = req.query.action as string | undefined;
   const userId = req.query.userId as string | undefined;

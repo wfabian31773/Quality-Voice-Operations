@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
 import {
-  Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock,
+  Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 
@@ -43,12 +44,11 @@ const ALL_TIMEZONES = (() => {
   }
 })();
 
-const ADMIN_ROLES = ['tenant_owner', 'operations_manager', 'billing_admin', 'agent_developer'];
-
-type Tab = 'general' | 'security' | 'api-keys';
+type Tab = 'general' | 'security' | 'api-keys' | 'roles';
 
 const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
   { key: 'general', label: 'General', icon: Settings2 },
+  { key: 'roles', label: 'Roles & Permissions', icon: Users },
   { key: 'security', label: 'Security', icon: Shield },
   { key: 'api-keys', label: 'API Keys', icon: Key },
 ];
@@ -60,8 +60,7 @@ interface AgentType {
 
 function GeneralSettings() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const isAdmin = ADMIN_ROLES.includes(user?.role ?? '');
+  const { isOwner } = useRole();
   const [saved, setSaved] = useState(false);
 
   const { data, isLoading, error } = useQuery({
@@ -171,7 +170,7 @@ function GeneralSettings() {
             type="text"
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
-            disabled={!isAdmin}
+            disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           />
           <p className="text-xs text-text-muted mt-1.5">This name appears throughout the platform</p>
@@ -185,7 +184,7 @@ function GeneralSettings() {
           <select
             value={form.timezone}
             onChange={(e) => set('timezone', e.target.value)}
-            disabled={!isAdmin}
+            disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {ALL_TIMEZONES.map((tz) => (
@@ -200,7 +199,7 @@ function GeneralSettings() {
           <select
             value={form.defaultVoiceModel}
             onChange={(e) => set('defaultVoiceModel', e.target.value)}
-            disabled={!isAdmin}
+            disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {VOICE_MODELS.map((m) => (
@@ -215,7 +214,7 @@ function GeneralSettings() {
           <select
             value={form.defaultVoice}
             onChange={(e) => set('defaultVoice', e.target.value)}
-            disabled={!isAdmin}
+            disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {VOICES.map((v) => (
@@ -230,7 +229,7 @@ function GeneralSettings() {
           <select
             value={form.defaultAgentType}
             onChange={(e) => set('defaultAgentType', e.target.value)}
-            disabled={!isAdmin}
+            disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {agentTypes.map((t) => (
@@ -241,7 +240,7 @@ function GeneralSettings() {
         </div>
       </div>
 
-      {isAdmin && (
+      {isOwner && (
         <div className="flex justify-end">
           <button
             onClick={() => mutation.mutate()}
@@ -254,9 +253,66 @@ function GeneralSettings() {
         </div>
       )}
 
-      {!isAdmin && (
-        <p className="text-sm text-text-muted">Contact your organization admin to change settings.</p>
+      {!isOwner && (
+        <p className="text-sm text-text-muted">Contact your organization owner to change settings.</p>
       )}
+    </div>
+  );
+}
+
+function RolesPermissions() {
+  const { role: currentRole } = useRole();
+  const roles: SimpleRole[] = ['owner', 'manager', 'operator', 'viewer'];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Roles & Permissions</h2>
+        <p className="text-sm text-text-muted mt-0.5">
+          View what each role can access. Your current role: <span className="font-medium text-text-primary">{ROLE_LABELS[currentRole]}</span>
+        </p>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-5 py-3 text-left text-text-secondary font-medium min-w-[200px]">Capability</th>
+                {roles.map((r) => (
+                  <th key={r} className={`px-5 py-3 text-center font-medium min-w-[100px] ${r === currentRole ? 'text-primary bg-primary/5' : 'text-text-secondary'}`}>
+                    {ROLE_LABELS[r]}
+                    {r === currentRole && <span className="block text-[10px] font-normal text-primary mt-0.5">(You)</span>}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PERMISSIONS_MATRIX.map((cap, i) => (
+                <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-hover transition-colors">
+                  <td className="px-5 py-2.5 text-text-primary">{cap.label}</td>
+                  {roles.map((r) => (
+                    <td key={r} className={`px-5 py-2.5 text-center ${r === currentRole ? 'bg-primary/5' : ''}`}>
+                      {cap[r] ? (
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-success/10 text-success text-xs font-bold">&#10003;</span>
+                      ) : (
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600 text-xs">&mdash;</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-surface-hover border border-border rounded-lg p-4">
+        <p className="text-xs text-text-muted">
+          Roles are hierarchical: each role inherits all permissions from roles below it. Owner permissions cannot be edited.
+          Contact your organization owner to change your role.
+        </p>
+      </div>
     </div>
   );
 }
@@ -413,6 +469,7 @@ export default function Settings() {
       </div>
 
       {tab === 'general' && <GeneralSettings />}
+      {tab === 'roles' && <RolesPermissions />}
       {tab === 'security' && <SecuritySettings />}
       {tab === 'api-keys' && <ApiKeys />}
     </div>

@@ -12,7 +12,7 @@ import { invitationEmail } from '../../../platform/email/templates';
 const router = Router();
 const logger = createLogger('ADMIN_USERS');
 
-const VALID_SIMPLE_ROLES = ['member', 'admin', 'owner'] as const;
+const VALID_SIMPLE_ROLES = ['viewer', 'operator', 'manager', 'owner'] as const;
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {
   const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
@@ -20,7 +20,7 @@ function paginate(req: { query: Record<string, unknown> }): { limit: number; off
   return { limit, offset: (page - 1) * limit };
 }
 
-router.get('/users', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
   const pool = getPlatformPool();
@@ -64,9 +64,9 @@ router.get('/users', requireAuth, requireRole('admin'), async (req, res) => {
 
 const INVITE_EXPIRY_HOURS = 72;
 
-router.post('/users/invite', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/invite', requireAuth, requireRole('owner'), async (req, res) => {
   const { tenantId, userId: inviterId } = req.user!;
-  const { email, role = 'member', first_name, last_name, password } = req.body as {
+  const { email, role = 'viewer', first_name, last_name, password } = req.body as {
     email?: string;
     role?: string;
     first_name?: string;
@@ -206,7 +206,7 @@ router.post('/users/invite', requireAuth, requireRole('admin'), async (req, res)
   }
 });
 
-router.patch('/users/:id/role', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/users/:id/role', requireAuth, requireRole('owner'), async (req, res) => {
   const { tenantId, userId: requestingUserId } = req.user!;
   const { id } = req.params;
   const { role } = req.body as { role?: string };

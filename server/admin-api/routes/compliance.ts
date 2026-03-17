@@ -18,7 +18,7 @@ import { listApiKeys } from '../../../platform/rbac/ApiKeyService';
 const router = Router();
 const logger = createLogger('COMPLIANCE');
 
-router.get('/compliance/audit-log/export', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/compliance/audit-log/export', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const action = req.query.action as string | undefined;
   const since = req.query.since as string | undefined;
@@ -113,7 +113,7 @@ router.get('/compliance/audit-log/export', requireAuth, requireRole('admin'), as
   }
 });
 
-router.get('/compliance/encryption-status', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/compliance/encryption-status', requireAuth, requireRole('manager'), async (req, res) => {
   try {
     const status = await getEncryptionStatus(req.user!.tenantId);
     return res.json(status);
@@ -171,7 +171,7 @@ router.post('/compliance/encryption/rotate', requireAuth, requireRole('owner'), 
   }
 });
 
-router.get('/compliance/tenant-isolation', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/compliance/tenant-isolation', requireAuth, requireRole('manager'), async (req, res) => {
   try {
     const results = await runAllIsolationTests(req.user!.tenantId);
     return res.json(results);
@@ -181,7 +181,7 @@ router.get('/compliance/tenant-isolation', requireAuth, requireRole('admin'), as
   }
 });
 
-router.get('/compliance/roles', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/compliance/roles', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -321,7 +321,7 @@ router.delete('/compliance/roles/:userId', requireAuth, requireRole('owner'), as
   }
 });
 
-router.get('/compliance/soc2-checklist', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/compliance/soc2-checklist', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
 
   try {
@@ -540,7 +540,7 @@ router.post('/compliance/gdpr/erase', requireAuth, requireRole('owner'), async (
   }
 });
 
-router.get('/compliance/gdpr/requests', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/compliance/gdpr/requests', requireAuth, requireRole('manager'), async (req, res) => {
   try {
     const requests = await listGdprRequests(req.user!.tenantId);
     return res.json({ requests });

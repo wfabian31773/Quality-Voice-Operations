@@ -90,7 +90,7 @@ router.get('/tool-executions/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/tool-executions/:id/replay', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/tool-executions/:id/replay', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   try {

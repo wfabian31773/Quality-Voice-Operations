@@ -70,7 +70,7 @@ router.get('/autopilot/recommendations', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/autopilot/recommendations/:id/approve', requireAuth, requireRole('member'), async (req, res) => {
+router.post('/autopilot/recommendations/:id/approve', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId, userId, role } = req.user!;
   const { id } = req.params;
 
@@ -88,7 +88,7 @@ router.post('/autopilot/recommendations/:id/approve', requireAuth, requireRole('
   }
 });
 
-router.post('/autopilot/recommendations/:id/reject', requireAuth, requireRole('member'), async (req, res) => {
+router.post('/autopilot/recommendations/:id/reject', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId, userId, role } = req.user!;
   const { id } = req.params;
   const { reason } = req.body;
@@ -117,7 +117,7 @@ router.post('/autopilot/recommendations/:id/dismiss', requireAuth, async (req, r
   }
 });
 
-router.post('/autopilot/recommendations/:id/execute', requireAuth, requireRole('member'), async (req, res) => {
+router.post('/autopilot/recommendations/:id/execute', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId, userId, role } = req.user!;
   const { id } = req.params;
 
@@ -153,7 +153,7 @@ router.get('/autopilot/actions', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/autopilot/actions/:id/rollback', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/autopilot/actions/:id/rollback', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
 
@@ -178,7 +178,7 @@ router.get('/autopilot/policies', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/autopilot/policies', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/autopilot/policies', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { name, riskTier, actionType, requiresApproval, approvalRole, autoExecute, description } = req.body;
 
@@ -237,7 +237,7 @@ router.get('/autopilot/runs', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/autopilot/scan', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/autopilot/scan', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
 
   try {

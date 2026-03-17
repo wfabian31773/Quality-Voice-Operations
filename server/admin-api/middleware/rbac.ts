@@ -7,33 +7,40 @@ export type TenantRole =
   | 'agent_developer'
   | 'support_reviewer';
 
-export type SimpleRole = 'member' | 'admin' | 'owner';
+export type SimpleRole = 'viewer' | 'operator' | 'manager' | 'owner';
 
 const ROLE_HIERARCHY: Record<string, number> = {
   support_reviewer: 1,
-  member: 1,
+  viewer: 1,
   agent_developer: 2,
-  billing_admin: 2,
-  operations_manager: 2,
-  admin: 2,
-  tenant_owner: 3,
-  owner: 3,
+  operator: 2,
+  billing_admin: 3,
+  operations_manager: 3,
+  manager: 3,
+  tenant_owner: 4,
+  owner: 4,
 };
 
 const SIMPLE_TO_DB: Record<SimpleRole, TenantRole> = {
-  member: 'support_reviewer',
-  admin: 'operations_manager',
+  viewer: 'support_reviewer',
+  operator: 'agent_developer',
+  manager: 'operations_manager',
   owner: 'tenant_owner',
 };
 
 export function dbRoleToSimple(dbRole: string): SimpleRole {
   if (dbRole === 'tenant_owner') return 'owner';
-  if (['operations_manager', 'billing_admin', 'agent_developer'].includes(dbRole)) return 'admin';
-  return 'member';
+  if (dbRole === 'operations_manager' || dbRole === 'billing_admin') return 'manager';
+  if (dbRole === 'agent_developer') return 'operator';
+  return 'viewer';
 }
 
 export function simpleToDatabaseRole(simple: SimpleRole): TenantRole {
   return SIMPLE_TO_DB[simple];
+}
+
+export function getRoleLevel(role: string): number {
+  return ROLE_HIERARCHY[role] ?? 0;
 }
 
 export function requirePlatformAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -60,7 +67,7 @@ export function requireRole(minimumRole: SimpleRole) {
 
     if (userLevel < requiredLevel) {
       res.status(403).json({
-        error: `Insufficient permissions. Required: ${minimumRole}, current: ${req.user.role}`,
+        error: `Insufficient permissions. Required: ${minimumRole}, current: ${dbRoleToSimple(req.user.role)}`,
       });
       return;
     }

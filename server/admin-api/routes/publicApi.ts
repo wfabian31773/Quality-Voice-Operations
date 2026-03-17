@@ -26,6 +26,6 @@ router.get('/api/v1/calls', apiKeyAuth, publicApiLimiter, requireApiKeyPermissio
 router.get('/api/v1/calls/:id', apiKeyAuth, publicApiLimiter, requireApiKeyPermission('read-only'), getCallHandler);
 router.get('/api/v1/campaigns', apiKeyAuth, publicApiLimiter, requireApiKeyPermission('read-only'), listCampaignsHandler);
 router.get('/api/v1/campaigns/:id/analytics', apiKeyAuth, publicApiLimiter, requireApiKeyPermission('read-only'), getCampaignMetricsHandler);
-router.post('/api/v1/campaigns/:id/contacts', apiKeyAuth, publicApiLimiter, requireApiKeyPermission('write'), requireRole('admin'), addContactsHandler);
+router.post('/api/v1/campaigns/:id/contacts', apiKeyAuth, publicApiLimiter, requireApiKeyPermission('write'), requireRole('manager'), addContactsHandler);
 
 export default router;

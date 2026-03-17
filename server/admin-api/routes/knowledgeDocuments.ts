@@ -94,7 +94,7 @@ router.get('/knowledge-documents/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/knowledge-documents/upload', requireAuth, requireRole('admin'), upload.single('file'), async (req, res) => {
+router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), upload.single('file'), async (req, res) => {
   const { tenantId } = req.user!;
   const file = req.file;
 
@@ -144,7 +144,7 @@ router.post('/knowledge-documents/upload', requireAuth, requireRole('admin'), up
   }
 });
 
-router.post('/knowledge-documents/url', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/knowledge-documents/url', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { url, title, category } = req.body as { url?: string; title?: string; category?: string };
 
@@ -213,7 +213,7 @@ router.post('/knowledge-documents/url', requireAuth, requireRole('admin'), async
   }
 });
 
-router.post('/knowledge-documents/text', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/knowledge-documents/text', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { title, content, category, source_type } = req.body as {
     title?: string;
@@ -268,7 +268,7 @@ router.post('/knowledge-documents/text', requireAuth, requireRole('admin'), asyn
   }
 });
 
-router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
@@ -362,7 +362,7 @@ router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('admin'
   }
 });
 
-router.delete('/knowledge-documents/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/knowledge-documents/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();

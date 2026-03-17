@@ -74,7 +74,7 @@ router.get('/simulations/scenarios/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/simulations/scenarios', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/simulations/scenarios', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
 
@@ -112,7 +112,7 @@ router.post('/simulations/scenarios', requireAuth, requireRole('admin'), async (
   }
 });
 
-router.patch('/simulations/scenarios/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/simulations/scenarios/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
 
@@ -146,7 +146,7 @@ router.patch('/simulations/scenarios/:id', requireAuth, requireRole('admin'), as
   }
 });
 
-router.delete('/simulations/scenarios/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/simulations/scenarios/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   try {
     const deleted = await deleteScenario(tenantId, req.params.id);
@@ -186,7 +186,7 @@ router.get('/simulations/runs/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/simulations/runs', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/simulations/runs', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
 

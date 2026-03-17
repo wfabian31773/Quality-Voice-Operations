@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Trash2, Plug, X } from 'lucide-react';
+import { useRole } from '../lib/useRole';
 
 interface Connector {
   integrationId: string;
@@ -155,6 +156,7 @@ function AddConnectorModal({ onClose }: { onClose: () => void }) {
 export default function Connectors() {
   const [showAdd, setShowAdd] = useState(false);
   const queryClient = useQueryClient();
+  const { isManager } = useRole();
 
   const { data, isLoading } = useQuery({
     queryKey: ['connectors'],
@@ -175,10 +177,12 @@ export default function Connectors() {
           <h1 className="text-2xl font-bold text-text-primary">Connectors</h1>
           <p className="text-sm text-text-secondary mt-1">Integrate external services with your voice platform</p>
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-          <Plus className="h-4 w-4" /> Add Connector
-        </button>
+        {isManager && (
+          <button onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+            <Plus className="h-4 w-4" /> Add Connector
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -201,12 +205,14 @@ export default function Connectors() {
                   {c.isEnabled ? 'Active' : 'Disabled'}
                 </span>
               </div>
-              <div className="flex justify-end pt-3 border-t border-border">
-                <button onClick={() => { if (confirm('Delete this connector?')) deleteMut.mutate(c.integrationId); }}
-                  className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </button>
-              </div>
+              {isManager && (
+                <div className="flex justify-end pt-3 border-t border-border">
+                  <button onClick={() => { if (confirm('Delete this connector?')) deleteMut.mutate(c.integrationId); }}
+                    className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

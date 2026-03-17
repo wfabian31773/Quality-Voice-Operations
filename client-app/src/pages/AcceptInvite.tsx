@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api, setToken } from '../lib/api';
+import { dbRoleToSimple, ROLE_LABELS } from '../lib/useRole';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 interface InvitationInfo {
@@ -121,7 +122,7 @@ export default function AcceptInvite() {
           <div className="bg-surface border border-border rounded-xl p-6 shadow-sm">
             <p className="text-sm text-text-secondary mb-4">
               You've been invited to join <strong>{invitation.tenantName}</strong> as a{' '}
-              <strong>{invitation.role}</strong>.
+              <strong>{ROLE_LABELS[dbRoleToSimple(invitation.role)] ?? invitation.role}</strong>.
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">

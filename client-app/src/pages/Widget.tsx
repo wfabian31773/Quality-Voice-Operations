@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { hasMinRole } from '../lib/useRole';
 import {
   MessageSquare, Mic, Copy, Check, Plus, Trash2, Eye, EyeOff,
   Save, AlertCircle, CheckCircle, RefreshCw, Code, Palette, Shield, Gauge,
@@ -40,12 +41,10 @@ const LEAD_FIELD_OPTIONS = [
   { value: 'phone', label: 'Phone' },
 ];
 
-const ADMIN_ROLES = ['tenant_owner', 'operations_manager', 'billing_admin', 'agent_developer'];
-
 export default function Widget() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = ADMIN_ROLES.includes(user?.role ?? '');
+  const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const [saved, setSaved] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);

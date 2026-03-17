@@ -139,7 +139,7 @@ router.get('/campaigns/types', requireAuth, (_req, res) => {
   return res.json({ types });
 });
 
-router.post('/campaigns', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/campaigns', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { agentId, name, type, config, scheduledAt } = req.body as {
     agentId?: string;
@@ -191,7 +191,7 @@ router.post('/campaigns', requireAuth, requireRole('admin'), async (req, res) =>
   }
 });
 
-router.get('/campaigns/dnc', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/campaigns/dnc', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 200);
   const page = Math.max(parseInt(String(req.query.page ?? '1'), 10), 1);
@@ -206,7 +206,7 @@ router.get('/campaigns/dnc', requireAuth, requireRole('admin'), async (req, res)
   }
 });
 
-router.post('/campaigns/dnc', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/campaigns/dnc', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { phone, reason } = req.body as { phone?: string; reason?: string };
 
@@ -228,7 +228,7 @@ router.post('/campaigns/dnc', requireAuth, requireRole('admin'), async (req, res
   }
 });
 
-router.delete('/campaigns/dnc', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/campaigns/dnc', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { phone } = req.body as { phone?: string };
 
@@ -263,7 +263,7 @@ router.get('/campaigns/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/campaigns/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const { name, status, config, scheduledAt } = req.body as {
@@ -313,7 +313,7 @@ router.patch('/campaigns/:id', requireAuth, requireRole('admin'), async (req, re
   }
 });
 
-router.delete('/campaigns/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/campaigns/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
 
@@ -417,9 +417,9 @@ export const addContactsHandler: import('express').RequestHandler = async (req, 
   }
 };
 
-router.post('/campaigns/:id/contacts', requireAuth, requireRole('admin'), addContactsHandler);
+router.post('/campaigns/:id/contacts', requireAuth, requireRole('manager'), addContactsHandler);
 
-router.get('/campaigns/:id/contacts', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/campaigns/:id/contacts', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const { limit, offset } = paginate(req);
@@ -447,7 +447,7 @@ router.get('/campaigns/:id/type-metrics', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/campaigns/:id/contacts/:contactId/disposition', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/campaigns/:id/contacts/:contactId/disposition', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id: campaignId, contactId } = req.params;
   const { disposition } = req.body as { disposition?: string };

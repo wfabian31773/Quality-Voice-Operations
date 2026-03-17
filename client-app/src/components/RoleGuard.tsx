@@ -1,11 +1,16 @@
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../lib/auth';
+import { useRole, type SimpleRole } from '../lib/useRole';
+import AccessDenied from './AccessDenied';
 
-export default function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
-  const { user } = useAuth();
+interface RoleGuardProps {
+  minRole: SimpleRole;
+  children: React.ReactNode;
+}
 
-  if (!user || !allowedRoles.includes(user.role ?? '')) {
-    return <Navigate to="/dashboard" replace />;
+export default function RoleGuard({ minRole, children }: RoleGuardProps) {
+  const { hasMinRole } = useRole();
+
+  if (!hasMinRole(minRole)) {
+    return <AccessDenied />;
   }
 
   return <>{children}</>;

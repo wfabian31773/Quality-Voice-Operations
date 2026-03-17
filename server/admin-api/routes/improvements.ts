@@ -16,7 +16,7 @@ import { createLogger } from '../../../platform/core/logger';
 const router = Router();
 const logger = createLogger('ADMIN_IMPROVEMENTS');
 
-router.post('/improvements/analyze', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/improvements/analyze', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { agentId, callSessionId } = req.body as { agentId?: string; callSessionId?: string };
 
@@ -38,7 +38,7 @@ router.post('/improvements/analyze', requireAuth, requireRole('admin'), async (r
   }
 });
 
-router.get('/improvements/suggestions', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/improvements/suggestions', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const agentId = req.query.agentId as string | undefined;
   const status = req.query.status as string | undefined;
@@ -56,7 +56,7 @@ router.get('/improvements/suggestions', requireAuth, requireRole('admin'), async
   }
 });
 
-router.get('/improvements/suggestions/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/improvements/suggestions/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
 
@@ -72,7 +72,7 @@ router.get('/improvements/suggestions/:id', requireAuth, requireRole('admin'), a
   }
 });
 
-router.post('/improvements/suggestions/:id/accept', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/improvements/suggestions/:id/accept', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
 
@@ -88,7 +88,7 @@ router.post('/improvements/suggestions/:id/accept', requireAuth, requireRole('ad
   }
 });
 
-router.post('/improvements/suggestions/:id/dismiss', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/improvements/suggestions/:id/dismiss', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
 
@@ -104,7 +104,7 @@ router.post('/improvements/suggestions/:id/dismiss', requireAuth, requireRole('a
   }
 });
 
-router.get('/improvements/velocity', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/improvements/velocity', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const agentId = req.query.agentId as string | undefined;
   const daysRaw = parseInt(String(req.query.days ?? '90'), 10);
@@ -119,7 +119,7 @@ router.get('/improvements/velocity', requireAuth, requireRole('admin'), async (r
   }
 });
 
-router.get('/improvements/categories', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/improvements/categories', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const agentId = req.query.agentId as string | undefined;
   const daysRaw = parseInt(String(req.query.days ?? '90'), 10);

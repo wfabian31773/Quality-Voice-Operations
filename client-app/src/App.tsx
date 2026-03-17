@@ -26,6 +26,7 @@ import Marketplace from './pages/Marketplace';
 import DeveloperPortal from './pages/DeveloperPortal';
 import PlatformAdmin from './pages/PlatformAdmin';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
+import RoleGuard from './components/RoleGuard';
 import Operations from './pages/Operations';
 import Insights from './pages/Insights';
 import Workforce from './pages/Workforce';
@@ -65,7 +66,7 @@ import ConversionFunnel from './pages/ConversionFunnel';
 import Workflows from './pages/Workflows';
 import RoleGuard from './components/RoleGuard';
 
-const SETTINGS_TABS = ['general', 'security', 'api-keys'];
+const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys'];
 
 function SettingsRedirect() {
   const [searchParams] = useSearchParams();
@@ -148,6 +149,7 @@ export default function App() {
         <Route path="/revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="/settings" element={<SettingsRedirect />} />
         <Route path="/settings/general" element={<Settings />} />
+        <Route path="/settings/roles" element={<Settings />} />
         <Route path="/settings/security" element={<Settings />} />
         <Route path="/settings/api-keys" element={<Settings />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
@@ -167,8 +169,8 @@ export default function App() {
         <Route path="/marketplace/installed" element={<Marketplace />} />
         <Route path="/marketplace/:id" element={<Marketplace />} />
         <Route path="/developer" element={<DeveloperPortal />} />
-        <Route path="/audit-log" element={<AuditLog />} />
-        <Route path="/compliance" element={<Compliance />} />
+        <Route path="/audit-log" element={<RoleGuard minRole="manager"><AuditLog /></RoleGuard>} />
+        <Route path="/compliance" element={<RoleGuard minRole="manager"><Compliance /></RoleGuard>} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/evolution" element={<PlatformAdminGuard><EvolutionEngine /></PlatformAdminGuard>} />

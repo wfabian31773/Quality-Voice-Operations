@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
+import { useRole } from '../lib/useRole';
 
 interface Agent {
   id: string;
@@ -325,6 +326,7 @@ export default function Agents() {
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isManager } = useRole();
   const { data, isLoading } = useQuery({
     queryKey: ['agents'],
     queryFn: () => api.get<{ agents: Agent[]; total: number }>('/agents?limit=100'),
@@ -344,17 +346,19 @@ export default function Agents() {
           <h1 className="text-2xl font-bold text-text-primary">Agents</h1>
           <p className="text-sm text-text-secondary mt-1">Manage your AI voice agents</p>
         </div>
-        <TooltipWalkthrough
-          tooltipKey="agents-create"
-          title="Create Your First Agent"
-          description="Start by creating an AI voice agent. Choose a template that matches your business type, then customize the greeting, tools, and escalation rules."
-          position="left"
-        >
-          <button onClick={() => setEditingId('new')}
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-            <Plus className="h-4 w-4" /> New Agent
-          </button>
-        </TooltipWalkthrough>
+        {isManager && (
+          <TooltipWalkthrough
+            tooltipKey="agents-create"
+            title="Create Your First Agent"
+            description="Start by creating an AI voice agent. Choose a template that matches your business type, then customize the greeting, tools, and escalation rules."
+            position="left"
+          >
+            <button onClick={() => setEditingId('new')}
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+              <Plus className="h-4 w-4" /> New Agent
+            </button>
+          </TooltipWalkthrough>
+        )}
       </div>
 
       {isLoading ? (
@@ -380,18 +384,20 @@ export default function Agents() {
               {agent.system_prompt && (
                 <p className="text-xs text-text-secondary line-clamp-2 mb-4">{agent.system_prompt}</p>
               )}
-              <div className="flex items-center gap-2 pt-2 border-t border-border">
-                <button onClick={() => navigate(`/agents/${agent.id}/builder`)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
-                <button onClick={() => setEditingId(agent.id)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
-                  <Workflow className="h-3.5 w-3.5" /> Quick Settings
-                </button>
-                <button onClick={() => { if (confirm('Delete this agent?')) deleteMut.mutate(agent.id); }}
-                  className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition ml-auto">
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </button>
-              </div>
+              {isManager && (
+                <div className="flex items-center gap-2 pt-2 border-t border-border">
+                  <button onClick={() => navigate(`/agents/${agent.id}/builder`)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  <button onClick={() => setEditingId(agent.id)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
+                    <Workflow className="h-3.5 w-3.5" /> Quick Settings
+                  </button>
+                  <button onClick={() => { if (confirm('Delete this agent?')) deleteMut.mutate(agent.id); }}
+                    className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition ml-auto">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

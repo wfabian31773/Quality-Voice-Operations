@@ -49,6 +49,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
       throw new Error('Account setup incomplete');
     }
+    if (res.status === 403) {
+      const msg = body.error || 'Insufficient permissions';
+      const err = new Error(msg);
+      (err as Record<string, unknown>).status = 403;
+      throw err;
+    }
     throw new Error(body.error || body.message || `Request failed: ${res.status}`);
   }
 

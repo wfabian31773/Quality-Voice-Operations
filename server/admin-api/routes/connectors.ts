@@ -38,7 +38,7 @@ router.get('/connectors', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/connectors', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/connectors', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { connectorType, provider, name, credentials, isEnabled = true } = req.body as {
     connectorType?: string;
@@ -87,7 +87,7 @@ router.post('/connectors', requireAuth, requireRole('admin'), async (req, res) =
   }
 });
 
-router.patch('/connectors/:integrationId', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/connectors/:integrationId', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { integrationId } = req.params;
   const { credentials, isEnabled, name } = req.body as {
@@ -117,7 +117,7 @@ router.patch('/connectors/:integrationId', requireAuth, requireRole('admin'), as
   }
 });
 
-router.delete('/connectors/:integrationId', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/connectors/:integrationId', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { integrationId } = req.params;
 

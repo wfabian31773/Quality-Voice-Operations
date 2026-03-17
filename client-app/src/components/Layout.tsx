@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate, Navigate, useLocation } from 'react-route
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
+import { hasMinRole } from '../lib/useRole';
 import {
   LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
@@ -15,9 +16,8 @@ interface NavItem {
   to: string;
   icon: typeof LayoutDashboard;
   label: string;
-  adminOnly?: boolean;
+  minRole?: 'viewer' | 'operator' | 'manager' | 'owner';
   platformAdminOnly?: boolean;
-  allowedRoles?: string[];
 }
 
 const links: NavItem[] = [
@@ -25,7 +25,7 @@ const links: NavItem[] = [
   { to: '/command-center', icon: Monitor, label: 'Command Center' },
   { to: '/operations', icon: Radio, label: 'Operations' },
   { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/workflows', icon: Activity, label: 'Workflows', allowedRoles: ['tenant_owner', 'operations_manager'] },
+  { to: '/workflows', icon: Activity, label: 'Workflows', minRole: 'manager' },
   { to: '/workforce', icon: Network, label: 'AI Workforce' },
   { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
   { to: '/calls', icon: PhoneCall, label: 'Call History' },
@@ -53,8 +53,8 @@ const links: NavItem[] = [
   { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
   { to: '/developer', icon: Code2, label: 'Developer Portal' },
   { to: '/settings', icon: Settings2, label: 'Settings' },
-  { to: '/compliance', icon: Shield, label: 'Security & Compliance', adminOnly: true },
-  { to: '/audit-log', icon: Shield, label: 'Audit Log', adminOnly: true },
+  { to: '/compliance', icon: Shield, label: 'Security & Compliance', minRole: 'manager' },
+  { to: '/audit-log', icon: Shield, label: 'Audit Log', minRole: 'manager' },
   { to: '/evolution', icon: Cpu, label: 'Evolution Engine', platformAdminOnly: true },
   { to: '/platform-admin', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },
 ];
@@ -132,15 +132,7 @@ export default function Layout() {
         {links
           .filter((link) => {
             if (link.platformAdminOnly && !user?.isPlatformAdmin) return false;
-            if (link.allowedRoles) {
-              const r = user?.role ?? '';
-              if (!link.allowedRoles.includes(r)) return false;
-            }
-            if (link.adminOnly) {
-              const r = user?.role ?? '';
-              const isAdmin = ['tenant_owner', 'operations_manager', 'billing_admin', 'agent_developer'].includes(r);
-              if (!isAdmin) return false;
-            }
+            if (link.minRole && !hasMinRole(user?.role ?? '', link.minRole)) return false;
             return true;
           })
           .map((link) => (

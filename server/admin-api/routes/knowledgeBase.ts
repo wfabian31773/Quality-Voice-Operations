@@ -96,7 +96,7 @@ router.get('/knowledge-articles/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/knowledge-articles', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/knowledge-articles', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
   const { title, content, category, metadata = {}, status = 'active' } = body;
@@ -140,7 +140,7 @@ router.post('/knowledge-articles', requireAuth, requireRole('admin'), async (req
   }
 });
 
-router.patch('/knowledge-articles/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/knowledge-articles/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
@@ -211,7 +211,7 @@ router.patch('/knowledge-articles/:id', requireAuth, requireRole('admin'), async
   }
 });
 
-router.delete('/knowledge-articles/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/knowledge-articles/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();

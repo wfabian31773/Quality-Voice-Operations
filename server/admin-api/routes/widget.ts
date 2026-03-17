@@ -28,7 +28,7 @@ router.get('/widget/config', requireAuth, async (req, res) => {
   }
 });
 
-router.put('/widget/config', requireAuth, requireRole('admin'), async (req, res) => {
+router.put('/widget/config', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
 
@@ -57,7 +57,7 @@ router.put('/widget/config', requireAuth, requireRole('admin'), async (req, res)
   }
 });
 
-router.get('/widget/tokens', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/widget/tokens', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   try {
     const tokens = await listWidgetTokens(tenantId);
@@ -68,7 +68,7 @@ router.get('/widget/tokens', requireAuth, requireRole('admin'), async (req, res)
   }
 });
 
-router.post('/widget/tokens', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/widget/tokens', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { label } = req.body as { label?: string };
 
@@ -81,7 +81,7 @@ router.post('/widget/tokens', requireAuth, requireRole('admin'), async (req, res
   }
 });
 
-router.delete('/widget/tokens/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/widget/tokens/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
 

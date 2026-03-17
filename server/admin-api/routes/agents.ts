@@ -92,7 +92,7 @@ router.get('/agents', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/agents', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
   const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-4o-realtime-preview',
@@ -161,7 +161,7 @@ router.get('/agents/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/agents/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
@@ -254,7 +254,7 @@ router.patch('/agents/:id', requireAuth, requireRole('admin'), async (req, res) 
   }
 });
 
-router.delete('/agents/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.delete('/agents/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
@@ -318,7 +318,7 @@ router.get('/agents/:id/prompt-versions', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/agents/:id/prompt-versions/:version/restore', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/agents/:id/prompt-versions/:version/restore', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id, version } = req.params;
   const pool = getPlatformPool();
@@ -444,7 +444,7 @@ router.get('/agents/:id/tools', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/agents/:id/tools', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/agents/:id/tools', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
@@ -594,7 +594,7 @@ function validateWorkflowDefinition(def: unknown): string | null {
   return null;
 }
 
-router.patch('/agents/:id/workflow', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/agents/:id/workflow', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
@@ -751,7 +751,7 @@ function compileWorkflowToPrompt(wd: Record<string, unknown>): { systemPromptSec
   return { systemPromptSection: lines.join('\n'), workflowTools };
 }
 
-router.post('/agents/:id/publish', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
@@ -865,7 +865,7 @@ router.post('/agents/:id/publish', requireAuth, requireRole('admin'), async (req
   }
 });
 
-router.get('/agents/:id/versions', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/agents/:id/versions', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
@@ -903,7 +903,7 @@ router.get('/agents/:id/versions', requireAuth, requireRole('admin'), async (req
   }
 });
 
-router.post('/agents/:id/rollback', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/agents/:id/rollback', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;

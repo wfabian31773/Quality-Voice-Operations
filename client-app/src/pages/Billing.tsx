@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { hasMinRole } from '../lib/useRole';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
@@ -130,11 +131,9 @@ function UsageBar({ label, icon: Icon, used, limit, color }: {
   );
 }
 
-const ADMIN_ROLES = ['tenant_owner', 'operations_manager', 'billing_admin', 'agent_developer'];
-
 export default function Billing() {
   const { user } = useAuth();
-  const isAdmin = ADMIN_ROLES.includes(user?.role ?? '');
+  const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
 
   const { data: subData, isLoading: subLoading, error: subError } = useQuery({

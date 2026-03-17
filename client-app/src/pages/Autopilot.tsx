@@ -782,9 +782,9 @@ function PoliciesPanel() {
   const policies = policiesData?.policies ?? [];
 
   const defaultPolicies = [
-    { name: 'Auto-execute low-risk alerts', riskTier: 'low', actionType: 'send_alert', requiresApproval: false, approvalRole: 'member', autoExecute: true },
+    { name: 'Auto-execute low-risk alerts', riskTier: 'low', actionType: 'send_alert', requiresApproval: false, approvalRole: 'operator', autoExecute: true },
     { name: 'Manager approval for workflow changes', riskTier: 'medium', actionType: 'enable_workflow', requiresApproval: true, approvalRole: 'manager', autoExecute: false },
-    { name: 'Admin approval for campaign launches', riskTier: 'high', actionType: 'launch_campaign', requiresApproval: true, approvalRole: 'admin', autoExecute: false },
+    { name: 'Owner approval for campaign launches', riskTier: 'high', actionType: 'launch_campaign', requiresApproval: true, approvalRole: 'owner', autoExecute: false },
   ];
 
   return (

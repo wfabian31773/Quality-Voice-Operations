@@ -806,7 +806,7 @@ router.get('/marketplace/templates/:id/compatibility', requireAuth, async (req, 
   }
 });
 
-router.post('/marketplace/templates/:id/install', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/marketplace/templates/:id/install', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const templateId = req.params.id;
   const body = req.body as Record<string, unknown>;
@@ -884,7 +884,7 @@ router.get('/marketplace/installations', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/marketplace/installations/:id', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/marketplace/installations/:id', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const installationId = req.params.id;
   const body = req.body as Record<string, unknown>;
@@ -983,7 +983,7 @@ router.get('/marketplace/installations/:id/checklist', requireAuth, async (req, 
   }
 });
 
-router.patch('/marketplace/installations/:id/checklist', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/marketplace/installations/:id/checklist', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const installationId = req.params.id;
   const { stepKey, completed } = req.body as { stepKey?: string; completed?: boolean };
@@ -1061,7 +1061,7 @@ router.get('/marketplace/installations/:id/customization-schema', requireAuth, a
   }
 });
 
-router.patch('/marketplace/installations/:id/customize', requireAuth, requireRole('admin'), async (req, res) => {
+router.patch('/marketplace/installations/:id/customize', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const installationId = req.params.id;
   const body = req.body as Record<string, unknown>;
@@ -1172,7 +1172,7 @@ router.patch('/marketplace/installations/:id/customize', requireAuth, requireRol
   }
 });
 
-router.post('/marketplace/installations/:id/assign-phone', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/marketplace/installations/:id/assign-phone', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const installationId = req.params.id;
   const { phoneNumberId } = req.body as { phoneNumberId?: string };
@@ -1274,7 +1274,7 @@ router.post('/marketplace/installations/:id/assign-phone', requireAuth, requireR
   }
 });
 
-router.post('/marketplace/installations/:id/enable-widget', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/marketplace/installations/:id/enable-widget', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const installationId = req.params.id;
   const pool = getPlatformPool();
@@ -1329,7 +1329,7 @@ router.post('/marketplace/installations/:id/enable-widget', requireAuth, require
   }
 });
 
-router.post('/marketplace/installations/:id/publish-agent', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/marketplace/installations/:id/publish-agent', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const installationId = req.params.id;
   const pool = getPlatformPool();
@@ -1598,7 +1598,7 @@ router.patch('/platform/marketplace/reviews/:reviewId/moderate', requireAuth, re
   }
 });
 
-router.post('/marketplace/templates/:id/purchase', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/marketplace/templates/:id/purchase', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, userId } = req.user!;
   const templateId = req.params.id;
   const { successUrl, cancelUrl } = req.body as { successUrl?: string; cancelUrl?: string };

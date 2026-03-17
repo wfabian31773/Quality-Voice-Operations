@@ -17,7 +17,7 @@ function resolveECCRole(user: AuthenticatedUser): ECCRole {
   return 'customer_success';
 }
 
-router.get('/command-center/workforce', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/workforce', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const eccRole = resolveECCRole(req.user!);
   const pool = getPlatformPool();
@@ -104,7 +104,7 @@ router.get('/command-center/workforce', requireAuth, requireRole('member'), asyn
   }
 });
 
-router.get('/command-center/revenue', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/revenue', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const eccRole = resolveECCRole(req.user!);
   const pool = getPlatformPool();
@@ -186,7 +186,7 @@ router.get('/command-center/revenue', requireAuth, requireRole('member'), async 
   }
 });
 
-router.get('/command-center/autopilot-feed', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/autopilot-feed', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -232,7 +232,7 @@ router.get('/command-center/autopilot-feed', requireAuth, requireRole('member'),
   }
 });
 
-router.get('/command-center/customer-health', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/customer-health', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const eccRole = resolveECCRole(req.user!);
   const pool = getPlatformPool();
@@ -299,7 +299,7 @@ router.get('/command-center/customer-health', requireAuth, requireRole('member')
   }
 });
 
-router.get('/command-center/risk-alerts', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/risk-alerts', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -345,7 +345,7 @@ router.get('/command-center/risk-alerts', requireAuth, requireRole('member'), as
   }
 });
 
-router.get('/command-center/vertical-performance', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/vertical-performance', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const eccRole = resolveECCRole(req.user!);
   const pool = getPlatformPool();
@@ -438,7 +438,7 @@ router.get('/command-center/vertical-performance', requireAuth, requireRole('mem
   }
 });
 
-router.get('/command-center/infrastructure', requireAuth, requireRole('admin'), async (req, res) => {
+router.get('/command-center/infrastructure', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const eccRole = resolveECCRole(req.user!);
   const pool = getPlatformPool();
@@ -521,7 +521,7 @@ router.get('/command-center/infrastructure', requireAuth, requireRole('admin'), 
   }
 });
 
-router.get('/command-center/forecast', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/forecast', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -578,7 +578,7 @@ router.get('/command-center/forecast', requireAuth, requireRole('member'), async
   }
 });
 
-router.get('/command-center/global-intelligence', requireAuth, requireRole('member'), async (req, res) => {
+router.get('/command-center/global-intelligence', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const client = await pool.connect();
