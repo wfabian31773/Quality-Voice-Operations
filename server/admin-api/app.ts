@@ -48,6 +48,7 @@ import callDebugRoutes from './routes/callDebug';
 import complianceRoutes from './routes/compliance';
 import caseStudyRoutes from './routes/caseStudies';
 import conversionRoutes from './routes/conversion';
+import workflowRoutes from './routes/workflows';
 
 const app = express();
 
@@ -117,6 +118,7 @@ app.use('/', callDebugRoutes);
 app.use('/', complianceRoutes);
 app.use('/', caseStudyRoutes);
 app.use('/', conversionRoutes);
+app.use('/', workflowRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

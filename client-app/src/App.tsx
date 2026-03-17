@@ -62,6 +62,8 @@ import GuideDetail from './pages/public/GuideDetail';
 import VerticalLanding from './pages/public/VerticalLanding';
 import CaseStudies from './pages/public/CaseStudies';
 import ConversionFunnel from './pages/ConversionFunnel';
+import Workflows from './pages/Workflows';
+import RoleGuard from './components/RoleGuard';
 
 const SETTINGS_TABS = ['general', 'security', 'api-keys'];
 
@@ -172,6 +174,7 @@ export default function App() {
         <Route path="/evolution" element={<PlatformAdminGuard><EvolutionEngine /></PlatformAdminGuard>} />
         <Route path="/platform-admin" element={<PlatformAdminGuard><PlatformAdmin /></PlatformAdminGuard>} />
         <Route path="/conversion-funnel" element={<ConversionFunnel />} />
+        <Route path="/workflows" element={<RoleGuard allowedRoles={['tenant_owner', 'operations_manager']}><Workflows /></RoleGuard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

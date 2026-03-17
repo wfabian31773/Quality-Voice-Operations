@@ -17,6 +17,7 @@ interface NavItem {
   label: string;
   adminOnly?: boolean;
   platformAdminOnly?: boolean;
+  allowedRoles?: string[];
 }
 
 const links: NavItem[] = [
@@ -24,6 +25,7 @@ const links: NavItem[] = [
   { to: '/command-center', icon: Monitor, label: 'Command Center' },
   { to: '/operations', icon: Radio, label: 'Operations' },
   { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/workflows', icon: Activity, label: 'Workflows', allowedRoles: ['tenant_owner', 'operations_manager'] },
   { to: '/workforce', icon: Network, label: 'AI Workforce' },
   { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
   { to: '/calls', icon: PhoneCall, label: 'Call History' },
@@ -130,6 +132,10 @@ export default function Layout() {
         {links
           .filter((link) => {
             if (link.platformAdminOnly && !user?.isPlatformAdmin) return false;
+            if (link.allowedRoles) {
+              const r = user?.role ?? '';
+              if (!link.allowedRoles.includes(r)) return false;
+            }
             if (link.adminOnly) {
               const r = user?.role ?? '';
               const isAdmin = ['tenant_owner', 'operations_manager', 'billing_admin', 'agent_developer'].includes(r);

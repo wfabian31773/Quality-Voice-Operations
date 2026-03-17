@@ -169,7 +169,7 @@ router.patch('/agents/:id', requireAuth, requireRole('admin'), async (req, res) 
   const validationError = validateAgentInput(body, false);
   if (validationError) return res.status(400).json({ error: validationError });
 
-  const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition'];
+  const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition', 'workflow_id'];
   const updates: string[] = ['updated_at = NOW()'];
   const values: unknown[] = [id, tenantId];
 
@@ -191,6 +191,17 @@ router.patch('/agents/:id', requireAuth, requireRole('admin'), async (req, res) 
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
+
+    if ('workflow_id' in body && body.workflow_id !== null && body.workflow_id !== undefined) {
+      const { rows: wfRows } = await client.query(
+        `SELECT id FROM workflows WHERE id = $1 AND tenant_id = $2`,
+        [body.workflow_id, tenantId],
+      );
+      if (wfRows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Referenced workflow not found in this tenant' });
+      }
+    }
 
     if ('system_prompt' in body) {
       const { rows: currentRows } = await client.query(
@@ -587,7 +598,7 @@ router.patch('/agents/:id/workflow', requireAuth, requireRole('admin'), async (r
   const { tenantId } = req.user!;
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
-  const { workflow_definition } = body;
+  const { workflow_definition, workflow_id } = body;
 
   const validationError = validateWorkflowDefinition(workflow_definition);
   if (validationError) {
@@ -601,10 +612,21 @@ router.patch('/agents/:id/workflow', requireAuth, requireRole('admin'), async (r
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
+    if (workflow_id !== undefined && workflow_id !== null) {
+      const { rows: wfRows } = await client.query(
+        `SELECT id FROM workflows WHERE id = $1 AND tenant_id = $2`,
+        [workflow_id, tenantId],
+      );
+      if (wfRows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Referenced workflow not found' });
+      }
+    }
+
     const { rows } = await client.query(
-      `UPDATE agents SET workflow_definition = $1, updated_at = NOW()
-       WHERE id = $2 AND tenant_id = $3 RETURNING *`,
-      [JSON.stringify(workflow_definition), id, tenantId],
+      `UPDATE agents SET workflow_definition = $1, workflow_id = $2, updated_at = NOW()
+       WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+      [JSON.stringify(workflow_definition), workflow_id ?? null, id, tenantId],
     );
     await client.query('COMMIT');
 

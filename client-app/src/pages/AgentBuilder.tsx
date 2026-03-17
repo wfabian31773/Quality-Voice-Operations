@@ -721,6 +721,8 @@ function VoiceConfigPanel({
   language,
   tone,
   speakingRate,
+  workflowId,
+  workflows,
   onChange,
   onClose,
 }: {
@@ -732,6 +734,8 @@ function VoiceConfigPanel({
   language: string;
   tone: string;
   speakingRate: number;
+  workflowId: string;
+  workflows: { id: string; name: string; description: string | null }[];
   onChange: (key: string, value: string | number) => void;
   onClose: () => void;
 }) {
@@ -829,6 +833,22 @@ function VoiceConfigPanel({
           />
           <p className="text-[10px] text-text-muted mt-1">
             On publish, the workflow steps will be appended to this prompt automatically.
+          </p>
+        </div>
+        <div className="pt-2 border-t border-border">
+          <label className="block text-xs font-medium text-text-secondary mb-1">Assigned Workflow</label>
+          <select
+            value={workflowId}
+            onChange={(e) => onChange('workflow_id', e.target.value)}
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+          >
+            <option value="">None</option>
+            {workflows.map((w) => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-text-muted mt-1">
+            Link a saved workflow to this agent for call routing and escalation logic.
           </p>
         </div>
       </div>
@@ -1239,6 +1259,13 @@ function AgentBuilderInner() {
     language: 'English',
     tone: 'Professional',
     speakingRate: 1.0,
+    workflow_id: '' as string,
+  });
+
+  const { data: workflowsData } = useQuery({
+    queryKey: ['workflows'],
+    queryFn: () => api.get<{ workflows: { id: string; name: string; description: string | null; steps: unknown[] }[] }>('/workflows?limit=100').catch(() => ({ workflows: [] })),
+    retry: false,
   });
 
   const { data: agentData, isLoading } = useQuery({
@@ -1267,6 +1294,7 @@ function AgentBuilderInner() {
         language: (wdSettings?.language as string) || 'English',
         tone: (wdSettings?.tone as string) || 'Professional',
         speakingRate: (wdSettings?.speakingRate as number) || 1.0,
+        workflow_id: ((a as unknown as Record<string, unknown>).workflow_id as string) || '',
       });
       if (a.workflow_definition) {
         const wd = a.workflow_definition as unknown as Record<string, unknown>;
@@ -1384,7 +1412,13 @@ function AgentBuilderInner() {
         },
       };
 
-      await api.patch(`/agents/${id}/workflow`, { workflow_definition: workflowDef });
+      const payload: Record<string, unknown> = { workflow_definition: workflowDef };
+      if (agentSettings.workflow_id) {
+        payload.workflow_id = agentSettings.workflow_id;
+      } else {
+        payload.workflow_id = null;
+      }
+      await api.patch(`/agents/${id}/workflow`, payload);
     },
     onSuccess: () => {
       setHasChanges(false);
@@ -1625,6 +1659,8 @@ function AgentBuilderInner() {
             language={agentSettings.language}
             tone={agentSettings.tone}
             speakingRate={agentSettings.speakingRate}
+            workflowId={agentSettings.workflow_id}
+            workflows={workflowsData?.workflows ?? []}
             onChange={handleSettingChange}
             onClose={() => setRightPanel('none')}
           />
