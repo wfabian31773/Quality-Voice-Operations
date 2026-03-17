@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import {
-  LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users,
+  LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
   LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
   Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical,
 } from 'lucide-react';
@@ -23,6 +23,7 @@ const links: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/operations', icon: Radio, label: 'Operations' },
   { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/workforce', icon: Network, label: 'AI Workforce' },
   { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
   { to: '/calls', icon: PhoneCall, label: 'Call History' },
   { to: '/connectors', icon: Plug, label: 'Connectors' },

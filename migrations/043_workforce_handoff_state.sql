@@ -1,0 +1,1 @@
+ALTER TYPE call_lifecycle_state ADD VALUE IF NOT EXISTS 'HANDOFF';

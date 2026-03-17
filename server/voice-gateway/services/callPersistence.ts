@@ -18,7 +18,8 @@ type LifecycleState =
   | 'CALL_COMPLETED'
   | 'CALL_FAILED'
   | 'WORKFLOW_FAILED'
-  | 'ESCALATION_FAILED';
+  | 'ESCALATION_FAILED'
+  | 'HANDOFF';
 
 export interface CreateCallSessionParams {
   tenantId: string;
@@ -120,6 +121,7 @@ export async function updateCallState(
     escalationReason: string;
     workflowId: string;
     context: Record<string, unknown>;
+    agentId: string;
   }>,
 ): Promise<void> {
   await withTenant(tenantId, async (client) => {
@@ -142,6 +144,10 @@ export async function updateCallState(
     if (extra?.context) {
       sets.push(`context = $${idx++}`);
       values.push(JSON.stringify(extra.context));
+    }
+    if (extra?.agentId) {
+      sets.push(`agent_id = $${idx++}`);
+      values.push(extra.agentId);
     }
 
     await client.query(

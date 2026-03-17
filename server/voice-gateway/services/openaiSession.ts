@@ -21,6 +21,7 @@ import { isToolDenied, type ToolOverride } from '../../../platform/agent-templat
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { createToolExecution, completeToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { handleDemoToolCall } from './demoToolHandler';
+import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
@@ -53,6 +54,8 @@ export interface SessionContext {
   callerMemory?: CallerMemoryService;
   outboxService?: OutboxService;
   onEscalation?: (callSessionId: string, callSid: string, reason: string) => Promise<void>;
+  onHandoff?: (callSessionId: string, intent: string, conversationContext: string) => Promise<{ success: boolean; message: string; targetAgentConfig?: import('./agentLoader').LoadedAgentConfig; routingInfo?: import('../../../platform/workforce/types').HandoffRoutingInfo }>;
+  onSessionSwapRequired?: (targetAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
   onToolCall?: (name: string, args: unknown, callSessionId: string) => Promise<string>;
   isTrial?: boolean;
   reasoningEngine?: ReasoningEngine;
@@ -72,7 +75,8 @@ function buildToolHandler(
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
     const startTime = Date.now();
 
-    if (ctx.templateKey && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
+    const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent'];
+    if (ctx.templateKey && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName) && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
       const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
       await completeToolExecution({ tenantId, executionId: deniedId, result: { success: false, reason: 'denied' }, status: 'failed', errorMessage: 'Tool denied by template permissions', durationMs: Date.now() - startTime });
@@ -162,6 +166,56 @@ function buildToolHandler(
         const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
         await completeToolExecution({ tenantId, executionId: fgId, result: { success: false, reason: 'safety_gate_error' }, status: 'failed', errorMessage: `Safety gate error: ${String(safetyErr)}`, durationMs: Date.now() - startTime });
         return JSON.stringify({ success: false, message: 'Unable to verify safety policy. Please try again.' });
+      }
+    }
+
+    if (toolName === 'transfer_to_agent' && ctx.onHandoff) {
+      const intent = (args.intent as string) ?? 'general';
+      const context = (args.conversation_summary as string) ?? '';
+      logger.info('Workforce handoff tool invoked', { tenantId, callId: callSessionId, intent });
+      const execId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+      await updateCallState(tenantId, callSessionId, 'HANDOFF');
+      await writeCallEvent(tenantId, callSessionId, 'handoff_start', 'ACTIVE_CONVERSATION', 'HANDOFF', { intent, fromAgent: agentConfig.agentId });
+      try {
+        const handoffResult = await ctx.onHandoff(callSessionId, intent, context);
+        const workforceRouter = new WorkforceRoutingService();
+        if (handoffResult.success && handoffResult.targetAgentConfig && ctx.onSessionSwapRequired) {
+          try {
+            await ctx.onSessionSwapRequired(handoffResult.targetAgentConfig, handoffResult.message);
+            if (handoffResult.routingInfo) {
+              await workforceRouter.recordHandoff(tenantId, { ...handoffResult.routingInfo, reason: `Routed by intent: ${intent}`, duration_ms: Date.now() - startTime, outcome: 'success' });
+              await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION', { agentId: handoffResult.routingInfo.to_agent_id });
+            } else {
+              await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+            }
+            await completeToolExecution({ tenantId, executionId: execId, result: { success: true, message: handoffResult.message }, status: 'success', durationMs: Date.now() - startTime });
+            await writeCallEvent(tenantId, callSessionId, 'handoff_success', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent });
+            return JSON.stringify({ success: true, message: handoffResult.message });
+          } catch (swapErr) {
+            logger.error('Session swap failed after handoff routing', { tenantId, callId: callSessionId, error: String(swapErr) });
+            if (handoffResult.routingInfo) {
+              await workforceRouter.recordHandoff(tenantId, { ...handoffResult.routingInfo, reason: `Session swap failed: ${String(swapErr)}`, duration_ms: Date.now() - startTime, outcome: 'failed' }).catch(() => {});
+            }
+            await completeToolExecution({ tenantId, executionId: execId, result: { success: false }, status: 'failed', errorMessage: `Session swap failed: ${String(swapErr)}`, durationMs: Date.now() - startTime });
+            await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(swapErr) });
+            await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+            return JSON.stringify({ success: false, message: 'Transfer failed. Continuing with current agent.' });
+          }
+        } else if (handoffResult.success) {
+          await completeToolExecution({ tenantId, executionId: execId, result: { success: true, message: handoffResult.message }, status: 'success', durationMs: Date.now() - startTime });
+          await writeCallEvent(tenantId, callSessionId, 'handoff_success', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent });
+          return JSON.stringify({ success: true, message: handoffResult.message });
+        } else {
+          await completeToolExecution({ tenantId, executionId: execId, result: { success: false, message: handoffResult.message }, status: 'failed', durationMs: Date.now() - startTime });
+          await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, reason: handoffResult.message });
+          await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+          return JSON.stringify({ success: false, message: handoffResult.message });
+        }
+      } catch (handoffErr) {
+        await completeToolExecution({ tenantId, executionId: execId, result: { success: false }, status: 'failed', errorMessage: String(handoffErr), durationMs: Date.now() - startTime });
+        await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(handoffErr) });
+        await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+        return JSON.stringify({ success: false, message: 'Handoff failed. Continuing with current agent.' });
       }
     }
 
@@ -472,6 +526,7 @@ export interface RealtimeSessionResult {
   onOpenAIAudio: (handler: (audioEvent: TransportLayerAudio) => void) => void;
   triggerGreeting: () => void;
   sendSystemMessage: (message: string) => void;
+  rebuildForHandoff: (newAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
 }
 
 export async function createRealtimeSession(
@@ -653,182 +708,6 @@ export async function createRealtimeSession(
     };
   }
 
-  session.on('history_added', (item: RealtimeItem) => {
-    const msg = item as RealtimeMessageItem;
-    if (msg.type !== 'message') return;
-
-    let line: string | null = null;
-    if (msg.role === 'user' && msg.content) {
-      for (const c of msg.content) {
-        const text = c.text || c.transcript;
-        if (text) {
-          line = `CALLER: ${text}`;
-
-          let classifiedIntent = 'unknown';
-          let classifiedConfidence: 'high' | 'medium' | 'low' = 'low';
-
-          if (reasoningEngine) {
-            const reasoningClassification = reasoningEngine.classifyIntent(text);
-            classifiedIntent = reasoningClassification.intent;
-            classifiedConfidence = reasoningClassification.confidence;
-          }
-
-          if (ctx.workflowEngine && workflowContext) {
-            workflowContext.turnCount++;
-            workflowContext.transcript.push(text);
-            const legacyClassification = ctx.workflowEngine.classifyIntent(text);
-
-            if (classifiedIntent === 'unknown' && legacyClassification.intent !== 'unknown') {
-              classifiedIntent = legacyClassification.intent;
-              classifiedConfidence = legacyClassification.confidence;
-            }
-
-            const effectiveIntent = classifiedIntent !== 'unknown' ? classifiedIntent : legacyClassification.intent;
-            if (effectiveIntent !== 'unknown') {
-              workflowContext.intent = effectiveIntent as typeof workflowContext.intent;
-              const prevState = workflowContext.state;
-              workflowContext.state = 'intent_classification';
-              ctx.workflowEngine.recordTransition(
-                prevState,
-                'intent_classification',
-                `caller_utterance:${effectiveIntent}`,
-                workflowContext.slots,
-              );
-            }
-          }
-
-          if (reasoningEngine) {
-            try {
-              const reasoningResult = reasoningEngine.processUtterance(
-                text,
-                classifiedIntent,
-                classifiedConfidence,
-              );
-              writeCallEvent(tenantId, callSessionId, 'reasoning_decision', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                turn: reasoningResult.traceEntry.turn,
-                intent: reasoningResult.traceEntry.selectedIntent,
-                confidence: reasoningResult.confidence.overall,
-                confidenceScore: reasoningResult.confidence.numericScore,
-                decision: reasoningResult.action,
-                tool: reasoningResult.toolToExecute,
-                missingSlots: reasoningResult.traceEntry.missingSlots,
-                escalation: reasoningResult.escalation?.trigger,
-              }).catch(() => {});
-
-              if (reasoningResult.action === 'escalate_to_human' && ctx.onEscalation) {
-                const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
-                updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
-                writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
-                  trigger: reasoningResult.escalation?.trigger,
-                  output: reasoningResult.escalation?.output,
-                  reason: escalationReason,
-                }).catch(() => {});
-                ctx.onEscalation(callSessionId, callSid, escalationReason).catch((escErr) => {
-                  slog.error('Reasoning-triggered escalation failed', { error: String(escErr) });
-                });
-              }
-
-              if (reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
-                writeCallEvent(tenantId, callSessionId, 'reasoning_clarification', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                  question: reasoningResult.clarifyingQuestion,
-                  missingSlots: reasoningResult.traceEntry.missingSlots,
-                  fallbackStep: reasoningResult.fallbackStep,
-                }).catch(() => {});
-
-                try {
-                  injectConversationItem(
-                    `[System: The following information is still needed from the caller. Guide the conversation to collect it: "${reasoningResult.clarifyingQuestion}"]`,
-                  );
-                } catch (injectErr) {
-                  slog.error('Failed to inject clarification', { error: String(injectErr) });
-                }
-              }
-
-              if (reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
-                try {
-                  injectConversationItem(
-                    `[System: Continue the conversation. Current step guidance: ${reasoningResult.reasoning}]`,
-                  );
-                } catch (cwErr) {
-                  slog.warn('Failed to inject continue_workflow guidance', { error: String(cwErr) });
-                }
-              }
-
-              if (reasoningResult.action === 'complete_interaction') {
-                writeCallEvent(tenantId, callSessionId, 'reasoning_complete', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                  reason: reasoningResult.reasoning,
-                }).catch(() => {});
-              }
-
-              if (
-                classifiedIntent === 'unknown' &&
-                classifiedConfidence === 'low' &&
-                reasoningResult.action !== 'escalate_to_human'
-              ) {
-                try {
-                  const recovery = reasoningEngine.handlePartialAnswer(text);
-                  if (recovery.recoveryPrompt) {
-                    injectConversationItem(
-                      `[System: The caller's response was unclear. ${recovery.recoveryPrompt}]`,
-                    );
-                  }
-                } catch (recoveryErr) {
-                  slog.warn('Partial answer recovery failed', { error: String(recoveryErr) });
-                }
-              }
-            } catch (reasoningErr) {
-              slog.error('Reasoning engine processing failed', { error: String(reasoningErr) });
-            }
-          }
-          break;
-        }
-      }
-    } else if (msg.role === 'assistant' && msg.content) {
-      for (const c of msg.content) {
-        if (c.text) {
-          line = `AGENT: ${c.text}`;
-
-          if (reasoningEngine) {
-            try {
-              const responseSafety = reasoningEngine.checkResponseSafety(c.text);
-              if (!responseSafety.allowed) {
-                const criticalViolations = responseSafety.violations
-                  .filter((v) => v.severity === 'critical')
-                  .map((v) => v.description);
-                writeCallEvent(tenantId, callSessionId, 'safety_response_blocked', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                  violations: criticalViolations,
-                }).catch(() => {});
-                slog.warn('Safety gate blocked assistant response — cancelling and correcting', {
-                  violations: criticalViolations,
-                });
-                try {
-                  sendRealtimeEvent({ type: 'response.cancel' });
-                } catch (cancelErr) {
-                  slog.warn('Failed to cancel unsafe response', { error: String(cancelErr) });
-                }
-                try {
-                  injectConversationItem(
-                    '[System: CRITICAL SAFETY OVERRIDE. Your previous response contained prohibited advice and has been cancelled. You MUST NOT provide medical diagnoses, legal advice, or financial recommendations. Apologize briefly and redirect the caller to a qualified professional. Offer to help with scheduling or taking a message instead.]',
-                  );
-                } catch (corrErr) {
-                  slog.error('Failed to inject safety correction', { error: String(corrErr) });
-                }
-              }
-            } catch (safetyErr) {
-              slog.warn('Response safety check failed', { error: String(safetyErr) });
-            }
-          }
-
-          break;
-        }
-      }
-    }
-
-    if (line) {
-      lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
-    }
-  });
-
   let silenceTimer: ReturnType<typeof setTimeout> | null = null;
   const SILENCE_THRESHOLD_MS = 15000;
 
@@ -855,40 +734,220 @@ export async function createRealtimeSession(
 
   resetSilenceTimer();
 
-  session.on('history_added', () => {
-    resetSilenceTimer();
-  });
+  const attachSessionListeners = (targetSession: RealtimeSession): void => {
+    targetSession.on('history_added', (item: RealtimeItem) => {
+      const msg = item as RealtimeMessageItem;
+      if (msg.type !== 'message') return;
 
-  session.on('error', (event) => {
-    const errorEvent = event as { error?: unknown; message?: string; code?: string; type?: string };
-    let errorStr: string;
-    try {
-      errorStr = typeof errorEvent.error === 'object' && errorEvent.error !== null
-        ? JSON.stringify(errorEvent.error)
-        : String(errorEvent.error ?? errorEvent.message ?? JSON.stringify(event));
-    } catch {
-      errorStr = String(event);
-    }
-    slog.error('Realtime session error', {
-      error: errorStr,
-      code: errorEvent.code,
-      type: errorEvent.type,
+      resetSilenceTimer();
+
+      let line: string | null = null;
+      if (msg.role === 'user' && msg.content) {
+        for (const c of msg.content) {
+          const text = c.text || c.transcript;
+          if (text) {
+            line = `CALLER: ${text}`;
+
+            let classifiedIntent = 'unknown';
+            let classifiedConfidence: 'high' | 'medium' | 'low' = 'low';
+
+            if (reasoningEngine) {
+              const reasoningClassification = reasoningEngine.classifyIntent(text);
+              classifiedIntent = reasoningClassification.intent;
+              classifiedConfidence = reasoningClassification.confidence;
+            }
+
+            if (ctx.workflowEngine && workflowContext) {
+              workflowContext.turnCount++;
+              workflowContext.transcript.push(text);
+              const legacyClassification = ctx.workflowEngine.classifyIntent(text);
+
+              if (classifiedIntent === 'unknown' && legacyClassification.intent !== 'unknown') {
+                classifiedIntent = legacyClassification.intent;
+                classifiedConfidence = legacyClassification.confidence;
+              }
+
+              const effectiveIntent = classifiedIntent !== 'unknown' ? classifiedIntent : legacyClassification.intent;
+              if (effectiveIntent !== 'unknown') {
+                workflowContext.intent = effectiveIntent as typeof workflowContext.intent;
+                const prevState = workflowContext.state;
+                workflowContext.state = 'intent_classification';
+                ctx.workflowEngine.recordTransition(
+                  prevState,
+                  'intent_classification',
+                  `caller_utterance:${effectiveIntent}`,
+                  workflowContext.slots,
+                );
+              }
+            }
+
+            if (reasoningEngine) {
+              try {
+                const reasoningResult = reasoningEngine.processUtterance(
+                  text,
+                  classifiedIntent,
+                  classifiedConfidence,
+                );
+                writeCallEvent(tenantId, callSessionId, 'reasoning_decision', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                  turn: reasoningResult.traceEntry.turn,
+                  intent: reasoningResult.traceEntry.selectedIntent,
+                  confidence: reasoningResult.confidence.overall,
+                  confidenceScore: reasoningResult.confidence.numericScore,
+                  decision: reasoningResult.action,
+                  tool: reasoningResult.toolToExecute,
+                  missingSlots: reasoningResult.traceEntry.missingSlots,
+                  escalation: reasoningResult.escalation?.trigger,
+                }).catch(() => {});
+
+                if (reasoningResult.action === 'escalate_to_human' && ctx.onEscalation) {
+                  const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
+                  updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
+                  writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
+                    trigger: reasoningResult.escalation?.trigger,
+                    output: reasoningResult.escalation?.output,
+                    reason: escalationReason,
+                  }).catch(() => {});
+                  ctx.onEscalation(callSessionId, callSid, escalationReason).catch((escErr) => {
+                    slog.error('Reasoning-triggered escalation failed', { error: String(escErr) });
+                  });
+                }
+
+                if (reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
+                  writeCallEvent(tenantId, callSessionId, 'reasoning_clarification', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                    question: reasoningResult.clarifyingQuestion,
+                    missingSlots: reasoningResult.traceEntry.missingSlots,
+                    fallbackStep: reasoningResult.fallbackStep,
+                  }).catch(() => {});
+
+                  try {
+                    injectConversationItem(
+                      `[System: The following information is still needed from the caller. Guide the conversation to collect it: "${reasoningResult.clarifyingQuestion}"]`,
+                    );
+                  } catch (injectErr) {
+                    slog.error('Failed to inject clarification', { error: String(injectErr) });
+                  }
+                }
+
+                if (reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
+                  try {
+                    injectConversationItem(
+                      `[System: Continue the conversation. Current step guidance: ${reasoningResult.reasoning}]`,
+                    );
+                  } catch (cwErr) {
+                    slog.warn('Failed to inject continue_workflow guidance', { error: String(cwErr) });
+                  }
+                }
+
+                if (reasoningResult.action === 'complete_interaction') {
+                  writeCallEvent(tenantId, callSessionId, 'reasoning_complete', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                    reason: reasoningResult.reasoning,
+                  }).catch(() => {});
+                }
+
+                if (
+                  classifiedIntent === 'unknown' &&
+                  classifiedConfidence === 'low' &&
+                  reasoningResult.action !== 'escalate_to_human'
+                ) {
+                  try {
+                    const recovery = reasoningEngine.handlePartialAnswer(text);
+                    if (recovery.recoveryPrompt) {
+                      injectConversationItem(
+                        `[System: The caller's response was unclear. ${recovery.recoveryPrompt}]`,
+                      );
+                    }
+                  } catch (recoveryErr) {
+                    slog.warn('Partial answer recovery failed', { error: String(recoveryErr) });
+                  }
+                }
+              } catch (reasoningErr) {
+                slog.error('Reasoning engine processing failed', { error: String(reasoningErr) });
+              }
+            }
+            break;
+          }
+        }
+      } else if (msg.role === 'assistant' && msg.content) {
+        for (const c of msg.content) {
+          if (c.text) {
+            line = `AGENT: ${c.text}`;
+
+            if (reasoningEngine) {
+              try {
+                const responseSafety = reasoningEngine.checkResponseSafety(c.text);
+                if (!responseSafety.allowed) {
+                  const criticalViolations = responseSafety.violations
+                    .filter((v) => v.severity === 'critical')
+                    .map((v) => v.description);
+                  writeCallEvent(tenantId, callSessionId, 'safety_response_blocked', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                    violations: criticalViolations,
+                  }).catch(() => {});
+                  slog.warn('Safety gate blocked assistant response — cancelling and correcting', {
+                    violations: criticalViolations,
+                  });
+                  try {
+                    sendRealtimeEvent({ type: 'response.cancel' });
+                  } catch (cancelErr) {
+                    slog.warn('Failed to cancel unsafe response', { error: String(cancelErr) });
+                  }
+                  try {
+                    injectConversationItem(
+                      '[System: CRITICAL SAFETY OVERRIDE. Your previous response contained prohibited advice and has been cancelled. You MUST NOT provide medical diagnoses, legal advice, or financial recommendations. Apologize briefly and redirect the caller to a qualified professional. Offer to help with scheduling or taking a message instead.]',
+                    );
+                  } catch (corrErr) {
+                    slog.error('Failed to inject safety correction', { error: String(corrErr) });
+                  }
+                }
+              } catch (safetyErr) {
+                slog.warn('Response safety check failed', { error: String(safetyErr) });
+              }
+            }
+
+            break;
+          }
+        }
+      }
+
+      if (line) {
+        lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
+      }
     });
-  });
 
-  session.on('agent_tool_start', (_context, _agent, toolDef) => {
-    const toolInfo = toolDef as { name: string };
-    slog.info('Tool execution started', { tool: toolInfo.name });
-  });
-
-  session.on('agent_tool_end', (_context, _agent, toolDef, result) => {
-    const toolInfo = toolDef as { name: string };
-    const resultStr = result as string;
-    slog.info('Tool execution completed', {
-      tool: toolInfo.name,
-      resultLength: resultStr?.length,
+    targetSession.on('error', (event) => {
+      const errorEvent = event as { error?: unknown; message?: string; code?: string; type?: string };
+      let errorStr: string;
+      try {
+        errorStr = typeof errorEvent.error === 'object' && errorEvent.error !== null
+          ? JSON.stringify(errorEvent.error)
+          : String(errorEvent.error ?? errorEvent.message ?? JSON.stringify(event));
+      } catch {
+        errorStr = String(event);
+      }
+      slog.error('Realtime session error', {
+        error: errorStr,
+        code: errorEvent.code,
+        type: errorEvent.type,
+      });
     });
-  });
+
+    targetSession.on('agent_tool_start', (_context, _agent, toolDef) => {
+      const toolInfo = toolDef as { name: string };
+      slog.info('Tool execution started', { tool: toolInfo.name });
+    });
+
+    targetSession.on('agent_tool_end', (_context, _agent, toolDef, result) => {
+      const toolInfo = toolDef as { name: string };
+      const resultStr = result as string;
+      slog.info('Tool execution completed', {
+        tool: toolInfo.name,
+        resultLength: resultStr?.length,
+      });
+    });
+  };
+
+  attachSessionListeners(session);
+
+  let isHandoffSwap = false;
 
   sessionManager.register({
     callSessionId,
@@ -899,54 +958,67 @@ export async function createRealtimeSession(
     cleanup: async () => {
       if (silenceTimer) clearTimeout(silenceTimer);
       try {
-        await session.close();
+        await activeSession.close();
       } catch {}
       lifecycleCoordinator.handleOpenAiSessionEnd(callSessionId);
     },
   });
 
-  const sessionEmitter = session as unknown as { on(event: string, listener: (...args: unknown[]) => void): void };
-  sessionEmitter.on('close', () => {
-    slog.info('Realtime session closed');
-
-    if (silenceTimer) clearTimeout(silenceTimer);
-
-    if (reasoningEngine) {
-      try {
-        const reasoningSummary = reasoningEngine.getCallSummary();
-        writeCallEvent(tenantId, callSessionId, 'reasoning_trace', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
-          reasoningTrace: reasoningEngine.getTraceEntries(),
-          callSummary: reasoningSummary,
-        }).catch(() => {});
-        slog.info('Reasoning trace persisted', {
-          totalTurns: (reasoningSummary as Record<string, unknown>).totalTurns,
-          escalationCount: (reasoningSummary as Record<string, unknown>).escalationCount,
-        });
-      } catch (traceErr) {
-        slog.error('Failed to persist reasoning trace', { error: String(traceErr) });
+  const attachCloseHandler = (targetSession: RealtimeSession): void => {
+    const emitter = targetSession as unknown as { on(event: string, listener: (...args: unknown[]) => void): void };
+    emitter.on('close', () => {
+      if (isHandoffSwap) {
+        slog.info('Realtime session closed for handoff swap (skipping terminal cleanup)');
+        return;
       }
-    }
 
-    updateCallState(tenantId, callSessionId, 'CALL_COMPLETED').catch(() => {});
-    writeCallEvent(tenantId, callSessionId, 'session_closed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED').catch(() => {});
-    lifecycleCoordinator.handleOpenAiSessionEnd(callSessionId);
-    sessionManager.unregister(callSessionId);
-  });
+      slog.info('Realtime session closed');
+
+      if (silenceTimer) clearTimeout(silenceTimer);
+
+      if (reasoningEngine) {
+        try {
+          const reasoningSummary = reasoningEngine.getCallSummary();
+          writeCallEvent(tenantId, callSessionId, 'reasoning_trace', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
+            reasoningTrace: reasoningEngine.getTraceEntries(),
+            callSummary: reasoningSummary,
+          }).catch(() => {});
+          slog.info('Reasoning trace persisted', {
+            totalTurns: (reasoningSummary as Record<string, unknown>).totalTurns,
+            escalationCount: (reasoningSummary as Record<string, unknown>).escalationCount,
+          });
+        } catch (traceErr) {
+          slog.error('Failed to persist reasoning trace', { error: String(traceErr) });
+        }
+      }
+
+      updateCallState(tenantId, callSessionId, 'CALL_COMPLETED').catch(() => {});
+      writeCallEvent(tenantId, callSessionId, 'session_closed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED').catch(() => {});
+      lifecycleCoordinator.handleOpenAiSessionEnd(callSessionId);
+      sessionManager.unregister(callSessionId);
+    });
+  };
+  attachCloseHandler(session);
+
+  let activeTransport = wsTransport;
+  let activeSession = session;
 
   const sendAudioToOpenAI = (audio: ArrayBuffer): void => {
     try {
-      wsTransport.sendAudio(audio);
+      activeTransport.sendAudio(audio);
     } catch (err) {
       slog.error('Failed to send audio to OpenAI', { error: String(err) });
     }
   };
 
+  let audioOutputHandler: ((audioEvent: TransportLayerAudio) => void) | undefined;
   const onOpenAIAudio = (handler: (audioEvent: TransportLayerAudio) => void): void => {
-    wsTransport.on('audio', handler);
+    audioOutputHandler = handler;
+    activeTransport.on('audio', handler);
   };
 
   const sendRealtimeEvent = (event: Record<string, unknown>): void => {
-    (wsTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
+    (activeTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
   };
 
   const injectConversationItem = (text: string): void => {
@@ -963,7 +1035,7 @@ export async function createRealtimeSession(
 
   const triggerGreeting = (): void => {
     if (!agentConfig.greeting) return;
-    wsTransport.on('session.created', () => {
+    activeTransport.on('session.created', () => {
       try {
         injectConversationItem(
           `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]`,
@@ -984,5 +1056,115 @@ export async function createRealtimeSession(
     }
   };
 
-  return { session, callSessionId, sendAudioToOpenAI, onOpenAIAudio, triggerGreeting, sendSystemMessage };
+  const rebuildForHandoff = async (newAgentConfig: LoadedAgentConfig, handoffGreeting: string): Promise<void> => {
+    slog.info('Rebuilding session for workforce handoff', {
+      fromAgent: agentConfig.agentId,
+      toAgent: newAgentConfig.agentId,
+    });
+
+    isHandoffSwap = true;
+    try {
+      await activeSession.close();
+    } catch (closeErr) {
+      slog.warn('Error closing previous session during handoff', { error: String(closeErr) });
+    }
+    isHandoffSwap = false;
+
+    const newToolHandler = buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId);
+    const newAgentTools = buildRealtimeTools(newAgentConfig.tools, newToolHandler);
+
+    let handoffPrompt = newAgentConfig.systemPrompt;
+    if (reasoningEngine) {
+      const safetyPolicy = reasoningEngine.getSafetyPolicyPrompt();
+      if (safetyPolicy) {
+        handoffPrompt += `\n\n${safetyPolicy}`;
+      }
+    }
+    if (callerMemorySummary) {
+      handoffPrompt += `\n\n===== CALLER MEMORY =====\n${callerMemorySummary}`;
+    }
+    if (knowledgeAvailable) {
+      handoffPrompt += `\n\n===== KNOWLEDGE BASE =====\nYou have access to a company knowledge base. When a caller asks about products, services, policies, procedures, or FAQs, use the retrieve_knowledge tool to search for relevant information before answering.`;
+    }
+
+    const newAgent = new RealtimeAgent({
+      name: `${newAgentConfig.agentId}-${tenantId}`,
+      instructions: handoffPrompt,
+      tools: newAgentTools,
+    });
+
+    const newTransport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
+
+    const newSessionConfig = {
+      voice: newAgentConfig.voice,
+      audio: {
+        input: {
+          format: 'g711_ulaw' as const,
+          transcription: { model: 'gpt-4o-mini-transcribe' },
+          turnDetection: {
+            type: 'semantic_vad' as const,
+            eagerness: 'medium' as const,
+            createResponse: true,
+            interruptResponse: true,
+          },
+        },
+        output: {
+          format: 'g711_ulaw' as const,
+          voice: newAgentConfig.voice,
+        },
+      },
+    };
+
+    const newSession = new RealtimeSession(newAgent, {
+      transport: newTransport,
+      model: newAgentConfig.model,
+      config: newSessionConfig,
+      tracingDisabled: false,
+      tracing: {
+        workflowName: `VoiceAI_${newAgentConfig.agentId}`,
+        groupId: callSid,
+      },
+    } as ConstructorParameters<typeof RealtimeSession>[1]);
+
+    activeTransport = newTransport;
+    activeSession = newSession;
+
+    attachCloseHandler(newSession);
+    attachSessionListeners(newSession);
+
+    if (audioOutputHandler) {
+      newTransport.on('audio', audioOutputHandler);
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      newTransport.on('session.created', () => {
+        try {
+          injectConversationItem(
+            `[System: You are taking over this call from another agent. Greet the caller now. Say exactly: "${handoffGreeting}"]`,
+          );
+        } catch (greetErr) {
+          slog.error('Failed to inject handoff greeting', { error: String(greetErr) });
+        }
+      });
+
+      await newSession.connect({ apiKey });
+      slog.info('Handoff session connected', { newAgent: newAgentConfig.agentId });
+    }
+
+    await writeCallEvent(tenantId, callSessionId, 'handoff_session_rebuilt', 'HANDOFF', 'ACTIVE_CONVERSATION', {
+      newAgentId: newAgentConfig.agentId,
+    });
+    await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+  };
+
+  return {
+    get session() { return activeSession; },
+    callSessionId,
+    sendAudioToOpenAI,
+    onOpenAIAudio,
+    triggerGreeting,
+    sendSystemMessage,
+    rebuildForHandoff,
+  };
 }

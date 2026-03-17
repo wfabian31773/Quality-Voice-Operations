@@ -23,6 +23,8 @@ import { analyzeCallSentiment } from '../../../platform/analytics/SentimentAnaly
 import { classifyCallTopic } from '../../../platform/analytics/TopicClusteringService';
 import { recordCallUsage, estimateCallCost } from '../../../platform/billing/usage/UsageRecorder';
 import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../../../platform/widget/WidgetTokenService';
+import { HandoffEngine } from '../../../platform/workforce/HandoffEngine';
+import { getPlatformPool, withTenantContext } from '../../../platform/db';
 
 const logger = createLogger('WS_STREAM');
 const widgetLogger = createLogger('WS_WIDGET');
@@ -375,7 +377,98 @@ export function attachWebSocket(server: HTTPServer): void {
               }
             };
 
+            let onHandoff: ((callSessionId: string, intent: string, conversationContext: string) => Promise<{ success: boolean; message: string; targetAgentConfig?: import('../services/agentLoader').LoadedAgentConfig; routingInfo?: import('../../../platform/workforce/types').HandoffRoutingInfo }>) | undefined;
+            let workforceTeamId: string | undefined;
+            let currentAgentId = agentId!;
             try {
+              const pool = getPlatformPool();
+              const hClient = await pool.connect();
+              try {
+                await hClient.query('BEGIN');
+                let teamResult: { team_id: string } | undefined;
+                try {
+                  teamResult = await withTenantContext(hClient, tenantId!, async () => {
+                    const { rows } = await hClient.query(
+                      `SELECT wt.id as team_id FROM workforce_teams wt
+                       JOIN workforce_members wm ON wm.team_id = wt.id
+                       WHERE wm.agent_id = $1 AND wt.status = 'active'
+                       LIMIT 1`,
+                      [agentId],
+                    );
+                    await hClient.query('COMMIT');
+                    return rows[0] as { team_id: string } | undefined;
+                  });
+                } catch (queryErr) {
+                  await hClient.query('ROLLBACK').catch(() => {});
+                  throw queryErr;
+                }
+                if (teamResult) {
+                  workforceTeamId = teamResult.team_id;
+                  const handoffEngine = new HandoffEngine();
+                  slog.info('Agent is part of workforce team, enabling handoff tool', { teamId: workforceTeamId, agentId });
+                  onHandoff = async (csId: string, intent: string, context: string) => {
+                    const result = await handoffEngine.executeHandoff({
+                      teamId: workforceTeamId!,
+                      tenantId: tenantId!,
+                      callSessionId: csId,
+                      callSid: twilioCallSid ?? '',
+                      fromAgentId: currentAgentId,
+                      intent,
+                      conversationContext: context,
+                      callerPhone: callerNumber,
+                    });
+                    if (result.success && result.targetAgentConfig) {
+                      return {
+                        success: true,
+                        message: result.handoffGreeting ?? 'Transferring you now.',
+                        targetAgentConfig: {
+                          agentId: result.targetAgentConfig.agentId,
+                          tenantId: tenantId!,
+                          systemPrompt: result.targetAgentConfig.systemPrompt,
+                          greeting: result.targetAgentConfig.greeting ?? result.handoffGreeting ?? '',
+                          voice: result.targetAgentConfig.voice,
+                          model: result.targetAgentConfig.model,
+                          tools: result.targetAgentConfig.tools as import('../services/agentLoader').AgentToolDef[],
+                          guardrails: result.targetAgentConfig.guardrails,
+                          metadata: {},
+                        },
+                        routingInfo: result.routingInfo,
+                      };
+                    }
+                    return {
+                      success: false,
+                      message: result.reason ?? 'Unable to transfer at this time.',
+                    };
+                  };
+                  agentCfg.tools.push({
+                    name: 'transfer_to_agent',
+                    description: 'Transfer the caller to a specialist agent on this team. Use when the caller needs help from a different specialist (e.g., scheduling, billing, triage). Provide the intent describing what kind of help is needed and a brief summary of the conversation so far.',
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        intent: { type: 'string', description: 'The type of help needed (e.g., "scheduling", "billing", "triage", "intake")' },
+                        conversation_summary: { type: 'string', description: 'Brief summary of the conversation so far for context' },
+                      },
+                      required: ['intent'],
+                    },
+                  });
+                }
+              } finally {
+                hClient.release();
+              }
+            } catch (wfErr) {
+              slog.warn('Workforce team lookup failed, continuing without handoff', { error: String(wfErr) });
+            }
+
+            try {
+              const onSessionSwapRequired = async (targetAgentConfig: import('../services/agentLoader').LoadedAgentConfig, handoffGreeting: string): Promise<void> => {
+                if (!sessionResult) return;
+                slog.info('Session swap triggered for workforce handoff', { toAgent: targetAgentConfig.agentId });
+                await sessionResult.rebuildForHandoff(targetAgentConfig, handoffGreeting);
+                currentAgentId = targetAgentConfig.agentId;
+                slog.info('Session swap completed', { toAgent: targetAgentConfig.agentId });
+              };
+
               sessionResult = await createRealtimeSession({
                 tenantId,
                 agentConfig: agentCfg,
@@ -391,6 +484,8 @@ export function attachWebSocket(server: HTTPServer): void {
                 callerMemory,
                 outboxService,
                 onEscalation,
+                onHandoff,
+                onSessionSwapRequired,
                 isTrial: budgetResult.isTrial,
               });
 
