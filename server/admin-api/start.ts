@@ -11,6 +11,7 @@ import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
 import { startInsightsScheduler, stopInsightsScheduler } from '../../platform/analytics';
+import { startWorkforceScheduler, stopWorkforceScheduler } from '../../platform/workforce/WorkforceScheduler';
 
 const logger = createLogger('ADMIN_API');
 
@@ -57,6 +58,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     pollIntervalMs: 15_000,
   });
   startInsightsScheduler();
+  startWorkforceScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
 
@@ -71,6 +73,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopUsageGuardrailsScheduler();
   stopCampaignScheduler();
   stopInsightsScheduler();
+  stopWorkforceScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
 

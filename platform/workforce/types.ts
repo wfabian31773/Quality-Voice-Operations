@@ -57,6 +57,12 @@ export interface WorkforceTemplate {
 export interface WorkforceTemplateConfig {
   roles: WorkforceTemplateRole[];
   routingRules: WorkforceTemplateRoutingRule[];
+  outboundAutomations?: WorkforceTemplateOutboundAutomation[];
+}
+
+export interface WorkforceTemplateOutboundAutomation {
+  type: string;
+  description: string;
 }
 
 export interface WorkforceTemplateRole {
@@ -140,4 +146,85 @@ export interface WorkforceMetrics {
   handoffsByAgent: { agentId: string; agentName: string; count: number }[];
   activeCallsByAgent: { agentId: string; agentName: string; activeCalls: number }[];
   recentHandoffs: WorkforceRoutingHistoryEntry[];
+}
+
+export interface WorkforceOptimizationInsight {
+  id: string;
+  tenantId: string;
+  teamId: string;
+  category: string;
+  title: string;
+  description: string;
+  impactEstimate: string | null;
+  difficulty: string;
+  estimatedRevenueImpactCents: number | null;
+  status: string;
+  actionType: string | null;
+  actionPayload: Record<string, unknown>;
+  sourceData: Record<string, unknown>;
+  analysisPeriodStart: string | null;
+  analysisPeriodEnd: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkforceRevenueMetrics {
+  id: string;
+  tenantId: string;
+  teamId: string;
+  periodStart: string;
+  periodEnd: string;
+  callsHandled: number;
+  bookingsGenerated: number;
+  missedCallsRecovered: number;
+  estimatedRevenueCents: number;
+  missedRevenueCents: number;
+  avgTicketValueCents: number;
+  agentBreakdown: Array<{
+    agentId: string;
+    agentName: string;
+    callsHandled: number;
+    bookingsGenerated: number;
+    revenueCents: number;
+  }>;
+  dailyBreakdown: Array<{
+    date: string;
+    callsHandled: number;
+    bookingsGenerated: number;
+    revenueCents: number;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OutboundCampaignType =
+  | 'appointment_reminder'
+  | 'follow_up'
+  | 'maintenance_reminder'
+  | 'review_request'
+  | 'reactivation'
+  | 'recall'
+  | 'lease_renewal'
+  | 'custom';
+
+export interface WorkforceOutboundTask {
+  id: string;
+  tenantId: string;
+  teamId: string;
+  campaignType: OutboundCampaignType;
+  name: string;
+  status: string;
+  config: Record<string, unknown>;
+  campaignId: string | null;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  totalContacts: number;
+  contactsReached: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

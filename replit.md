@@ -59,8 +59,8 @@ platform/
   simulation/       Conversation Simulation Lab engine (bulk-test AI agents via LLM-driven caller simulation)
   widget/           Website voice/chat widget service (token auth, config)
   website-agent/    Website AI sales assistant (OpenAI chat completions, lead capture, analytics)
-  workforce/        AI Workforce multi-agent team orchestration (WorkforceRoutingService, HandoffEngine, types)
-migrations/         SQL migration files (001-043)
+  workforce/        AI Workforce Operating System (WorkforceRoutingService, HandoffEngine, WorkforceOptimizationEngine, WorkforceRevenueService, WorkforceOutboundService)
+migrations/         SQL migration files (001-044)
 widget/             Embeddable website widget (embed.js)
 scripts/            Migration runner, seed scripts, startup script
 ```
@@ -206,7 +206,7 @@ The `client-app` utilizes React 19, Vite 6, Tailwind CSS 4, TypeScript, and Zust
     - **Activation:** Event tracking and tooltip dismissal.
     - **Widget:** Embeddable website voice/chat widget for websites.
     - **Website Agent:** Public-facing website AI sales assistant with lead capture and analytics.
-    - **AI Workforce System (platform/workforce/):** Multi-agent team orchestration enabling tenants to deploy collaborative AI workforces. Features tenant-defined agent teams with roles, AI-to-AI mid-call handoffs via HandoffEngine (integrated into voice gateway stream.ts), configurable intent-based routing rules via WorkforceRoutingService, workforce management dashboard (client-app/src/pages/Workforce.tsx), reusable templates for medical/home-services/legal verticals, and routing history with performance metrics. Database: workforce_teams, workforce_members, workforce_routing_rules, workforce_templates, workforce_routing_history (migration 042). API routes at /workforce/*.
+    - **AI Workforce Operating System (`platform/workforce/`):** Multi-agent team orchestration enabling tenants to deploy collaborative AI workforces. Features tenant-defined agent teams with roles, AI-to-AI mid-call handoffs via HandoffEngine (integrated into voice gateway stream.ts), configurable intent-based routing rules via WorkforceRoutingService, workforce management dashboard (client-app/src/pages/Workforce.tsx), reusable templates for medical/home-services/legal verticals, and routing history with performance metrics. Database: workforce_teams, workforce_members, workforce_routing_rules, workforce_templates, workforce_routing_history (migration 042). API routes at /workforce/*.
 - **Security:** PHI redaction before logging, encryption of tenant secrets, and strict requirement of JWT, Stripe, and connector encryption keys in production.
 - **AI Agent Framework:** Supports various agent templates, a knowledge retrieval tool, and an Agent Intelligence & Reasoning Framework for confidence scoring, decision making, and safety gates.
 - **Billing & Usage:** Integrated with Stripe for checkout, webhooks, and metered billing for AI minutes, call counts, and tool executions.
@@ -216,6 +216,10 @@ The `client-app` utilizes React 19, Vite 6, Tailwind CSS 4, TypeScript, and Zust
 - **Agent Self-Improvement Engine:** Automated pipeline that analyzes low-scoring call transcripts using LLM to detect weaknesses (prompt structure, question ordering, objection handling, workflow efficiency, tone, accuracy, resolution), generates targeted prompt improvements with before/after diffs and rationale, validates via simulation scoring, and presents actionable suggestion cards in the Agent Builder. Tenants can approve or dismiss suggestions with one click — approved changes are applied with full version history and rollback support. Continuous improvement dashboard at `/improvements` tracks velocity metrics (generated/accepted/dismissed), weekly trends, category breakdown, acceptance rate, and quality score impact. Services: `SelfImprovementService`. Tables: `prompt_improvement_suggestions`, `improvement_metrics`. API routes: `/improvements/*`. UI: Agent Builder "Improve" panel, `/improvements` dashboard page.
 - **Frontend/Backend Communication:** API proxy for simplified routing and SSE for real-time data updates (e.g., live calls, demo visualization).
 - **Website Widget:** Provides an embeddable voice/chat widget for websites, integrating with the voice gateway and AI sales assistant.
+
+### Feature Specifications
+- **Simulation Lab:** A protected dashboard page for bulk-testing AI agents using an LLM-driven caller simulator (GPT-4o-mini). It integrates with the Workflow and Reasoning engines for scoring against defined rubrics and scenarios.
+- **Operations Intelligence:** An AI-powered insights engine that analyzes call data, transcripts, and quality scores to generate categorized recommendations, perform anomaly detection, and create weekly reports.
 
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for dev, Supabase for production).
