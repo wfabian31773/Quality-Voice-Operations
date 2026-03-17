@@ -52,6 +52,7 @@ platform/
   email/            Email service (nodemailer SMTP + console-log fallback) + HTML templates
   tools/            Agent tool definitions + knowledge retrieval tool + unified ToolRegistry + ToolExecutionService
   knowledge/        Embedding service (OpenAI text-embedding-3-small) + vector search + document ingestion pipeline (PDF/URL/text/FAQ extraction, chunking, embedding)
+  reasoning/        Agent Intelligence & Reasoning Framework (confidence scoring, decision engine, slot tracking, workflow planning, fallback/recovery, escalation, safety gate, industry packs, memory-aware reasoning, reasoning trace)
   workflow/         Workflow engine
   activation/       Activation event tracking + tooltip dismissal service
   widget/             Website voice/chat widget service (token auth, config)
