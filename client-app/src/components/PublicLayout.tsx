@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { Menu, X, Phone } from 'lucide-react';
+import WebsiteSalesWidget from './WebsiteSalesWidget';
 
 const navLinks = [
   { to: '/product', label: 'Product' },
@@ -111,6 +112,8 @@ export default function PublicLayout() {
       <main className="flex-1">
         <Outlet />
       </main>
+
+      <WebsiteSalesWidget />
 
       <footer className="bg-harbor text-white/70">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16">
