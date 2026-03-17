@@ -26,6 +26,9 @@ import { createEscalationTask } from '../../../platform/tools/HumanEscalationSer
 import { handleDemoToolCall } from './demoToolHandler';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
+import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
+import { routeQuery, checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, logRoutingDecision, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
+import { TIER_MODEL_MAP, type ModelTier, getModelRate, TTS_COST_PER_1K_CHARS_CENTS } from '../../../platform/billing/cost/providerRates';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
@@ -613,6 +616,34 @@ function buildRealtimeTools(
   });
 }
 
+function classifyAgentComplexity(
+  templateKey: string,
+  systemPrompt: string,
+  tools: { name: string }[],
+): { sampleQuery: string } {
+  const COMPLEX_TEMPLATES = ['medical-after-hours', 'medical', 'legal', 'financial', 'insurance'];
+  const SIMPLE_TEMPLATES = ['faq', 'receptionist', 'answering-service'];
+
+  if (COMPLEX_TEMPLATES.some(t => templateKey.includes(t))) {
+    return { sampleQuery: 'I need help understanding my complex medical situation with multiple concerns' };
+  }
+  if (SIMPLE_TEMPLATES.some(t => templateKey.includes(t))) {
+    return { sampleQuery: 'What are your business hours?' };
+  }
+
+  const toolCount = tools.length;
+  const promptLength = systemPrompt.length;
+
+  if (toolCount > 5 || promptLength > 3000) {
+    return { sampleQuery: 'Can you help me figure out which option would be best for my situation?' };
+  }
+  if (toolCount <= 2 && promptLength < 1000) {
+    return { sampleQuery: 'I would like to schedule an appointment' };
+  }
+
+  return { sampleQuery: 'I have a question about your services and pricing' };
+}
+
 export interface RealtimeSessionResult {
   session: RealtimeSession;
   callSessionId: string;
@@ -621,6 +652,17 @@ export interface RealtimeSessionResult {
   triggerGreeting: () => void;
   sendSystemMessage: (message: string) => void;
   rebuildForHandoff: (newAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
+  costTracker: {
+    inputTokens: number;
+    outputTokens: number;
+    ttsCharacters: number;
+    cacheHits: number;
+    cacheMisses: number;
+    promptTokensSaved: number;
+    routingDecisions: RoutingDecision[];
+  };
+  routedModel: string;
+  routedTier: string;
 }
 
 export async function createRealtimeSession(
@@ -730,6 +772,64 @@ export async function createRealtimeSession(
     systemPromptWithMemory += `\n\n===== KNOWLEDGE BASE =====\nYou have access to a company knowledge base. When a caller asks about products, services, policies, procedures, or FAQs, use the retrieve_knowledge tool to search for relevant information before answering.`;
   }
 
+  const systemMessages: ConversationMessage[] = [{ role: 'system', content: systemPromptWithMemory }];
+  if (shouldCompress(systemMessages, 8192)) {
+    const compressed = compressConversation(systemMessages, 8192);
+    systemPromptWithMemory = compressed.messages.map(m => m.content).join('\n\n');
+    slog.info('System prompt compressed', { tokensSaved: compressed.tokensSaved });
+  }
+
+  const agentTypeHint = ctx.templateKey ?? 'general';
+  const systemPromptComplexity = classifyAgentComplexity(agentTypeHint, systemPromptWithMemory, agentConfig.tools);
+  const initialRouting = routeQuery(systemPromptComplexity.sampleQuery);
+  let activeModelTier: ModelTier = initialRouting.tier;
+  let activeModel = TIER_MODEL_MAP[activeModelTier];
+
+  slog.info('Model routing decision', { agentType: agentTypeHint, tier: activeModelTier, model: activeModel, reason: initialRouting.reason });
+
+  const conversationHistory: ConversationMessage[] = [];
+  const COMPRESSION_TURN_THRESHOLD = 20;
+  let pendingCompressionSummary: string | null = null;
+
+  const costTracker = {
+    inputTokens: 0,
+    outputTokens: 0,
+    ttsCharacters: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    promptTokensSaved: 0,
+    routingDecisions: [] as RoutingDecision[],
+    get activeModel() { return activeModel; },
+    get activeModelTier() { return activeModelTier; },
+    addUtterance(role: 'user' | 'assistant', text: string): void {
+      const tokenEstimate = Math.ceil(text.length / 4);
+      if (role === 'user') {
+        this.inputTokens += tokenEstimate;
+      } else {
+        this.outputTokens += tokenEstimate;
+        this.ttsCharacters += text.length;
+      }
+      conversationHistory.push({ role, content: text });
+
+      if (conversationHistory.length >= COMPRESSION_TURN_THRESHOLD && conversationHistory.length % 10 === 0) {
+        if (shouldCompress(conversationHistory, 4096)) {
+          const result = compressConversation(conversationHistory, 4096);
+          if (result.wasTruncated && result.tokensSaved > 0) {
+            this.promptTokensSaved += result.tokensSaved;
+            const summaryMsg = result.messages.find(m => m.role === 'system' && m.content.startsWith('[Conversation summary]'));
+            if (summaryMsg) {
+              pendingCompressionSummary = summaryMsg.content;
+              slog.info('Conversation compression generated summary', { tokensSaved: result.tokensSaved, turnCount: conversationHistory.length });
+            }
+          }
+        }
+      }
+    },
+  };
+
+  costTracker.inputTokens += Math.ceil(systemPromptWithMemory.length / 4);
+  costTracker.routingDecisions.push(initialRouting);
+
   const agent = new RealtimeAgent({
     name: `${agentConfig.agentId}-${tenantId}`,
     instructions: systemPromptWithMemory,
@@ -760,7 +860,7 @@ export async function createRealtimeSession(
 
   const session = new RealtimeSession(agent, {
     transport: wsTransport,
-    model: agentConfig.model,
+    model: activeModel,
     config: sessionConfig,
     tracingDisabled: false,
     tracing: {
@@ -841,6 +941,36 @@ export async function createRealtimeSession(
           const text = c.text || c.transcript;
           if (text) {
             line = `CALLER: ${text}`;
+            costTracker.addUtterance('user', text);
+
+            const utteranceRouting = routeQuery(text);
+            costTracker.routingDecisions.push(utteranceRouting);
+
+            if (!hasDowngraded && utteranceRouting.tier === 'premium' && activeModelTier === 'economy') {
+              const prevModel = activeModel;
+              const prevTier = activeModelTier;
+              activeModelTier = utteranceRouting.tier;
+              activeModel = TIER_MODEL_MAP[activeModelTier];
+              slog.info('Complex query detected on economy tier — upgrading model', {
+                query: text.substring(0, 80),
+                fromTier: prevTier,
+                toTier: activeModelTier,
+                reason: utteranceRouting.reason,
+              });
+              const upgradeConfig = { ...agentConfig, model: activeModel };
+              rebuildForHandoff(upgradeConfig, agentConfig.greeting ?? '').catch((err) => {
+                slog.warn('Model upgrade failed', { error: String(err) });
+                activeModelTier = prevTier;
+                activeModel = prevModel;
+              });
+              writeCallEvent(tenantId, callSessionId, 'model_upgraded', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                fromModel: prevModel,
+                toModel: activeModel,
+                fromTier: prevTier,
+                toTier: activeModelTier,
+                reason: utteranceRouting.reason,
+              }).catch(() => {});
+            }
 
             let classifiedIntent = 'unknown';
             let classifiedConfidence: 'high' | 'medium' | 'low' = 'low';
@@ -965,6 +1095,18 @@ export async function createRealtimeSession(
         for (const c of msg.content) {
           if (c.text) {
             line = `AGENT: ${c.text}`;
+            costTracker.addUtterance('assistant', c.text);
+
+            if (pendingCompressionSummary) {
+              const summary = pendingCompressionSummary;
+              pendingCompressionSummary = null;
+              try {
+                sendSystemMessage(summary);
+                slog.info('Injected conversation compression summary into active session');
+              } catch (compErr) {
+                slog.warn('Failed to inject compression summary', { error: String(compErr) });
+              }
+            }
 
             if (reasoningEngine) {
               try {
@@ -1069,6 +1211,11 @@ export async function createRealtimeSession(
       slog.info('Realtime session closed');
 
       if (silenceTimer) clearTimeout(silenceTimer);
+
+      const cacheCounters = getSessionCacheCounters(callSessionId);
+      costTracker.cacheHits += cacheCounters.hits;
+      costTracker.cacheMisses += cacheCounters.misses;
+      clearSessionCacheCounters(callSessionId);
 
       if (reasoningEngine) {
         try {
@@ -1252,6 +1399,81 @@ export async function createRealtimeSession(
     await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
   };
 
+  const BUDGET_CHECK_INTERVAL_MS = 30000;
+  let budgetCheckTimer: ReturnType<typeof setInterval> | null = null;
+  let hasDowngraded = false;
+
+  budgetCheckTimer = setInterval(async () => {
+    try {
+      const modelRate = getModelRate(activeModel);
+      const currentCostCents = Math.ceil(
+        (costTracker.inputTokens / 1000) * modelRate.inputPer1kTokens +
+        (costTracker.outputTokens / 1000) * modelRate.outputPer1kTokens +
+        (costTracker.ttsCharacters / 1000) * TTS_COST_PER_1K_CHARS_CENTS,
+      );
+      const budgetResult = await checkConversationBudget(tenantId, currentCostCents);
+
+      if (budgetResult.shouldEndCall) {
+        slog.warn('Budget cap exceeded — ending call', {
+          currentCostCents,
+          budgetCents: budgetResult.budgetCents,
+          percentUsed: budgetResult.percentUsed,
+        });
+        sendSystemMessage('I appreciate your time, but I need to wrap up our conversation now. Is there anything else urgent I can help you with before we end?');
+        setTimeout(() => {
+          try { activeSession.close(); } catch {}
+        }, 10000);
+        if (budgetCheckTimer) clearInterval(budgetCheckTimer);
+        budgetCheckTimer = null;
+      } else if (budgetResult.shouldDowngrade && !hasDowngraded) {
+        hasDowngraded = true;
+        const prevModel = activeModel;
+        const prevTier = activeModelTier;
+        activeModelTier = 'economy';
+        activeModel = TIER_MODEL_MAP['economy'];
+        slog.warn('Budget threshold reached — downgrading to economy model', {
+          currentCostCents,
+          percentUsed: budgetResult.percentUsed,
+          previousModel: prevModel,
+          newModel: activeModel,
+        });
+        const downgradeConfig = { ...agentConfig, model: activeModel };
+        try {
+          await rebuildForHandoff(downgradeConfig, agentConfig.greeting ?? 'I\'m still here to help.');
+          writeCallEvent(tenantId, callSessionId, 'model_downgraded', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+            fromModel: prevModel,
+            toModel: activeModel,
+            reason: 'budget_threshold',
+            percentUsed: budgetResult.percentUsed,
+          }).catch(() => {});
+        } catch (downgradeErr) {
+          slog.error('Model downgrade failed', { error: String(downgradeErr) });
+          activeModelTier = prevTier;
+          activeModel = prevModel;
+        }
+      }
+
+      if (budgetResult.shouldAlert) {
+        writeCallEvent(tenantId, callSessionId, 'budget_alert', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+          currentCostCents,
+          budgetCents: budgetResult.budgetCents,
+          percentUsed: budgetResult.percentUsed,
+        }).catch(() => {});
+      }
+    } catch (budgetErr) {
+      slog.warn('Budget check failed', { error: String(budgetErr) });
+    }
+  }, BUDGET_CHECK_INTERVAL_MS);
+
+  const registeredSession = sessionManager.get(callSessionId);
+  if (registeredSession) {
+    const prevCleanup = registeredSession.cleanup;
+    registeredSession.cleanup = async () => {
+      if (budgetCheckTimer) clearInterval(budgetCheckTimer);
+      await prevCleanup();
+    };
+  }
+
   return {
     get session() { return activeSession; },
     callSessionId,
@@ -1260,5 +1482,8 @@ export async function createRealtimeSession(
     triggerGreeting,
     sendSystemMessage,
     rebuildForHandoff,
+    costTracker,
+    routedModel: costTracker.activeModel,
+    routedTier: costTracker.activeModelTier,
   };
 }

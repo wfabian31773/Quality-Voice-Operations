@@ -43,6 +43,7 @@ import ginRoutes from './routes/gin';
 import commandCenterRoutes from './routes/commandCenter';
 import evolutionRoutes from './routes/evolution';
 import toolHealthRoutes from './routes/toolHealth';
+import costOptimizationRoutes from './routes/costOptimization';
 
 const app = express();
 
@@ -105,6 +106,7 @@ app.use('/', ginRoutes);
 app.use('/', commandCenterRoutes);
 app.use('/', evolutionRoutes);
 app.use('/', toolHealthRoutes);
+app.use('/', costOptimizationRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

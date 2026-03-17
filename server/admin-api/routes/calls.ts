@@ -4,6 +4,7 @@ import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { createLogger } from '../../../platform/core/logger';
+import { getConversationCost } from '../../../platform/billing/cost';
 
 const logger = createLogger('ADMIN_CALLS');
 
@@ -93,7 +94,12 @@ export const getCallHandler: RequestHandler = async (req, res) => {
     if (call.called_number) call.called_number = redactPHI(call.called_number as string);
     if (call.escalation_target) call.escalation_target = redactPHI(call.escalation_target as string);
 
-    return res.json({ call });
+    let costBreakdown = null;
+    try {
+      costBreakdown = await getConversationCost(tenantId, id);
+    } catch {}
+
+    return res.json({ call, costBreakdown });
   } catch (err) {
     await client.query('ROLLBACK');
     return res.status(500).json({ error: 'Failed to retrieve call' });

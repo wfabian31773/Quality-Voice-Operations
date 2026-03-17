@@ -1,48 +1,82 @@
-import re
+import sys
 
 with open('replit.md', 'r') as f:
-    content = f.read()
+    lines = f.readlines()
 
-# Locate the conflict markers using regex to be more robust
-pattern = re.compile(r'### Technical Implementation\n<<<<<<< HEAD.*?>>>>>>> 80e83f7 \(feat: Global Intelligence Network \(GIN\) - cross-tenant anonymized learning system\)', re.DOTALL)
+new_lines = []
+in_conflict = False
+current_block = "" # "head" or "incoming"
 
-new_content = """### Technical Implementation
-- **Admin API (`server/admin-api/`):** An Express 5 application providing JWT-authenticated, RBAC-enabled access to platform resources, including tenant management, agent configuration, billing via Stripe, usage metering, campaign management, knowledge base operations, and analytics. It enforces trial guardrails, rate limiting, and auto-suspension policies.
-- **Voice Gateway (`server/voice-gateway/`):** Acts as a Twilio webhook and OpenAI Realtime WebSocket bridge, managing call lifecycle, routing based on \`phone_numbers\` and \`number_routing\` tables, and handling audio streaming for the embedded website widget. Includes a critical SIP audio fix for codec compatibility.
-- **Database:** PostgreSQL with separate configurations for development (Replit local) and production (Supabase with transaction pooler). Implemented with Row-Level Security (RLS) using \`current_setting('app.tenant_id')\`. Migrations are handled by numbered SQL files.
-- **Core Services (\`platform/\`):**
-    - **Audit:** Audit logging.
-    - **Billing & Usage:** Integrated with Stripe for checkout, webhooks, and metered billing for AI minutes, call counts, and tool executions.
-    - **Campaigns:** Outbound campaign management with typed campaigns (Appointment Reminder, Lead Follow-Up, Review Request, Customer Reactivation, Upsell) — each with optimized prompt templates, type-specific dispositions, and dedicated metrics.
-    - **Core:** Environmental configuration, logging, PHI redaction, resilience, and observability.
-    - **Integrations:** Connectors, outbox, and adapters for ticketing/SMS.
-    - **RBAC:** API key management and role-based access control.
-    - **Tenant:** Tenant provisioning.
-    - **Analytics:** Revenue & Performance Analytics, revenue attribution per agent, customer sentiment analysis via LLM, automated topic clustering, booking conversion funnel tracking, and unified dashboards.
-    - **Agent Templates:** Configuration and manifests for voice agent templates.
-    - **Marketplace:** Engine for template installation, entitlements, reviews, and developer submissions.
-    - **Telephony & Messaging:** Phone number management and SMS services.
-    - **Runtime:** Voice agent runtime environment.
-    - **Email:** Nodemailer-based email service with HTML templates.
-    - **Tools:** Agent tool definitions, knowledge retrieval, and a unified \`ToolRegistry\`.
-    - **Knowledge:** Incorporates an embedding service (OpenAI \`text-embedding-3-small\`), vector search, and a document ingestion pipeline.
-    - **Reasoning:** Includes an AI Platform Assistant and an Agent Intelligence & Reasoning Framework for confidence scoring, decision-making, workflow planning, and safety gates.
-    - **Workflow:** Manages the workflow engine.
-    - **Activation:** Tracks activation events and manages tooltip dismissals.
-    - **Widget:** Provides an embeddable website voice/chat widget.
-    - **Website Agent:** A public-facing AI sales assistant for websites, including lead capture and analytics.
-    - **AI Workforce System (platform/workforce/):** Multi-agent team orchestration enabling tenants to deploy collaborative AI workforces. Features tenant-defined agent teams with roles, AI-to-AI mid-call handoffs via HandoffEngine (integrated into voice gateway stream.ts), configurable intent-based routing rules via WorkforceRoutingService, workforce management dashboard (client-app/src/pages/Workforce.tsx), reusable templates for medical/home-services/legal verticals, and routing history with performance metrics. Database: workforce_teams, workforce_members, workforce_routing_rules, workforce_templates, workforce_routing_history (migration 042). API routes at /workforce/*.
-    - **Operations Intelligence:** AI-powered insights engine that analyzes call data, transcripts, quality scores, and tool executions to generate categorized recommendations (missed opportunities, performance, cost optimization, agent improvement, workflow, scheduling). Includes weekly report generation, anomaly detection against rolling baselines (every 30 min via background scheduler), recommendation acceptance/dismissal tracking, alert history with acknowledge flow, and deep-linked action paths to platform features (agent prompt editing, tool config, call review). Background scheduler runs anomaly detection every 30min, insights analysis daily, and weekly reports on Sundays. All DB operations use \`withTenantContext\` for RLS compliance. Dashboard at \`/insights\` with 4 tabs: Recommendations, Weekly Reports, Alert History, Impact Tracking. Services: \`InsightsEngine\`, \`InsightsScheduler\`. Tables: \`ai_insights\`, \`weekly_reports\`. API routes: \`/insights/*\`.
-    - **Agent Self-Improvement Engine:** Automated pipeline that analyzes low-scoring call transcripts using LLM to detect weaknesses (prompt structure, question ordering, objection handling, workflow efficiency, tone, accuracy, resolution), generates targeted prompt improvements with before/after diffs and rationale, validates via simulation scoring, and presents actionable suggestion cards in the Agent Builder. Tenants can approve or dismiss suggestions with one click — approved changes are applied with full version history and rollback support. Continuous improvement dashboard at \`/improvements\` tracks velocity metrics (generated/accepted/dismissed), weekly trends, category breakdown, acceptance rate, and quality score impact. Services: \`SelfImprovementService\`. Tables: \`prompt_improvement_suggestions\`, \`improvement_metrics\`. API routes: \`/improvements/*\`. UI: Agent Builder "Improve" panel, \`/improvements\` dashboard page.
-    - **Global Intelligence Network (GIN):** A cross-tenant anonymized learning system that enables collective intelligence across the platform while strictly maintaining data privacy. It aggregates anonymized prompt patterns, common question patterns from transcripts (PHI-redacted), and tool usage sequences. Features a centralized \`GlobalInsightEngine\` for multi-tenant data aggregation, \`AggregationPipeline\` for signal collection with tool allowlisting, and \`RecommendationDistributor\` for delivering insights back to tenants. Includes a \`GovernanceService\` for policy acceptance tracking (migration 044) and \`BenchmarkingService\` for cross-vertical performance comparisons. All data undergoes a final centralized redaction pass before analysis. API routes at \`/gin/*\`. UI: \`/global-intelligence\` page.
-- **Security:** Emphasizes PHI redaction before logging (centralized via \`redactPHI\`), encryption of tenant secrets, and strict requirement of JWT, Stripe, and connector encryption keys in production.
-- **Frontend/Backend Communication:** Utilizes an API proxy for simplified routing and Server-Sent Events (SSE) for real-time data updates (e.g., live calls, demo visualization).
-- **Website Widget:** Provides an embeddable voice/chat widget for websites, integrating with the voice gateway and AI sales assistant."""
+# We will manually construct the desired Technical Implementation and Feature Specifications sections
+# based on the merge requirement: Keep ALL documentation from both branches.
 
-if pattern.search(content):
-    new_file_content = pattern.sub(new_content, content)
-    with open('replit.md', 'w') as f:
-        f.write(new_file_content)
-    print("SUCCESS")
-else:
-    print("FAILURE: Conflict markers not found")
+# Find boundaries
+start_idx = -1
+end_idx = -1
+for i, line in enumerate(lines):
+    if "## System Architecture" in line:
+        start_idx = i
+    if "## External Dependencies" in line:
+        end_idx = i
+        break
+
+if start_idx == -1 or end_idx == -1:
+    print("Could not find boundaries")
+    sys.exit(1)
+
+merged_content = [
+    "## System Architecture\n",
+    "The QVO platform comprises three main components: a React-based admin dashboard (`client-app`), an Admin REST API (`server/admin-api`), and a Voice Gateway (`server/voice-gateway`).\n",
+    "\n",
+    "### UI/UX\n",
+    "The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and Zustand, featuring a responsive design with public marketing pages and a protected dashboard. A core UI element is the **Agent Builder (Agent Studio)**, a visual drag-and-drop workflow builder utilizing `@xyflow/react`. It includes a node library, configuration panels, a test console, and deployment management with version control. A **Platform Assistant** provides in-app, context-aware guidance and quick actions via OpenAI function calling. The UI adheres to the QVO brand guidelines using Deep Harbor (#123047), Signal Teal (#2E8C83), Clinic Mist (#F3F7F7) colors and Sora, Manrope, Inter fonts.\n",
+    "\n",
+    "### Technical Implementation\n",
+    "- **Admin API (`server/admin-api/`):** An Express 5 application providing JWT-authenticated, RBAC-enabled access to platform resources. It manages tenant configurations, agent workflows, Stripe billing, usage metering, campaign management, knowledge base operations, and analytics. It enforces trial guardrails, rate limiting, and auto-suspension policies.\n",
+    "- **Voice Gateway (`server/voice-gateway/`):** Functions as a Twilio webhook and OpenAI Realtime WebSocket bridge. It manages the call lifecycle, routes calls based on database configurations, and handles audio streaming for the embedded website widget. A critical SIP audio fix is implemented to ensure codec compatibility.\n",
+    "- **Database:** PostgreSQL is used, with separate configurations for development (local) and production (Supabase with a transaction pooler). Row-Level Security (RLS) is enforced using `current_setting('app.tenant_id')` for tenant-scoped operations. Database migrations are managed via numbered SQL files.\n",
+    "- **Core Services (`platform/`):**\n",
+    "    - **Audit:** Provides comprehensive audit logging.\n",
+    "    - **Billing & Usage:** Integrates with Stripe for metered billing of AI minutes, call counts, and tool executions.\n",
+    "    - **Cost Optimization Engine:** Implements per-conversation cost tracking, intelligent model routing, response caching, token compression, and budget cap enforcement.\n",
+    "    - **Stability & Reliability Engine:** Implements tool execution retries (`RetryOrchestrator`), secondary integration fallback via `ConnectorService`, graceful conversation fallback messages, human escalation queue (`escalation_tasks` table + `escalate_to_human` tool), operator notifications (in-app + Twilio SMS), and a Tool Health dashboard at `/reliability`.\n",
+    "    - **Analytics:** Provides revenue and performance analytics, customer sentiment analysis, topic clustering, booking funnel tracking, and unified dashboards.\n",
+    "    - **Campaigns:** Manages outbound campaigns with optimized prompt templates, type-specific dispositions, and dedicated metrics.\n",
+    "    - **Core:** Handles environmental configuration, logging, PHI redaction, resilience, and observability.\n",
+    "    - **Integrations:** Manages connectors, outbox, and adapters for ticketing/SMS.\n",
+    "    - **RBAC:** Controls API key management and role-based access.\n",
+    "    - **Tenant:** Facilitates tenant provisioning.\n",
+    "    - **Agent Templates:** Stores configurations and manifests for voice agent templates.\n",
+    "    - **Marketplace:** Provides an engine for template installation, entitlements, reviews, and developer submissions.\n",
+    "    - **Telephony & Messaging:** Manages phone numbers and SMS services.\n",
+    "    - **Runtime:** Provides the voice agent runtime environment.\n",
+    "    - **Email:** Utilizes Nodemailer for email services with HTML templates.\n",
+    "    - **Tools:** Defines agent tools, knowledge retrieval, and a unified `ToolRegistry`.\n",
+    "    - **AI Workforce Operating System:** Manages multi-agent team orchestration, including AI-to-AI mid-call handoffs and configurable intent-based routing.\n",
+    "    - **AI Business Autopilot:** A proactive intelligence layer that monitors operational signals, detects issues/opportunities, and can auto-execute low-risk actions or present recommendations for human approval.\n",
+    "    - **Global Intelligence Network (GIN):** Aggregates anonymized cross-tenant data to provide collective intelligence, benchmarking, and recommendations while maintaining data privacy.\n",
+    "    - **Operations Intelligence:** An AI-powered insights engine that analyzes call data, transcripts, and quality scores to generate recommendations, detect anomalies, and produce reports.\n",
+    "    - **Agent Self-Improvement Engine:** An automated pipeline that analyzes low-scoring call transcripts to suggest prompt improvements and validate them via simulation scoring.\n",
+    "    - **Knowledge Management:** Includes an embedding service (OpenAI `text-embedding-3-small`), vector search, and a document ingestion pipeline (PDF/URL/text/FAQ extraction, chunking).\n",
+    "    - **Reasoning Framework:** Provides AI agent intelligence, including confidence scoring, decision-making, workflow planning, and safety gates.\n",
+    "    - **Workflow:** Manages the workflow engine.\n",
+    "    - **Activation:** Tracks activation events and tooltip dismissals.\n",
+    "    - **Widget:** Provides an embeddable website voice/chat widget.\n",
+    "    - **Website Agent:** A public-facing AI sales assistant for websites, including lead capture and analytics.\n",
+    "- **Security:** Incorporates PHI redaction, encryption of tenant secrets, and strict enforcement of JWT, Stripe, and connector encryption keys in production environments.\n",
+    "- **Frontend/Backend Communication:** Utilizes an API proxy for simplified routing and Server-Sent Events (SSE) for real-time data updates.\n",
+    "- **Website Widget:** An embeddable voice/chat widget for websites, integrated with the voice gateway and AI sales assistant.\n",
+    "\n",
+    "### Feature Specifications\n",
+    "- **Cost Optimization Dashboard:** Tracks real-time token usage, provides model tier distribution, and offers budget management with auto-downgrade/auto-end capabilities.\n",
+    "- **Tool Health & Reliability:** Per-tool success rates, retry counts, and terminal failure tracking with human escalation management.\n",
+    "- **Simulation Lab:** A dedicated dashboard page for bulk-testing AI agents using an LLM-driven caller simulator. It integrates with the Workflow and Reasoning engines for comprehensive scoring and scenario evaluation.\n",
+    "- **Operations Intelligence:** An AI-powered insights engine for analyzing call data, transcripts, and quality scores to generate categorized recommendations, perform anomaly detection, and create weekly reports.\n",
+    "- **Revenue & Performance Analytics:** Tracks revenue attribution per agent, customer sentiment, topic classifications, and conversion funnel stages, offering detailed insights through a unified dashboard.\n",
+    "\n"
+]
+
+final_output = lines[:start_idx] + merged_content + lines[end_idx:]
+
+with open('replit.md', 'w') as f:
+    f.writelines(final_output)

@@ -3,6 +3,8 @@ import type { ToolContext } from '../registry/types';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { generateEmbedding, searchByEmbedding } from '../../knowledge/embeddingService';
 import { createLogger } from '../../core/logger';
+import { getCachedResponse, setCachedResponse } from '../../billing/cost/ResponseCache';
+import { recordSessionCacheHit, recordSessionCacheMiss } from '../../billing/cost';
 
 const logger = createLogger('RETRIEVE_KNOWLEDGE_TOOL');
 
@@ -16,6 +18,20 @@ async function handleRetrieveKnowledge(
   if (!args.query || typeof args.query !== 'string') {
     return { success: false, message: 'query is required' };
   }
+
+  const callSessionId = context.callLogId;
+  const cacheIntent = `knowledge:${args.category ?? 'all'}`;
+  try {
+    const cached = await getCachedResponse(tenantId, cacheIntent, args.query);
+    if (cached) {
+      logger.info('Knowledge cache hit', { tenantId, query: args.query.substring(0, 80) });
+      if (callSessionId) recordSessionCacheHit(callSessionId);
+      return JSON.parse(cached.responseText);
+    }
+  } catch (cacheErr) {
+    logger.warn('Cache lookup error, proceeding without cache', { error: String(cacheErr) });
+  }
+  if (callSessionId) recordSessionCacheMiss(callSessionId);
 
   let queryEmbedding: number[];
   try {
@@ -84,11 +100,17 @@ async function handleRetrieveKnowledge(
       relevance: Math.round(r.score * 100),
     }));
 
-    return {
+    const response = {
       success: true,
       found: true,
       results: context_items,
     };
+
+    setCachedResponse(tenantId, cacheIntent, args.query, JSON.stringify(response), 3600).catch((err) => {
+      logger.warn('Failed to write knowledge response to cache', { tenantId, error: String(err) });
+    });
+
+    return response;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('Knowledge retrieval failed', { tenantId, error: String(err) });

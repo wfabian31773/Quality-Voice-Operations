@@ -22,6 +22,7 @@ import { scoreCall } from '../../../platform/analytics/QualityScorerService';
 import { analyzeCallSentiment } from '../../../platform/analytics/SentimentAnalysisService';
 import { classifyCallTopic } from '../../../platform/analytics/TopicClusteringService';
 import { recordCallUsage, estimateCallCost } from '../../../platform/billing/usage/UsageRecorder';
+import { recordConversationCost, logRoutingDecision } from '../../../platform/billing/cost';
 import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../../../platform/widget/WidgetTokenService';
 import { HandoffEngine } from '../../../platform/workforce/HandoffEngine';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
@@ -148,6 +149,29 @@ export function attachWebSocket(server: HTTPServer): void {
         recordCallUsage(tenantId, callDirection, durationSeconds).catch((err) => {
           slog.error('Failed to record call usage metrics', { error: String(err) });
         });
+
+        if (sessionResult) {
+          const ct = sessionResult.costTracker;
+          recordConversationCost({
+            tenantId: tenantId!,
+            callSessionId: callSessionId!,
+            durationSeconds,
+            inputTokens: ct.inputTokens,
+            outputTokens: ct.outputTokens,
+            modelUsed: sessionResult.routedModel,
+            modelTier: sessionResult.routedTier as 'economy' | 'standard' | 'premium',
+            ttsCharacters: ct.ttsCharacters,
+            cacheHits: ct.cacheHits,
+            cacheMisses: ct.cacheMisses,
+            promptTokensSaved: ct.promptTokensSaved,
+          }).catch((err) => {
+            slog.error('Failed to record conversation cost', { error: String(err) });
+          });
+
+          for (const decision of ct.routingDecisions) {
+            logRoutingDecision(tenantId!, callSessionId!, decision).catch(() => {});
+          }
+        }
 
         const coordinator = getCoordinator(tenantId);
 
@@ -684,6 +708,29 @@ export function attachWebSocket(server: HTTPServer): void {
         recordCallUsage(tenantId, 'inbound', durationSeconds).catch((err) => {
           slog.error('Failed to record widget usage', { error: String(err) });
         });
+
+        if (sessionResult) {
+          const ct = sessionResult.costTracker;
+          recordConversationCost({
+            tenantId: tenantId!,
+            callSessionId: callSessionId!,
+            durationSeconds,
+            inputTokens: ct.inputTokens,
+            outputTokens: ct.outputTokens,
+            modelUsed: sessionResult.routedModel,
+            modelTier: sessionResult.routedTier as 'economy' | 'standard' | 'premium',
+            ttsCharacters: ct.ttsCharacters,
+            cacheHits: ct.cacheHits,
+            cacheMisses: ct.cacheMisses,
+            promptTokensSaved: ct.promptTokensSaved,
+          }).catch((err) => {
+            slog.error('Failed to record widget conversation cost', { error: String(err) });
+          });
+
+          for (const decision of ct.routingDecisions) {
+            logRoutingDecision(tenantId!, callSessionId!, decision).catch(() => {});
+          }
+        }
 
         const coordinator = getCoordinator(tenantId);
         const callRecord = coordinator.getCallRecord(callSessionId!);

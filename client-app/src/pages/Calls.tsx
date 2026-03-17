@@ -35,6 +35,21 @@ interface CallEvent {
   occurred_at: string;
 }
 
+interface CostBreakdown {
+  sttCostCents: number;
+  llmCostCents: number;
+  ttsCostCents: number;
+  infraCostCents: number;
+  totalCostCents: number;
+  modelTier: string;
+  modelUsed: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheHits: number;
+  cacheMisses: number;
+  promptTokensSaved: number;
+}
+
 interface Agent {
   id: string;
   name: string;
@@ -43,7 +58,7 @@ interface Agent {
 function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => void }) {
   const { data: callData } = useQuery({
     queryKey: ['call', callId],
-    queryFn: () => api.get<{ call: Call }>(`/calls/${callId}`),
+    queryFn: () => api.get<{ call: Call; costBreakdown: CostBreakdown | null }>(`/calls/${callId}`),
   });
 
   const { data: transcriptData, isLoading: transcriptLoading } = useQuery({
@@ -62,6 +77,7 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
   });
 
   const call = callData?.call;
+  const costBreakdown = callData?.costBreakdown ?? null;
   const transcript = transcriptData?.transcript ?? [];
   const events = eventsData?.events ?? [];
   const toolExecutions = toolExecData?.executions ?? [];
@@ -86,6 +102,31 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
               <div><span className="text-text-secondary">Duration:</span> {call.duration_seconds ? `${call.duration_seconds}s` : '--'}</div>
               <div><span className="text-text-secondary">Started:</span> {call.start_time ? format(new Date(call.start_time), 'PPp') : '--'}</div>
               <div><span className="text-text-secondary">Ended:</span> {call.end_time ? format(new Date(call.end_time), 'PPp') : '--'}</div>
+            </div>
+          </div>
+        )}
+
+        {costBreakdown && (
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="text-sm font-semibold text-text-primary mb-3">Cost Breakdown</h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div><span className="text-text-secondary">STT:</span> ${(costBreakdown.sttCostCents / 100).toFixed(2)}</div>
+              <div><span className="text-text-secondary">LLM:</span> ${(costBreakdown.llmCostCents / 100).toFixed(2)}</div>
+              <div><span className="text-text-secondary">TTS:</span> ${(costBreakdown.ttsCostCents / 100).toFixed(2)}</div>
+              <div><span className="text-text-secondary">Infra:</span> ${(costBreakdown.infraCostCents / 100).toFixed(2)}</div>
+              <div className="col-span-2 font-semibold border-t border-border pt-1 mt-1">
+                <span className="text-text-secondary">Total:</span> ${(costBreakdown.totalCostCents / 100).toFixed(2)}
+              </div>
+              <div><span className="text-text-secondary">Model:</span> {costBreakdown.modelUsed}</div>
+              <div><span className="text-text-secondary">Tier:</span> <span className="capitalize">{costBreakdown.modelTier}</span></div>
+              <div><span className="text-text-secondary">Input Tokens:</span> {costBreakdown.inputTokens.toLocaleString()}</div>
+              <div><span className="text-text-secondary">Output Tokens:</span> {costBreakdown.outputTokens.toLocaleString()}</div>
+              {costBreakdown.cacheHits > 0 && (
+                <div><span className="text-text-secondary">Cache Hits:</span> {costBreakdown.cacheHits}</div>
+              )}
+              {costBreakdown.promptTokensSaved > 0 && (
+                <div><span className="text-text-secondary">Tokens Saved:</span> {costBreakdown.promptTokensSaved.toLocaleString()}</div>
+              )}
             </div>
           </div>
         )}

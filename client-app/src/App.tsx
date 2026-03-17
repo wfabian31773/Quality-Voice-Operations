@@ -40,6 +40,7 @@ import GlobalIntelligence from './pages/GlobalIntelligence';
 import CommandCenter from './pages/CommandCenter';
 import EvolutionEngine from './pages/EvolutionEngine';
 import ToolHealth from './pages/ToolHealth';
+import CostOptimization from './pages/CostOptimization';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
@@ -149,6 +150,7 @@ export default function App() {
         <Route path="/global-intelligence" element={<GlobalIntelligence />} />
         <Route path="/command-center" element={<CommandCenter />} />
         <Route path="/reliability" element={<ToolHealth />} />
+        <Route path="/cost-optimization" element={<CostOptimization />} />
         <Route path="/widget" element={<Widget />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
