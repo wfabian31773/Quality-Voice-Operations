@@ -1,6 +1,7 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import { checkEntitlement } from './EntitlementService';
+import { generateEmbedding } from '../knowledge/embeddingService';
 import type { TenantId } from '../core/types';
 
 const logger = createLogger('INSTALLATION_SERVICE');
@@ -41,6 +42,7 @@ export interface InstallResult {
     templateId: string;
     templateVersion: string;
     status: string;
+    knowledgeSeeded?: boolean;
   };
 }
 
@@ -180,6 +182,18 @@ export async function installTemplate(request: InstallRequest): Promise<InstallR
       installationId: installation.id,
     });
 
+    let knowledgeSeeded = false;
+    try {
+      await seedStarterKnowledgePack(tenantId, template.slug);
+      knowledgeSeeded = true;
+    } catch (seedErr) {
+      logger.warn('Failed to seed starter knowledge pack — installation succeeded but knowledge pack was not loaded', {
+        tenantId,
+        templateSlug: template.slug,
+        error: String(seedErr),
+      });
+    }
+
     return {
       success: true,
       installation: {
@@ -188,6 +202,7 @@ export async function installTemplate(request: InstallRequest): Promise<InstallR
         templateId: template.id,
         templateVersion: template.current_version,
         status: 'active',
+        knowledgeSeeded,
       },
     };
   } catch (err) {
@@ -236,6 +251,100 @@ export interface UpdateInstallationRequest {
   name?: string;
   welcomeGreeting?: string;
   escalationConfig?: Record<string, unknown>;
+}
+
+const TEMPLATE_TO_VERTICALS: Record<string, string[]> = {
+  'home-services': ['hvac', 'plumbing'],
+  'dental': ['dental'],
+  'medical-after-hours': ['medical-after-hours'],
+  'property-management': ['property-management'],
+  'legal': ['legal'],
+  'restaurants': ['restaurants'],
+  'real-estate': ['real-estate'],
+  'insurance': ['insurance'],
+};
+
+async function seedStarterKnowledgePack(tenantId: TenantId, templateSlug: string): Promise<void> {
+  const verticalIds = TEMPLATE_TO_VERTICALS[templateSlug];
+  if (!verticalIds || verticalIds.length === 0) {
+    logger.info('No starter knowledge pack for template', { templateSlug });
+    return;
+  }
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const placeholders = verticalIds.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows: articles } = await client.query(
+      `SELECT title, content, category_type FROM vertical_starter_knowledge
+       WHERE vertical_id IN (${placeholders})
+       ORDER BY sort_order`,
+      verticalIds,
+    );
+
+    if (articles.length === 0) {
+      await client.query('COMMIT');
+      return;
+    }
+
+    let seededCount = 0;
+    for (const article of articles) {
+      const { rows: existing } = await client.query(
+        `SELECT id FROM knowledge_articles WHERE tenant_id = $1 AND title = $2`,
+        [tenantId, article.title],
+      );
+
+      if (existing.length > 0) continue;
+
+      let embedding: number[] = [];
+      try {
+        embedding = await generateEmbedding(`${article.title}\n\n${article.content}`);
+      } catch (embErr) {
+        logger.warn('Embedding generation failed for starter article, storing without embedding', {
+          tenantId,
+          articleTitle: article.title,
+          error: String(embErr),
+        });
+      }
+
+      await client.query(
+        `INSERT INTO knowledge_articles (tenant_id, title, content, category, metadata, embedding, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
+        [
+          tenantId,
+          article.title,
+          article.content,
+          article.category_type,
+          JSON.stringify({ source: 'starter_knowledge_pack', verticalIds }),
+          JSON.stringify(embedding),
+        ],
+      );
+      seededCount++;
+    }
+
+    await client.query('COMMIT');
+    logger.info('Starter knowledge pack seeded', {
+      tenantId,
+      templateSlug,
+      verticalIds,
+      articlesSeeded: seededCount,
+      totalAvailable: articles.length,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to seed starter knowledge pack', {
+      tenantId,
+      templateSlug,
+      error: String(err),
+    });
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function updateInstallation(

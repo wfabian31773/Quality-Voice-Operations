@@ -20,9 +20,9 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
 - **Dev:** Replit local PostgreSQL via `DATABASE_URL` (no SSL)
 - **Production:** Supabase via `PLATFORM_DB_POOL_URL` (SSL, transaction pooler port 6543)
 - **Module:** `platform/db/index.ts` — auto-switches based on `APP_ENV`
-- **Migrations:** `migrations/001_*.sql` through `migrations/032_*.sql` — 32 numbered SQL files
+- **Migrations:** `migrations/001_*.sql` through `migrations/039_*.sql` — numbered SQL files
 - **Runner:** `scripts/run-migrations.ts` — idempotent, applies only files matching `\d{3}_*.sql`
-- **Seed:** `scripts/seed-demo.ts` (demo tenant + agents), `scripts/seed-admin.ts` (platform admin user), `scripts/seed-template-registry.ts` (marketplace template registry)
+- **Seed:** `scripts/seed-demo.ts` (demo tenant + agents), `scripts/seed-admin.ts` (platform admin user), `scripts/seed-template-registry.ts` (marketplace template registry), `scripts/seed-vertical-prompt-library.ts` (vertical prompt libraries, starter knowledge packs, demo flows)
 - **RLS:** Row-Level Security on all tenant-scoped tables; policy uses `current_setting('app.tenant_id')`
 - **Admin seed:** `ADMIN_PASSWORD=YourPassword npx tsx scripts/seed-admin.ts` (dev only, requires ADMIN_PASSWORD env var)
 - **Current dev admin:** `admin@voiceaihub.dev` (password set via ADMIN_PASSWORD at seed time)

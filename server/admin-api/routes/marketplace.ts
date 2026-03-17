@@ -1324,4 +1324,173 @@ router.post('/marketplace/installations/:id/publish-agent', requireAuth, require
   }
 });
 
+router.get('/marketplace/templates/:id/prompt-library', requireAuth, async (req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const idOrSlug = req.params.id;
+
+    const templateResult = await pool.query(
+      `SELECT id, slug, tags FROM template_registry WHERE id = $1 OR slug = $1`,
+      [idOrSlug],
+    );
+
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const template = templateResult.rows[0];
+    const slug = template.slug as string;
+    const tags = (template.tags ?? []) as string[];
+
+    const verticalIds = resolveVerticalIds(slug, tags);
+
+    if (verticalIds.length === 0) {
+      return res.json({ promptLibrary: [], categories: [] });
+    }
+
+    const placeholders = verticalIds.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows } = await pool.query(
+      `SELECT vertical_id, category, prompt_text, version
+       FROM vertical_prompt_library
+       WHERE vertical_id IN (${placeholders})
+       ORDER BY vertical_id, category`,
+      verticalIds,
+    );
+
+    const categories = [...new Set(rows.map((r) => r.category as string))];
+
+    return res.json({
+      promptLibrary: rows.map((r) => ({
+        verticalId: r.vertical_id,
+        category: r.category,
+        promptText: r.prompt_text,
+        version: r.version,
+      })),
+      categories,
+    });
+  } catch (err) {
+    logger.error('Failed to get prompt library', { templateId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get prompt library' });
+  }
+});
+
+router.get('/marketplace/templates/:id/starter-knowledge', requireAuth, async (req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const idOrSlug = req.params.id;
+
+    const templateResult = await pool.query(
+      `SELECT id, slug, tags FROM template_registry WHERE id = $1 OR slug = $1`,
+      [idOrSlug],
+    );
+
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const template = templateResult.rows[0];
+    const slug = template.slug as string;
+    const tags = (template.tags ?? []) as string[];
+
+    const verticalIds = resolveVerticalIds(slug, tags);
+
+    if (verticalIds.length === 0) {
+      return res.json({ articles: [], categoryTypes: [] });
+    }
+
+    const placeholders = verticalIds.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows } = await pool.query(
+      `SELECT vertical_id, title, content, category_type, sort_order
+       FROM vertical_starter_knowledge
+       WHERE vertical_id IN (${placeholders})
+       ORDER BY sort_order`,
+      verticalIds,
+    );
+
+    const categoryTypes = [...new Set(rows.map((r) => r.category_type as string))];
+
+    return res.json({
+      articles: rows.map((r) => ({
+        verticalId: r.vertical_id,
+        title: r.title,
+        content: r.content,
+        categoryType: r.category_type,
+        sortOrder: r.sort_order,
+      })),
+      categoryTypes,
+    });
+  } catch (err) {
+    logger.error('Failed to get starter knowledge', { templateId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get starter knowledge' });
+  }
+});
+
+router.get('/marketplace/templates/:id/demo-flows', requireAuth, async (req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const idOrSlug = req.params.id;
+
+    const templateResult = await pool.query(
+      `SELECT id, slug, tags FROM template_registry WHERE id = $1 OR slug = $1`,
+      [idOrSlug],
+    );
+
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const template = templateResult.rows[0];
+    const slug = template.slug as string;
+    const tags = (template.tags ?? []) as string[];
+
+    const verticalIds = resolveVerticalIds(slug, tags);
+
+    if (verticalIds.length === 0) {
+      return res.json({ demoFlows: [] });
+    }
+
+    const placeholders = verticalIds.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows } = await pool.query(
+      `SELECT vertical_id, scenario_name, caller_request, expected_agent_path, expected_tool_calls
+       FROM vertical_demo_flows
+       WHERE vertical_id IN (${placeholders})
+       ORDER BY vertical_id, scenario_name`,
+      verticalIds,
+    );
+
+    return res.json({
+      demoFlows: rows.map((r) => ({
+        verticalId: r.vertical_id,
+        scenarioName: r.scenario_name,
+        callerRequest: r.caller_request,
+        expectedAgentPath: r.expected_agent_path,
+        expectedToolCalls: r.expected_tool_calls,
+      })),
+    });
+  } catch (err) {
+    logger.error('Failed to get demo flows', { templateId: req.params.id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get demo flows' });
+  }
+});
+
+function resolveVerticalIds(slug: string, tags: string[]): string[] {
+  const TEMPLATE_VERTICAL_MAP: Record<string, string[]> = {
+    'home-services': ['hvac', 'plumbing'],
+    'dental': ['dental'],
+    'medical-after-hours': ['medical-after-hours'],
+    'property-management': ['property-management'],
+    'legal': ['legal'],
+    'restaurants': ['restaurants'],
+    'real-estate': ['real-estate'],
+    'insurance': ['insurance'],
+  };
+
+  const directMatch = TEMPLATE_VERTICAL_MAP[slug];
+  if (directMatch) return directMatch;
+
+  const allVerticals = Object.values(TEMPLATE_VERTICAL_MAP).flat();
+  const matchedFromTags = tags.filter((t) => allVerticals.includes(t));
+  return matchedFromTags;
+}
+
 export default router;

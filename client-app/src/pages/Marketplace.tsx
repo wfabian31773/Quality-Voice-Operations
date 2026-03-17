@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   Search, Store, ArrowLeft, Download, CheckCircle, Phone, MessageSquare,
   Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, Shield,
-  AlertCircle,
+  AlertCircle, BookOpen, MessageCircle, PlayCircle,
 } from 'lucide-react';
 
 interface TemplateCategory {
@@ -69,6 +69,43 @@ interface TemplateChangelog {
 interface TemplateEntitlement {
   planTier: string;
   enabled: boolean;
+}
+
+interface PromptLibraryEntry {
+  verticalId: string;
+  category: string;
+  promptText: string;
+  version: number;
+}
+
+interface PromptLibraryResponse {
+  promptLibrary: PromptLibraryEntry[];
+  categories: string[];
+}
+
+interface StarterKnowledgeArticle {
+  verticalId: string;
+  title: string;
+  content: string;
+  categoryType: string;
+  sortOrder: number;
+}
+
+interface StarterKnowledgeResponse {
+  articles: StarterKnowledgeArticle[];
+  categoryTypes: string[];
+}
+
+interface DemoFlowEntry {
+  verticalId: string;
+  scenarioName: string;
+  callerRequest: string;
+  expectedAgentPath: { step: number; action: string; description: string }[];
+  expectedToolCalls: { tool: string; params: Record<string, unknown> }[];
+}
+
+interface DemoFlowResponse {
+  demoFlows: DemoFlowEntry[];
 }
 
 interface CategoryInfo {
@@ -472,6 +509,24 @@ function TemplateDetailView({
   });
   const isPlanGated = compatibility ? !compatibility.compatible : false;
 
+  const { data: promptLibData } = useQuery({
+    queryKey: ['marketplace-prompt-library', templateId],
+    queryFn: () => api.get<PromptLibraryResponse>(`/marketplace/templates/${templateId}/prompt-library`),
+    enabled: !!template,
+  });
+
+  const { data: starterKnowledgeData } = useQuery({
+    queryKey: ['marketplace-starter-knowledge', templateId],
+    queryFn: () => api.get<StarterKnowledgeResponse>(`/marketplace/templates/${templateId}/starter-knowledge`),
+    enabled: !!template,
+  });
+
+  const { data: demoFlowData } = useQuery({
+    queryKey: ['marketplace-demo-flows', templateId],
+    queryFn: () => api.get<DemoFlowResponse>(`/marketplace/templates/${templateId}/demo-flows`),
+    enabled: !!template,
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -633,6 +688,114 @@ function TemplateDetailView({
                       <p className="text-sm text-text-primary">{cl.summary}</p>
                       <p className="text-xs text-text-muted">v{cl.version}</p>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {promptLibData && promptLibData.promptLibrary.length > 0 && (
+            <div className="bg-surface border border-border rounded-xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <MessageCircle className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-semibold text-text-primary">Prompt Library</h2>
+              </div>
+              <p className="text-xs text-text-secondary mb-4">
+                Pre-built prompts included with this template across {promptLibData.categories.length} categories.
+              </p>
+              <div className="space-y-3">
+                {promptLibData.categories.map((cat) => {
+                  const prompts = promptLibData.promptLibrary.filter((p) => p.category === cat);
+                  return (
+                    <div key={cat} className="border border-border rounded-lg p-3">
+                      <p className="text-xs font-semibold text-text-primary uppercase tracking-wide mb-2 capitalize">{cat}</p>
+                      {prompts.map((p, i) => (
+                        <div key={i} className="mb-2 last:mb-0">
+                          {p.verticalId !== prompts[0]?.verticalId || prompts.length > 1 ? (
+                            <span className="text-xs text-primary font-medium">{p.verticalId}: </span>
+                          ) : null}
+                          <p className="text-xs text-text-secondary leading-relaxed line-clamp-3">{p.promptText}</p>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {starterKnowledgeData && starterKnowledgeData.articles.length > 0 && (
+            <div className="bg-surface border border-border rounded-xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <BookOpen className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-semibold text-text-primary">Starter Knowledge Pack</h2>
+              </div>
+              <p className="text-xs text-text-secondary mb-4">
+                {starterKnowledgeData.articles.length} ready-to-use knowledge articles will be added to your Knowledge Base on install.
+              </p>
+              <div className="space-y-2">
+                {starterKnowledgeData.categoryTypes.map((catType) => {
+                  const articles = starterKnowledgeData.articles.filter((a) => a.categoryType === catType);
+                  return (
+                    <div key={catType}>
+                      <p className="text-xs font-semibold text-text-primary uppercase tracking-wide mb-1.5">{catType} ({articles.length})</p>
+                      <div className="space-y-1 mb-3">
+                        {articles.map((a, i) => (
+                          <div key={i} className="flex items-start gap-2 pl-2">
+                            <span className="text-text-muted mt-0.5 text-xs">•</span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-text-primary">{a.title}</p>
+                              <p className="text-xs text-text-secondary line-clamp-1">{a.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {demoFlowData && demoFlowData.demoFlows.length > 0 && (
+            <div className="bg-surface border border-border rounded-xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <PlayCircle className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-semibold text-text-primary">Demo Scenarios</h2>
+              </div>
+              <p className="text-xs text-text-secondary mb-4">
+                Scripted scenarios for testing and demos.
+              </p>
+              <div className="space-y-4">
+                {demoFlowData.demoFlows.map((flow, i) => (
+                  <div key={i} className="border border-border rounded-lg p-3">
+                    <p className="text-sm font-medium text-text-primary mb-1">{flow.scenarioName}</p>
+                    <p className="text-xs text-text-secondary italic mb-2">"{flow.callerRequest}"</p>
+                    <div className="space-y-1">
+                      {flow.expectedAgentPath.map((step) => (
+                        <div key={step.step} className="flex items-start gap-2 text-xs">
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-[10px]">
+                            {step.step}
+                          </span>
+                          <div>
+                            <span className="font-medium text-text-primary capitalize">{step.action}</span>
+                            <span className="text-text-secondary ml-1">— {step.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {flow.expectedToolCalls.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <p className="text-xs text-text-muted mb-1">Expected tool calls:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {flow.expectedToolCalls.map((tc, j) => (
+                            <span key={j} className="px-2 py-0.5 rounded bg-surface-hover text-text-secondary text-xs font-mono">
+                              {tc.tool}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
