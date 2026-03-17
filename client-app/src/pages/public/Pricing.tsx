@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
+import { trackPageView, trackCTAClick } from '../../lib/analytics';
 
 interface Feature {
   name: string;
@@ -30,6 +31,7 @@ const features: Feature[] = [
   { name: 'Multi-location support', starter: false, pro: false, enterprise: true },
   { name: 'Priority support', starter: false, pro: true, enterprise: true },
   { name: 'Dedicated onboarding', starter: false, pro: false, enterprise: true },
+  { name: 'Interactive demo access', starter: true, pro: true, enterprise: true },
   { name: '14-day free trial', starter: true, pro: true, enterprise: true },
 ];
 
@@ -145,6 +147,10 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
 }
 
 export default function Pricing() {
+  useEffect(() => {
+    trackPageView('/pricing');
+  }, []);
+
   const faqSchema = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -170,8 +176,8 @@ export default function Pricing() {
   return (
     <div>
       <SEO
-        title="Pricing — Simple Plans for Every Business"
-        description="QVO pricing starts at $99/month. Compare Starter, Pro, and Enterprise plans. 14-day free trial on all plans, no contracts, no hidden fees."
+        title="Pricing — AI Voice Agent Plans with AI Minutes, Agents & Integrations"
+        description="QVO pricing starts at $99/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial."
         canonicalPath="/pricing"
         structuredData={faqSchema}
       />
@@ -227,6 +233,7 @@ export default function Pricing() {
                       ? 'bg-teal hover:bg-teal-hover text-white shadow-sm hover:shadow-md'
                       : 'bg-harbor/5 hover:bg-harbor/10 text-harbor group-hover:bg-teal group-hover:text-white'
                   }`}
+                  onClick={() => trackCTAClick('start_free_trial', 'pricing_card', tier.key)}
                 >
                   Start free trial
                   <ArrowRight className="h-4 w-4 inline-block ml-2" />
@@ -313,6 +320,7 @@ export default function Pricing() {
             <Link
               to="/contact"
               className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              onClick={() => trackCTAClick('contact_sales', 'pricing_bottom')}
             >
               Contact sales
               <ArrowRight className="h-4 w-4" />
@@ -320,6 +328,7 @@ export default function Pricing() {
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              onClick={() => trackCTAClick('start_free_trial', 'pricing_bottom')}
             >
               Start free trial
             </Link>

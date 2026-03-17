@@ -4,10 +4,12 @@ import {
   Stethoscope, Scale, Megaphone, Headphones, Users, Home,
   Phone, Globe, MessageSquare, ArrowRight, ChevronDown, ChevronUp,
   CheckCircle2, AlertTriangle, Bot, Zap, Calendar, Shield,
-  Clock, BarChart3, FileText, Wrench,
+  Clock, BarChart3, FileText, Wrench, Building2, UtensilsCrossed,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
+import { useEffect } from 'react';
+import { trackPageView, trackVerticalEngagement, trackCTAClick } from '../../lib/analytics';
 
 type Category = 'All' | 'Healthcare' | 'Legal' | 'Sales & Marketing' | 'Operations' | 'Support';
 
@@ -219,6 +221,69 @@ const agentTemplates: AgentTemplate[] = [
     toolsUsed: ['Scheduling system', 'SMS gateway', 'Outbound dialer', 'Waitlist manager'],
     escalationBehavior: 'Patients who miss multiple appointments are flagged for office manager review. Same-day cancellations trigger waitlist backfill automation.',
   },
+  {
+    id: 'property-management',
+    name: 'Property Management Agent',
+    category: 'Operations',
+    description: 'Handles tenant maintenance requests, emergency after-hours calls, and lease inquiries for property management companies. Triages urgency and dispatches maintenance staff.',
+    channels: ['phone', 'sms'],
+    capabilities: ['Maintenance request intake', 'Emergency triage', 'Tenant communication', 'Work order creation', 'Multi-property support'],
+    icon: Building2,
+    color: 'bg-indigo-100/80 text-indigo-700 border-indigo-200',
+    conversationExample: [
+      { role: 'caller', text: 'Hi, my kitchen faucet is leaking pretty badly.' },
+      { role: 'agent', text: 'I\'m sorry to hear that. Let me help get that resolved. Can I get your name and unit number?' },
+      { role: 'caller', text: 'It\'s Sarah Mitchell, unit 304 at Parkview Apartments.' },
+      { role: 'agent', text: 'Thank you, Sarah. Is the leak contained, or is water actively flooding?' },
+      { role: 'caller', text: 'It\'s dripping steadily but not flooding.' },
+      { role: 'agent', text: 'Got it. I\'ve created a maintenance request and flagged it as urgent. A plumber will contact you within 4 hours to schedule a visit. You\'ll get an SMS with the details. In the meantime, try turning off the water valve under the sink.' },
+    ],
+    workflowSteps: ['Identify tenant and property', 'Capture maintenance issue details', 'Classify urgency level', 'Create work order in system', 'Dispatch maintenance or schedule visit', 'Send SMS confirmation to tenant'],
+    toolsUsed: ['Property management system', 'Work order database', 'SMS gateway', 'Maintenance dispatch', 'Tenant database'],
+    escalationBehavior: 'Active flooding, gas leaks, fire damage, and no-heat emergencies in winter are immediately escalated to the on-call maintenance supervisor with simultaneous tenant safety guidance.',
+  },
+  {
+    id: 'restaurant',
+    name: 'Restaurant Agent',
+    category: 'Operations',
+    description: 'Manages reservations, takeout orders, and general inquiries for restaurants. Handles peak-hour overflow calls and after-hours booking requests.',
+    channels: ['phone', 'sms'],
+    capabilities: ['Reservation booking', 'Takeout order intake', 'Menu inquiries', 'Wait time updates', 'Special event booking'],
+    icon: UtensilsCrossed,
+    color: 'bg-rose-100/80 text-rose-700 border-rose-200',
+    conversationExample: [
+      { role: 'caller', text: 'Hi, I\'d like to make a reservation for this Saturday.' },
+      { role: 'agent', text: 'Of course! How many guests and what time were you thinking?' },
+      { role: 'caller', text: 'Party of 6, around 7 PM.' },
+      { role: 'agent', text: 'Let me check availability. I have 6:45 PM or 7:30 PM open for a party of 6 this Saturday. Which works better?' },
+      { role: 'caller', text: '7:30 is perfect. And does anyone in the kitchen handle nut allergies?' },
+      { role: 'agent', text: 'Yes, our kitchen accommodates nut allergies — I\'ll add that note to your reservation. You\'re confirmed for 7:30 PM this Saturday, party of 6. You\'ll receive a confirmation text shortly.' },
+    ],
+    workflowSteps: ['Greet caller and identify request type', 'Check reservation availability', 'Confirm booking details and dietary needs', 'Create reservation in system', 'Send SMS confirmation'],
+    toolsUsed: ['Reservation system', 'Menu database', 'SMS gateway', 'Calendar API', 'Waitlist manager'],
+    escalationBehavior: 'Large party requests (12+), private event inquiries, and catering requests are transferred to the restaurant manager. Complaints about food quality or service are flagged for manager callback within 1 hour.',
+  },
+  {
+    id: 'real-estate',
+    name: 'Real Estate Agent',
+    category: 'Sales & Marketing',
+    description: 'Captures buyer and seller leads, answers property listing questions, and schedules showings automatically. Integrates with MLS and CRM systems.',
+    channels: ['phone', 'web', 'sms'],
+    capabilities: ['Lead capture', 'Property Q&A', 'Showing scheduler', 'CRM sync', 'Listing information'],
+    icon: Home,
+    color: 'bg-amber-100/80 text-amber-700 border-amber-200',
+    conversationExample: [
+      { role: 'caller', text: 'I saw the listing on Oak Street. Is it still available?' },
+      { role: 'agent', text: 'Yes, the property at 215 Oak Street is still on the market! It\'s a 3-bedroom, 2-bath listed at $425,000. Would you like to schedule a showing?' },
+      { role: 'caller', text: 'Yes, what\'s available this weekend?' },
+      { role: 'agent', text: 'I have Saturday at 11 AM or Sunday at 2 PM. Which works better for you?' },
+      { role: 'caller', text: 'Saturday at 11.' },
+      { role: 'agent', text: 'You\'re confirmed for a showing at 215 Oak Street, Saturday at 11 AM. Can I get your name and email to send the listing details and confirmation?' },
+    ],
+    workflowSteps: ['Answer inquiry and identify property', 'Provide listing details from MLS', 'Qualify buyer interest and timeline', 'Schedule showing in calendar', 'Sync lead to CRM and send confirmation'],
+    toolsUsed: ['MLS integration', 'CRM system', 'Calendar booking', 'SMS gateway', 'Lead scoring engine'],
+    escalationBehavior: 'Pre-approved buyers ready to make offers are immediately connected to the listing agent. Seller inquiries about listing their property are routed to the team lead.',
+  },
 ];
 
 function ChannelBadge({ channel }: { channel: string }) {
@@ -280,6 +345,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
           <Link
             to={`/signup?agent=${agent.id}`}
             className="inline-flex items-center gap-1.5 bg-teal hover:bg-teal-hover text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            onClick={() => { trackCTAClick('deploy_agent', 'agents', agent.id); trackVerticalEngagement(agent.id, 'deploy_click'); }}
           >
             Deploy This Agent
             <ArrowRight className="h-3.5 w-3.5" />
@@ -370,6 +436,10 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
 export default function AgentsShowcase() {
   const [activeCategory, setActiveCategory] = useState<Category>('All');
 
+  useEffect(() => {
+    trackPageView('/agents');
+  }, []);
+
   const filtered = activeCategory === 'All'
     ? agentTemplates
     : agentTemplates.filter((a) => a.category === activeCategory);
@@ -377,8 +447,8 @@ export default function AgentsShowcase() {
   return (
     <div>
       <SEO
-        title="AI Voice Agents — Pre-Built Templates for Every Industry"
-        description="Browse QVO's library of pre-built AI voice agent templates for healthcare, legal, sales, support, and operations. Customize and deploy in minutes."
+        title="AI Voice Agents — HVAC, Medical, Dental, Legal, Property Management, Restaurants, Real Estate"
+        description="Browse QVO's AI voice agent templates for HVAC, medical offices, dental, legal intake, property management, restaurants, and real estate. Deploy AI receptionists in minutes."
         canonicalPath="/agents"
       />
       <section className="bg-harbor text-white py-20 lg:py-28">
@@ -397,6 +467,7 @@ export default function AgentsShowcase() {
               <Link
                 to="/signup"
                 className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+                onClick={() => trackCTAClick('start_free_trial', 'agents_hero')}
               >
                 Start Free Trial
                 <ArrowRight className="h-4 w-4" />
@@ -404,6 +475,7 @@ export default function AgentsShowcase() {
               <Link
                 to="/demo"
                 className="inline-flex items-center justify-center gap-2 border border-white/25 hover:bg-white/10 text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+                onClick={() => trackCTAClick('try_live_demo', 'agents_hero')}
               >
                 Try Live Demo
               </Link>
@@ -463,6 +535,7 @@ export default function AgentsShowcase() {
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
+              onClick={() => trackCTAClick('start_free_trial', 'agents_bottom')}
             >
               Start Free Trial
               <ArrowRight className="h-4 w-4" />
@@ -470,6 +543,7 @@ export default function AgentsShowcase() {
             <Link
               to="/pricing"
               className="inline-flex items-center justify-center gap-2 border border-white/25 hover:bg-white/10 text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
+              onClick={() => trackCTAClick('view_pricing', 'agents_bottom')}
             >
               View Pricing
             </Link>

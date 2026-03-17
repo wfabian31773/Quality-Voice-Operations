@@ -26,6 +26,7 @@ import ToolExecutionPanel from '../components/demo/ToolExecutionPanel';
 import CalendarToolVisual from '../components/demo/CalendarToolVisual';
 import SystemActivityFeed from '../components/demo/SystemActivityFeed';
 import { useDemoSSE } from '../hooks/useDemoSSE';
+import { trackPageView, trackDemoInteraction, trackCTAClick } from '../lib/analytics';
 
 const API_BASE = '/api';
 
@@ -309,6 +310,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
 }
 
 function trackDemoCTA(ctaType: string, agentType?: string) {
+  trackCTAClick(ctaType, 'demo', agentType);
   try {
     fetch(`${API_BASE}/demo/track-cta`, {
       method: 'POST',
@@ -346,13 +348,20 @@ export default function Demo() {
   );
 
   useEffect(() => {
+    trackPageView('/demo');
+  }, []);
+
+  useEffect(() => {
     const prev = prevCallStatus.current;
     if (callStatus !== prev) {
       if (callStatus === 'connected' || callStatus === 'ringing') {
         setCallStartTime(Date.now());
         setShowCTA(false);
         setShowCelebration(false);
+        trackDemoInteraction('call_started', activeAgent?.name ?? 'unknown');
       } else if (callStatus === 'ended' && (prev === 'connected' || prev === 'ringing')) {
+        const callDuration = callStartTime ? Math.round((Date.now() - callStartTime) / 1000) : 0;
+        trackDemoInteraction('call_completed', activeAgent?.name ?? 'unknown', callDuration);
         setCallStartTime(null);
         setShowCelebration(true);
         setTimeout(() => {
@@ -457,7 +466,7 @@ export default function Demo() {
                 agent={agent}
                 colorIndex={idx}
                 selected={selectedAgent === agent.id}
-                onSelect={() => setSelectedAgent(agent.id)}
+                onSelect={() => { setSelectedAgent(agent.id); trackDemoInteraction('agent_selected', agent.name); }}
               />
             ))}
             {agents.length === 0 && !loading && (

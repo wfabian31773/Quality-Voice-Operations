@@ -4,6 +4,7 @@ import { Menu, X, Phone } from 'lucide-react';
 
 const navLinks = [
   { to: '/product', label: 'Product' },
+  { to: '/features', label: 'Features' },
   { to: '/agents', label: 'Agents' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/use-cases', label: 'Use Cases' },
@@ -129,7 +130,8 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-white mb-4">Product</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/product" className="text-sm hover:text-white transition-colors">Features</Link></li>
+                <li><Link to="/product" className="text-sm hover:text-white transition-colors">Platform</Link></li>
+                <li><Link to="/features" className="text-sm hover:text-white transition-colors">Features</Link></li>
                 <li><Link to="/agents" className="text-sm hover:text-white transition-colors">Agents</Link></li>
                 <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">Pricing</Link></li>
                 <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">Integrations</Link></li>
@@ -140,9 +142,10 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-white mb-4">Solutions</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Medical</Link></li>
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Dental</Link></li>
-                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Legal</Link></li>
+                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">HVAC / Home Services</Link></li>
+                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Medical & Dental</Link></li>
+                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Legal & Real Estate</Link></li>
+                <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Restaurants</Link></li>
                 <li><Link to="/use-cases" className="text-sm hover:text-white transition-colors">Property Mgmt</Link></li>
               </ul>
             </div>

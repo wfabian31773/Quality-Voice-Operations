@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
+import { trackPageView, trackCTAClick } from '../../lib/analytics';
 import WorkflowDiagram, {
   genericWorkflowSteps,
   healthcareWorkflow,
@@ -381,6 +382,10 @@ function SecuritySection() {
 }
 
 export default function Product() {
+  useEffect(() => {
+    trackPageView('/product');
+  }, []);
+
   const productSchema = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -399,8 +404,8 @@ export default function Product() {
   return (
     <div>
       <SEO
-        title="Product — AI Voice Operations Platform"
-        description="Explore QVO's AI voice operations platform: intelligent call handling, appointment scheduling, outbound campaigns, and real-time analytics for small businesses."
+        title="Platform Overview — AI Voice Operations Command Center"
+        description="QVO platform overview: AI voice agents, call handling, appointment scheduling, technician dispatch, outbound campaigns, and real-time analytics for small businesses."
         canonicalPath="/product"
         structuredData={productSchema}
       />
@@ -593,12 +598,14 @@ export default function Product() {
             <Link
               to="/demo"
               className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+              onClick={() => trackCTAClick('try_demo', 'product_bottom')}
             >
               Try the demo
             </Link>
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-harbor hover:bg-harbor-light text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+              onClick={() => trackCTAClick('start_free_trial', 'product_bottom')}
             >
               Start free trial
               <ArrowRight className="h-4 w-4" />

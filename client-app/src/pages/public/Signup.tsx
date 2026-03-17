@@ -6,6 +6,7 @@ import {
   UserPlus, ArrowRight, Phone, CheckCircle2, Loader2,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
+import { trackPageView, trackSignupConversion, trackCTAClick } from '../../lib/analytics';
 
 const plans = [
   { key: 'starter', name: 'Starter', price: 99, desc: 'For small practices getting started.' },
@@ -35,6 +36,10 @@ export default function Signup() {
   const captchaRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    trackPageView('/signup');
+  }, []);
 
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY || !captchaRef.current) return;
@@ -91,6 +96,7 @@ export default function Signup() {
     }
 
     setLoading(true);
+    trackCTAClick('signup_submit', 'signup', plan);
     try {
       const res = await api.post<{ checkoutUrl: string; token: string; emailVerificationRequired?: boolean }>('/auth/signup', {
         name: orgName,
@@ -102,6 +108,7 @@ export default function Signup() {
       if (res.token) {
         setToken(res.token);
       }
+      trackSignupConversion(plan, res.checkoutUrl ? 'checkout' : 'onboarding');
       if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {
@@ -212,7 +219,7 @@ export default function Signup() {
                       <button
                         key={p.key}
                         type="button"
-                        onClick={() => setPlan(p.key)}
+                        onClick={() => { setPlan(p.key); trackCTAClick('plan_selected', 'signup', p.key); }}
                         className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
                           plan === p.key
                             ? 'border-teal bg-teal/5 ring-2 ring-teal/20'

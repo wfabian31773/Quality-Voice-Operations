@@ -6,12 +6,14 @@ import {
   Mic, Megaphone, Plug, MessageSquare, Bot,
   Zap, Settings, Lock, TrendingUp, PhoneCall,
   PhoneOff, DollarSign, UserX, Timer,
-  CheckCircle2, Star, Wrench,
+  CheckCircle2, Star, Wrench, Play,
+  CalendarCheck, Truck, HelpCircle, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import SEO from '../../components/SEO';
 import { reducedMotion } from '../../hooks/useScrollReveal';
 import RevealSection from '../../components/RevealSection';
+import { trackPageView, trackCTAClick } from '../../lib/analytics';
 
 function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(reducedMotion ? end : 0);
@@ -184,9 +186,20 @@ const customerResults = [
 export default function Landing() {
   const { user, initialized } = useAuth();
 
+  useEffect(() => {
+    trackPageView('/');
+  }, []);
+
   if (initialized && user) {
     return <Navigate to="/dashboard" replace />;
   }
+
+  const keyBenefits = [
+    { icon: PhoneCall, text: 'Never Miss a Call' },
+    { icon: CalendarCheck, text: 'Book Appointments Automatically' },
+    { icon: Truck, text: 'Dispatch Technicians Instantly' },
+    { icon: HelpCircle, text: 'Answer Questions 24/7' },
+  ];
 
   const organizationSchema = {
     '@context': 'https://schema.org',
@@ -205,8 +218,8 @@ export default function Landing() {
   return (
     <div className="overflow-hidden">
       <SEO
-        title="QVO — AI Voice Agents for Small Business"
-        description="QVO is the voice operations hub for small businesses. AI-powered call handling, scheduling, routing, and analytics — never miss a call again."
+        title="QVO — AI Voice Agents That Run Your Business"
+        description="AI voice agents for call answering, appointment scheduling, and business automation. AI receptionist and call automation for HVAC, medical offices, dental, legal, and more."
         canonicalPath="/"
         structuredData={organizationSchema}
       />
@@ -224,73 +237,46 @@ export default function Landing() {
                 <span className="text-teal text-sm font-medium">AI-Powered Voice Platform</span>
               </div>
               <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] mb-6">
-                <span className="hero-gradient-text">AI Voice Agents</span> That Answer Calls, Run Campaigns, And Automate Your Business
+                <span className="hero-gradient-text">AI Voice Agents</span> That Run Your Business
               </h1>
-              <p className="text-lg lg:text-xl text-white/65 leading-relaxed mb-10 max-w-xl font-body">
-                Deploy intelligent voice agents that handle inbound calls, run outbound campaigns, and integrate with your CRM — all while you focus on growing your business.
+              <p className="text-lg lg:text-xl text-white/65 leading-relaxed mb-8 max-w-xl font-body">
+                Deploy intelligent voice agents that answer calls, book appointments, dispatch technicians, and answer customer questions — 24/7, on autopilot.
               </p>
+              <div className="grid grid-cols-2 gap-3 mb-8">
+                {keyBenefits.map((benefit) => (
+                  <div key={benefit.text} className="flex items-center gap-2 text-sm text-white/80">
+                    <benefit.icon className="h-4 w-4 text-teal shrink-0" />
+                    <span className="font-body">{benefit.text}</span>
+                  </div>
+                ))}
+              </div>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link
-                  to="/signup"
+                  to="/demo"
                   className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25 hover:shadow-teal/40"
+                  onClick={() => trackCTAClick('Try Live Demo', '/', 'hero')}
                 >
-                  Start Free Trial
+                  Try Live Demo
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  to="/demo"
+                  to="/product"
                   className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                  onClick={() => trackCTAClick('See How It Works', '/', 'hero')}
                 >
-                  Watch Demo
+                  See How It Works
                 </Link>
               </div>
             </div>
             <div className="hidden lg:block">
               <div className="relative">
                 <div className="glass-card rounded-2xl p-6 shadow-2xl">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-3 h-3 rounded-full bg-controlled-red/70" />
-                    <div className="w-3 h-3 rounded-full bg-warm-amber/70" />
-                    <div className="w-3 h-3 rounded-full bg-calm-green/70" />
-                    <span className="text-xs text-white/40 ml-2 font-mono">QVO Dashboard</span>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-teal/20 flex items-center justify-center">
-                          <Phone className="w-4 h-4 text-teal" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-white/90">Active Calls</p>
-                          <p className="text-xs text-white/50">3 agents handling</p>
-                        </div>
-                      </div>
-                      <span className="text-2xl font-bold font-display text-teal">12</span>
+                  <div className="aspect-video bg-white/5 rounded-xl flex flex-col items-center justify-center border border-white/10 cursor-pointer group hover:bg-white/10 transition-colors">
+                    <div className="w-16 h-16 rounded-full bg-teal/20 flex items-center justify-center mb-3 group-hover:bg-teal/30 transition-colors">
+                      <Play className="w-7 h-7 text-teal ml-1" />
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-calm-green/20 flex items-center justify-center">
-                          <TrendingUp className="w-4 h-4 text-calm-green" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-white/90">Today's Calls</p>
-                          <p className="text-xs text-white/50">94% resolution rate</p>
-                        </div>
-                      </div>
-                      <span className="text-2xl font-bold font-display text-calm-green">247</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-warm-amber/20 flex items-center justify-center">
-                          <Users className="w-4 h-4 text-warm-amber" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-white/90">Leads Captured</p>
-                          <p className="text-xs text-white/50">+18% this week</p>
-                        </div>
-                      </div>
-                      <span className="text-2xl font-bold font-display text-warm-amber">83</span>
-                    </div>
+                    <p className="text-sm text-white/60 font-body">Watch Demo Video</p>
+                    <p className="text-xs text-white/30 font-body mt-1">See QVO in action — 2 min</p>
                   </div>
                 </div>
                 <div className="absolute -bottom-4 -right-4 glass-card rounded-xl p-4 shadow-xl">
@@ -526,6 +512,37 @@ export default function Landing() {
         </div>
       </section>
 
+      <section className="py-16 lg:py-20 bg-mist">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-10">
+              <span className="inline-block text-sm font-semibold text-harbor bg-harbor/10 px-4 py-1.5 rounded-full mb-4">Security & Compliance</span>
+              <h2 className="font-display text-2xl lg:text-3xl font-bold text-harbor mb-3">
+                Enterprise-grade security built in.
+              </h2>
+              <p className="text-slate-ink/60 font-body max-w-xl mx-auto">
+                Your data and your customers' data are protected at every layer.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+              {[
+                { icon: ShieldCheck, label: 'HIPAA Ready' },
+                { icon: Lock, label: 'SOC 2 Compliant' },
+                { icon: Shield, label: 'AES-256 Encryption' },
+                { icon: BarChart3, label: 'Full Audit Logs' },
+              ].map((badge) => (
+                <div key={badge.label} className="flex flex-col items-center text-center bg-white rounded-xl border border-soft-steel/30 p-5">
+                  <div className="w-10 h-10 rounded-lg bg-teal/10 flex items-center justify-center mb-3">
+                    <badge.icon className="h-5 w-5 text-teal" />
+                  </div>
+                  <span className="text-sm font-semibold text-harbor font-display">{badge.label}</span>
+                </div>
+              ))}
+            </div>
+          </RevealSection>
+        </div>
+      </section>
+
       <section className="relative py-20 lg:py-24 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor-light/40 to-harbor" />
         <div className="absolute inset-0 opacity-15">
@@ -542,17 +559,19 @@ export default function Landing() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                to="/signup"
+                to="/demo"
                 className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
+                onClick={() => trackCTAClick('Try the Demo', '/', 'bottom-cta')}
               >
-                Start Free Trial
+                Try the Demo
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                to="/contact"
+                to="/signup"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                onClick={() => trackCTAClick('Start Free Trial', '/', 'bottom-cta')}
               >
-                Book a Demo
+                Start Free Trial
               </Link>
             </div>
           </div>

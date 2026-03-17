@@ -30,6 +30,7 @@ import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
 import Landing from './pages/public/Landing';
 import Product from './pages/public/Product';
+import Features from './pages/public/Features';
 import Pricing from './pages/public/Pricing';
 import UseCases from './pages/public/UseCases';
 import Integrations from './pages/public/Integrations';
@@ -64,6 +65,7 @@ export default function App() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/product" element={<Product />} />
+        <Route path="/features" element={<Features />} />
         <Route path="/agents" element={<AgentsShowcase />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/use-cases" element={<UseCases />} />
