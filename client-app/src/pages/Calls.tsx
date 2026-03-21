@@ -299,7 +299,7 @@ export default function Calls() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Call History</h1>
+          <h1 className="text-2xl font-bold text-text-primary">Conversations</h1>
           <p className="text-sm text-text-secondary mt-1">Browse and review past calls with transcripts</p>
         </div>
         <button onClick={() => setShowFilters(!showFilters)}

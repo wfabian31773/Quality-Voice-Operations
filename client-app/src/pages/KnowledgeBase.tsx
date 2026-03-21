@@ -502,7 +502,7 @@ export default function KnowledgeBase() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Knowledge Base</h1>
+          <h1 className="text-2xl font-bold text-text-primary">Knowledge</h1>
           <p className="text-sm text-text-secondary mt-1">Manage knowledge sources for your AI agents</p>
         </div>
         {isManager && (

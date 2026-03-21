@@ -1187,7 +1187,7 @@ export default function Campaigns() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Campaigns</h1>
+          <h1 className="text-xl font-bold text-text-primary">Automation</h1>
           <p className="text-sm text-text-muted mt-0.5">Create and manage outbound calling campaigns</p>
         </div>
         {isManager && (

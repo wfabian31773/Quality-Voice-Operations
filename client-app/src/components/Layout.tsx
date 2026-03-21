@@ -4,10 +4,9 @@ import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import { hasMinRole } from '../lib/useRole';
 import {
-  LayoutDashboard, Bot, Phone, PhoneCall, Plug, Users, Network,
-  LogOut, Moon, Sun, Menu, X, Activity, BarChart3, Star, Settings2,
-  Shield, Building2, Megaphone, CreditCard, BookOpen, MessageSquare, ArrowUpCircle, Store, Radio, Code2, TrendingUp, Sparkles, FlaskConical, Lightbulb, Brain, Cpu, Monitor, Globe, Coins, Bug, Filter,
-  Inbox, Calendar, Ticket, Truck,
+  LayoutDashboard, Bot, PhoneCall, Plug, Network,
+  LogOut, Moon, Sun, Menu, X, BarChart3, Settings2,
+  Zap, BookOpen, Store,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -24,38 +23,15 @@ interface NavItem {
 
 const links: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/command-center', icon: Monitor, label: 'Command Center' },
   { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/workflows', icon: Activity, label: 'Workflows', minRole: 'manager' },
-  { to: '/workforce', icon: Network, label: 'AI Workforce' },
-  { to: '/phone-numbers', icon: Phone, label: 'Phone Numbers' },
-  { to: '/calls', icon: PhoneCall, label: 'Call History' },
-  { to: '/connectors', icon: Plug, label: 'Connectors' },
-  { to: '/users', icon: Users, label: 'Users' },
-  { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
-  { to: '/billing', icon: CreditCard, label: 'Billing' },
-  { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
+  { to: '/workflows', icon: Network, label: 'Workflows', minRole: 'manager' },
+  { to: '/calls', icon: PhoneCall, label: 'Conversations' },
+  { to: '/campaigns', icon: Zap, label: 'Automation' },
+  { to: '/connectors', icon: Plug, label: 'Integrations' },
+  { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/revenue-analytics', icon: TrendingUp, label: 'Revenue & Performance' },
-  { to: '/quality', icon: Star, label: 'Quality' },
-  { to: '/insights', icon: Sparkles, label: 'Intelligence' },
-  { to: '/autopilot', icon: Brain, label: 'Autopilot' },
-  { to: '/simulation-lab', icon: FlaskConical, label: 'Simulation Lab' },
-  { to: '/improvements', icon: Lightbulb, label: 'Improvements' },
-  { to: '/digital-twin', icon: Cpu, label: 'Digital Twin' },
-  { to: '/sms-inbox', icon: Inbox, label: 'SMS Inbox', group: 'Mini Systems' },
-  { to: '/scheduling', icon: Calendar, label: 'Scheduling', group: 'Mini Systems' },
-  { to: '/tickets', icon: Ticket, label: 'Tickets', group: 'Mini Systems' },
-  { to: '/dispatch', icon: Truck, label: 'Dispatch', group: 'Mini Systems' },
-  { to: '/widget', icon: MessageSquare, label: 'Widget' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
-  { to: '/marketplace/updates', icon: ArrowUpCircle, label: 'Updates' },
-  { to: '/developer', icon: Code2, label: 'Developer Portal' },
   { to: '/settings', icon: Settings2, label: 'Settings' },
-  { to: '/compliance', icon: Shield, label: 'Security & Compliance', minRole: 'manager' },
-  { to: '/audit-log', icon: Shield, label: 'Audit Log', minRole: 'manager' },
-  { to: '/ops/monitor', icon: Radio, label: 'Operations Console', minRole: 'operator' },
-  { to: '/admin/dashboard', icon: Building2, label: 'Platform Admin', platformAdminOnly: true },
 ];
 
 export default function Layout() {

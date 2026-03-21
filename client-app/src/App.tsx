@@ -30,17 +30,12 @@ import Marketplace from './pages/Marketplace';
 import DeveloperPortal from './pages/DeveloperPortal';
 import PlatformAdmin from './pages/PlatformAdmin';
 import Operations from './pages/Operations';
-import Insights from './pages/Insights';
-import Workforce from './pages/Workforce';
-import Improvements from './pages/Improvements';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
-import SimulationLab from './pages/SimulationLab';
 import Autopilot from './pages/Autopilot';
 import DigitalTwin from './pages/DigitalTwin';
 import GlobalIntelligence from './pages/GlobalIntelligence';
-import CommandCenter from './pages/CommandCenter';
 import EvolutionEngine from './pages/EvolutionEngine';
 import ToolHealth from './pages/ToolHealth';
 import CostOptimization from './pages/CostOptimization';
@@ -144,39 +139,32 @@ export default function App() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/command-center" element={<CommandCenter />} />
         <Route path="/agents" element={<Agents />} />
-        <Route path="/workforce" element={<Workforce />} />
-        <Route path="/phone-numbers" element={<PhoneNumbers />} />
+        <Route path="/workflows" element={<RoleGuard minRole="manager"><Workflows /></RoleGuard>} />
         <Route path="/calls" element={<Calls />} />
-        <Route path="/connectors" element={<Connectors />} />
-        <Route path="/users" element={<UsersPage />} />
         <Route path="/campaigns" element={<Campaigns />} />
-        <Route path="/billing" element={<Billing />} />
+        <Route path="/connectors" element={<Connectors />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/revenue-analytics" element={<RevenueAnalytics />} />
+        <Route path="/marketplace" element={<Marketplace />} />
+        <Route path="/marketplace/installed" element={<Marketplace />} />
+        <Route path="/marketplace/:id" element={<Marketplace />} />
+        <Route path="/marketplace/updates" element={<UpdateCenter />} />
+        <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/settings" element={<SettingsRedirect />} />
         <Route path="/settings/general" element={<Settings />} />
         <Route path="/settings/roles" element={<Settings />} />
         <Route path="/settings/security" element={<Settings />} />
         <Route path="/settings/api-keys" element={<Settings />} />
+        <Route path="/phone-numbers" element={<PhoneNumbers />} />
+        <Route path="/users" element={<UsersPage />} />
+        <Route path="/billing" element={<Billing />} />
         <Route path="/quality" element={<Quality />} />
-        <Route path="/insights" element={<Insights />} />
-        <Route path="/autopilot" element={<Autopilot />} />
-        <Route path="/simulation-lab" element={<SimulationLab />} />
-        <Route path="/improvements" element={<Improvements />} />
-        <Route path="/widget" element={<Widget />} />
-        <Route path="/marketplace" element={<Marketplace />} />
-        <Route path="/marketplace/installed" element={<Marketplace />} />
-        <Route path="/marketplace/:id" element={<Marketplace />} />
-        <Route path="/developer" element={<DeveloperPortal />} />
         <Route path="/audit-log" element={<RoleGuard minRole="manager"><AuditLog /></RoleGuard>} />
         <Route path="/compliance" element={<RoleGuard minRole="manager"><Compliance /></RoleGuard>} />
-        <Route path="/marketplace/updates" element={<UpdateCenter />} />
-        <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
-        <Route path="/conversion-funnel" element={<ConversionFunnel />} />
-        <Route path="/workflows" element={<RoleGuard minRole="manager"><Workflows /></RoleGuard>} />
+        <Route path="/widget" element={<Widget />} />
+        <Route path="/developer" element={<DeveloperPortal />} />
         <Route path="/sms-inbox" element={<SmsInbox />} />
         <Route path="/scheduling" element={<Scheduling />} />
         <Route path="/tickets" element={<Tickets />} />
@@ -235,6 +223,12 @@ export default function App() {
       <Route path="/platform-admin" element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="/evolution" element={<Navigate to="/admin/evolution" replace />} />
       <Route path="/conversion-funnel" element={<Navigate to="/admin/conversion" replace />} />
+      <Route path="/command-center" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/workforce" element={<Navigate to="/agents" replace />} />
+      <Route path="/insights" element={<Navigate to="/analytics" replace />} />
+      <Route path="/autopilot" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/simulation-lab" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/improvements" element={<Navigate to="/dashboard" replace />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

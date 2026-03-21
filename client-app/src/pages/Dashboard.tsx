@@ -3,9 +3,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import {
-  PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
+  PhoneCall, Bot, TrendingUp, AlertTriangle, Wifi, WifiOff,
   ArrowRight, Zap, BarChart3, Phone, Plus, CheckCircle2,
   Stethoscope, Building2, Wrench, Scale, Headphones,
+  DollarSign, CalendarCheck, Bell,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import OnboardingChecklist from '../components/OnboardingChecklist';
@@ -328,7 +329,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
-          <p className="text-sm text-text-secondary mt-1">Real-time overview of your voice operations</p>
+          <p className="text-sm text-text-secondary mt-1">What's happening today, what's working, and what needs attention</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -354,12 +355,48 @@ export default function Dashboard() {
       <ExampleWorkflowCards navigate={navigate} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard icon={PhoneCall} label="Active Calls" value={activeCallCount} color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
-        <StatCard icon={TrendingUp} label="Today's Volume" value={totalToday} color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" />
-        <StatCard icon={AlertTriangle} label="Escalations" value={escalations} color="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" />
+        <StatCard icon={PhoneCall} label="Calls Today" value={totalToday} color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" />
+        <StatCard icon={CalendarCheck} label="Bookings" value="--" trend="connect scheduling" color="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" />
         <StatCard icon={Bot} label="Active Agents" value={agentCount} color="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" />
-        <StatCard icon={Clock} label="Avg Duration" value={avgDuration > 0 ? formatDuration(avgDuration) : '--'} color="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" />
+        <StatCard icon={DollarSign} label="Revenue Generated" value="--" trend="connect billing" color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
+        <StatCard icon={TrendingUp} label="Live Calls" value={activeCallCount} color="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" />
       </div>
+
+      {(escalations > 0 || activeCallCount > 0) && (
+        <div className="bg-surface border border-border rounded-xl shadow-sm">
+          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+            <Bell className="h-4 w-4 text-amber-500" />
+            <h2 className="text-base font-semibold text-text-primary">Needs Attention</h2>
+          </div>
+          <div className="divide-y divide-border">
+            {escalations > 0 && (
+              <div className="px-5 py-3 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
+                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text-primary">{escalations} escalated conversation{escalations !== 1 ? 's' : ''}</p>
+                  <p className="text-xs text-text-secondary">Conversations that needed human follow-up</p>
+                </div>
+                <button onClick={() => navigate('/calls')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
+                  Review <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {activeCallCount > 0 && (
+              <div className="px-5 py-3 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                  <Phone className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text-primary">{activeCallCount} live conversation{activeCallCount !== 1 ? 's' : ''} right now</p>
+                  <p className="text-xs text-text-secondary">Active calls being handled by your agents</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {usageData?.usage && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -371,7 +408,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-surface border border-border rounded-xl shadow-sm">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text-primary">Recent Calls</h2>
+            <h2 className="text-base font-semibold text-text-primary">Recent Conversations</h2>
             <button onClick={() => navigate('/calls')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
               View All <ArrowRight className="h-3 w-3" />
             </button>

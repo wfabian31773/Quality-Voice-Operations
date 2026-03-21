@@ -174,7 +174,7 @@ export default function Connectors() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Connectors</h1>
+          <h1 className="text-2xl font-bold text-text-primary">Integrations</h1>
           <p className="text-sm text-text-secondary mt-1">Integrate external services with your voice platform</p>
         </div>
         {isManager && (
