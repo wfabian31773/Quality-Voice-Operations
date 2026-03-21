@@ -25,7 +25,7 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for development, Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).
-- **Telephony:** Twilio (voice calls, SMS messaging, webhooks).
+- **Telephony:** Twilio (voice calls, SMS messaging, webhooks, number provisioning via QVO master account — first number free, additional $2/mo, auto-release on deletion).
 - **AI/ML:** OpenAI (Realtime API, `text-embedding-3-small`, various GPT models).
 - **Email:** Nodemailer (SMTP service).
 - **CAPTCHA:** Cloudflare Turnstile (for signup verification).
