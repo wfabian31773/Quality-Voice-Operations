@@ -437,7 +437,7 @@ export default function AgentsShowcase() {
   const [activeCategory, setActiveCategory] = useState<Category>('All');
 
   useEffect(() => {
-    trackPageView('/agents');
+    trackPageView('/ai-agents');
   }, []);
 
   const filtered = activeCategory === 'All'
@@ -449,7 +449,7 @@ export default function AgentsShowcase() {
       <SEO
         title="AI Voice Agents — HVAC, Medical, Dental, Legal, Property Management, Restaurants, Real Estate"
         description="Browse QVO's AI voice agent templates for HVAC, medical offices, dental, legal intake, property management, restaurants, and real estate. Deploy AI receptionists in minutes."
-        canonicalPath="/agents"
+        canonicalPath="/ai-agents"
       />
       <section className="bg-harbor text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">

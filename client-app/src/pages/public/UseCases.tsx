@@ -146,7 +146,7 @@ export default function UseCases() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                to="/agents"
+                to="/ai-agents"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
                 onClick={() => trackCTAClick('Explore Agents', '/use-cases', 'hero')}
               >

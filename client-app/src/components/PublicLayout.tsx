@@ -6,7 +6,7 @@ import WebsiteSalesWidget from './WebsiteSalesWidget';
 const navLinks = [
   { to: '/product', label: 'Product' },
   { to: '/features', label: 'Features' },
-  { to: '/agents', label: 'Agents' },
+  { to: '/ai-agents', label: 'Agents' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/use-cases', label: 'Use Cases' },
   { to: '/integrations', label: 'Integrations' },
@@ -135,7 +135,7 @@ export default function PublicLayout() {
               <ul className="space-y-2.5">
                 <li><Link to="/product" className="text-sm hover:text-white transition-colors">Platform</Link></li>
                 <li><Link to="/features" className="text-sm hover:text-white transition-colors">Features</Link></li>
-                <li><Link to="/agents" className="text-sm hover:text-white transition-colors">Agents</Link></li>
+                <li><Link to="/ai-agents" className="text-sm hover:text-white transition-colors">Agents</Link></li>
                 <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">Pricing</Link></li>
                 <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">Integrations</Link></li>
                 <li><Link to="/demo" className="text-sm hover:text-white transition-colors">Live Demo</Link></li>

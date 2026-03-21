@@ -425,7 +425,7 @@ export default function Landing() {
           <RevealSection>
             <div className="text-center">
               <Link
-                to="/agents"
+                to="/ai-agents"
                 className="inline-flex items-center gap-2 text-sm font-semibold text-teal hover:text-teal-hover transition-colors"
               >
                 Explore Marketplace
