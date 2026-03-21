@@ -8,7 +8,7 @@ import {
   Zap, BookOpen, Store, ChevronDown, Boxes,
   MessageSquare, CalendarClock, ClipboardList, Truck,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
 import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
@@ -45,6 +45,7 @@ export default function TenantLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const miniRef = useRef<HTMLDivElement>(null);
   const [miniOpen, setMiniOpen] = useState(() =>
     miniSystemLinks.some((l) => location.pathname.startsWith(l.to)),
   );
@@ -135,9 +136,17 @@ export default function TenantLayout() {
           </NavLink>
         ))}
 
-        <div className="pt-2">
+        <div className="pt-2" ref={miniRef}>
           <button
-            onClick={() => setMiniOpen(!miniOpen)}
+            onClick={() => {
+              const next = !miniOpen;
+              setMiniOpen(next);
+              if (next) {
+                setTimeout(() => {
+                  miniRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }, 50);
+              }
+            }}
             className={clsx(
               'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
               miniSystemLinks.some((l) => location.pathname.startsWith(l.to))
