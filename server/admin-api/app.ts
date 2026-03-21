@@ -54,6 +54,7 @@ import smsInboxRoutes from './routes/smsInbox';
 import schedulingRoutes from './routes/scheduling';
 import ticketRoutes from './routes/tickets';
 import dispatchRoutes from './routes/dispatch';
+import ingestRoutes from './routes/ingest';
 
 const app = express();
 
@@ -129,6 +130,7 @@ app.use('/', smsInboxRoutes);
 app.use('/', schedulingRoutes);
 app.use('/', ticketRoutes);
 app.use('/', dispatchRoutes);
+app.use('/', ingestRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

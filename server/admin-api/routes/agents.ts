@@ -69,7 +69,9 @@ router.get('/agents', requireAuth, async (req, res) => {
 
     const { rows } = await client.query(
       `SELECT id, tenant_id, name, type, status, voice, model, temperature,
-              system_prompt, welcome_greeting, escalation_config, metadata, created_at, updated_at
+              system_prompt, welcome_greeting, escalation_config, metadata,
+              execution_mode, remote_system, remote_agent_id, last_sync_at,
+              created_at, updated_at
        FROM agents WHERE tenant_id = $1
        ORDER BY created_at DESC
        LIMIT $2 OFFSET $3`,
@@ -192,6 +194,15 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
+    const { rows: modeCheck } = await client.query(
+      `SELECT execution_mode FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (modeCheck.length > 0 && modeCheck[0].execution_mode === 'federated') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Federated agents cannot be modified directly. They are managed by an external system.' });
+    }
+
     if ('workflow_id' in body && body.workflow_id !== null && body.workflow_id !== undefined) {
       const { rows: wfRows } = await client.query(
         `SELECT id FROM workflows WHERE id = $1 AND tenant_id = $2`,
@@ -263,6 +274,16 @@ router.delete('/agents/:id', requireAuth, requireRole('manager'), async (req, re
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: modeCheck } = await client.query(
+      `SELECT execution_mode FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (modeCheck.length > 0 && modeCheck[0].execution_mode === 'federated') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Federated agents cannot be deleted. They are managed by an external system.' });
+    }
+
     const { rowCount } = await client.query(
       `DELETE FROM agents WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],

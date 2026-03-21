@@ -23,6 +23,14 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Security:** Incorporates PHI redaction, encryption of tenant secrets, and strict enforcement of JWT, Stripe, and connector encryption keys.
 - **Frontend/Backend Communication:** Utilizes an API proxy for routing and Server-Sent Events (SSE) for real-time data updates.
 
+### Federated Ingest API
+The platform supports federated agent ingestion via REST API, enabling external voice agent systems (e.g., Remix/Azul Vision) to push call completion and ticket creation events into QVO. Key components:
+- **Ingest endpoints:** `POST /api/v1/ingest/calls`, `POST /api/v1/ingest/tickets`, `GET /api/v1/ingest/status` — authenticated via API key (`Bearer vai_...`), rate-limited, with atomic idempotency via `INSERT ... ON CONFLICT DO NOTHING`.
+- **Federated agents:** Agents with `execution_mode='federated'` are read-only in both UI and API — cannot be edited or deleted via the platform. They display an "External" badge and "Managed externally" banner in the tenant Agents page.
+- **Migration 051:** Creates `ingest_events` table, adds `execution_mode`/`remote_system`/`remote_agent_id`/`sync_mode`/`last_sync_at` columns to `agents`, adds `external_id` (unique) to `call_sessions`.
+- **Seed script:** `scripts/seedAzulVision.ts` creates the Azul Vision tenant with 6 federated agents (no-ivr, after-hours, answering-service, drs-scheduler, appointment-confirmation, fantasy-football), an admin user, enterprise subscription, and an API key for ingest.
+- **Zod schemas:** `shared/ingest/eventTypes.ts` defines `CallCompletionEventV1Schema` and `TicketCreationEventV1Schema`.
+
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for development, Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 
@@ -17,6 +17,10 @@ interface Agent {
   welcome_greeting: string;
   temperature: number;
   tools: Record<string, unknown>[];
+  execution_mode?: string;
+  remote_system?: string;
+  remote_agent_id?: string;
+  last_sync_at?: string;
   created_at: string;
 }
 
@@ -370,21 +374,36 @@ export default function Agents() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {agents.map((agent) => (
+          {agents.map((agent) => {
+            const isFederated = agent.execution_mode === 'federated';
+            return (
             <div key={agent.id} className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-semibold text-text-primary">{agent.name}</h3>
                   <p className="text-xs text-text-secondary mt-0.5">{agent.type} &middot; {agent.voice} &middot; {agent.model.replace('gpt-4o-', '').replace('-preview', '')}</p>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
-                  {agent.status}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {isFederated && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                      <Globe className="h-3 w-3" /> External
+                    </span>
+                  )}
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                    {agent.status}
+                  </span>
+                </div>
               </div>
-              {agent.system_prompt && (
+              {isFederated && (
+                <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 mb-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-800/30">
+                  <Globe className="h-3.5 w-3.5 shrink-0" />
+                  <span>Managed externally via {agent.remote_system ?? 'remote system'}{agent.last_sync_at ? ` · Last sync: ${new Date(agent.last_sync_at).toLocaleDateString()}` : ''}</span>
+                </div>
+              )}
+              {!isFederated && agent.system_prompt && (
                 <p className="text-xs text-text-secondary line-clamp-2 mb-4">{agent.system_prompt}</p>
               )}
-              {isManager && (
+              {isManager && !isFederated && (
                 <div className="flex items-center gap-2 pt-2 border-t border-border">
                   <button onClick={() => navigate(`/agents/${agent.id}/builder`)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
                     <Pencil className="h-3.5 w-3.5" /> Edit
@@ -398,8 +417,14 @@ export default function Agents() {
                   </button>
                 </div>
               )}
+              {isFederated && (
+                <div className="pt-2 border-t border-border">
+                  <p className="text-xs text-text-muted">Analytics and call logs are available. Agent configuration is managed in {agent.remote_system ?? 'the remote system'}.</p>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
