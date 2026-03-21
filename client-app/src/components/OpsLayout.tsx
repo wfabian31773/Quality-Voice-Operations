@@ -3,11 +3,12 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
   Radio, Bug, Wrench, Plug2, Coins, Activity, ShieldCheck,
-  LogOut, Moon, Sun, Menu, X, Building2, Cpu,
+  LogOut, Moon, Sun, Menu, X, Cpu,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
 import PlatformAssistant from './PlatformAssistant';
+import PortalSwitcher from './PortalSwitcher';
 
 interface NavItem {
   to: string;
@@ -70,13 +71,7 @@ export default function OpsLayout() {
       </nav>
 
       <div className="px-3 py-4 border-t border-emerald-500/20 space-y-1">
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-emerald-600/10 hover:text-white w-full transition-colors"
-        >
-          <Building2 className="h-4.5 w-4.5" />
-          Tenant Portal
-        </button>
+        <PortalSwitcher />
         <button
           onClick={toggle}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-emerald-600/10 hover:text-white w-full transition-colors"

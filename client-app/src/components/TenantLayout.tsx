@@ -10,6 +10,7 @@ import {
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import PlatformAssistant from './PlatformAssistant';
+import PortalSwitcher from './PortalSwitcher';
 
 interface NavItem {
   to: string;
@@ -125,6 +126,7 @@ export default function TenantLayout() {
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10 space-y-1">
+        <PortalSwitcher />
         <button
           onClick={toggle}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
