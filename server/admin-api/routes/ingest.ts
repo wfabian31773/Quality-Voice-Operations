@@ -205,6 +205,66 @@ router.post(
         );
       }
 
+      const aiMinutes = Math.ceil(event.duration_seconds / 60);
+      await client.query(
+        `INSERT INTO conversation_costs (
+          tenant_id, call_session_id, stt_cost_cents, llm_cost_cents, tts_cost_cents,
+          infra_cost_cents, total_cost_cents, model_used,
+          input_tokens, output_tokens, cache_hits, cache_misses, prompt_tokens_saved
+        ) VALUES ($1, $2, 0, $3, 0, $4, $5, 'gpt-4o-realtime', $6, $7, 0, 0, 0)
+        ON CONFLICT (tenant_id, call_session_id) DO UPDATE SET
+          llm_cost_cents = EXCLUDED.llm_cost_cents,
+          infra_cost_cents = EXCLUDED.infra_cost_cents,
+          total_cost_cents = EXCLUDED.total_cost_cents,
+          input_tokens = EXCLUDED.input_tokens,
+          output_tokens = EXCLUDED.output_tokens,
+          updated_at = NOW()`,
+        [
+          tenantId,
+          callSessionId,
+          event.costs.openai_cents,
+          event.costs.twilio_cents,
+          event.costs.total_cents,
+          event.tokens?.input_audio ?? 0 + (event.tokens?.input_text ?? 0),
+          event.tokens?.output_audio ?? 0 + (event.tokens?.output_text ?? 0),
+        ],
+      );
+
+      const callDate = event.start_time.slice(0, 10);
+      const metricType = event.direction === 'inbound' ? 'calls_inbound' : 'calls_outbound';
+      const periodStart = `${callDate}T00:00:00Z`;
+      const periodEnd = `${callDate}T23:59:59Z`;
+
+      await client.query(
+        `INSERT INTO usage_metrics (tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
+         VALUES ($1, $2::usage_metric_type, $3, $4, 1, $5, $5)
+         ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
+           quantity = usage_metrics.quantity + 1,
+           total_cost_cents = usage_metrics.total_cost_cents + $5,
+           updated_at = NOW()`,
+        [tenantId, metricType, periodStart, periodEnd, event.costs.total_cents],
+      );
+
+      await client.query(
+        `INSERT INTO usage_metrics (tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
+         VALUES ($1, 'ai_minutes'::usage_metric_type, $2, $3, $4, $5, $6)
+         ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
+           quantity = usage_metrics.quantity + $4,
+           total_cost_cents = usage_metrics.total_cost_cents + $6,
+           updated_at = NOW()`,
+        [tenantId, periodStart, periodEnd, aiMinutes, event.costs.openai_cents, event.costs.openai_cents],
+      );
+
+      await client.query(
+        `INSERT INTO daily_org_usage (tenant_id, date, total_calls, total_ai_minutes, total_cost_cents)
+         VALUES ($1, $2, 1, $3, $4)
+         ON CONFLICT (tenant_id, date) DO UPDATE SET
+           total_calls = daily_org_usage.total_calls + 1,
+           total_ai_minutes = daily_org_usage.total_ai_minutes + $3,
+           total_cost_cents = daily_org_usage.total_cost_cents + $4`,
+        [tenantId, callDate, aiMinutes, event.costs.total_cents],
+      );
+
       if (agentId) {
         await client.query(
           `UPDATE agents SET last_sync_at = NOW() WHERE id = $1 AND tenant_id = $2`,

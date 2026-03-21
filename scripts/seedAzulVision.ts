@@ -1,11 +1,22 @@
 import { getPlatformPool, closePlatformPool } from '../platform/db';
 import { generateApiKey } from '../platform/rbac/ApiKeyService';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 const AZUL_VISION_SLUG = 'azul-vision';
 const AZUL_VISION_NAME = 'Azul Vision Eye Center';
 const ADMIN_EMAIL = 'admin@azulvision.com';
-const ADMIN_PASSWORD = process.env.AZUL_ADMIN_PASSWORD || 'AzulVision2026!';
+
+function resolveAdminPassword(): string {
+  if (process.env.AZUL_ADMIN_PASSWORD) {
+    return process.env.AZUL_ADMIN_PASSWORD;
+  }
+  const generated = randomBytes(16).toString('base64url');
+  console.log(`[SEED] No AZUL_ADMIN_PASSWORD env var set — generated random password.`);
+  return generated;
+}
+
+const ADMIN_PASSWORD = resolveAdminPassword();
 
 interface FederatedAgent {
   name: string;
@@ -258,6 +269,7 @@ async function seedAzulVision(): Promise<void> {
     console.log(`  Tenant ID:    ${tenantId}`);
     console.log(`  Tenant Slug:  ${AZUL_VISION_SLUG}`);
     console.log(`  Admin Email:  ${ADMIN_EMAIL}`);
+    console.log(`  Admin Pass:   ${ADMIN_PASSWORD}`);
     console.log(`  API Key ID:   ${key.id}`);
     console.log(`  API Key:      ${plaintextKey}`);
     console.log('  WARNING: This key is shown once. Store it securely now.');
