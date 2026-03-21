@@ -101,14 +101,14 @@ router.post(
     }
 
     const pool = getPlatformPool();
-    const client = await pool.connect();
 
+    const auditClient = await pool.connect();
+    let eventRecorded = false;
     try {
-      await client.query('BEGIN');
-      await withTenantContext(client, tenantId, async () => {});
-
+      await auditClient.query('BEGIN');
+      await withTenantContext(auditClient, tenantId, async () => {});
       const insertResult = await tryRecordIngestEvent(
-        client as Parameters<typeof tryRecordIngestEvent>[0],
+        auditClient as Parameters<typeof tryRecordIngestEvent>[0],
         tenantId,
         event.idempotency_key,
         event.event_type,
@@ -117,10 +117,24 @@ router.post(
         event,
         'received',
       );
+      await auditClient.query('COMMIT');
       if (insertResult === 'duplicate') {
-        await client.query('COMMIT');
         return res.status(409).json({ error: 'Duplicate event', idempotency_key: event.idempotency_key });
       }
+      eventRecorded = true;
+    } catch (err) {
+      await auditClient.query('ROLLBACK').catch(() => {});
+      logger.error('Failed to record ingest event', { tenantId, error: String(err) });
+      return res.status(500).json({ error: 'Failed to record ingest event' });
+    } finally {
+      auditClient.release();
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
 
       const agentId = await resolveAgentByRemoteId(
         client as unknown as Parameters<typeof resolveAgentByRemoteId>[0],
@@ -186,23 +200,29 @@ router.post(
       const callSessionId = sessionRows[0].id as string;
 
       if (event.quality?.score !== undefined && event.quality.score !== null) {
-        await client.query(
-          `INSERT INTO call_quality_scores (tenant_id, call_session_id, score, feedback, scored_by)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT DO NOTHING`,
-          [
-            tenantId,
-            callSessionId,
-            event.quality.score,
-            JSON.stringify({
-              sentiment: event.quality.sentiment ?? null,
-              agent_outcome: event.quality.agent_outcome ?? null,
-              analysis: event.quality.analysis ?? null,
-              source: 'remix',
-            }),
-            'remix-grading',
-          ],
+        const { rows: existingQuality } = await client.query(
+          `SELECT id FROM call_quality_scores WHERE call_session_id = $1 AND scored_by = 'remix-grading' LIMIT 1`,
+          [callSessionId],
         );
+        const qualityFeedback = JSON.stringify({
+          sentiment: event.quality.sentiment ?? null,
+          agent_outcome: event.quality.agent_outcome ?? null,
+          analysis: event.quality.analysis ?? null,
+          source: 'remix',
+        });
+        if (existingQuality.length > 0) {
+          await client.query(
+            `UPDATE call_quality_scores SET score = $1, feedback = $2, scored_at = NOW()
+             WHERE id = $3`,
+            [event.quality.score, qualityFeedback, existingQuality[0].id],
+          );
+        } else {
+          await client.query(
+            `INSERT INTO call_quality_scores (tenant_id, call_session_id, score, feedback, scored_by)
+             VALUES ($1, $2, $3, $4, 'remix-grading')`,
+            [tenantId, callSessionId, event.quality.score, qualityFeedback],
+          );
+        }
       }
 
       const aiMinutes = Math.ceil(event.duration_seconds / 60);
@@ -225,8 +245,8 @@ router.post(
           event.costs.openai_cents,
           event.costs.twilio_cents,
           event.costs.total_cents,
-          event.tokens?.input_audio ?? 0 + (event.tokens?.input_text ?? 0),
-          event.tokens?.output_audio ?? 0 + (event.tokens?.output_text ?? 0),
+          (event.tokens?.input_audio ?? 0) + (event.tokens?.input_text ?? 0),
+          (event.tokens?.output_audio ?? 0) + (event.tokens?.output_text ?? 0),
         ],
       );
 
@@ -335,14 +355,13 @@ router.post(
     }
 
     const pool = getPlatformPool();
-    const client = await pool.connect();
 
+    const auditClient = await pool.connect();
     try {
-      await client.query('BEGIN');
-      await withTenantContext(client, tenantId, async () => {});
-
+      await auditClient.query('BEGIN');
+      await withTenantContext(auditClient, tenantId, async () => {});
       const insertResult = await tryRecordIngestEvent(
-        client as Parameters<typeof tryRecordIngestEvent>[0],
+        auditClient as Parameters<typeof tryRecordIngestEvent>[0],
         tenantId,
         event.idempotency_key,
         event.event_type,
@@ -351,10 +370,23 @@ router.post(
         event,
         'received',
       );
+      await auditClient.query('COMMIT');
       if (insertResult === 'duplicate') {
-        await client.query('COMMIT');
         return res.status(409).json({ error: 'Duplicate event', idempotency_key: event.idempotency_key });
       }
+    } catch (err) {
+      await auditClient.query('ROLLBACK').catch(() => {});
+      logger.error('Failed to record ticket ingest event', { tenantId, error: String(err) });
+      return res.status(500).json({ error: 'Failed to record ingest event' });
+    } finally {
+      auditClient.release();
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
 
       let callId: string | null = null;
       if (event.call_external_id) {
