@@ -5,7 +5,8 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, PhoneCall, Plug, Network,
   LogOut, Moon, Sun, Menu, X, BarChart3, Settings2,
-  Zap, BookOpen, Store,
+  Zap, BookOpen, Store, ChevronDown, Boxes,
+  MessageSquare, CalendarClock, ClipboardList, Truck,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -31,12 +32,22 @@ const tenantLinks: NavItem[] = [
   { to: '/settings', icon: Settings2, label: 'Settings' },
 ];
 
+const miniSystemLinks: NavItem[] = [
+  { to: '/sms-inbox', icon: MessageSquare, label: 'SMS Inbox' },
+  { to: '/scheduling', icon: CalendarClock, label: 'Scheduling' },
+  { to: '/tickets', icon: ClipboardList, label: 'Tickets' },
+  { to: '/dispatch', icon: Truck, label: 'Dispatch' },
+];
+
 export default function TenantLayout() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [miniOpen, setMiniOpen] = useState(() =>
+    miniSystemLinks.some((l) => location.pathname.startsWith(l.to)),
+  );
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -123,6 +134,52 @@ export default function TenantLayout() {
             {link.label}
           </NavLink>
         ))}
+
+        <div className="pt-2">
+          <button
+            onClick={() => setMiniOpen(!miniOpen)}
+            className={clsx(
+              'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              miniSystemLinks.some((l) => location.pathname.startsWith(l.to))
+                ? 'text-white bg-sidebar-active/50'
+                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Boxes className="h-4.5 w-4.5 shrink-0" />
+              Mini Systems
+            </div>
+            <ChevronDown
+              className={clsx(
+                'h-3.5 w-3.5 transition-transform',
+                miniOpen && 'rotate-180',
+              )}
+            />
+          </button>
+
+          {miniOpen && (
+            <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
+              {miniSystemLinks.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-sidebar-active text-white'
+                        : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                    )
+                  }
+                >
+                  <link.icon className="h-4 w-4 shrink-0" />
+                  {link.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10 space-y-1">
