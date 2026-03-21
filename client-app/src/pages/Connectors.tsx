@@ -1,7 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Trash2, Plug, X } from 'lucide-react';
+import {
+  X,
+  CheckCircle2,
+  Circle,
+  Clock,
+  Unplug,
+  ExternalLink,
+  Zap,
+  Phone,
+  Calendar,
+  MessageSquare,
+  Globe,
+  BarChart3,
+  Users,
+  Briefcase,
+  Mail,
+} from 'lucide-react';
 import { useRole } from '../lib/useRole';
 
 interface Connector {
@@ -11,125 +27,266 @@ interface Connector {
   name: string;
   isEnabled: boolean;
   configKeys: string[];
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
 }
 
-const CONNECTOR_TYPES = ['crm', 'scheduling', 'ticketing', 'sms', 'email', 'ehr', 'webhook', 'custom'] as const;
-
-type ConnectorType = typeof CONNECTOR_TYPES[number];
+interface ConnectorDefinition {
+  id: string;
+  name: string;
+  provider: string;
+  connectorType: string;
+  description: string;
+  syncScope: string;
+  icon: React.ReactNode;
+  brandColor: string;
+  fields: CredentialField[];
+  events: string[];
+  oauthProvider?: string;
+}
 
 interface CredentialField {
   key: string;
   label: string;
   type: 'text' | 'password';
   placeholder: string;
+  required?: boolean;
 }
 
-const CONNECTOR_FIELDS: Record<ConnectorType, CredentialField[]> = {
-  crm: [
-    { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
-    { key: 'instance_url', label: 'Instance URL', type: 'text', placeholder: 'https://your-crm.com' },
-  ],
-  scheduling: [
-    { key: 'client_id', label: 'Client ID', type: 'text', placeholder: 'OAuth Client ID' },
-    { key: 'client_secret', label: 'Client Secret', type: 'password', placeholder: 'OAuth Client Secret' },
-    { key: 'refresh_token', label: 'Refresh Token', type: 'password', placeholder: 'OAuth Refresh Token' },
-  ],
-  ticketing: [
-    { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
-    { key: 'base_url', label: 'Base URL', type: 'text', placeholder: 'https://api.ticketing.com' },
-    { key: 'project_id', label: 'Project ID', type: 'text', placeholder: 'Project or workspace ID' },
-  ],
-  sms: [
-    { key: 'account_sid', label: 'Account SID', type: 'text', placeholder: 'ACxxx...' },
-    { key: 'auth_token', label: 'Auth Token', type: 'password', placeholder: 'Auth token' },
-    { key: 'from_number', label: 'From Number', type: 'text', placeholder: '+15551234567' },
-  ],
-  email: [
-    { key: 'smtp_host', label: 'SMTP Host', type: 'text', placeholder: 'smtp.example.com' },
-    { key: 'smtp_port', label: 'SMTP Port', type: 'text', placeholder: '587' },
-    { key: 'username', label: 'Username', type: 'text', placeholder: 'user@example.com' },
-    { key: 'password', label: 'Password', type: 'password', placeholder: 'SMTP password' },
-  ],
-  ehr: [
-    { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
-    { key: 'base_url', label: 'Base URL', type: 'text', placeholder: 'https://ehr.example.com/api' },
-    { key: 'tenant_id', label: 'Tenant ID', type: 'text', placeholder: 'EHR tenant identifier' },
-  ],
-  webhook: [
-    { key: 'endpoint_url', label: 'Webhook URL', type: 'text', placeholder: 'https://hooks.example.com/notify' },
-    { key: 'secret', label: 'Signing Secret', type: 'password', placeholder: 'Webhook signing secret' },
-  ],
-  custom: [
-    { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
-    { key: 'endpoint_url', label: 'Endpoint URL', type: 'text', placeholder: 'https://api.service.com' },
-  ],
-};
-
-interface ConnectorFormData {
-  connectorType: ConnectorType;
-  provider: string;
-  name: string;
-  credentials: Record<string, string>;
-  isEnabled: boolean;
-}
-
-function AddConnectorModal({ onClose }: { onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState<ConnectorFormData>({
+const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
+  {
+    id: 'hubspot',
+    name: 'HubSpot',
+    provider: 'hubspot',
     connectorType: 'crm',
-    provider: '',
-    name: '',
-    credentials: {},
-    isEnabled: true,
-  });
+    description: 'Automatically log calls, create contacts, and push AI summaries to your CRM.',
+    syncScope: 'Calls, Contacts, Notes',
+    icon: <BarChart3 className="h-6 w-6" />,
+    brandColor: 'from-orange-500 to-orange-600',
+    oauthProvider: 'hubspot',
+    fields: [
+      { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'HubSpot private app access token', required: true },
+    ],
+    events: ['call.completed', 'appointment.booked'],
+  },
+  {
+    id: 'google-calendar',
+    name: 'Google Calendar',
+    provider: 'google-calendar',
+    connectorType: 'scheduling',
+    description: 'Sync appointments to your calendar and check availability before scheduling.',
+    syncScope: 'Appointments, Availability',
+    icon: <Calendar className="h-6 w-6" />,
+    brandColor: 'from-blue-500 to-blue-600',
+    oauthProvider: 'google',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', placeholder: 'Google OAuth Client ID', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', placeholder: 'Google OAuth Client Secret', required: true },
+      { key: 'refresh_token', label: 'Refresh Token', type: 'password', placeholder: 'Google OAuth Refresh Token', required: true },
+      { key: 'calendar_id', label: 'Calendar ID', type: 'text', placeholder: 'primary' },
+      { key: 'timezone', label: 'Timezone', type: 'text', placeholder: 'America/New_York' },
+    ],
+    events: ['appointment.booked'],
+  },
+  {
+    id: 'twilio-sms',
+    name: 'Twilio SMS',
+    provider: 'twilio',
+    connectorType: 'sms',
+    description: 'Send SMS notifications, escalation alerts, and follow-up messages.',
+    syncScope: 'SMS, Escalations',
+    icon: <Phone className="h-6 w-6" />,
+    brandColor: 'from-red-500 to-red-600',
+    fields: [
+      { key: 'account_sid', label: 'Account SID', type: 'text', placeholder: 'ACxxx...', required: true },
+      { key: 'auth_token', label: 'Auth Token', type: 'password', placeholder: 'Auth token', required: true },
+      { key: 'from_number', label: 'From Number', type: 'text', placeholder: '+15551234567', required: true },
+    ],
+    events: ['sms.sent'],
+  },
+  {
+    id: 'slack',
+    name: 'Slack',
+    provider: 'slack',
+    connectorType: 'custom',
+    description: 'Post call summaries and missed call alerts to your Slack channel automatically.',
+    syncScope: 'Call Summaries, Alerts',
+    icon: <MessageSquare className="h-6 w-6" />,
+    brandColor: 'from-purple-500 to-purple-600',
+    oauthProvider: 'slack',
+    fields: [
+      { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...', required: true },
+      { key: 'channel_id', label: 'Channel ID', type: 'text', placeholder: 'C01XXXXXXXX', required: true },
+    ],
+    events: ['call.completed', 'call.missed', 'appointment.booked', 'ticket.created'],
+  },
+  {
+    id: 'zapier',
+    name: 'Zapier',
+    provider: 'zapier',
+    connectorType: 'webhook',
+    description: 'Trigger Zapier workflows on platform events via webhooks.',
+    syncScope: 'All Events (Webhook)',
+    icon: <Zap className="h-6 w-6" />,
+    brandColor: 'from-amber-500 to-amber-600',
+    fields: [
+      { key: 'webhook_url', label: 'Webhook URL', type: 'text', placeholder: 'https://hooks.zapier.com/hooks/catch/...', required: true },
+      { key: 'api_key', label: 'API Key (optional)', type: 'password', placeholder: 'Optional signing secret' },
+    ],
+    events: ['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created'],
+  },
+];
 
-  const mutation = useMutation({
-    mutationFn: (data: ConnectorFormData) => api.post('/connectors', data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['connectors'] }); onClose(); },
-  });
+const COMING_SOON_CONNECTORS = [
+  { name: 'Salesforce', icon: <Globe className="h-6 w-6" />, color: 'from-blue-400 to-blue-500' },
+  { name: 'Pipedrive', icon: <Users className="h-6 w-6" />, color: 'from-green-500 to-green-600' },
+  { name: 'Outlook Calendar', icon: <Mail className="h-6 w-6" />, color: 'from-sky-500 to-sky-600' },
+  { name: 'QuickBooks', icon: <Briefcase className="h-6 w-6" />, color: 'from-emerald-500 to-emerald-600' },
+];
 
-  const fields = CONNECTOR_FIELDS[form.connectorType];
+function formatSyncTime(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHr / 24);
+
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+function ConnectModal({
+  definition,
+  onClose,
+  existingConnector,
+}: {
+  definition: ConnectorDefinition;
+  onClose: () => void;
+  existingConnector?: Connector;
+}) {
+  const queryClient = useQueryClient();
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [oauthPending, setOauthPending] = useState(false);
+  const isReconnect = !!existingConnector;
+
+  const handleOAuthMessage = useCallback((event: MessageEvent) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type === 'oauth_complete' && event.data?.provider === definition.provider) {
+      setOauthPending(false);
+      queryClient.invalidateQueries({ queryKey: ['connectors'] });
+      onClose();
+    }
+  }, [definition.provider, queryClient, onClose]);
+
+  useEffect(() => {
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [handleOAuthMessage]);
+
+  const startOAuth = async () => {
+    if (!definition.oauthProvider) return;
+    setOauthPending(true);
+    try {
+      const data = await api.get<{ authUrl: string }>(`/connectors/oauth/${definition.oauthProvider}/init`);
+      const popup = window.open(data.authUrl, `oauth_${definition.oauthProvider}`, 'width=600,height=700,popup=yes');
+      if (!popup) {
+        setOauthPending(false);
+        alert('Please allow popups for this site to connect via OAuth.');
+      }
+    } catch {
+      setOauthPending(false);
+    }
+  };
+
+  const connectMutation = useMutation({
+    mutationFn: (creds: Record<string, string>) =>
+      api.post('/connectors', {
+        connectorType: definition.connectorType,
+        provider: definition.provider,
+        name: definition.name,
+        credentials: creds,
+        isEnabled: true,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connectors'] });
+      onClose();
+    },
+  });
 
   const setCred = (key: string, val: string) =>
-    setForm((f) => ({ ...f, credentials: { ...f.credentials, [key]: val } }));
+    setCredentials((prev) => ({ ...prev, [key]: val }));
+
+  const requiredFilled = definition.fields
+    .filter((f) => f.required !== false)
+    .every((f) => (credentials[f.key] ?? '').trim().length > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-text-primary">Add Connector</h2>
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${definition.brandColor} flex items-center justify-center text-white`}>
+              {definition.icon}
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">
+                {isReconnect ? 'Reconnect' : 'Connect'} {definition.name}
+              </h2>
+              <p className="text-xs text-text-secondary">{definition.description}</p>
+            </div>
+          </div>
           <button onClick={onClose}><X className="h-5 w-5 text-text-secondary" /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(form); }} className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">Type</label>
-            <select value={form.connectorType}
-              onChange={(e) => setForm((f) => ({ ...f, connectorType: e.target.value as ConnectorType, credentials: {} }))}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-              {CONNECTOR_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">Provider</label>
-            <input value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))} required
-              placeholder={form.connectorType === 'crm' ? 'e.g. Salesforce, HubSpot' : `e.g. ${form.connectorType} provider`}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">Name</label>
-            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required placeholder="My CRM Connector"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
 
-          <div className="border-t border-border pt-4">
-            <p className="text-sm font-medium text-text-primary mb-3">Credentials</p>
+        <div className="p-5 space-y-4">
+          {definition.oauthProvider && (
+            <div>
+              <button
+                onClick={startOAuth}
+                disabled={oauthPending}
+                className="w-full text-sm font-medium bg-primary text-white hover:bg-primary-hover transition px-4 py-2.5 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {oauthPending ? (
+                  <>Waiting for authorization...</>
+                ) : (
+                  <>
+                    <ExternalLink className="h-4 w-4" />
+                    Connect with {definition.name} (OAuth)
+                  </>
+                )}
+              </button>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-surface px-2 text-text-secondary">or enter credentials manually</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              connectMutation.mutate(credentials);
+            }}
+            className="space-y-4"
+          >
             <div className="space-y-3">
-              {fields.map((field) => (
+              {definition.fields.map((field) => (
                 <div key={field.key}>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">{field.label}</label>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    {field.label}
+                    {field.required !== false && <span className="text-danger ml-0.5">*</span>}
+                  </label>
                   <input
                     type={field.type}
-                    value={form.credentials[field.key] ?? ''}
+                    value={credentials[field.key] ?? ''}
                     onChange={(e) => setCred(field.key, e.target.value)}
                     placeholder={field.placeholder}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -137,24 +294,153 @@ function AddConnectorModal({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
             </div>
-          </div>
 
-          {mutation.error && <p className="text-danger text-sm">{(mutation.error as Error).message}</p>}
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-text-secondary rounded-lg border border-border hover:bg-surface-hover transition">Cancel</button>
-            <button type="submit" disabled={mutation.isPending}
-              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50">
-              {mutation.isPending ? 'Saving...' : 'Add'}
-            </button>
-          </div>
-        </form>
+            <div className="bg-surface-hover/50 rounded-lg p-3">
+              <p className="text-xs font-medium text-text-secondary mb-1.5">Events this connector handles:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {definition.events.map((event) => (
+                  <span key={event} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                    {event}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {connectMutation.error && (
+              <p className="text-danger text-sm">{(connectMutation.error as Error).message}</p>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-text-secondary rounded-lg border border-border hover:bg-surface-hover transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={connectMutation.isPending || !requiredFilled}
+                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50"
+              >
+                {connectMutation.isPending ? 'Connecting...' : isReconnect ? 'Reconnect' : 'Connect'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
 }
 
+function ConnectorCard({
+  definition,
+  connector,
+  isManager,
+  onConnect,
+  onDisconnect,
+}: {
+  definition: ConnectorDefinition;
+  connector?: Connector;
+  isManager: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  const isConnected = !!connector && connector.isEnabled;
+  const hasCredentials = !!connector;
+
+  return (
+    <div className={`bg-surface border rounded-xl p-5 shadow-sm transition-all hover:shadow-md ${isConnected ? 'border-green-300 dark:border-green-700' : 'border-border'}`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${definition.brandColor} flex items-center justify-center text-white shadow-sm`}>
+            {definition.icon}
+          </div>
+          <div>
+            <h3 className="font-semibold text-text-primary">{definition.name}</h3>
+            <p className="text-xs text-text-secondary">{definition.connectorType}</p>
+          </div>
+        </div>
+        {isConnected ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            <CheckCircle2 className="h-3 w-3" /> Connected
+          </span>
+        ) : hasCredentials ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+            <Circle className="h-3 w-3" /> Disabled
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+            <Circle className="h-3 w-3" /> Not Connected
+          </span>
+        )}
+      </div>
+
+      <p className="text-sm text-text-secondary mb-3 line-clamp-2">{definition.description}</p>
+
+      <div className="space-y-1.5 mb-4">
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <ExternalLink className="h-3 w-3 flex-shrink-0" />
+          <span>Sync: {definition.syncScope}</span>
+        </div>
+        {isConnected && connector?.lastSyncAt && (
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            <Clock className="h-3 w-3 flex-shrink-0" />
+            <span>Last sync: {formatSyncTime(connector.lastSyncAt)}</span>
+            {connector.lastSyncStatus === 'error' && (
+              <span className="text-danger font-medium">(error)</span>
+            )}
+          </div>
+        )}
+        {isConnected && !connector?.lastSyncAt && (
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            <Clock className="h-3 w-3 flex-shrink-0" />
+            <span>Awaiting first sync</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {definition.events.map((event) => (
+          <span key={event} className="text-[10px] bg-surface-hover px-2 py-0.5 rounded-full text-text-secondary">
+            {event}
+          </span>
+        ))}
+      </div>
+
+      {isManager && (
+        <div className="flex gap-2 pt-3 border-t border-border">
+          {isConnected ? (
+            <>
+              <button
+                onClick={onConnect}
+                className="flex-1 text-xs font-medium text-text-secondary hover:text-primary transition px-3 py-1.5 rounded-lg border border-border hover:border-primary/30"
+              >
+                Reconnect
+              </button>
+              <button
+                onClick={onDisconnect}
+                className="flex-1 text-xs font-medium text-danger hover:text-red-700 transition px-3 py-1.5 rounded-lg border border-border hover:border-danger/30 inline-flex items-center justify-center gap-1"
+              >
+                <Unplug className="h-3 w-3" /> Disconnect
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onConnect}
+              className="w-full text-sm font-medium bg-primary text-white hover:bg-primary-hover transition px-4 py-2 rounded-lg"
+            >
+              Connect
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Connectors() {
-  const [showAdd, setShowAdd] = useState(false);
+  const [connectTarget, setConnectTarget] = useState<ConnectorDefinition | null>(null);
   const queryClient = useQueryClient();
   const { isManager } = useRole();
 
@@ -163,62 +449,99 @@ export default function Connectors() {
     queryFn: () => api.get<{ connectors: Connector[]; total: number }>('/connectors?limit=100'),
   });
 
-  const deleteMut = useMutation({
+  const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => api.delete(`/connectors/${integrationId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connectors'] }),
   });
 
   const connectors = data?.connectors ?? [];
 
+  const findConnector = (def: ConnectorDefinition): Connector | undefined =>
+    connectors.find((c) => c.provider === def.provider);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Integrations</h1>
-          <p className="text-sm text-text-secondary mt-1">Integrate external services with your voice platform</p>
-        </div>
-        {isManager && (
-          <button onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
-            <Plus className="h-4 w-4" /> Add Connector
-          </button>
-        )}
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary">Integrations</h1>
+        <p className="text-sm text-text-secondary mt-1">
+          Connect your tools in one click. Events flow automatically to all active integrations.
+        </p>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-text-secondary">Loading...</div>
-      ) : connectors.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl p-12 text-center">
-          <Plug className="h-12 w-12 text-text-muted mx-auto mb-3" />
-          <p className="text-text-secondary">No connectors configured</p>
-        </div>
+        <div className="text-center py-12 text-text-secondary">Loading integrations...</div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {connectors.map((c) => (
-            <div key={c.integrationId} className="bg-surface border border-border rounded-xl p-5 shadow-sm">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="font-semibold text-text-primary">{c.name}</h3>
-                  <p className="text-xs text-text-secondary mt-0.5">{c.connectorType} &middot; {c.provider}</p>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.isEnabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
-                  {c.isEnabled ? 'Active' : 'Disabled'}
-                </span>
-              </div>
-              {isManager && (
-                <div className="flex justify-end pt-3 border-t border-border">
-                  <button onClick={() => { if (confirm('Delete this connector?')) deleteMut.mutate(c.integrationId); }}
-                    className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                  </button>
-                </div>
-              )}
+        <>
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary mb-4">Available Integrations</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {CONNECTOR_DEFINITIONS.map((def) => {
+                const existing = findConnector(def);
+                return (
+                  <ConnectorCard
+                    key={def.id}
+                    definition={def}
+                    connector={existing}
+                    isManager={isManager}
+                    onConnect={() => setConnectTarget(def)}
+                    onDisconnect={() => {
+                      if (existing && confirm(`Disconnect ${def.name}? This will remove all stored credentials.`)) {
+                        disconnectMutation.mutate(existing.integrationId);
+                      }
+                    }}
+                  />
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary mb-1">Coming Soon</h2>
+            <p className="text-sm text-text-secondary mb-4">Phase 2 integrations on our roadmap.</p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {COMING_SOON_CONNECTORS.map((c) => (
+                <div
+                  key={c.name}
+                  className="bg-surface border border-border rounded-xl p-5 opacity-60 cursor-default"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${c.color} flex items-center justify-center text-white shadow-sm`}>
+                      {c.icon}
+                    </div>
+                    <h3 className="font-semibold text-text-primary">{c.name}</h3>
+                  </div>
+                  <span className="inline-block text-xs font-medium bg-surface-hover text-text-secondary px-2.5 py-1 rounded-full">
+                    Coming Soon
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-surface border border-border rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-text-primary mb-2">Event Bus</h3>
+            <p className="text-xs text-text-secondary mb-3">
+              These platform events automatically push to all connected integrations:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created'].map((event) => (
+                <span key={event} className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary/10 text-primary px-3 py-1.5 rounded-full">
+                  <Zap className="h-3 w-3" />
+                  {event}
+                </span>
+              ))}
+            </div>
+          </div>
+        </>
       )}
 
-      {showAdd && <AddConnectorModal onClose={() => setShowAdd(false)} />}
+      {connectTarget && (
+        <ConnectModal
+          definition={connectTarget}
+          existingConnector={findConnector(connectTarget)}
+          onClose={() => setConnectTarget(null)}
+        />
+      )}
     </div>
   );
 }

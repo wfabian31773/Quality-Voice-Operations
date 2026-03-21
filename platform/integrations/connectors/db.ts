@@ -131,15 +131,18 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
   name: string;
   isEnabled: boolean;
   configKeys: string[];
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
 }>> {
   return withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
       `SELECT i.id, i.integration_type, i.provider, i.name, i.is_enabled,
+              i.last_sync_at, i.last_sync_status,
               COALESCE(json_agg(cc.config_key) FILTER (WHERE cc.config_key IS NOT NULL), '[]') AS config_keys
        FROM integrations i
        LEFT JOIN connector_configs cc ON cc.integration_id = i.id AND cc.tenant_id = i.tenant_id
        WHERE i.tenant_id = $1
-       GROUP BY i.id, i.integration_type, i.provider, i.name, i.is_enabled
+       GROUP BY i.id, i.integration_type, i.provider, i.name, i.is_enabled, i.last_sync_at, i.last_sync_status
        ORDER BY i.created_at`,
       [tenantId],
     );
@@ -151,8 +154,28 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
       name: (r.name as string) ?? (r.provider as string),
       isEnabled: r.is_enabled as boolean,
       configKeys: r.config_keys as string[],
+      lastSyncAt: r.last_sync_at ? new Date(r.last_sync_at as string).toISOString() : null,
+      lastSyncStatus: (r.last_sync_status as string) ?? null,
     }));
   });
+}
+
+export async function updateConnectorSyncStatus(
+  tenantId: TenantId,
+  connectorType: ConnectorType,
+  status: 'success' | 'error',
+): Promise<void> {
+  try {
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `UPDATE integrations SET last_sync_at = NOW(), last_sync_status = $3, updated_at = NOW()
+         WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
+        [tenantId, connectorType, status],
+      );
+    });
+  } catch (err) {
+    logger.warn('Failed to update sync status', { tenantId, connectorType, error: String(err) });
+  }
 }
 
 export async function upsertConnector(
@@ -207,6 +230,30 @@ export async function upsertConnector(
     }
 
     return integrationId;
+  });
+}
+
+export async function listActiveConnectorsByType(tenantId: TenantId): Promise<Array<{
+  integrationId: string;
+  connectorType: ConnectorType;
+  provider: string;
+  isEnabled: boolean;
+}>> {
+  return withTenant(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, integration_type, provider, is_enabled
+       FROM integrations
+       WHERE tenant_id = $1 AND is_enabled = TRUE
+       ORDER BY created_at`,
+      [tenantId],
+    );
+
+    return rows.map((r) => ({
+      integrationId: r.id as string,
+      connectorType: r.integration_type as ConnectorType,
+      provider: r.provider as string,
+      isEnabled: r.is_enabled as boolean,
+    }));
   });
 }
 

@@ -2,6 +2,8 @@ import type { TenantId } from '../../core/types';
 
 export type ConnectorType = 'ticketing' | 'sms' | 'crm' | 'scheduling' | 'ehr' | 'email' | 'webhook' | 'custom';
 
+export type StandardEventType = 'call.completed' | 'appointment.booked' | 'sms.sent' | 'ticket.created' | 'call.missed';
+
 export interface ConnectorConfig {
   integrationId: string;
   tenantId: TenantId;
@@ -55,4 +57,28 @@ export interface SendSmsPayload extends ConnectorPayload {
   reason?: string;
   callSessionId?: string;
   timestamp?: string;
+}
+
+export interface StandardEventPayload extends ConnectorPayload {
+  type: StandardEventType;
+  callSid?: string;
+  callerPhone?: string;
+  callerFirstName?: string;
+  callerLastName?: string;
+  callerEmail?: string;
+  summary?: string;
+  durationSeconds?: number;
+  agentName?: string;
+  resolution?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
+  startTime?: string;
+  endTime?: string;
+  attendeeEmail?: string;
+  ticketNumber?: string;
+  patientFullName?: string;
+  reasonForCalling?: string;
+  to?: string;
+  body?: string;
+  reason?: string;
 }

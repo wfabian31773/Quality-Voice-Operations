@@ -202,6 +202,35 @@ export function createOutboxAdapters(): {
 
       try {
         const result = await connectorService.executeByPayload(tenantId, connectorPayload as { type: string });
+
+        if (connectorService.isStandardEvent(connectorPayload.type)) {
+          connectorService.dispatchEvent(
+            tenantId,
+            connectorPayload.type as import('../../../platform/integrations/connectors/types').StandardEventType,
+            connectorPayload as { type: string },
+          ).catch((err) => {
+            logger.warn('Event fan-out dispatch failed', { tenantId, type: connectorPayload.type, error: String(err) });
+          });
+        } else {
+          const eventTypeMap: Record<string, string> = {
+            create_ticket: 'ticket.created',
+            answering_service_ticket: 'ticket.created',
+            after_hours_triage_ticket: 'ticket.created',
+            send_sms: 'sms.sent',
+            escalation_notification: 'sms.sent',
+          };
+          const standardEvent = eventTypeMap[connectorPayload.type];
+          if (standardEvent) {
+            connectorService.dispatchEvent(
+              tenantId,
+              standardEvent as import('../../../platform/integrations/connectors/types').StandardEventType,
+              { ...connectorPayload, type: standardEvent },
+            ).catch((err) => {
+              logger.warn('Event fan-out dispatch failed', { tenantId, type: standardEvent, error: String(err) });
+            });
+          }
+        }
+
         return {
           success: result.success,
           ticketNumber: result.ticketNumber,

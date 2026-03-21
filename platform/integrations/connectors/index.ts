@@ -1,5 +1,5 @@
 export { ConnectorService, connectorService } from './ConnectorService';
-export { getConnectorConfig, getConnectorById, listConnectorConfigs, upsertConnector, deleteConnector } from './db';
+export { getConnectorConfig, getConnectorById, listConnectorConfigs, upsertConnector, deleteConnector, listActiveConnectorsByType, updateConnectorSyncStatus } from './db';
 export { encryptValue, decryptValue } from './crypto';
 export type {
   ConnectorType,
@@ -9,4 +9,6 @@ export type {
   ConnectorAdapter,
   CreateTicketPayload,
   SendSmsPayload,
+  StandardEventType,
+  StandardEventPayload,
 } from './types';

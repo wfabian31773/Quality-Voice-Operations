@@ -4,8 +4,9 @@ import {
   upsertConnector,
   deleteConnector,
   getConnectorById,
+  connectorService,
 } from '../../../platform/integrations/connectors';
-import type { ConnectorType } from '../../../platform/integrations/connectors';
+import type { ConnectorType, StandardEventType } from '../../../platform/integrations/connectors';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
@@ -138,6 +139,31 @@ router.delete('/connectors/:integrationId', requireAuth, requireRole('manager'),
   } catch (err) {
     logger.error('Failed to delete connector', { tenantId, integrationId, error: String(err) });
     return res.status(500).json({ error: 'Failed to delete connector' });
+  }
+});
+
+router.post('/connectors/events/dispatch', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { eventType, payload } = req.body as {
+    eventType?: string;
+    payload?: Record<string, unknown>;
+  };
+
+  const validEvents = new Set(['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created', 'call.missed']);
+  if (!eventType || !validEvents.has(eventType)) {
+    return res.status(400).json({ error: `Invalid eventType. Allowed: ${[...validEvents].join(', ')}` });
+  }
+
+  try {
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      eventType as StandardEventType,
+      { type: eventType, ...payload },
+    );
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to dispatch event', { tenantId, eventType, error: String(err) });
+    return res.status(500).json({ error: 'Failed to dispatch event' });
   }
 });
 
