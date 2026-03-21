@@ -78,7 +78,7 @@ async function resolveAgentByRemoteId(
 }
 
 router.post(
-  '/api/v1/ingest/calls',
+  '/v1/ingest/calls',
   apiKeyAuth,
   ingestLimiter,
   requireApiKeyPermission('write'),
@@ -332,7 +332,7 @@ router.post(
 );
 
 router.post(
-  '/api/v1/ingest/tickets',
+  '/v1/ingest/tickets',
   apiKeyAuth,
   ingestLimiter,
   requireApiKeyPermission('write'),
@@ -476,7 +476,7 @@ router.post(
 );
 
 router.get(
-  '/api/v1/ingest/status',
+  '/v1/ingest/status',
   apiKeyAuth,
   ingestLimiter,
   requireApiKeyPermission('read-only'),
