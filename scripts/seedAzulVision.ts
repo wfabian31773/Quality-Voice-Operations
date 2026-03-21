@@ -169,6 +169,42 @@ async function seedAzulVision(): Promise<void> {
       console.log(`[SEED] Subscription already exists`);
     }
 
+    const PHONE_NUMBERS = [
+      { number: '+16266056373', name: 'Azul Vision Main Line' },
+    ];
+
+    for (const phone of PHONE_NUMBERS) {
+      const { rows: existingPhones } = await client.query(
+        `SELECT id FROM phone_numbers WHERE tenant_id = $1 AND phone_number = $2`,
+        [tenantId, phone.number],
+      );
+      if (existingPhones.length === 0) {
+        await client.query(
+          `INSERT INTO phone_numbers (tenant_id, phone_number, friendly_name, status, provisioned_via)
+           VALUES ($1, $2, $3, 'active', 'manual')`,
+          [tenantId, phone.number, phone.name],
+        );
+        console.log(`[SEED] Created phone number: ${phone.number}`);
+      } else {
+        console.log(`[SEED] Phone number ${phone.number} already exists`);
+      }
+
+      const { rows: existingEndpoints } = await client.query(
+        `SELECT id FROM phone_endpoints WHERE tenant_id = $1 AND phone_number = $2`,
+        [tenantId, phone.number],
+      );
+      if (existingEndpoints.length === 0) {
+        await client.query(
+          `INSERT INTO phone_endpoints (tenant_id, phone_number, friendly_name, provider, is_active, config)
+           VALUES ($1, $2, $3, 'twilio', true, $4)`,
+          [tenantId, phone.number, phone.name, JSON.stringify({ source: 'remix', managed: 'external' })],
+        );
+        console.log(`[SEED] Created phone endpoint: ${phone.number}`);
+      } else {
+        console.log(`[SEED] Phone endpoint ${phone.number} already exists`);
+      }
+    }
+
     for (const agent of FEDERATED_AGENTS) {
       const { rows: existingAgents } = await client.query(
         `SELECT id FROM agents WHERE tenant_id = $1 AND remote_agent_id = $2 AND execution_mode = 'federated'`,
@@ -223,11 +259,12 @@ async function seedAzulVision(): Promise<void> {
     console.log(`  Tenant Slug:  ${AZUL_VISION_SLUG}`);
     console.log(`  Admin Email:  ${ADMIN_EMAIL}`);
     console.log(`  API Key ID:   ${key.id}`);
-    console.log(`  API Key:      ${plaintextKey.slice(0, 12)}...${plaintextKey.slice(-4)} (store securely)`);
+    console.log(`  API Key:      ${plaintextKey}`);
+    console.log('  WARNING: This key is shown once. Store it securely now.');
     console.log('');
-    console.log('  Set these in Remix .env:');
+    console.log('  Remix .env variables:');
     console.log(`    QVO_TENANT_ID=${tenantId}`);
-    console.log(`    QVO_API_KEY=<full key shown once above — copy from API key management>`);
+    console.log(`    QVO_API_KEY=${plaintextKey}`);
     console.log(`    QVO_INGEST_URL=<your-qvo-base-url>`);
     console.log('');
     console.log(`  Federated Agents: ${FEDERATED_AGENTS.length}`);

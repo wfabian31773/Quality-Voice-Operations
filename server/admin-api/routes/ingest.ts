@@ -105,7 +105,7 @@ router.post(
 
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL row_security = off');
+      await withTenantContext(client, tenantId, async () => {});
 
       const insertResult = await tryRecordIngestEvent(
         client as Parameters<typeof tryRecordIngestEvent>[0],
@@ -236,7 +236,7 @@ router.post(
         const errClient = await pool.connect();
         try {
           await errClient.query('BEGIN');
-          await errClient.query('SET LOCAL row_security = off');
+          await withTenantContext(errClient, tenantId, async () => {});
           await updateIngestEventStatus(errClient, tenantId, event.idempotency_key, 'failed', String(err));
           await errClient.query('COMMIT');
         } finally {
@@ -279,7 +279,7 @@ router.post(
 
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL row_security = off');
+      await withTenantContext(client, tenantId, async () => {});
 
       const insertResult = await tryRecordIngestEvent(
         client as Parameters<typeof tryRecordIngestEvent>[0],
@@ -368,7 +368,7 @@ router.post(
         const errClient = await pool.connect();
         try {
           await errClient.query('BEGIN');
-          await errClient.query('SET LOCAL row_security = off');
+          await withTenantContext(errClient, tenantId, async () => {});
           await updateIngestEventStatus(errClient, tenantId, event.idempotency_key, 'failed', String(err));
           await errClient.query('COMMIT');
         } finally {
@@ -391,9 +391,13 @@ router.get(
   async (req: Request, res: Response) => {
     const tenantId = req.user!.tenantId;
     const pool = getPlatformPool();
+    const client = await pool.connect();
 
     try {
-      const { rows } = await pool.query(
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
+
+      const { rows } = await client.query(
         `SELECT
            event_type,
            status,
@@ -406,10 +410,14 @@ router.get(
         [tenantId],
       );
 
+      await client.query('COMMIT');
       return res.json({ tenant_id: tenantId, event_stats: rows });
     } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
       logger.error('Ingest status failed', { tenantId, error: String(err) });
       return res.status(500).json({ error: 'Failed to get ingest status' });
+    } finally {
+      client.release();
     }
   },
 );
