@@ -420,6 +420,7 @@ function buildToolHandler(
               callLogId: callSessionId,
               outbox: outboxService,
               config: DEFAULT_ANSWERING_SERVICE_CONFIG,
+              practiceName: (agentConfig.metadata as Record<string, unknown>)?.practiceName as string | undefined,
             },
           );
           rawResult = JSON.stringify(ticketResult);
@@ -439,6 +440,7 @@ function buildToolHandler(
               callLogId: callSessionId,
               outbox: outboxService,
               afterHoursDepartmentId: (agentMeta.afterHoursDepartmentId as number) ?? 1,
+              practiceName: agentMeta?.practiceName as string | undefined,
             },
           );
           rawResult = JSON.stringify(afterHoursResult);
@@ -859,7 +861,10 @@ export async function createRealtimeSession(
 
   const slog = createSessionLogger('OPENAI_SESSION', { tenantId, callId: callSessionId, callSid });
 
-  wakeUpTicketing().catch(() => {});
+  const isAzulVision = agentConfig.metadata?.practiceName === 'Azul Vision' || agentConfig.metadata?.practiceName === 'Azul Vision Eye Center';
+  if (isAzulVision) {
+    wakeUpTicketing().catch(() => {});
+  }
 
   await writeCallEvent(tenantId, callSessionId, 'call_received', null, 'CALL_RECEIVED', {
     callerNumber: redactPHI(callerNumber),

@@ -25,6 +25,7 @@ export interface CreateAfterHoursTicketDeps {
   callLogId?: string;
   outbox: OutboxService;
   afterHoursDepartmentId?: number;
+  practiceName?: string;
 }
 
 /**
@@ -68,7 +69,8 @@ export async function createAfterHoursTicket(
       ticketType: `after_hours:${input.triageOutcome}`,
     });
 
-    if (isTicketingConfigured()) {
+    const isAzulVision = deps.practiceName === 'Azul Vision' || deps.practiceName === 'Azul Vision Eye Center';
+    if (isAzulVision && isTicketingConfigured()) {
       const ticketResult = await submitTicket({
         patientFirstName: input.patientFirstName,
         patientLastName: input.patientLastName,

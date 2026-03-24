@@ -26,6 +26,7 @@ export interface CreateServiceTicketDeps {
   callLogId?: string;
   outbox: OutboxService;
   config: AnsweringServiceTicketingConfig;
+  practiceName?: string;
 }
 
 /**
@@ -71,7 +72,8 @@ export async function createServiceTicket(
 
     logger.ticketCreated({ tenantId, callId: callLogId, ticketType: 'answering_service' });
 
-    if (isTicketingConfigured()) {
+    const isAzulVision = deps.practiceName === 'Azul Vision' || deps.practiceName === 'Azul Vision Eye Center';
+    if (isAzulVision && isTicketingConfigured()) {
       const ticketResult = await submitTicket({
         patientFirstName: input.patientFirstName,
         patientLastName: input.patientLastName,
