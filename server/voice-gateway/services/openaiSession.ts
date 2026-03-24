@@ -449,7 +449,9 @@ function buildToolHandler(
 
         case 'triageEscalate': {
           const escalateMeta = agentConfig.metadata as Record<string, unknown>;
-          const transferNumber = (escalateMeta.onCallTransferNumber as string) ?? '';
+          const metaTransferNumber = (escalateMeta.onCallTransferNumber as string) || '';
+          const isAzulVisionAgent = escalateMeta?.practiceName === 'Azul Vision' || escalateMeta?.practiceName === 'Azul Vision Eye Center';
+          const transferNumber = metaTransferNumber || (isAzulVisionAgent ? (process.env.AZUL_VISION_ONCALL_NUMBER ?? '') : '');
           const escalateResult = await triageEscalate(
             args as unknown as Parameters<typeof triageEscalate>[0],
             {
