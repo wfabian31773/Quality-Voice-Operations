@@ -47,6 +47,7 @@ export function createAfterHoursAgentConfig(opts: AfterHoursTemplateOptions): Ag
 export { buildAfterHoursSystemPrompt, getAfterHoursGreeting } from './prompts/systemPrompt';
 export { createAfterHoursTicket } from './tools/createAfterHoursTicketTool';
 export { triageEscalate } from './tools/triageEscalateTool';
+export { lookupSchedule } from './tools/lookupScheduleTool';
 export { isUrgentSymptom, MEDICAL_SAFETY_GUARDRAILS, URGENT_SYMPTOM_KEYWORDS } from './config/guardrails';
 export { DEFAULT_TRIAGE_OUTCOME_MAPPINGS } from './config/triageOutcomes';
 export type { TriageOutcome } from './config/triageOutcomes';

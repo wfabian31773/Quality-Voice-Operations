@@ -52,5 +52,6 @@ export function createAnsweringServiceAgentConfig(
 
 export { buildAnsweringServiceSystemPrompt } from './prompts/systemPrompt';
 export { createServiceTicket } from './tools/createServiceTicketTool';
+export { lookupSchedule } from './tools/lookupScheduleTool';
 export { DEFAULT_ANSWERING_SERVICE_CONFIG, detectPriority, detectDepartmentId } from './config/ticketingConfig';
 export type { AnsweringServiceTicketingConfig };

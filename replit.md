@@ -41,6 +41,19 @@ The platform supports running Azul Vision's production agents natively inside QV
 - **Ticket dual-write:** `createServiceTicketTool.ts` and `createAfterHoursTicketTool.ts` write to both OutboxService AND the Azul Vision ticketing API when `TICKETING_SYSTEM_URL` is set.
 - **Custom prompts:** Both system prompt builders detect `practiceName === 'Azul Vision'` and inject ophthalmology-specific content: departments (Optical, Surgery Coordination, Clinical Tech Support), locations (Covina, West Hills, Alhambra, Glendora), hours (Mon-Fri 8-5 PT), urgency criteria, B2B handling, language detection, anti-repetition, ghost call handling.
 - **Triage escalation:** `AZUL_VISION_ONCALL_NUMBER` env var used as fallback on-call number in `agentLoader.ts`.
+- **Required env vars for native agents:** `TICKETING_SYSTEM_URL`, `TICKETING_API_KEY`, `SUPABASE_DATABASE_URL`, `AZUL_VISION_ONCALL_NUMBER`.
+
+### Twilio Webhook Configuration (Azul Vision Native Agents)
+To route calls through QVO's voice gateway, update the Twilio Console for both phone numbers:
+1. Log in to [Twilio Console](https://console.twilio.com/) → Phone Numbers → Manage → Active Numbers.
+2. For **+1 (909) 413-5645** (Answering Service):
+   - Under "A Call Comes In", set to **Webhook**, HTTP **POST**.
+   - URL: `https://<QVO_DOMAIN>/twilio/voice` (replace `<QVO_DOMAIN>` with the production domain or dev domain).
+3. For **+1 (626) 382-1543** (After-Hours):
+   - Under "A Call Comes In", set to **Webhook**, HTTP **POST**.
+   - URL: `https://<QVO_DOMAIN>/twilio/voice` (same URL — routing is resolved by called number).
+4. Save each number's configuration.
+5. Test by calling each number and verifying the agent responds with the Azul Vision greeting.
 
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for development, Supabase for production).

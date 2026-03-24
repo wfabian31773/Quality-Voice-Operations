@@ -332,6 +332,16 @@ async function seedAzulVision(): Promise<void> {
 
       if (phoneRows.length > 0) {
         const phoneNumberId = phoneRows[0].id as string;
+
+        const { rowCount: deactivated } = await client.query(
+          `UPDATE number_routing SET is_active = false
+           WHERE tenant_id = $1 AND phone_number_id = $2 AND agent_id != $3 AND is_active = true`,
+          [tenantId, phoneNumberId, nativeAgentId],
+        );
+        if (deactivated && deactivated > 0) {
+          console.log(`[SEED] Deactivated ${deactivated} conflicting route(s) for ${agent.phoneNumber}`);
+        }
+
         const { rows: routingRows } = await client.query(
           `SELECT id FROM number_routing WHERE tenant_id = $1 AND phone_number_id = $2 AND agent_id = $3`,
           [tenantId, phoneNumberId, nativeAgentId],
@@ -345,11 +355,24 @@ async function seedAzulVision(): Promise<void> {
           );
           console.log(`[SEED] Created routing: ${agent.phoneNumber} → ${agent.name}`);
         } else {
-          console.log(`[SEED] Routing already exists: ${agent.phoneNumber} → ${agent.name}`);
+          await client.query(
+            `UPDATE number_routing SET is_active = true, priority = 1 WHERE id = $1`,
+            [routingRows[0].id],
+          );
+          console.log(`[SEED] Ensured routing active: ${agent.phoneNumber} → ${agent.name}`);
         }
       } else {
         console.log(`[SEED] WARNING: Phone number ${agent.phoneNumber} not found, skipping routing`);
       }
+    }
+
+    const { rowCount: federatedDeactivated } = await client.query(
+      `UPDATE agents SET status = 'inactive'
+       WHERE tenant_id = $1 AND execution_mode = 'federated' AND type IN ('answering-service', 'medical-after-hours') AND status = 'active'`,
+      [tenantId],
+    );
+    if (federatedDeactivated && federatedDeactivated > 0) {
+      console.log(`[SEED] Deactivated ${federatedDeactivated} federated agent(s) superseded by native agents`);
     }
 
     await client.query('COMMIT');
