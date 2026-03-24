@@ -7,11 +7,11 @@ export interface TemplateToolPermissions {
 
 const TEMPLATE_PERMISSIONS: Record<string, TemplateToolPermissions> = {
   'answering-service': {
-    allowedTools: ['createServiceTicket'],
+    allowedTools: ['createServiceTicket', 'lookupSchedule'],
     deniedTools: ['triageEscalate', 'scheduleDentalAppointment', 'scheduleConsultation', 'submitMaintenanceRequest', 'bookServiceAppointment'],
   },
   'medical-after-hours': {
-    allowedTools: ['createAfterHoursTicket', 'triageEscalate'],
+    allowedTools: ['createAfterHoursTicket', 'triageEscalate', 'lookupSchedule'],
     deniedTools: ['createServiceTicket', 'scheduleDentalAppointment', 'scheduleConsultation', 'submitMaintenanceRequest', 'bookServiceAppointment'],
   },
   'dental': {

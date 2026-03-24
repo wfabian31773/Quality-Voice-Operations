@@ -182,6 +182,8 @@ async function seedAzulVision(): Promise<void> {
 
     const PHONE_NUMBERS = [
       { number: '+16266056373', name: 'Azul Vision Main Line' },
+      { number: '+19094135645', name: 'Azul Vision Answering Service' },
+      { number: '+16263821543', name: 'Azul Vision After-Hours' },
     ];
 
     for (const phone of PHONE_NUMBERS) {
@@ -252,6 +254,102 @@ async function seedAzulVision(): Promise<void> {
       );
 
       console.log(`[SEED] Created federated agent: ${agent.name} (${agentRows[0].id})`);
+    }
+
+    interface NativeAgentDef {
+      name: string;
+      slug: string;
+      type: string;
+      phoneNumber: string;
+      metadata: Record<string, unknown>;
+    }
+
+    const NATIVE_AGENTS: NativeAgentDef[] = [
+      {
+        name: 'Azul Vision Answering Service',
+        slug: 'azul-answering-service',
+        type: 'answering-service',
+        phoneNumber: '+19094135645',
+        metadata: {
+          practiceName: 'Azul Vision',
+          direction: 'inbound',
+          description: 'Native answering service agent for Azul Vision Eye Center',
+        },
+      },
+      {
+        name: 'Azul Vision After-Hours',
+        slug: 'azul-after-hours',
+        type: 'medical-after-hours',
+        phoneNumber: '+16263821543',
+        metadata: {
+          practiceName: 'Azul Vision',
+          onCallTransferNumber: process.env.AZUL_VISION_ONCALL_NUMBER ?? '',
+          afterHoursDepartmentId: 1,
+          direction: 'inbound',
+          description: 'Native after-hours triage agent for Azul Vision Eye Center',
+        },
+      },
+    ];
+
+    for (const agent of NATIVE_AGENTS) {
+      const { rows: existing } = await client.query(
+        `SELECT id FROM agents WHERE tenant_id = $1 AND type = $2 AND execution_mode = 'native'`,
+        [tenantId, agent.type],
+      );
+
+      let nativeAgentId: string;
+      if (existing.length > 0) {
+        nativeAgentId = existing[0].id as string;
+        await client.query(
+          `UPDATE agents SET name = $1, status = 'active', metadata = $2 WHERE id = $3`,
+          [agent.name, JSON.stringify(agent.metadata), nativeAgentId],
+        );
+        console.log(`[SEED] Updated native agent: ${agent.name} (${nativeAgentId})`);
+      } else {
+        const { rows: agentRows } = await client.query(
+          `INSERT INTO agents (
+            tenant_id, name, type, status, voice, model,
+            execution_mode, system_prompt, metadata
+          ) VALUES ($1, $2, $3, 'active', 'sage', 'gpt-4o-realtime-preview',
+                    'native', $4, $5)
+          RETURNING id`,
+          [
+            tenantId,
+            agent.name,
+            agent.type,
+            `Native QVO agent for ${agent.name}`,
+            JSON.stringify(agent.metadata),
+          ],
+        );
+        nativeAgentId = agentRows[0].id as string;
+        console.log(`[SEED] Created native agent: ${agent.name} (${nativeAgentId})`);
+      }
+
+      const { rows: phoneRows } = await client.query(
+        `SELECT id FROM phone_numbers WHERE tenant_id = $1 AND phone_number = $2`,
+        [tenantId, agent.phoneNumber],
+      );
+
+      if (phoneRows.length > 0) {
+        const phoneNumberId = phoneRows[0].id as string;
+        const { rows: routingRows } = await client.query(
+          `SELECT id FROM number_routing WHERE tenant_id = $1 AND phone_number_id = $2 AND agent_id = $3`,
+          [tenantId, phoneNumberId, nativeAgentId],
+        );
+
+        if (routingRows.length === 0) {
+          await client.query(
+            `INSERT INTO number_routing (tenant_id, phone_number_id, agent_id, priority, is_active)
+             VALUES ($1, $2, $3, 1, true)`,
+            [tenantId, phoneNumberId, nativeAgentId],
+          );
+          console.log(`[SEED] Created routing: ${agent.phoneNumber} → ${agent.name}`);
+        } else {
+          console.log(`[SEED] Routing already exists: ${agent.phoneNumber} → ${agent.name}`);
+        }
+      } else {
+        console.log(`[SEED] WARNING: Phone number ${agent.phoneNumber} not found, skipping routing`);
+      }
     }
 
     await client.query('COMMIT');

@@ -130,6 +130,23 @@ const TEMPLATE_TOOL_DEFINITIONS: EnhancedToolDefinition[] = [
     recoveryInstructions: 'If booking fails, take the customer details and assure them someone will call back to confirm the appointment.',
   },
   {
+    name: 'lookupSchedule',
+    description: 'Look up a patient\'s appointment schedule by phone, name, or date of birth.',
+    category: 'answering-service',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        phone: { type: 'string' },
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        dob: { type: 'string' },
+      },
+      required: [],
+    },
+    handler: async () => ({ success: false, message: 'Template tool — executed via voice gateway context' }),
+    recoveryInstructions: 'If schedule lookup fails, let the caller know you were unable to check their appointments and proceed with the call normally.',
+  },
+  {
     name: 'scheduleConsultation',
     description: 'Schedule a legal consultation appointment.',
     category: 'legal',

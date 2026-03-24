@@ -28,8 +28,19 @@ The platform supports federated agent ingestion via REST API, enabling external 
 - **Ingest endpoints:** `POST /api/v1/ingest/calls`, `POST /api/v1/ingest/tickets`, `GET /api/v1/ingest/status` — authenticated via API key (`Bearer vai_...`), rate-limited, with atomic idempotency via `INSERT ... ON CONFLICT DO NOTHING`.
 - **Federated agents:** Agents with `execution_mode='federated'` are read-only in both UI and API — cannot be edited or deleted via the platform. They display an "External" badge and "Managed externally" banner in the tenant Agents page.
 - **Migration 051:** Creates `ingest_events` table, adds `execution_mode`/`remote_system`/`remote_agent_id`/`sync_mode`/`last_sync_at` columns to `agents`, adds `external_id` (unique) to `call_sessions`.
-- **Seed script:** `scripts/seedAzulVision.ts` creates the Azul Vision tenant with 6 federated agents (no-ivr, after-hours, answering-service, drs-scheduler, appointment-confirmation, fantasy-football), an admin user, enterprise subscription, and an API key for ingest.
+- **Seed script:** `scripts/seedAzulVision.ts` creates the Azul Vision tenant with 6 federated agents (no-ivr, after-hours, answering-service, drs-scheduler, appointment-confirmation, fantasy-football), 2 native agents (azul-answering-service, azul-after-hours), phone number routing, an admin user, enterprise subscription, and an API key for ingest.
 - **Zod schemas:** `shared/ingest/eventTypes.ts` defines `CallCompletionEventV1Schema` and `TicketCreationEventV1Schema`.
+
+### Native Agent Porting (Azul Vision)
+The platform supports running Azul Vision's production agents natively inside QVO's WebSocket-based voice gateway (bypassing the down OpenAI SIP gateway). Key components:
+- **Native agents:** Two agents with `execution_mode='native'`: answering-service (+19094135645) and medical-after-hours (+16263821543). Phone number routing configured in `number_routing` table.
+- **Azul Vision integrations (`platform/integrations/azul-vision/`):**
+  - `ticketingClient.ts` — HTTP client for Azul Vision's ticketing API (env: `TICKETING_SYSTEM_URL`, `TICKETING_API_KEY`). Includes `submitTicket()` and `wakeUp()` for pre-warming sleeping Replit deployment.
+  - `scheduleLookupService.ts` — Direct Postgres client for Azul Vision's Supabase schedule database (env: `SUPABASE_DATABASE_URL`). Queries `"Schedule"` table with three lookup strategies: name+DOB, normalized phone, name-only fallback.
+- **lookupSchedule tool:** Registered in both answering-service and medical-after-hours templates. Tool definition in `agentLoader.ts`, handler in `openaiSession.ts`, permissions in `toolPermissions.ts`, registry in `registerTemplateTools.ts`.
+- **Ticket dual-write:** `createServiceTicketTool.ts` and `createAfterHoursTicketTool.ts` write to both OutboxService AND the Azul Vision ticketing API when `TICKETING_SYSTEM_URL` is set.
+- **Custom prompts:** Both system prompt builders detect `practiceName === 'Azul Vision'` and inject ophthalmology-specific content: departments (Optical, Surgery Coordination, Clinical Tech Support), locations (Covina, West Hills, Alhambra, Glendora), hours (Mon-Fri 8-5 PT), urgency criteria, B2B handling, language detection, anti-repetition, ghost call handling.
+- **Triage escalation:** `AZUL_VISION_ONCALL_NUMBER` env var used as fallback on-call number in `agentLoader.ts`.
 
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for development, Supabase for production).

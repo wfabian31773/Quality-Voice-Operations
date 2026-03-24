@@ -3,6 +3,7 @@ import type { OutboxService } from '../../../integrations/outbox/OutboxService';
 import type { TriageOutcome } from '../config/triageOutcomes';
 import { DEFAULT_TRIAGE_OUTCOME_MAPPINGS } from '../config/triageOutcomes';
 import { createLogger } from '../../../core/logger';
+import { submitTicket, isTicketingConfigured } from '../../../integrations/azul-vision/ticketingClient';
 
 const logger = createLogger('AFTER_HOURS_TOOL');
 
@@ -66,6 +67,25 @@ export async function createAfterHoursTicket(
       callId: callLogId,
       ticketType: `after_hours:${input.triageOutcome}`,
     });
+
+    if (isTicketingConfigured()) {
+      const ticketResult = await submitTicket({
+        patientFirstName: input.patientFirstName,
+        patientLastName: input.patientLastName,
+        patientDob: input.patientDob,
+        callbackNumber: input.callbackNumber,
+        symptomDescription: input.symptomDescription,
+        departmentId: deps.afterHoursDepartmentId ?? 1,
+        priority: outcomeConfig.ticketPriority,
+        triageOutcome: input.triageOutcome,
+        ticketType: 'after_hours',
+        additionalNotes: input.additionalNotes,
+        idempotencyKey: callSid ? `after-hours:${callSid}` : undefined,
+      });
+      if (!ticketResult.success) {
+        logger.warn('Azul Vision ticketing API failed (outbox succeeded)', { tenantId, error: ticketResult.error });
+      }
+    }
 
     return {
       success: true,

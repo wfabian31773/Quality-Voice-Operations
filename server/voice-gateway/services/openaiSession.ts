@@ -35,6 +35,8 @@ import { createAfterHoursTicket } from '../../../platform/agent-templates/medica
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
 import { DEFAULT_ANSWERING_SERVICE_CONFIG } from '../../../platform/agent-templates/answering-service/config/ticketingConfig';
 import type { TriageOutcome } from '../../../platform/agent-templates/medical-after-hours/config/triageOutcomes';
+import { lookupPatientSchedule } from '../../../platform/integrations/azul-vision/scheduleLookupService';
+import { wakeUp as wakeUpTicketing } from '../../../platform/integrations/azul-vision/ticketingClient';
 import {
   createCallSession,
   writeCallEvent,
@@ -481,6 +483,26 @@ function buildToolHandler(
           return JSON.stringify(escalateResult);
         }
 
+        case 'lookupSchedule': {
+          const scheduleMeta = agentConfig.metadata as Record<string, unknown>;
+          const schedulePracticeName = scheduleMeta.practiceName as string | undefined;
+          if (schedulePracticeName !== 'Azul Vision' && schedulePracticeName !== 'Azul Vision Eye Center') {
+            return JSON.stringify({ success: false, message: 'Schedule lookup is not available for this practice.' });
+          }
+
+          const scheduleResult = await lookupPatientSchedule({
+            phone: args.phone as string | undefined,
+            firstName: args.firstName as string | undefined,
+            lastName: args.lastName as string | undefined,
+            dob: args.dob as string | undefined,
+          });
+
+          if (scheduleResult) {
+            return JSON.stringify({ success: true, schedule: scheduleResult });
+          }
+          return JSON.stringify({ success: true, schedule: null, message: 'No appointments found for this patient.' });
+        }
+
         case 'escalate_to_human': {
           const reason = (args.reason as string) ?? 'Agent requested human escalation';
           const priority = (args.priority as string) ?? 'high';
@@ -836,6 +858,8 @@ export async function createRealtimeSession(
   }
 
   const slog = createSessionLogger('OPENAI_SESSION', { tenantId, callId: callSessionId, callSid });
+
+  wakeUpTicketing().catch(() => {});
 
   await writeCallEvent(tenantId, callSessionId, 'call_received', null, 'CALL_RECEIVED', {
     callerNumber: redactPHI(callerNumber),

@@ -97,6 +97,22 @@ export interface AgentLoadContext {
   };
 }
 
+const LOOKUP_SCHEDULE_TOOL: AgentToolDef = {
+  name: 'lookupSchedule',
+  description:
+    'Look up a patient\'s appointment schedule. Use this after collecting their identity to check for upcoming or recent appointments. Provide at least one of: phone, or firstName + lastName.',
+  parameters: {
+    type: 'object',
+    properties: {
+      phone: { type: 'string', description: 'Patient phone number to search by' },
+      firstName: { type: 'string', description: "Patient's first name" },
+      lastName: { type: 'string', description: "Patient's last name" },
+      dob: { type: 'string', description: 'Date of birth (MM/DD/YYYY)' },
+    },
+    required: [],
+  },
+};
+
 const ANSWERING_SERVICE_TOOLS: AgentToolDef[] = [
   {
     name: 'createServiceTicket',
@@ -391,6 +407,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   switch (templateKey) {
     case 'answering-service': {
       const practiceName = (meta.practiceName as string) ?? 'our office';
+      const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';
       const systemPrompt = dbAgent?.system_prompt
         ? dbAgent.system_prompt
         : buildAnsweringServiceSystemPrompt({
@@ -399,12 +416,17 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
             callerMemorySummary,
             config: DEFAULT_ANSWERING_SERVICE_CONFIG,
           });
-      const mergedTools = mergeTools(ANSWERING_SERVICE_TOOLS, dbTools);
+      const baseTools = isAzulVision
+        ? [...ANSWERING_SERVICE_TOOLS, LOOKUP_SCHEDULE_TOOL]
+        : ANSWERING_SERVICE_TOOLS;
+      const mergedTools = mergeTools(baseTools, dbTools);
       return {
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? `Thank you for calling ${practiceName}. How can I help you today?`,
+        greeting: (meta.greeting as string) ?? (isAzulVision
+          ? `Thank you for calling Azul Vision Eye Center. How can I help you today?`
+          : `Thank you for calling ${practiceName}. How can I help you today?`),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
@@ -415,7 +437,9 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
 
     case 'medical-after-hours': {
       const practiceName = (meta.practiceName as string) ?? 'our practice';
-      const onCallNumber = (meta.onCallTransferNumber as string) ?? '';
+      const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';
+      const onCallNumber = (meta.onCallTransferNumber as string)
+        || (isAzulVision ? (process.env.AZUL_VISION_ONCALL_NUMBER ?? '') : '');
       const systemPrompt = dbAgent?.system_prompt
         ? dbAgent.system_prompt
         : buildAfterHoursSystemPrompt({
@@ -424,7 +448,10 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
             callerMemorySummary,
             onCallTransferNumber: onCallNumber,
           });
-      const mergedTools = mergeTools(AFTER_HOURS_TOOLS, dbTools);
+      const baseTools = isAzulVision
+        ? [...AFTER_HOURS_TOOLS, LOOKUP_SCHEDULE_TOOL]
+        : AFTER_HOURS_TOOLS;
+      const mergedTools = mergeTools(baseTools, dbTools);
       return {
         agentId,
         tenantId,

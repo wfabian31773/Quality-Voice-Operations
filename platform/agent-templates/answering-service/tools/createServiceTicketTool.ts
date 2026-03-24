@@ -3,6 +3,7 @@ import type { OutboxService } from '../../../integrations/outbox/OutboxService';
 import { detectPriority, detectDepartmentId } from '../config/ticketingConfig';
 import type { AnsweringServiceTicketingConfig } from '../config/ticketingConfig';
 import { createLogger } from '../../../core/logger';
+import { submitTicket, isTicketingConfigured } from '../../../integrations/azul-vision/ticketingClient';
 
 const logger = createLogger('ANSWERING_SERVICE_TOOL');
 
@@ -69,6 +70,25 @@ export async function createServiceTicket(
     });
 
     logger.ticketCreated({ tenantId, callId: callLogId, ticketType: 'answering_service' });
+
+    if (isTicketingConfigured()) {
+      const ticketResult = await submitTicket({
+        patientFirstName: input.patientFirstName,
+        patientLastName: input.patientLastName,
+        patientDob: input.patientDob,
+        patientPhone: input.patientPhone,
+        callbackNumber: input.callbackNumber ?? input.patientPhone,
+        reasonForCall: input.reasonForCall,
+        departmentId,
+        priority,
+        ticketType: 'answering_service',
+        additionalNotes: input.additionalNotes,
+        idempotencyKey,
+      });
+      if (!ticketResult.success) {
+        logger.warn('Azul Vision ticketing API failed (outbox succeeded)', { tenantId, error: ticketResult.error });
+      }
+    }
 
     return {
       success: true,
