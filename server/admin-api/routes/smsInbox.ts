@@ -2,8 +2,11 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
+import { requireRole } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import * as SmsService from '../../../platform/sms/SmsConversationService';
 
 const router = Router();
 const logger = createLogger('ADMIN_SMS_INBOX');
@@ -49,18 +52,6 @@ async function getTwilioCredentials(tenantId: string): Promise<TwilioCredentials
   return null;
 }
 
-async function twilioFetch(creds: TwilioCredentials, path: string): Promise<Record<string, unknown>> {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}${path}`;
-  const auth = Buffer.from(`${creds.apiKey}:${creds.apiKeySecret}`).toString('base64');
-  const response = await fetch(url, {
-    headers: { Authorization: `Basic ${auth}` },
-  });
-  if (!response.ok) {
-    throw new Error(`Twilio API error: ${response.status} ${response.statusText}`);
-  }
-  return response.json() as Promise<Record<string, unknown>>;
-}
-
 async function twilioPost(creds: TwilioCredentials, path: string, body: Record<string, string>): Promise<Record<string, unknown>> {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}${path}`;
   const auth = Buffer.from(`${creds.apiKey}:${creds.apiKeySecret}`).toString('base64');
@@ -80,166 +71,466 @@ async function twilioPost(creds: TwilioCredentials, path: string, body: Record<s
   return response.json() as Promise<Record<string, unknown>>;
 }
 
-interface TwilioMessage {
-  sid: string;
-  direction: string;
-  from: string;
-  to: string;
-  body: string;
-  date_sent: string;
-  status: string;
+function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {
+  const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 200);
+  const page = Math.max(parseInt(String(req.query.page ?? '1'), 10), 1);
+  return { limit, offset: (page - 1) * limit };
 }
 
-const listConversationsHandler: RequestHandler = async (req, res) => {
+const listPhoneLinesHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
-
   try {
     const { rows: phoneNumbers } = await pool.query(
       `SELECT id, phone_number, friendly_name FROM phone_numbers WHERE tenant_id = $1`,
       [tenantId],
     );
-
     const conversations = phoneNumbers.map((pn: Record<string, unknown>) => ({
       phoneNumberId: pn.id,
       phoneNumber: pn.phone_number,
       friendlyName: pn.friendly_name,
     }));
-
     return res.json({ conversations, total: conversations.length });
   } catch (err) {
-    logger.error('Failed to list SMS conversations', { tenantId, error: String(err) });
+    logger.error('Failed to list phone lines', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list phone lines' });
+  }
+};
+
+const listConversationsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { limit, offset } = paginate(req);
+  const { status, assignee, phoneNumberId, priority, pinned, followUp, unread, search } = req.query as Record<string, string>;
+
+  const VALID_STATUSES = ['open', 'pending', 'closed', 'escalated', 'archived'];
+  const VALID_PRIORITIES = ['normal', 'high', 'urgent'];
+  if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+  if (priority && !VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+
+  try {
+    const result = await SmsService.listConversations(tenantId, {
+      status: status as SmsService.ConversationStatus,
+      assigneeUserId: assignee,
+      phoneNumberId,
+      priority: priority as SmsService.ConversationPriority,
+      pinned: pinned === 'true' ? true : pinned === 'false' ? false : undefined,
+      followUp: followUp === 'true' ? true : followUp === 'false' ? false : undefined,
+      unreadOnly: unread === 'true',
+      search,
+      limit,
+      offset,
+    });
+    return res.json(result);
+  } catch (err) {
+    logger.error('Failed to list conversations', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list conversations' });
+  }
+};
+
+const getConversationHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const conv = await SmsService.getConversation(tenantId, id);
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    return res.json({ conversation: conv });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get conversation' });
+  }
+};
+
+const updateConversationHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const updates = req.body as {
+    status?: SmsService.ConversationStatus;
+    assigneeUserId?: string | null;
+    assigneeTeam?: string | null;
+    priority?: SmsService.ConversationPriority;
+    pinned?: boolean;
+    followUp?: boolean;
+    followUpAt?: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactLocation?: string;
+    tags?: string[];
+  };
+
+  const VALID_STATUSES = ['open', 'pending', 'closed', 'escalated', 'archived'];
+  const VALID_PRIORITIES = ['normal', 'high', 'urgent'];
+  if (updates.status && !VALID_STATUSES.includes(updates.status)) return res.status(400).json({ error: `Invalid status` });
+  if (updates.priority && !VALID_PRIORITIES.includes(updates.priority)) return res.status(400).json({ error: `Invalid priority` });
+  if (updates.followUpAt && isNaN(new Date(updates.followUpAt).getTime())) return res.status(400).json({ error: 'Invalid followUpAt date' });
+
+  try {
+    const before = await SmsService.getConversation(tenantId, id);
+    if (!before) return res.status(404).json({ error: 'Conversation not found' });
+
+    const conv = await SmsService.updateConversation(tenantId, id, {
+      ...updates,
+      followUpAt: updates.followUpAt ? new Date(updates.followUpAt) : undefined,
+    });
+
+    if (updates.status && updates.status !== before.status) {
+      await SmsService.logActivity(tenantId, id, 'status_changed', userId, req.user!.email, { from: before.status, to: updates.status });
+    }
+    if (updates.assigneeUserId !== undefined && updates.assigneeUserId !== before.assigneeUserId) {
+      await SmsService.logActivity(tenantId, id, 'assigned', userId, req.user!.email, { to: updates.assigneeUserId });
+    }
+
+    await writeAuditLog({
+      tenantId,
+      actorUserId: userId,
+      actorRole: req.user!.role,
+      action: 'sms_conversation.updated',
+      resourceType: 'sms_conversation',
+      resourceId: id,
+      beforeState: { status: before.status, assigneeUserId: before.assigneeUserId },
+      afterState: updates,
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({ conversation: conv });
+  } catch (err) {
+    logger.error('Failed to update conversation', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update conversation' });
   }
 };
 
 const getMessagesHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { phoneNumberId } = req.params;
-  const pool = getPlatformPool();
-
+  const { id } = req.params;
+  const { limit, offset } = paginate(req);
   try {
-    const { rows: pnRows } = await pool.query(
-      `SELECT phone_number FROM phone_numbers WHERE id = $1 AND tenant_id = $2`,
-      [phoneNumberId, tenantId],
-    );
-
-    if (pnRows.length === 0) {
-      return res.status(404).json({ error: 'Phone number not found' });
-    }
-
-    const phoneNumber = pnRows[0].phone_number as string;
-    const creds = await getTwilioCredentials(tenantId);
-
-    if (!creds) {
-      logger.warn('No Twilio credentials available', { tenantId });
-      return res.json({ messages: [], phoneNumber, threads: [] });
-    }
-
-    const [sentData, receivedData] = await Promise.all([
-      twilioFetch(creds, `/Messages.json?From=${encodeURIComponent(phoneNumber)}&PageSize=50`),
-      twilioFetch(creds, `/Messages.json?To=${encodeURIComponent(phoneNumber)}&PageSize=50`),
-    ]);
-
-    const sentMessages = ((sentData.messages || []) as TwilioMessage[]).map(m => ({
-      id: m.sid,
-      direction: 'outbound' as const,
-      from: m.from,
-      to: m.to,
-      body: m.body,
-      timestamp: m.date_sent,
-      status: m.status,
-    }));
-
-    const receivedMessages = ((receivedData.messages || []) as TwilioMessage[]).map(m => ({
-      id: m.sid,
-      direction: 'inbound' as const,
-      from: m.from,
-      to: m.to,
-      body: m.body,
-      timestamp: m.date_sent,
-      status: m.status,
-    }));
-
-    const allMessages = [...sentMessages, ...receivedMessages]
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    const threadMap = new Map<string, typeof allMessages>();
-    for (const msg of allMessages) {
-      const remoteNumber = msg.direction === 'inbound' ? msg.from : msg.to;
-      if (!threadMap.has(remoteNumber)) {
-        threadMap.set(remoteNumber, []);
-      }
-      threadMap.get(remoteNumber)!.push(msg);
-    }
-
-    const threads = Array.from(threadMap.entries()).map(([remoteNumber, msgs]) => ({
-      remoteNumber,
-      messages: msgs,
-      lastMessage: msgs[msgs.length - 1],
-      messageCount: msgs.length,
-    }));
-
-    threads.sort((a, b) =>
-      new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime()
-    );
-
-    return res.json({ messages: allMessages, phoneNumber, threads });
+    const result = await SmsService.listMessages(tenantId, id, { limit, offset });
+    await SmsService.markConversationRead(tenantId, id);
+    return res.json(result);
   } catch (err) {
-    logger.error('Failed to get SMS messages', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to get messages' });
   }
 };
 
 const sendMessageHandler: RequestHandler = async (req, res) => {
-  const { tenantId } = req.user!;
-  const { phoneNumberId } = req.params;
-  const { to, body } = req.body;
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const { body, scheduledAt } = req.body as { body?: string; scheduledAt?: string };
 
-  if (!to || !body) {
-    return res.status(400).json({ error: 'to and body are required' });
-  }
-
-  const pool = getPlatformPool();
+  if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
 
   try {
+    const conv = await SmsService.getConversation(tenantId, id);
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+
+    const pool = getPlatformPool();
     const { rows: pnRows } = await pool.query(
       `SELECT phone_number FROM phone_numbers WHERE id = $1 AND tenant_id = $2`,
-      [phoneNumberId, tenantId],
+      [conv.phoneNumberId, tenantId],
     );
-
-    if (pnRows.length === 0) {
-      return res.status(404).json({ error: 'Phone number not found' });
-    }
-
+    if (pnRows.length === 0) return res.status(404).json({ error: 'Phone number not found' });
     const fromNumber = pnRows[0].phone_number as string;
-    const creds = await getTwilioCredentials(tenantId);
 
-    if (!creds) {
-      return res.status(503).json({ error: 'SMS service not configured. Please set up Twilio credentials.' });
+    const onDnc = await (await import('../../../platform/campaigns/DncService')).isOnDnc(tenantId, conv.remoteNumber);
+    if (onDnc) {
+      return res.status(403).json({ error: 'This number is on the Do Not Contact list' });
     }
 
-    const twilioResponse = await twilioPost(creds, '/Messages.json', {
-      To: to,
-      From: fromNumber,
-      Body: body,
+    const schedDate = scheduledAt ? new Date(scheduledAt) : undefined;
+    if (scheduledAt && (!schedDate || isNaN(schedDate.getTime()))) {
+      return res.status(400).json({ error: 'Invalid scheduledAt date' });
+    }
+
+    if (!schedDate) {
+      const creds = await getTwilioCredentials(tenantId);
+      if (!creds) return res.status(503).json({ error: 'SMS service not configured' });
+
+      const twilioResponse = await twilioPost(creds, '/Messages.json', {
+        To: conv.remoteNumber,
+        From: fromNumber,
+        Body: body,
+      });
+
+      const message = await SmsService.saveMessage(tenantId, id, {
+        direction: 'outbound',
+        fromNumber,
+        toNumber: conv.remoteNumber,
+        body,
+        status: (twilioResponse.status as string) || 'queued',
+        twilioSid: twilioResponse.sid as string,
+      });
+
+      await SmsService.logActivity(tenantId, id, 'message_sent', userId, req.user!.email, { messageId: message.id });
+
+      await writeAuditLog({
+        tenantId,
+        actorUserId: userId,
+        actorRole: req.user!.role,
+        action: 'sms_message.sent',
+        resourceType: 'sms_message',
+        resourceId: message.id,
+        afterState: { to: conv.remoteNumber },
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.json({ message });
+    } else {
+      const message = await SmsService.saveMessage(tenantId, id, {
+        direction: 'outbound',
+        fromNumber,
+        toNumber: conv.remoteNumber,
+        body,
+        status: 'scheduled',
+        scheduledAt: schedDate,
+      });
+
+      await SmsService.logActivity(tenantId, id, 'message_scheduled', userId, req.user!.email, { messageId: message.id, scheduledAt });
+
+      return res.json({ message });
+    }
+  } catch (err) {
+    logger.error('Failed to send message', { tenantId, error: String(err) });
+    return res.status(500).json({ error: `Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}` });
+  }
+};
+
+const addNoteHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const { body } = req.body as { body?: string };
+  if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
+  try {
+    const note = await SmsService.addInternalNote(tenantId, id, userId, req.user!.email, body);
+    await SmsService.logActivity(tenantId, id, 'note_added', userId, req.user!.email);
+    return res.status(201).json({ note });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to add note' });
+  }
+};
+
+const listNotesHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const notes = await SmsService.listInternalNotes(tenantId, id);
+    return res.json({ notes });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to list notes' });
+  }
+};
+
+const activityLogHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const log = await SmsService.listActivityLog(tenantId, id);
+    return res.json({ log });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get activity log' });
+  }
+};
+
+const inboxCountsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const counts = await SmsService.getInboxCounts(tenantId);
+    return res.json({ counts });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get inbox counts' });
+  }
+};
+
+const bulkUpdateHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { conversationIds, status, assigneeUserId, tags } = req.body as {
+    conversationIds?: string[];
+    status?: SmsService.ConversationStatus;
+    assigneeUserId?: string | null;
+    tags?: string[];
+  };
+  if (!Array.isArray(conversationIds) || conversationIds.length === 0) {
+    return res.status(400).json({ error: 'conversationIds array is required' });
+  }
+  try {
+    const updated = await SmsService.bulkUpdateConversations(tenantId, conversationIds, { status, assigneeUserId, tags });
+
+    await writeAuditLog({
+      tenantId,
+      actorUserId: userId,
+      actorRole: req.user!.role,
+      action: 'sms_conversation.bulk_updated',
+      resourceType: 'sms_conversation',
+      afterState: { count: updated, status, assigneeUserId },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
     });
 
-    const message = {
-      id: twilioResponse.sid as string,
-      direction: 'outbound',
-      from: fromNumber,
-      to,
-      body,
-      timestamp: new Date().toISOString(),
-      status: twilioResponse.status as string || 'queued',
-    };
-
-    logger.info('SMS message sent via Twilio', { tenantId, to, messagesSid: twilioResponse.sid });
-    return res.json({ message });
+    return res.json({ updated });
   } catch (err) {
-    logger.error('Failed to send SMS', { tenantId, error: String(err) });
-    return res.status(500).json({ error: `Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}` });
+    return res.status(500).json({ error: 'Failed to bulk update' });
+  }
+};
+
+const listCannedResponsesHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const responses = await SmsService.listCannedResponses(tenantId);
+    return res.json({ responses });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to list templates' });
+  }
+};
+
+const createCannedResponseHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const data = req.body as { title?: string; body?: string; category?: string; variables?: string[]; shortcut?: string; isGlobal?: boolean };
+  if (!data.title || !data.body) return res.status(400).json({ error: 'title and body are required' });
+  try {
+    const response = await SmsService.createCannedResponse(tenantId, { ...data, title: data.title, body: data.body, createdBy: userId });
+    return res.status(201).json({ response });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create template' });
+  }
+};
+
+const updateCannedResponseHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const response = await SmsService.updateCannedResponse(tenantId, id, req.body);
+    if (!response) return res.status(404).json({ error: 'Template not found' });
+    return res.json({ response });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to update template' });
+  }
+};
+
+const deleteCannedResponseHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const deleted = await SmsService.deleteCannedResponse(tenantId, id);
+    if (!deleted) return res.status(404).json({ error: 'Template not found' });
+    return res.json({ deleted: true });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to delete template' });
+  }
+};
+
+const substituteHandler: RequestHandler = async (req, res) => {
+  const { template, variables } = req.body as { template?: string; variables?: Record<string, string> };
+  if (!template) return res.status(400).json({ error: 'template is required' });
+  const result = await SmsService.substituteVariables(template, variables ?? {});
+  return res.json({ result });
+};
+
+const listAutoReplyRulesHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const rules = await SmsService.listAutoReplyRules(tenantId);
+    return res.json({ rules });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to list auto-reply rules' });
+  }
+};
+
+const createAutoReplyRuleHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const data = req.body;
+  if (!data.name || !data.replyBody) return res.status(400).json({ error: 'name and replyBody are required' });
+  try {
+    const rule = await SmsService.createAutoReplyRule(tenantId, data);
+    return res.status(201).json({ rule });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create auto-reply rule' });
+  }
+};
+
+const updateAutoReplyRuleHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const rule = await SmsService.updateAutoReplyRule(tenantId, id, req.body);
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    return res.json({ rule });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to update rule' });
+  }
+};
+
+const deleteAutoReplyRuleHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const deleted = await SmsService.deleteAutoReplyRule(tenantId, id);
+    if (!deleted) return res.status(404).json({ error: 'Rule not found' });
+    return res.json({ deleted: true });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to delete rule' });
+  }
+};
+
+const listAssignmentRulesHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const rules = await SmsService.listAssignmentRules(tenantId);
+    return res.json({ rules });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to list assignment rules' });
+  }
+};
+
+const createAssignmentRuleHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const data = req.body;
+  if (!data.name || !data.matchField || !data.matchValue) {
+    return res.status(400).json({ error: 'name, matchField, and matchValue are required' });
+  }
+  try {
+    const rule = await SmsService.createAssignmentRule(tenantId, data);
+    return res.status(201).json({ rule });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create assignment rule' });
+  }
+};
+
+const deleteAssignmentRuleHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  try {
+    const deleted = await SmsService.deleteAssignmentRule(tenantId, id);
+    if (!deleted) return res.status(404).json({ error: 'Rule not found' });
+    return res.json({ deleted: true });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to delete rule' });
+  }
+};
+
+const consentHistoryHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { phoneNumber } = req.params;
+  try {
+    const history = await SmsService.getConsentHistory(tenantId, phoneNumber);
+    return res.json({ history });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get consent history' });
+  }
+};
+
+const analyticsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { startDate, endDate, phoneNumberId, assignee } = req.query as Record<string, string>;
+  try {
+    const analytics = await SmsService.getAnalytics(tenantId, {
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      phoneNumberId,
+      assigneeUserId: assignee,
+    });
+    return res.json({ analytics });
+  } catch (err) {
+    logger.error('Failed to get SMS analytics', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get analytics' });
   }
 };
 
@@ -291,9 +582,97 @@ const aiDraftHandler: RequestHandler = async (req, res) => {
   }
 };
 
-router.get('/sms-inbox/conversations', requireAuth, listConversationsHandler);
-router.get('/sms-inbox/conversations/:phoneNumberId/messages', requireAuth, getMessagesHandler);
-router.post('/sms-inbox/conversations/:phoneNumberId/send', requireAuth, requireMiniSystemWrite, sendMessageHandler);
+router.get('/sms-inbox/conversations', requireAuth, listPhoneLinesHandler);
+router.get('/sms-inbox/threads', requireAuth, listConversationsHandler);
+router.get('/sms-inbox/threads/:id', requireAuth, getConversationHandler);
+router.patch('/sms-inbox/threads/:id', requireAuth, requireMiniSystemWrite, updateConversationHandler);
+router.get('/sms-inbox/threads/:id/messages', requireAuth, getMessagesHandler);
+router.post('/sms-inbox/threads/:id/messages', requireAuth, requireMiniSystemWrite, sendMessageHandler);
+router.post('/sms-inbox/threads/:id/notes', requireAuth, requireMiniSystemWrite, addNoteHandler);
+router.get('/sms-inbox/threads/:id/notes', requireAuth, listNotesHandler);
+router.get('/sms-inbox/threads/:id/activity', requireAuth, activityLogHandler);
+router.get('/sms-inbox/counts', requireAuth, inboxCountsHandler);
+router.post('/sms-inbox/bulk-update', requireAuth, requireMiniSystemWrite, bulkUpdateHandler);
+
+router.get('/sms-inbox/templates', requireAuth, listCannedResponsesHandler);
+router.post('/sms-inbox/templates', requireAuth, requireRole('manager'), createCannedResponseHandler);
+router.patch('/sms-inbox/templates/:id', requireAuth, requireRole('manager'), updateCannedResponseHandler);
+router.delete('/sms-inbox/templates/:id', requireAuth, requireRole('manager'), deleteCannedResponseHandler);
+router.post('/sms-inbox/templates/substitute', requireAuth, substituteHandler);
+
+router.get('/sms-inbox/auto-reply-rules', requireAuth, requireRole('manager'), listAutoReplyRulesHandler);
+router.post('/sms-inbox/auto-reply-rules', requireAuth, requireRole('manager'), createAutoReplyRuleHandler);
+router.patch('/sms-inbox/auto-reply-rules/:id', requireAuth, requireRole('manager'), updateAutoReplyRuleHandler);
+router.delete('/sms-inbox/auto-reply-rules/:id', requireAuth, requireRole('manager'), deleteAutoReplyRuleHandler);
+
+router.get('/sms-inbox/assignment-rules', requireAuth, requireRole('manager'), listAssignmentRulesHandler);
+router.post('/sms-inbox/assignment-rules', requireAuth, requireRole('manager'), createAssignmentRuleHandler);
+router.delete('/sms-inbox/assignment-rules/:id', requireAuth, requireRole('manager'), deleteAssignmentRuleHandler);
+
+router.get('/sms-inbox/consent/:phoneNumber', requireAuth, requireRole('manager'), consentHistoryHandler);
+router.get('/sms-inbox/analytics', requireAuth, requireRole('manager'), analyticsHandler);
 router.post('/sms-inbox/ai-draft', requireAuth, aiDraftHandler);
+
+const SMS_SCHEDULER_INTERVAL = 30_000;
+async function processScheduledMessages(): Promise<void> {
+  try {
+    const dueMessages = await SmsService.claimDueScheduledMessages();
+    if (dueMessages.length === 0) return;
+
+    logger.info('Processing scheduled SMS messages', { count: dueMessages.length });
+
+    for (const msg of dueMessages) {
+      try {
+        const conv = await SmsService.getConversation(msg.tenantId, msg.conversationId);
+        if (!conv) {
+          await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
+          continue;
+        }
+
+        const { isOnDnc } = await import('../../../platform/campaigns/DncService');
+        const onDnc = await isOnDnc(msg.tenantId, msg.toNumber);
+        if (onDnc) {
+          await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
+          await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_sent', null, null, {
+            messageId: msg.id,
+            suppressed: true,
+            reason: 'recipient_opted_out_after_schedule',
+          });
+          logger.info('Scheduled SMS suppressed — recipient on DNC', { tenantId: msg.tenantId, messageId: msg.id, to: msg.toNumber });
+          continue;
+        }
+
+        const creds = await getTwilioCredentials(msg.tenantId);
+        if (!creds) {
+          await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
+          logger.warn('No Twilio credentials for scheduled message', { tenantId: msg.tenantId, messageId: msg.id });
+          continue;
+        }
+
+        const twilioResponse = await twilioPost(creds, '/Messages.json', {
+          To: msg.toNumber,
+          From: msg.fromNumber,
+          Body: msg.body,
+        });
+
+        await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'sent', twilioResponse.sid as string);
+        await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_sent', null, null, {
+          messageId: msg.id,
+          scheduled: true,
+        });
+
+        logger.info('Scheduled SMS sent', { tenantId: msg.tenantId, messageId: msg.id });
+      } catch (err) {
+        await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
+        logger.error('Failed to send scheduled SMS', { messageId: msg.id, error: String(err) });
+      }
+    }
+  } catch (err) {
+    logger.error('Scheduled SMS processor error', { error: String(err) });
+  }
+}
+
+setInterval(processScheduledMessages, SMS_SCHEDULER_INTERVAL);
+logger.info('SMS scheduled message dispatcher started', { intervalMs: SMS_SCHEDULER_INTERVAL });
 
 export default router;

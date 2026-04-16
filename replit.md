@@ -57,6 +57,18 @@ To route calls through QVO's voice gateway, update the Twilio Console for both p
 4. Save each number's configuration.
 5. Test by calling each number and verifying the agent responds with the Azul Vision greeting.
 
+## Enterprise SMS Console (Mini System)
+The SMS Inbox (`/sms-inbox`) is an enterprise-grade messaging workspace with:
+- **Two-way conversations**: Threaded SMS conversations with local DB persistence (`sms_conversations`, `sms_messages`), internal notes, and activity logs.
+- **Canned response templates**: Reusable reply templates with `{{variable}}` substitution and keyboard shortcuts.
+- **Automations**: Auto-reply rules (keyword-based, business hours) and assignment rules (keyword/round-robin routing to users/teams).
+- **Compliance**: Automatic STOP/HELP keyword processing, opt-in/opt-out consent tracking (`sms_consent_log`), DNC list integration.
+- **Analytics**: Conversation volume, response times, message counts, and status breakdowns (manager-only).
+- **Admin controls**: Consent history lookup, compliance settings.
+- **Key files**: `platform/sms/SmsConversationService.ts` (service), `server/admin-api/routes/smsInbox.ts` (API), `client-app/src/pages/SmsInbox.tsx` (UI).
+- **Migrations**: `052_sms_enterprise.sql` (tables + RLS), `053_sms_check_constraints.sql` (CHECK constraints + indexes), `054_sms_rls_fix.sql` (RLS policy fix to use `app.tenant_id`).
+- **RBAC**: `requireMiniSystemWrite` for write ops, `requireRole('manager')` for templates/automations/analytics admin.
+
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for development, Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).

@@ -561,26 +561,81 @@ router.post('/twilio/sms', async (req: Request, res: Response) => {
   const body = (req.body.Body ?? '') as string;
   const from = (req.body.From ?? '') as string;
   const to = (req.body.To ?? '') as string;
+  const messageSid = (req.body.MessageSid ?? '') as string;
 
   logger.info('Inbound SMS received', { from: redactPHI(from), to: redactPHI(to) });
 
-  if (isSmsOptOut(body)) {
-    try {
-      const routing = await lookupByPhoneNumber(to);
-      if (routing) {
-        await addToDnc(routing.tenantId, from, 'sms', `SMS opt-out: "${body.trim()}"`);
-        logger.info('SMS opt-out processed — added to DNC', {
-          tenantId: routing.tenantId,
-          phone: redactPHI(from),
+  let twimlResponse = '';
+
+  try {
+    const routing = await lookupByPhoneNumber(to);
+    if (!routing) {
+      logger.warn('No routing found for inbound SMS', { to: redactPHI(to) });
+      return res.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+    }
+
+    const { tenantId, phoneNumberId } = routing;
+    const SmsService = await import('../../../platform/sms/SmsConversationService');
+
+    const trimmedBody = body.trim().toLowerCase();
+    const isOptOut = isSmsOptOut(body);
+    const isHelp = trimmedBody === 'help' || trimmedBody === 'info';
+
+    if (isOptOut) {
+      await addToDnc(tenantId, from, 'sms', `SMS opt-out: "${body.trim()}"`);
+      await SmsService.logConsent(tenantId, from, 'opt_out', body.trim(), 'inbound_sms', messageSid || undefined);
+      logger.info('SMS opt-out processed — added to DNC', { tenantId, phone: redactPHI(from) });
+    }
+
+    if (isHelp) {
+      await SmsService.logConsent(tenantId, from, 'help_request', body.trim(), 'inbound_sms', messageSid || undefined);
+    }
+
+    const conversation = await SmsService.getOrCreateConversation(tenantId, phoneNumberId, from);
+
+    await SmsService.saveMessage(tenantId, conversation.id, {
+      direction: 'inbound',
+      fromNumber: from,
+      toNumber: to,
+      body,
+      status: 'received',
+      twilioSid: messageSid || undefined,
+    });
+
+    await SmsService.logActivity(tenantId, conversation.id, 'message_received', null, null, { from });
+
+    const autoReply = await SmsService.evaluateAutoReplies(tenantId, body, phoneNumberId);
+    if (autoReply && !isOptOut) {
+      twimlResponse = `<Message>${autoReply.replace(/[<>&]/g, c => c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&amp;')}</Message>`;
+
+      await SmsService.saveMessage(tenantId, conversation.id, {
+        direction: 'outbound',
+        fromNumber: to,
+        toNumber: from,
+        body: autoReply,
+        status: 'sent',
+      });
+    }
+
+    if (!conversation.assigneeUserId) {
+      const assignment = await SmsService.evaluateAssignmentRules(tenantId, conversation, body);
+      if (assignment) {
+        await SmsService.updateConversation(tenantId, conversation.id, {
+          assigneeUserId: assignment.userId,
+          assigneeTeam: assignment.team,
+        });
+        await SmsService.logActivity(tenantId, conversation.id, 'assigned', null, null, {
+          team: assignment.team,
+          user: assignment.userId,
         });
       }
-    } catch (err) {
-      logger.warn('Failed to process SMS opt-out', { error: String(err), from: redactPHI(from) });
     }
+  } catch (err) {
+    logger.error('Failed to process inbound SMS', { error: String(err), from: redactPHI(from) });
   }
 
   res.type('text/xml').send(
-    `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`,
+    `<?xml version="1.0" encoding="UTF-8"?><Response>${twimlResponse}</Response>`,
   );
 });
 
