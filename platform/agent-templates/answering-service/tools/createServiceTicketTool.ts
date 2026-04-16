@@ -4,6 +4,7 @@ import { detectPriority, detectDepartmentId } from '../config/ticketingConfig';
 import type { AnsweringServiceTicketingConfig } from '../config/ticketingConfig';
 import { createLogger } from '../../../core/logger';
 import { submitTicket, isTicketingConfigured } from '../../../integrations/azul-vision/ticketingClient';
+import { getPlatformPool } from '../../../db';
 
 const logger = createLogger('ANSWERING_SERVICE_TOOL');
 
@@ -71,6 +72,45 @@ export async function createServiceTicket(
     });
 
     logger.ticketCreated({ tenantId, callId: callLogId, ticketType: 'answering_service' });
+
+    try {
+      const pool = getPlatformPool();
+      const contactName = `${input.patientFirstName} ${input.patientLastName}`;
+      const description = [
+        input.reasonForCall,
+        input.lastProviderSeen ? `\nLast Provider: ${input.lastProviderSeen}` : '',
+        input.locationOfLastVisit ? `\nLocation: ${input.locationOfLastVisit}` : '',
+        input.additionalNotes ? `\nNotes: ${input.additionalNotes}` : '',
+      ].join('');
+      const { rows: ticketRows } = await pool.query(
+        `INSERT INTO tickets (tenant_id, call_id, subject, description, status, priority, source, department, contact_name, contact_phone, tags)
+         VALUES ($1, $2, $3, $4, 'open', $5, 'phone', 'answering_service', $6, $7, $8)
+         RETURNING id, ticket_number`,
+        [tenantId, callLogId || null, `Service Request: ${input.reasonForCall.substring(0, 100)}`, description, priority, contactName, input.patientPhone, ['answering-service']],
+      );
+      if (ticketRows.length > 0) {
+        const ticketId = ticketRows[0].id;
+        await pool.query(
+          `INSERT INTO ticket_activity_log (tenant_id, ticket_id, user_id, activity_type, content)
+           VALUES ($1, $2, NULL, 'created', 'Service ticket created via answering service call')`,
+          [tenantId, ticketId],
+        );
+        const { rows: policies } = await pool.query(
+          `SELECT * FROM ticket_sla_policies WHERE tenant_id = $1 AND is_active = true AND priority = $2 ORDER BY created_at ASC LIMIT 1`,
+          [tenantId, priority],
+        );
+        if (policies.length > 0) {
+          const policy = policies[0];
+          await pool.query(
+            `INSERT INTO ticket_sla_instances (tenant_id, ticket_id, policy_id, response_due_at, resolution_due_at)
+             VALUES ($1, $2, $3, NOW() + ($4 || ' minutes')::interval, NOW() + ($5 || ' minutes')::interval)`,
+            [tenantId, ticketId, policy.id, String(policy.first_response_minutes), String(policy.resolution_minutes)],
+          );
+        }
+      }
+    } catch (dbErr) {
+      logger.warn('Failed to create local DB ticket (outbox succeeded)', { tenantId, error: String(dbErr) });
+    }
 
     const isAzulVision = deps.practiceName === 'Azul Vision' || deps.practiceName === 'Azul Vision Eye Center';
     if (isAzulVision && isTicketingConfigured()) {

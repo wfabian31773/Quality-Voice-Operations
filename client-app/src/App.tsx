@@ -66,6 +66,9 @@ import RoleGuard from './components/RoleGuard';
 import SmsInbox from './pages/SmsInbox';
 import Scheduling from './pages/Scheduling';
 import Tickets from './pages/Tickets';
+import TicketDetail from './pages/TicketDetail';
+import TicketReporting from './pages/TicketReporting';
+import TicketAdmin from './pages/TicketAdmin';
 import Dispatch from './pages/Dispatch';
 
 const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys'];
@@ -168,6 +171,9 @@ export default function App() {
         <Route path="/sms-inbox" element={<SmsInbox />} />
         <Route path="/scheduling" element={<Scheduling />} />
         <Route path="/tickets" element={<Tickets />} />
+        <Route path="/tickets/reporting" element={<TicketReporting />} />
+        <Route path="/tickets/admin" element={<RoleGuard minRole="manager"><TicketAdmin /></RoleGuard>} />
+        <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route path="/dispatch" element={<Dispatch />} />
       </Route>
 
