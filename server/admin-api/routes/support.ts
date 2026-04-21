@@ -1003,10 +1003,25 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
 //   1. the `support+<token>@...` address in `to`
 //   2. the `(tkt_xxxxxx)` substring in `subject`
 //
-// Auth: if SUPPORT_INBOUND_SECRET is configured, the request must include a
-// matching `X-Webhook-Secret` header or `?secret=` query param. When unset the
-// endpoint is open (provider-side IP allowlisting is expected in production).
+// Auth: SUPPORT_INBOUND_SECRET MUST be set in production. The provider must
+// include a matching shared secret as either the `X-Webhook-Secret` header or
+// the `?secret=` query parameter. In non-production environments the secret is
+// optional (left unset for local dev/testing), but if the env var is set the
+// request must still carry a matching value.
+//
+// Provider configuration: SendGrid Inbound Parse is the expected provider.
+// Configure the Inbound Parse webhook URL with the secret as a query string:
+//   https://app.qvo.ai/api/admin/support/inbound?secret=<SUPPORT_INBOUND_SECRET>
+// (Postmark/Mailgun also work — they can send the secret as the
+// `X-Webhook-Secret` header.) See replit.md "Inbound support email webhook"
+// for the full integration recipe and curl test.
 router.post('/support/inbound', async (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && !INBOUND_SECRET) {
+    logger.error('SUPPORT_INBOUND_SECRET is not configured in production — rejecting inbound webhook');
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
   if (INBOUND_SECRET) {
     const provided = (req.headers['x-webhook-secret'] as string | undefined)
       ?? (typeof req.query.secret === 'string' ? req.query.secret : undefined);

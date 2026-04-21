@@ -69,6 +69,37 @@ The SMS Inbox (`/sms-inbox`) is an enterprise-grade messaging workspace with:
 - **Migrations**: `052_sms_enterprise.sql` (tables + RLS), `053_sms_check_constraints.sql` (CHECK constraints + indexes), `054_sms_rls_fix.sql` (RLS policy fix to use `app.tenant_id`).
 - **RBAC**: `requireMiniSystemWrite` for write ops, `requireRole('manager')` for templates/automations/analytics admin.
 
+## Inbound Support Email Webhook
+The `POST /api/admin/support/inbound` endpoint receives provider callbacks for replies to support tickets and threads them onto the ticket as a customer message.
+
+- **Provider:** SendGrid Inbound Parse (Postmark and Mailgun also work — they post the same `from`/`to`/`subject`/`text`/`html` fields, plus `stripped-text`/`stripped-html` for Mailgun).
+- **MX:** Point `reply.qvo.ai` (override via `SUPPORT_INBOUND_DOMAIN`) at the provider's inbound MX records. Outbound ticket emails set `Reply-To: support+<token>@<inbound_domain>`, so replies route automatically.
+- **Auth — REQUIRED in production:** `SUPPORT_INBOUND_SECRET` must be set. The provider must include the value as either:
+  - HTTP header: `X-Webhook-Secret: <SUPPORT_INBOUND_SECRET>`, or
+  - Query string: `?secret=<SUPPORT_INBOUND_SECRET>` (use this with SendGrid Inbound Parse, which doesn't let you set custom headers).
+  Production requests without the secret are rejected with `401 unauthorized`. In dev/staging the secret is optional; if the env var is unset the endpoint is open for local testing.
+- **Ticket matching:** prefers the `support+<token>@…` address in `to`; falls back to the `(tkt_xxxxxx)` substring in `subject`. Unmatched messages return `202 {"matched": false}` and are dropped.
+
+### Verifying secret enforcement (curl recipes)
+```bash
+# 1. Production-style: missing secret → 401
+curl -i -X POST "$BASE/api/admin/support/inbound" \
+  -H 'Content-Type: application/json' \
+  -d '{"from":"a@b.c","to":"support+abc@reply.qvo.ai","subject":"(tkt_xxx)","text":"hi"}'
+
+# 2. Wrong secret → 401
+curl -i -X POST "$BASE/api/admin/support/inbound" \
+  -H 'Content-Type: application/json' \
+  -H 'X-Webhook-Secret: wrong' \
+  -d '{"from":"a@b.c","to":"support+abc@reply.qvo.ai","subject":"(tkt_xxx)","text":"hi"}'
+
+# 3. Correct secret → 202 (matched:false) or 200 (matched ticket)
+curl -i -X POST "$BASE/api/admin/support/inbound?secret=$SUPPORT_INBOUND_SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"from":"customer@example.com","to":"support+abc@reply.qvo.ai","subject":"Re: [QVO Support] BUG (tkt_xxx)","text":"thanks!"}'
+```
+Automated coverage lives in `tests/security/supportInboundWebhook.test.ts` (run with `npm test`).
+
 ## External Dependencies
 - **Database:** PostgreSQL (Replit for development, Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).
