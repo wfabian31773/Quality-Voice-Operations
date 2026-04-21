@@ -13,6 +13,8 @@ export default function DocArticle() {
   const adjacent = slug ? getAdjacentDocs(slug) : { prev: undefined, next: undefined };
   const [feedback, setFeedback] = useState<'helpful' | 'not_helpful' | null>(null);
   const [comment, setComment] = useState('');
+  const [replyEmail, setReplyEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   const tocHeadings = useMemo(() => {
@@ -47,12 +49,19 @@ export default function DocArticle() {
   };
 
   const submitComment = async () => {
+    const trimmedEmail = replyEmail.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Please enter a valid email address.');
+      return;
+    }
+    setEmailError(null);
     try {
       await api.post('/docs/feedback', {
         article_slug: article.slug,
         vote: 'not_helpful',
         comment,
         page_path: window.location.pathname,
+        reply_email: trimmedEmail || undefined,
       });
     } catch {
       // silent
@@ -164,6 +173,24 @@ export default function DocArticle() {
                           className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40"
                           placeholder="Tell us how we can improve this article..."
                         />
+                        <div>
+                          <p className="text-xs text-slate-ink/60 font-body mb-1">
+                            Email (optional) — so our team can follow up
+                          </p>
+                          <input
+                            type="email"
+                            value={replyEmail}
+                            onChange={(e) => {
+                              setReplyEmail(e.target.value);
+                              if (emailError) setEmailError(null);
+                            }}
+                            placeholder="you@example.com"
+                            className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40"
+                          />
+                          {emailError && (
+                            <p className="text-xs text-red-600 mt-1 font-body">{emailError}</p>
+                          )}
+                        </div>
                         <div className="flex gap-2">
                           <button
                             onClick={submitComment}

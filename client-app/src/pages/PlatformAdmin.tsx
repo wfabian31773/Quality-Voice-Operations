@@ -34,6 +34,20 @@ interface DocsFeedbackComment {
   status: DocsFeedbackStatus;
   status_updated_at: string | null;
   status_updated_by: string | null;
+  reply_email: string | null;
+  reply_count: number;
+}
+
+interface DocsFeedbackReply {
+  id: number;
+  feedback_id: number;
+  sent_by: string | null;
+  to_email: string;
+  subject: string;
+  body: string;
+  email_message_id: string | null;
+  email_error: string | null;
+  created_at: string;
 }
 
 type DocsFeedbackSort = 'lowest_ratio' | 'highest_ratio' | 'most_votes' | 'recent';
@@ -1025,71 +1039,250 @@ function DocsFeedbackTab() {
           ) : comments.length === 0 ? (
             <div className="text-center py-12 text-muted">No comments to show</div>
           ) : (
-            comments.map((c) => {
-              const isPending = updateStatus.isPending && updateStatus.variables?.id === c.id;
-              const statusBadge =
-                c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
-                  : c.status === 'hidden' ? 'bg-gray-100 text-gray-600 border-gray-200'
-                  : 'bg-blue-100 text-blue-700 border-blue-200';
-              return (
-                <div key={c.id} className="px-4 py-3">
-                  <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">
-                    {c.vote === 'helpful' ? (
-                      <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> not helpful</span>
-                    )}
-                    <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase tracking-wide font-medium ${statusBadge}`}>
-                      {c.status}
-                    </span>
-                    <span className="font-mono">{c.article_slug}</span>
-                    {c.page_path && <span className="text-muted">· {c.page_path}</span>}
-                    <span className="ml-auto">{new Date(c.created_at).toLocaleString()}</span>
-                  </div>
-                  <div className="text-sm whitespace-pre-wrap">{c.comment}</div>
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    {c.status !== 'resolved' && (
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => updateStatus.mutate({ id: c.id, status: 'resolved' })}
-                        className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
-                      >
-                        Mark resolved
-                      </button>
-                    )}
-                    {c.status !== 'hidden' && (
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => updateStatus.mutate({ id: c.id, status: 'hidden' })}
-                        className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
-                      >
-                        Hide
-                      </button>
-                    )}
-                    {c.status !== 'new' && (
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => updateStatus.mutate({ id: c.id, status: 'new' })}
-                        className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
-                      >
-                        Reopen
-                      </button>
-                    )}
-                    {c.status_updated_by && c.status_updated_at && (
-                      <span className="text-muted ml-auto">
-                        {c.status} by {c.status_updated_by} · {new Date(c.status_updated_at).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+            comments.map((c) => (
+              <DocsFeedbackCommentRow
+                key={c.id}
+                comment={c}
+                onUpdateStatus={(status) => updateStatus.mutate({ id: c.id, status })}
+                isStatusPending={updateStatus.isPending && updateStatus.variables?.id === c.id}
+              />
+            ))
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function DocsFeedbackCommentRow({
+  comment: c,
+  onUpdateStatus,
+  isStatusPending,
+}: {
+  comment: DocsFeedbackComment;
+  onUpdateStatus: (status: DocsFeedbackStatus) => void;
+  isStatusPending: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [showReply, setShowReply] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [replySubject, setReplySubject] = useState('');
+  const [markResolved, setMarkResolved] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const { data: repliesData, isLoading: repliesLoading } = useQuery({
+    queryKey: ['docs-feedback-replies', c.id],
+    queryFn: () =>
+      api.get<{ replies: DocsFeedbackReply[] }>(`/docs/feedback/comments/${c.id}/replies`),
+    enabled: showHistory,
+  });
+
+  const sendReply = useMutation({
+    mutationFn: () =>
+      api.post<{ success: boolean; message_id?: string }>(
+        `/docs/feedback/comments/${c.id}/reply`,
+        {
+          body: replyBody,
+          subject: replySubject || undefined,
+          mark_resolved: markResolved,
+        },
+      ),
+    onSuccess: () => {
+      setSuccess('Reply sent.');
+      setError(null);
+      setReplyBody('');
+      setReplySubject('');
+      setShowReply(false);
+      queryClient.invalidateQueries({ queryKey: ['docs-feedback-comments'] });
+      queryClient.invalidateQueries({ queryKey: ['docs-feedback-replies', c.id] });
+    },
+    onError: (err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(detail || 'Failed to send reply');
+      setSuccess(null);
+    },
+  });
+
+  const statusBadge =
+    c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
+      : c.status === 'hidden' ? 'bg-gray-100 text-gray-600 border-gray-200'
+      : 'bg-blue-100 text-blue-700 border-blue-200';
+
+  const replies = repliesData?.replies ?? [];
+
+  return (
+    <div className="px-4 py-3">
+      <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">
+        {c.vote === 'helpful' ? (
+          <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> not helpful</span>
+        )}
+        <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase tracking-wide font-medium ${statusBadge}`}>
+          {c.status}
+        </span>
+        <span className="font-mono">{c.article_slug}</span>
+        {c.page_path && <span className="text-muted">· {c.page_path}</span>}
+        {c.reply_count > 0 && (
+          <span className="inline-flex items-center gap-1 text-teal-700">
+            <Mail className="h-3 w-3" /> {c.reply_count} repl{c.reply_count === 1 ? 'y' : 'ies'}
+          </span>
+        )}
+        <span className="ml-auto">{new Date(c.created_at).toLocaleString()}</span>
+      </div>
+      <div className="text-sm whitespace-pre-wrap">{c.comment}</div>
+      {c.reply_email && (
+        <div className="mt-1 text-xs text-muted inline-flex items-center gap-1">
+          <Mail className="h-3 w-3" />
+          <a href={`mailto:${c.reply_email}`} className="text-teal-700 hover:underline">{c.reply_email}</a>
+        </div>
+      )}
+      <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
+        {c.reply_email && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowReply((v) => !v);
+              setError(null);
+              setSuccess(null);
+            }}
+            className="px-2 py-1 rounded border border-teal-200 text-teal-700 hover:bg-teal-50"
+          >
+            {showReply ? 'Cancel reply' : 'Reply by email'}
+          </button>
+        )}
+        {c.reply_email && (
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="px-2 py-1 rounded border border-border hover:bg-surface-secondary"
+          >
+            {showHistory
+              ? 'Hide replies'
+              : c.reply_count > 0
+                ? `Show ${c.reply_count} repl${c.reply_count === 1 ? 'y' : 'ies'}`
+                : 'Show reply history'}
+          </button>
+        )}
+        {c.status !== 'resolved' && (
+          <button
+            type="button"
+            disabled={isStatusPending}
+            onClick={() => onUpdateStatus('resolved')}
+            className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+          >
+            Mark resolved
+          </button>
+        )}
+        {c.status !== 'hidden' && (
+          <button
+            type="button"
+            disabled={isStatusPending}
+            onClick={() => onUpdateStatus('hidden')}
+            className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+          >
+            Hide
+          </button>
+        )}
+        {c.status !== 'new' && (
+          <button
+            type="button"
+            disabled={isStatusPending}
+            onClick={() => onUpdateStatus('new')}
+            className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+          >
+            Reopen
+          </button>
+        )}
+        {c.status_updated_by && c.status_updated_at && (
+          <span className="text-muted ml-auto">
+            {c.status} by {c.status_updated_by} · {new Date(c.status_updated_at).toLocaleString()}
+          </span>
+        )}
+      </div>
+
+      {success && <div className="mt-2 text-xs text-green-700">{success}</div>}
+
+      {showReply && c.reply_email && (
+        <div className="mt-3 border border-teal-200 rounded-lg bg-teal-50/30 p-3 space-y-2">
+          <div className="text-xs text-muted">
+            Reply will be sent from your support address to <span className="font-mono">{c.reply_email}</span>.
+          </div>
+          <input
+            type="text"
+            value={replySubject}
+            onChange={(e) => setReplySubject(e.target.value)}
+            placeholder={`Subject (default: Re: your feedback on ${c.article_slug})`}
+            className="w-full px-2 py-1.5 rounded border border-border text-sm bg-surface"
+          />
+          <textarea
+            value={replyBody}
+            onChange={(e) => setReplyBody(e.target.value)}
+            rows={5}
+            placeholder="Write your reply..."
+            className="w-full px-2 py-1.5 rounded border border-border text-sm bg-surface"
+          />
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={markResolved}
+              onChange={(e) => setMarkResolved(e.target.checked)}
+            />
+            Mark this comment as resolved after sending
+          </label>
+          {error && <div className="text-xs text-red-600">{error}</div>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={sendReply.isPending || replyBody.trim().length === 0}
+              onClick={() => {
+                setError(null);
+                sendReply.mutate();
+              }}
+              className="px-3 py-1.5 text-sm rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {sendReply.isPending ? 'Sending...' : 'Send reply'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowReply(false);
+                setError(null);
+              }}
+              className="px-3 py-1.5 text-sm rounded border border-border hover:bg-surface-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="mt-3 border border-border rounded-lg bg-surface-secondary/30 p-3 space-y-2">
+          {repliesLoading ? (
+            <div className="text-xs text-muted">Loading replies...</div>
+          ) : replies.length === 0 ? (
+            <div className="text-xs text-muted">No replies yet.</div>
+          ) : (
+            replies.map((r) => (
+              <div key={r.id} className="text-xs border border-border rounded p-2 bg-surface">
+                <div className="flex items-center gap-2 text-muted mb-1 flex-wrap">
+                  <span>{new Date(r.created_at).toLocaleString()}</span>
+                  <span>· from {r.sent_by ?? 'admin'}</span>
+                  <span>· to {r.to_email}</span>
+                  {r.email_error
+                    ? <span className="text-red-600">· failed: {r.email_error}</span>
+                    : <span className="text-green-700">· delivered</span>}
+                </div>
+                <div className="text-sm font-medium mb-1">{r.subject}</div>
+                <div className="text-sm whitespace-pre-wrap">{r.body}</div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

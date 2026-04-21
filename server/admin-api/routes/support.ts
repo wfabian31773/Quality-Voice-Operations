@@ -302,8 +302,10 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
   });
 });
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 router.post('/docs/feedback', async (req: Request, res: Response) => {
-  const { article_slug, vote, comment, page_path } = req.body ?? {};
+  const { article_slug, vote, comment, page_path, reply_email } = req.body ?? {};
 
   if (!article_slug || typeof article_slug !== 'string' || article_slug.length > 128) {
     res.status(400).json({ error: 'article_slug is required' });
@@ -317,13 +319,28 @@ router.post('/docs/feedback', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Invalid comment' });
     return;
   }
+  let normalizedReplyEmail: string | null = null;
+  if (reply_email !== undefined && reply_email !== null && reply_email !== '') {
+    if (typeof reply_email !== 'string' || reply_email.length > 320 || !EMAIL_RE.test(reply_email.trim())) {
+      res.status(400).json({ error: 'Invalid reply_email' });
+      return;
+    }
+    normalizedReplyEmail = reply_email.trim();
+  }
 
   try {
     const pool = getPlatformPool();
     await pool.query(
-      `INSERT INTO docs_feedback (article_slug, vote, comment, page_path, user_agent)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [article_slug, vote, comment || null, page_path || null, req.headers['user-agent'] || null],
+      `INSERT INTO docs_feedback (article_slug, vote, comment, page_path, user_agent, reply_email)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        article_slug,
+        vote,
+        comment || null,
+        page_path || null,
+        req.headers['user-agent'] || null,
+        normalizedReplyEmail,
+      ],
     );
   } catch (err) {
     logger.warn('docs_feedback insert failed', { error: String(err) });
@@ -402,7 +419,8 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
     }
     const r = await pool.query(
       `SELECT id, article_slug, vote, comment, page_path, created_at,
-              status, status_updated_at, status_updated_by
+              status, status_updated_at, status_updated_by,
+              reply_email, reply_count
        FROM docs_feedback
        ${where}
        ORDER BY created_at DESC
@@ -434,7 +452,8 @@ router.patch('/docs/feedback/comments/:id', requireAuth, requirePlatformAdmin, a
        SET status = $2, status_updated_at = NOW(), status_updated_by = $3
        WHERE id = $1
        RETURNING id, article_slug, vote, comment, page_path, created_at,
-                 status, status_updated_at, status_updated_by`,
+                 status, status_updated_at, status_updated_by,
+                 reply_email, reply_count`,
       [id, status, actor],
     );
     if (r.rowCount === 0) {
@@ -445,6 +464,168 @@ router.patch('/docs/feedback/comments/:id', requireAuth, requirePlatformAdmin, a
   } catch (err) {
     res.status(500).json({ error: 'Failed to update comment status', detail: String(err) });
   }
+});
+
+router.get('/docs/feedback/comments/:id/replies', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `SELECT id, feedback_id, sent_by, to_email, subject, body,
+              email_message_id, email_error, created_at
+       FROM docs_feedback_replies
+       WHERE feedback_id = $1
+       ORDER BY created_at DESC`,
+      [id],
+    );
+    res.json({ replies: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load replies', detail: String(err) });
+  }
+});
+
+router.post('/docs/feedback/comments/:id/reply', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const { subject, body, mark_resolved } = req.body ?? {};
+  if (!body || typeof body !== 'string' || body.trim().length === 0) {
+    res.status(400).json({ error: 'body is required' });
+    return;
+  }
+  if (body.length > 10000) {
+    res.status(400).json({ error: 'body is too long' });
+    return;
+  }
+  if (subject !== undefined && subject !== null && (typeof subject !== 'string' || subject.length > 256)) {
+    res.status(400).json({ error: 'invalid subject' });
+    return;
+  }
+  if (mark_resolved !== undefined && typeof mark_resolved !== 'boolean') {
+    res.status(400).json({ error: 'mark_resolved must be a boolean' });
+    return;
+  }
+  const shouldMarkResolved = mark_resolved === true;
+
+  const pool = getPlatformPool();
+  let comment: {
+    id: number;
+    article_slug: string;
+    comment: string | null;
+    reply_email: string | null;
+  };
+  try {
+    const r = await pool.query<{
+      id: number;
+      article_slug: string;
+      comment: string | null;
+      reply_email: string | null;
+    }>(
+      `SELECT id, article_slug, comment, reply_email FROM docs_feedback WHERE id = $1`,
+      [id],
+    );
+    if (r.rowCount === 0) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    comment = r.rows[0];
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load comment', detail: String(err) });
+    return;
+  }
+
+  if (!comment.reply_email) {
+    res.status(400).json({ error: 'No reply email captured for this comment' });
+    return;
+  }
+
+  const actor = req.user?.email ?? req.user?.userId ?? null;
+  const finalSubject =
+    (subject && subject.trim().length > 0)
+      ? subject.trim()
+      : `Re: your feedback on ${comment.article_slug}`;
+  const escapedBody = escapeHtml(body).replace(/\n/g, '<br/>');
+  const originalBlock = comment.comment
+    ? `<hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb"/>
+       <p style="color:#64748b;font-size:12px;margin:0 0 4px">You wrote about <code>${escapeHtml(comment.article_slug)}</code>:</p>
+       <blockquote style="margin:0;padding:8px 12px;border-left:3px solid #cbd5e1;color:#475569;background:#f8fafc;font-size:13px;white-space:pre-wrap">${escapeHtml(comment.comment)}</blockquote>`
+    : '';
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
+      <p style="white-space:pre-wrap">${escapedBody}</p>
+      ${originalBlock}
+      <p style="color:#64748b;font-size:12px;margin-top:16px">— The QVO docs team</p>
+    </div>`;
+  const textOriginal = comment.comment
+    ? `\n\n----- Your original feedback (${comment.article_slug}) -----\n${comment.comment}`
+    : '';
+  const text = `${body}\n${textOriginal}\n\n— The QVO docs team`;
+
+  const result = await sendEmail({
+    to: comment.reply_email,
+    subject: finalSubject,
+    html,
+    text,
+  });
+
+  try {
+    await pool.query(
+      `INSERT INTO docs_feedback_replies
+         (feedback_id, sent_by, to_email, subject, body, email_message_id, email_error)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        id,
+        actor,
+        comment.reply_email,
+        finalSubject,
+        body,
+        result.messageId ?? null,
+        result.success ? null : (result.error ?? 'unknown'),
+      ],
+    );
+  } catch (err) {
+    logger.error('Failed to log docs feedback reply', { feedback_id: id, error: String(err) });
+  }
+
+  if (!result.success) {
+    res.status(502).json({
+      error: 'Failed to send reply email',
+      detail: result.error,
+    });
+    return;
+  }
+
+  try {
+    await pool.query(
+      `UPDATE docs_feedback
+       SET reply_count = reply_count + 1
+       ${shouldMarkResolved ? `, status = 'resolved', status_updated_at = NOW(), status_updated_by = $2` : ''}
+       WHERE id = $1`,
+      shouldMarkResolved ? [id, actor] : [id],
+    );
+  } catch (err) {
+    logger.warn('Failed to bump reply_count', { feedback_id: id, error: String(err) });
+  }
+
+  logger.info('Docs feedback reply sent', {
+    feedback_id: id,
+    to: comment.reply_email,
+    sent_by: actor,
+    message_id: result.messageId,
+  });
+
+  res.json({
+    success: true,
+    message_id: result.messageId,
+    to: comment.reply_email,
+    subject: finalSubject,
+  });
 });
 
 // ----- Platform admin: support ticket inbox -----
