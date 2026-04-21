@@ -74,7 +74,7 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Calls, Contacts, Notes',
     logoId: 'hubspot',
     oauthProvider: 'hubspot',
-    docsUrl: 'https://developers.hubspot.com/docs/api/private-apps',
+    docsUrl: '/docs/connecting-hubspot',
     setupHelp: 'Create a private app in HubSpot and copy the access token, or sign in with OAuth below.',
     fields: [
       { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'HubSpot private app access token', required: true },
@@ -110,7 +110,7 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Appointments, Availability',
     logoId: 'google-calendar',
     oauthProvider: 'google',
-    docsUrl: 'https://developers.google.com/calendar/api/guides/auth',
+    docsUrl: '/docs/connecting-calendar',
     setupHelp: 'Sign in with Google to grant calendar access, or paste OAuth client credentials manually.',
     fields: [
       { key: 'client_id', label: 'Client ID', type: 'text', placeholder: 'Google OAuth Client ID', required: true },
@@ -170,7 +170,7 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Call Summaries, Alerts',
     logoId: 'slack',
     oauthProvider: 'slack',
-    docsUrl: 'https://api.slack.com/authentication/token-types#bot',
+    docsUrl: '/docs/connecting-slack',
     setupHelp: 'Sign in with Slack to add the QVO app to a workspace, or paste a bot token from your Slack app.',
     fields: [
       { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...', required: true },
@@ -221,7 +221,7 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Contacts, Deals, Activities',
     logoId: 'pipedrive',
     oauthProvider: 'pipedrive',
-    docsUrl: 'https://developers.pipedrive.com/docs/api/v1/oauth-authorization',
+    docsUrl: '/docs/connecting-pipedrive',
     setupHelp: 'Sign in with Pipedrive (OAuth) or paste a personal API token from Settings → Personal preferences → API.',
     fields: [
       { key: 'api_token', label: 'API Token', type: 'password', placeholder: 'Pipedrive personal API token', required: true },
@@ -239,7 +239,7 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Customers, Invoices',
     logoId: 'quickbooks',
     oauthProvider: 'quickbooks',
-    docsUrl: 'https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-2.0',
+    docsUrl: '/docs/connecting-quickbooks',
     setupHelp: 'Sign in with QuickBooks (OAuth). Set the invoice item and default amount to enable auto-invoicing on call.completed.',
     fields: [
       { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'QuickBooks OAuth access token', required: true },
