@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -264,6 +264,7 @@ interface SavedView {
   filters: Partial<FiltersState>;
   is_shared: boolean;
   is_pinned: boolean;
+  pin_order: number;
   created_by: string | null;
   digest_enabled?: boolean;
   digest_subscribers?: string[];
@@ -501,6 +502,25 @@ export default function Calls() {
     }
   };
 
+  const handleMovePin = async (view: SavedView, direction: -1 | 1) => {
+    const ownedPinned = savedViews
+      .filter((v) => v.is_pinned && !!currentUserId && v.created_by === currentUserId)
+      .sort((a, b) => (a.pin_order - b.pin_order) || a.name.localeCompare(b.name));
+    const idx = ownedPinned.findIndex((v) => v.id === view.id);
+    if (idx === -1) return;
+    const target = idx + direction;
+    if (target < 0 || target >= ownedPinned.length) return;
+    const reordered = [...ownedPinned];
+    [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
+    try {
+      await api.post('/call-saved-views/pinned/reorder', { ids: reordered.map((v) => v.id) });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
+    } catch (err) {
+      alert(`Failed to reorder pinned view: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   const handleTogglePin = async (view: SavedView) => {
     try {
       await api.patch(`/call-saved-views/${view.id}`, { is_pinned: !view.is_pinned });
@@ -605,11 +625,19 @@ export default function Calls() {
         </div>
       </div>
 
-      {(savedViews.length > 0 || savingView) && (
+      {(savedViews.length > 0 || savingView) && (() => {
+        const ownedPinnedOrdered = savedViews
+          .filter((v) => v.is_pinned && !!currentUserId && v.created_by === currentUserId)
+          .sort((a, b) => (a.pin_order - b.pin_order) || a.name.localeCompare(b.name));
+        const ownedPinnedIndex = new Map(ownedPinnedOrdered.map((v, i) => [v.id, i]));
+        return (
         <div className="flex flex-wrap items-center gap-2">
           {savedViews.map((view) => {
             const isActive = activeViewId === view.id && !isViewDirty;
             const isOwner = !!currentUserId && view.created_by === currentUserId;
+            const ownedPinIdx = ownedPinnedIndex.get(view.id);
+            const canMoveUp = ownedPinIdx !== undefined && ownedPinIdx > 0;
+            const canMoveDown = ownedPinIdx !== undefined && ownedPinIdx < ownedPinnedOrdered.length - 1;
             const lastRunRel = view.digest_last_run_at
               ? formatDistanceToNow(new Date(view.digest_last_run_at), { addSuffix: true })
               : null;
@@ -645,6 +673,28 @@ export default function Calls() {
                   >
                     · {lastRunRel ? `${matchCount} ${lastRunRel}` : 'not run yet'}
                   </span>
+                )}
+                {isOwner && view.is_pinned && ownedPinnedOrdered.length > 1 && (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleMovePin(view, -1); }}
+                      disabled={!canMoveUp}
+                      className={`p-1 rounded-full transition ${canMoveUp ? 'text-text-muted hover:text-primary' : 'text-text-muted/40 cursor-not-allowed'}`}
+                      title="Move up in sidebar"
+                      aria-label={`Move ${view.name} up in sidebar`}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleMovePin(view, 1); }}
+                      disabled={!canMoveDown}
+                      className={`p-1 rounded-full transition ${canMoveDown ? 'text-text-muted hover:text-primary' : 'text-text-muted/40 cursor-not-allowed'}`}
+                      title="Move down in sidebar"
+                      aria-label={`Move ${view.name} down in sidebar`}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </button>
+                  </>
                 )}
                 {isOwner && (
                   <button
@@ -718,7 +768,8 @@ export default function Calls() {
             </button>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {subscribersOpenFor && (() => {
         const view = savedViews.find((v) => v.id === subscribersOpenFor);

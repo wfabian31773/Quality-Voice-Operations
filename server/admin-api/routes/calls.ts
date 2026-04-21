@@ -255,11 +255,11 @@ const listSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT id, name, filters, is_shared, is_pinned, created_by, created_at, updated_at,
+      `SELECT id, name, filters, is_shared, is_pinned, pin_order, created_by, created_at, updated_at,
               digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count
        FROM call_saved_views
        WHERE tenant_id = $1 AND (created_by = $2 OR is_shared = true)
-       ORDER BY name ASC`,
+       ORDER BY is_pinned DESC, pin_order ASC, name ASC`,
       [tenantId, userId],
     );
     await client.query('COMMIT');
@@ -378,10 +378,10 @@ const listPinnedSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows: views } = await client.query(
-      `SELECT id, name, filters, is_shared, is_pinned, created_by
+      `SELECT id, name, filters, is_shared, is_pinned, pin_order, created_by
        FROM call_saved_views
        WHERE tenant_id = $1 AND is_pinned = true AND (created_by = $2 OR is_shared = true)
-       ORDER BY name ASC`,
+       ORDER BY pin_order ASC, name ASC`,
       [tenantId, userId],
     );
     const enriched = await Promise.all(
@@ -450,7 +450,7 @@ const createSavedViewHandler: RequestHandler = async (req, res) => {
     const { rows } = await client.query(
       `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, is_pinned, created_by, digest_enabled, digest_subscribers)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, name, filters, is_shared, is_pinned, created_by, created_at, updated_at,
+       RETURNING id, name, filters, is_shared, is_pinned, pin_order, created_by, created_at, updated_at,
                  digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
       [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), Boolean(is_pinned), userId, Boolean(digest_enabled), allowedSubs],
     );
@@ -566,6 +566,18 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     }
     if (typeof is_pinned === 'boolean') {
       values.push(is_pinned); updates.push(`is_pinned = $${values.length}`);
+      // When a user pins a view, append it to the bottom of their existing pinned list
+      // so the order feels intuitive ("new pins appear last") instead of jumping to top.
+      if (is_pinned) {
+        const { rows: maxRows } = await client.query(
+          `SELECT COALESCE(MAX(pin_order), -1) + 1 AS next_order
+             FROM call_saved_views
+            WHERE tenant_id = $1 AND is_pinned = true AND created_by = $2 AND id <> $3`,
+          [tenantId, userId, id],
+        );
+        const nextOrder = Number(maxRows[0]?.next_order ?? 0);
+        values.push(nextOrder); updates.push(`pin_order = $${values.length}`);
+      }
     }
     if (typeof digest_enabled === 'boolean') {
       values.push(digest_enabled); updates.push(`digest_enabled = $${values.length}`);
@@ -606,7 +618,7 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     const { rows } = await client.query(
       `UPDATE call_saved_views SET ${updates.join(', ')}
        WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
-       RETURNING id, name, filters, is_shared, is_pinned, created_by, created_at, updated_at,
+       RETURNING id, name, filters, is_shared, is_pinned, pin_order, created_by, created_at, updated_at,
                  digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
       values,
     );
@@ -671,11 +683,57 @@ const deleteSavedViewHandler: RequestHandler = async (req, res) => {
   }
 };
 
+const reorderPinnedSavedViewsHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { ids } = req.body as { ids?: unknown };
+  if (!Array.isArray(ids) || ids.some((v) => typeof v !== 'string') || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array of view ids' });
+  }
+  if (ids.length > 200) {
+    return res.status(400).json({ error: 'too many ids' });
+  }
+  const orderedIds = ids as string[];
+  if (new Set(orderedIds).size !== orderedIds.length) {
+    return res.status(400).json({ error: 'ids must be unique' });
+  }
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows: existing } = await client.query(
+      `SELECT id FROM call_saved_views
+       WHERE tenant_id = $1 AND is_pinned = true AND id = ANY($2::text[]) AND created_by = $3`,
+      [tenantId, orderedIds, userId],
+    );
+    if (existing.length !== orderedIds.length) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'You can only reorder pinned views you own' });
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(
+        `UPDATE call_saved_views SET pin_order = $1, updated_at = NOW()
+         WHERE id = $2 AND tenant_id = $3`,
+        [i, orderedIds[i], tenantId],
+      );
+    }
+    await client.query('COMMIT');
+    return res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to reorder pinned saved views', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to reorder pinned views' });
+  } finally {
+    client.release();
+  }
+};
+
 const router = Router();
 router.get('/calls', requireAuth, listCallsHandler);
 router.get('/call-saved-views', requireAuth, listSavedViewsHandler);
 router.get('/call-saved-views/pinned', requireAuth, listPinnedSavedViewsHandler);
 router.post('/call-saved-views', requireAuth, createSavedViewHandler);
+router.post('/call-saved-views/pinned/reorder', requireAuth, reorderPinnedSavedViewsHandler);
 router.patch('/call-saved-views/:id', requireAuth, updateSavedViewHandler);
 router.delete('/call-saved-views/:id', requireAuth, deleteSavedViewHandler);
 router.get('/calls/:id', requireAuth, getCallHandler);
