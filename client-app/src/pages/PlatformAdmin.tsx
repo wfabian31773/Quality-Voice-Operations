@@ -1124,10 +1124,19 @@ function SupportInboxTab() {
     refetchInterval: 60_000,
   });
 
+  const { data: stats } = useQuery({
+    queryKey: ['support-ticket-stats'],
+    queryFn: () => api.get<{ total: number; open: number; email_failed: number; email_failed_open: number }>(`/support/tickets/stats`),
+    refetchInterval: 60_000,
+  });
+
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/support/tickets/${id}/status`, { status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['support-tickets'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-stats'] });
+    },
   });
 
   const tickets = data?.tickets ?? [];
@@ -1141,8 +1150,28 @@ function SupportInboxTab() {
     return `mailto:${t.user_email}?subject=${subject}&body=${body}`;
   };
 
+  const failedCount = stats?.email_failed ?? 0;
+  const failedOpenCount = stats?.email_failed_open ?? 0;
+
   return (
     <div className="space-y-4">
+      {failedCount > 0 && (
+        <div className="flex items-start gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-900">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <div className="font-medium">
+              {failedCount} ticket{failedCount === 1 ? '' : 's'} with email delivery errors
+              {failedOpenCount > 0 && failedOpenCount !== failedCount && (
+                <span className="font-normal"> ({failedOpenCount} still open)</span>
+              )}
+            </div>
+            <div className="text-xs mt-0.5">
+              The platform team has been alerted. Check SMTP configuration and the routing destinations below.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
           {(['open', 'in_progress', 'resolved', 'closed', 'all'] as const).map((s) => (

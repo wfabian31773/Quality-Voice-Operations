@@ -3,11 +3,87 @@ import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
-import { sendEmail } from '../../../platform/email/EmailService';
+import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
 import { runDocsFeedbackAlertCycle } from '../../../platform/help/DocsFeedbackAlertScheduler';
+import { logError } from '../../../platform/core/observability';
 
 const logger = createLogger('SUPPORT');
 const router = Router();
+
+// Retry policy for the ops-team email. Backoff in ms between attempts.
+const OPS_EMAIL_RETRY_DELAYS_MS = [500, 2_000, 8_000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Attempt to deliver the ops-team email with exponential backoff. Returns the
+ * final EmailResult plus the number of attempts made.
+ */
+async function sendOpsEmailWithRetry(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+): Promise<{ result: EmailResult; attempts: number }> {
+  let last: EmailResult = { success: false, error: 'no attempts' };
+  const total = OPS_EMAIL_RETRY_DELAYS_MS.length + 1;
+  for (let i = 0; i < total; i++) {
+    last = await sendEmail({ to, subject, html, text });
+    if (last.success) return { result: last, attempts: i + 1 };
+    if (i < OPS_EMAIL_RETRY_DELAYS_MS.length) {
+      logger.warn('Ops support email attempt failed, retrying', {
+        to, attempt: i + 1, error: last.error,
+      });
+      await sleep(OPS_EMAIL_RETRY_DELAYS_MS[i]);
+    }
+  }
+  return { result: last, attempts: total };
+}
+
+/**
+ * Raise a platform alert when an ops-team support email cannot be delivered.
+ * Writes to error_logs (severity=critical) and, when the ticket is linked to a
+ * tenant, also inserts an operations_alerts row for the in-product alert feed.
+ */
+async function raiseDeliveryFailureAlert(input: {
+  ticketId: string;
+  tenantId: string | null;
+  routedTo: string;
+  topic: string;
+  attempts: number;
+  error: string;
+  userEmail: string | null;
+}): Promise<void> {
+  const { ticketId, tenantId, routedTo, topic, attempts, error, userEmail } = input;
+  const message = `Support ticket ${ticketId}: failed to deliver email to ${routedTo} after ${attempts} attempt(s)`;
+  await logError(tenantId, 'critical', message, {
+    service: 'support',
+    errorCode: 'support_email_delivery_failed',
+    extra: { ticket_id: ticketId, routed_to: routedTo, topic, attempts, error, user_email: userEmail },
+  });
+  if (tenantId) {
+    try {
+      const pool = getPlatformPool();
+      await pool.query(
+        `INSERT INTO operations_alerts (tenant_id, type, severity, message, metadata)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          tenantId,
+          'support_email_delivery_failed',
+          'high',
+          message,
+          JSON.stringify({ ticket_id: ticketId, routed_to: routedTo, topic, attempts, error }),
+        ],
+      );
+    } catch (err) {
+      logger.warn('Failed to insert operations_alert for support email failure', {
+        ticketId, error: String(err),
+      });
+    }
+  }
+}
 
 const VALID_TOPICS = new Set([
   'question', 'bug', 'billing', 'integration', 'onboarding', 'feature',
@@ -167,7 +243,9 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
     user,
     context: safeContext as Record<string, unknown>,
   });
-  const opsResult = await sendEmail({ to: routedTo, subject: tplOps.subject, html: tplOps.html, text: tplOps.text });
+  const { result: opsResult, attempts: opsAttempts } = await sendOpsEmailWithRetry(
+    routedTo, tplOps.subject, tplOps.html, tplOps.text,
+  );
 
   // Update ticket with delivery state
   if (persisted) {
@@ -178,6 +256,21 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
         [ticketId, opsResult.messageId ?? null, opsResult.success ? null : (opsResult.error ?? 'unknown')],
       );
     } catch { /* non-fatal */ }
+  }
+
+  // Failed delivery — raise a platform alert (best-effort).
+  if (!opsResult.success) {
+    raiseDeliveryFailureAlert({
+      ticketId,
+      tenantId: user.tenantId ?? null,
+      routedTo,
+      topic: normalizedTopic,
+      attempts: opsAttempts,
+      error: opsResult.error ?? 'unknown',
+      userEmail: user.email ?? null,
+    }).catch((err) => logger.warn('Failed to raise delivery-failure alert', {
+      ticketId, error: String(err),
+    }));
   }
 
   // Auto-acknowledge the user (best-effort)
@@ -194,6 +287,7 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
     plan,
     routed_to: routedTo,
     email_delivered: opsResult.success,
+    email_attempts: opsAttempts,
     persisted,
     page: (safeContext as Record<string, unknown>).page,
   });
@@ -387,6 +481,28 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
     res.json({ tickets: r.rows });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load tickets', detail: String(err) });
+  }
+});
+
+router.get('/support/tickets/stats', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query<{
+      total: number;
+      open: number;
+      email_failed: number;
+      email_failed_open: number;
+    }>(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE status IN ('open','in_progress'))::int AS open,
+         COUNT(*) FILTER (WHERE email_error IS NOT NULL)::int AS email_failed,
+         COUNT(*) FILTER (WHERE email_error IS NOT NULL AND status IN ('open','in_progress'))::int AS email_failed_open
+       FROM support_tickets`,
+    );
+    res.json(r.rows[0] ?? { total: 0, open: 0, email_failed: 0, email_failed_open: 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load ticket stats', detail: String(err) });
   }
 });
 
