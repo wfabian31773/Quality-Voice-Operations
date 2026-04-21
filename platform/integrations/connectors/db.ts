@@ -234,16 +234,37 @@ export async function markConnectorReconnectNeeded(
   }
 }
 
+export interface SyncStatusUpdateResult {
+  integrationId: string;
+  provider: string;
+  previousStatus: string | null;
+  transitionedToError: boolean;
+}
+
 export async function updateConnectorSyncStatus(
   tenantId: TenantId,
   connectorType: ConnectorType,
   status: 'success' | 'error',
   provider?: string,
   errorMessage?: string | null,
-): Promise<void> {
+): Promise<SyncStatusUpdateResult[]> {
+  const truncatedError = errorMessage ? errorMessage.slice(0, 1000) : null;
   try {
-    const truncatedError = errorMessage ? errorMessage.slice(0, 1000) : null;
-    await withTenant(tenantId, async (client) => {
+    return await withTenant(tenantId, async (client) => {
+      const { rows: priorRows } = provider
+        ? await client.query(
+            `SELECT id, provider, last_sync_status
+             FROM integrations
+             WHERE tenant_id = $1 AND integration_type = $2 AND provider = $3 AND is_enabled = TRUE`,
+            [tenantId, connectorType, provider],
+          )
+        : await client.query(
+            `SELECT id, provider, last_sync_status
+             FROM integrations
+             WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
+            [tenantId, connectorType],
+          );
+
       if (status === 'success') {
         if (provider) {
           await client.query(
@@ -285,9 +306,20 @@ export async function updateConnectorSyncStatus(
           );
         }
       }
+
+      return priorRows.map((row) => {
+        const previousStatus = (row.last_sync_status as string | null) ?? null;
+        return {
+          integrationId: row.id as string,
+          provider: row.provider as string,
+          previousStatus,
+          transitionedToError: status === 'error' && previousStatus === 'success',
+        };
+      });
     });
   } catch (err) {
     logger.warn('Failed to update sync status', { tenantId, connectorType, error: String(err) });
+    return [];
   }
 }
 

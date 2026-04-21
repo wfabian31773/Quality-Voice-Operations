@@ -548,7 +548,10 @@ function ConnectedCard({
   };
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all">
+    <div
+      data-integration-id={connector.integrationId}
+      className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all"
+    >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo provider={definition.logoId} size={36} />
@@ -699,6 +702,27 @@ export default function Connectors() {
     queryKey: ['connectors'],
     queryFn: () => api.get<{ connectors: Connector[]; total: number }>('/connectors?limit=100'),
   });
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get('integration');
+    if (!targetId) return;
+    const list = data?.connectors ?? [];
+    const match = list.find((c) => c.integrationId === targetId);
+    if (!match) return;
+    const def = CONNECTOR_DEFINITIONS.find((d) => d.provider === match.provider);
+    if (def) setConnectTarget(def);
+    const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+      ? CSS.escape(targetId)
+      : targetId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const el = document.querySelector<HTMLElement>(`[data-integration-id="${escaped}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    params.delete('integration');
+    const next = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  }, [isLoading, data]);
 
   const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => api.delete(`/connectors/${integrationId}`),

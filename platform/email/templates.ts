@@ -148,6 +148,35 @@ export function billingAlertEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorSyncErrorEmail(params: {
+  tenantName?: string;
+  providerLabel: string;
+  errorMessage: string;
+  reconnectUrl: string;
+  detectedAt: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const subject = `Action required: ${params.providerLabel} sync is failing`;
+  const safeError = (params.errorMessage || 'Sync failed').slice(0, 500);
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>The <strong>${params.providerLabel}</strong> integration for <strong>${org}</strong> just failed to sync. Calls and other workflows that depend on this integration may be affected until you reconnect.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>Latest error</strong></p>
+      <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
+      <p style="margin:8px 0 0" class="muted">Detected at ${params.detectedAt}</p>
+    </div>
+    <p>Open the Connectors page to review the error and re-authorize the integration:</p>
+    <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
+    <p class="muted">You won't get another email about this integration for 24 hours, even if it keeps failing.</p>
+  `);
+
+  const text = `${subject}\n\nThe ${params.providerLabel} integration for ${org} just failed to sync.\n\nLatest error: ${safeError}\nDetected at ${params.detectedAt}\n\nReconnect: ${params.reconnectUrl}\n\nYou won't get another email about this integration for 24 hours.`;
+
+  return { subject, html, text };
+}
+
 export function dataExportEmail(params: {
   tenantName?: string;
   generatedAt: string;
