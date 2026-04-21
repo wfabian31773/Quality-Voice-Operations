@@ -109,7 +109,7 @@ function RankIcon({ rank }: { rank: string }) {
 function confidenceBadge(score: number): string {
   if (score >= 0.8) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
   if (score >= 0.5) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+  return 'bg-surface-hover text-text-secondary';
 }
 
 export default function GlobalIntelligence() {
@@ -381,7 +381,7 @@ export default function GlobalIntelligence() {
                     </div>
                     <p className="text-sm text-text-primary">{pp.patternDescription}</p>
                     {pp.examplePrompt && (
-                      <div className="mt-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3">
+                      <div className="mt-3 bg-surface-secondary/50 rounded-lg p-3">
                         <p className="text-xs text-text-secondary font-medium mb-1">Example Structure</p>
                         <p className="text-sm text-text-primary font-mono whitespace-pre-wrap">{pp.examplePrompt}</p>
                       </div>

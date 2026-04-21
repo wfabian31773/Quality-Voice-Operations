@@ -298,7 +298,7 @@ function RolesPermissions() {
                       {cap[r] ? (
                         <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-success/10 text-success text-xs font-bold">&#10003;</span>
                       ) : (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600 text-xs">&mdash;</span>
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-surface-hover text-text-muted dark:text-gray-600 text-xs">&mdash;</span>
                       )}
                     </td>
                   ))}

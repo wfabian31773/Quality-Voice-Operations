@@ -140,7 +140,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 const STATE_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+  draft: 'bg-surface-hover text-text-primary',
   active: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   paused: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
   concluded: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
@@ -155,14 +155,14 @@ function ScoreBar({ score, max = 10, label }: { score: number; max?: number; lab
   const pct = Math.min((score / max) * 100, 100);
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-28 text-gray-500 dark:text-gray-400 truncate">{label}</span>
-      <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <span className="w-28 text-text-secondary truncate">{label}</span>
+      <div className="flex-1 h-1.5 bg-surface-hover rounded-full overflow-hidden">
         <div
           className={clsx('h-full rounded-full', pct >= 70 ? 'bg-teal-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-gray-400')}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="w-8 text-right text-gray-600 dark:text-gray-300">{score.toFixed(1)}</span>
+      <span className="w-8 text-right text-text-secondary">{score.toFixed(1)}</span>
     </div>
   );
 }
@@ -254,8 +254,8 @@ export default function EvolutionEngine() {
             <Dna className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Platform Evolution Engine</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">AI-powered product intelligence and roadmap recommendations</p>
+            <h1 className="text-2xl font-bold text-text-primary">Platform Evolution Engine</h1>
+            <p className="text-sm text-text-secondary">AI-powered product intelligence and roadmap recommendations</p>
           </div>
         </div>
         <button
@@ -268,7 +268,7 @@ export default function EvolutionEngine() {
         </button>
       </div>
 
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+      <div className="flex gap-1 bg-surface-hover p-1 rounded-lg">
         {tabs.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -276,8 +276,8 @@ export default function EvolutionEngine() {
             className={clsx(
               'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
               tab === key
-                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                ? 'bg-surface text-text-primary shadow-sm'
+                : 'text-text-secondary hover:text-text-primary dark:hover:text-text-muted',
             )}
           >
             <Icon className="w-4 h-4" />
@@ -289,7 +289,7 @@ export default function EvolutionEngine() {
       {tab === 'overview' && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading dashboard...</div>
+            <div className="text-center py-12 text-text-secondary">Loading dashboard...</div>
           ) : dash ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -310,11 +310,11 @@ export default function EvolutionEngine() {
                           {dash.recommendations.topRecommendation.recommended_priority}
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                      <p className="text-sm font-medium text-text-primary mb-2">
                         {dash.recommendations.topRecommendation.title}
                       </p>
                       {dash.recommendations.topRecommendation.ai_explanation && (
-                        <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
+                        <p className="text-sm text-text-primary line-clamp-3">
                           {dash.recommendations.topRecommendation.ai_explanation}
                         </p>
                       )}
@@ -329,27 +329,27 @@ export default function EvolutionEngine() {
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <div className="bg-surface rounded-xl border border-border p-5">
+                  <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-teal-500" />
                     Top Opportunities This Quarter
                   </h3>
                   {dash.opportunities.top5.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">No opportunities detected yet. Run the pipeline to start.</p>
+                    <p className="text-sm text-text-secondary py-4 text-center">No opportunities detected yet. Run the pipeline to start.</p>
                   ) : (
                     <div className="space-y-3">
                       {dash.opportunities.top5.map((opp) => (
-                        <div key={opp.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <div key={opp.id} className="flex items-center gap-3 p-3 bg-surface-hover rounded-lg">
                           <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-700 dark:text-purple-300">
                             {opp.composite_score.toFixed(1)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{opp.title}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-sm font-medium text-text-primary truncate">{opp.title}</p>
+                            <p className="text-xs text-text-secondary">
                               {TYPE_LABELS[opp.opportunity_type] || opp.opportunity_type} · {opp.signal_count} signals · {opp.affected_tenant_count} tenants
                             </p>
                           </div>
-                          <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
                         </div>
                       ))}
                     </div>
@@ -357,21 +357,21 @@ export default function EvolutionEngine() {
                 </div>
 
                 <div className="space-y-6">
-                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <div className="bg-surface rounded-xl border border-border p-5">
+                    <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
                       <ArrowUpRight className="w-4 h-4 text-green-500" />
                       Fastest-Growing Verticals
                     </h3>
                     {dash.verticalGrowth.length === 0 ? (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">No vertical data yet</p>
+                      <p className="text-sm text-text-secondary py-4 text-center">No vertical data yet</p>
                     ) : (
                       <div className="space-y-2">
                         {dash.verticalGrowth.map((v, i) => (
                           <div key={i} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-700 dark:text-gray-300 capitalize">{v.vertical_name}</span>
+                            <span className="text-text-primary capitalize">{v.vertical_name}</span>
                             <div className="flex items-center gap-3">
-                              <span className="text-xs text-gray-500 dark:text-gray-400">{v.current_tenant_count} tenants</span>
-                              <span className="font-medium text-gray-900 dark:text-white">{v.expansion_score.toFixed(1)}</span>
+                              <span className="text-xs text-text-secondary">{v.current_tenant_count} tenants</span>
+                              <span className="font-medium text-text-primary">{v.expansion_score.toFixed(1)}</span>
                             </div>
                           </div>
                         ))}
@@ -379,21 +379,21 @@ export default function EvolutionEngine() {
                     )}
                   </div>
 
-                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <div className="bg-surface rounded-xl border border-border p-5">
+                    <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-orange-500" />
                       Most Requested Integrations
                     </h3>
                     {dash.topIntegrations.length === 0 ? (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">No integration demand data yet</p>
+                      <p className="text-sm text-text-secondary py-4 text-center">No integration demand data yet</p>
                     ) : (
                       <div className="space-y-2">
                         {dash.topIntegrations.map((integ, i) => (
                           <div key={i} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-700 dark:text-gray-300">{integ.integration_name}</span>
+                            <span className="text-text-primary">{integ.integration_name}</span>
                             <div className="flex items-center gap-3">
-                              <span className="text-xs text-gray-500 dark:text-gray-400">{integ.unique_tenant_count} tenants</span>
-                              <span className="font-medium text-gray-900 dark:text-white">{integ.demand_score.toFixed(1)}</span>
+                              <span className="text-xs text-text-secondary">{integ.unique_tenant_count} tenants</span>
+                              <span className="font-medium text-text-primary">{integ.demand_score.toFixed(1)}</span>
                             </div>
                           </div>
                         ))}
@@ -404,14 +404,14 @@ export default function EvolutionEngine() {
               </div>
 
               {dash.recommendations.approvedRevenueCents > 0 && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+                <div className="bg-surface rounded-xl border border-border p-5">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Approved Roadmap Revenue Impact</h3>
+                    <h3 className="text-sm font-semibold text-text-primary">Approved Roadmap Revenue Impact</h3>
                     <span className="text-lg font-bold text-green-600 dark:text-green-400">
                       {formatCents(dash.recommendations.approvedRevenueCents)}
                     </span>
                   </div>
-                  <div className="flex gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex gap-4 mt-3 text-xs text-text-secondary">
                     <span>{dash.recommendations.approved} approved</span>
                     <span>{dash.recommendations.rejected} rejected</span>
                     <span>{dash.recommendations.pending} pending</span>
@@ -426,11 +426,11 @@ export default function EvolutionEngine() {
       {tab === 'opportunities' && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Filter className="w-4 h-4 text-gray-400" />
+            <Filter className="w-4 h-4 text-text-muted" />
             <select
               value={oppTypeFilter}
               onChange={(e) => setOppTypeFilter(e.target.value)}
-              className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary"
             >
               <option value="">All Types</option>
               {Object.entries(TYPE_LABELS).map(([k, v]) => (
@@ -440,9 +440,9 @@ export default function EvolutionEngine() {
           </div>
 
           {oppsLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading opportunities...</div>
+            <div className="text-center py-12 text-text-secondary">Loading opportunities...</div>
           ) : (oppsData?.opportunities ?? []).length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <div className="text-center py-12 text-text-secondary">
               <Lightbulb className="w-8 h-8 mx-auto mb-2 opacity-40" />
               <p>No opportunities detected yet</p>
               <p className="text-xs mt-1">Run the pipeline to collect signals and detect opportunities</p>
@@ -453,7 +453,7 @@ export default function EvolutionEngine() {
                 <div
                   key={opp.id}
                   onClick={() => setSelectedOpp(selectedOpp?.id === opp.id ? null : opp)}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
+                  className="bg-surface border border-border rounded-xl p-4 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
                 >
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
@@ -461,25 +461,25 @@ export default function EvolutionEngine() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">{opp.title}</h3>
+                        <h3 className="text-sm font-semibold text-text-primary truncate">{opp.title}</h3>
                         <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                           {TYPE_LABELS[opp.opportunityType] || opp.opportunityType}
                         </span>
                       </div>
                       {opp.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{opp.description}</p>
+                        <p className="text-xs text-text-secondary line-clamp-2">{opp.description}</p>
                       )}
-                      <div className="flex gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex gap-4 mt-2 text-xs text-text-secondary">
                         <span>{opp.signalCount} signals</span>
                         <span>{opp.affectedTenantCount} tenants</span>
                         <span>{new Date(opp.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <ChevronDown className={clsx('w-4 h-4 text-gray-400 transition-transform flex-shrink-0', selectedOpp?.id === opp.id && 'rotate-180')} />
+                    <ChevronDown className={clsx('w-4 h-4 text-text-muted transition-transform flex-shrink-0', selectedOpp?.id === opp.id && 'rotate-180')} />
                   </div>
 
                   {selectedOpp?.id === opp.id && (
-                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                    <div className="mt-4 pt-4 border-t border-border space-y-3">
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <ScoreBar label="Customer Demand" score={opp.customerDemandScore} />
                         <ScoreBar label="Revenue Potential" score={opp.revenuePotentialScore} />
@@ -490,8 +490,8 @@ export default function EvolutionEngine() {
                       </div>
                       {opp.evidence.length > 0 && (
                         <div>
-                          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Evidence</p>
-                          <pre className="text-xs bg-gray-50 dark:bg-gray-900 p-3 rounded-lg overflow-x-auto text-gray-600 dark:text-gray-400">
+                          <p className="text-xs font-medium text-text-primary mb-1">Evidence</p>
+                          <pre className="text-xs bg-surface-secondary p-3 rounded-lg overflow-x-auto text-text-secondary">
                             {JSON.stringify(opp.evidence, null, 2)}
                           </pre>
                         </div>
@@ -508,11 +508,11 @@ export default function EvolutionEngine() {
       {tab === 'roadmap' && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Filter className="w-4 h-4 text-gray-400" />
+            <Filter className="w-4 h-4 text-text-muted" />
             <select
               value={recStatusFilter}
               onChange={(e) => setRecStatusFilter(e.target.value)}
-              className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary"
             >
               <option value="">All Statuses</option>
               <option value="proposed">Proposed</option>
@@ -525,9 +525,9 @@ export default function EvolutionEngine() {
           </div>
 
           {recsLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading recommendations...</div>
+            <div className="text-center py-12 text-text-secondary">Loading recommendations...</div>
           ) : (recsData?.recommendations ?? []).length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <div className="text-center py-12 text-text-secondary">
               <Target className="w-8 h-8 mx-auto mb-2 opacity-40" />
               <p>No roadmap recommendations yet</p>
               <p className="text-xs mt-1">Run the pipeline to generate recommendations from detected opportunities</p>
@@ -537,24 +537,24 @@ export default function EvolutionEngine() {
               {(recsData?.recommendations ?? []).map((rec) => (
                 <div
                   key={rec.id}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5"
+                  className="bg-surface border border-border rounded-xl p-5"
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{rec.title}</h3>
+                        <h3 className="text-sm font-semibold text-text-primary">{rec.title}</h3>
                         <span className={clsx('px-2 py-0.5 rounded text-xs font-medium', PRIORITY_COLORS[rec.recommendedPriority] || PRIORITY_COLORS.medium)}>
                           {rec.recommendedPriority}
                         </span>
-                        <span className={clsx('px-2 py-0.5 rounded text-xs', rec.status === 'proposed' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : rec.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400')}>
+                        <span className={clsx('px-2 py-0.5 rounded text-xs', rec.status === 'proposed' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : rec.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary')}>
                           {rec.status}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">{rec.problemDetected}</p>
+                      <p className="text-sm text-text-secondary">{rec.problemDetected}</p>
                     </div>
                     {rec.estimatedRevenueImpactCents > 0 && (
                       <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Est. Revenue Impact</p>
+                        <p className="text-xs text-text-secondary">Est. Revenue Impact</p>
                         <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(rec.estimatedRevenueImpactCents)}</p>
                       </div>
                     )}
@@ -570,14 +570,14 @@ export default function EvolutionEngine() {
                         <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">AI Product Strategist</span>
                         <ChevronDown className={clsx('w-3 h-3 text-purple-400 ml-auto transition-transform', selectedRec?.id === rec.id && 'rotate-180')} />
                       </div>
-                      <p className={clsx('text-sm text-gray-700 dark:text-gray-300', selectedRec?.id !== rec.id && 'line-clamp-2')}>
+                      <p className={clsx('text-sm text-text-primary', selectedRec?.id !== rec.id && 'line-clamp-2')}>
                         {rec.aiExplanation}
                       </p>
                     </div>
                   )}
 
                   <div className="flex items-center justify-between">
-                    <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex gap-4 text-xs text-text-secondary">
                       <span>Complexity: {rec.implementationComplexity}</span>
                       <span>Effort: {rec.estimatedEffortDays}d</span>
                       <span>{new Date(rec.createdAt).toLocaleDateString()}</span>
@@ -620,11 +620,11 @@ export default function EvolutionEngine() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Filter className="w-4 h-4 text-gray-400" />
+              <Filter className="w-4 h-4 text-text-muted" />
               <select
                 value={expStateFilter}
                 onChange={(e) => setExpStateFilter(e.target.value)}
-                className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary"
               >
                 <option value="">All States</option>
                 <option value="draft">Draft</option>
@@ -644,24 +644,24 @@ export default function EvolutionEngine() {
           </div>
 
           {showNewExperiment && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Create Experiment</h3>
+            <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-text-primary">Create Experiment</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+                  <label className="block text-xs font-medium text-text-primary mb-1">Name</label>
                   <input
                     value={newExp.experimentName}
                     onChange={(e) => setNewExp({ ...newExp, experimentName: e.target.value })}
-                    className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                    className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-surface text-text-primary"
                     placeholder="Experiment name"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+                  <label className="block text-xs font-medium text-text-primary mb-1">Type</label>
                   <select
                     value={newExp.experimentType}
                     onChange={(e) => setNewExp({ ...newExp, experimentType: e.target.value })}
-                    className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                    className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-surface text-text-primary"
                   >
                     <option value="prompt_pack">Prompt Pack</option>
                     <option value="onboarding_flow">Onboarding Flow</option>
@@ -672,20 +672,20 @@ export default function EvolutionEngine() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Hypothesis</label>
+                <label className="block text-xs font-medium text-text-primary mb-1">Hypothesis</label>
                 <input
                   value={newExp.hypothesis}
                   onChange={(e) => setNewExp({ ...newExp, hypothesis: e.target.value })}
-                  className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-surface text-text-primary"
                   placeholder="What do you expect to happen?"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                <label className="block text-xs font-medium text-text-primary mb-1">Description</label>
                 <textarea
                   value={newExp.description}
                   onChange={(e) => setNewExp({ ...newExp, description: e.target.value })}
-                  className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-surface text-text-primary"
                   rows={2}
                   placeholder="Describe the experiment"
                 />
@@ -700,7 +700,7 @@ export default function EvolutionEngine() {
                 </button>
                 <button
                   onClick={() => setShowNewExperiment(false)}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm"
+                  className="px-4 py-2 bg-surface-hover text-text-primary rounded-lg text-sm"
                 >
                   Cancel
                 </button>
@@ -709,9 +709,9 @@ export default function EvolutionEngine() {
           )}
 
           {expsLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading experiments...</div>
+            <div className="text-center py-12 text-text-secondary">Loading experiments...</div>
           ) : (expsData?.experiments ?? []).length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <div className="text-center py-12 text-text-secondary">
               <FlaskConical className="w-8 h-8 mx-auto mb-2 opacity-40" />
               <p>No experiments yet</p>
               <p className="text-xs mt-1">Create an experiment to test product hypotheses</p>
@@ -719,25 +719,25 @@ export default function EvolutionEngine() {
           ) : (
             <div className="space-y-3">
               {(expsData?.experiments ?? []).map((exp) => (
-                <div key={exp.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+                <div key={exp.id} className="bg-surface border border-border rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{exp.experimentName}</h3>
+                        <h3 className="text-sm font-semibold text-text-primary">{exp.experimentName}</h3>
                         <span className={clsx('px-2 py-0.5 rounded text-xs font-medium', STATE_COLORS[exp.state] || STATE_COLORS.draft)}>
                           {exp.state}
                         </span>
-                        <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                        <span className="px-2 py-0.5 rounded text-xs bg-surface-hover text-text-secondary">
                           {exp.experimentType}
                         </span>
                       </div>
                       {exp.hypothesis && (
-                        <p className="text-sm text-gray-600 dark:text-gray-300 italic mb-1">"{exp.hypothesis}"</p>
+                        <p className="text-sm text-text-secondary italic mb-1">"{exp.hypothesis}"</p>
                       )}
                       {exp.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{exp.description}</p>
+                        <p className="text-xs text-text-secondary">{exp.description}</p>
                       )}
-                      <div className="flex gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex gap-4 mt-2 text-xs text-text-secondary">
                         {exp.pilotTenantIds.length > 0 && <span>{exp.pilotTenantIds.length} pilot tenants</span>}
                         <span>Created {new Date(exp.createdAt).toLocaleDateString()}</span>
                         {exp.startedAt && <span>Started {new Date(exp.startedAt).toLocaleDateString()}</span>}
@@ -785,9 +785,9 @@ export default function EvolutionEngine() {
                   </div>
 
                   {exp.state === 'concluded' && Object.keys(exp.results).length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Results</p>
-                      <pre className="text-xs bg-gray-50 dark:bg-gray-900 p-3 rounded-lg overflow-x-auto text-gray-600 dark:text-gray-400">
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <p className="text-xs font-medium text-text-primary mb-1">Results</p>
+                      <pre className="text-xs bg-surface-secondary p-3 rounded-lg overflow-x-auto text-text-secondary">
                         {JSON.stringify(exp.results, null, 2)}
                       </pre>
                     </div>
@@ -819,15 +819,15 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
     'text-orange-600 dark:text-orange-400';
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+    <div className="bg-surface border border-border rounded-xl p-4">
       <div className="flex items-center gap-3 mb-3">
         <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center', bgColor)}>
           <Icon className={clsx('w-4 h-4', textColor)} />
         </div>
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <span className="text-xs font-medium text-text-secondary">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-gray-900 dark:text-white">{value.toLocaleString()}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{sub}</p>
+      <p className="text-2xl font-bold text-text-primary">{value.toLocaleString()}</p>
+      <p className="text-xs text-text-secondary mt-1">{sub}</p>
     </div>
   );
 }

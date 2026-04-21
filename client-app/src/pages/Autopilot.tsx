@@ -115,7 +115,7 @@ function statusColor(status: string): string {
   if (status === 'approved' || status === 'completed' || status === 'executed') return 'text-green-600 dark:text-green-400';
   if (status === 'rejected' || status === 'failed') return 'text-red-600 dark:text-red-400';
   if (status === 'pending' || status === 'executing') return 'text-amber-600 dark:text-amber-400';
-  if (status === 'dismissed' || status === 'rolled_back') return 'text-gray-500 dark:text-gray-400';
+  if (status === 'dismissed' || status === 'rolled_back') return 'text-text-secondary';
   return 'text-text-secondary';
 }
 

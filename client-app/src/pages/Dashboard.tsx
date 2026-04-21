@@ -142,7 +142,7 @@ function stateLabel(state: string): string {
 
 function stateColor(state: string): string {
   if (state === 'CALL_CONNECTED' || state === 'active') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (state === 'CALL_COMPLETED') return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+  if (state === 'CALL_COMPLETED') return 'bg-surface-hover text-text-secondary';
   if (state === 'CALL_FAILED') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   if (state === 'CALL_ESCALATED') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
   return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
@@ -390,7 +390,7 @@ export default function Dashboard() {
             {sseConnected ? (
               <><Wifi className="h-3.5 w-3.5 text-green-500" /><span className="text-green-600 dark:text-green-400">Live</span></>
             ) : (
-              <><WifiOff className="h-3.5 w-3.5 text-gray-400" /><span className="text-text-secondary">Connecting...</span></>
+              <><WifiOff className="h-3.5 w-3.5 text-text-muted" /><span className="text-text-secondary">Connecting...</span></>
             )}
           </div>
         </div>
@@ -544,7 +544,7 @@ export default function Dashboard() {
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                     agent.status === 'active'
                       ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                      : 'bg-surface-hover text-text-secondary'
                   }`}>
                     {agent.status}
                   </span>

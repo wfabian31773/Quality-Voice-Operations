@@ -99,15 +99,15 @@ type InboxFilter = 'all' | 'open' | 'pending' | 'closed' | 'escalated' | 'archiv
 const STATUS_COLORS: Record<string, string> = {
   open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-  closed: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  closed: 'bg-surface-hover text-text-secondary',
   escalated: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  archived: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',
+  archived: 'bg-surface-hover text-text-secondary',
 };
 
 const PRIORITY_ICONS: Record<string, { icon: typeof Flag; color: string }> = {
   urgent: { icon: AlertTriangle, color: 'text-red-500' },
   high: { icon: Flag, color: 'text-orange-500' },
-  normal: { icon: Flag, color: 'text-gray-300' },
+  normal: { icon: Flag, color: 'text-text-muted' },
 };
 
 export default function SmsInbox() {
@@ -1184,7 +1184,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
             <div key={rule.id} className="flex items-center justify-between bg-surface-secondary rounded-lg p-3">
               <div>
                 <span className="text-sm font-medium text-heading">{rule.name}</span>
-                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${rule.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
+                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${rule.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>
                   {rule.enabled ? 'Active' : 'Disabled'}
                 </span>
                 <p className="text-xs text-muted mt-0.5">

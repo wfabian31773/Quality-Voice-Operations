@@ -490,7 +490,7 @@ export default function PostInstallSetup() {
             <span className="text-sm font-medium text-text-primary">Setup Progress</span>
             <span className="text-sm font-semibold text-primary">{checklist.completedCount}/{checklist.totalCount}</span>
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+          <div className="w-full bg-surface-hover rounded-full h-2.5">
             <div
               className="bg-primary h-2.5 rounded-full transition-all duration-500"
               style={{ width: `${progressPct}%` }}

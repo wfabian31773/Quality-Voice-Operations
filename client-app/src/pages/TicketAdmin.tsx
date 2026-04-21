@@ -266,7 +266,7 @@ export default function TicketAdmin() {
                 <tr key={c.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{c.name}</td>
                   <td className="px-4 py-3 text-sm text-muted">{c.description || '-'}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${c.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{c.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${c.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{c.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(c, 'ticket-categories')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -297,7 +297,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-sm text-muted capitalize">{p.priority}</td>
                   <td className="px-4 py-3 text-sm text-muted">{p.first_response_minutes}m ({Math.round(p.first_response_minutes / 60)}h)</td>
                   <td className="px-4 py-3 text-sm text-muted">{p.resolution_minutes}m ({Math.round(p.resolution_minutes / 60)}h)</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(p, 'ticket-sla-policies')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -326,7 +326,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-sm text-heading font-medium">{m.name}</td>
                   <td className="px-4 py-3 text-sm text-muted">{m.description || '-'}</td>
                   <td className="px-4 py-3 text-xs text-muted">{Array.isArray(m.actions) ? m.actions.length : 0} action(s)</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${m.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{m.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${m.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{m.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(m, 'ticket-macros')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -355,7 +355,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-sm text-heading font-medium">{t.name}</td>
                   <td className="px-4 py-3 text-sm text-muted">{t.subject || '-'}</td>
                   <td className="px-4 py-3 text-sm text-muted">{t.category_name || '-'}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${t.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{t.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${t.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{t.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(t, 'ticket-templates')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -386,7 +386,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-xs text-muted font-mono">{f.field_key}</td>
                   <td className="px-4 py-3 text-sm text-muted capitalize">{f.field_type.replace('_', ' ')}</td>
                   <td className="px-4 py-3 text-sm text-muted">{f.is_required ? 'Yes' : 'No'}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${f.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{f.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${f.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{f.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(f, 'ticket-custom-fields')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -415,7 +415,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-sm text-heading font-medium">{r.name}</td>
                   <td className="px-4 py-3 text-xs text-muted capitalize">{r.trigger_event.replace(/_/g, ' ')}</td>
                   <td className="px-4 py-3 text-sm text-muted">{r.description || '-'}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${r.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${r.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(r, 'ticket-workflow-rules')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -446,7 +446,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-xs text-muted capitalize">{q.assignment_strategy.replace(/_/g, ' ')}</td>
                   <td className="px-4 py-3 text-xs text-muted">{q.eligible_user_ids?.length || 0} agents</td>
                   <td className="px-4 py-3 text-xs text-muted">{q.max_tickets_per_agent || 'Unlimited'}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${q.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{q.is_active ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${q.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{q.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(q, 'ticket-queue-configs')} className="text-xs text-primary hover:underline mr-2">Edit</button>
@@ -478,7 +478,7 @@ export default function TicketAdmin() {
                     <td className="px-4 py-3 text-xs text-muted capitalize">{p.target_status}</td>
                     <td className="px-4 py-3 text-xs text-muted">{p.days_after_close} days</td>
                     <td className="px-4 py-3 text-xs text-muted capitalize">{p.action}</td>
-                    <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
                     <td className="px-4 py-3 text-right">
                       {!isReadOnly && <>
                         <button onClick={() => openEdit(p, 'ticket-retention-policies')} className="text-xs text-primary hover:underline mr-2">Edit</button>

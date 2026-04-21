@@ -142,7 +142,7 @@ const NODE_COLORS: Record<string, { bg: string; border: string; text: string; ha
   dispatchJob: { bg: 'bg-rose-50 dark:bg-rose-900/30', border: 'border-rose-300 dark:border-rose-700', text: 'text-rose-700 dark:text-rose-300', handle: '#f43f5e' },
 };
 
-const DEFAULT_COLORS = { bg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-300 dark:border-gray-600', text: 'text-gray-700 dark:text-gray-300', handle: '#6b7280' };
+const DEFAULT_COLORS = { bg: 'bg-surface-hover', border: 'border-border', text: 'text-text-primary', handle: '#6b7280' };
 
 function getNodeIcon(type: string) {
   for (const cat of NODE_LIBRARY) {
@@ -397,7 +397,7 @@ function NodeLibrarySidebar({ onDragStart }: { onDragStart: (type: string, nodeT
                     e.dataTransfer.effectAllowed = 'move';
                     onDragStart(getNodeCategory(node.type), node.type);
                   }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-white dark:bg-gray-800 hover:border-primary/50 hover:shadow-sm cursor-grab active:cursor-grabbing transition text-sm"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary/50 hover:shadow-sm cursor-grab active:cursor-grabbing transition text-sm"
                 >
                   <GripVertical className="h-3 w-3 text-text-muted flex-shrink-0" />
                   <span className={NODE_COLORS[node.type]?.text || 'text-text-primary'}>{node.icon}</span>
@@ -441,7 +441,7 @@ function NodeConfigPanel({
           <input
             value={(node.data.label as string) || ''}
             onChange={(e) => onUpdate(node.id, { ...node.data, label: e.target.value })}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
@@ -452,7 +452,7 @@ function NodeConfigPanel({
               value={(node.data.prompt as string) || ''}
               onChange={(e) => onUpdate(node.id, { ...node.data, prompt: e.target.value })}
               rows={6}
-              className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+              className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
               placeholder="What should the agent say or ask at this step?"
             />
           </div>
@@ -464,7 +464,7 @@ function NodeConfigPanel({
             <input
               value={(node.data.conditionField as string) || ''}
               onChange={(e) => onUpdate(node.id, { ...node.data, conditionField: e.target.value })}
-              className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
               placeholder='e.g., urgency === "high"'
             />
             <p className="text-[10px] text-text-muted mt-1">
@@ -477,7 +477,7 @@ function NodeConfigPanel({
           <>
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">Tool</label>
-              <div className="px-3 py-1.5 rounded-lg border border-border bg-gray-50 dark:bg-gray-800 text-text-primary text-sm">
+              <div className="px-3 py-1.5 rounded-lg border border-border bg-surface-hover text-text-primary text-sm">
                 {getNodeLabel(nodeType)}
               </div>
             </div>
@@ -487,7 +487,7 @@ function NodeConfigPanel({
                 value={(node.data.toolConfig as string) || ''}
                 onChange={(e) => onUpdate(node.id, { ...node.data, toolConfig: e.target.value })}
                 rows={4}
-                className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+                className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
                 placeholder="Tool-specific configuration..."
               />
             </div>
@@ -544,7 +544,7 @@ function categoryColor(cat: string): string {
     accuracy: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     resolution: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   };
-  return colors[cat] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400';
+  return colors[cat] || 'bg-surface-hover text-text-primary';
 }
 
 function ImprovementSuggestionsPanel({
@@ -753,7 +753,7 @@ function VoiceConfigPanel({
           <select
             value={voice}
             onChange={(e) => onChange('voice', e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
             {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
@@ -763,7 +763,7 @@ function VoiceConfigPanel({
           <select
             value={model}
             onChange={(e) => onChange('model', e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
             {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -773,7 +773,7 @@ function VoiceConfigPanel({
           <select
             value={language}
             onChange={(e) => onChange('language', e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
             {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
@@ -783,7 +783,7 @@ function VoiceConfigPanel({
           <select
             value={tone}
             onChange={(e) => onChange('tone', e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
             {TONE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
@@ -818,7 +818,7 @@ function VoiceConfigPanel({
             value={welcomeGreeting}
             onChange={(e) => onChange('welcome_greeting', e.target.value)}
             rows={3}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
             placeholder="First thing the agent says..."
           />
         </div>
@@ -828,7 +828,7 @@ function VoiceConfigPanel({
             value={systemPrompt}
             onChange={(e) => onChange('system_prompt', e.target.value)}
             rows={10}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
             placeholder="Agent personality, instructions, and rules..."
           />
           <p className="text-[10px] text-text-muted mt-1">
@@ -840,7 +840,7 @@ function VoiceConfigPanel({
           <select
             value={workflowId}
             onChange={(e) => onChange('workflow_id', e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
             <option value="">None</option>
             {workflows.map((w) => (
@@ -1024,7 +1024,7 @@ function TestConsolePanel({
                     ? 'bg-primary text-white'
                     : msg.role === 'system'
                     ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 italic'
-                    : 'bg-gray-100 dark:bg-gray-800 text-text-primary'
+                    : 'bg-surface-hover text-text-primary'
                 }`}>
                   {msg.text}
                 </div>
@@ -1038,7 +1038,7 @@ function TestConsolePanel({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Type a caller response..."
               />
               <button onClick={sendMessage} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-hover transition">
@@ -1169,7 +1169,7 @@ function DeploymentPanel({
             <select
               onChange={(e) => { if (e.target.value) assignPhone(e.target.value); e.target.value = ''; }}
               disabled={assigningPhone}
-              className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-xs disabled:opacity-50"
+              className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-xs disabled:opacity-50"
               defaultValue=""
             >
               <option value="" disabled>Assign a phone number...</option>
@@ -1189,7 +1189,7 @@ function DeploymentPanel({
           ) : (
             <div className="space-y-2">
               {versions.map((v) => (
-                <div key={v.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-white dark:bg-gray-800">
+                <div key={v.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-surface">
                   <div>
                     <p className="text-xs font-medium text-text-primary">v{v.version}</p>
                     <p className="text-[10px] text-text-muted">
@@ -1205,7 +1205,7 @@ function DeploymentPanel({
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                       v.status === 'published'
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                        : 'bg-surface-hover text-text-secondary'
                     }`}>
                       v{v.version}
                     </span>
@@ -1606,7 +1606,7 @@ function AgentBuilderInner() {
               markerEnd: { type: MarkerType.ArrowClosed },
               style: { strokeWidth: 2 },
             }}
-            className="bg-gray-50 dark:bg-gray-900"
+            className="bg-surface-secondary"
           >
             <Background gap={20} size={1} />
             <Controls className="!bg-surface !border-border !shadow-sm" />

@@ -132,7 +132,7 @@ export default function AcceptInvite() {
                   type="email"
                   value={invitation.email}
                   disabled
-                  className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 border border-border text-text-secondary"
+                  className="w-full px-3 py-2 rounded-lg bg-surface-hover border border-border text-text-secondary"
                 />
               </div>
 

@@ -82,7 +82,7 @@ const ROLE_BADGE_STYLES: Record<SimpleRole, string> = {
   owner: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   manager: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   operator: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  viewer: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+  viewer: 'bg-surface-hover text-text-primary',
 };
 
 export default function UsersPage() {

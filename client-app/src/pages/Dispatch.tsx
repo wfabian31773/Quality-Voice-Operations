@@ -144,13 +144,13 @@ const STATUS_FLOW = [
   { key: 'completed', label: 'Completed', color: 'border-t-green-400', bg: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
   { key: 'incomplete', label: 'Incomplete', color: 'border-t-red-400', bg: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
   { key: 'done', label: 'Done', color: 'border-t-emerald-400', bg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  { key: 'cancelled', label: 'Cancelled', color: 'border-t-gray-400', bg: 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-300' },
+  { key: 'cancelled', label: 'Cancelled', color: 'border-t-gray-400', bg: 'bg-surface-hover text-text-primary' },
 ];
 
 const BOARD_COLUMNS = ['pending', 'assigned', 'scheduled', 'en_route', 'on_site', 'in_progress'];
 
 const PRIORITY_BADGES: Record<string, string> = {
-  low: 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300',
+  low: 'bg-surface-hover text-text-primary',
   medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
   urgent: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
@@ -174,7 +174,7 @@ const TRIGGER_EVENTS = ['job_assigned', 'job_scheduled', 'en_route', 'arrival', 
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_FLOW.find(x => x.key === status);
-  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${s?.bg || 'bg-gray-100 text-gray-600'}`}>{s?.label || status}</span>;
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${s?.bg || 'bg-surface-hover text-text-secondary'}`}>{s?.label || status}</span>;
 }
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ComponentType<{className?:string}>; label: string; value: string | number; sub?: string }) {
@@ -593,7 +593,7 @@ function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }:
             const st = STATUS_FLOW.find(x => x.key === s);
             return (
               <button key={s} onClick={() => onTransition(s)}
-                className={`text-[9px] px-1.5 py-0.5 rounded ${st?.bg || 'bg-gray-100 text-gray-700'} hover:opacity-80`}>
+                className={`text-[9px] px-1.5 py-0.5 rounded ${st?.bg || 'bg-surface-hover text-text-primary'} hover:opacity-80`}>
                 {st?.label || s}
               </button>
             );
@@ -775,7 +775,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
     available: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
     busy: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
     on_break: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-    off_shift: 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300',
+    off_shift: 'bg-surface-hover text-text-primary',
     unavailable: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   };
 
@@ -1160,7 +1160,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     <h3 className="text-sm font-semibold text-heading">{t.name}</h3>
                     <p className="text-xs text-muted">{t.region || 'No region'}</p>
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{t.status}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{t.status}</span>
                 </div>
                 {t.description && <p className="text-xs text-muted mt-2">{t.description}</p>}
                 <div className="flex gap-4 mt-3 text-xs text-muted">
@@ -1203,7 +1203,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     <td className="p-2 text-heading font-medium">{s.name}</td>
                     <td className="p-2 text-muted">{s.category}</td>
                     <td className="p-2 text-muted">{s.resource_count}</td>
-                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{s.status}</span></td>
+                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{s.status}</span></td>
                     {!isReadOnly && (
                       <td className="p-2">
                         <div className="flex gap-1">
@@ -1235,10 +1235,10 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     <h3 className="text-sm font-semibold text-heading">{t.name}</h3>
                     <div className="flex gap-2 mt-1">
                       <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{t.trigger_event.replace(/_/g, ' ')}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded">{t.channel}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-surface-hover text-text-primary rounded">{t.channel}</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{t.is_active ? 'Active' : 'Inactive'}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{t.is_active ? 'Active' : 'Inactive'}</span>
                 </div>
                 {t.subject && <p className="text-xs text-muted mt-2">Subject: {t.subject}</p>}
                 <p className="text-xs text-muted mt-1 line-clamp-2">{t.body_template}</p>
@@ -1278,7 +1278,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     <td className="p-2"><div className="text-heading font-medium">{r.name}</div><div className="text-muted">{r.description}</div></td>
                     <td className="p-2"><span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]">{r.rule_type.replace(/_/g, ' ')}</span></td>
                     <td className="p-2 text-muted">{r.priority}</td>
-                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
                     {!isReadOnly && (
                       <td className="p-2">
                         <div className="flex gap-1">
@@ -1677,7 +1677,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               const st = STATUS_FLOW.find(x => x.key === s);
               return (
                 <button key={s} onClick={() => transitionJob(job.id, s)}
-                  className={`text-xs px-2.5 py-1 rounded ${st?.bg || 'bg-gray-100 text-gray-700'} hover:opacity-80`}>
+                  className={`text-xs px-2.5 py-1 rounded ${st?.bg || 'bg-surface-hover text-text-primary'} hover:opacity-80`}>
                   {st?.label || s}
                 </button>
               );

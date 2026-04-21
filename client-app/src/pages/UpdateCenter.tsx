@@ -32,7 +32,7 @@ function UpgradeTypeBadge({ type }: { type: string }) {
     patch: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type] ?? 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type] ?? 'bg-surface-hover text-text-secondary'}`}>
       {type}
     </span>
   );
@@ -48,7 +48,7 @@ function ChangeTypeBadge({ type }: { type: string }) {
     security: 'text-purple-600 dark:text-purple-400',
   };
   return (
-    <span className={`text-xs font-medium uppercase ${colors[type] ?? 'text-gray-500'}`}>
+    <span className={`text-xs font-medium uppercase ${colors[type] ?? 'text-text-secondary'}`}>
       {type}
     </span>
   );

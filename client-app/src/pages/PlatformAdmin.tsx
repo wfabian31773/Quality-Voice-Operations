@@ -202,7 +202,7 @@ function StatusBadge({ status }: { status: string }) {
     suspended: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
       {status}
     </span>
   );
@@ -215,7 +215,7 @@ function PlanBadge({ plan }: { plan: string }) {
     enterprise: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[plan] ?? 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[plan] ?? 'bg-surface-hover text-text-secondary'}`}>
       {plan}
     </span>
   );
@@ -228,7 +228,7 @@ function VersionStatusBadge({ status }: { status: string }) {
     deprecated: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
       {status}
     </span>
   );
@@ -1602,7 +1602,7 @@ function MetricItem({ label, value, trend }: { label: string; value: string; tre
 
 function MilestoneIcon({ done }: { done: boolean }) {
   if (done) return <CheckCircle className="h-4 w-4 text-green-500" />;
-  return <AlertCircle className="h-4 w-4 text-gray-300 dark:text-gray-600" />;
+  return <AlertCircle className="h-4 w-4 text-text-muted" />;
 }
 
 function formatHours(hours: number | null): string {
@@ -1700,7 +1700,7 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                   <td className="px-4 py-3 text-muted">{formatHours(m.time_to_workflow_hours)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="w-16 bg-surface-hover rounded-full h-2">
                         <div
                           className={`h-2 rounded-full ${
                             m.milestones_completed >= 5 ? 'bg-green-500' :

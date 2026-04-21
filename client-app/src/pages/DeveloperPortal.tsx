@@ -60,7 +60,7 @@ const PRICE_MODEL_OPTIONS = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+  draft: 'bg-surface-hover text-text-primary',
   submitted: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
   approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',

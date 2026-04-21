@@ -52,7 +52,7 @@ function StatusIcon({ status }: { status: string }) {
     case 'processing':
       return <Clock className="h-4 w-4 text-amber-500" />;
     default:
-      return <AlertCircle className="h-4 w-4 text-gray-400" />;
+      return <AlertCircle className="h-4 w-4 text-text-muted" />;
   }
 }
 
@@ -67,7 +67,7 @@ function StatusBadge({ status }: { status: string }) {
   };
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
       <StatusIcon status={status} />
       {status === 'dead_letter' ? 'Dead Letter' : status.charAt(0).toUpperCase() + status.slice(1)}
     </span>

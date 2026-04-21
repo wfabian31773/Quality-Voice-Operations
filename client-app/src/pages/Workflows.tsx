@@ -132,7 +132,7 @@ function StepCard({
           <select
             value={step.type}
             onChange={(e) => onUpdate({ ...step, type: e.target.value as 'trigger' | 'condition' | 'action', config: {} })}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
             <option value="trigger">Trigger</option>
             <option value="condition">Condition</option>
@@ -145,7 +145,7 @@ function StepCard({
             value={step.name}
             onChange={(e) => onUpdate({ ...step, name: e.target.value })}
             placeholder="e.g., Check business hours"
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
@@ -155,7 +155,7 @@ function StepCard({
             <select
               value={step.config.triggerType ?? ''}
               onChange={(e) => onUpdate({ ...step, config: { ...step.config, triggerType: e.target.value } })}
-              className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+              className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
             >
               <option value="">Select trigger...</option>
               {TRIGGER_OPTIONS.map((o) => (
@@ -172,7 +172,7 @@ function StepCard({
               <select
                 value={step.config.conditionType ?? ''}
                 onChange={(e) => onUpdate({ ...step, config: { ...step.config, conditionType: e.target.value } })}
-                className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+                className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
               >
                 <option value="">Select condition...</option>
                 {CONDITION_OPTIONS.map((o) => (
@@ -186,7 +186,7 @@ function StepCard({
                 value={step.config.expression ?? ''}
                 onChange={(e) => onUpdate({ ...step, config: { ...step.config, expression: e.target.value } })}
                 placeholder={step.config.conditionType === 'time-of-day' ? 'e.g., 09:00-17:00' : 'e.g., scheduling, billing'}
-                className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
             <div>
@@ -195,7 +195,7 @@ function StepCard({
                 value={step.config.trueBranch ?? ''}
                 onChange={(e) => onUpdate({ ...step, config: { ...step.config, trueBranch: e.target.value } })}
                 placeholder="e.g., During hours"
-                className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
             <div>
@@ -204,7 +204,7 @@ function StepCard({
                 value={step.config.falseBranch ?? ''}
                 onChange={(e) => onUpdate({ ...step, config: { ...step.config, falseBranch: e.target.value } })}
                 placeholder="e.g., After hours"
-                className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
           </>
@@ -217,7 +217,7 @@ function StepCard({
               <select
                 value={step.config.actionType ?? ''}
                 onChange={(e) => onUpdate({ ...step, config: { ...step.config, actionType: e.target.value } })}
-                className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm"
+                className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
               >
                 <option value="">Select action...</option>
                 {ACTION_OPTIONS.map((o) => (
@@ -232,7 +232,7 @@ function StepCard({
                   value={step.config.transferTo ?? ''}
                   onChange={(e) => onUpdate({ ...step, config: { ...step.config, transferTo: e.target.value } })}
                   placeholder="e.g., +15551234567 or Sales"
-                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
             )}
@@ -244,7 +244,7 @@ function StepCard({
                   onChange={(e) => onUpdate({ ...step, config: { ...step.config, smsMessage: e.target.value } })}
                   rows={2}
                   placeholder="e.g., Thank you for calling. We will get back to you shortly."
-                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
                 />
               </div>
             )}
@@ -255,7 +255,7 @@ function StepCard({
                   value={step.config.voicemailPrompt ?? ''}
                   onChange={(e) => onUpdate({ ...step, config: { ...step.config, voicemailPrompt: e.target.value } })}
                   placeholder="e.g., Please leave a message after the tone"
-                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
             )}
@@ -266,7 +266,7 @@ function StepCard({
                   value={step.config.escalationTarget ?? ''}
                   onChange={(e) => onUpdate({ ...step, config: { ...step.config, escalationTarget: e.target.value } })}
                   placeholder="e.g., On-call manager"
-                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-white dark:bg-gray-800 text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
             )}

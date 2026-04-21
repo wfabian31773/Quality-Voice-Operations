@@ -143,11 +143,11 @@ function ToolsConfigSection({ agentId }: { agentId: string }) {
               type="button"
               onClick={() => handleToggle(t.name)}
               className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                t.enabled ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'
+                t.enabled ? 'bg-primary' : 'bg-gray-300'
               }`}
             >
               <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface shadow ring-0 transition duration-200 ease-in-out ${
                   t.enabled ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
@@ -389,7 +389,7 @@ export default function Agents() {
                       <Globe className="h-3 w-3" /> External
                     </span>
                   )}
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-surface-hover text-text-secondary'}`}>
                     {agent.status}
                   </span>
                 </div>

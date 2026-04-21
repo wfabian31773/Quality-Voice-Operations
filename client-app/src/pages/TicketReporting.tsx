@@ -71,7 +71,7 @@ function BarChartSimple({ data, maxVal, color }: { data: { label: string; value:
       {data.map((d, i) => (
         <div key={i} className="flex items-center gap-2">
           <span className="text-[10px] text-muted w-20 truncate text-right">{d.label}</span>
-          <div className="flex-1 h-5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+          <div className="flex-1 h-5 bg-surface-hover rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{ width: `${maxVal > 0 ? (d.value / maxVal) * 100 : 0}%`, backgroundColor: color || '#6366f1' }}
@@ -474,7 +474,7 @@ export default function TicketReporting() {
                         <td className="px-3 py-2 text-sm text-heading text-right">{total}</td>
                         <td className="px-3 py-2 text-sm text-green-600 text-right">{resolved}</td>
                         <td className="px-3 py-2">
-                          <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden w-32">
+                          <div className="h-3 bg-surface-hover rounded-full overflow-hidden w-32">
                             <div className="h-full rounded-full bg-primary" style={{ width: `${(total / workloadMax) * 100}%` }} />
                           </div>
                         </td>

@@ -239,14 +239,14 @@ function StarRating({ rating, count, size = 'sm' }: { rating: number; count?: nu
     } else if (i === fullStars && hasHalf) {
       stars.push(
         <span key={i} className="relative">
-          <Star className={`${starSize} text-gray-300 dark:text-gray-600`} />
+          <Star className={`${starSize} text-text-muted`} />
           <span className="absolute inset-0 overflow-hidden" style={{ width: '50%' }}>
             <Star className={`${starSize} fill-amber-400 text-amber-400`} />
           </span>
         </span>,
       );
     } else {
-      stars.push(<Star key={i} className={`${starSize} text-gray-300 dark:text-gray-600`} />);
+      stars.push(<Star key={i} className={`${starSize} text-text-muted`} />);
     }
   }
 
@@ -286,7 +286,7 @@ function InteractiveStarRating({
             className={`h-6 w-6 ${
               star <= (hover || rating)
                 ? 'fill-amber-400 text-amber-400'
-                : 'text-gray-300 dark:text-gray-600'
+                : 'text-text-muted'
             }`}
           />
         </button>
@@ -303,7 +303,7 @@ function CategoryIcon({ category }: { category: string }) {
 
 function PlanBadge({ plan }: { plan: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${PLAN_COLORS[plan] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${PLAN_COLORS[plan] ?? 'bg-surface-hover text-text-secondary'}`}>
       {plan}
     </span>
   );
@@ -891,7 +891,7 @@ function TemplateDetailView({
                       cl.changeType === 'fixed' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                       cl.changeType === 'removed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                       cl.changeType === 'security' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                      'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                      'bg-surface-hover text-text-secondary'
                     }`}>
                       {cl.changeType}
                     </span>
@@ -1035,7 +1035,7 @@ function TemplateDetailView({
                     return (
                       <div key={star} className="flex items-center gap-2 text-xs">
                         <span className="w-3 text-text-muted">{star}</span>
-                        <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className="flex-1 h-2 bg-surface-hover rounded-full overflow-hidden">
                           <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="w-6 text-right text-text-muted">{count}</span>
@@ -1320,7 +1320,7 @@ function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                     : inst.status === 'error'
                     ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    : 'bg-surface-hover text-text-secondary'
                 }`}>
                   {inst.status}
                 </span>

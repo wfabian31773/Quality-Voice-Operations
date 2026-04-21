@@ -283,8 +283,8 @@ export default function DigitalTwin() {
         <div className="flex items-center gap-3">
           <Cpu className="w-7 h-7 text-purple-500" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Digital Twin</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Simulate, forecast, and validate operational changes</p>
+            <h1 className="text-2xl font-bold text-text-primary">Digital Twin</h1>
+            <p className="text-sm text-text-secondary">Simulate, forecast, and validate operational changes</p>
           </div>
         </div>
         <button
@@ -308,15 +308,15 @@ export default function DigitalTwin() {
 
           {selectedModel && (
             <>
-              <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+              <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
                 {(['overview', 'scenarios', 'results', 'forecasts'] as TabType[]).map(t => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
                     className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       tab === t
-                        ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-400 shadow-sm'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        ? 'bg-surface text-purple-600 dark:text-purple-400 shadow-sm'
+                        : 'text-text-secondary hover:text-text-primary'
                     }`}
                   >
                     {t === 'overview' ? 'Model Overview' : t === 'scenarios' ? 'Run Simulation' : t === 'results' ? 'Results' : 'Forecasts'}
@@ -363,10 +363,10 @@ export default function DigitalTwin() {
 
 function EmptyState({ onCreateModel }: { onCreateModel: () => void }) {
   return (
-    <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-      <Cpu className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Digital Twin Models</h3>
-      <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+    <div className="text-center py-16 bg-surface rounded-xl border border-border">
+      <Cpu className="w-16 h-16 text-text-muted mx-auto mb-4" />
+      <h3 className="text-lg font-semibold text-text-primary mb-2">No Digital Twin Models</h3>
+      <p className="text-text-secondary mb-6 max-w-md mx-auto">
         Create a digital twin model from your operational history to simulate changes, run forecasts, and validate recommendations.
       </p>
       <button
@@ -392,15 +392,15 @@ function ModelSelector({
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600"
+        className="w-full flex items-center justify-between p-4 bg-surface rounded-xl border border-border hover:border-purple-300"
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
             <Layers className="w-5 h-5 text-purple-600 dark:text-purple-400" />
           </div>
           <div className="text-left">
-            <p className="font-medium text-gray-900 dark:text-white">{selected?.name ?? 'Select a model'}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="font-medium text-text-primary">{selected?.name ?? 'Select a model'}</p>
+            <p className="text-xs text-text-secondary">
               {selected ? `v${selected.version} - ${selected.status}` : ''}
               {selected?.dataRangeStart && selected?.dataRangeEnd
                 ? ` | ${new Date(selected.dataRangeStart).toLocaleDateString()} - ${new Date(selected.dataRangeEnd).toLocaleDateString()}`
@@ -408,24 +408,24 @@ function ModelSelector({
             </p>
           </div>
         </div>
-        {open ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
+        {open ? <ChevronDown className="w-5 h-5 text-text-muted" /> : <ChevronRight className="w-5 h-5 text-text-muted" />}
       </button>
       {open && (
-        <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute z-10 w-full mt-1 bg-surface rounded-xl border border-border shadow-lg max-h-64 overflow-y-auto">
           {models.map(m => (
             <div
               key={m.id}
-              className={`flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer ${
+              className={`flex items-center justify-between p-3 hover:bg-surface-hover cursor-pointer ${
                 selected?.id === m.id ? 'bg-purple-50 dark:bg-purple-900/20' : ''
               }`}
             >
               <div onClick={() => { onSelect(m); setOpen(false); }} className="flex-1">
-                <p className="font-medium text-sm text-gray-900 dark:text-white">{m.name}</p>
-                <p className="text-xs text-gray-500">v{m.version} - {new Date(m.createdAt).toLocaleDateString()}</p>
+                <p className="font-medium text-sm text-text-primary">{m.name}</p>
+                <p className="text-xs text-text-secondary">v{m.version} - {new Date(m.createdAt).toLocaleDateString()}</p>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(m.id); }}
-                className="p-1 text-gray-400 hover:text-red-500"
+                className="p-1 text-text-muted hover:text-red-500"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -450,43 +450,43 @@ function ModelOverview({ model }: { model: DigitalTwinModel }) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(st => (
-          <div key={st.label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+          <div key={st.label} className="bg-surface rounded-xl border border-border p-4">
             <div className="flex items-center gap-2 mb-2">
               <st.icon className={`w-4 h-4 text-${st.color}-500`} />
-              <span className="text-xs text-gray-500 dark:text-gray-400">{st.label}</span>
+              <span className="text-xs text-text-secondary">{st.label}</span>
             </div>
-            <p className="text-xl font-bold text-gray-900 dark:text-white">{st.value}</p>
+            <p className="text-xl font-bold text-text-primary">{st.value}</p>
           </div>
         ))}
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Peak Hours</h3>
+        <div className="bg-surface rounded-xl border border-border p-5">
+          <h3 className="font-semibold text-text-primary mb-3">Peak Hours</h3>
           <div className="flex gap-2 flex-wrap">
             {(s.peakHours || []).map(h => (
               <span key={h} className="px-3 py-1 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-full text-sm">
                 {h}:00
               </span>
             ))}
-            {(!s.peakHours || s.peakHours.length === 0) && <span className="text-gray-400 text-sm">No data</span>}
+            {(!s.peakHours || s.peakHours.length === 0) && <span className="text-text-muted text-sm">No data</span>}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Volume Summary</h3>
+        <div className="bg-surface rounded-xl border border-border p-5">
+          <h3 className="font-semibold text-text-primary mb-3">Volume Summary</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Weekly Avg</span>
-              <span className="font-medium text-gray-900 dark:text-white">{s.avgWeeklyCallVolume} calls</span>
+              <span className="text-text-secondary">Weekly Avg</span>
+              <span className="font-medium text-text-primary">{s.avgWeeklyCallVolume} calls</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Monthly Avg</span>
-              <span className="font-medium text-gray-900 dark:text-white">{s.avgMonthlyCallVolume} calls</span>
+              <span className="text-text-secondary">Monthly Avg</span>
+              <span className="font-medium text-text-primary">{s.avgMonthlyCallVolume} calls</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">In/Out Ratio</span>
-              <span className="font-medium text-gray-900 dark:text-white">
+              <span className="text-text-secondary">In/Out Ratio</span>
+              <span className="font-medium text-text-primary">
                 {s.inboundOutboundRatio === Infinity ? 'All Inbound' : s.inboundOutboundRatio.toFixed(1)}
               </span>
             </div>
@@ -495,12 +495,12 @@ function ModelOverview({ model }: { model: DigitalTwinModel }) {
       </div>
 
       {s.agentPerformance && s.agentPerformance.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Agent Performance Snapshot</h3>
+        <div className="bg-surface rounded-xl border border-border p-5">
+          <h3 className="font-semibold text-text-primary mb-3">Agent Performance Snapshot</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                <tr className="text-left text-text-secondary border-b border-border">
                   <th className="pb-2 font-medium">Agent</th>
                   <th className="pb-2 font-medium">Calls</th>
                   <th className="pb-2 font-medium">Booking Rate</th>
@@ -508,10 +508,10 @@ function ModelOverview({ model }: { model: DigitalTwinModel }) {
               </thead>
               <tbody>
                 {s.agentPerformance.map(a => (
-                  <tr key={a.agentId} className="border-b border-gray-100 dark:border-gray-700/50">
-                    <td className="py-2 text-gray-900 dark:text-white">{a.agentName}</td>
-                    <td className="py-2 text-gray-600 dark:text-gray-300">{a.callsHandled}</td>
-                    <td className="py-2 text-gray-600 dark:text-gray-300">{(a.bookingRate * 100).toFixed(1)}%</td>
+                  <tr key={a.agentId} className="border-b border-border/50">
+                    <td className="py-2 text-text-primary">{a.agentName}</td>
+                    <td className="py-2 text-text-secondary">{a.callsHandled}</td>
+                    <td className="py-2 text-text-secondary">{(a.bookingRate * 100).toFixed(1)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -534,22 +534,22 @@ function ScenarioLauncher({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Scenario Library</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Select a scenario to simulate against your digital twin model</p>
+      <div className="bg-surface rounded-xl border border-border p-5">
+        <h3 className="font-semibold text-text-primary mb-1">Scenario Library</h3>
+        <p className="text-sm text-text-secondary mb-4">Select a scenario to simulate against your digital twin model</p>
 
         {categories.map(cat => (
           <div key={cat} className="mb-4">
-            <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">{cat}</h4>
+            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">{cat}</h4>
             <div className="grid md:grid-cols-2 gap-3">
               {scenarios.filter(s => s.category === cat).map(scenario => (
                 <div
                   key={scenario.id}
-                  className="flex items-start justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
+                  className="flex items-start justify-between p-3 bg-surface-hover rounded-lg border border-border"
                 >
                   <div className="flex-1 mr-3">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm text-gray-900 dark:text-white">{scenario.name}</p>
+                      <p className="font-medium text-sm text-text-primary">{scenario.name}</p>
                       {scenario.isPredefined && (
                         <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
                           Built-in
@@ -557,7 +557,7 @@ function ScenarioLauncher({
                       )}
                     </div>
                     {scenario.description && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{scenario.description}</p>
+                      <p className="text-xs text-text-secondary mt-1">{scenario.description}</p>
                     )}
                   </div>
                   <button
@@ -575,7 +575,7 @@ function ScenarioLauncher({
         ))}
 
         {scenarios.length === 0 && (
-          <p className="text-center text-gray-400 py-8">No scenarios available. They will be seeded on first load.</p>
+          <p className="text-center text-text-muted py-8">No scenarios available. They will be seeded on first load.</p>
         )}
       </div>
     </div>
@@ -595,31 +595,31 @@ function ResultsView({
         <ResultDetail result={selectedResult} />
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Simulation History</h3>
+      <div className="bg-surface rounded-xl border border-border p-5">
+        <h3 className="font-semibold text-text-primary mb-3">Simulation History</h3>
         {runs.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">No simulations run yet. Go to Run Simulation to get started.</p>
+          <p className="text-center text-text-muted py-8">No simulations run yet. Go to Run Simulation to get started.</p>
         ) : (
           <div className="space-y-2">
             {runs.map(run => (
               <div
                 key={run.id}
                 onClick={() => onViewResult(run.id)}
-                className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex items-center justify-between p-3 bg-surface-hover rounded-lg cursor-pointer hover:bg-surface-hover"
               >
                 <div>
-                  <p className="font-medium text-sm text-gray-900 dark:text-white">{run.name || `Run ${run.id.slice(0, 8)}`}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(run.createdAt).toLocaleString()}</p>
+                  <p className="font-medium text-sm text-text-primary">{run.name || `Run ${run.id.slice(0, 8)}`}</p>
+                  <p className="text-xs text-text-secondary">{new Date(run.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                     run.status === 'completed' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
                     run.status === 'running' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
-                    'bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+                    'bg-surface-hover text-text-primary'
                   }`}>
                     {run.status}
                   </span>
-                  <Eye className="w-4 h-4 text-gray-400" />
+                  <Eye className="w-4 h-4 text-text-muted" />
                 </div>
               </div>
             ))}
@@ -687,9 +687,9 @@ function ResultDetail({ result }: { result: SimulationResult }) {
   ];
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-4">
+    <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900 dark:text-white">Simulation Results</h3>
+        <h3 className="font-semibold text-text-primary">Simulation Results</h3>
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
           m.riskLevel === 'low' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
           m.riskLevel === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300' :
@@ -700,7 +700,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
       </div>
 
       {result.summary && (
-        <p className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">{result.summary}</p>
+        <p className="text-sm text-text-secondary bg-surface-hover rounded-lg p-3">{result.summary}</p>
       )}
 
       <div className="grid md:grid-cols-3 gap-4">
@@ -708,19 +708,19 @@ function ResultDetail({ result }: { result: SimulationResult }) {
           const isPositive = c.invertColor ? c.delta < 0 : c.delta > 0;
           const isNeutral = c.delta === 0;
           return (
-            <div key={c.label} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+            <div key={c.label} className="p-3 bg-surface-hover rounded-lg">
               <div className="flex items-center gap-2 mb-2">
-                <c.icon className="w-4 h-4 text-gray-400" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{c.label}</span>
+                <c.icon className="w-4 h-4 text-text-muted" />
+                <span className="text-xs text-text-secondary">{c.label}</span>
               </div>
               <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-xs text-gray-400">Baseline</p>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{c.format(c.baseline)}</p>
+                  <p className="text-xs text-text-muted">Baseline</p>
+                  <p className="text-sm font-medium text-text-secondary">{c.format(c.baseline)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-400">Simulated</p>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{c.format(c.simulated)}</p>
+                  <p className="text-xs text-text-muted">Simulated</p>
+                  <p className="text-sm font-bold text-text-primary">{c.format(c.simulated)}</p>
                 </div>
               </div>
               {!isNeutral && (
@@ -738,10 +738,10 @@ function ResultDetail({ result }: { result: SimulationResult }) {
 
       {m.insights && m.insights.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Insights</h4>
+          <h4 className="text-sm font-medium text-text-primary mb-2">Insights</h4>
           <ul className="space-y-1">
             {m.insights.map((insight, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
                 <Zap className="w-3 h-3 text-yellow-500 mt-0.5 flex-shrink-0" />
                 {insight}
               </li>
@@ -761,8 +761,8 @@ function ConversationQualityPanel({ quality }: { quality: ConversationQualityRes
   const cmp = quality.comparison;
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-600 pt-4 mt-4">
-      <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+    <div className="border-t border-border pt-4 mt-4">
+      <h4 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
         <Activity className="w-4 h-4 text-blue-500" />
         Conversation Quality Comparison
       </h4>
@@ -776,12 +776,12 @@ function ConversationQualityPanel({ quality }: { quality: ConversationQualityRes
             { label: 'Tone', baseline: quality.baseline.avgTone, variant: quality.variant.avgTone, delta: cmp.toneImprovement },
             { label: 'Resolution', baseline: quality.baseline.avgResolution, variant: quality.variant.avgResolution, delta: cmp.resolutionImprovement },
           ].map(item => (
-            <div key={item.label} className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-center">
-              <p className="text-xs text-gray-400 mb-1">{item.label}</p>
+            <div key={item.label} className="p-2 bg-surface-hover rounded-lg text-center">
+              <p className="text-xs text-text-muted mb-1">{item.label}</p>
               <div className="flex items-center justify-center gap-2 text-xs">
-                <span className="text-gray-500">{item.baseline.toFixed(1)}{item.suffix || ''}</span>
-                <span className="text-gray-300">→</span>
-                <span className="font-bold text-gray-900 dark:text-white">{item.variant.toFixed(1)}{item.suffix || ''}</span>
+                <span className="text-text-secondary">{item.baseline.toFixed(1)}{item.suffix || ''}</span>
+                <span className="text-text-muted">→</span>
+                <span className="font-bold text-text-primary">{item.variant.toFixed(1)}{item.suffix || ''}</span>
               </div>
               {item.delta !== 0 && (
                 <div className={`flex items-center justify-center gap-1 mt-1 text-xs font-medium ${
@@ -829,20 +829,20 @@ function ForecastsView({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Generate Forecast</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Project future operational metrics based on historical patterns</p>
+      <div className="bg-surface rounded-xl border border-border p-5">
+        <h3 className="font-semibold text-text-primary mb-1">Generate Forecast</h3>
+        <p className="text-sm text-text-secondary mb-4">Project future operational metrics based on historical patterns</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {forecastTypes.map(ft => (
             <button
               key={ft.type}
               onClick={() => onGenerate(ft.type, 30)}
               disabled={loading}
-              className="flex flex-col items-center gap-2 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-600 transition-colors disabled:opacity-50"
+              className="flex flex-col items-center gap-2 p-4 bg-surface-hover rounded-lg border border-border hover:border-purple-300 transition-colors disabled:opacity-50"
             >
               {loading ? <RefreshCw className="w-5 h-5 animate-spin text-purple-500" /> : <ft.icon className="w-5 h-5 text-purple-500" />}
-              <span className="text-sm font-medium text-gray-900 dark:text-white">{ft.label}</span>
-              <span className="text-xs text-gray-400">30-day forecast</span>
+              <span className="text-sm font-medium text-text-primary">{ft.label}</span>
+              <span className="text-xs text-text-muted">30-day forecast</span>
             </button>
           ))}
         </div>
@@ -857,7 +857,7 @@ function ForecastsView({
       )}
 
       {forecasts.length === 0 && (
-        <p className="text-center text-gray-400 py-8">No forecasts generated yet. Click a forecast type above to begin.</p>
+        <p className="text-center text-text-muted py-8">No forecasts generated yet. Click a forecast type above to begin.</p>
       )}
     </div>
   );
@@ -885,11 +885,11 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+    <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div>
-          <h4 className="font-semibold text-gray-900 dark:text-white">{typeLabels[forecast.forecastType] || forecast.forecastType}</h4>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <h4 className="font-semibold text-text-primary">{typeLabels[forecast.forecastType] || forecast.forecastType}</h4>
+          <p className="text-xs text-text-secondary">
             {forecast.horizonDays}-day forecast | {(forecast.confidenceLevel * 100).toFixed(0)}% confidence | Generated {new Date(forecast.generatedAt).toLocaleDateString()}
           </p>
         </div>
@@ -898,22 +898,22 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
             {trend >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
             {Math.abs(trend).toFixed(1)}%
           </div>
-          {expanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
+          {expanded ? <ChevronDown className="w-5 h-5 text-text-muted" /> : <ChevronRight className="w-5 h-5 text-text-muted" />}
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-3">
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-          <p className="text-xs text-gray-400">Start</p>
-          <p className="font-medium text-sm text-gray-900 dark:text-white">{first ? formatValue(first.value) : '-'}</p>
+        <div className="text-center p-2 bg-surface-hover rounded">
+          <p className="text-xs text-text-muted">Start</p>
+          <p className="font-medium text-sm text-text-primary">{first ? formatValue(first.value) : '-'}</p>
         </div>
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-          <p className="text-xs text-gray-400">Average</p>
-          <p className="font-medium text-sm text-gray-900 dark:text-white">{formatValue(avg)}</p>
+        <div className="text-center p-2 bg-surface-hover rounded">
+          <p className="text-xs text-text-muted">Average</p>
+          <p className="font-medium text-sm text-text-primary">{formatValue(avg)}</p>
         </div>
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-          <p className="text-xs text-gray-400">End</p>
-          <p className="font-medium text-sm text-gray-900 dark:text-white">{last ? formatValue(last.value) : '-'}</p>
+        <div className="text-center p-2 bg-surface-hover rounded">
+          <p className="text-xs text-text-muted">End</p>
+          <p className="font-medium text-sm text-text-primary">{last ? formatValue(last.value) : '-'}</p>
         </div>
       </div>
 
@@ -934,8 +934,8 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
             })}
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-[10px] text-gray-400">{first?.date}</span>
-            <span className="text-[10px] text-gray-400">{last?.date}</span>
+            <span className="text-[10px] text-text-muted">{first?.date}</span>
+            <span className="text-[10px] text-text-muted">{last?.date}</span>
           </div>
         </div>
       )}
@@ -972,44 +972,44 @@ function CreateModelModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Create Digital Twin Model</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      <div className="bg-surface rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-text-primary mb-4">Create Digital Twin Model</h2>
+        <p className="text-sm text-text-secondary mb-4">
           Snapshot your operational history to create a simulation baseline.
         </p>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Model Name</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">Model Name</label>
             <input
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Start Date</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">End Date</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary"
               />
             </div>
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-6">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+          <button onClick={onClose} className="px-4 py-2 text-text-secondary hover:text-text-primary">
             Cancel
           </button>
           <button

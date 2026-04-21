@@ -102,12 +102,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   pending: { label: 'Pending', color: 'text-purple-700 dark:text-purple-300', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
   escalated: { label: 'Escalated', color: 'text-red-700 dark:text-red-300', bgColor: 'bg-red-100 dark:bg-red-900/30' },
   resolved: { label: 'Resolved', color: 'text-green-700 dark:text-green-300', bgColor: 'bg-green-100 dark:bg-green-900/30' },
-  closed: { label: 'Closed', color: 'text-gray-700 dark:text-gray-300', bgColor: 'bg-gray-100 dark:bg-gray-700/30' },
+  closed: { label: 'Closed', color: 'text-text-primary', bgColor: 'bg-surface-hover/30' },
   reopened: { label: 'Reopened', color: 'text-orange-700 dark:text-orange-300', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: 'text-gray-500',
+  low: 'text-text-secondary',
   medium: 'text-blue-500',
   high: 'text-orange-500',
   urgent: 'text-red-500',
@@ -221,7 +221,7 @@ function ActivityItem({ activity }: { activity: Activity }) {
   return (
     <div className={`flex gap-3 py-3 ${activity.is_internal ? 'bg-yellow-50/50 dark:bg-yellow-900/10 -mx-2 px-2 rounded-lg' : ''}`}>
       <div className="flex-shrink-0 mt-0.5">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-gray-100 dark:bg-gray-800'}`}>
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-surface-hover'}`}>
           <Icon className={`h-3.5 w-3.5 ${isNote ? 'text-blue-600' : 'text-muted'}`} />
         </div>
       </div>
@@ -440,7 +440,7 @@ export default function TicketDetail() {
             </span>
             <span className={`text-xs font-medium capitalize ${PRIORITY_COLORS[ticket.priority]}`}>{ticket.priority}</span>
             {ticket.source !== 'manual' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-muted">{ticket.source}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-hover text-muted">{ticket.source}</span>
             )}
           </div>
           {editing ? (
@@ -709,12 +709,12 @@ export default function TicketDetail() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsInternalNote(!isInternalNote)}
-                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' : 'bg-gray-100 dark:bg-gray-800 text-muted'}`}
+                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' : 'bg-surface-hover text-muted'}`}
                   >
                     {isInternalNote ? 'Internal' : 'Public'}
                   </button>
                   <div className="relative">
-                    <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-muted hover:text-heading">
+                    <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className="text-xs px-2 py-1 rounded bg-surface-hover text-muted hover:text-heading">
                       Templates
                     </button>
                     {showTemplateMenu && templates.length > 0 && (

@@ -117,7 +117,7 @@ const STATUS_COLORS: Record<string, string> = {
   confirmed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   completed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  no_show: 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-300',
+  no_show: 'bg-surface-hover text-text-primary',
   checked_in: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
   rescheduled: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
 };
@@ -578,7 +578,7 @@ export default function Scheduling() {
               <div className="space-y-0.5">
                 {dayBookings.slice(0, 3).map(b => (
                   <button key={b.id} onClick={() => setShowDetailModal(b)}
-                    className={`w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${STATUS_COLORS[b.status] || 'bg-gray-100 text-gray-800'}`}>
+                    className={`w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${STATUS_COLORS[b.status] || 'bg-surface-hover text-text-primary'}`}>
                     {formatTime(b.start_time)} {b.title}
                   </button>
                 ))}
@@ -714,7 +714,7 @@ export default function Scheduling() {
               )}
             </div>
             <div className="mt-2">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>
                 {p.is_active ? 'Active' : 'Inactive'}
               </span>
             </div>
@@ -797,7 +797,7 @@ export default function Scheduling() {
             </div>
             <div className="flex gap-2 mt-2 text-[10px] text-muted">
               <span>Capacity: {r.capacity}</span>
-              <span className={r.is_active ? 'text-green-600' : 'text-gray-500'}>{r.is_active ? 'Active' : 'Inactive'}</span>
+              <span className={r.is_active ? 'text-green-600' : 'text-text-secondary'}>{r.is_active ? 'Active' : 'Inactive'}</span>
             </div>
           </div>
         ))}
@@ -830,7 +830,7 @@ export default function Scheduling() {
               {w.notes && <div className="text-xs text-muted mt-0.5">{w.notes}</div>}
             </div>
             <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[w.status] || 'bg-gray-100 text-gray-800'}`}>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[w.status] || 'bg-surface-hover text-text-primary'}`}>
                 {w.status}
               </span>
               {!isReadOnly && (
@@ -859,7 +859,7 @@ export default function Scheduling() {
             { label: 'Confirmed', value: s.confirmed, color: 'text-green-600' },
             { label: 'Pending', value: s.pending, color: 'text-yellow-600' },
             { label: 'Cancelled', value: s.cancelled, color: 'text-red-600' },
-            { label: 'No Shows', value: s.no_shows, color: 'text-gray-600' },
+            { label: 'No Shows', value: s.no_shows, color: 'text-text-secondary' },
             { label: 'Checked In', value: s.checked_in, color: 'text-purple-600' },
           ].map(stat => (
             <div key={stat.label} className="bg-surface border border-border rounded-xl p-3 text-center">
@@ -1318,7 +1318,7 @@ export default function Scheduling() {
                     <button onClick={() => {
                       const reason = prompt('No-show reason (optional):');
                       transitionBooking(showDetailModal.id, 'no_show', { cancellation_reason: reason || '' });
-                    }} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300">
+                    }} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-hover text-text-primary hover:bg-surface-hover">
                       <PhoneOff className="h-3 w-3" /> No Show
                     </button>
                   )}

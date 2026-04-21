@@ -158,7 +158,7 @@ function TraceIcon({ type }: { type: string }) {
     call_ended: <PhoneCall className="h-3.5 w-3.5 text-red-500" />,
     integration_call: <Globe className="h-3.5 w-3.5 text-sky-500" />,
   };
-  return <>{iconMap[type] ?? <Activity className="h-3.5 w-3.5 text-gray-400" />}</>;
+  return <>{iconMap[type] ?? <Activity className="h-3.5 w-3.5 text-text-muted" />}</>;
 }
 
 function traceColor(type: string): string {
@@ -392,7 +392,7 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                       {isExpanded && (
                         <div className="px-3 pb-3 border-t border-border pt-3 space-y-2">
                           {(trace.traceType === 'model_prompted' || trace.traceType === 'model_responded') && (
-                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3">
+                            <div className="bg-surface-hover/50 rounded-lg p-3">
                               <h4 className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wider">
                                 {trace.traceType === 'model_prompted' ? 'Prompt Context Sent to Model' : 'Raw Model Completion'}
                               </h4>
@@ -923,7 +923,7 @@ export default function CallDebug() {
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                             call.lifecycle_state === 'CALL_COMPLETED' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                             call.lifecycle_state === 'CALL_FAILED' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                            'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                            'bg-surface-hover text-text-secondary'
                           }`}>{call.lifecycle_state}</span>
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</td>

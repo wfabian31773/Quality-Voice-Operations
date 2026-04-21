@@ -52,12 +52,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
   pending: { label: 'Pending', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300', icon: Clock },
   escalated: { label: 'Escalated', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: AlertTriangle },
   resolved: { label: 'Resolved', color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', icon: CheckCircle2 },
-  closed: { label: 'Closed', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-300', icon: CheckCircle2 },
+  closed: { label: 'Closed', color: 'bg-surface-hover text-text-primary', icon: CheckCircle2 },
   reopened: { label: 'Reopened', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: RotateCcw },
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: 'text-gray-500',
+  low: 'text-text-secondary',
   medium: 'text-blue-500',
   high: 'text-orange-500',
   urgent: 'text-red-500',
@@ -279,7 +279,7 @@ export default function Tickets() {
             { label: 'Open', value: stats.statusCounts.open || 0, color: 'text-blue-600' },
             { label: 'In Progress', value: stats.statusCounts.in_progress || 0, color: 'text-yellow-600' },
             { label: 'Pending', value: stats.statusCounts.pending || 0, color: 'text-purple-600' },
-            { label: 'Unassigned', value: stats.unassignedCount, color: 'text-gray-600' },
+            { label: 'Unassigned', value: stats.unassignedCount, color: 'text-text-secondary' },
             { label: 'SLA At Risk', value: stats.slaAtRisk, color: 'text-yellow-600' },
             { label: 'SLA Breached', value: stats.slaBreached, color: 'text-red-600' },
             { label: 'Avg Resolution', value: `${stats.avgResolutionHours}h`, color: 'text-green-600' },

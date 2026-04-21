@@ -610,7 +610,7 @@ function StatusBadge({ status }: { status: string }) {
         ? 'bg-amber-500/15 text-amber-400'
         : status === 'rejected' || status === 'deprecated' || status === 'disabled'
           ? 'bg-red-500/15 text-red-400'
-          : 'bg-gray-500/15 text-gray-400';
+          : 'bg-gray-500/15 text-text-muted';
   return (
     <span className={clsx('inline-flex px-2 py-0.5 rounded text-xs font-medium capitalize', cls)}>
       {status.replace(/_/g, ' ')}
