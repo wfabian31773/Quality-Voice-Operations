@@ -25,9 +25,9 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'call.completed':
-        return this.handleCallCompleted(tenantId, tokens, payload);
+        return this.handleCallCompleted(tenantId, tokens, payload, config);
       case 'appointment.booked':
-        return this.handleAppointmentBooked(tenantId, tokens, payload);
+        return this.handleAppointmentBooked(tenantId, tokens, payload, config);
       default:
         return { success: false, error: `Salesforce adapter does not handle event: ${payload.type}` };
     }
@@ -113,6 +113,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     tenantId: TenantId,
     tokens: SalesforceTokens,
     payload: ConnectorPayload,
+    config: ConnectorConfig,
   ): Promise<ConnectorResult> {
     const callerPhone = payload.callerPhone as string | undefined;
     const summary = payload.summary as string | undefined;
@@ -126,7 +127,8 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         : undefined;
 
       const whatId = await this.resolveWhatId(tokens, who, payload);
-      const dispositionFields = mapDispositionToTaskFields(disposition);
+      const customMap = parseDispositionMap(config.credentials);
+      const dispositionFields = mapDispositionToTaskFields(disposition, customMap);
 
       const taskId = await this.createTask(tokens, {
         whoId: who?.id,
@@ -164,6 +166,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     tenantId: TenantId,
     tokens: SalesforceTokens,
     payload: ConnectorPayload,
+    config: ConnectorConfig,
   ): Promise<ConnectorResult> {
     const callerPhone = payload.callerPhone as string | undefined;
     const summary = payload.summary as string | undefined;
@@ -209,6 +212,8 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       const whatId = convertedOpportunityId
         ?? convertedAccountId
         ?? await this.resolveWhatId(tokens, who, payload);
+      const customMap = parseDispositionMap(config.credentials);
+      const dispositionFields = mapDispositionToTaskFields('booked', customMap);
 
       const description = [
         'Appointment booked via QVO AI agent',
@@ -226,8 +231,8 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         callerPhone,
         taskSubtype: 'Task',
         activityDate: (payload.appointmentDate as string) ?? undefined,
-        status: 'Completed',
-        callDisposition: 'Booked Appointment',
+        status: dispositionFields.status,
+        callDisposition: dispositionFields.callDisposition,
       });
 
       const noteId = summary
@@ -644,31 +649,79 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
   }
 }
 
-function mapDispositionToTaskFields(
-  disposition: string | undefined,
-): { status: string; callDisposition?: string } {
+export type DispositionMap = Record<string, { status: string; callDisposition?: string }>;
+
+export const DEFAULT_SALESFORCE_DISPOSITION_MAP: DispositionMap = {
+  booked: { status: 'Completed', callDisposition: 'Booked Appointment' },
+  no_answer: { status: 'Completed', callDisposition: 'No Answer' },
+  spam: { status: 'Completed', callDisposition: 'Spam' },
+  transferred: { status: 'Completed', callDisposition: 'Transferred' },
+  completed: { status: 'Completed', callDisposition: 'Completed Call' },
+};
+
+const DISPOSITION_ALIASES: Record<string, string> = {
+  appointment_booked: 'booked',
+  noanswer: 'no_answer',
+  no_response: 'no_answer',
+  voicemail: 'no_answer',
+  junk: 'spam',
+  transfer: 'transferred',
+  '': 'completed',
+};
+
+function normalizeDispositionKey(disposition: string | undefined): string {
   const normalized = (disposition ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
-  switch (normalized) {
-    case 'booked':
-    case 'appointment_booked':
-      return { status: 'Completed', callDisposition: 'Booked Appointment' };
-    case 'no_answer':
-    case 'noanswer':
-    case 'no_response':
-    case 'voicemail':
-      return { status: 'Completed', callDisposition: 'No Answer' };
-    case 'spam':
-    case 'junk':
-      return { status: 'Completed', callDisposition: 'Spam' };
-    case 'transferred':
-    case 'transfer':
-      return { status: 'Completed', callDisposition: 'Transferred' };
-    case 'completed':
-    case '':
-      return { status: 'Completed', callDisposition: 'Completed Call' };
-    default:
-      return { status: 'Completed', callDisposition: disposition };
+  return DISPOSITION_ALIASES[normalized] ?? normalized;
+}
+
+export function parseDispositionMap(
+  credentials: Record<string, string>,
+): DispositionMap | undefined {
+  const raw = credentials.disposition_map;
+  if (!raw || !raw.trim()) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `Invalid Salesforce disposition_map JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid Salesforce disposition_map: expected an object of { status, callDisposition } entries');
+  }
+  const result: DispositionMap = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`Invalid Salesforce disposition_map entry for "${key}": expected { status, callDisposition }`);
+    }
+    const entry = value as Record<string, unknown>;
+    const status = entry.status;
+    const callDisposition = entry.callDisposition;
+    if (typeof status !== 'string' || !status.trim()) {
+      throw new Error(`Invalid Salesforce disposition_map entry for "${key}": "status" is required and must be a non-empty string`);
+    }
+    if (callDisposition !== undefined && typeof callDisposition !== 'string') {
+      throw new Error(`Invalid Salesforce disposition_map entry for "${key}": "callDisposition" must be a string when provided`);
+    }
+    const normalizedKey = normalizeDispositionKey(key);
+    result[normalizedKey] = {
+      status: status.trim(),
+      callDisposition: callDisposition === undefined ? undefined : (callDisposition as string).trim() || undefined,
+    };
+  }
+  return result;
+}
+
+export function mapDispositionToTaskFields(
+  disposition: string | undefined,
+  customMap?: DispositionMap,
+): { status: string; callDisposition?: string } {
+  const key = normalizeDispositionKey(disposition);
+  const merged: DispositionMap = { ...DEFAULT_SALESFORCE_DISPOSITION_MAP, ...(customMap ?? {}) };
+  const entry = merged[key];
+  if (entry) return { status: entry.status, callDisposition: entry.callDisposition };
+  return { status: 'Completed', callDisposition: disposition };
 }
 
 function escapeHtml(input: string): string {

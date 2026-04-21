@@ -4,6 +4,7 @@ import {
   upsertConnector,
   deleteConnector,
   getConnectorById,
+  getConnectorConfig,
   connectorService,
 } from '../../../platform/integrations/connectors';
 import type { ConnectorType, StandardEventType } from '../../../platform/integrations/connectors';
@@ -115,6 +116,38 @@ router.patch('/connectors/:integrationId', requireAuth, requireRole('manager'), 
   } catch (err) {
     logger.error('Failed to update connector', { tenantId, integrationId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update connector' });
+  }
+});
+
+router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { integrationId } = req.params;
+  try {
+    const meta = await getConnectorById(tenantId, integrationId);
+    if (!meta) {
+      return res.status(404).json({ error: 'Connector not found' });
+    }
+    const fullConfig = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
+    const credentials = fullConfig?.credentials ?? {};
+    const settings: Record<string, unknown> = {};
+    if (meta.provider === 'salesforce') {
+      const raw = credentials.disposition_map;
+      let dispositionMap: unknown = null;
+      let dispositionMapError: string | null = null;
+      if (raw && raw.trim()) {
+        try {
+          dispositionMap = JSON.parse(raw);
+        } catch (err) {
+          dispositionMapError = err instanceof Error ? err.message : String(err);
+        }
+      }
+      settings.dispositionMap = dispositionMap;
+      settings.dispositionMapError = dispositionMapError;
+    }
+    return res.json({ provider: meta.provider, settings });
+  } catch (err) {
+    logger.error('Failed to read connector settings', { tenantId, integrationId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to read connector settings' });
   }
 });
 

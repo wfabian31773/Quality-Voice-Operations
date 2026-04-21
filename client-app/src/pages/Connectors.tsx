@@ -285,6 +285,24 @@ function formatSyncTime(iso: string): string {
   return date.toLocaleDateString();
 }
 
+interface DispositionMapEntry { status: string; callDisposition: string }
+
+const DEFAULT_SALESFORCE_DISPOSITION_MAP: Record<string, DispositionMapEntry> = {
+  booked: { status: 'Completed', callDisposition: 'Booked Appointment' },
+  no_answer: { status: 'Completed', callDisposition: 'No Answer' },
+  spam: { status: 'Completed', callDisposition: 'Spam' },
+  transferred: { status: 'Completed', callDisposition: 'Transferred' },
+  completed: { status: 'Completed', callDisposition: 'Completed Call' },
+};
+
+const SALESFORCE_DISPOSITION_LABELS: Record<string, string> = {
+  booked: 'Booked appointment',
+  no_answer: 'No answer / voicemail',
+  spam: 'Spam / junk',
+  transferred: 'Transferred to human',
+  completed: 'Completed call (other)',
+};
+
 function ConnectModal({
   definition,
   onClose,
@@ -298,6 +316,41 @@ function ConnectModal({
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [oauthPending, setOauthPending] = useState(false);
   const isReconnect = !!existingConnector;
+  const isSalesforce = definition.provider === 'salesforce';
+  const [dispositionMap, setDispositionMap] = useState<Record<string, DispositionMapEntry>>(
+    () => ({ ...DEFAULT_SALESFORCE_DISPOSITION_MAP }),
+  );
+
+  useEffect(() => {
+    if (!isSalesforce || !existingConnector) return;
+    let cancelled = false;
+    api
+      .get<{ settings: { dispositionMap: Record<string, Partial<DispositionMapEntry>> | null } }>(
+        `/connectors/${existingConnector.integrationId}/settings`,
+      )
+      .then((data) => {
+        if (cancelled) return;
+        const remote = data?.settings?.dispositionMap;
+        if (remote && typeof remote === 'object') {
+          setDispositionMap((prev) => {
+            const next = { ...prev };
+            for (const key of Object.keys(DEFAULT_SALESFORCE_DISPOSITION_MAP)) {
+              const entry = remote[key];
+              if (entry && typeof entry === 'object') {
+                next[key] = {
+                  status: typeof entry.status === 'string' ? entry.status : prev[key].status,
+                  callDisposition:
+                    typeof entry.callDisposition === 'string' ? entry.callDisposition : prev[key].callDisposition,
+                };
+              }
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isSalesforce, existingConnector]);
 
   const handleOAuthMessage = useCallback((event: MessageEvent) => {
     if (event.origin !== window.location.origin) return;
@@ -346,13 +399,47 @@ function ConnectModal({
   const setCred = (key: string, val: string) =>
     setCredentials((prev) => ({ ...prev, [key]: val }));
 
-  const requiredFilled = definition.fields
-    .filter((f) => f.required !== false)
-    .every((f) => (credentials[f.key] ?? '').trim().length > 0);
+  const setDispositionField = (
+    key: string,
+    field: keyof DispositionMapEntry,
+    val: string,
+  ) =>
+    setDispositionMap((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], [field]: val },
+    }));
+
+  const buildSubmitCredentials = (): Record<string, string> | { error: string } => {
+    const creds: Record<string, string> = {};
+    for (const [k, v] of Object.entries(credentials)) {
+      if (v && v.trim().length > 0) creds[k] = v;
+    }
+    if (isSalesforce) {
+      const out: Record<string, DispositionMapEntry> = {};
+      for (const [key, entry] of Object.entries(dispositionMap)) {
+        const status = entry.status.trim();
+        const callDisposition = entry.callDisposition.trim();
+        if (!status) {
+          return { error: `Status for "${SALESFORCE_DISPOSITION_LABELS[key] ?? key}" is required.` };
+        }
+        out[key] = { status, callDisposition };
+      }
+      creds.disposition_map = JSON.stringify(out);
+    }
+    return creds;
+  };
+
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const requiredFilled = isReconnect
+    ? true
+    : definition.fields
+        .filter((f) => f.required !== false)
+        .every((f) => (credentials[f.key] ?? '').trim().length > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className={`bg-surface border border-border rounded-xl shadow-lg w-full ${isSalesforce ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <BrandLogo provider={definition.logoId} size={40} />
@@ -421,7 +508,13 @@ function ConnectModal({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              connectMutation.mutate(credentials);
+              setSubmitError(null);
+              const built = buildSubmitCredentials();
+              if ('error' in built) {
+                setSubmitError(built.error);
+                return;
+              }
+              connectMutation.mutate(built);
             }}
             className="space-y-4"
           >
@@ -443,6 +536,55 @@ function ConnectModal({
               ))}
             </div>
 
+            {isSalesforce && (
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-text-primary">Disposition mapping</h4>
+                  <p className="text-xs text-text-secondary mt-1">
+                    Map QVO call dispositions to your Salesforce Task <code>Status</code> and{' '}
+                    <code>CallDisposition</code> picklist values. Defaults work for most orgs — change
+                    these only if your org has customized those picklists.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-text-secondary px-1">
+                    <div className="sm:col-span-4">QVO disposition</div>
+                    <div className="sm:col-span-4">Salesforce Status</div>
+                    <div className="sm:col-span-4">Salesforce CallDisposition</div>
+                  </div>
+                  {Object.keys(DEFAULT_SALESFORCE_DISPOSITION_MAP).map((key) => (
+                    <div key={key} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                      <div className="sm:col-span-4 text-sm text-text-primary">
+                        {SALESFORCE_DISPOSITION_LABELS[key]}
+                        <span className="block text-[11px] text-text-secondary font-mono">{key}</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={dispositionMap[key]?.status ?? ''}
+                        onChange={(e) => setDispositionField(key, 'status', e.target.value)}
+                        placeholder={DEFAULT_SALESFORCE_DISPOSITION_MAP[key].status}
+                        className="sm:col-span-4 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <input
+                        type="text"
+                        value={dispositionMap[key]?.callDisposition ?? ''}
+                        onChange={(e) => setDispositionField(key, 'callDisposition', e.target.value)}
+                        placeholder={DEFAULT_SALESFORCE_DISPOSITION_MAP[key].callDisposition}
+                        className="sm:col-span-4 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDispositionMap({ ...DEFAULT_SALESFORCE_DISPOSITION_MAP })}
+                  className="text-xs text-text-secondary hover:text-primary underline"
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            )}
+
             <div className="bg-surface-hover/50 rounded-lg p-3">
               <p className="text-xs font-medium text-text-secondary mb-1.5">Events this connector handles:</p>
               <div className="flex flex-wrap gap-1.5">
@@ -454,6 +596,9 @@ function ConnectModal({
               </div>
             </div>
 
+            {submitError && (
+              <p className="text-danger text-sm">{submitError}</p>
+            )}
             {connectMutation.error && (
               <p className="text-danger text-sm">{(connectMutation.error as Error).message}</p>
             )}
