@@ -45,6 +45,13 @@ const primaryIntegrations = [
     features: ['Contact sync', 'Call log automation', 'Lead scoring', 'Task creation'],
   },
   {
+    logoId: 'salesforce',
+    category: 'CRM',
+    title: 'Salesforce',
+    desc: 'Sync Contacts, Opportunities, and Tasks to Salesforce. Calls and meetings attach to the right open opportunity so reps always have the latest context.',
+    features: ['Contact sync', 'Opportunity attachment', 'Call & task logging', 'Sandbox or production'],
+  },
+  {
     logoId: 'pipedrive',
     category: 'CRM',
     title: 'Pipedrive',
@@ -57,13 +64,6 @@ const primaryIntegrations = [
     title: 'QuickBooks',
     desc: 'Push customers to QuickBooks and create invoices when calls complete. Pair with your service item to auto-bill jobs booked by the agent.',
     features: ['Customer sync', 'Invoice automation', 'Sandbox or production', 'OAuth sign-in'],
-  },
-  {
-    logoId: 'salesforce',
-    category: 'CRM',
-    title: 'Salesforce',
-    desc: 'One-click OAuth into Salesforce. Calls and AI summaries log against the right Contact, Lead, or Opportunity automatically.',
-    features: ['One-click OAuth', 'Contact & Lead sync', 'Call activity logging', 'AI summary on Tasks'],
   },
   {
     logoId: 'slack',
@@ -116,8 +116,8 @@ export default function Integrations() {
   return (
     <div>
       <SEO
-        title="Integrations — Google Calendar, Twilio, Stripe, HubSpot, Pipedrive, QuickBooks, and More"
-        description="QVO integrates with Google Calendar, Twilio, Stripe, HubSpot, Pipedrive, QuickBooks, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use."
+        title="Integrations — Google Calendar, Outlook, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks, and More"
+        description="QVO integrates with Google Calendar, Outlook Calendar, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use."
         canonicalPath="/integrations"
       />
       <section className="bg-harbor text-white py-20 lg:py-28">

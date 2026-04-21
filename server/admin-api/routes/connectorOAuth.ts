@@ -633,6 +633,7 @@ router.get('/connectors/oauth/salesforce/callback', async (req, res) => {
       refresh_token?: string;
       instance_url: string;
       issued_at?: string;
+      expires_in?: number;
       id?: string;
     };
 
@@ -641,8 +642,10 @@ router.get('/connectors/oauth/salesforce/callback', async (req, res) => {
       return res.status(500).send('<html><body><script>window.close();</script>Salesforce returned incomplete tokens</body></html>');
     }
 
-    // Salesforce access tokens commonly last ~2 hours; cache for 90 minutes.
-    const expiresAt = Date.now() + 90 * 60 * 1000;
+    // Use Salesforce-reported issued_at + expires_in (default ~2 hours) for accurate TTL.
+    const issuedAtMs = tokens.issued_at ? Number(tokens.issued_at) : Date.now();
+    const ttlMs = (tokens.expires_in ? tokens.expires_in : 2 * 60 * 60) * 1000;
+    const expiresAt = issuedAtMs + ttlMs;
 
     await upsertConnector(parsed.tenantId, {
       connectorType: 'crm',
