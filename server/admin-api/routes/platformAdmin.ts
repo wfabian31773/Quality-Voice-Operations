@@ -11,6 +11,8 @@ import {
 } from '../../../platform/analytics';
 import { getCampaign, getCampaignMetrics, listContacts } from '../../../platform/campaigns/CampaignService';
 import { redactPHI } from '../../../platform/core/phi/redact';
+import { getConversationCost } from '../../../platform/billing/cost';
+import { listToolExecutions } from '../../../platform/tools/ToolExecutionService';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -199,6 +201,133 @@ router.get('/platform/tenants/:id/agents', requireAuth, requirePlatformAdmin, as
   } catch (err) {
     logger.error('Failed to list tenant agents for admin', { tenantId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to list tenant agents' });
+  }
+});
+
+router.get('/platform/tenants/:id/calls/:callId', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, callId } = req.params;
+  try {
+    const result = await withPrivilegedClient(async (client) => {
+      const { rows: tenantRows } = await client.query(
+        `SELECT id, name, slug FROM tenants WHERE id = $1`,
+        [id],
+      );
+      if (!tenantRows[0]) return { tenant: null, call: null };
+      const { rows } = await client.query(
+        `SELECT cs.*, a.name AS agent_name
+         FROM call_sessions cs
+         LEFT JOIN agents a ON a.id = cs.agent_id
+         WHERE cs.id = $1 AND cs.tenant_id = $2`,
+        [callId, id],
+      );
+      return { tenant: tenantRows[0], call: rows[0] ?? null };
+    });
+    if (!result.tenant) return res.status(404).json({ error: 'Tenant not found' });
+    if (!result.call) return res.status(404).json({ error: 'Call not found' });
+
+    const call = { ...result.call } as Record<string, unknown>;
+    if (typeof call.caller_number === 'string') call.caller_number = redactPHI(call.caller_number);
+    if (typeof call.called_number === 'string') call.called_number = redactPHI(call.called_number);
+    if (typeof call.escalation_target === 'string') call.escalation_target = redactPHI(call.escalation_target);
+
+    let costBreakdown = null;
+    try {
+      costBreakdown = await getConversationCost(id, callId);
+    } catch {}
+
+    logger.info('Platform admin viewed tenant call detail', {
+      tenantId: id,
+      callId,
+      adminUserId: req.user!.userId,
+    });
+
+    return res.json({ tenant: result.tenant, call, costBreakdown });
+  } catch (err) {
+    logger.error('Failed to fetch tenant call for admin', { tenantId: id, callId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch tenant call' });
+  }
+});
+
+router.get('/platform/tenants/:id/calls/:callId/transcript', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, callId } = req.params;
+  try {
+    const lines = await withPrivilegedClient(async (client) => {
+      const { rows: sessionRows } = await client.query(
+        `SELECT id FROM call_sessions WHERE id = $1 AND tenant_id = $2`,
+        [callId, id],
+      );
+      if (sessionRows.length === 0) return null;
+      const { rows } = await client.query(
+        `SELECT id, role, content, sequence_number, occurred_at
+         FROM call_transcripts
+         WHERE call_session_id = $1 AND tenant_id = $2
+         ORDER BY sequence_number ASC, occurred_at ASC`,
+        [callId, id],
+      );
+      return rows;
+    });
+    if (lines === null) return res.status(404).json({ error: 'Call not found' });
+
+    const transcript = lines.map((row) => ({
+      ...row,
+      content: typeof row.content === 'string' ? redactPHI(row.content) : row.content,
+    }));
+
+    return res.json({ callId, transcript });
+  } catch (err) {
+    logger.error('Failed to fetch tenant call transcript for admin', { tenantId: id, callId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch call transcript' });
+  }
+});
+
+router.get('/platform/tenants/:id/calls/:callId/events', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, callId } = req.params;
+  try {
+    const events = await withPrivilegedClient(async (client) => {
+      const { rows: sessionRows } = await client.query(
+        `SELECT id FROM call_sessions WHERE id = $1 AND tenant_id = $2`,
+        [callId, id],
+      );
+      if (sessionRows.length === 0) return null;
+      const { rows } = await client.query(
+        `SELECT id, event_type, from_state, to_state, payload, occurred_at
+         FROM call_events
+         WHERE call_session_id = $1 AND tenant_id = $2
+         ORDER BY occurred_at ASC`,
+        [callId, id],
+      );
+      return rows;
+    });
+    if (events === null) return res.status(404).json({ error: 'Call not found' });
+    return res.json({ callId, events });
+  } catch (err) {
+    logger.error('Failed to fetch tenant call events for admin', { tenantId: id, callId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch call events' });
+  }
+});
+
+router.get('/platform/tenants/:id/calls/:callId/tool-executions', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, callId } = req.params;
+  try {
+    const sessionExists = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id FROM call_sessions WHERE id = $1 AND tenant_id = $2`,
+        [callId, id],
+      );
+      return rows.length > 0;
+    });
+    if (!sessionExists) return res.status(404).json({ error: 'Call not found' });
+
+    const result = await listToolExecutions({
+      tenantId: id,
+      callSessionId: callId,
+      limit: 200,
+      offset: 0,
+    });
+    return res.json({ executions: result.executions, total: result.total });
+  } catch (err) {
+    logger.error('Failed to fetch tenant tool executions for admin', { tenantId: id, callId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch tool executions' });
   }
 });
 
