@@ -127,12 +127,19 @@ cross-tenant data.
     `/platform/*` admin endpoint used by `AdminAnalytics` and
     `AdminMarketplace`.
 
+### Tools registry (Task #122)
+
+- `GET /tools/registry` is now tenant-scoped: it returns only tools
+  that are enabled for at least one of the tenant's agents (using the
+  same template-permission + `agent_tools` override logic as
+  `GET /agents/:id/tools`). It is gated by `requireAuth` and scoped
+  via `req.user.tenantId`.
+- `GET /platform/tools/registry` returns the full platform-wide
+  `unifiedToolRegistry` snapshot and is gated by both `requireAuth`
+  and `requirePlatformAdmin`.
+
 ## 4. Open follow-ups (out of scope for #108)
 
-- `tools/registry` returns a global tool definition list (not a per-
-  tenant endpoint). It is metadata only (no execution data) and does
-  not leak tenant data, but should be moved under `/platform/...` if
-  it ever exposes runtime details.
 - Frontend route `/admin/security` reuses tenant `Compliance` page;
   acceptable today (it already scopes by `req.user.tenantId`) but
   future security overview features for the admin console should

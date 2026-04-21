@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { requireRole } from '../middleware/rbac';
+import { requireRole, requirePlatformAdmin } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import {
   listToolExecutions,
@@ -8,6 +8,8 @@ import {
   getToolExecutionStats,
 } from '../../../platform/tools/ToolExecutionService';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
+import { getPlatformPool, withTenantContext } from '../../../platform/db';
+import { getTemplatePermissions, getAllKnownTools } from '../../../platform/agent-templates/toolPermissions';
 
 const logger = createLogger('TOOL_EXECUTIONS_API');
 const router = Router();
@@ -116,12 +118,74 @@ router.post('/tool-executions/:id/replay', requireAuth, requireRole('manager'), 
   }
 });
 
-router.get('/tools/registry', requireAuth, async (_req, res) => {
+router.get('/tools/registry', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: agents } = await client.query(
+      `SELECT id, type FROM agents WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    const { rows: overrideRows } = await client.query(
+      `SELECT agent_id, tool_name, is_enabled FROM agent_tools WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    await client.query('COMMIT');
+
+    const overridesByAgent = new Map<string, Map<string, boolean>>();
+    for (const row of overrideRows) {
+      let m = overridesByAgent.get(row.agent_id as string);
+      if (!m) {
+        m = new Map();
+        overridesByAgent.set(row.agent_id as string, m);
+      }
+      m.set(row.tool_name as string, row.is_enabled as boolean);
+    }
+
+    const enabled = new Set<string>();
+    const knownTools = getAllKnownTools();
+    for (const agent of agents) {
+      const permissions = getTemplatePermissions(agent.type as string);
+      const overrides = overridesByAgent.get(agent.id as string) ?? new Map<string, boolean>();
+      for (const toolName of knownTools) {
+        const override = overrides.get(toolName);
+        let isEnabled: boolean;
+        if (override !== undefined) {
+          isEnabled = override;
+        } else if (permissions.allowedTools.includes(toolName)) {
+          isEnabled = true;
+        } else if (permissions.deniedTools.includes(toolName)) {
+          isEnabled = false;
+        } else {
+          isEnabled = permissions.allowedTools.length === 0;
+        }
+        if (isEnabled) enabled.add(toolName);
+      }
+    }
+
+    const snapshot = unifiedToolRegistry
+      .getRegistrySnapshot()
+      .filter((t) => enabled.has(t.name));
+    return res.json({ tools: snapshot });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to list tenant tool registry', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list tool registry' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/platform/tools/registry', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
     const snapshot = unifiedToolRegistry.getRegistrySnapshot();
     return res.json({ tools: snapshot });
   } catch (err) {
-    logger.error('Failed to get tool registry', { error: String(err) });
+    logger.error('Failed to get platform tool registry', { error: String(err) });
     return res.status(500).json({ error: 'Failed to get tool registry' });
   }
 });
