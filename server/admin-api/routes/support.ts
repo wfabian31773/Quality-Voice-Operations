@@ -266,6 +266,9 @@ router.get('/docs/feedback/summary', requireAuth, requirePlatformAdmin, async (r
          COUNT(*) FILTER (WHERE vote = 'helpful')::int AS helpful_count,
          COUNT(*) FILTER (WHERE vote = 'not_helpful')::int AS not_helpful_count,
          COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0)::int AS comment_count,
+         COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0 AND status = 'new')::int AS new_comment_count,
+         COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0 AND status = 'resolved')::int AS resolved_comment_count,
+         COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0 AND status = 'hidden')::int AS hidden_comment_count,
          CASE WHEN COUNT(*) > 0
               THEN ROUND(100.0 * COUNT(*) FILTER (WHERE vote = 'helpful') / COUNT(*))::int
               ELSE NULL END AS helpful_ratio,

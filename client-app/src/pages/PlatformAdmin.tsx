@@ -15,6 +15,9 @@ interface DocsFeedbackArticle {
   helpful_count: number;
   not_helpful_count: number;
   comment_count: number;
+  new_comment_count: number;
+  resolved_comment_count: number;
+  hidden_comment_count: number;
   helpful_ratio: number | null;
   last_vote_at: string | null;
 }
@@ -959,9 +962,16 @@ function DocsFeedbackTab() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-muted">
-                          <MessageSquare className="h-3.5 w-3.5" /> {a.comment_count}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex items-center gap-1 text-muted">
+                            <MessageSquare className="h-3.5 w-3.5" /> {a.comment_count}
+                          </span>
+                          {a.comment_count > 0 && (
+                            <span className="text-xs text-muted">
+                              {a.new_comment_count} new · {a.resolved_comment_count} resolved · {a.hidden_comment_count} hidden
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-muted whitespace-nowrap">
                         {a.last_vote_at ? new Date(a.last_vote_at).toLocaleDateString() : '—'}
