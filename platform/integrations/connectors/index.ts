@@ -1,5 +1,6 @@
 export { ConnectorService, connectorService } from './ConnectorService';
-export { getConnectorConfig, getConnectorById, listConnectorConfigs, upsertConnector, deleteConnector, listActiveConnectorsByType, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
+export { getConnectorConfig, getConnectorById, listConnectorConfigs, upsertConnector, deleteConnector, listActiveConnectorsByType, listEnabledConnectorConfigs, updateConnectorSyncStatus, updateConnectorCredentials, markConnectorReconnectNeeded } from './db';
+export { ensureFreshOAuthToken } from './tokenRefresh';
 export { encryptValue, decryptValue } from './crypto';
 export type {
   ConnectorType,

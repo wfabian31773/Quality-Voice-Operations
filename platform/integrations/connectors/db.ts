@@ -171,6 +171,64 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
   });
 }
 
+export async function updateConnectorCredentials(
+  tenantId: TenantId,
+  integrationId: string,
+  credentials: Record<string, string>,
+): Promise<void> {
+  if (Object.keys(credentials).length === 0) return;
+  const { encryptValue } = await import('./crypto');
+  let envelopeEncrypt: ((value: string) => Promise<string>) | null = null;
+  try {
+    const { encryptSensitiveField } = await import('../../security/FieldEncryption');
+    envelopeEncrypt = (value: string) => encryptSensitiveField(tenantId, value);
+  } catch {
+    // fall back to connector crypto
+  }
+
+  await withTenant(tenantId, async (client) => {
+    for (const [key, value] of Object.entries(credentials)) {
+      let encrypted: string;
+      if (envelopeEncrypt) {
+        try {
+          encrypted = await envelopeEncrypt(value);
+        } catch {
+          encrypted = encryptValue(value);
+        }
+      } else {
+        encrypted = encryptValue(value);
+      }
+      await client.query(
+        `INSERT INTO connector_configs (tenant_id, integration_id, config_key, encrypted_value)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (integration_id, config_key)
+         DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, updated_at = NOW()`,
+        [tenantId, integrationId, key, encrypted],
+      );
+    }
+  });
+}
+
+export async function markConnectorReconnectNeeded(
+  tenantId: TenantId,
+  integrationId: string,
+): Promise<void> {
+  try {
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `UPDATE integrations
+            SET last_sync_status = 'needs_reconnect',
+                last_sync_at = NOW(),
+                updated_at = NOW()
+          WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, integrationId],
+      );
+    });
+  } catch (err) {
+    logger.warn('Failed to mark connector needs_reconnect', { tenantId, integrationId, error: String(err) });
+  }
+}
+
 export async function updateConnectorSyncStatus(
   tenantId: TenantId,
   connectorType: ConnectorType,

@@ -1,4 +1,5 @@
 import { createLogger } from '../../../core/logger';
+import { ensureFreshOAuthToken } from '../tokenRefresh';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -85,7 +86,15 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const auth = resolveAuth(config);
+    let activeConfig = config;
+    try {
+      activeConfig = await ensureFreshOAuthToken(config);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('Pipedrive token refresh failed', { tenantId, error });
+      return { success: false, error: `Pipedrive token refresh failed: ${error}` };
+    }
+    const auth = resolveAuth(activeConfig);
     if (!auth) {
       logger.error('Missing Pipedrive credentials', { tenantId });
       return { success: false, error: 'Pipedrive connector not configured: missing access_token or api_token' };

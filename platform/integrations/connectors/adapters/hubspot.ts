@@ -1,4 +1,5 @@
 import { createLogger } from '../../../core/logger';
+import { ensureFreshOAuthToken } from '../tokenRefresh';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -12,7 +13,15 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const accessToken = config.credentials.access_token ?? '';
+    let activeConfig = config;
+    try {
+      activeConfig = await ensureFreshOAuthToken(config);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('HubSpot token refresh failed', { tenantId, error });
+      return { success: false, error: `HubSpot token refresh failed: ${error}` };
+    }
+    const accessToken = activeConfig.credentials.access_token ?? '';
     if (!accessToken) {
       logger.error('Missing HubSpot access token', { tenantId });
       return { success: false, error: 'HubSpot connector not configured: missing access_token' };

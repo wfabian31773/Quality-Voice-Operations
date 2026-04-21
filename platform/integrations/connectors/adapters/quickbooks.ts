@@ -1,4 +1,5 @@
 import { createLogger } from '../../../core/logger';
+import { ensureFreshOAuthToken } from '../tokenRefresh';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -74,7 +75,15 @@ export class QuickBooksConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const auth = resolveAuth(config);
+    let activeConfig = config;
+    try {
+      activeConfig = await ensureFreshOAuthToken(config);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('QuickBooks token refresh failed', { tenantId, error });
+      return { success: false, error: `QuickBooks token refresh failed: ${error}` };
+    }
+    const auth = resolveAuth(activeConfig);
     if (!auth) {
       logger.error('Missing QuickBooks credentials', { tenantId });
       return { success: false, error: 'QuickBooks connector not configured: missing access_token or realm_id' };
@@ -82,7 +91,7 @@ export class QuickBooksConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'call.completed':
-        return this.handleCallCompleted(tenantId, config, auth, payload);
+        return this.handleCallCompleted(tenantId, activeConfig, auth, payload);
       case 'appointment.booked':
         return this.handleAppointmentBooked(tenantId, auth, payload);
       default:
