@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, Stethoscope, Smile, Scale, Home, Wrench } from 'lucide-react';
+import { ArrowUpRight, Stethoscope, Smile, Scale, Home, Wrench, PawPrint, Car, Landmark, Hotel } from 'lucide-react';
 import RevealSection from './RevealSection';
 
 type Industry = {
@@ -63,6 +63,46 @@ const industries: Industry[] = [
     accent: 'from-orange-500/70 to-amber-500/50',
     ringColor: 'ring-orange-400/30',
     stat: { value: '100%', label: 'Emergencies captured' },
+  },
+  {
+    slug: 'veterinary',
+    name: 'Veterinary',
+    tagline: 'Book visits and triage urgent pet care 24/7.',
+    image: '/industry-hero/veterinary.jpg',
+    icon: PawPrint,
+    accent: 'from-green-500/70 to-teal/50',
+    ringColor: 'ring-green-400/30',
+    stat: { value: '40%', label: 'Tech hours freed' },
+  },
+  {
+    slug: 'automotive',
+    name: 'Automotive',
+    tagline: 'Capture sales leads and book service in under a minute.',
+    image: '/industry-hero/automotive.jpg',
+    icon: Car,
+    accent: 'from-slate-500/70 to-blue-500/40',
+    ringColor: 'ring-slate-400/30',
+    stat: { value: '4x', label: 'After-hours leads' },
+  },
+  {
+    slug: 'finance',
+    name: 'Financial Services',
+    tagline: 'Compliant prospect intake and review scheduling.',
+    image: '/industry-hero/finance.jpg',
+    icon: Landmark,
+    accent: 'from-indigo-500/70 to-blue-500/40',
+    ringColor: 'ring-indigo-400/30',
+    stat: { value: '< 60s', label: 'Lead response' },
+  },
+  {
+    slug: 'hospitality',
+    name: 'Hospitality',
+    tagline: 'Multilingual reservations and guest concierge, 24/7.',
+    image: '/industry-hero/hospitality.jpg',
+    icon: Hotel,
+    accent: 'from-amber-500/70 to-rose-500/40',
+    ringColor: 'ring-amber-400/30',
+    stat: { value: '38%', label: 'Direct bookings lift' },
   },
 ];
 

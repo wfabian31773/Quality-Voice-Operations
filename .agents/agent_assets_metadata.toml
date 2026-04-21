@@ -30,6 +30,30 @@ uri = "file://client-app/public/industry-hero/home-services.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "tncmkDzpjv7-P4HgiWKdq"
+uri = "file://client-app/public/industry-hero/veterinary.png"
+type = "image"
+title = "veterinary clinic hero"
+
+[[generated]]
+id = "uWTGGHPT1Ufb5roCBZtoU"
+uri = "file://client-app/public/industry-hero/automotive.png"
+type = "image"
+title = "automotive service hero"
+
+[[generated]]
+id = "d3_ejfcBzR0qYWZHrk82b"
+uri = "file://client-app/public/industry-hero/finance.png"
+type = "image"
+title = "finance advisor hero"
+
+[[generated]]
+id = "WQZiafQ-xC8o7K1cV0F-t"
+uri = "file://client-app/public/industry-hero/hospitality.png"
+type = "image"
+title = "boutique hotel lobby hero"
+
 [[outputs]]
 id = "09pqwY-EUniMxQs7RNDod"
 uri = "file://PLATFORM_READINESS_AUDIT.md"
