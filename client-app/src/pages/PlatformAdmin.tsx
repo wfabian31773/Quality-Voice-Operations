@@ -1592,30 +1592,65 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
           ) : replies.length === 0 ? (
             <div className="text-xs text-muted italic">No replies yet.</div>
           ) : (
-            replies.map((r) => (
-              <div
-                key={r.id}
-                className={`p-3 rounded border ${
-                  r.direction === 'outbound'
-                    ? 'bg-primary/5 border-primary/20'
-                    : 'bg-surface border-border'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs text-muted mb-1">
-                  <span>
-                    <strong className="text-foreground">
-                      {r.direction === 'outbound' ? 'Support' : 'Customer'}
-                    </strong>
-                    {r.author_email ? ` · ${r.author_email}` : ''}
-                  </span>
-                  <span>{new Date(r.created_at).toLocaleString()}</span>
+            replies.map((r) => {
+              const isOutbound = r.direction === 'outbound';
+              let badge: { label: string; className: string; title: string } | null = null;
+              if (isOutbound) {
+                if (r.email_error) {
+                  badge = {
+                    label: 'Failed',
+                    className: 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
+                    title: r.email_error,
+                  };
+                } else if (r.email_message_id) {
+                  badge = {
+                    label: 'Sent',
+                    className: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900',
+                    title: `SMTP message id: ${r.email_message_id}`,
+                  };
+                } else {
+                  badge = {
+                    label: 'Logged (dev)',
+                    className: 'bg-muted/30 text-muted border-border',
+                    title: 'No SMTP delivery — reply was logged to the server console (development mode).',
+                  };
+                }
+              }
+              return (
+                <div
+                  key={r.id}
+                  className={`p-3 rounded border ${
+                    isOutbound
+                      ? r.email_error
+                        ? 'bg-red-50 border-red-300 dark:bg-red-950/20 dark:border-red-900'
+                        : 'bg-primary/5 border-primary/20'
+                      : 'bg-surface border-border'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs text-muted mb-1 gap-2">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <strong className="text-foreground">
+                        {isOutbound ? 'Support' : 'Customer'}
+                      </strong>
+                      {r.author_email ? <span className="truncate">· {r.author_email}</span> : null}
+                      {badge && (
+                        <span
+                          title={badge.title}
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide cursor-help ${badge.className}`}
+                        >
+                          {badge.label}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0">{new Date(r.created_at).toLocaleString()}</span>
+                  </div>
+                  <div className="whitespace-pre-wrap text-sm">{r.body}</div>
+                  {r.email_error && (
+                    <div className="text-xs text-red-600 mt-1">Email delivery error: {r.email_error}</div>
+                  )}
                 </div>
-                <div className="whitespace-pre-wrap text-sm">{r.body}</div>
-                {r.email_error && (
-                  <div className="text-xs text-red-600 mt-1">Email delivery error: {r.email_error}</div>
-                )}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
