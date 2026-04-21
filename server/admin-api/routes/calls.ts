@@ -254,7 +254,8 @@ const listSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT id, name, filters, is_shared, created_by, created_at, updated_at
+      `SELECT id, name, filters, is_shared, created_by, created_at, updated_at,
+              digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count
        FROM call_saved_views
        WHERE tenant_id = $1 AND (created_by = $2 OR is_shared = true)
        ORDER BY name ASC`,
@@ -271,23 +272,83 @@ const listSavedViewsHandler: RequestHandler = async (req, res) => {
   }
 };
 
+function sanitizeSubscribers(input: unknown): string[] | null {
+  if (!Array.isArray(input)) return null;
+  const cleaned: string[] = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const e = raw.trim().toLowerCase();
+    if (!e) continue;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) continue;
+    if (e.length > 320) continue;
+    if (!cleaned.includes(e)) cleaned.push(e);
+    if (cleaned.length >= 50) break;
+  }
+  return cleaned;
+}
+
+// Restrict subscriber emails to active members of the same tenant. This prevents
+// a saved-view owner from exfiltrating tenant call data to arbitrary external addresses.
+async function filterToTenantMembers(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ email: string }> }> },
+  tenantId: string,
+  candidates: string[],
+): Promise<{ allowed: string[]; rejected: string[] }> {
+  if (candidates.length === 0) return { allowed: [], rejected: [] };
+  const { rows } = await client.query(
+    `SELECT LOWER(email) AS email FROM users WHERE tenant_id = $1 AND is_active = TRUE AND LOWER(email) = ANY($2::text[])`,
+    [tenantId, candidates],
+  );
+  const allowedSet = new Set(rows.map((r) => r.email));
+  const allowed: string[] = [];
+  const rejected: string[] = [];
+  for (const e of candidates) {
+    if (allowedSet.has(e)) allowed.push(e);
+    else rejected.push(e);
+  }
+  return { allowed, rejected };
+}
+
 const createSavedViewHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
-  const { name, filters, is_shared } = req.body as { name?: string; filters?: Record<string, unknown>; is_shared?: boolean };
+  const { name, filters, is_shared, digest_enabled, digest_subscribers } = req.body as {
+    name?: string;
+    filters?: Record<string, unknown>;
+    is_shared?: boolean;
+    digest_enabled?: boolean;
+    digest_subscribers?: unknown;
+  };
   const trimmed = typeof name === 'string' ? name.trim() : '';
   if (!trimmed) return res.status(400).json({ error: 'name is required' });
   if (trimmed.length > 255) return res.status(400).json({ error: 'name too long' });
   if (filters && typeof filters !== 'object') return res.status(400).json({ error: 'filters must be an object' });
+  const subs = digest_subscribers !== undefined ? sanitizeSubscribers(digest_subscribers) : [];
+  if (digest_subscribers !== undefined && subs === null) {
+    return res.status(400).json({ error: 'digest_subscribers must be an array of emails' });
+  }
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
+    let allowedSubs: string[] = [];
+    if (subs && subs.length > 0) {
+      const { allowed, rejected } = await filterToTenantMembers(client, tenantId, subs);
+      if (rejected.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: 'digest_subscribers may only contain emails of active users in your workspace',
+          rejected,
+        });
+      }
+      allowedSubs = allowed;
+    }
     const { rows } = await client.query(
-      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, created_by)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at`,
-      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), userId],
+      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, created_by, digest_enabled, digest_subscribers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at,
+                 digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
+      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), userId, Boolean(digest_enabled), allowedSubs],
     );
     await client.query('COMMIT');
     return res.status(201).json({ view: rows[0] });
@@ -301,25 +362,76 @@ const createSavedViewHandler: RequestHandler = async (req, res) => {
 };
 
 const updateSavedViewHandler: RequestHandler = async (req, res) => {
-  const { tenantId, userId } = req.user!;
+  const { tenantId, userId, email: requesterEmail } = req.user!;
   const { id } = req.params;
-  const { name, filters, is_shared } = req.body as { name?: string; filters?: Record<string, unknown>; is_shared?: boolean };
+  const { name, filters, is_shared, digest_enabled, digest_subscribers } = req.body as {
+    name?: string;
+    filters?: Record<string, unknown>;
+    is_shared?: boolean;
+    digest_enabled?: boolean;
+    digest_subscribers?: unknown;
+  };
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows: existing } = await client.query(
-      `SELECT created_by FROM call_saved_views WHERE id = $1 AND tenant_id = $2`,
+      `SELECT created_by, is_shared, digest_subscribers FROM call_saved_views WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
     if (existing.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Saved view not found' });
     }
-    if (existing[0].created_by !== userId) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Only the owner can edit this view' });
+    const isOwner = existing[0].created_by === userId;
+    const isShared = existing[0].is_shared === true;
+    let effectiveDigestSubscribers: unknown = digest_subscribers;
+    const currentSubs: string[] = Array.isArray(existing[0].digest_subscribers)
+      ? (existing[0].digest_subscribers as string[]).map((e) => String(e).toLowerCase())
+      : [];
+    // Allow non-owners to edit only their own digest_subscribers entry on a shared view.
+    const onlyDigestSubsChange =
+      name === undefined && filters === undefined && is_shared === undefined && digest_enabled === undefined &&
+      digest_subscribers !== undefined;
+    if (!isOwner) {
+      if (!(isShared && onlyDigestSubsChange)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only the owner can edit this view' });
+      }
+      // Non-owner subscriber edits are constrained to add/remove only the requester's own
+      // verified account email, against the existing subscriber list. They cannot replace
+      // the list, add other people, or invite arbitrary external addresses.
+      const requested = sanitizeSubscribers(digest_subscribers);
+      const myEmail = (requesterEmail ?? '').trim().toLowerCase();
+      if (!myEmail) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Your account has no email on file' });
+      }
+      if (requested === null) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'digest_subscribers must be an array of emails' });
+      }
+      const currentSet = new Set(currentSubs);
+      const requestedSet = new Set(requested);
+      const wantsAdd = requestedSet.has(myEmail);
+      const wantsRemove = !wantsAdd;
+      // Diff what changed; the only delta allowed is the requester's own email being toggled.
+      const added = [...requestedSet].filter((e) => !currentSet.has(e));
+      const removed = [...currentSet].filter((e) => !requestedSet.has(e));
+      const allowed =
+        (added.length === 0 && removed.length === 0) ||
+        (wantsAdd && added.length === 1 && added[0] === myEmail && removed.length === 0) ||
+        (wantsRemove && removed.length === 1 && removed[0] === myEmail && added.length === 0);
+      if (!allowed) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'You can only subscribe or unsubscribe yourself' });
+      }
+      // Replace the requested array with the safely diffed result so we never write attacker input.
+      const safe = wantsAdd
+        ? Array.from(new Set([...currentSubs, myEmail]))
+        : currentSubs.filter((e) => e !== myEmail);
+      effectiveDigestSubscribers = safe;
     }
     const updates: string[] = [];
     const values: unknown[] = [];
@@ -336,6 +448,34 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     if (typeof is_shared === 'boolean') {
       values.push(is_shared); updates.push(`is_shared = $${values.length}`);
     }
+    if (typeof digest_enabled === 'boolean') {
+      values.push(digest_enabled); updates.push(`digest_enabled = $${values.length}`);
+    }
+    if (digest_subscribers !== undefined) {
+      let subs: string[] | null;
+      if (effectiveDigestSubscribers !== digest_subscribers && Array.isArray(effectiveDigestSubscribers)) {
+        // Already validated/diffed in the non-owner branch above (and constrained to
+        // the requester's own verified email, which is by definition a tenant member).
+        subs = effectiveDigestSubscribers as string[];
+      } else {
+        subs = sanitizeSubscribers(digest_subscribers);
+        if (subs === null) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'digest_subscribers must be an array of emails' }); }
+        if (subs.length > 0) {
+          // Owners may only subscribe active members of their own tenant.
+          const { allowed, rejected } = await filterToTenantMembers(client, tenantId, subs);
+          if (rejected.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              error: 'digest_subscribers may only contain emails of active users in your workspace',
+              rejected,
+            });
+          }
+          subs = allowed;
+        }
+      }
+      if (subs === null) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'digest_subscribers must be an array of emails' }); }
+      values.push(subs); updates.push(`digest_subscribers = $${values.length}`);
+    }
     if (updates.length === 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No fields to update' });
@@ -345,7 +485,8 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     const { rows } = await client.query(
       `UPDATE call_saved_views SET ${updates.join(', ')}
        WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
-       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at`,
+       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at,
+                 digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
       values,
     );
     await client.query('COMMIT');

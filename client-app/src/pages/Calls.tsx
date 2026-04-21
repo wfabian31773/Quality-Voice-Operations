@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX } from 'lucide-react';
 import { format } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -264,6 +264,10 @@ interface SavedView {
   filters: Partial<FiltersState>;
   is_shared: boolean;
   created_by: string | null;
+  digest_enabled?: boolean;
+  digest_subscribers?: string[];
+  digest_last_run_at?: string | null;
+  digest_last_match_count?: number | null;
 }
 
 function normalizeFilters(input: Partial<FiltersState> | null | undefined): FiltersState {
@@ -301,6 +305,7 @@ export default function Calls() {
   const [savingView, setSavingView] = useState(false);
   const [newViewName, setNewViewName] = useState('');
   const [newViewShared, setNewViewShared] = useState(false);
+  const [newViewDigest, setNewViewDigest] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const limit = 20;
@@ -353,9 +358,10 @@ export default function Calls() {
 
   const { data: meData } = useQuery({
     queryKey: ['me'],
-    queryFn: () => api.get<{ user: { userId: string } }>('/auth/me'),
+    queryFn: () => api.get<{ user: { userId: string; email?: string } }>('/auth/me'),
   });
   const currentUserId = meData?.user?.userId ?? null;
+  const currentUserEmail = meData?.user?.email?.toLowerCase() ?? null;
 
   // Hydrate filters from a deep-link ?view=<id>: when the saved views load and the
   // active view's filters differ from current state (because the URL only contained
@@ -412,12 +418,14 @@ export default function Calls() {
         name,
         filters,
         is_shared: newViewShared,
+        digest_enabled: newViewDigest,
       });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
       setActiveViewId(res.view.id);
       setSavingView(false);
       setNewViewName('');
       setNewViewShared(false);
+      setNewViewDigest(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save view');
     }
@@ -430,6 +438,33 @@ export default function Calls() {
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to update view');
+    }
+  };
+
+  const handleToggleDigest = async (view: SavedView) => {
+    try {
+      await api.patch(`/call-saved-views/${view.id}`, { digest_enabled: !view.digest_enabled });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to toggle digest');
+    }
+  };
+
+  const handleToggleSubscribe = async (view: SavedView) => {
+    if (!currentUserEmail) {
+      setSaveError('Your account needs an email to subscribe.');
+      return;
+    }
+    const current = (view.digest_subscribers ?? []).map((e) => e.toLowerCase());
+    const isSubscribed = current.includes(currentUserEmail);
+    const next = isSubscribed
+      ? current.filter((e) => e !== currentUserEmail)
+      : Array.from(new Set([...current, currentUserEmail]));
+    try {
+      await api.patch(`/call-saved-views/${view.id}`, { digest_subscribers: next });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to update subscription');
     }
   };
 
@@ -514,7 +549,7 @@ export default function Calls() {
           )}
           {activeFilterCount > 0 && !savingView && (
             <button
-              onClick={() => { setSavingView(true); setSaveError(null); setNewViewName(''); setNewViewShared(false); }}
+              onClick={() => { setSavingView(true); setSaveError(null); setNewViewName(''); setNewViewShared(false); setNewViewDigest(false); }}
               className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
             >
               <Bookmark className="h-4 w-4" /> Save view
@@ -545,16 +580,40 @@ export default function Calls() {
                   {view.is_shared ? <Users className="h-3.5 w-3.5" /> : <Star className="h-3.5 w-3.5" />}
                   {view.name}
                 </button>
-                {isOwner && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteView(view.id); }}
-                    className="p-1 mr-1 rounded-full text-text-muted hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-                    title="Delete view"
-                    aria-label={`Delete saved view ${view.name}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                {isOwner ? (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleToggleDigest(view); }}
+                      className={`p-1 rounded-full transition ${view.digest_enabled ? 'text-primary' : 'text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
+                      title={view.digest_enabled ? 'Daily email digest is on — click to turn off' : 'Send me a daily email digest'}
+                      aria-label={view.digest_enabled ? `Turn off daily digest for ${view.name}` : `Turn on daily digest for ${view.name}`}
+                    >
+                      {view.digest_enabled ? <Mail className="h-3.5 w-3.5" /> : <MailX className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteView(view.id); }}
+                      className="p-1 mr-1 rounded-full text-text-muted hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                      title="Delete view"
+                      aria-label={`Delete saved view ${view.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                ) : (view.is_shared && view.digest_enabled && currentUserEmail) ? (
+                  (() => {
+                    const subscribed = (view.digest_subscribers ?? []).map((e) => e.toLowerCase()).includes(currentUserEmail);
+                    return (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleToggleSubscribe(view); }}
+                        className={`p-1 mr-1 rounded-full transition ${subscribed ? 'text-primary' : 'text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
+                        title={subscribed ? 'You are subscribed to this digest — click to unsubscribe' : 'Subscribe me to this daily digest'}
+                        aria-label={subscribed ? `Unsubscribe from ${view.name} digest` : `Subscribe to ${view.name} digest`}
+                      >
+                        {subscribed ? <Mail className="h-3.5 w-3.5" /> : <MailX className="h-3.5 w-3.5" />}
+                      </button>
+                    );
+                  })()
+                ) : null}
               </div>
             );
           })}
@@ -591,6 +650,16 @@ export default function Calls() {
                 className="rounded border-border"
               />
               Share with my team
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-text-primary" title="We'll email you once a day if any new calls match this view in the last 24 hours.">
+              <input
+                type="checkbox"
+                checked={newViewDigest}
+                onChange={(e) => setNewViewDigest(e.target.checked)}
+                className="rounded border-border"
+              />
+              <Mail className="h-3.5 w-3.5" />
+              Email me a daily summary
             </label>
             <button
               onClick={handleSaveView}

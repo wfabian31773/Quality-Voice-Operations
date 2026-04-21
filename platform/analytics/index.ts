@@ -79,6 +79,7 @@ export type {
   OperationsAlert,
 } from './InsightsEngine';
 export { startInsightsScheduler, stopInsightsScheduler } from './InsightsScheduler';
+export { startCallViewDigestScheduler, stopCallViewDigestScheduler, runCallViewDigestCycle } from './CallViewDigestScheduler';
 export {
   detectWeaknesses,
   generatePromptImprovement,

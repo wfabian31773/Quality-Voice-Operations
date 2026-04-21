@@ -10,7 +10,7 @@ import { validateEnvironment, validateDatabaseConnection } from '../../scripts/v
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
-import { startInsightsScheduler, stopInsightsScheduler } from '../../platform/analytics';
+import { startInsightsScheduler, stopInsightsScheduler, startCallViewDigestScheduler, stopCallViewDigestScheduler } from '../../platform/analytics';
 import { startWorkforceScheduler, stopWorkforceScheduler } from '../../platform/workforce/WorkforceScheduler';
 import { startGinScheduler, stopGinScheduler } from '../../platform/gin';
 import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
@@ -70,6 +70,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     pollIntervalMs: 15_000,
   });
   startInsightsScheduler();
+  startCallViewDigestScheduler();
   startWorkforceScheduler();
   startGinScheduler();
   startMilestoneScheduler();
@@ -89,6 +90,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopUsageGuardrailsScheduler();
   stopCampaignScheduler();
   stopInsightsScheduler();
+  stopCallViewDigestScheduler();
   stopWorkforceScheduler();
   stopGinScheduler();
   stopMilestoneScheduler();
