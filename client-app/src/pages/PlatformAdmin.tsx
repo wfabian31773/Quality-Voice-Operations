@@ -1358,6 +1358,19 @@ interface SupportTicket {
   updated_at: string;
 }
 
+interface SupportReply {
+  id: number;
+  ticket_id: string;
+  direction: 'outbound' | 'inbound';
+  author_user_id: string | null;
+  author_email: string | null;
+  body: string;
+  email_message_id: string | null;
+  email_error: string | null;
+  source: string | null;
+  created_at: string;
+}
+
 function SupportInboxTab() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'resolved' | 'closed'>('open');
@@ -1386,18 +1399,8 @@ function SupportInboxTab() {
 
   const tickets = data?.tickets ?? [];
 
-  const buildMailto = (t: SupportTicket): string => {
-    if (!t.user_email) return '';
-    const subject = encodeURIComponent(`Re: [QVO Support] ${t.topic.toUpperCase()} (${t.id})`);
-    const body = encodeURIComponent(
-      `Hi,\n\nThanks for reaching out about your ${t.topic} request (ref ${t.id}).\n\n— QVO Support\n\n----- Original message -----\n${t.message}`,
-    );
-    return `mailto:${t.user_email}?subject=${subject}&body=${body}`;
-  };
-
   const failedCount = stats?.email_failed ?? 0;
   const failedOpenCount = stats?.email_failed_open ?? 0;
-
   return (
     <div className="space-y-4">
       {failedCount > 0 && (
@@ -1500,39 +1503,19 @@ function SupportInboxTab() {
                     <td className="px-4 py-3 text-muted text-xs">{new Date(t.created_at).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       {t.user_email && (
-                        <a
-                          href={buildMailto(t)}
+                        <button
+                          onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
                           className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary text-white hover:opacity-90"
                         >
                           <Mail className="h-3 w-3" /> Reply
-                        </a>
+                        </button>
                       )}
                     </td>
                   </tr>
                   {expandedId === t.id && (
                     <tr className="bg-surface-secondary/30">
                       <td colSpan={9} className="px-6 py-4">
-                        <div className="space-y-3">
-                          <div>
-                            <div className="text-xs font-medium text-muted mb-1">Message</div>
-                            <pre className="whitespace-pre-wrap text-sm bg-surface p-3 rounded border border-border">{t.message}</pre>
-                          </div>
-                          {t.recent_errors && (
-                            <div>
-                              <div className="text-xs font-medium text-muted mb-1">Recent errors</div>
-                              <pre className="whitespace-pre-wrap text-xs bg-red-50 dark:bg-red-950/20 p-3 rounded border border-border font-mono">{t.recent_errors}</pre>
-                            </div>
-                          )}
-                          {t.context && Object.keys(t.context).length > 0 && (
-                            <div>
-                              <div className="text-xs font-medium text-muted mb-1">Context</div>
-                              <pre className="text-xs bg-surface p-3 rounded border border-border font-mono">{JSON.stringify(t.context, null, 2)}</pre>
-                            </div>
-                          )}
-                          {t.email_error && (
-                            <div className="text-xs text-red-600">Email delivery error: {t.email_error}</div>
-                          )}
-                        </div>
+                        <TicketThread ticket={t} />
                       </td>
                     </tr>
                   )}
@@ -1541,6 +1524,133 @@ function SupportInboxTab() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function TicketThread({ ticket }: { ticket: SupportTicket }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['support-ticket-replies', ticket.id],
+    queryFn: () => api.get<{ replies: SupportReply[] }>(`/support/tickets/${ticket.id}/replies`),
+    refetchInterval: 30_000,
+  });
+
+  const sendReply = useMutation({
+    mutationFn: (body: string) =>
+      api.post<{ success: boolean; email_delivered: boolean; reply: SupportReply }>(
+        `/support/tickets/${ticket.id}/replies`,
+        { body },
+      ),
+    onSuccess: () => {
+      setDraft('');
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+    },
+  });
+
+  const replies = data?.replies ?? [];
+  const trimmed = draft.trim();
+  const sendError = sendReply.error instanceof Error ? sendReply.error.message : null;
+  const lastReply = sendReply.data;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="space-y-3">
+        <div>
+          <div className="text-xs font-medium text-muted mb-1">Original message</div>
+          <pre className="whitespace-pre-wrap text-sm bg-surface p-3 rounded border border-border">{ticket.message}</pre>
+          <div className="text-xs text-muted mt-1">
+            {ticket.user_email ?? '—'} · {new Date(ticket.created_at).toLocaleString()}
+          </div>
+        </div>
+        {ticket.recent_errors && (
+          <div>
+            <div className="text-xs font-medium text-muted mb-1">Recent errors</div>
+            <pre className="whitespace-pre-wrap text-xs bg-red-50 dark:bg-red-950/20 p-3 rounded border border-border font-mono">{ticket.recent_errors}</pre>
+          </div>
+        )}
+        {ticket.context && Object.keys(ticket.context).length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-muted mb-1">Context</div>
+            <pre className="text-xs bg-surface p-3 rounded border border-border font-mono">{JSON.stringify(ticket.context, null, 2)}</pre>
+          </div>
+        )}
+        {ticket.email_error && (
+          <div className="text-xs text-red-600">Initial email delivery error: {ticket.email_error}</div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted">Conversation</div>
+        <div className="space-y-2 max-h-72 overflow-y-auto">
+          {isLoading ? (
+            <div className="text-xs text-muted">Loading replies…</div>
+          ) : replies.length === 0 ? (
+            <div className="text-xs text-muted italic">No replies yet.</div>
+          ) : (
+            replies.map((r) => (
+              <div
+                key={r.id}
+                className={`p-3 rounded border ${
+                  r.direction === 'outbound'
+                    ? 'bg-primary/5 border-primary/20'
+                    : 'bg-surface border-border'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs text-muted mb-1">
+                  <span>
+                    <strong className="text-foreground">
+                      {r.direction === 'outbound' ? 'Support' : 'Customer'}
+                    </strong>
+                    {r.author_email ? ` · ${r.author_email}` : ''}
+                  </span>
+                  <span>{new Date(r.created_at).toLocaleString()}</span>
+                </div>
+                <div className="whitespace-pre-wrap text-sm">{r.body}</div>
+                {r.email_error && (
+                  <div className="text-xs text-red-600 mt-1">Email delivery error: {r.email_error}</div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="space-y-2 pt-2 border-t border-border">
+          <label className="text-xs font-medium text-muted">
+            Reply to {ticket.user_email ?? 'customer'}
+          </label>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={5}
+            placeholder="Type your reply…"
+            className="w-full text-sm rounded-lg border border-border bg-surface p-3 focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted">
+              Sent via the same SMTP path. Customer replies thread back automatically.
+            </div>
+            <button
+              type="button"
+              onClick={() => trimmed && sendReply.mutate(trimmed)}
+              disabled={!trimmed || sendReply.isPending || !ticket.user_email}
+              className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-primary text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              {sendReply.isPending ? 'Sending…' : 'Send reply'}
+            </button>
+          </div>
+          {sendError && <div className="text-xs text-red-600">{sendError}</div>}
+          {lastReply && !sendError && (
+            <div className="text-xs text-green-600">
+              {lastReply.email_delivered ? 'Reply sent.' : 'Reply recorded, but email delivery failed.'}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

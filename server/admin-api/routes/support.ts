@@ -27,11 +27,12 @@ async function sendOpsEmailWithRetry(
   subject: string,
   html: string,
   text: string,
+  options?: { replyTo?: string; headers?: Record<string, string> },
 ): Promise<{ result: EmailResult; attempts: number }> {
   let last: EmailResult = { success: false, error: 'no attempts' };
   const total = OPS_EMAIL_RETRY_DELAYS_MS.length + 1;
   for (let i = 0; i < total; i++) {
-    last = await sendEmail({ to, subject, html, text });
+    last = await sendEmail({ to, subject, html, text, ...options });
     if (last.success) return { result: last, attempts: i + 1 };
     if (i < OPS_EMAIL_RETRY_DELAYS_MS.length) {
       logger.warn('Ops support email attempt failed, retrying', {
@@ -91,6 +92,19 @@ const VALID_TOPICS = new Set([
 ]);
 
 const FALLBACK_DESTINATION = 'support@qvo.ai';
+const INBOUND_DOMAIN = process.env.SUPPORT_INBOUND_DOMAIN ?? 'reply.qvo.ai';
+const INBOUND_SECRET = process.env.SUPPORT_INBOUND_SECRET ?? '';
+
+function generateInboundToken(): string {
+  // 24 hex chars (~96 bits) — collision risk is negligible.
+  return Array.from({ length: 24 }, () =>
+    Math.floor(Math.random() * 16).toString(16),
+  ).join('');
+}
+
+function buildReplyToAddress(token: string): string {
+  return `support+${token}@${INBOUND_DOMAIN}`;
+}
 
 /**
  * Resolve the support destination email for a (plan, topic) pair using the
@@ -215,6 +229,7 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
   const plan = (user.tenantId ? await lookupPlan(user.tenantId) : null) ?? 'trial';
   const routedTo = await resolveDestination(plan.toLowerCase(), normalizedTopic);
   const ticketId = `tkt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  const inboundToken = generateInboundToken();
   const safeContext = (context && typeof context === 'object') ? context : {};
 
   // Persist
@@ -222,11 +237,11 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
   try {
     const pool = getPlatformPool();
     await pool.query(
-      `INSERT INTO support_tickets (id, tenant_id, user_id, user_email, plan, topic, message, recent_errors, context, routed_to)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      `INSERT INTO support_tickets (id, tenant_id, user_id, user_email, plan, topic, message, recent_errors, context, routed_to, inbound_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         ticketId, user.tenantId, user.userId, user.email, plan,
-        normalizedTopic, message, recent_errors || null, JSON.stringify(safeContext), routedTo,
+        normalizedTopic, message, recent_errors || null, JSON.stringify(safeContext), routedTo, inboundToken,
       ],
     );
   } catch (err) {
@@ -245,7 +260,16 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
     context: safeContext as Record<string, unknown>,
   });
   const { result: opsResult, attempts: opsAttempts } = await sendOpsEmailWithRetry(
-    routedTo, tplOps.subject, tplOps.html, tplOps.text,
+    routedTo,
+    tplOps.subject,
+    tplOps.html,
+    tplOps.text,
+    {
+      replyTo: user.email
+        ? `${user.email}, ${buildReplyToAddress(inboundToken)}`
+        : buildReplyToAddress(inboundToken),
+      headers: { 'X-QVO-Ticket-Id': ticketId },
+    },
   );
 
   // Update ticket with delivery state
@@ -670,7 +694,7 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
     let where = '';
     if (status && status !== 'all') {
       params.push(status);
-      where = `WHERE status = $${params.length}`;
+      where = `WHERE t.status = $${params.length}`;
     }
     params.push(limit);
     const r = await pool.query(
@@ -835,6 +859,239 @@ router.post('/support/routing', requireAuth, requirePlatformAdmin, async (req, r
   } catch (err) {
     res.status(500).json({ error: 'Failed to upsert routing', detail: String(err) });
   }
+});
+
+// ----- Platform admin: ticket replies -----
+
+router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `SELECT id, ticket_id, direction, author_user_id, author_email, body,
+              email_message_id, email_error, source, created_at
+       FROM support_ticket_replies
+       WHERE ticket_id = $1
+       ORDER BY created_at ASC`,
+      [id],
+    );
+    res.json({ replies: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load replies', detail: String(err) });
+  }
+});
+
+router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { body } = req.body ?? {};
+  const user = req.user!;
+
+  if (!body || typeof body !== 'string' || body.trim().length === 0) {
+    res.status(400).json({ error: 'Reply body is required' });
+    return;
+  }
+  if (body.length > 20000) {
+    res.status(400).json({ error: 'Reply is too long' });
+    return;
+  }
+
+  let ticket: {
+    id: string;
+    user_email: string | null;
+    topic: string;
+    inbound_token: string | null;
+    status: string;
+  };
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query<typeof ticket>(
+      `SELECT id, user_email, topic, inbound_token, status FROM support_tickets WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (r.rowCount === 0) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
+    ticket = r.rows[0];
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load ticket', detail: String(err) });
+    return;
+  }
+
+  if (!ticket.user_email) {
+    res.status(400).json({ error: 'Ticket has no user email to reply to' });
+    return;
+  }
+
+  // Make sure the ticket has an inbound token so future replies thread back here.
+  let token = ticket.inbound_token;
+  if (!token) {
+    token = generateInboundToken();
+    try {
+      const pool = getPlatformPool();
+      await pool.query(`UPDATE support_tickets SET inbound_token = $2 WHERE id = $1`, [id, token]);
+    } catch { /* non-fatal */ }
+  }
+
+  const subject = `Re: [QVO Support] ${ticket.topic.toUpperCase()} (${ticket.id})`;
+  const escaped = escapeHtml(body).replace(/\n/g, '<br/>');
+  const html = `<div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
+    <div>${escaped}</div>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+    <p style="color:#64748b;font-size:12px">Ticket reference: <strong>${escapeHtml(ticket.id)}</strong> — please keep this in the subject when replying.</p>
+  </div>`;
+  const text = `${body}\n\n---\nTicket reference: ${ticket.id} — please keep this in the subject when replying.`;
+
+  const result = await sendEmail({
+    to: ticket.user_email,
+    subject,
+    html,
+    text,
+    replyTo: buildReplyToAddress(token),
+    headers: { 'X-QVO-Ticket-Id': ticket.id },
+  });
+
+  let replyRow: unknown = null;
+  try {
+    const pool = getPlatformPool();
+    const ins = await pool.query(
+      `INSERT INTO support_ticket_replies
+         (ticket_id, direction, author_user_id, author_email, body, email_message_id, email_error, source)
+       VALUES ($1, 'outbound', $2, $3, $4, $5, $6, 'admin_console')
+       RETURNING id, ticket_id, direction, author_user_id, author_email, body,
+                 email_message_id, email_error, source, created_at`,
+      [
+        id,
+        user.userId,
+        user.email,
+        body,
+        result.messageId ?? null,
+        result.success ? null : (result.error ?? 'unknown'),
+      ],
+    );
+    replyRow = ins.rows[0];
+
+    // Auto-advance status: open -> in_progress on first admin reply.
+    if (ticket.status === 'open') {
+      await pool.query(
+        `UPDATE support_tickets SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
+        [id],
+      );
+    } else {
+      await pool.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [id]);
+    }
+  } catch (err) {
+    logger.error('Failed to persist support reply', { ticketId: id, error: String(err) });
+    res.status(500).json({ error: 'Failed to record reply', detail: String(err) });
+    return;
+  }
+
+  logger.info('Support reply sent', {
+    ticket_id: id,
+    by: user.email,
+    email_delivered: result.success,
+  });
+
+  res.json({ success: true, email_delivered: result.success, reply: replyRow });
+});
+
+// ----- Inbound email webhook (provider: SendGrid Inbound Parse, Mailgun, etc.) -----
+//
+// Expected payload (form-encoded or JSON):
+//   from, to, subject, text, html
+// We identify the ticket by:
+//   1. the `support+<token>@...` address in `to`
+//   2. the `(tkt_xxxxxx)` substring in `subject`
+//
+// Auth: if SUPPORT_INBOUND_SECRET is configured, the request must include a
+// matching `X-Webhook-Secret` header or `?secret=` query param. When unset the
+// endpoint is open (provider-side IP allowlisting is expected in production).
+router.post('/support/inbound', async (req, res) => {
+  if (INBOUND_SECRET) {
+    const provided = (req.headers['x-webhook-secret'] as string | undefined)
+      ?? (typeof req.query.secret === 'string' ? req.query.secret : undefined);
+    if (provided !== INBOUND_SECRET) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+  }
+
+  const payload = (req.body ?? {}) as Record<string, unknown>;
+  const from = String(payload.from ?? payload.sender ?? '').trim();
+  const to = String(payload.to ?? payload.recipient ?? '').trim();
+  const subject = String(payload.subject ?? '').trim();
+  const text = String(payload.text ?? payload['stripped-text'] ?? '').trim();
+  const html = String(payload.html ?? payload['stripped-html'] ?? '').trim();
+
+  const body = text || html;
+  if (!body) {
+    res.status(400).json({ error: 'empty body' });
+    return;
+  }
+
+  // Try to extract the ticket — prefer the inbound token, then fall back to the subject ref.
+  let ticketId: string | null = null;
+  const tokenMatch = to.match(/support\+([a-f0-9]{12,64})@/i);
+  if (tokenMatch) {
+    try {
+      const pool = getPlatformPool();
+      const r = await pool.query<{ id: string }>(
+        `SELECT id FROM support_tickets WHERE inbound_token = $1 LIMIT 1`,
+        [tokenMatch[1].toLowerCase()],
+      );
+      ticketId = r.rows[0]?.id ?? null;
+    } catch { /* fall through */ }
+  }
+  if (!ticketId) {
+    const subjMatch = subject.match(/\((tkt_[A-Za-z0-9]+)\)/i);
+    if (subjMatch) {
+      try {
+        const pool = getPlatformPool();
+        // Match case-insensitively so users replying from email clients that
+        // normalize the subject still thread back to the same ticket.
+        const r = await pool.query<{ id: string }>(
+          `SELECT id FROM support_tickets WHERE LOWER(id) = LOWER($1) LIMIT 1`,
+          [subjMatch[1]],
+        );
+        ticketId = r.rows[0]?.id ?? null;
+      } catch { /* fall through */ }
+    }
+  }
+
+  if (!ticketId) {
+    logger.warn('Inbound support email did not match a ticket', { to, subject, from });
+    res.status(202).json({ matched: false });
+    return;
+  }
+
+  // Strip a sender address out of headers like "Name <user@x.com>"
+  const fromMatch = from.match(/<([^>]+)>/);
+  const authorEmail = (fromMatch ? fromMatch[1] : from).toLowerCase();
+
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO support_ticket_replies
+         (ticket_id, direction, author_email, body, source)
+       VALUES ($1, 'inbound', $2, $3, 'email_webhook')`,
+      [ticketId, authorEmail, body],
+    );
+    // Re-open if previously resolved/closed; nudge updated_at otherwise.
+    await pool.query(
+      `UPDATE support_tickets
+       SET status = CASE WHEN status IN ('resolved', 'closed') THEN 'open' ELSE status END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [ticketId],
+    );
+  } catch (err) {
+    logger.error('Failed to persist inbound reply', { ticketId, error: String(err) });
+    res.status(500).json({ error: 'persist failed' });
+    return;
+  }
+
+  logger.info('Inbound support reply recorded', { ticket_id: ticketId, from: authorEmail });
+  res.json({ matched: true, ticket_id: ticketId });
 });
 
 export default router;

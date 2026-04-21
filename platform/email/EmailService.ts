@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
+import type { Transporter, SendMailOptions } from 'nodemailer';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('EMAIL_SERVICE');
@@ -9,6 +9,8 @@ export interface EmailMessage {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
 }
 
 export interface EmailResult {
@@ -51,13 +53,15 @@ const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'noreply@qualityvoiceops.com';
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   const transport = getTransporter();
 
-  const mailOptions = {
+  const mailOptions: SendMailOptions = {
     from: FROM_ADDRESS,
     to: message.to,
     subject: message.subject,
     html: message.html,
     text: message.text,
   };
+  if (message.replyTo) mailOptions.replyTo = message.replyTo;
+  if (message.headers) mailOptions.headers = message.headers;
 
   try {
     if (useConsole) {
