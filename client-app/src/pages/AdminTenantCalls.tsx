@@ -342,6 +342,7 @@ export default function AdminTenantCalls() {
   const [hasTranscript, setHasTranscript] = useState<string>(searchParams.get('has_transcript') ?? '');
   const [hasEvents, setHasEvents] = useState<string>(searchParams.get('has_events') ?? '');
   const [hasToolExecutions, setHasToolExecutions] = useState<string>(searchParams.get('has_tool_executions') ?? '');
+  const [toolFailuresOnly, setToolFailuresOnly] = useState<boolean>(searchParams.get('tool_failures_only') === 'true');
   const [searchInput, setSearchInput] = useState<string>(searchParams.get('q') ?? '');
   const [search, setSearch] = useState<string>(searchParams.get('q') ?? '');
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
@@ -368,10 +369,11 @@ export default function AdminTenantCalls() {
     if (hasTranscript) next.set('has_transcript', hasTranscript);
     if (hasEvents) next.set('has_events', hasEvents);
     if (hasToolExecutions) next.set('has_tool_executions', hasToolExecutions);
+    if (toolFailuresOnly) next.set('tool_failures_only', 'true');
     if (search) next.set('q', search);
     if (page > 1) next.set('page', String(page));
     setSearchParams(next, { replace: true });
-  }, [range, direction, agentId, lifecycleState, hasTranscript, hasEvents, hasToolExecutions, search, page, setSearchParams]);
+  }, [range, direction, agentId, lifecycleState, hasTranscript, hasEvents, hasToolExecutions, toolFailuresOnly, search, page, setSearchParams]);
 
   const sinceIso = useMemo(() => {
     if (!range) return '';
@@ -393,10 +395,11 @@ export default function AdminTenantCalls() {
   if (hasTranscript) params.set('has_transcript', hasTranscript);
   if (hasEvents) params.set('has_events', hasEvents);
   if (hasToolExecutions) params.set('has_tool_executions', hasToolExecutions);
+  if (toolFailuresOnly) params.set('tool_failures_only', 'true');
   if (search) params.set('q', search);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin-tenant-calls', tenantId, page, direction, range, agentId, lifecycleState, hasTranscript, hasEvents, hasToolExecutions, search],
+    queryKey: ['admin-tenant-calls', tenantId, page, direction, range, agentId, lifecycleState, hasTranscript, hasEvents, hasToolExecutions, toolFailuresOnly, search],
     queryFn: () => api.get<ApiResp>(`/platform/tenants/${tenantId}/calls?${params.toString()}`),
     enabled: !!tenantId,
   });
@@ -413,7 +416,7 @@ export default function AdminTenantCalls() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const hasFilters = !!(range || direction || agentId || lifecycleState || hasTranscript || hasEvents || hasToolExecutions || search);
+  const hasFilters = !!(range || direction || agentId || lifecycleState || hasTranscript || hasEvents || hasToolExecutions || toolFailuresOnly || search);
   const clearFilters = () => {
     setRange('');
     setDirection('');
@@ -422,6 +425,7 @@ export default function AdminTenantCalls() {
     setHasTranscript('');
     setHasEvents('');
     setHasToolExecutions('');
+    setToolFailuresOnly(false);
     setSearchInput('');
     setSearch('');
     setPage(1);
@@ -568,6 +572,19 @@ export default function AdminTenantCalls() {
               <option value="false">Without tool runs</option>
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="inline-flex items-center gap-2 text-sm text-text-primary cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={toolFailuresOnly}
+              onChange={(e) => { setToolFailuresOnly(e.target.checked); setPage(1); }}
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+            />
+            <span>Tool failures only</span>
+            <span className="text-xs text-text-muted">(calls with at least one failed or timed-out tool execution)</span>
+          </label>
         </div>
 
         {hasFilters && (
