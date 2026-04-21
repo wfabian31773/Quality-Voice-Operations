@@ -1,28 +1,59 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   HelpCircle, X, Search, BookOpen, MessageCircle,
-  Sparkles, Keyboard, Command, ExternalLink, Map,
+  Sparkles, Keyboard, Command, ArrowRight, Map,
 } from 'lucide-react';
+import { docArticles, searchDocs, type DocArticle, type DocBlock } from '../data/docs';
 
-interface DocLink {
-  title: string;
-  href: string;
-  keywords: string[];
+function extractText(block: DocBlock): string {
+  if (block.type === 'p' || block.type === 'h2' || block.type === 'h3') return block.text;
+  if (block.type === 'ul' || block.type === 'ol') return block.items.join(' ');
+  if (block.type === 'callout') return block.text;
+  if (block.type === 'common-issues') return block.items.map((i) => `${i.problem} ${i.fix}`).join(' ');
+  return '';
 }
 
-const DOCS: DocLink[] = [
-  { title: 'Getting started', href: '/docs', keywords: ['quickstart', 'setup', 'onboarding'] },
-  { title: 'Create your first agent', href: '/docs#agents', keywords: ['agent', 'voice', 'create'] },
-  { title: 'Connect a phone number', href: '/docs#numbers', keywords: ['phone', 'twilio', 'number'] },
-  { title: 'Build a workflow', href: '/docs#workflows', keywords: ['workflow', 'tool', 'flow'] },
-  { title: 'Knowledge base & RAG', href: '/docs#kb', keywords: ['knowledge', 'rag', 'docs', 'pdf'] },
-  { title: 'Outbound campaigns', href: '/docs#campaigns', keywords: ['campaign', 'outbound', 'dialer'] },
-  { title: 'Scheduling integration', href: '/docs#scheduling', keywords: ['booking', 'calendar', 'schedule'] },
-  { title: 'Tickets & escalations', href: '/docs#tickets', keywords: ['ticket', 'escalate', 'queue'] },
-  { title: 'Billing & usage', href: '/docs#billing', keywords: ['billing', 'invoice', 'plan'] },
-  { title: 'API & webhooks', href: '/docs#api', keywords: ['api', 'webhook', 'integration'] },
-];
+function buildSnippet(article: DocArticle, query: string): string {
+  const q = query.trim().toLowerCase();
+  const paragraphs = article.body
+    .map(extractText)
+    .filter((t) => t.length > 0);
+  if (q) {
+    const match = paragraphs.find((t) => t.toLowerCase().includes(q));
+    if (match) {
+      const idx = match.toLowerCase().indexOf(q);
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(match.length, idx + q.length + 80);
+      const prefix = start > 0 ? '…' : '';
+      const suffix = end < match.length ? '…' : '';
+      return prefix + match.slice(start, end) + suffix;
+    }
+  }
+  return article.description;
+}
+
+function highlight(text: string, query: string) {
+  const q = query.trim();
+  if (!q) return text;
+  const lower = text.toLowerCase();
+  const ql = q.toLowerCase();
+  const parts: Array<{ text: string; match: boolean }> = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(ql, i);
+    if (idx === -1) {
+      parts.push({ text: text.slice(i), match: false });
+      break;
+    }
+    if (idx > i) parts.push({ text: text.slice(i, idx), match: false });
+    parts.push({ text: text.slice(idx, idx + q.length), match: true });
+    i = idx + q.length;
+  }
+  return parts.map((p, n) =>
+    p.match ? <mark key={n} className="bg-primary/20 text-primary rounded px-0.5">{p.text}</mark> : <span key={n}>{p.text}</span>
+  );
+}
 
 const CHANGELOG = [
   { date: 'Apr 21', tag: 'New', text: 'Command palette (⌘K) and in-app help widget.' },
@@ -53,12 +84,10 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
     return () => document.removeEventListener('mousedown', handler);
   }, [open, setOpen]);
 
-  const filteredDocs = query
-    ? DOCS.filter((d) => {
-        const q = query.toLowerCase();
-        return d.title.toLowerCase().includes(q) || d.keywords.some((k) => k.includes(q));
-      })
-    : DOCS;
+  const results = useMemo<DocArticle[]>(
+    () => (query.trim() ? searchDocs(query).slice(0, 8) : docArticles.slice(0, 8)),
+    [query],
+  );
 
   return (
     <>
@@ -134,20 +163,36 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                   />
                 </div>
                 <div className="space-y-1 mt-2">
-                  {filteredDocs.length === 0 && (
-                    <p className="text-xs text-text-muted py-3 text-center">No matches.</p>
+                  {query.trim() && (
+                    <p className="text-[10px] uppercase tracking-wider text-text-muted px-1 pb-1">
+                      {results.length} {results.length === 1 ? 'result' : 'results'}
+                    </p>
                   )}
-                  {filteredDocs.map((d) => (
-                    <a
-                      key={d.title}
-                      href={d.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between px-2.5 py-2 rounded-lg text-sm text-text-primary hover:bg-surface-hover transition-colors"
+                  {results.length === 0 && (
+                    <p className="text-xs text-text-muted py-3 text-center">No matches for "{query}".</p>
+                  )}
+                  {results.map((d) => (
+                    <button
+                      key={d.slug}
+                      onClick={() => {
+                        navigate(`/docs/${d.slug}`);
+                        setOpen(false);
+                      }}
+                      className="w-full text-left flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
                     >
-                      <span className="truncate">{d.title}</span>
-                      <ExternalLink className="h-3.5 w-3.5 text-text-muted shrink-0" />
-                    </a>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-text-primary truncate">
+                          {highlight(d.title, query)}
+                        </p>
+                        <p className="text-xs text-text-muted line-clamp-2 mt-0.5">
+                          {highlight(buildSnippet(d, query), query)}
+                        </p>
+                        <p className="text-[10px] text-text-muted/70 uppercase tracking-wider mt-1">
+                          {d.category.replace('-', ' ')} · {d.readTime}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-text-muted shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
                   ))}
                 </div>
               </div>
