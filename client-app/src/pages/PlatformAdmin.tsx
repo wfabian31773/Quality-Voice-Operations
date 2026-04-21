@@ -19,6 +19,8 @@ interface DocsFeedbackArticle {
   last_vote_at: string | null;
 }
 
+type DocsFeedbackStatus = 'new' | 'resolved' | 'hidden';
+
 interface DocsFeedbackComment {
   id: number;
   article_slug: string;
@@ -26,9 +28,13 @@ interface DocsFeedbackComment {
   comment: string;
   page_path: string | null;
   created_at: string;
+  status: DocsFeedbackStatus;
+  status_updated_at: string | null;
+  status_updated_by: string | null;
 }
 
 type DocsFeedbackSort = 'lowest_ratio' | 'highest_ratio' | 'most_votes' | 'recent';
+type DocsFeedbackStatusFilter = DocsFeedbackStatus | 'all';
 
 interface PlatformStats {
   active_tenants: string;
@@ -855,6 +861,8 @@ export default function PlatformAdmin() {
 function DocsFeedbackTab() {
   const [sort, setSort] = useState<DocsFeedbackSort>('lowest_ratio');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<DocsFeedbackStatusFilter>('new');
+  const queryClient = useQueryClient();
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['docs-feedback-summary', sort],
@@ -863,13 +871,23 @@ function DocsFeedbackTab() {
   });
 
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
-    queryKey: ['docs-feedback-comments', selectedSlug],
-    queryFn: () => api.get<{ comments: DocsFeedbackComment[] }>(
-      selectedSlug
-        ? `/docs/feedback/comments?article_slug=${encodeURIComponent(selectedSlug)}&limit=100`
-        : `/docs/feedback/comments?limit=50`,
-    ),
+    queryKey: ['docs-feedback-comments', selectedSlug, statusFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('limit', selectedSlug ? '100' : '50');
+      params.set('status', statusFilter);
+      if (selectedSlug) params.set('article_slug', selectedSlug);
+      return api.get<{ comments: DocsFeedbackComment[] }>(`/docs/feedback/comments?${params.toString()}`);
+    },
     refetchInterval: 60_000,
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: DocsFeedbackStatus }) =>
+      api.patch<{ comment: DocsFeedbackComment }>(`/docs/feedback/comments/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['docs-feedback-comments'] });
+    },
   });
 
   const articles = summaryData?.articles ?? [];
@@ -966,37 +984,99 @@ function DocsFeedbackTab() {
       </div>
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h2 className="font-semibold">
-            {selectedSlug ? `Comments for ${selectedSlug}` : 'Recent Comments'}
-          </h2>
-          <p className="text-xs text-muted mt-0.5">
-            {selectedSlug
-              ? 'Showing comments only for the selected article'
-              : 'Most recent reader comments across all articles'}
-          </p>
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="font-semibold">
+              {selectedSlug ? `Comments for ${selectedSlug}` : 'Recent Comments'}
+            </h2>
+            <p className="text-xs text-muted mt-0.5">
+              {selectedSlug
+                ? 'Showing comments only for the selected article'
+                : 'Most recent reader comments across all articles'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted">Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as DocsFeedbackStatusFilter)}
+              className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
+            >
+              <option value="new">New</option>
+              <option value="resolved">Resolved</option>
+              <option value="hidden">Hidden</option>
+              <option value="all">All</option>
+            </select>
+          </div>
         </div>
         <div className="divide-y divide-border">
           {commentsLoading ? (
             <div className="text-center py-12 text-muted">Loading comments...</div>
           ) : comments.length === 0 ? (
-            <div className="text-center py-12 text-muted">No comments yet</div>
+            <div className="text-center py-12 text-muted">No comments to show</div>
           ) : (
-            comments.map((c) => (
-              <div key={c.id} className="px-4 py-3">
-                <div className="flex items-center gap-2 text-xs text-muted mb-1">
-                  {c.vote === 'helpful' ? (
-                    <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> not helpful</span>
-                  )}
-                  <span className="font-mono">{c.article_slug}</span>
-                  {c.page_path && <span className="text-muted">· {c.page_path}</span>}
-                  <span className="ml-auto">{new Date(c.created_at).toLocaleString()}</span>
+            comments.map((c) => {
+              const isPending = updateStatus.isPending && updateStatus.variables?.id === c.id;
+              const statusBadge =
+                c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
+                  : c.status === 'hidden' ? 'bg-gray-100 text-gray-600 border-gray-200'
+                  : 'bg-blue-100 text-blue-700 border-blue-200';
+              return (
+                <div key={c.id} className="px-4 py-3">
+                  <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">
+                    {c.vote === 'helpful' ? (
+                      <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> not helpful</span>
+                    )}
+                    <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase tracking-wide font-medium ${statusBadge}`}>
+                      {c.status}
+                    </span>
+                    <span className="font-mono">{c.article_slug}</span>
+                    {c.page_path && <span className="text-muted">· {c.page_path}</span>}
+                    <span className="ml-auto">{new Date(c.created_at).toLocaleString()}</span>
+                  </div>
+                  <div className="text-sm whitespace-pre-wrap">{c.comment}</div>
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    {c.status !== 'resolved' && (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => updateStatus.mutate({ id: c.id, status: 'resolved' })}
+                        className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+                      >
+                        Mark resolved
+                      </button>
+                    )}
+                    {c.status !== 'hidden' && (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => updateStatus.mutate({ id: c.id, status: 'hidden' })}
+                        className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+                      >
+                        Hide
+                      </button>
+                    )}
+                    {c.status !== 'new' && (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => updateStatus.mutate({ id: c.id, status: 'new' })}
+                        className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+                      >
+                        Reopen
+                      </button>
+                    )}
+                    {c.status_updated_by && c.status_updated_at && (
+                      <span className="text-muted ml-auto">
+                        {c.status} by {c.status_updated_by} · {new Date(c.status_updated_at).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-sm whitespace-pre-wrap">{c.comment}</div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

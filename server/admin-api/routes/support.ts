@@ -282,19 +282,30 @@ router.get('/docs/feedback/summary', requireAuth, requirePlatformAdmin, async (r
   }
 });
 
+const VALID_FEEDBACK_STATUSES = new Set(['new', 'resolved', 'hidden']);
+
 router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (req, res) => {
   const slug = req.query.article_slug ? String(req.query.article_slug) : null;
   const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 200);
+  const statusParam = req.query.status ? String(req.query.status) : 'new';
+  const status = statusParam === 'all'
+    ? null
+    : (VALID_FEEDBACK_STATUSES.has(statusParam) ? statusParam : 'new');
   try {
     const pool = getPlatformPool();
     const params: unknown[] = [limit];
     let where = `WHERE comment IS NOT NULL AND length(trim(comment)) > 0`;
     if (slug) {
       params.push(slug);
-      where += ` AND article_slug = $2`;
+      where += ` AND article_slug = $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      where += ` AND status = $${params.length}`;
     }
     const r = await pool.query(
-      `SELECT id, article_slug, vote, comment, page_path, created_at
+      `SELECT id, article_slug, vote, comment, page_path, created_at,
+              status, status_updated_at, status_updated_by
        FROM docs_feedback
        ${where}
        ORDER BY created_at DESC
@@ -304,6 +315,38 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
     res.json({ comments: r.rows });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load feedback comments', detail: String(err) });
+  }
+});
+
+router.patch('/docs/feedback/comments/:id', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const status = String(req.body?.status ?? '');
+  if (!VALID_FEEDBACK_STATUSES.has(status)) {
+    res.status(400).json({ error: "status must be 'new', 'resolved', or 'hidden'" });
+    return;
+  }
+  try {
+    const pool = getPlatformPool();
+    const actor = req.user?.email ?? req.user?.userId ?? null;
+    const r = await pool.query(
+      `UPDATE docs_feedback
+       SET status = $2, status_updated_at = NOW(), status_updated_by = $3
+       WHERE id = $1
+       RETURNING id, article_slug, vote, comment, page_path, created_at,
+                 status, status_updated_at, status_updated_by`,
+      [id, status, actor],
+    );
+    if (r.rowCount === 0) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json({ comment: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update comment status', detail: String(err) });
   }
 });
 
