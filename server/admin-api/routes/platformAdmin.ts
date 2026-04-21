@@ -710,17 +710,17 @@ router.get('/platform/activation-metrics', requireAuth, requirePlatformAdmin, as
 });
 
 router.get('/platform/notifications', requireAuth, async (req, res) => {
-  const { tenantId } = req.user!;
+  const { tenantId, userId } = req.user!;
   const pool = getPlatformPool();
 
   try {
     const { rows } = await pool.query(
       `SELECT id, type, title, message, metadata, read, created_at
        FROM tenant_notifications
-       WHERE tenant_id = $1
+       WHERE tenant_id = $1 AND (user_id IS NULL OR user_id = $2)
        ORDER BY created_at DESC
        LIMIT 50`,
-      [tenantId],
+      [tenantId, userId],
     );
 
     return res.json({ notifications: rows });
@@ -731,14 +731,16 @@ router.get('/platform/notifications', requireAuth, async (req, res) => {
 });
 
 router.patch('/platform/notifications/:id/read', requireAuth, async (req, res) => {
-  const { tenantId } = req.user!;
+  const { tenantId, userId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
 
   try {
     await pool.query(
-      `UPDATE tenant_notifications SET read = TRUE WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
+      `UPDATE tenant_notifications
+          SET read = TRUE
+        WHERE id = $1 AND tenant_id = $2 AND (user_id IS NULL OR user_id = $3)`,
+      [id, tenantId, userId],
     );
     return res.json({ success: true });
   } catch (err) {

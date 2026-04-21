@@ -143,12 +143,13 @@ router.post('/platform/changelog', requireAuth, requirePlatformAdmin, async (req
 // ---------- Notifications enhancements ----------
 
 router.get('/platform/notifications/unread-count', requireAuth, async (req, res) => {
-  const { tenantId } = req.user!;
+  const { tenantId, userId } = req.user!;
   const pool = getPlatformPool();
   try {
     const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS c FROM tenant_notifications WHERE tenant_id = $1 AND read = FALSE`,
-      [tenantId],
+      `SELECT COUNT(*)::int AS c FROM tenant_notifications
+        WHERE tenant_id = $1 AND read = FALSE AND (user_id IS NULL OR user_id = $2)`,
+      [tenantId, userId],
     );
     return res.json({ count: rows[0]?.c ?? 0 });
   } catch {
@@ -157,12 +158,13 @@ router.get('/platform/notifications/unread-count', requireAuth, async (req, res)
 });
 
 router.post('/platform/notifications/read-all', requireAuth, async (req, res) => {
-  const { tenantId } = req.user!;
+  const { tenantId, userId } = req.user!;
   const pool = getPlatformPool();
   try {
     await pool.query(
-      `UPDATE tenant_notifications SET read = TRUE WHERE tenant_id = $1 AND read = FALSE`,
-      [tenantId],
+      `UPDATE tenant_notifications SET read = TRUE
+        WHERE tenant_id = $1 AND read = FALSE AND (user_id IS NULL OR user_id = $2)`,
+      [tenantId, userId],
     );
     return res.json({ success: true });
   } catch (err) {
@@ -172,10 +174,14 @@ router.post('/platform/notifications/read-all', requireAuth, async (req, res) =>
 });
 
 router.delete('/platform/notifications', requireAuth, async (req, res) => {
-  const { tenantId } = req.user!;
+  const { tenantId, userId } = req.user!;
   const pool = getPlatformPool();
   try {
-    await pool.query(`DELETE FROM tenant_notifications WHERE tenant_id = $1`, [tenantId]);
+    await pool.query(
+      `DELETE FROM tenant_notifications
+        WHERE tenant_id = $1 AND (user_id IS NULL OR user_id = $2)`,
+      [tenantId, userId],
+    );
     return res.json({ success: true });
   } catch (err) {
     logger.error('notifications clear failed', { error: String(err) });

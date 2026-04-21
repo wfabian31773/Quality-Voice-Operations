@@ -23,12 +23,83 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function buildViewPath(viewId: string): string {
+  return `/calls?view=${encodeURIComponent(viewId)}`;
+}
+
 function buildViewLink(viewId: string): string {
   const baseUrl =
     process.env.APP_URL ??
     (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : '');
-  const path = `/calls?view=${encodeURIComponent(viewId)}`;
+  const path = buildViewPath(viewId);
   return baseUrl ? `${baseUrl}${path}` : path;
+}
+
+async function lookupUserIdsByEmail(
+  tenantId: string,
+  emails: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (emails.length === 0) return map;
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query<{ id: string; email: string }>(
+      `SELECT id, LOWER(email) AS email FROM users
+        WHERE tenant_id = $1 AND LOWER(email) = ANY($2::text[])`,
+      [tenantId, emails],
+    );
+    for (const row of rows) {
+      if (row.email && row.id) map.set(row.email, row.id);
+    }
+  } catch (err) {
+    logger.warn('Failed to look up user ids for in-app subscriber notifications', {
+      tenantId,
+      error: String(err),
+    });
+  }
+  return map;
+}
+
+async function createInAppNotification(params: {
+  tenantId: string;
+  userId: string;
+  viewId: string;
+  viewName: string;
+  actorName: string;
+  kind: 'added' | 'removed';
+}): Promise<void> {
+  const { tenantId, userId, viewId, viewName, actorName, kind } = params;
+  const title =
+    kind === 'added'
+      ? `Subscribed to "${viewName}" digest`
+      : `Removed from "${viewName}" digest`;
+  const message =
+    kind === 'added'
+      ? `${actorName} added you to the daily digest for the saved view "${viewName}".`
+      : `${actorName} removed you from the daily digest for the saved view "${viewName}".`;
+  const metadata = {
+    link: buildViewPath(viewId),
+    viewId,
+    viewName,
+    change: kind,
+    actor: actorName,
+  };
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO tenant_notifications (tenant_id, user_id, type, title, message, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, userId, 'call', title, message, JSON.stringify(metadata)],
+    );
+  } catch (err) {
+    logger.warn('Failed to create in-app subscriber notification', {
+      tenantId,
+      userId,
+      viewId,
+      kind,
+      error: String(err),
+    });
+  }
 }
 
 async function getActorInfo(actorUserId: string | null, actorEmail: string | null): Promise<ActorInfo> {
@@ -151,6 +222,46 @@ export async function notifySubscriberChanges(params: SubscriberChangeNotificati
   const addedTargets = actorEmail ? added.filter((e) => e !== actorEmail) : added;
   const removedTargets = actorEmail ? removed.filter((e) => e !== actorEmail) : removed;
   if (addedTargets.length === 0 && removedTargets.length === 0) return;
+
+  // Look up matching user ids within this tenant so we can also drop a row in the
+  // per-user in-app inbox. Recipients without a matching user row simply get the
+  // email (e.g. external collaborators).
+  const userIdMap = await lookupUserIdsByEmail(
+    params.tenantId,
+    Array.from(new Set([...addedTargets, ...removedTargets])),
+  );
+  if (params.actorUserId) {
+    for (const [email, uid] of userIdMap.entries()) {
+      if (uid === params.actorUserId) userIdMap.delete(email);
+    }
+  }
+
+  for (const recipient of addedTargets) {
+    const uid = userIdMap.get(recipient);
+    if (uid) {
+      await createInAppNotification({
+        tenantId: params.tenantId,
+        userId: uid,
+        viewId: params.viewId,
+        viewName: params.viewName,
+        actorName: actor.displayName,
+        kind: 'added',
+      });
+    }
+  }
+  for (const recipient of removedTargets) {
+    const uid = userIdMap.get(recipient);
+    if (uid) {
+      await createInAppNotification({
+        tenantId: params.tenantId,
+        userId: uid,
+        viewId: params.viewId,
+        viewName: params.viewName,
+        actorName: actor.displayName,
+        kind: 'removed',
+      });
+    }
+  }
 
   for (const recipient of addedTargets) {
     try {
