@@ -31,16 +31,27 @@ async function withTenant<T>(tenantId: string, fn: (client: DbClient) => Promise
 export async function getConnectorConfig(
   tenantId: TenantId,
   connectorType: ConnectorType,
+  provider?: string,
 ): Promise<ConnectorConfig | null> {
   return withTenant(tenantId, async (client) => {
-    const { rows: integRows } = await client.query(
-      `SELECT id, integration_type, provider, is_enabled, config,
-              fallback_connector_type, fallback_provider
-       FROM integrations
-       WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE
-       LIMIT 1`,
-      [tenantId, connectorType],
-    );
+    const { rows: integRows } = provider
+      ? await client.query(
+          `SELECT id, integration_type, provider, is_enabled, config,
+                  fallback_connector_type, fallback_provider
+           FROM integrations
+           WHERE tenant_id = $1 AND integration_type = $2 AND provider = $3 AND is_enabled = TRUE
+           LIMIT 1`,
+          [tenantId, connectorType, provider],
+        )
+      : await client.query(
+          `SELECT id, integration_type, provider, is_enabled, config,
+                  fallback_connector_type, fallback_provider
+           FROM integrations
+           WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE
+           ORDER BY updated_at DESC
+           LIMIT 1`,
+          [tenantId, connectorType],
+        );
 
     if (integRows.length === 0) {
       logger.warn('No enabled integration found', { tenantId, connectorType });
@@ -164,14 +175,23 @@ export async function updateConnectorSyncStatus(
   tenantId: TenantId,
   connectorType: ConnectorType,
   status: 'success' | 'error',
+  provider?: string,
 ): Promise<void> {
   try {
     await withTenant(tenantId, async (client) => {
-      await client.query(
-        `UPDATE integrations SET last_sync_at = NOW(), last_sync_status = $3, updated_at = NOW()
-         WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
-        [tenantId, connectorType, status],
-      );
+      if (provider) {
+        await client.query(
+          `UPDATE integrations SET last_sync_at = NOW(), last_sync_status = $3, updated_at = NOW()
+           WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
+          [tenantId, connectorType, status, provider],
+        );
+      } else {
+        await client.query(
+          `UPDATE integrations SET last_sync_at = NOW(), last_sync_status = $3, updated_at = NOW()
+           WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
+          [tenantId, connectorType, status],
+        );
+      }
     });
   } catch (err) {
     logger.warn('Failed to update sync status', { tenantId, connectorType, error: String(err) });
@@ -230,6 +250,87 @@ export async function upsertConnector(
     }
 
     return integrationId;
+  });
+}
+
+export async function listEnabledConnectorConfigs(
+  tenantId: TenantId,
+  connectorTypes?: ConnectorType[],
+): Promise<ConnectorConfig[]> {
+  return withTenant(tenantId, async (client) => {
+    const { rows: integRows } = connectorTypes && connectorTypes.length > 0
+      ? await client.query(
+          `SELECT id, integration_type, provider, is_enabled, config,
+                  fallback_connector_type, fallback_provider
+           FROM integrations
+           WHERE tenant_id = $1 AND is_enabled = TRUE AND integration_type = ANY($2::text[])`,
+          [tenantId, connectorTypes],
+        )
+      : await client.query(
+          `SELECT id, integration_type, provider, is_enabled, config,
+                  fallback_connector_type, fallback_provider
+           FROM integrations
+           WHERE tenant_id = $1 AND is_enabled = TRUE`,
+          [tenantId],
+        );
+
+    if (integRows.length === 0) return [];
+
+    let envelopeDecrypt: ((ciphertext: string) => Promise<string>) | null = null;
+    try {
+      const { decryptSensitiveField } = await import('../../security/FieldEncryption');
+      envelopeDecrypt = (ciphertext: string) => decryptSensitiveField(tenantId, ciphertext);
+    } catch {
+      // Envelope decryption not available
+    }
+
+    const integrationIds = integRows.map((r) => r.id as string);
+    const { rows: configRows } = await client.query(
+      `SELECT integration_id, config_key, encrypted_value
+       FROM connector_configs
+       WHERE tenant_id = $1 AND integration_id = ANY($2::uuid[])`,
+      [tenantId, integrationIds],
+    );
+
+    const credentialsByIntegration = new Map<string, Record<string, string>>();
+    for (const row of configRows) {
+      const integrationId = row.integration_id as string;
+      const key = row.config_key as string;
+      const val = row.encrypted_value as string | null;
+      if (!val) continue;
+      let decrypted: string;
+      try {
+        if (isEnvelopeEncrypted(val) && envelopeDecrypt) {
+          decrypted = await envelopeDecrypt(val);
+        } else {
+          decrypted = decryptValue(val);
+        }
+      } catch {
+        logger.warn('Failed to decrypt connector config value', { tenantId, key });
+        decrypted = val;
+      }
+      const existing = credentialsByIntegration.get(integrationId) ?? {};
+      existing[key] = decrypted;
+      credentialsByIntegration.set(integrationId, existing);
+    }
+
+    return integRows.map((integration) => {
+      const integrationId = integration.id as string;
+      const credentials = credentialsByIntegration.get(integrationId) ?? {};
+      const staticConfig = typeof integration.config === 'object' && integration.config !== null
+        ? (integration.config as Record<string, string>)
+        : {};
+      return {
+        integrationId,
+        tenantId,
+        connectorType: integration.integration_type as ConnectorType,
+        provider: integration.provider as string,
+        isEnabled: integration.is_enabled as boolean,
+        credentials: { ...staticConfig, ...credentials },
+        fallbackConnectorType: (integration.fallback_connector_type as ConnectorType) ?? undefined,
+        fallbackProvider: (integration.fallback_provider as string) ?? undefined,
+      };
+    });
   });
 }
 

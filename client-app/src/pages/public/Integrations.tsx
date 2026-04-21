@@ -59,6 +59,13 @@ const primaryIntegrations = [
     features: ['Customer sync', 'Invoice automation', 'Sandbox or production', 'OAuth sign-in'],
   },
   {
+    logoId: 'salesforce',
+    category: 'CRM',
+    title: 'Salesforce',
+    desc: 'One-click OAuth into Salesforce. Calls and AI summaries log against the right Contact, Lead, or Opportunity automatically.',
+    features: ['One-click OAuth', 'Contact & Lead sync', 'Call activity logging', 'AI summary on Tasks'],
+  },
+  {
     logoId: 'slack',
     category: 'Notifications',
     title: 'Slack',

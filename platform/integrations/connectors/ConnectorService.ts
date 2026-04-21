@@ -1,5 +1,6 @@
 import { createLogger } from '../../core/logger';
-import { getConnectorConfig, updateConnectorSyncStatus } from './db';
+import { getConnectorConfig, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
+import type { ConnectorConfig as ConnectorConfigType } from './types';
 import { TicketingConnectorAdapter } from './adapters/ticketing';
 import { TwilioSmsConnectorAdapter } from './adapters/sms';
 import { HubSpotConnectorAdapter } from './adapters/hubspot';
@@ -9,6 +10,7 @@ import { SlackConnectorAdapter } from './adapters/slack';
 import { ZapierWebhookConnectorAdapter } from './adapters/zapier';
 import { PipedriveConnectorAdapter } from './adapters/pipedrive';
 import { QuickBooksConnectorAdapter } from './adapters/quickbooks';
+import { SalesforceConnectorAdapter } from './adapters/salesforce';
 import { recordIntegrationEvent } from '../../core/observability/traceLogger';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType, StandardEventType } from './types';
 import type { TenantId } from '../../core/types';
@@ -18,6 +20,7 @@ const logger = createLogger('CONNECTOR_SERVICE');
 const googleCalendarAdapter = new GoogleCalendarConnectorAdapter();
 const outlookCalendarAdapter = new OutlookCalendarConnectorAdapter();
 const hubspotAdapter = new HubSpotConnectorAdapter();
+const salesforceAdapter = new SalesforceConnectorAdapter();
 const pipedriveAdapter = new PipedriveConnectorAdapter();
 const slackAdapter = new SlackConnectorAdapter();
 const zapierAdapter = new ZapierWebhookConnectorAdapter();
@@ -36,6 +39,7 @@ const TYPE_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
 
 const PROVIDER_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
   hubspot: hubspotAdapter,
+  salesforce: salesforceAdapter,
   pipedrive: pipedriveAdapter,
   'google-calendar': googleCalendarAdapter,
   'outlook-calendar': outlookCalendarAdapter,
@@ -46,11 +50,28 @@ const PROVIDER_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
   quickbooks: quickbooksAdapter,
 };
 
-function resolveAdapter(connectorType: ConnectorType, provider: string | undefined): ConnectorAdapter | undefined {
-  if (provider && PROVIDER_ADAPTER_REGISTRY[provider]) {
-    return PROVIDER_ADAPTER_REGISTRY[provider];
+const ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
+  ...TYPE_ADAPTER_REGISTRY,
+  'crm:salesforce': salesforceAdapter,
+  'crm:hubspot': hubspotAdapter,
+  'crm:pipedrive': pipedriveAdapter,
+  'accounting:quickbooks': quickbooksAdapter,
+};
+
+const SCHEDULING_ADAPTERS: Record<string, ConnectorAdapter> = {
+  'google-calendar': googleCalendarAdapter,
+  'outlook-calendar': outlookCalendarAdapter,
+};
+
+function resolveAdapter(connectorType: ConnectorType, provider?: string): ConnectorAdapter | undefined {
+  if (connectorType === 'scheduling' && provider && SCHEDULING_ADAPTERS[provider]) {
+    return SCHEDULING_ADAPTERS[provider];
   }
-  return TYPE_ADAPTER_REGISTRY[connectorType];
+  if (provider) {
+    const keyed = ADAPTER_REGISTRY[`${connectorType}:${provider}`] || PROVIDER_ADAPTER_REGISTRY[provider];
+    if (keyed) return keyed;
+  }
+  return ADAPTER_REGISTRY[connectorType];
 }
 
 const STANDARD_EVENT_TYPES = new Set<string>([
@@ -88,26 +109,45 @@ export class ConnectorService {
     tenantId: TenantId,
     connectorType: ConnectorType,
     payload: ConnectorPayload,
+    provider?: string,
   ): Promise<ConnectorResult> {
-    const config = await getConnectorConfig(tenantId, connectorType);
+    const config = await getConnectorConfig(tenantId, connectorType, provider);
+    const adapter = resolveAdapter(connectorType, config?.provider ?? provider);
+    if (!adapter) {
+      return { success: false, error: `No adapter registered for connector type: ${connectorType}` };
+    }
+
     if (!config) {
-      logger.warn('No connector configured for type', { tenantId, connectorType });
+      logger.warn('No connector configured for type', { tenantId, connectorType, provider });
       return {
         success: false,
         error: `No ${connectorType} connector configured for this tenant`,
       };
     }
 
-    if (!config.isEnabled) {
-      return { success: false, error: `${connectorType} connector is disabled for this tenant` };
-    }
+    return this.executeWithConfig(tenantId, config, payload);
+  }
 
-    const adapter = resolveAdapter(connectorType, config.provider);
+  private async executeWithConfig(
+    tenantId: TenantId,
+    config: ConnectorConfigType,
+    payload: ConnectorPayload,
+  ): Promise<ConnectorResult> {
+    const adapter = resolveAdapter(config.connectorType, config.provider);
     if (!adapter) {
-      return { success: false, error: `No adapter registered for ${connectorType}/${config.provider}` };
+      return { success: false, error: `No adapter for ${config.connectorType}:${config.provider}` };
     }
 
-    logger.info('Dispatching to connector', { tenantId, connectorType, provider: config.provider, payloadType: payload.type });
+    if (!config.isEnabled) {
+      return { success: false, error: `${config.connectorType} connector is disabled for this tenant` };
+    }
+
+    logger.info('Dispatching to connector', {
+      tenantId,
+      connectorType: config.connectorType,
+      provider: config.provider,
+      payloadType: payload.type,
+    });
 
     const startTime = Date.now();
     const result = await adapter.execute(tenantId, config, payload);
@@ -121,21 +161,26 @@ export class ConnectorService {
       callSessionId,
       toolInvocationId,
       requestMethod: 'POST',
-      requestUrl: `connector://${connectorType}/${config.provider}`,
+      requestUrl: `connector://${config.connectorType}/${config.provider}`,
       requestBody: { type: payload.type },
       responseStatus: result.success ? 200 : 500,
       responseBody: { success: result.success, error: result.error ?? null },
       latencyMs,
       errorMessage: result.error ?? undefined,
-      serviceName: `${connectorType}:${config.provider}`,
+      serviceName: `${config.connectorType}:${config.provider}`,
     }).catch(() => {});
 
-    updateConnectorSyncStatus(tenantId, connectorType, result.success ? 'success' : 'error').catch(() => {});
+    updateConnectorSyncStatus(
+      tenantId,
+      config.connectorType,
+      result.success ? 'success' : 'error',
+      config.provider,
+    ).catch(() => {});
 
     if (!result.success && config.fallbackConnectorType) {
       logger.info('Primary connector failed, attempting fallback', {
         tenantId,
-        primaryType: connectorType,
+        primaryType: config.connectorType,
         fallbackType: config.fallbackConnectorType,
         payloadType: payload.type,
       });
@@ -206,28 +251,30 @@ export class ConnectorService {
     const results: Array<{ connectorType: string; provider: string; success: boolean; error?: string }> = [];
 
     const targetTypes = EVENT_TO_CONNECTOR_TYPES[eventType] ?? [];
+    if (targetTypes.length === 0) {
+      return { dispatched: 0, results };
+    }
+
+    const configs = await listEnabledConnectorConfigs(tenantId, targetTypes);
     const dispatched = new Set<string>();
 
-    for (const connectorType of targetTypes) {
+    for (const config of configs) {
+      const key = `${config.connectorType}:${config.provider}`;
+      if (dispatched.has(key)) continue;
+      dispatched.add(key);
+
       try {
-        const config = await getConnectorConfig(tenantId, connectorType);
-        if (!config || !config.isEnabled) continue;
-
-        const key = `${connectorType}:${config.provider}`;
-        if (dispatched.has(key)) continue;
-        dispatched.add(key);
-
-        const result = await this.execute(tenantId, connectorType, eventPayload);
+        const result = await this.executeWithConfig(tenantId, config, eventPayload);
         results.push({
-          connectorType,
+          connectorType: config.connectorType,
           provider: config.provider,
           success: result.success,
           error: result.error,
         });
       } catch (err) {
         results.push({
-          connectorType,
-          provider: 'unknown',
+          connectorType: config.connectorType,
+          provider: config.provider,
           success: false,
           error: err instanceof Error ? err.message : String(err),
         });
