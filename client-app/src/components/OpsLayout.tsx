@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
-  Radio, Bug, Wrench, Plug2, Coins, Activity, ShieldCheck,
+  Radio, Bug, Plug2, Coins, ShieldCheck,
   LogOut, Moon, Sun, Menu, X, Cpu,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -18,12 +18,10 @@ interface NavItem {
 
 const opsLinks: NavItem[] = [
   { to: '/ops/monitor', icon: Radio, label: 'Live Monitor' },
-  { to: '/ops/call-debug', icon: Bug, label: 'Conversation Debugger' },
-  { to: '/ops/tool-logs', icon: Wrench, label: 'Tool Execution Logs' },
-  { to: '/ops/integration-diagnostics', icon: Plug2, label: 'Integration Diagnostics' },
-  { to: '/ops/cost', icon: Coins, label: 'Cost Monitor' },
-  { to: '/ops/observability', icon: Activity, label: 'Infrastructure Health' },
   { to: '/ops/reliability', icon: ShieldCheck, label: 'Reliability' },
+  { to: '/ops/call-debug', icon: Bug, label: 'Debugger' },
+  { to: '/ops/integration-diagnostics', icon: Plug2, label: 'Diagnostics' },
+  { to: '/ops/cost', icon: Coins, label: 'Cost' },
   { to: '/ops/digital-twin', icon: Cpu, label: 'Digital Twin' },
 ];
 

@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, PhoneCall, Plug, Network,
   LogOut, Moon, Sun, Menu, X, BarChart3, Settings2,
-  Zap, BookOpen, Store, ChevronDown, Boxes,
+  Megaphone, BookOpen, Store, ChevronDown, Boxes, Wrench,
   MessageSquare, CalendarClock, ClipboardList, Truck,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
@@ -22,22 +22,26 @@ interface NavItem {
 const tenantLinks: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/workflows', icon: Network, label: 'Workflows' },
   { to: '/calls', icon: PhoneCall, label: 'Conversations' },
-  { to: '/campaigns', icon: Zap, label: 'Automation' },
-  { to: '/connectors', icon: Plug, label: 'Integrations' },
-  { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge' },
+  { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/marketplace', icon: Store, label: 'Marketplace' },
-  { to: '/settings', icon: Settings2, label: 'Settings' },
 ];
 
-const miniSystemLinks: NavItem[] = [
+const operationsLinks: NavItem[] = [
   { to: '/sms-inbox', icon: MessageSquare, label: 'SMS Inbox' },
   { to: '/scheduling', icon: CalendarClock, label: 'Scheduling' },
   { to: '/tickets', icon: ClipboardList, label: 'Tickets' },
   { to: '/dispatch', icon: Truck, label: 'Dispatch' },
 ];
+
+const configureLinks: NavItem[] = [
+  { to: '/workflows', icon: Network, label: 'Workflows' },
+  { to: '/connectors', icon: Plug, label: 'Integrations' },
+  { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge' },
+  { to: '/marketplace', icon: Store, label: 'Marketplace' },
+];
+
+const settingsLink: NavItem = { to: '/settings', icon: Settings2, label: 'Settings' };
 
 export default function TenantLayout() {
   const { user, logout } = useAuth();
@@ -45,9 +49,13 @@ export default function TenantLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const miniRef = useRef<HTMLDivElement>(null);
-  const [miniOpen, setMiniOpen] = useState(() =>
-    miniSystemLinks.some((l) => location.pathname.startsWith(l.to)),
+  const opsRef = useRef<HTMLDivElement>(null);
+  const configureRef = useRef<HTMLDivElement>(null);
+  const [opsOpen, setOpsOpen] = useState(() =>
+    operationsLinks.some((l) => location.pathname.startsWith(l.to)),
+  );
+  const [configureOpen, setConfigureOpen] = useState(() =>
+    configureLinks.some((l) => location.pathname.startsWith(l.to)),
   );
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
@@ -136,59 +144,44 @@ export default function TenantLayout() {
           </NavLink>
         ))}
 
-        <div className="pt-2" ref={miniRef}>
-          <button
-            onClick={() => {
-              const next = !miniOpen;
-              setMiniOpen(next);
-              if (next) {
-                setTimeout(() => {
-                  miniRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                }, 50);
-              }
-            }}
-            className={clsx(
-              'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-              miniSystemLinks.some((l) => location.pathname.startsWith(l.to))
-                ? 'text-white bg-sidebar-active/50'
-                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <Boxes className="h-4.5 w-4.5 shrink-0" />
-              Mini Systems
-            </div>
-            <ChevronDown
-              className={clsx(
-                'h-3.5 w-3.5 transition-transform',
-                miniOpen && 'rotate-180',
-              )}
-            />
-          </button>
+        <NavGroup
+          label="Operations"
+          icon={Boxes}
+          links={operationsLinks}
+          location={location}
+          open={opsOpen}
+          setOpen={setOpsOpen}
+          groupRef={opsRef}
+          onLinkClick={() => setMobileOpen(false)}
+        />
 
-          {miniOpen && (
-            <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
-              {miniSystemLinks.map((link) => (
-                <NavLink
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) =>
-                    clsx(
-                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-sidebar-active text-white'
-                        : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
-                    )
-                  }
-                >
-                  <link.icon className="h-4 w-4 shrink-0" />
-                  {link.label}
-                </NavLink>
-              ))}
-            </div>
-          )}
-        </div>
+        <NavGroup
+          label="Configure"
+          icon={Wrench}
+          links={configureLinks}
+          location={location}
+          open={configureOpen}
+          setOpen={setConfigureOpen}
+          groupRef={configureRef}
+          onLinkClick={() => setMobileOpen(false)}
+        />
+
+        <NavLink
+          key={settingsLink.to}
+          to={settingsLink.to}
+          onClick={() => setMobileOpen(false)}
+          className={({ isActive }) =>
+            clsx(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1',
+              isActive
+                ? 'bg-sidebar-active text-white'
+                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+            )
+          }
+        >
+          <settingsLink.icon className="h-4.5 w-4.5 shrink-0" />
+          {settingsLink.label}
+        </NavLink>
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10 space-y-1">
@@ -241,6 +234,76 @@ export default function TenantLayout() {
       </div>
 
       <PlatformAssistant />
+    </div>
+  );
+}
+
+interface NavGroupProps {
+  label: string;
+  icon: typeof LayoutDashboard;
+  links: NavItem[];
+  location: { pathname: string };
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  groupRef: React.RefObject<HTMLDivElement | null>;
+  onLinkClick: () => void;
+}
+
+function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef, onLinkClick }: NavGroupProps) {
+  const isActiveGroup = links.some((l) => location.pathname.startsWith(l.to));
+  return (
+    <div className="pt-2" ref={groupRef}>
+      <button
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) {
+            setTimeout(() => {
+              groupRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }, 50);
+          }
+        }}
+        className={clsx(
+          'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+          isActiveGroup
+            ? 'text-white bg-sidebar-active/50'
+            : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+        )}
+      >
+        <div className="flex items-center gap-3">
+          <Icon className="h-4.5 w-4.5 shrink-0" />
+          {label}
+        </div>
+        <ChevronDown
+          className={clsx(
+            'h-3.5 w-3.5 transition-transform',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+
+      {open && (
+        <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
+          {links.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              onClick={onLinkClick}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-sidebar-active text-white'
+                    : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                )
+              }
+            >
+              <link.icon className="h-4 w-4 shrink-0" />
+              {link.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
-  Building2, BarChart3, Store, Brain, CreditCard, Shield,
+  Building2, BarChart3, Store, CreditCard, Shield,
   LogOut, Moon, Sun, Menu, X, Cpu, Filter, Globe,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -18,14 +18,13 @@ interface NavItem {
 
 const adminLinks: NavItem[] = [
   { to: '/admin/dashboard', icon: Building2, label: 'Tenants' },
-  { to: '/admin/analytics', icon: BarChart3, label: 'Global Analytics' },
-  { to: '/admin/marketplace', icon: Store, label: 'Marketplace Management' },
-  { to: '/admin/autopilot', icon: Brain, label: 'Autopilot Governance' },
-  { to: '/admin/billing', icon: CreditCard, label: 'Billing & Usage' },
-  { to: '/admin/security', icon: Shield, label: 'Security Controls' },
-  { to: '/admin/evolution', icon: Cpu, label: 'Evolution Engine' },
-  { to: '/admin/conversion', icon: Filter, label: 'Conversion Funnel' },
-  { to: '/admin/intelligence', icon: Globe, label: 'Global Intelligence' },
+  { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/admin/marketplace', icon: Store, label: 'Marketplace' },
+  { to: '/admin/billing', icon: CreditCard, label: 'Billing' },
+  { to: '/admin/security', icon: Shield, label: 'Security' },
+  { to: '/admin/evolution', icon: Cpu, label: 'Evolution' },
+  { to: '/admin/conversion', icon: Filter, label: 'Funnel' },
+  { to: '/admin/intelligence', icon: Globe, label: 'Intelligence' },
 ];
 
 export default function AdminLayout() {

@@ -123,7 +123,11 @@ function sentimentColor(score: number): string {
   return 'text-yellow-500';
 }
 
-export default function RevenueAnalytics() {
+interface RevenueAnalyticsProps {
+  embedded?: boolean;
+}
+
+export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsProps = {}) {
   const [range, setRange] = useState<string>('30d');
 
   const { data: revenue, isLoading: revenueLoading } = useQuery({
@@ -179,7 +183,7 @@ export default function RevenueAnalytics() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Revenue & Performance</h1>
+          {!embedded && <h1 className="text-2xl font-bold">Revenue & Performance</h1>}
           <p className="text-sm text-muted-foreground mt-1">Revenue attribution, sentiment, topics, and conversion analytics</p>
         </div>
         <div className="flex items-center gap-3">

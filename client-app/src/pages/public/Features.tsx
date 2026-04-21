@@ -245,7 +245,7 @@ export default function Features() {
           <RevealSection>
             <div className="text-center mb-14">
               <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">
-                Built-In Mini Systems
+                Built-In Operations Suite
               </span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
                 Integrated systems that power your agents.

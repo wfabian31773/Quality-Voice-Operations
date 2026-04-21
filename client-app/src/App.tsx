@@ -13,9 +13,7 @@ import PhoneNumbers from './pages/PhoneNumbers';
 import Calls from './pages/Calls';
 import Connectors from './pages/Connectors';
 import UsersPage from './pages/Users';
-import Observability from './pages/Observability';
 import Analytics from './pages/Analytics';
-import RevenueAnalytics from './pages/RevenueAnalytics';
 import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
 import Campaigns from './pages/Campaigns';
@@ -33,7 +31,6 @@ import Operations from './pages/Operations';
 import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
-import Autopilot from './pages/Autopilot';
 import DigitalTwin from './pages/DigitalTwin';
 import GlobalIntelligence from './pages/GlobalIntelligence';
 import EvolutionEngine from './pages/EvolutionEngine';
@@ -149,7 +146,6 @@ export default function App() {
         <Route path="/connectors" element={<Connectors />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/analytics" element={<Analytics />} />
-        <Route path="/revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
         <Route path="/marketplace/:id" element={<Marketplace />} />
@@ -190,7 +186,6 @@ export default function App() {
         <Route path="/admin/dashboard" element={<PlatformAdmin />} />
         <Route path="/admin/analytics" element={<Analytics />} />
         <Route path="/admin/marketplace" element={<Marketplace />} />
-        <Route path="/admin/autopilot" element={<Autopilot />} />
         <Route path="/admin/billing" element={<Billing />} />
         <Route path="/admin/security" element={<Compliance />} />
         <Route path="/admin/evolution" element={<EvolutionEngine />} />
@@ -210,31 +205,16 @@ export default function App() {
       >
         <Route path="/ops/monitor" element={<Operations />} />
         <Route path="/ops/call-debug" element={<CallDebug />} />
-        <Route path="/ops/tool-logs" element={<Observability />} />
         <Route path="/ops/integration-diagnostics" element={<IntegrationDiagnostics />} />
         <Route path="/ops/cost" element={<CostOptimization />} />
-        <Route path="/ops/observability" element={<Observability />} />
         <Route path="/ops/reliability" element={<ToolHealth />} />
         <Route path="/ops/digital-twin" element={<DigitalTwin />} />
       </Route>
 
-      {/* Legacy routes - redirect to new locations */}
-      <Route path="/operations" element={<Navigate to="/ops/monitor" replace />} />
-      <Route path="/call-debug" element={<Navigate to="/ops/call-debug" replace />} />
-      <Route path="/observability" element={<Navigate to="/ops/observability" replace />} />
-      <Route path="/reliability" element={<Navigate to="/ops/reliability" replace />} />
-      <Route path="/cost-optimization" element={<Navigate to="/ops/cost" replace />} />
-      <Route path="/digital-twin" element={<Navigate to="/ops/digital-twin" replace />} />
-      <Route path="/global-intelligence" element={<Navigate to="/admin/intelligence" replace />} />
-      <Route path="/platform-admin" element={<Navigate to="/admin/dashboard" replace />} />
-      <Route path="/evolution" element={<Navigate to="/admin/evolution" replace />} />
-      <Route path="/conversion-funnel" element={<Navigate to="/admin/conversion" replace />} />
-      <Route path="/command-center" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/workforce" element={<Navigate to="/agents" replace />} />
-      <Route path="/insights" element={<Navigate to="/analytics" replace />} />
-      <Route path="/autopilot" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/simulation-lab" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/improvements" element={<Navigate to="/dashboard" replace />} />
+      {/* Legacy redirects kept for backward-compatible deep links */}
+      <Route path="/revenue-analytics" element={<Navigate to="/analytics" replace />} />
+      <Route path="/ops/tool-logs" element={<Navigate to="/ops/reliability" replace />} />
+      <Route path="/ops/observability" element={<Navigate to="/ops/reliability" replace />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

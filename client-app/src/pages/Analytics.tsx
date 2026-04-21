@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import RevenueAnalytics from './RevenueAnalytics';
 
 interface ToolHealthMetric {
   toolName: string;
@@ -73,8 +74,11 @@ interface CostAnalytics {
 
 const RANGES = ['7d', '30d', '90d'] as const;
 
+type AnalyticsTab = 'performance' | 'revenue';
+
 export default function Analytics() {
   const [range, setRange] = useState<string>('30d');
+  const [tab, setTab] = useState<AnalyticsTab>('performance');
 
   const { data: calls, isLoading: callsLoading } = useQuery({
     queryKey: ['analytics-calls', range],
@@ -109,23 +113,88 @@ export default function Analytics() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Analytics</h1>
-        <div className="flex gap-1 bg-muted rounded-lg p-1">
-          {RANGES.map((r) => (
+        {tab === 'performance' && (
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={clsx(
+                  'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                  range === r
+                    ? 'bg-background shadow text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="border-b border-border">
+        <div className="flex gap-0">
+          {([
+            { key: 'performance', label: 'Performance' },
+            { key: 'revenue', label: 'Revenue & Sentiment' },
+          ] as const).map((t) => (
             <button
-              key={r}
-              onClick={() => setRange(r)}
+              key={t.key}
+              onClick={() => setTab(t.key)}
               className={clsx(
-                'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-                range === r
-                  ? 'bg-background shadow text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+                tab === t.key
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
-              {r}
+              {t.label}
             </button>
           ))}
         </div>
       </div>
+
+      {tab === 'revenue' && <RevenueAnalytics embedded />}
+      {tab === 'performance' && (
+        <PerformanceTab
+          range={range}
+          calls={calls}
+          callsLoading={callsLoading}
+          campaignData={campaignData}
+          campaignsLoading={campaignsLoading}
+          costs={costs}
+          costsLoading={costsLoading}
+          toolHealth={toolHealth}
+          healthLoading={healthLoading}
+          formatCents={formatCents}
+          navigate={navigate}
+        />
+      )}
+    </div>
+  );
+}
+
+interface PerformanceTabProps {
+  range: string;
+  calls: CallAnalytics | undefined;
+  callsLoading: boolean;
+  campaignData: { campaigns: CampaignRow[] } | undefined;
+  campaignsLoading: boolean;
+  costs: CostAnalytics | undefined;
+  costsLoading: boolean;
+  toolHealth: ToolHealthResponse | undefined;
+  healthLoading: boolean;
+  formatCents: (cents: number) => string;
+  navigate: (path: string) => void;
+}
+
+function PerformanceTab({
+  calls, callsLoading, campaignData, campaignsLoading, costs, costsLoading,
+  toolHealth, healthLoading, formatCents, navigate,
+}: PerformanceTabProps) {
+  return (
+    <div className="space-y-6">
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard label="Total Calls" value={callsLoading ? '—' : String(calls?.totalCalls ?? 0)} />
@@ -228,7 +297,7 @@ export default function Analytics() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Tool Reliability</h2>
           <button
-            onClick={() => navigate('/reliability')}
+            onClick={() => navigate('/ops/reliability')}
             className="text-xs text-primary hover:underline"
           >
             View Details →
