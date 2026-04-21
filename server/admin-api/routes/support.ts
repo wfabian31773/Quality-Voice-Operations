@@ -237,6 +237,75 @@ router.post('/docs/feedback', async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// ----- Platform admin: docs feedback aggregation -----
+router.get('/docs/feedback/summary', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const sort = String(req.query.sort ?? 'lowest_ratio');
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '100'), 10) || 100, 1), 500);
+  let orderBy: string;
+  switch (sort) {
+    case 'highest_ratio':
+      orderBy = 'helpful_ratio DESC NULLS LAST, total_votes DESC';
+      break;
+    case 'most_votes':
+      orderBy = 'total_votes DESC';
+      break;
+    case 'recent':
+      orderBy = 'last_vote_at DESC NULLS LAST';
+      break;
+    case 'lowest_ratio':
+    default:
+      orderBy = 'helpful_ratio ASC NULLS FIRST, total_votes DESC';
+  }
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `SELECT
+         article_slug,
+         COUNT(*)::int AS total_votes,
+         COUNT(*) FILTER (WHERE vote = 'helpful')::int AS helpful_count,
+         COUNT(*) FILTER (WHERE vote = 'not_helpful')::int AS not_helpful_count,
+         COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0)::int AS comment_count,
+         CASE WHEN COUNT(*) > 0
+              THEN ROUND(100.0 * COUNT(*) FILTER (WHERE vote = 'helpful') / COUNT(*))::int
+              ELSE NULL END AS helpful_ratio,
+         MAX(created_at) AS last_vote_at
+       FROM docs_feedback
+       GROUP BY article_slug
+       ORDER BY ${orderBy}
+       LIMIT $1`,
+      [limit],
+    );
+    res.json({ articles: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load feedback summary', detail: String(err) });
+  }
+});
+
+router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const slug = req.query.article_slug ? String(req.query.article_slug) : null;
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 200);
+  try {
+    const pool = getPlatformPool();
+    const params: unknown[] = [limit];
+    let where = `WHERE comment IS NOT NULL AND length(trim(comment)) > 0`;
+    if (slug) {
+      params.push(slug);
+      where += ` AND article_slug = $2`;
+    }
+    const r = await pool.query(
+      `SELECT id, article_slug, vote, comment, page_path, created_at
+       FROM docs_feedback
+       ${where}
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      params,
+    );
+    res.json({ comments: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load feedback comments', detail: String(err) });
+  }
+});
+
 // ----- Platform admin: configurable routing (global config; not tenant-scoped) -----
 router.get('/support/routing', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {

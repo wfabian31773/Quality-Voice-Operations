@@ -5,7 +5,29 @@ import {
   Building2, Users, PhoneCall, DollarSign, ChevronDown, ChevronRight,
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
+  ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
 } from 'lucide-react';
+
+interface DocsFeedbackArticle {
+  article_slug: string;
+  total_votes: number;
+  helpful_count: number;
+  not_helpful_count: number;
+  comment_count: number;
+  helpful_ratio: number | null;
+  last_vote_at: string | null;
+}
+
+interface DocsFeedbackComment {
+  id: number;
+  article_slug: string;
+  vote: 'helpful' | 'not_helpful';
+  comment: string;
+  page_path: string | null;
+  created_at: string;
+}
+
+type DocsFeedbackSort = 'lowest_ratio' | 'highest_ratio' | 'most_votes' | 'recent';
 
 interface PlatformStats {
   active_tenants: string;
@@ -480,7 +502,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -617,6 +639,16 @@ export default function PlatformAdmin() {
           }`}
         >
           <span className="flex items-center gap-2"><Activity className="h-4 w-4" /> Activation</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('docs-feedback')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'docs-feedback'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> Docs Feedback</span>
         </button>
       </div>
 
@@ -801,6 +833,160 @@ export default function PlatformAdmin() {
       {activeTab === 'activation' && (
         <ActivationMetricsTab data={activationData} loading={activationLoading} />
       )}
+
+      {activeTab === 'docs-feedback' && <DocsFeedbackTab />}
+    </div>
+  );
+}
+
+function DocsFeedbackTab() {
+  const [sort, setSort] = useState<DocsFeedbackSort>('lowest_ratio');
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+
+  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+    queryKey: ['docs-feedback-summary', sort],
+    queryFn: () => api.get<{ articles: DocsFeedbackArticle[] }>(`/docs/feedback/summary?sort=${sort}&limit=200`),
+    refetchInterval: 60_000,
+  });
+
+  const { data: commentsData, isLoading: commentsLoading } = useQuery({
+    queryKey: ['docs-feedback-comments', selectedSlug],
+    queryFn: () => api.get<{ comments: DocsFeedbackComment[] }>(
+      selectedSlug
+        ? `/docs/feedback/comments?article_slug=${encodeURIComponent(selectedSlug)}&limit=100`
+        : `/docs/feedback/comments?limit=50`,
+    ),
+    refetchInterval: 60_000,
+  });
+
+  const articles = summaryData?.articles ?? [];
+  const comments = commentsData?.comments ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="font-semibold">Article Helpfulness</h2>
+            <p className="text-xs text-muted mt-0.5">Reader votes from the &ldquo;Was this helpful?&rdquo; widget across help articles</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted">Sort</label>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as DocsFeedbackSort)}
+              className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
+            >
+              <option value="lowest_ratio">Lowest helpfulness ratio</option>
+              <option value="highest_ratio">Highest helpfulness ratio</option>
+              <option value="most_votes">Most votes</option>
+              <option value="recent">Most recent vote</option>
+            </select>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-3 font-medium text-muted">Article</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Helpfulness</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Helpful</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Not helpful</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Comments</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Last vote</th>
+                <th className="text-right px-4 py-3 font-medium text-muted">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summaryLoading ? (
+                <tr><td colSpan={7} className="text-center py-12 text-muted">Loading feedback...</td></tr>
+              ) : articles.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-12 text-muted">No feedback collected yet</td></tr>
+              ) : (
+                articles.map((a) => {
+                  const ratio = a.helpful_ratio;
+                  const ratioColor =
+                    ratio === null ? 'text-muted'
+                      : ratio >= 75 ? 'text-green-600'
+                      : ratio >= 50 ? 'text-yellow-600'
+                      : 'text-red-600';
+                  return (
+                    <tr key={a.article_slug} className={`border-b border-border last:border-0 hover:bg-surface-secondary/50 ${selectedSlug === a.article_slug ? 'bg-surface-secondary/40' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-xs">{a.article_slug}</td>
+                      <td className={`px-4 py-3 font-semibold ${ratioColor}`}>
+                        {ratio === null ? '—' : `${ratio}%`}
+                        <span className="text-muted font-normal ml-1">({a.total_votes})</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-green-600">
+                          <ThumbsUp className="h-3.5 w-3.5" /> {a.helpful_count}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-red-600">
+                          <ThumbsDown className="h-3.5 w-3.5" /> {a.not_helpful_count}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-muted">
+                          <MessageSquare className="h-3.5 w-3.5" /> {a.comment_count}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted whitespace-nowrap">
+                        {a.last_vote_at ? new Date(a.last_vote_at).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => setSelectedSlug(selectedSlug === a.article_slug ? null : a.article_slug)}
+                          className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
+                        >
+                          {selectedSlug === a.article_slug ? 'Clear filter' : 'View comments'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h2 className="font-semibold">
+            {selectedSlug ? `Comments for ${selectedSlug}` : 'Recent Comments'}
+          </h2>
+          <p className="text-xs text-muted mt-0.5">
+            {selectedSlug
+              ? 'Showing comments only for the selected article'
+              : 'Most recent reader comments across all articles'}
+          </p>
+        </div>
+        <div className="divide-y divide-border">
+          {commentsLoading ? (
+            <div className="text-center py-12 text-muted">Loading comments...</div>
+          ) : comments.length === 0 ? (
+            <div className="text-center py-12 text-muted">No comments yet</div>
+          ) : (
+            comments.map((c) => (
+              <div key={c.id} className="px-4 py-3">
+                <div className="flex items-center gap-2 text-xs text-muted mb-1">
+                  {c.vote === 'helpful' ? (
+                    <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> not helpful</span>
+                  )}
+                  <span className="font-mono">{c.article_slug}</span>
+                  {c.page_path && <span className="text-muted">· {c.page_path}</span>}
+                  <span className="ml-auto">{new Date(c.created_at).toLocaleString()}</span>
+                </div>
+                <div className="text-sm whitespace-pre-wrap">{c.comment}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }
