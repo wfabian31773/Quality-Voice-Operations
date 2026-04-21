@@ -322,6 +322,20 @@ export default function Landing() {
               </div>
             ))}
           </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+              <ShieldCheck className="h-3 w-3 text-teal" /> SOC 2 in progress
+            </Link>
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+              <ShieldCheck className="h-3 w-3 text-teal" /> HIPAA-ready
+            </Link>
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+              <ShieldCheck className="h-3 w-3 text-teal" /> GDPR compliant
+            </Link>
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+              <ShieldCheck className="h-3 w-3 text-teal" /> AES-256 encryption
+            </Link>
+          </div>
         </div>
       </section>
 

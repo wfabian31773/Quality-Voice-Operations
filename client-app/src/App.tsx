@@ -58,6 +58,10 @@ import GuideDetail from './pages/public/GuideDetail';
 import VerticalLanding from './pages/public/VerticalLanding';
 import CaseStudies from './pages/public/CaseStudies';
 import BookDemo from './pages/public/BookDemo';
+import Terms from './pages/public/Terms';
+import Privacy from './pages/public/Privacy';
+import Security from './pages/public/Security';
+import Subprocessors from './pages/public/Subprocessors';
 import ConversionFunnel from './pages/ConversionFunnel';
 import Workflows from './pages/Workflows';
 import RoleGuard from './components/RoleGuard';
@@ -69,7 +73,7 @@ import TicketReporting from './pages/TicketReporting';
 import TicketAdmin from './pages/TicketAdmin';
 import Dispatch from './pages/Dispatch';
 
-const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys'];
+const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys', 'privacy'];
 
 function SettingsRedirect() {
   const [searchParams] = useSearchParams();
@@ -107,6 +111,10 @@ export default function App() {
         <Route path="/case-studies" element={<CaseStudies />} />
         <Route path="/case-studies/:slug" element={<CaseStudies />} />
         <Route path="/book-demo" element={<BookDemo />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/security" element={<Security />} />
+        <Route path="/subprocessors" element={<Subprocessors />} />
       </Route>
 
       <Route
@@ -158,6 +166,7 @@ export default function App() {
         <Route path="/settings/roles" element={<Settings />} />
         <Route path="/settings/security" element={<Settings />} />
         <Route path="/settings/api-keys" element={<Settings />} />
+        <Route path="/settings/privacy" element={<Settings />} />
         <Route path="/phone-numbers" element={<PhoneNumbers />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/billing" element={<Billing />} />

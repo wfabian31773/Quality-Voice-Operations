@@ -295,6 +295,32 @@ export default function Pricing() {
         </div>
       </section>
 
+      <section className="bg-white py-12 border-t border-soft-steel/30">
+        <div className="max-w-5xl mx-auto px-6 lg:px-8">
+          <p className="text-center text-xs font-semibold text-slate-ink/40 uppercase tracking-wider mb-6">
+            Enterprise-ready compliance
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {[
+              'SOC 2 Type II (in progress)',
+              'HIPAA available with BAA',
+              'GDPR compliant',
+              'CCPA / CPRA',
+              'TLS 1.2+ in transit',
+              'AES-256 at rest',
+            ].map((badge) => (
+              <Link
+                key={badge}
+                to="/security"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-harbor bg-mist hover:bg-teal/10 border border-soft-steel/40 hover:border-teal/30 rounded-full px-3 py-1.5 transition-colors"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-teal" /> {badge}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="bg-mist py-20 lg:py-28">
         <div className="max-w-3xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">

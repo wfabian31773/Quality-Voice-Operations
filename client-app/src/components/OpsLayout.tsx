@@ -9,6 +9,7 @@ import { useState } from 'react';
 import clsx from 'clsx';
 import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
+import AppFooter from './AppFooter';
 
 interface NavItem {
   to: string;
@@ -117,6 +118,7 @@ export default function OpsLayout() {
         <main className="flex-1 overflow-y-auto p-4 lg:p-8">
           <Outlet />
         </main>
+        <AppFooter />
       </div>
 
       <PlatformAssistant />

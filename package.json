@@ -50,6 +50,7 @@
     "express": "^5.1.0",
     "express-session": "^1.18.2",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
     "memoizee": "^0.4.17",
     "multer": "^2.0.2",

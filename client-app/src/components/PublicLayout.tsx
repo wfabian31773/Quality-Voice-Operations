@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { Menu, X, Phone } from 'lucide-react';
 import WebsiteSalesWidget from './WebsiteSalesWidget';
+import CookieConsent from './CookieConsent';
 
 const navLinks = [
   { to: '/product', label: 'Product' },
@@ -127,6 +128,7 @@ export default function PublicLayout() {
       </main>
 
       <WebsiteSalesWidget />
+      <CookieConsent />
 
       <footer className="bg-harbor text-white/70">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16">
@@ -184,9 +186,12 @@ export default function PublicLayout() {
             <p className="text-xs text-white/50">
               &copy; {new Date().getFullYear()} Quality Voice Operations. All rights reserved.
             </p>
-            <div className="flex items-center gap-6 text-xs text-white/50">
-              <span>Privacy Policy</span>
-              <span>Terms of Service</span>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-white/60">
+              <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+              <Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
+              <Link to="/security" className="hover:text-white transition-colors">Security</Link>
+              <Link to="/subprocessors" className="hover:text-white transition-colors">Sub-processors</Link>
+              <a href="/legal/dpa" className="hover:text-white transition-colors">DPA</a>
             </div>
           </div>
         </div>

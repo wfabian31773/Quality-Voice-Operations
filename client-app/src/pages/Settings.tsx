@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
 import {
   Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
+  Lock, Download, Trash2,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 
@@ -44,13 +45,14 @@ const ALL_TIMEZONES = (() => {
   }
 })();
 
-type Tab = 'general' | 'security' | 'api-keys' | 'roles';
+type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy';
 
 const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
   { key: 'general', label: 'General', icon: Settings2 },
   { key: 'roles', label: 'Roles & Permissions', icon: Users },
   { key: 'security', label: 'Security', icon: Shield },
   { key: 'api-keys', label: 'API Keys', icon: Key },
+  { key: 'privacy', label: 'Privacy & Data', icon: Lock },
 ];
 
 interface AgentType {
@@ -433,6 +435,237 @@ function SecuritySettings() {
   );
 }
 
+interface DeletionRequest {
+  id: string;
+  requested_at: string;
+  scheduled_for: string;
+  status: string;
+  reason: string | null;
+}
+
+function PrivacySettings() {
+  const queryClient = useQueryClient();
+  const { isOwner } = useRole();
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [reason, setReason] = useState('');
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['deletion-request'],
+    queryFn: () => api.get<{ request: DeletionRequest | null }>('/privacy/deletion-request'),
+  });
+
+  const pending = data?.request ?? null;
+
+  const requestDeletion = useMutation({
+    mutationFn: () =>
+      api.post('/privacy/deletion-request', { confirmation: confirmText, reason: reason || null }),
+    onSuccess: () => {
+      setShowDeleteConfirm(false);
+      setConfirmText('');
+      setReason('');
+      setActionMsg('Deletion scheduled. You can cancel within 30 days.');
+      queryClient.invalidateQueries({ queryKey: ['deletion-request'] });
+    },
+    onError: (err: Error) => setActionMsg(err.message),
+  });
+
+  const cancelDeletion = useMutation({
+    mutationFn: (id: string) => api.delete(`/privacy/deletion-request/${id}`),
+    onSuccess: () => {
+      setActionMsg('Deletion request cancelled.');
+      queryClient.invalidateQueries({ queryKey: ['deletion-request'] });
+    },
+  });
+
+  const exportData = async () => {
+    setExportError(null);
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/privacy/export', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Export failed: ${res.status} ${txt}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `qvo-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Privacy & Data</h2>
+        <p className="text-sm text-text-muted mt-0.5">
+          Exercise your data rights under GDPR, CCPA, and other privacy laws.
+        </p>
+      </div>
+
+      {actionMsg && (
+        <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          {actionMsg}
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Download className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-text-primary">Export your data</h3>
+            <p className="text-sm text-text-muted mt-1 mb-4">
+              Download a JSON bundle containing your tenant configuration, users, agents, phone numbers,
+              call sessions (last 5,000), and audit logs (last 5,000). This action is recorded in your audit log.
+            </p>
+            {exportError && (
+              <div className="bg-danger/10 text-danger text-xs px-3 py-2 rounded mb-3">{exportError}</div>
+            )}
+            {isOwner ? (
+              <button
+                onClick={exportData}
+                disabled={exporting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {exporting ? 'Generating export…' : 'Export my data'}
+              </button>
+            ) : (
+              <p className="text-xs text-text-muted">Only the account owner can request an export.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-danger/30 rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center flex-shrink-0">
+            <Trash2 className="h-5 w-5 text-danger" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-text-primary">Delete account</h3>
+            <p className="text-sm text-text-muted mt-1 mb-4">
+              Schedule deletion of your QVO account and all associated data. Deletion takes effect after a
+              <strong> 30-day cool-off period</strong>, during which you can cancel. After deletion, data may
+              persist in encrypted backups for up to 30 additional days before being purged.
+            </p>
+
+            {pending ? (
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-4 mb-3">
+                <p className="text-sm font-medium text-text-primary mb-1">Deletion scheduled</p>
+                <p className="text-xs text-text-muted mb-3">
+                  Requested {new Date(pending.requested_at).toLocaleString()} —
+                  scheduled for {new Date(pending.scheduled_for).toLocaleDateString()}.
+                </p>
+                {isOwner && (
+                  <button
+                    onClick={() => cancelDeletion.mutate(pending.id)}
+                    disabled={cancelDeletion.isPending}
+                    className="text-xs font-medium px-3 py-1.5 bg-surface border border-border rounded text-text-primary hover:bg-surface-hover"
+                  >
+                    Cancel deletion request
+                  </button>
+                )}
+              </div>
+            ) : isOwner ? (
+              showDeleteConfirm ? (
+                <div className="bg-danger/5 border border-danger/30 rounded-lg p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-text-primary mb-1">
+                      Reason (optional)
+                    </label>
+                    <textarea
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 rounded border border-border bg-surface text-text-primary text-sm"
+                      placeholder="Help us improve…"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-primary mb-1">
+                      Type <span className="font-mono bg-surface-hover px-1.5 py-0.5 rounded">DELETE MY ACCOUNT</span> to confirm
+                    </label>
+                    <input
+                      type="text"
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      className="w-full px-3 py-2 rounded border border-border bg-surface text-text-primary text-sm font-mono"
+                    />
+                  </div>
+                  {requestDeletion.error && (
+                    <div className="text-xs text-danger">{(requestDeletion.error as Error).message}</div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => requestDeletion.mutate()}
+                      disabled={confirmText !== 'DELETE MY ACCOUNT' || requestDeletion.isPending}
+                      className="px-4 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+                    >
+                      {requestDeletion.isPending ? 'Scheduling…' : 'Confirm deletion'}
+                    </button>
+                    <button
+                      onClick={() => { setShowDeleteConfirm(false); setConfirmText(''); }}
+                      className="px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface border border-danger/40 text-danger text-sm font-medium rounded-lg hover:bg-danger/5"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete my account
+                </button>
+              )
+            ) : (
+              <p className="text-xs text-text-muted">Only the account owner can request deletion.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface-hover border border-border rounded-lg p-4">
+        <p className="text-xs text-text-muted">
+          Need a Data Processing Addendum, sub-processor list, or other compliance documentation?
+          See our <a href="/security" target="_blank" rel="noreferrer" className="text-primary hover:underline">Security page</a> or
+          contact privacy@qvo.example.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -472,6 +705,7 @@ export default function Settings() {
       {tab === 'roles' && <RolesPermissions />}
       {tab === 'security' && <SecuritySettings />}
       {tab === 'api-keys' && <ApiKeys />}
+      {tab === 'privacy' && <PrivacySettings />}
     </div>
   );
 }

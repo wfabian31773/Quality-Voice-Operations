@@ -55,6 +55,7 @@ import schedulingRoutes from './routes/scheduling';
 import ticketRoutes from './routes/tickets';
 import dispatchRoutes from './routes/dispatch';
 import ingestRoutes from './routes/ingest';
+import legalComplianceRoutes from './routes/legalCompliance';
 
 const app = express();
 
@@ -131,6 +132,7 @@ app.use('/', schedulingRoutes);
 app.use('/', ticketRoutes);
 app.use('/', dispatchRoutes);
 app.use('/', ingestRoutes);
+app.use('/', legalComplianceRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
