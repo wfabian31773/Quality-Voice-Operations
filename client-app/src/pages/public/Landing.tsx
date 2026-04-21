@@ -6,7 +6,7 @@ import {
   Mic, Megaphone, Plug, MessageSquare, Bot,
   Zap, Settings, Lock, TrendingUp, PhoneCall,
   PhoneOff, DollarSign, UserX, Timer,
-  CheckCircle2, Star, Wrench, Play,
+  CheckCircle2, Star, Wrench,
   CalendarCheck, Truck, HelpCircle, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
@@ -16,6 +16,8 @@ import RevealSection from '../../components/RevealSection';
 import ComparisonTable from '../../components/ComparisonTable';
 import TestimonialsCarousel from '../../components/TestimonialsCarousel';
 import LogosStrip from '../../components/LogosStrip';
+import LiveTranscriptMock from '../../components/LiveTranscriptMock';
+import IndustryShowcase from '../../components/IndustryShowcase';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 
 function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
@@ -274,28 +276,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="hidden lg:block">
-              <div className="relative">
-                <div className="glass-card rounded-2xl p-6 shadow-2xl">
-                  <div className="aspect-video bg-white/5 rounded-xl flex flex-col items-center justify-center border border-white/10 cursor-pointer group hover:bg-white/10 transition-colors">
-                    <div className="w-16 h-16 rounded-full bg-teal/20 flex items-center justify-center mb-3 group-hover:bg-teal/30 transition-colors">
-                      <Play className="w-7 h-7 text-teal ml-1" />
-                    </div>
-                    <p className="text-sm text-white/60 font-body">Watch Demo Video</p>
-                    <p className="text-xs text-white/30 font-body mt-1">See QVO in action — 2 min</p>
-                  </div>
-                </div>
-                <div className="absolute -bottom-4 -right-4 glass-card rounded-xl p-4 shadow-xl">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-calm-green/20 flex items-center justify-center">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-calm-green" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-white/90">Call Completed</p>
-                      <p className="text-[10px] text-white/50">Appointment booked — 2m 34s</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <LiveTranscriptMock />
             </div>
           </div>
         </div>
@@ -450,6 +431,26 @@ export default function Landing() {
               </Link>
             </div>
           </RevealSection>
+        </div>
+      </section>
+
+      <section className="relative py-20 lg:py-28 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-mist to-frost-blue/20" />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="grid lg:grid-cols-[1fr,2fr] gap-10 lg:gap-14 items-end mb-14">
+              <div>
+                <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">Built for your industry</span>
+                <h2 className="font-display text-3xl lg:text-5xl font-bold text-harbor leading-[1.05] mb-4">
+                  Purpose-built voice AI for the way <span className="text-teal">your industry</span> actually works.
+                </h2>
+              </div>
+              <p className="text-lg text-slate-ink/65 font-body leading-relaxed max-w-xl lg:pb-2">
+                Every vertical has its own jargon, compliance rules, and customer expectations. QVO ships pre-trained templates, integrations, and call flows for the industries where voice matters most.
+              </p>
+            </div>
+          </RevealSection>
+          <IndustryShowcase />
         </div>
       </section>
 

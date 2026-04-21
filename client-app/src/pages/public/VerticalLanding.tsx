@@ -19,6 +19,8 @@ interface VerticalData {
   icon: typeof Phone;
   color: string;
   colorLight: string;
+  heroImage: string;
+  heroOverlayAccent: string;
   painPoints: Array<{ title: string; description: string }>;
   agentExamples: Array<{ name: string; description: string; capabilities: string[] }>;
   stats: Array<{ value: string; label: string }>;
@@ -38,6 +40,8 @@ const verticals: Record<string, VerticalData> = {
     icon: Stethoscope,
     color: 'bg-blue-600',
     colorLight: 'bg-blue-50',
+    heroImage: '/industry-hero/healthcare.jpg',
+    heroOverlayAccent: 'from-blue-500/20 to-teal/10',
     painPoints: [
       { title: 'Missed patient calls', description: 'Up to 30% of patient calls go unanswered during peak hours, leading to no-shows and lost revenue.' },
       { title: 'Staff burnout', description: 'Front desk staff spend 60% of their day on repetitive phone tasks — scheduling, confirmations, and insurance checks.' },
@@ -69,6 +73,8 @@ const verticals: Record<string, VerticalData> = {
     icon: Home,
     color: 'bg-emerald-600',
     colorLight: 'bg-emerald-50',
+    heroImage: '/industry-hero/real-estate.jpg',
+    heroOverlayAccent: 'from-emerald-500/20 to-teal/10',
     painPoints: [
       { title: 'Slow lead response', description: 'Leads contacted after 5 minutes are 10x less likely to convert. Most agents respond in hours, not minutes.' },
       { title: 'After-hours inquiries', description: '42% of real estate inquiries come outside business hours. Those leads go to the next agent who answers.' },
@@ -100,6 +106,8 @@ const verticals: Record<string, VerticalData> = {
     icon: Scale,
     color: 'bg-amber-600',
     colorLight: 'bg-amber-50',
+    heroImage: '/industry-hero/legal.jpg',
+    heroOverlayAccent: 'from-amber-600/20 to-orange-500/10',
     painPoints: [
       { title: 'Missed client calls', description: 'The average law firm misses 35% of incoming calls. Each missed call could be a $5,000-$50,000 case.' },
       { title: 'Expensive intake staff', description: 'Full-time intake coordinators cost $45,000-$65,000/year, and can only handle one call at a time.' },
@@ -131,6 +139,8 @@ const verticals: Record<string, VerticalData> = {
     icon: Wrench,
     color: 'bg-orange-600',
     colorLight: 'bg-orange-50',
+    heroImage: '/industry-hero/home-services.jpg',
+    heroOverlayAccent: 'from-orange-500/20 to-amber-500/10',
     painPoints: [
       { title: 'Lost emergency calls', description: 'After-hours emergencies go to voicemail. Homeowners call the next company in Google results.' },
       { title: 'Dispatcher overload', description: 'Dispatchers juggle phones, scheduling, and technician coordination. Calls get dropped during peak times.' },
@@ -162,6 +172,8 @@ const verticals: Record<string, VerticalData> = {
     icon: Smile,
     color: 'bg-cyan-600',
     colorLight: 'bg-cyan-50',
+    heroImage: '/industry-hero/dental.jpg',
+    heroOverlayAccent: 'from-cyan-500/20 to-teal/10',
     painPoints: [
       { title: 'Empty chairs', description: 'The average dental practice loses $150,000/year to unfilled appointments and last-minute cancellations.' },
       { title: 'Phone hold times', description: 'Patients who wait more than 60 seconds on hold hang up. 34% don\'t call back and book elsewhere.' },
@@ -184,14 +196,6 @@ const verticals: Record<string, VerticalData> = {
     metaTitle: 'AI Voice Agents for Dental Practices | QVO',
     metaDescription: 'Fill your dental schedule and reduce no-shows with AI voice agents. Automate patient scheduling, recall campaigns, and emergency triage 24/7.',
   },
-};
-
-const iconMap: Record<string, typeof Phone> = {
-  healthcare: Stethoscope,
-  'real-estate': Home,
-  legal: Scale,
-  'home-services': Wrench,
-  dental: Smile,
 };
 
 export default function VerticalLanding() {
@@ -241,38 +245,85 @@ export default function VerticalLanding() {
         }}
       />
 
-      <section className="relative overflow-hidden py-20 lg:py-28">
-        <div className="absolute inset-0 bg-gradient-to-br from-harbor via-harbor to-slate-800" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal/20 via-transparent to-transparent" />
-        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-3 mb-6">
-              <div className={`w-10 h-10 rounded-xl ${data.color} flex items-center justify-center`}>
-                <Icon className="h-5 w-5 text-white" />
+      <section className="relative overflow-hidden">
+        {/* Background photo */}
+        <div className="absolute inset-0">
+          <img
+            src={data.heroImage}
+            alt={`${data.name} workspace`}
+            className="w-full h-full object-cover"
+          />
+          {/* Dark base for text contrast (left-weighted) */}
+          <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor/85 to-harbor/30 lg:to-harbor/10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-harbor/80 via-transparent to-harbor/40" />
+          {/* Accent wash */}
+          <div className={`absolute inset-0 bg-gradient-to-br opacity-70 mix-blend-soft-light ${data.heroOverlayAccent}`} />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
+          <div className="grid lg:grid-cols-[1.1fr,1fr] gap-12 items-center">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-3 mb-6">
+                <div className={`w-10 h-10 rounded-xl ${data.color} flex items-center justify-center shadow-lg`}>
+                  <Icon className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-sm font-medium text-teal uppercase tracking-[0.2em]">{data.name}</span>
               </div>
-              <span className="text-sm font-medium text-teal uppercase tracking-wider">{data.name}</span>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold text-white leading-[1.05] mb-6">
+                {data.headline}
+              </h1>
+              <p className="text-lg md:text-xl text-white/80 leading-relaxed mb-8">
+                {data.subheadline}
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <Link
+                  to="/signup"
+                  onClick={() => { trackCTAClick('Start Free Trial', `industry-${data.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup' }); }}
+                  className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-6 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-teal/25"
+                >
+                  Start Free Trial <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  to={`/demo?agent=${data.demoAgent}`}
+                  onClick={() => { trackCTAClick('Try Live Demo', `industry-${data.slug}`, 'hero'); trackConversionEvent('demo_started', `/industries/${data.slug}`); }}
+                  className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20"
+                >
+                  Try Live Demo <Phone className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold text-white leading-tight mb-6">
-              {data.headline}
-            </h1>
-            <p className="text-lg md:text-xl text-white/80 leading-relaxed mb-8">
-              {data.subheadline}
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <Link
-                to="/signup"
-                onClick={() => { trackCTAClick('Start Free Trial', `industry-${data.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup' }); }}
-                className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
-              >
-                Start Free Trial <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                to={`/demo?agent=${data.demoAgent}`}
-                onClick={() => { trackCTAClick('Try Live Demo', `industry-${data.slug}`, 'hero'); trackConversionEvent('demo_started', `/industries/${data.slug}`); }}
-                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm"
-              >
-                Try Live Demo <Phone className="h-4 w-4" />
-              </Link>
+
+            {/* Right-side floating stats card — desktop only */}
+            <div className="hidden lg:flex justify-end">
+              <div className="relative max-w-sm w-full">
+                <div className="rounded-2xl bg-harbor/70 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-2 h-2 rounded-full bg-calm-green animate-pulse" />
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-calm-green">Live performance</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {data.stats.slice(0, 4).map((stat) => (
+                      <div key={stat.label}>
+                        <p className="font-display text-2xl font-bold text-white leading-none">{stat.value}</p>
+                        <p className="text-[11px] text-white/60 mt-1.5">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-white/10 flex items-center gap-2 text-[11px] text-white/70">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-teal" />
+                    From QVO customers in {data.name.toLowerCase()}
+                  </div>
+                </div>
+                <div className="absolute -bottom-3 -left-3 rounded-xl bg-white shadow-xl border border-slate-100 p-3 flex items-center gap-2.5 max-w-[220px]">
+                  <div className={`w-8 h-8 rounded-lg ${data.color} flex items-center justify-center shrink-0`}>
+                    <Icon className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-harbor leading-tight">Pre-built for {data.name}</p>
+                    <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Deploy in minutes, no code</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

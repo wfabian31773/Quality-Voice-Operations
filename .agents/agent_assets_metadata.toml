@@ -1,5 +1,34 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "kRckp15exHIs_QbjNN4JE"
+uri = "file://client-app/public/industry-hero/healthcare.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "jo-U90T9c9pP9dpdw1O3k"
+uri = "file://client-app/public/industry-hero/dental.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "sF9l_7ecy4IvruCj8ANPp"
+uri = "file://client-app/public/industry-hero/legal.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "10YTx6VYNIOkw7-PQa3IA"
+uri = "file://client-app/public/industry-hero/real-estate.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "IssycVwj8qFKDskRPD7dE"
+uri = "file://client-app/public/industry-hero/home-services.png"
+type = "image"
+title = "generated_image"
 
 [[outputs]]
 id = "09pqwY-EUniMxQs7RNDod"

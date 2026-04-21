@@ -44,6 +44,10 @@ externalPort = 3003
 localPort = 8000
 externalPort = 8000
 
+[[ports]]
+localPort = 23636
+externalPort = 4200
+
 [agent]
 expertMode = true
 integrations = ["javascript_database:1.0.0", "twilio:1.0.0"]
