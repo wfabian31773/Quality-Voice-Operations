@@ -1,10 +1,57 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+type PinnedDragHandleProps = {
+  attributes: ReturnType<typeof useSortable>['attributes'];
+  listeners: ReturnType<typeof useSortable>['listeners'];
+};
+
+type PinnedSortableState = {
+  setNodeRef: (el: HTMLElement | null) => void;
+  style: React.CSSProperties;
+  isDragging: boolean;
+  handle: PinnedDragHandleProps;
+};
+
+function SortablePinnedChip({
+  id,
+  render,
+}: {
+  id: string;
+  render: (state: PinnedSortableState) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+  };
+  return <>{render({ setNodeRef, style, isDragging, handle: { attributes, listeners } })}</>;
+}
 
 interface Call {
   id: string;
@@ -311,6 +358,11 @@ export default function Calls() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [subscribersOpenFor, setSubscribersOpenFor] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const pinnedDragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const limit = 20;
 
   useEffect(() => {
@@ -502,22 +554,15 @@ export default function Calls() {
     }
   };
 
-  const handleMovePin = async (view: SavedView, direction: -1 | 1) => {
-    const ownedPinned = savedViews
-      .filter((v) => v.is_pinned && !!currentUserId && v.created_by === currentUserId)
-      .sort((a, b) => (a.pin_order - b.pin_order) || a.name.localeCompare(b.name));
-    const idx = ownedPinned.findIndex((v) => v.id === view.id);
-    if (idx === -1) return;
-    const target = idx + direction;
-    if (target < 0 || target >= ownedPinned.length) return;
-    const reordered = [...ownedPinned];
-    [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
+  const persistPinnedOrder = async (orderedIds: string[]) => {
     try {
-      await api.post('/call-saved-views/pinned/reorder', { ids: reordered.map((v) => v.id) });
+      await api.post('/call-saved-views/pinned/reorder', { ids: orderedIds });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
     } catch (err) {
       alert(`Failed to reorder pinned view: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
     }
   };
 
@@ -630,34 +675,65 @@ export default function Calls() {
           .filter((v) => v.is_pinned && !!currentUserId && v.created_by === currentUserId)
           .sort((a, b) => (a.pin_order - b.pin_order) || a.name.localeCompare(b.name));
         const ownedPinnedIndex = new Map(ownedPinnedOrdered.map((v, i) => [v.id, i]));
-        return (
-        <div className="flex flex-wrap items-center gap-2">
-          {savedViews.map((view) => {
-            const isActive = activeViewId === view.id && !isViewDirty;
-            const isOwner = !!currentUserId && view.created_by === currentUserId;
-            const ownedPinIdx = ownedPinnedIndex.get(view.id);
-            const canMoveUp = ownedPinIdx !== undefined && ownedPinIdx > 0;
-            const canMoveDown = ownedPinIdx !== undefined && ownedPinIdx < ownedPinnedOrdered.length - 1;
-            const lastRunRel = view.digest_last_run_at
-              ? formatDistanceToNow(new Date(view.digest_last_run_at), { addSuffix: true })
-              : null;
-            const lastRunAbs = view.digest_last_run_at
-              ? format(new Date(view.digest_last_run_at), 'PPp')
-              : null;
-            const matchCount = view.digest_last_match_count ?? 0;
-            const digestStatus = view.digest_enabled
-              ? (lastRunRel
-                  ? `Last digest ran ${lastRunRel} (${lastRunAbs}) — ${matchCount} matching call${matchCount === 1 ? '' : 's'}`
-                  : 'Daily digest is on — has not run yet')
-              : null;
-            return (
+        const pinnedIds = ownedPinnedOrdered.map((v) => v.id);
+
+        const handleDragEnd = (event: DragEndEvent) => {
+          const { active, over } = event;
+          if (!over || active.id === over.id) return;
+          const oldIdx = pinnedIds.indexOf(String(active.id));
+          const newIdx = pinnedIds.indexOf(String(over.id));
+          if (oldIdx === -1 || newIdx === -1) return;
+          const reordered = arrayMove(pinnedIds, oldIdx, newIdx);
+          // Optimistically update the cached saved views so the chips don't snap back.
+          queryClient.setQueryData<{ views: SavedView[] }>(['call-saved-views'], (prev) => {
+            if (!prev?.views) return prev;
+            const orderMap = new Map(reordered.map((id, i) => [id, i]));
+            const next = prev.views.map((v) =>
+              orderMap.has(v.id) ? { ...v, pin_order: orderMap.get(v.id)! } : v,
+            );
+            return { ...prev, views: next };
+          });
+          void persistPinnedOrder(reordered);
+        };
+
+        const renderChipMarkup = (view: SavedView, sortable: PinnedSortableState | null) => {
+          const isActive = activeViewId === view.id && !isViewDirty;
+          const isOwner = !!currentUserId && view.created_by === currentUserId;
+          const ownedPinIdx = ownedPinnedIndex.get(view.id);
+          const isSortablePinned = ownedPinIdx !== undefined && ownedPinnedOrdered.length > 1;
+          const lastRunRel = view.digest_last_run_at
+            ? formatDistanceToNow(new Date(view.digest_last_run_at), { addSuffix: true })
+            : null;
+          const lastRunAbs = view.digest_last_run_at
+            ? format(new Date(view.digest_last_run_at), 'PPp')
+            : null;
+          const matchCount = view.digest_last_match_count ?? 0;
+          const digestStatus = view.digest_enabled
+            ? (lastRunRel
+                ? `Last digest ran ${lastRunRel} (${lastRunAbs}) — ${matchCount} matching call${matchCount === 1 ? '' : 's'}`
+                : 'Daily digest is on — has not run yet')
+            : null;
+          return (
               <div
-                key={view.id}
-                className={`group inline-flex items-center gap-1 rounded-full border text-sm transition ${isActive ? 'border-primary bg-primary-light text-primary' : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'}`}
+                ref={sortable?.setNodeRef}
+                style={sortable?.style}
+                className={`group inline-flex items-center gap-1 rounded-full border text-sm transition ${isActive ? 'border-primary bg-primary-light text-primary' : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'} ${sortable?.isDragging ? 'shadow-lg ring-2 ring-primary/40' : ''}`}
               >
+                {isSortablePinned && sortable && (
+                  <button
+                    type="button"
+                    {...sortable.handle.attributes}
+                    {...sortable.handle.listeners}
+                    className="touch-none cursor-grab active:cursor-grabbing pl-2 pr-0.5 py-1.5 text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-l-full"
+                    title="Drag to reorder (or use Space + arrow keys)"
+                    aria-label={`Reorder pinned view ${view.name}`}
+                  >
+                    <GripVertical className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <button
                   onClick={() => applySavedView(view)}
-                  className={`inline-flex items-center gap-1.5 pl-3 ${isOwner ? 'pr-2' : 'pr-3'} py-1.5 font-medium`}
+                  className={`inline-flex items-center gap-1.5 ${isSortablePinned ? 'pl-1' : 'pl-3'} ${isOwner ? 'pr-2' : 'pr-3'} py-1.5 font-medium`}
                   title={[
                     view.is_shared ? (isOwner ? 'Shared with team' : 'Shared by a teammate') : 'Personal view',
                     digestStatus,
@@ -673,28 +749,6 @@ export default function Calls() {
                   >
                     · {lastRunRel ? `${matchCount} ${lastRunRel}` : 'not run yet'}
                   </span>
-                )}
-                {isOwner && view.is_pinned && ownedPinnedOrdered.length > 1 && (
-                  <>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleMovePin(view, -1); }}
-                      disabled={!canMoveUp}
-                      className={`p-1 rounded-full transition ${canMoveUp ? 'text-text-muted hover:text-primary' : 'text-text-muted/40 cursor-not-allowed'}`}
-                      title="Move up in sidebar"
-                      aria-label={`Move ${view.name} up in sidebar`}
-                    >
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleMovePin(view, 1); }}
-                      disabled={!canMoveDown}
-                      className={`p-1 rounded-full transition ${canMoveDown ? 'text-text-muted hover:text-primary' : 'text-text-muted/40 cursor-not-allowed'}`}
-                      title="Move down in sidebar"
-                      aria-label={`Move ${view.name} down in sidebar`}
-                    >
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    </button>
-                  </>
                 )}
                 {isOwner && (
                   <button
@@ -758,16 +812,44 @@ export default function Calls() {
                 ) : null}
               </div>
             );
-          })}
-          {activeViewId && (
-            <button
-              onClick={() => { setActiveViewId(null); clearFilters(); }}
-              className="text-xs text-text-secondary hover:text-text-primary px-2 py-1"
-            >
-              Reset
-            </button>
-          )}
-        </div>
+        };
+
+        return (
+          <DndContext
+            sensors={pinnedDragSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={pinnedIds} strategy={rectSortingStrategy}>
+              <div className="flex flex-wrap items-center gap-2">
+                {savedViews.map((view) => {
+                  const isOwnerPinned =
+                    !!currentUserId &&
+                    view.created_by === currentUserId &&
+                    view.is_pinned &&
+                    ownedPinnedOrdered.length > 1;
+                  if (isOwnerPinned) {
+                    return (
+                      <SortablePinnedChip
+                        key={view.id}
+                        id={view.id}
+                        render={(s) => renderChipMarkup(view, s)}
+                      />
+                    );
+                  }
+                  return <Fragment key={view.id}>{renderChipMarkup(view, null)}</Fragment>;
+                })}
+                {activeViewId && (
+                  <button
+                    onClick={() => { setActiveViewId(null); clearFilters(); }}
+                    className="text-xs text-text-secondary hover:text-text-primary px-2 py-1"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
         );
       })()}
 
