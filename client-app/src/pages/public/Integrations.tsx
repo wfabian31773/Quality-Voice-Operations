@@ -1,62 +1,55 @@
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
 import {
-  ArrowRight, Database, Calendar, Ticket, MessageSquare,
-  Mail, Webhook, Phone, FileText, Shield, Plug,
-  CreditCard, CheckCircle2,
+  ArrowRight, MessageSquare, Mail, FileText, Shield, Plug, CheckCircle2,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
+import BrandLogo from '../../components/BrandLogo';
 import { trackPageView, trackCTAClick } from '../../lib/analytics';
 
 const primaryIntegrations = [
   {
-    icon: Calendar,
+    logoId: 'google-calendar',
     category: 'Scheduling',
     title: 'Google Calendar',
     desc: 'Book, reschedule, and confirm appointments directly within the call flow. Real-time availability checks ensure no double bookings.',
     features: ['Real-time availability', 'Automatic booking', 'Conflict detection', 'Reminder sync'],
-    highlight: true,
   },
   {
-    icon: Phone,
+    logoId: 'twilio',
     category: 'Telephony',
     title: 'Twilio',
     desc: 'Enterprise-grade telephony infrastructure. Provision local and toll-free numbers, handle inbound and outbound calls, and send SMS — all through QVO.',
     features: ['Number provisioning', 'Inbound/outbound calls', 'SMS messaging', 'Call recording'],
-    highlight: true,
   },
   {
-    icon: CreditCard,
+    logoId: 'stripe',
     category: 'Payments',
     title: 'Stripe',
     desc: 'Accept payments and process transactions during calls. Send payment links via SMS, collect deposits, and manage subscription billing.',
     features: ['Payment links', 'Invoice generation', 'Subscription management', 'Refund processing'],
-    highlight: true,
   },
   {
-    icon: Database,
+    logoId: 'hubspot',
     category: 'CRM',
-    title: 'CRM Systems',
-    desc: 'Sync caller data with Salesforce, HubSpot, Zoho CRM, or your custom CRM. Contact records, call logs, and follow-up tasks flow automatically.',
+    title: 'HubSpot',
+    desc: 'Sync caller data with HubSpot. Contact records, call logs, and follow-up tasks flow automatically into your CRM.',
     features: ['Contact sync', 'Call log automation', 'Lead scoring', 'Task creation'],
-    highlight: true,
   },
   {
-    icon: Ticket,
-    category: 'Ticketing',
-    title: 'Ticketing Systems',
-    desc: 'Create support tickets in Zendesk, Freshdesk, or Jira Service Management directly from call conversations. Auto-route tickets to the right team.',
-    features: ['Ticket creation', 'Priority routing', 'SLA tracking', 'Status updates'],
-    highlight: true,
+    logoId: 'slack',
+    category: 'Notifications',
+    title: 'Slack',
+    desc: 'Post call summaries, missed-call alerts, and escalation notices to the right Slack channels in real time.',
+    features: ['Channel routing', 'Missed-call alerts', 'Daily digests', 'Mention escalations'],
   },
   {
-    icon: Webhook,
+    logoId: 'zapier',
     category: 'Automation',
-    title: 'Zapier / Webhooks',
-    desc: 'Push call events, transcripts, and outcomes to any external system. Build custom workflows with Zapier, Make, n8n, or direct webhook integration.',
-    features: ['Event webhooks', 'Zapier triggers', 'Custom payloads', 'Retry logic'],
-    highlight: true,
+    title: 'Zapier',
+    desc: 'Push call events, transcripts, and outcomes to thousands of apps via Zapier. Build workflows without writing code.',
+    features: ['Event triggers', 'No-code workflows', 'Custom payloads', 'Retry logic'],
   },
 ];
 
@@ -66,28 +59,24 @@ const additionalIntegrations = [
     category: 'SMS',
     title: 'SMS & Messaging',
     desc: 'Send confirmation texts, appointment reminders, and follow-up messages. Two-way messaging for callback coordination.',
-    features: ['Appointment confirmations', 'Follow-up sequences', 'Two-way messaging', 'Template system'],
   },
   {
     icon: Mail,
     category: 'Email',
     title: 'Email Notifications',
     desc: 'Send call summaries, escalation alerts, and daily digests via email. Configurable per agent and urgency level.',
-    features: ['Call summaries', 'Escalation alerts', 'Daily digests', 'Custom templates'],
   },
   {
     icon: FileText,
     category: 'Compliance',
     title: 'Compliance & Records',
     desc: 'Full call recordings, transcripts, and audit logs for regulatory compliance. PHI redaction built in for healthcare.',
-    features: ['Call recordings', 'PHI redaction', 'Audit trails', 'Data retention'],
   },
   {
     icon: Shield,
     category: 'Security',
     title: 'Authentication & Access',
     desc: 'Role-based access control, JWT authentication, API key scoping, and tenant isolation for enterprise security.',
-    features: ['RBAC', 'API keys', 'Tenant isolation', 'SSO support'],
   },
 ];
 
@@ -100,7 +89,7 @@ export default function Integrations() {
     <div>
       <SEO
         title="Integrations — Google Calendar, Twilio, Stripe, CRM, and More"
-        description="QVO integrates with Google Calendar, Twilio, Stripe, Salesforce, HubSpot, Zendesk, Zapier, and more. Connect your AI voice agents to the tools you already use."
+        description="QVO integrates with Google Calendar, Twilio, Stripe, HubSpot, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use."
         canonicalPath="/integrations"
       />
       <section className="bg-harbor text-white py-20 lg:py-28">
@@ -152,14 +141,10 @@ export default function Integrations() {
           <RevealSection>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
               {primaryIntegrations.map((int) => (
-                <div key={int.title} className="bg-white rounded-2xl border-2 border-teal/20 p-7 hover:border-teal/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                <div key={int.title} className="bg-white rounded-2xl border border-soft-steel/60 p-7 hover:border-teal/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
-                      <int.icon className="h-5 w-5 text-teal" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold font-display text-teal uppercase tracking-wide">{int.category}</span>
-                    </div>
+                    <BrandLogo provider={int.logoId} size={36} />
+                    <span className="text-xs font-semibold font-display text-teal uppercase tracking-wide">{int.category}</span>
                   </div>
                   <h3 className="font-display text-lg font-semibold text-harbor mb-2">{int.title}</h3>
                   <p className="text-sm text-slate-ink/60 leading-relaxed font-body mb-4">{int.desc}</p>

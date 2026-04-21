@@ -1,24 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   X,
   CheckCircle2,
-  Circle,
+  AlertCircle,
   Clock,
   Unplug,
   ExternalLink,
   Zap,
-  Phone,
-  Calendar,
-  MessageSquare,
-  Globe,
-  BarChart3,
-  Users,
-  Briefcase,
-  Mail,
+  Search,
+  Plug,
+  Settings,
+  RefreshCw,
 } from 'lucide-react';
 import { useRole } from '../lib/useRole';
+import BrandLogo from '../components/BrandLogo';
 
 interface Connector {
   integrationId: string;
@@ -31,18 +28,22 @@ interface Connector {
   lastSyncStatus: string | null;
 }
 
+type Category = 'CRM' | 'Scheduling' | 'SMS' | 'Notifications' | 'Automation' | 'Ticketing';
+
 interface ConnectorDefinition {
   id: string;
   name: string;
   provider: string;
   connectorType: string;
+  category: Category;
   description: string;
   syncScope: string;
-  icon: React.ReactNode;
-  brandColor: string;
+  logoId: string;
   fields: CredentialField[];
   events: string[];
   oauthProvider?: string;
+  docsUrl?: string;
+  setupHelp?: string;
 }
 
 interface CredentialField {
@@ -59,11 +60,13 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     name: 'HubSpot',
     provider: 'hubspot',
     connectorType: 'crm',
+    category: 'CRM',
     description: 'Automatically log calls, create contacts, and push AI summaries to your CRM.',
     syncScope: 'Calls, Contacts, Notes',
-    icon: <BarChart3 className="h-6 w-6" />,
-    brandColor: 'from-orange-500 to-orange-600',
+    logoId: 'hubspot',
     oauthProvider: 'hubspot',
+    docsUrl: 'https://developers.hubspot.com/docs/api/private-apps',
+    setupHelp: 'Create a private app in HubSpot and copy the access token, or sign in with OAuth below.',
     fields: [
       { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'HubSpot private app access token', required: true },
     ],
@@ -74,11 +77,13 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     name: 'Google Calendar',
     provider: 'google-calendar',
     connectorType: 'scheduling',
+    category: 'Scheduling',
     description: 'Sync appointments to your calendar and check availability before scheduling.',
     syncScope: 'Appointments, Availability',
-    icon: <Calendar className="h-6 w-6" />,
-    brandColor: 'from-blue-500 to-blue-600',
+    logoId: 'google-calendar',
     oauthProvider: 'google',
+    docsUrl: 'https://developers.google.com/calendar/api/guides/auth',
+    setupHelp: 'Sign in with Google to grant calendar access, or paste OAuth client credentials manually.',
     fields: [
       { key: 'client_id', label: 'Client ID', type: 'text', placeholder: 'Google OAuth Client ID', required: true },
       { key: 'client_secret', label: 'Client Secret', type: 'password', placeholder: 'Google OAuth Client Secret', required: true },
@@ -93,10 +98,12 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     name: 'Twilio SMS',
     provider: 'twilio',
     connectorType: 'sms',
+    category: 'SMS',
     description: 'Send SMS notifications, escalation alerts, and follow-up messages.',
     syncScope: 'SMS, Escalations',
-    icon: <Phone className="h-6 w-6" />,
-    brandColor: 'from-red-500 to-red-600',
+    logoId: 'twilio',
+    docsUrl: 'https://www.twilio.com/docs/iam/keys/api-key',
+    setupHelp: 'Find your Account SID and Auth Token in the Twilio Console under Account → API keys & tokens.',
     fields: [
       { key: 'account_sid', label: 'Account SID', type: 'text', placeholder: 'ACxxx...', required: true },
       { key: 'auth_token', label: 'Auth Token', type: 'password', placeholder: 'Auth token', required: true },
@@ -109,11 +116,13 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     name: 'Slack',
     provider: 'slack',
     connectorType: 'custom',
+    category: 'Notifications',
     description: 'Post call summaries and missed call alerts to your Slack channel automatically.',
     syncScope: 'Call Summaries, Alerts',
-    icon: <MessageSquare className="h-6 w-6" />,
-    brandColor: 'from-purple-500 to-purple-600',
+    logoId: 'slack',
     oauthProvider: 'slack',
+    docsUrl: 'https://api.slack.com/authentication/token-types#bot',
+    setupHelp: 'Sign in with Slack to add the QVO app to a workspace, or paste a bot token from your Slack app.',
     fields: [
       { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...', required: true },
       { key: 'channel_id', label: 'Channel ID', type: 'text', placeholder: 'C01XXXXXXXX', required: true },
@@ -125,24 +134,53 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     name: 'Zapier',
     provider: 'zapier',
     connectorType: 'webhook',
+    category: 'Automation',
     description: 'Trigger Zapier workflows on platform events via webhooks.',
     syncScope: 'All Events (Webhook)',
-    icon: <Zap className="h-6 w-6" />,
-    brandColor: 'from-amber-500 to-amber-600',
+    logoId: 'zapier',
+    docsUrl: 'https://zapier.com/help/create/code-webhooks/trigger-zaps-from-webhooks',
+    setupHelp: 'In Zapier, create a Zap with a "Webhooks by Zapier" trigger and paste the catch URL below.',
     fields: [
       { key: 'webhook_url', label: 'Webhook URL', type: 'text', placeholder: 'https://hooks.zapier.com/hooks/catch/...', required: true },
       { key: 'api_key', label: 'API Key (optional)', type: 'password', placeholder: 'Optional signing secret' },
     ],
     events: ['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created'],
   },
+  {
+    id: 'webhook',
+    name: 'Custom Webhook',
+    provider: 'webhook',
+    connectorType: 'webhook',
+    category: 'Automation',
+    description: 'Send platform events to any HTTPS endpoint. Pair with Make, n8n, or your own service.',
+    syncScope: 'All Events (Webhook)',
+    logoId: 'webhook',
+    setupHelp: 'Provide an HTTPS endpoint that accepts JSON POSTs. Optionally set a signing secret for HMAC verification.',
+    fields: [
+      { key: 'webhook_url', label: 'Webhook URL', type: 'text', placeholder: 'https://your-service.example.com/hooks/qvo', required: true },
+      { key: 'signing_secret', label: 'Signing Secret (optional)', type: 'password', placeholder: 'Used to compute the X-QVO-Signature header' },
+    ],
+    events: ['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created'],
+  },
+  {
+    id: 'custom-ticketing',
+    name: 'Custom Ticketing',
+    provider: 'custom-ticketing',
+    connectorType: 'ticketing',
+    category: 'Ticketing',
+    description: 'Create tickets in your help-desk via a generic adapter. Bring your own endpoint and auth.',
+    syncScope: 'Tickets',
+    logoId: 'custom-ticketing',
+    setupHelp: 'Provide the create-ticket endpoint and an API key. Field mapping is configured per-tenant.',
+    fields: [
+      { key: 'endpoint_url', label: 'Endpoint URL', type: 'text', placeholder: 'https://helpdesk.example.com/api/tickets', required: true },
+      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Bearer token or API key', required: true },
+    ],
+    events: ['ticket.created'],
+  },
 ];
 
-const COMING_SOON_CONNECTORS = [
-  { name: 'Salesforce', icon: <Globe className="h-6 w-6" />, color: 'from-blue-400 to-blue-500' },
-  { name: 'Pipedrive', icon: <Users className="h-6 w-6" />, color: 'from-green-500 to-green-600' },
-  { name: 'Outlook Calendar', icon: <Mail className="h-6 w-6" />, color: 'from-sky-500 to-sky-600' },
-  { name: 'QuickBooks', icon: <Briefcase className="h-6 w-6" />, color: 'from-emerald-500 to-emerald-600' },
-];
+const CATEGORIES: Category[] = ['CRM', 'Scheduling', 'SMS', 'Notifications', 'Automation', 'Ticketing'];
 
 function formatSyncTime(iso: string): string {
   const date = new Date(iso);
@@ -227,22 +265,44 @@ function ConnectModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${definition.brandColor} flex items-center justify-center text-white`}>
-              {definition.icon}
-            </div>
+            <BrandLogo provider={definition.logoId} size={40} />
             <div>
               <h2 className="text-lg font-semibold text-text-primary">
                 {isReconnect ? 'Reconnect' : 'Connect'} {definition.name}
               </h2>
-              <p className="text-xs text-text-secondary">{definition.description}</p>
+              <p className="text-xs text-text-secondary">{definition.category}</p>
             </div>
           </div>
-          <button onClick={onClose}><X className="h-5 w-5 text-text-secondary" /></button>
+          <button onClick={onClose} aria-label="Close">
+            <X className="h-5 w-5 text-text-secondary" />
+          </button>
         </div>
 
         <div className="p-5 space-y-4">
+          <p className="text-sm text-text-secondary">{definition.description}</p>
+
+          {definition.setupHelp && (
+            <div className="rounded-lg border border-border bg-surface-hover/40 p-3 text-xs text-text-secondary">
+              {definition.setupHelp}
+              {definition.docsUrl && (
+                <>
+                  {' '}
+                  <a
+                    href={definition.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    Find your credentials in {definition.name} docs
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </>
+              )}
+            </div>
+          )}
+
           {definition.oauthProvider && (
             <div>
               <button
@@ -333,75 +393,108 @@ function ConnectModal({
   );
 }
 
-function ConnectorCard({
+function ConnectedCard({
   definition,
   connector,
   isManager,
-  onConnect,
+  onReconnect,
   onDisconnect,
 }: {
   definition: ConnectorDefinition;
-  connector?: Connector;
+  connector: Connector;
   isManager: boolean;
-  onConnect: () => void;
+  onReconnect: () => void;
   onDisconnect: () => void;
 }) {
-  const isConnected = !!connector && connector.isEnabled;
-  const hasCredentials = !!connector;
+  const enabled = connector.isEnabled;
+  const syncError = connector.lastSyncStatus === 'error';
 
   return (
-    <div className={`bg-surface border rounded-xl p-5 shadow-sm transition-all hover:shadow-md ${isConnected ? 'border-green-300 dark:border-green-700' : 'border-border'}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${definition.brandColor} flex items-center justify-center text-white shadow-sm`}>
-            {definition.icon}
-          </div>
-          <div>
-            <h3 className="font-semibold text-text-primary">{definition.name}</h3>
-            <p className="text-xs text-text-secondary">{definition.connectorType}</p>
+    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandLogo provider={definition.logoId} size={36} />
+          <div className="min-w-0">
+            <h3 className="font-semibold text-text-primary truncate">{definition.name}</h3>
+            <p className="text-xs text-text-secondary">{definition.category}</p>
           </div>
         </div>
-        {isConnected ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        {enabled && !syncError ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap">
             <CheckCircle2 className="h-3 w-3" /> Connected
           </span>
-        ) : hasCredentials ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-            <Circle className="h-3 w-3" /> Disabled
+        ) : syncError ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap">
+            <AlertCircle className="h-3 w-3" /> Sync error
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-surface-hover text-text-secondary">
-            <Circle className="h-3 w-3" /> Not Connected
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 whitespace-nowrap">
+            Disabled
           </span>
         )}
       </div>
 
-      <p className="text-sm text-text-secondary mb-3 line-clamp-2">{definition.description}</p>
-
-      <div className="space-y-1.5 mb-4">
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <ExternalLink className="h-3 w-3 flex-shrink-0" />
+      <div className="space-y-1.5 mb-4 text-xs text-text-secondary">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-3 w-3 flex-shrink-0" />
           <span>Sync: {definition.syncScope}</span>
         </div>
-        {isConnected && connector?.lastSyncAt && (
-          <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <Clock className="h-3 w-3 flex-shrink-0" />
+        <div className="flex items-center gap-2">
+          <Clock className="h-3 w-3 flex-shrink-0" />
+          {connector.lastSyncAt ? (
             <span>Last sync: {formatSyncTime(connector.lastSyncAt)}</span>
-            {connector.lastSyncStatus === 'error' && (
-              <span className="text-danger font-medium">(error)</span>
-            )}
-          </div>
-        )}
-        {isConnected && !connector?.lastSyncAt && (
-          <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <Clock className="h-3 w-3 flex-shrink-0" />
+          ) : (
             <span>Awaiting first sync</span>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {definition.events.map((event) => (
+      {isManager && (
+        <div className="flex gap-2 pt-3 border-t border-border">
+          <button
+            onClick={onReconnect}
+            className="flex-1 text-xs font-medium text-text-secondary hover:text-primary transition px-3 py-1.5 rounded-lg border border-border hover:border-primary/30 inline-flex items-center justify-center gap-1"
+          >
+            <Settings className="h-3 w-3" /> Manage
+          </button>
+          <button
+            onClick={onDisconnect}
+            className="flex-1 text-xs font-medium text-danger hover:text-red-700 transition px-3 py-1.5 rounded-lg border border-border hover:border-danger/30 inline-flex items-center justify-center gap-1"
+          >
+            <Unplug className="h-3 w-3" /> Disconnect
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AvailableCard({
+  definition,
+  isManager,
+  onConnect,
+}: {
+  definition: ConnectorDefinition;
+  isManager: boolean;
+  onConnect: () => void;
+}) {
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md hover:border-primary/30 transition-all flex flex-col">
+      <div className="flex items-start gap-3 mb-3">
+        <BrandLogo provider={definition.logoId} size={36} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-semibold text-text-primary truncate">{definition.name}</h3>
+            <span className="text-[10px] uppercase tracking-wide font-medium text-text-secondary bg-surface-hover px-2 py-0.5 rounded-full whitespace-nowrap">
+              {definition.category}
+            </span>
+          </div>
+          <p className="text-sm text-text-secondary mt-1 line-clamp-2">{definition.description}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-4 mt-auto">
+        {definition.events.slice(0, 3).map((event) => (
           <span key={event} className="text-[10px] bg-surface-hover px-2 py-0.5 rounded-full text-text-secondary">
             {event}
           </span>
@@ -409,38 +502,24 @@ function ConnectorCard({
       </div>
 
       {isManager && (
-        <div className="flex gap-2 pt-3 border-t border-border">
-          {isConnected ? (
-            <>
-              <button
-                onClick={onConnect}
-                className="flex-1 text-xs font-medium text-text-secondary hover:text-primary transition px-3 py-1.5 rounded-lg border border-border hover:border-primary/30"
-              >
-                Reconnect
-              </button>
-              <button
-                onClick={onDisconnect}
-                className="flex-1 text-xs font-medium text-danger hover:text-red-700 transition px-3 py-1.5 rounded-lg border border-border hover:border-danger/30 inline-flex items-center justify-center gap-1"
-              >
-                <Unplug className="h-3 w-3" /> Disconnect
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={onConnect}
-              className="w-full text-sm font-medium bg-primary text-white hover:bg-primary-hover transition px-4 py-2 rounded-lg"
-            >
-              Connect
-            </button>
-          )}
-        </div>
+        <button
+          onClick={onConnect}
+          className="w-full text-sm font-medium bg-primary text-white hover:bg-primary-hover transition px-4 py-2 rounded-lg inline-flex items-center justify-center gap-1.5"
+        >
+          <Plug className="h-4 w-4" />
+          Connect
+        </button>
       )}
     </div>
   );
 }
 
+const SUGGESTED_FIRST = ['hubspot', 'google-calendar', 'slack'];
+
 export default function Connectors() {
   const [connectTarget, setConnectTarget] = useState<ConnectorDefinition | null>(null);
+  const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
   const queryClient = useQueryClient();
   const { isManager } = useRole();
 
@@ -459,6 +538,38 @@ export default function Connectors() {
   const findConnector = (def: ConnectorDefinition): Connector | undefined =>
     connectors.find((c) => c.provider === def.provider);
 
+  const connectedDefs = useMemo(
+    () => CONNECTOR_DEFINITIONS.filter((def) => findConnector(def)),
+    [connectors],
+  );
+
+  const availableDefs = useMemo(() => {
+    return CONNECTOR_DEFINITIONS.filter((def) => !findConnector(def)).filter((def) => {
+      if (activeCategory !== 'All' && def.category !== activeCategory) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        if (
+          !def.name.toLowerCase().includes(q) &&
+          !def.description.toLowerCase().includes(q) &&
+          !def.category.toLowerCase().includes(q)
+        )
+          return false;
+      }
+      return true;
+    });
+  }, [connectors, activeCategory, search]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { All: 0 };
+    CONNECTOR_DEFINITIONS.filter((def) => !findConnector(def)).forEach((def) => {
+      counts.All = (counts.All ?? 0) + 1;
+      counts[def.category] = (counts[def.category] ?? 0) + 1;
+    });
+    return counts;
+  }, [connectors]);
+
+  const suggested = CONNECTOR_DEFINITIONS.filter((d) => SUGGESTED_FIRST.includes(d.id));
+
   return (
     <div className="space-y-8">
       <div>
@@ -472,50 +583,119 @@ export default function Connectors() {
         <div className="text-center py-12 text-text-secondary">Loading integrations...</div>
       ) : (
         <>
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary mb-4">Available Integrations</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {CONNECTOR_DEFINITIONS.map((def) => {
-                const existing = findConnector(def);
-                return (
-                  <ConnectorCard
-                    key={def.id}
-                    definition={def}
-                    connector={existing}
-                    isManager={isManager}
-                    onConnect={() => setConnectTarget(def)}
-                    onDisconnect={() => {
-                      if (existing && confirm(`Disconnect ${def.name}? This will remove all stored credentials.`)) {
-                        disconnectMutation.mutate(existing.integrationId);
-                      }
-                    }}
-                  />
-                );
-              })}
+          {connectedDefs.length > 0 ? (
+            <div>
+              <div className="flex items-baseline justify-between mb-4">
+                <h2 className="text-lg font-semibold text-text-primary">
+                  Connected{' '}
+                  <span className="text-text-secondary font-normal">({connectedDefs.length})</span>
+                </h2>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {connectedDefs.map((def) => {
+                  const existing = findConnector(def)!;
+                  return (
+                    <ConnectedCard
+                      key={def.id}
+                      definition={def}
+                      connector={existing}
+                      isManager={isManager}
+                      onReconnect={() => setConnectTarget(def)}
+                      onDisconnect={() => {
+                        if (
+                          confirm(`Disconnect ${def.name}? This will remove all stored credentials.`)
+                        ) {
+                          disconnectMutation.mutate(existing.integrationId);
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-surface border border-border rounded-xl p-8 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
+                <Plug className="h-7 w-7" />
+              </div>
+              <h2 className="text-base font-semibold text-text-primary mb-1">
+                You haven't connected anything yet
+              </h2>
+              <p className="text-sm text-text-secondary mb-5 max-w-md mx-auto">
+                Pick one of these to get the most value from QVO right away — calls, calendars, and team alerts.
+              </p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {suggested.map((def) => (
+                  <button
+                    key={def.id}
+                    onClick={() => setConnectTarget(def)}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-border bg-surface hover:border-primary/40 hover:bg-surface-hover transition text-sm font-medium text-text-primary"
+                  >
+                    <BrandLogo provider={def.logoId} size={20} />
+                    Connect {def.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
-            <h2 className="text-lg font-semibold text-text-primary mb-1">Coming Soon</h2>
-            <p className="text-sm text-text-secondary mb-4">Phase 2 integrations on our roadmap.</p>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {COMING_SOON_CONNECTORS.map((c) => (
-                <div
-                  key={c.name}
-                  className="bg-surface border border-border rounded-xl p-5 opacity-60 cursor-default"
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <h2 className="text-lg font-semibold text-text-primary">Available</h2>
+              <div className="relative w-full sm:w-64">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search integrations"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-5">
+              <button
+                onClick={() => setActiveCategory('All')}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition ${
+                  activeCategory === 'All'
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface text-text-secondary border-border hover:border-primary/40'
+                }`}
+              >
+                All <span className="opacity-70">({categoryCounts.All ?? 0})</span>
+              </button>
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition ${
+                    activeCategory === cat
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-surface text-text-secondary border-border hover:border-primary/40'
+                  }`}
                 >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${c.color} flex items-center justify-center text-white shadow-sm`}>
-                      {c.icon}
-                    </div>
-                    <h3 className="font-semibold text-text-primary">{c.name}</h3>
-                  </div>
-                  <span className="inline-block text-xs font-medium bg-surface-hover text-text-secondary px-2.5 py-1 rounded-full">
-                    Coming Soon
-                  </span>
-                </div>
+                  {cat} <span className="opacity-70">({categoryCounts[cat] ?? 0})</span>
+                </button>
               ))}
             </div>
+
+            {availableDefs.length === 0 ? (
+              <div className="text-sm text-text-secondary bg-surface border border-border rounded-xl p-6 text-center">
+                No integrations match your filters.
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {availableDefs.map((def) => (
+                  <AvailableCard
+                    key={def.id}
+                    definition={def}
+                    isManager={isManager}
+                    onConnect={() => setConnectTarget(def)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-surface border border-border rounded-xl p-5">
@@ -525,7 +705,10 @@ export default function Connectors() {
             </p>
             <div className="flex flex-wrap gap-2">
               {['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created'].map((event) => (
-                <span key={event} className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary/10 text-primary px-3 py-1.5 rounded-full">
+                <span
+                  key={event}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary/10 text-primary px-3 py-1.5 rounded-full"
+                >
                   <Zap className="h-3 w-3" />
                   {event}
                 </span>
