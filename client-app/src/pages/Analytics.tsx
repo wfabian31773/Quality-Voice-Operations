@@ -112,7 +112,12 @@ export default function Analytics() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Analytics</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Scoped to your tenant only. Platform-wide metrics live in the Admin Console.
+          </p>
+        </div>
         {tab === 'performance' && (
           <div className="flex gap-1 bg-muted rounded-lg p-1">
             {RANGES.map((r) => (

@@ -14,6 +14,8 @@ import Calls from './pages/Calls';
 import Connectors from './pages/Connectors';
 import UsersPage from './pages/Users';
 import Analytics from './pages/Analytics';
+import AdminAnalytics from './pages/AdminAnalytics';
+import AdminMarketplace from './pages/AdminMarketplace';
 import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
 import Campaigns from './pages/Campaigns';
@@ -204,8 +206,8 @@ export default function App() {
         }
       >
         <Route path="/admin/dashboard" element={<PlatformAdmin />} />
-        <Route path="/admin/analytics" element={<Analytics />} />
-        <Route path="/admin/marketplace" element={<Marketplace />} />
+        <Route path="/admin/analytics" element={<AdminAnalytics />} />
+        <Route path="/admin/marketplace" element={<AdminMarketplace />} />
         <Route path="/admin/billing" element={<Billing />} />
         <Route path="/admin/security" element={<Compliance />} />
         <Route path="/admin/evolution" element={<EvolutionEngine />} />

@@ -1462,7 +1462,7 @@ export default function Marketplace() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Marketplace</h1>
-          <p className="text-sm text-text-secondary mt-1">Browse and install agent templates</p>
+          <p className="text-sm text-text-secondary mt-1">Browse and install agent templates for your tenant.</p>
         </div>
       </div>
 

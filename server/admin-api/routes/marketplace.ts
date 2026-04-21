@@ -503,6 +503,35 @@ router.post('/marketplace/installations/:id/upgrade', requireAuth, async (req, r
   }
 });
 
+router.get('/platform/templates/:id/versions', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query(
+      `SELECT id, version, changelog, release_notes, package_ref, status, is_latest, published_at, created_at, created_by
+       FROM template_versions WHERE template_id = $1 ORDER BY published_at DESC, created_at DESC`,
+      [id],
+    );
+    return res.json({
+      versions: rows.map((r) => ({
+        id: r.id as string,
+        version: r.version as string,
+        changelog: (r.changelog ?? '') as string,
+        releaseNotes: (r.release_notes ?? '') as string,
+        packageRef: (r.package_ref ?? '') as string,
+        status: r.status as string,
+        isLatest: r.is_latest as boolean,
+        publishedAt: r.published_at as string,
+        createdAt: r.created_at as string,
+        createdBy: (r.created_by ?? null) as string | null,
+      })),
+    });
+  } catch (err) {
+    logger.error('Failed to list template versions', { templateId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list template versions' });
+  }
+});
+
 router.post('/platform/templates/:id/versions', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const { version, changelog, releaseNotes, packageRef } = req.body as {
@@ -1664,7 +1693,16 @@ router.get('/platform/marketplace/revenue', requireAuth, requirePlatformAdmin, a
     const days = req.query.days ? parseInt(String(req.query.days), 10) : undefined;
     const developerId = typeof req.query.developer_id === 'string' ? req.query.developer_id : undefined;
     const stats = await getRevenueStats({ developerId, days });
-    return res.json(stats);
+    return res.json({
+      revenue: {
+        totalRevenueCents: stats.totalRevenue,
+        platformFeesCents: stats.platformFees,
+        developerPayoutsCents: stats.developerPayouts,
+        totalPurchases: stats.purchaseCount,
+        byTemplate: stats.byTemplate,
+        recentEvents: stats.recentEvents,
+      },
+    });
   } catch (err) {
     logger.error('Failed to get revenue stats', { error: String(err) });
     return res.status(500).json({ error: 'Failed to get revenue stats' });

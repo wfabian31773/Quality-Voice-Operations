@@ -342,6 +342,7 @@ export async function getRevenueStats(options: {
   developerPayouts: number;
   purchaseCount: number;
   recentEvents: { templateId: string; grossAmount: number; eventType: string; createdAt: string }[];
+  byTemplate: { templateId: string; templateName: string; revenueCents: number; purchaseCount: number }[];
 }> {
   const pool = getPlatformPool();
   const conditions: string[] = [];
@@ -362,7 +363,7 @@ export async function getRevenueStats(options: {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const [statsResult, eventsResult] = await Promise.all([
+  const [statsResult, eventsResult, byTemplateResult] = await Promise.all([
     pool.query(
       `SELECT
          COALESCE(SUM(gross_amount_cents), 0)::int AS total_revenue,
@@ -376,6 +377,20 @@ export async function getRevenueStats(options: {
       `SELECT template_id, gross_amount_cents, event_type, created_at
        FROM marketplace_revenue_events ${where}
        ORDER BY created_at DESC
+       LIMIT 50`,
+      params,
+    ),
+    pool.query(
+      `SELECT
+         e.template_id,
+         COALESCE(tr.display_name, 'Unknown') AS template_name,
+         COALESCE(SUM(e.gross_amount_cents), 0)::int AS revenue_cents,
+         COUNT(*)::int AS purchase_count
+       FROM marketplace_revenue_events e
+       LEFT JOIN template_registry tr ON tr.id = e.template_id
+       ${where}
+       GROUP BY e.template_id, tr.display_name
+       ORDER BY revenue_cents DESC
        LIMIT 50`,
       params,
     ),
@@ -393,6 +408,12 @@ export async function getRevenueStats(options: {
       grossAmount: e.gross_amount_cents as number,
       eventType: e.event_type as string,
       createdAt: e.created_at as string,
+    })),
+    byTemplate: byTemplateResult.rows.map((r) => ({
+      templateId: r.template_id as string,
+      templateName: r.template_name as string,
+      revenueCents: r.revenue_cents as number,
+      purchaseCount: r.purchase_count as number,
     })),
   };
 }
