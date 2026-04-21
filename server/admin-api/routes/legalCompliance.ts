@@ -5,6 +5,49 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole, requirePlatformAdmin } from '../middleware/rbac';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { createLogger } from '../../../platform/core/logger';
+import { sendEmail } from '../../../platform/email/EmailService';
+import {
+  dataExportEmail,
+  deletionScheduledEmail,
+  deletionCancelledEmail,
+  deletionExecutedEmail,
+} from '../../../platform/email/templates';
+
+function appBaseUrl(): string {
+  return process.env.APP_URL ?? `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`;
+}
+
+async function fetchTenantOwnerContext(
+  client: import('pg').PoolClient,
+  tenantId: string,
+  actorUserId: string,
+): Promise<{ ownerEmail: string | null; tenantName: string | null }> {
+  const { rows: tenantRows } = await client.query(
+    `SELECT name FROM tenants WHERE id = $1`,
+    [tenantId],
+  );
+  const tenantName = (tenantRows[0]?.name as string | undefined) ?? null;
+
+  const { rows: actorRows } = await client.query(
+    `SELECT email FROM users WHERE id = $1`,
+    [actorUserId],
+  );
+  let ownerEmail = (actorRows[0]?.email as string | undefined) ?? null;
+
+  if (!ownerEmail) {
+    const { rows: ownerRows } = await client.query(
+      `SELECT u.email FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = $1
+        WHERE ur.role = 'tenant_owner'
+        ORDER BY u.created_at ASC
+        LIMIT 1`,
+      [tenantId],
+    );
+    ownerEmail = (ownerRows[0]?.email as string | undefined) ?? null;
+  }
+
+  return { ownerEmail, tenantName };
+}
 
 function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return '';
@@ -215,6 +258,34 @@ Questions: privacy@qvo.example
       userAgent: req.headers['user-agent'],
     });
 
+    try {
+      const ownerCtx = await fetchTenantOwnerContext(client, tenantId, userId);
+      if (ownerCtx.ownerEmail) {
+        const email = dataExportEmail({
+          tenantName: ownerCtx.tenantName ?? undefined,
+          generatedAt,
+          rowCounts: {
+            users: userRows.length,
+            agents: agentRows.length,
+            phone_numbers: phoneRows.length,
+            calls: callRows.length,
+            audit: auditRows.length,
+          },
+          bytes: buffer.length,
+          ipAddress: extractIp(req) ?? null,
+          settingsUrl: `${appBaseUrl()}/settings`,
+        });
+        const result = await sendEmail({ to: ownerCtx.ownerEmail, subject: email.subject, html: email.html, text: email.text });
+        if (!result.success) {
+          logger.warn('Data export email did not send', { tenantId, error: result.error });
+        }
+      } else {
+        logger.warn('Skipped data export email — no owner email found', { tenantId });
+      }
+    } catch (emailErr) {
+      logger.error('Failed to send data export email', { tenantId, error: String(emailErr) });
+    }
+
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="qvo-data-export-${generatedAt.slice(0, 10)}.zip"`);
     return res.send(buffer);
@@ -286,6 +357,27 @@ router.post('/privacy/deletion-request', requireAuth, requireRole('owner'), asyn
       userAgent: req.headers['user-agent'],
     });
 
+    try {
+      const ownerCtx = await fetchTenantOwnerContext(client, tenantId, userId);
+      if (ownerCtx.ownerEmail) {
+        const email = deletionScheduledEmail({
+          tenantName: ownerCtx.tenantName ?? undefined,
+          scheduledFor: scheduled.toISOString().slice(0, 10),
+          reason: reason ?? null,
+          ipAddress: extractIp(req) ?? null,
+          cancellationUrl: `${appBaseUrl()}/settings`,
+        });
+        const result = await sendEmail({ to: ownerCtx.ownerEmail, subject: email.subject, html: email.html, text: email.text });
+        if (!result.success) {
+          logger.warn('Deletion scheduled email did not send', { tenantId, error: result.error });
+        }
+      } else {
+        logger.warn('Skipped deletion scheduled email — no owner email found', { tenantId });
+      }
+    } catch (emailErr) {
+      logger.error('Failed to send deletion scheduled email', { tenantId, error: String(emailErr) });
+    }
+
     return res.json({ request: rows[0] });
   } finally {
     client.release();
@@ -318,11 +410,127 @@ router.delete('/privacy/deletion-request/:id', requireAuth, requireRole('owner')
       userAgent: req.headers['user-agent'],
     });
 
+    try {
+      const ownerCtx = await fetchTenantOwnerContext(client, tenantId, userId);
+      if (ownerCtx.ownerEmail) {
+        const email = deletionCancelledEmail({
+          tenantName: ownerCtx.tenantName ?? undefined,
+          cancelledAt: new Date().toISOString().slice(0, 10),
+          ipAddress: extractIp(req) ?? null,
+          settingsUrl: `${appBaseUrl()}/settings`,
+        });
+        const result = await sendEmail({ to: ownerCtx.ownerEmail, subject: email.subject, html: email.html, text: email.text });
+        if (!result.success) {
+          logger.warn('Deletion cancelled email did not send', { tenantId, error: result.error });
+        }
+      } else {
+        logger.warn('Skipped deletion cancelled email — no owner email found', { tenantId });
+      }
+    } catch (emailErr) {
+      logger.error('Failed to send deletion cancelled email', { tenantId, error: String(emailErr) });
+    }
+
     return res.json({ cancelled: true });
   } finally {
     client.release();
   }
 });
+
+// ---------- Platform admin: execute a scheduled deletion ----------
+router.post(
+  '/admin/privacy/deletion-request/:id/execute',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { id } = req.params;
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+    try {
+      const { rows: requestRows } = await client.query(
+        `SELECT id, tenant_id, requested_by, scheduled_for, status
+           FROM tenant_deletion_requests WHERE id = $1`,
+        [id],
+      );
+      const request = requestRows[0];
+      if (!request) return res.status(404).json({ error: 'Deletion request not found' });
+      if (request.status !== 'pending') {
+        return res.status(409).json({ error: `Deletion request is ${request.status as string}, not pending` });
+      }
+      if (new Date(request.scheduled_for as string).getTime() > Date.now()) {
+        return res
+          .status(400)
+          .json({ error: `Scheduled date (${request.scheduled_for as string}) has not yet been reached` });
+      }
+
+      const tenantId = request.tenant_id as string;
+
+      let ownerEmail: string | null = null;
+      let tenantName: string | null = null;
+      try {
+        const ctx = await fetchTenantOwnerContext(client, tenantId, request.requested_by as string);
+        ownerEmail = ctx.ownerEmail;
+        tenantName = ctx.tenantName;
+      } catch (ctxErr) {
+        logger.warn('Failed to load owner context before deletion', { tenantId, error: String(ctxErr) });
+      }
+
+      // Write the audit log BEFORE deleting the tenant — audit_logs.tenant_id has
+      // a NOT NULL FK to tenants(id) so a write attempted after the tenant row is
+      // gone would fail the FK and bubble a 500 back to the admin even though the
+      // deletion already committed. Wrapping in try/catch ensures any write
+      // failure here cannot block the executed-notification email below.
+      try {
+        await writeAuditLog({
+          tenantId,
+          actorUserId: req.user!.userId,
+          actorRole: req.user!.role,
+          action: 'privacy.deletion_executed',
+          resourceType: 'tenant',
+          resourceId: tenantId,
+          severity: 'critical',
+          changes: { requestId: id, scheduledFor: request.scheduled_for },
+          ipAddress: extractIp(req),
+          userAgent: req.headers['user-agent'],
+        });
+      } catch (auditErr) {
+        logger.error('Failed to write deletion executed audit log', { tenantId, error: String(auditErr) });
+      }
+
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE tenant_deletion_requests SET status = 'completed' WHERE id = $1`,
+        [id],
+      );
+      await client.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+      await client.query('COMMIT');
+
+      if (ownerEmail) {
+        try {
+          const email = deletionExecutedEmail({
+            tenantName: tenantName ?? undefined,
+            executedAt: new Date().toISOString().slice(0, 10),
+          });
+          const result = await sendEmail({ to: ownerEmail, subject: email.subject, html: email.html, text: email.text });
+          if (!result.success) {
+            logger.warn('Deletion executed email did not send', { tenantId, error: result.error });
+          }
+        } catch (emailErr) {
+          logger.error('Failed to send deletion executed email', { tenantId, error: String(emailErr) });
+        }
+      } else {
+        logger.warn('Skipped deletion executed email — no owner email found', { tenantId });
+      }
+
+      return res.json({ executed: true, tenantId });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.error('Failed to execute deletion request', { id, error: String(err) });
+      return res.status(500).json({ error: 'Failed to execute deletion request' });
+    } finally {
+      client.release();
+    }
+  },
+);
 
 // ---------- DPA download (placeholder boilerplate) ----------
 router.get('/legal/dpa', (_req, res) => {

@@ -147,3 +147,130 @@ export function billingAlertEmail(params: {
 
   return { subject, html, text };
 }
+
+export function dataExportEmail(params: {
+  tenantName?: string;
+  generatedAt: string;
+  rowCounts: { users: number; agents: number; phone_numbers: number; calls: number; audit: number };
+  bytes: number;
+  ipAddress?: string | null;
+  settingsUrl: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const sizeKb = Math.max(1, Math.round(params.bytes / 1024));
+  const ipLine = params.ipAddress ? ` from IP <strong>${params.ipAddress}</strong>` : '';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>A data export was just generated for <strong>${org}</strong>${ipLine} on ${params.generatedAt}.</p>
+    <p>The download contained:</p>
+    <ul style="margin:0 0 16px; padding-left:20px; color:#374151; font-size:14px; line-height:1.6;">
+      <li>${params.rowCounts.users} users</li>
+      <li>${params.rowCounts.agents} agents</li>
+      <li>${params.rowCounts.phone_numbers} phone numbers</li>
+      <li>${params.rowCounts.calls} call sessions</li>
+      <li>${params.rowCounts.audit} audit log entries</li>
+      <li>Approximate size: ${sizeKb} KB</li>
+    </ul>
+    <div class="alert-warn">
+      <p style="margin:0"><strong>Didn't recognize this?</strong></p>
+      <p style="margin:4px 0 0">If you didn't request this export, change your password immediately and review your account activity.</p>
+    </div>
+    <p><a href="${params.settingsUrl}" class="btn">Review Account Activity</a></p>
+    <p class="muted">This is a security notification — you'll always be told when sensitive data leaves your account.</p>
+  `);
+
+  const text = `A data export was generated for ${org} on ${params.generatedAt}.\n` +
+    `Rows: users=${params.rowCounts.users}, agents=${params.rowCounts.agents}, phone_numbers=${params.rowCounts.phone_numbers}, calls=${params.rowCounts.calls}, audit=${params.rowCounts.audit}.\n` +
+    `Size: ~${sizeKb} KB.\n\n` +
+    `If you didn't request this, change your password and review activity: ${params.settingsUrl}`;
+
+  return { subject: `Data export generated for ${org}`, html, text };
+}
+
+export function deletionScheduledEmail(params: {
+  tenantName?: string;
+  scheduledFor: string;
+  reason?: string | null;
+  ipAddress?: string | null;
+  cancellationUrl: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const ipLine = params.ipAddress ? ` from IP <strong>${params.ipAddress}</strong>` : '';
+  const reasonLine = params.reason
+    ? `<p class="muted">Reason provided: ${params.reason}</p>`
+    : '';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>An account deletion has been scheduled for <strong>${org}</strong>${ipLine}.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>Scheduled deletion date</strong></p>
+      <p style="margin:4px 0 0">${params.scheduledFor}</p>
+    </div>
+    <p>On this date, all account data — including users, agents, phone numbers, call recordings, transcripts, and audit logs — will be permanently erased. This cannot be undone.</p>
+    <p>You have until then to cancel the request:</p>
+    <p><a href="${params.cancellationUrl}" class="btn">Cancel Deletion Request</a></p>
+    ${reasonLine}
+    <p class="muted">If you didn't schedule this, cancel it now and change your password — your account may be compromised.</p>
+  `);
+
+  const text = `An account deletion has been scheduled for ${org}.\n` +
+    `Scheduled for: ${params.scheduledFor}\n` +
+    (params.reason ? `Reason: ${params.reason}\n` : '') +
+    `\nCancel the request: ${params.cancellationUrl}\n\n` +
+    `If you didn't schedule this, cancel immediately and change your password.`;
+
+  return { subject: `Account deletion scheduled for ${org}`, html, text };
+}
+
+export function deletionCancelledEmail(params: {
+  tenantName?: string;
+  cancelledAt: string;
+  ipAddress?: string | null;
+  settingsUrl: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const ipLine = params.ipAddress ? ` from IP <strong>${params.ipAddress}</strong>` : '';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>The pending account deletion for <strong>${org}</strong> has been cancelled${ipLine} on ${params.cancelledAt}.</p>
+    <p>Your account and all associated data are safe. No further action is required.</p>
+    <p><a href="${params.settingsUrl}" class="btn">Open Account Settings</a></p>
+    <p class="muted">If you didn't cancel this and still want your account deleted, you can re-submit the request from your account settings.</p>
+  `);
+
+  const text = `The pending account deletion for ${org} was cancelled on ${params.cancelledAt}.\n` +
+    `Your account and data are safe.\n\n` +
+    `Open settings: ${params.settingsUrl}`;
+
+  return { subject: `Account deletion cancelled for ${org}`, html, text };
+}
+
+export function deletionExecutedEmail(params: {
+  tenantName?: string;
+  executedAt: string;
+  contactEmail?: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const contact = params.contactEmail ?? 'privacy@qvo.example';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>The account for <strong>${org}</strong> has been permanently deleted on ${params.executedAt}, as scheduled.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>What was removed</strong></p>
+      <p style="margin:4px 0 0">All users, agents, phone numbers, call sessions, recordings, transcripts, and audit logs associated with this account.</p>
+    </div>
+    <p>Some records may persist briefly in encrypted backups before being aged out under our retention policy, and a minimal record of this deletion is retained for legal and compliance purposes.</p>
+    <p>If you have any questions, reach out to <a href="mailto:${contact}">${contact}</a>. Thank you for being a customer.</p>
+  `);
+
+  const text = `The account for ${org} has been permanently deleted on ${params.executedAt}, as scheduled.\n\n` +
+    `All users, agents, phone numbers, call sessions, recordings, transcripts, and audit logs were removed. ` +
+    `Some data may persist briefly in encrypted backups, and a minimal deletion record is retained for compliance.\n\n` +
+    `Questions: ${contact}`;
+
+  return { subject: `Account permanently deleted: ${org}`, html, text };
+}
