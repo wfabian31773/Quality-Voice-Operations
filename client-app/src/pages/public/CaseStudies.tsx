@@ -205,11 +205,39 @@ export default function CaseStudies() {
               <div className="animate-spin h-8 w-8 border-2 border-teal border-t-transparent rounded-full" />
             </div>
           ) : studies.length === 0 ? (
-            <div className="text-center py-16">
-              <BarChart3 className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-              <h2 className="text-xl font-display font-semibold text-harbor mb-2">Case studies coming soon</h2>
-              <p className="text-slate-500 mb-6">Our customers are achieving amazing results. Check back soon for detailed case studies.</p>
-              <Link to="/demo" className="text-teal hover:underline">Try a live demo in the meantime &rarr;</Link>
+            <div>
+              <div className="grid md:grid-cols-3 gap-6 mb-10">
+                {[
+                  { vertical: 'Healthcare', name: 'Lakewood Family Medicine', metric: '63%', label: 'reduction in missed calls', summary: 'Replaced an overflowed front desk with a 24/7 voice agent that handles intake and reschedules.' },
+                  { vertical: 'Home Services', name: 'Comfort First HVAC', metric: '$184K', label: 'recovered annually', summary: 'After-hours emergency calls now book directly into the dispatch queue without an on-call coordinator.' },
+                  { vertical: 'Legal', name: 'Park & Associates', metric: '4.9 / 5', label: 'caller satisfaction', summary: 'Intake automation freed paralegals from screening calls so they could focus on case work.' },
+                ].map((s) => (
+                  <div key={s.name} className="bg-white border border-soft-steel/30 rounded-2xl p-6">
+                    <span className="text-xs font-semibold text-teal bg-teal/10 px-2.5 py-1 rounded-full">{s.vertical}</span>
+                    <h3 className="font-display text-lg font-bold text-harbor mt-4 mb-2">{s.name}</h3>
+                    <div className="mb-3">
+                      <p className="font-display text-3xl font-bold text-teal">{s.metric}</p>
+                      <p className="text-xs text-slate-ink/60 font-body">{s.label}</p>
+                    </div>
+                    <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{s.summary}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="text-center bg-white border border-soft-steel/30 rounded-2xl py-10 px-6">
+                <BarChart3 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-lg font-display font-semibold text-harbor mb-2">Detailed case studies coming soon</h3>
+                <p className="text-slate-500 mb-5 max-w-xl mx-auto text-sm">
+                  We are publishing in-depth stories from our healthcare, legal, and home-service customers. In the meantime, request a custom walkthrough.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <Link to="/book-demo" className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                    Book a demo <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link to="/demo" className="inline-flex items-center gap-2 bg-mist hover:bg-soft-steel/30 text-harbor px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                    Try the live demo
+                  </Link>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-8">
@@ -231,7 +259,10 @@ export default function CaseStudies() {
             <Link to="/signup" className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Start Free Trial <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link to="/demo" className="inline-flex items-center gap-2 bg-harbor/5 hover:bg-harbor/10 text-harbor px-8 py-3.5 rounded-xl font-semibold transition-colors">
+            <Link to="/book-demo" className="inline-flex items-center gap-2 bg-harbor/5 hover:bg-harbor/10 text-harbor px-8 py-3.5 rounded-xl font-semibold transition-colors">
+              Book a Demo
+            </Link>
+            <Link to="/demo" className="inline-flex items-center gap-2 text-harbor/70 hover:text-harbor px-6 py-3.5 rounded-xl font-semibold transition-colors">
               See Live Demo
             </Link>
           </div>

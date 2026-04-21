@@ -57,6 +57,7 @@ import Resources from './pages/public/Resources';
 import GuideDetail from './pages/public/GuideDetail';
 import VerticalLanding from './pages/public/VerticalLanding';
 import CaseStudies from './pages/public/CaseStudies';
+import BookDemo from './pages/public/BookDemo';
 import ConversionFunnel from './pages/ConversionFunnel';
 import Workflows from './pages/Workflows';
 import RoleGuard from './components/RoleGuard';
@@ -105,6 +106,7 @@ export default function App() {
         <Route path="/industries/:vertical" element={<VerticalLanding />} />
         <Route path="/case-studies" element={<CaseStudies />} />
         <Route path="/case-studies/:slug" element={<CaseStudies />} />
+        <Route path="/book-demo" element={<BookDemo />} />
       </Route>
 
       <Route

@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star } from 'lucide-react';
+import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
+import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 
 interface Feature {
@@ -192,9 +193,13 @@ export default function Pricing() {
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-6">
             Simple plans, honest pricing.
           </h1>
-          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto">
+          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-6">
             Start with a 14-day free trial on any plan. No contracts, no hidden fees. Scale as your business grows.
           </p>
+          <div className="inline-flex items-center gap-2 bg-calm-green/15 border border-calm-green/30 rounded-full px-4 py-1.5 text-calm-green text-sm font-medium">
+            <ShieldCheck className="h-4 w-4" />
+            30-day money-back guarantee
+          </div>
         </div>
       </section>
 
@@ -321,6 +326,12 @@ export default function Pricing() {
         </div>
       </section>
 
+      <section className="bg-white py-14 border-t border-soft-steel/20">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+          <LogosStrip title="Teams already running on QVO" />
+        </div>
+      </section>
+
       <section className="bg-harbor text-white py-16">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold mb-4">
@@ -329,13 +340,13 @@ export default function Pricing() {
           <p className="text-white/60 font-body mb-8">
             Talk to our team to find the right plan for your practice.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              to="/contact"
+              to="/book-demo"
               className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
-              onClick={() => trackCTAClick('contact_sales', 'pricing_bottom')}
+              onClick={() => trackCTAClick('book_demo', 'pricing_bottom')}
             >
-              Contact sales
+              Book a demo
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
@@ -344,6 +355,13 @@ export default function Pricing() {
               onClick={() => trackCTAClick('start_free_trial', 'pricing_bottom')}
             >
               Start free trial
+            </Link>
+            <Link
+              to="/contact"
+              className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              onClick={() => trackCTAClick('contact_sales', 'pricing_bottom')}
+            >
+              Contact sales
             </Link>
           </div>
         </div>

@@ -47,12 +47,18 @@ export default function PublicLayout() {
               ))}
             </nav>
 
-            <div className="hidden lg:flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-2">
               <Link
                 to="/login"
                 className="text-sm font-medium text-white/80 hover:text-white transition-colors px-3 py-2"
               >
                 Sign In
+              </Link>
+              <Link
+                to="/book-demo"
+                className="text-sm font-medium text-white/90 hover:text-white border border-white/20 hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors"
+              >
+                Book a Demo
               </Link>
               <Link
                 to="/signup"
@@ -97,6 +103,13 @@ export default function PublicLayout() {
                   Sign In
                 </Link>
                 <Link
+                  to="/book-demo"
+                  onClick={() => setMobileOpen(false)}
+                  className="block text-center text-sm font-medium text-white border border-white/20 hover:border-white/40 px-4 py-2.5 rounded-lg"
+                >
+                  Book a Demo
+                </Link>
+                <Link
                   to="/signup"
                   onClick={() => setMobileOpen(false)}
                   className="block text-center text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2.5 rounded-lg"
@@ -139,6 +152,7 @@ export default function PublicLayout() {
                 <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">Pricing</Link></li>
                 <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">Integrations</Link></li>
                 <li><Link to="/demo" className="text-sm hover:text-white transition-colors">Live Demo</Link></li>
+                <li><Link to="/book-demo" className="text-sm hover:text-white transition-colors">Book a Demo</Link></li>
               </ul>
             </div>
 

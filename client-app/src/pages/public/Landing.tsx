@@ -13,6 +13,9 @@ import { useAuth } from '../../lib/auth';
 import SEO from '../../components/SEO';
 import { reducedMotion } from '../../hooks/useScrollReveal';
 import RevealSection from '../../components/RevealSection';
+import ComparisonTable from '../../components/ComparisonTable';
+import TestimonialsCarousel from '../../components/TestimonialsCarousel';
+import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 
 function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
@@ -514,7 +517,50 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-16 lg:py-20 bg-mist">
+      <section className="py-20 lg:py-28 bg-white border-t border-soft-steel/20">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-12">
+              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">In Their Words</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Hear it straight from operators.
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                Real teams replacing missed calls and overwhelmed front desks with QVO.
+              </p>
+            </div>
+          </RevealSection>
+          <RevealSection>
+            <TestimonialsCarousel />
+          </RevealSection>
+          <div className="mt-16 max-w-5xl mx-auto">
+            <RevealSection>
+              <LogosStrip />
+            </RevealSection>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 lg:py-28 bg-mist">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-12">
+              <span className="inline-block text-sm font-semibold text-harbor bg-harbor/10 px-4 py-1.5 rounded-full mb-4">How We Compare</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                QVO vs. the alternatives.
+              </h2>
+              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+                A side-by-side look at QVO, voice-AI toolkits, and traditional answering services.
+              </p>
+            </div>
+          </RevealSection>
+          <RevealSection>
+            <ComparisonTable />
+          </RevealSection>
+        </div>
+      </section>
+
+      <section className="py-16 lg:py-20 bg-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
@@ -559,21 +605,28 @@ export default function Landing() {
             <p className="text-lg text-white/60 font-body mb-10 max-w-xl mx-auto">
               Join hundreds of businesses using QVO to automate calls, capture leads, and grow revenue. No contracts, cancel anytime.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                to="/demo"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
-                onClick={() => trackCTAClick('Try the Demo', '/', 'bottom-cta')}
-              >
-                Try the Demo
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
                 onClick={() => trackCTAClick('Start Free Trial', '/', 'bottom-cta')}
               >
                 Start Free Trial
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/book-demo"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/15"
+                onClick={() => trackCTAClick('Book a Demo', '/', 'bottom-cta')}
+              >
+                Book a Demo
+              </Link>
+              <Link
+                to="/demo"
+                className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3.5 rounded-xl transition-all text-sm"
+                onClick={() => trackCTAClick('Try the Demo', '/', 'bottom-cta')}
+              >
+                Try the Live Demo
               </Link>
             </div>
           </div>
