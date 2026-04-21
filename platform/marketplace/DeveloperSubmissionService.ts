@@ -164,6 +164,10 @@ export async function createSubmission(input: SubmissionInput): Promise<{
 export async function listSubmissions(options: {
   developerId?: string;
   status?: string;
+  statuses?: string[];
+  reviewerId?: string;
+  reviewedFrom?: string;
+  reviewedTo?: string;
   limit?: number;
   offset?: number;
 } = {}): Promise<{ submissions: Submission[]; total: number }> {
@@ -173,19 +177,32 @@ export async function listSubmissions(options: {
   let idx = 1;
 
   if (options.developerId) {
-    conditions.push(`developer_id = $${idx++}`);
+    conditions.push(`ds.developer_id = $${idx++}`);
     params.push(options.developerId);
   }
-  if (options.status) {
-    conditions.push(`status = $${idx++}`);
+  if (options.statuses && options.statuses.length > 0) {
+    conditions.push(`ds.status = ANY($${idx++}::text[])`);
+    params.push(options.statuses);
+  } else if (options.status) {
+    conditions.push(`ds.status = $${idx++}`);
     params.push(options.status);
   }
+  if (options.reviewerId) {
+    conditions.push(`ds.reviewed_by = $${idx++}`);
+    params.push(options.reviewerId);
+  }
+  if (options.reviewedFrom) {
+    conditions.push(`ds.reviewed_at >= $${idx++}`);
+    params.push(options.reviewedFrom);
+  }
+  if (options.reviewedTo) {
+    conditions.push(`ds.reviewed_at <= $${idx++}`);
+    params.push(options.reviewedTo);
+  }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const dsWhere = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = Math.min(options.limit ?? 50, 100);
   const offset = options.offset ?? 0;
-
-  const dsWhere = where.replace(/\b(developer_id|status)\b/g, 'ds.$1');
 
   const [countResult, dataResult] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int AS total FROM developer_submissions ds ${dsWhere}`, params),
@@ -196,7 +213,7 @@ export async function listSubmissions(options: {
        FROM developer_submissions ds
        LEFT JOIN users u ON u.id = ds.reviewed_by
        ${dsWhere}
-       ORDER BY ds.created_at DESC
+       ORDER BY COALESCE(ds.reviewed_at, ds.created_at) DESC
        LIMIT $${idx++} OFFSET $${idx++}`,
       [...params, limit, offset],
     ),
@@ -206,6 +223,33 @@ export async function listSubmissions(options: {
     submissions: dataResult.rows.map(formatSubmission),
     total: countResult.rows[0].total as number,
   };
+}
+
+export async function listReviewers(): Promise<Array<{
+  id: string;
+  name: string | null;
+  email: string | null;
+  decisionCount: number;
+}>> {
+  const pool = getPlatformPool();
+  const { rows } = await pool.query(
+    `SELECT ds.reviewed_by AS id,
+            u.email AS email,
+            NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS name,
+            COUNT(*)::int AS decision_count
+     FROM developer_submissions ds
+     LEFT JOIN users u ON u.id = ds.reviewed_by
+     WHERE ds.reviewed_by IS NOT NULL
+       AND ds.status IN ('approved', 'rejected', 'published')
+     GROUP BY ds.reviewed_by, u.email, u.first_name, u.last_name
+     ORDER BY decision_count DESC, name ASC`,
+  );
+  return rows.map((r) => ({
+    id: r.id as string,
+    name: (r.name as string | null) ?? null,
+    email: (r.email as string | null) ?? null,
+    decisionCount: r.decision_count as number,
+  }));
 }
 
 export async function reviewSubmission(

@@ -43,6 +43,7 @@ import {
 import {
   createSubmission,
   listSubmissions,
+  listReviewers,
   reviewSubmission,
   getDeveloperStats,
   validateSubmission,
@@ -1786,9 +1787,30 @@ router.get('/marketplace/developer/stats', requireAuth, async (req, res) => {
 
 router.get('/platform/marketplace/submissions', requireAuth, requirePlatformAdmin, async (req, res) => {
   try {
-    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const rawStatus = typeof req.query.status === 'string' ? req.query.status : '';
+    const statuses = rawStatus
+      ? rawStatus.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const reviewerId = typeof req.query.reviewerId === 'string' && req.query.reviewerId.trim()
+      ? req.query.reviewerId.trim()
+      : undefined;
+
+    const reviewedFromRaw = typeof req.query.reviewedFrom === 'string' ? req.query.reviewedFrom.trim() : '';
+    const reviewedToRaw = typeof req.query.reviewedTo === 'string' ? req.query.reviewedTo.trim() : '';
+    const reviewedFrom = reviewedFromRaw && !Number.isNaN(Date.parse(reviewedFromRaw))
+      ? new Date(reviewedFromRaw).toISOString()
+      : undefined;
+    const reviewedTo = reviewedToRaw && !Number.isNaN(Date.parse(reviewedToRaw))
+      ? new Date(reviewedToRaw).toISOString()
+      : undefined;
+
     const result = await listSubmissions({
-      status,
+      statuses: statuses.length > 1 ? statuses : undefined,
+      status: statuses.length === 1 ? statuses[0] : undefined,
+      reviewerId,
+      reviewedFrom,
+      reviewedTo,
       limit: parseInt(String(req.query.limit ?? '50'), 10),
       offset: parseInt(String(req.query.offset ?? '0'), 10),
     });
@@ -1796,6 +1818,16 @@ router.get('/platform/marketplace/submissions', requireAuth, requirePlatformAdmi
   } catch (err) {
     logger.error('Failed to list submissions (admin)', { error: String(err) });
     return res.status(500).json({ error: 'Failed to list submissions' });
+  }
+});
+
+router.get('/platform/marketplace/reviewers', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const reviewers = await listReviewers();
+    return res.json({ reviewers });
+  } catch (err) {
+    logger.error('Failed to list reviewers (admin)', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to list reviewers' });
   }
 });
 

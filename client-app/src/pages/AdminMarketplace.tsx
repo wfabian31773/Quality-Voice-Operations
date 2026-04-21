@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
@@ -298,56 +298,211 @@ function VersionsModal({ template, onClose }: { template: RegistryTemplate; onCl
   );
 }
 
+type DateRangePreset = 'all' | '7d' | '30d' | '90d' | 'custom';
+type DecisionFilter = 'all' | 'approved' | 'rejected';
+
+interface ReviewerOption {
+  id: string;
+  name: string | null;
+  email: string | null;
+  decisionCount: number;
+}
+
 function AuditTab() {
-  const approved = useQuery({
-    queryKey: ['admin-marketplace-audit', 'approved'],
-    queryFn: () => api.get<{ submissions: SubmissionRow[] }>('/platform/marketplace/submissions?status=approved'),
-  });
-  const rejected = useQuery({
-    queryKey: ['admin-marketplace-audit', 'rejected'],
-    queryFn: () => api.get<{ submissions: SubmissionRow[] }>('/platform/marketplace/submissions?status=rejected'),
+  const [reviewerId, setReviewerId] = useState<string>('');
+  const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all');
+  const [datePreset, setDatePreset] = useState<DateRangePreset>('all');
+  const [customFrom, setCustomFrom] = useState<string>('');
+  const [customTo, setCustomTo] = useState<string>('');
+
+  const reviewersQuery = useQuery({
+    queryKey: ['admin-marketplace-reviewers'],
+    queryFn: () => api.get<{ reviewers: ReviewerOption[] }>('/platform/marketplace/reviewers'),
   });
 
-  const isLoading = approved.isLoading || rejected.isLoading;
-  const items = [...(approved.data?.submissions ?? []), ...(rejected.data?.submissions ?? [])]
-    .sort((a, b) => (b.reviewedAt ?? b.updatedAt).localeCompare(a.reviewedAt ?? a.updatedAt));
+  const { reviewedFromIso, reviewedToIso } = computeDateRange(datePreset, customFrom, customTo);
 
-  if (isLoading) return <Loading />;
-  if (!items.length) return <Empty icon={History} text="No moderation decisions yet" />;
+  const statusParam = decisionFilter === 'all'
+    ? 'approved,rejected,published'
+    : decisionFilter === 'approved'
+      ? 'approved,published'
+      : 'rejected';
+
+  const params = new URLSearchParams({ status: statusParam, limit: '100' });
+  if (reviewerId) params.set('reviewerId', reviewerId);
+  if (reviewedFromIso) params.set('reviewedFrom', reviewedFromIso);
+  if (reviewedToIso) params.set('reviewedTo', reviewedToIso);
+
+  const queryString = params.toString();
+
+  const submissionsQuery = useQuery({
+    queryKey: ['admin-marketplace-audit', queryString],
+    queryFn: () => api.get<{ submissions: SubmissionRow[]; total: number }>(
+      `/platform/marketplace/submissions?${queryString}`,
+    ),
+  });
+
+  const items = (submissionsQuery.data?.submissions ?? []);
+  const total = submissionsQuery.data?.total ?? 0;
+  const reviewers = reviewersQuery.data?.reviewers ?? [];
+
+  const filtersActive = reviewerId !== '' || decisionFilter !== 'all' || datePreset !== 'all';
+
+  const resetFilters = () => {
+    setReviewerId('');
+    setDecisionFilter('all');
+    setDatePreset('all');
+    setCustomFrom('');
+    setCustomTo('');
+  };
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-hover">
-            <tr className="text-left text-text-secondary">
-              <th className="px-4 py-3 font-medium">Submission</th>
-              <th className="px-4 py-3 font-medium">Decision</th>
-              <th className="px-4 py-3 font-medium">Reviewer</th>
-              <th className="px-4 py-3 font-medium">When</th>
-              <th className="px-4 py-3 font-medium">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((s) => (
-              <tr key={s.id} className="border-t border-border/40">
-                <td className="px-4 py-3 text-text-primary">
-                  <div className="font-medium">{s.packageName} <span className="text-xs text-text-secondary">v{s.version}</span></div>
-                  <div className="text-xs text-text-secondary">{s.developerEmail}</div>
-                </td>
-                <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                <td className="px-4 py-3 text-text-secondary text-xs">{s.reviewerName ?? s.reviewerEmail ?? s.reviewedBy ?? '—'}</td>
-                <td className="px-4 py-3 text-text-secondary text-xs">
-                  {s.reviewedAt ? new Date(s.reviewedAt).toLocaleString() : '—'}
-                </td>
-                <td className="px-4 py-3 text-text-secondary text-xs max-w-md truncate">{s.reviewNotes ?? '—'}</td>
-              </tr>
+    <div className="space-y-4">
+      <div className="bg-card border border-border rounded-xl p-4 flex flex-wrap items-end gap-3">
+        <FilterField label="Reviewer">
+          <select
+            value={reviewerId}
+            onChange={(e) => setReviewerId(e.target.value)}
+            className="bg-surface-hover border border-border rounded px-2 py-1.5 text-sm text-text-primary min-w-[180px]"
+          >
+            <option value="">All reviewers</option>
+            {reviewers.map((r) => (
+              <option key={r.id} value={r.id}>
+                {(r.name || r.email || r.id.slice(0, 8))} ({r.decisionCount})
+              </option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        </FilterField>
+
+        <FilterField label="Decision">
+          <select
+            value={decisionFilter}
+            onChange={(e) => setDecisionFilter(e.target.value as DecisionFilter)}
+            className="bg-surface-hover border border-border rounded px-2 py-1.5 text-sm text-text-primary"
+          >
+            <option value="all">All decisions</option>
+            <option value="approved">Approved only</option>
+            <option value="rejected">Rejected only</option>
+          </select>
+        </FilterField>
+
+        <FilterField label="Date range">
+          <select
+            value={datePreset}
+            onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
+            className="bg-surface-hover border border-border rounded px-2 py-1.5 text-sm text-text-primary"
+          >
+            <option value="all">All time</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </FilterField>
+
+        {datePreset === 'custom' && (
+          <>
+            <FilterField label="From">
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="bg-surface-hover border border-border rounded px-2 py-1.5 text-sm text-text-primary"
+              />
+            </FilterField>
+            <FilterField label="To">
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="bg-surface-hover border border-border rounded px-2 py-1.5 text-sm text-text-primary"
+              />
+            </FilterField>
+          </>
+        )}
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-text-secondary">{total} decision{total === 1 ? '' : 's'}</span>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-xs px-2.5 py-1.5 rounded border border-border text-text-secondary hover:text-text-primary"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
+
+      {submissionsQuery.isLoading ? (
+        <Loading />
+      ) : !items.length ? (
+        <Empty
+          icon={History}
+          text={filtersActive ? 'No decisions match the current filters' : 'No moderation decisions yet'}
+        />
+      ) : (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-hover">
+                <tr className="text-left text-text-secondary">
+                  <th className="px-4 py-3 font-medium">Submission</th>
+                  <th className="px-4 py-3 font-medium">Decision</th>
+                  <th className="px-4 py-3 font-medium">Reviewer</th>
+                  <th className="px-4 py-3 font-medium">When</th>
+                  <th className="px-4 py-3 font-medium">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((s) => (
+                  <tr key={s.id} className="border-t border-border/40">
+                    <td className="px-4 py-3 text-text-primary">
+                      <div className="font-medium">{s.packageName} <span className="text-xs text-text-secondary">v{s.version}</span></div>
+                      <div className="text-xs text-text-secondary">{s.developerEmail}</div>
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                    <td className="px-4 py-3 text-text-secondary text-xs">{s.reviewerName ?? s.reviewerEmail ?? s.reviewedBy ?? '—'}</td>
+                    <td className="px-4 py-3 text-text-secondary text-xs">
+                      {s.reviewedAt ? new Date(s.reviewedAt).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-text-secondary text-xs max-w-md truncate">{s.reviewNotes ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] uppercase tracking-wide text-text-secondary">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function computeDateRange(
+  preset: DateRangePreset,
+  customFrom: string,
+  customTo: string,
+): { reviewedFromIso?: string; reviewedToIso?: string } {
+  if (preset === 'all') return {};
+  if (preset === 'custom') {
+    const fromIso = customFrom ? new Date(`${customFrom}T00:00:00`).toISOString() : undefined;
+    const toIso = customTo ? new Date(`${customTo}T23:59:59.999`).toISOString() : undefined;
+    return { reviewedFromIso: fromIso, reviewedToIso: toIso };
+  }
+  const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
+  const from = new Date();
+  from.setDate(from.getDate() - days);
+  return { reviewedFromIso: from.toISOString() };
 }
 
 function SubmissionsTab() {
