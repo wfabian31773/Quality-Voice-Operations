@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { createLogger } from '../../../platform/core/logger';
 import { getConversationCost } from '../../../platform/billing/cost';
+import { notifySubscriberChanges, diffSubscribers } from '../../../platform/analytics/CallViewSubscriberNotifier';
 
 const logger = createLogger('ADMIN_CALLS');
 
@@ -310,7 +311,7 @@ async function filterToTenantMembers(
 }
 
 const createSavedViewHandler: RequestHandler = async (req, res) => {
-  const { tenantId, userId } = req.user!;
+  const { tenantId, userId, email: requesterEmail } = req.user!;
   const { name, filters, is_shared, digest_enabled, digest_subscribers } = req.body as {
     name?: string;
     filters?: Record<string, unknown>;
@@ -351,6 +352,17 @@ const createSavedViewHandler: RequestHandler = async (req, res) => {
       [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), userId, Boolean(digest_enabled), allowedSubs],
     );
     await client.query('COMMIT');
+    if (allowedSubs.length > 0) {
+      void notifySubscriberChanges({
+        tenantId,
+        viewId: rows[0].id,
+        viewName: trimmed,
+        actorUserId: userId,
+        actorEmail: requesterEmail ?? null,
+        added: allowedSubs,
+        removed: [],
+      }).catch((err) => logger.error('Subscriber notification failed (create)', { error: String(err) }));
+    }
     return res.status(201).json({ view: rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -451,6 +463,7 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     if (typeof digest_enabled === 'boolean') {
       values.push(digest_enabled); updates.push(`digest_enabled = $${values.length}`);
     }
+    let finalSubsForNotify: string[] | null = null;
     if (digest_subscribers !== undefined) {
       let subs: string[] | null;
       if (effectiveDigestSubscribers !== digest_subscribers && Array.isArray(effectiveDigestSubscribers)) {
@@ -474,6 +487,7 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
         }
       }
       if (subs === null) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'digest_subscribers must be an array of emails' }); }
+      finalSubsForNotify = subs;
       values.push(subs); updates.push(`digest_subscribers = $${values.length}`);
     }
     if (updates.length === 0) {
@@ -490,6 +504,21 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
       values,
     );
     await client.query('COMMIT');
+    if (finalSubsForNotify !== null) {
+      const { added, removed } = diffSubscribers(currentSubs, finalSubsForNotify);
+      if (added.length > 0 || removed.length > 0) {
+        const updatedView = rows[0] as { id: string; name: string };
+        void notifySubscriberChanges({
+          tenantId,
+          viewId: updatedView.id,
+          viewName: String(updatedView.name ?? ''),
+          actorUserId: userId,
+          actorEmail: requesterEmail ?? null,
+          added,
+          removed,
+        }).catch((err) => logger.error('Subscriber notification failed (update)', { error: String(err) }));
+      }
+    }
     return res.json({ view: rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
