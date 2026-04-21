@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, FileText, ListOrdered, PhoneCall, Search, Wrench, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, FileText, ListOrdered, PhoneCall, Search, Wrench, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -27,6 +27,7 @@ interface CallRow {
   has_transcript?: boolean;
   has_events?: boolean;
   tool_count?: number;
+  failed_tool_count?: number;
 }
 
 interface ApiResp {
@@ -676,6 +677,15 @@ export default function AdminTenantCalls() {
                           >
                             <Wrench className="h-3 w-3" />
                             {c.tool_count}
+                          </span>
+                        ) : null}
+                        {c.failed_tool_count && c.failed_tool_count > 0 ? (
+                          <span
+                            title={`${c.failed_tool_count} failed or timed-out tool execution${c.failed_tool_count === 1 ? '' : 's'}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {c.failed_tool_count} failed
                           </span>
                         ) : null}
                         {!c.has_transcript && !c.has_events && !(c.tool_count && c.tool_count > 0) ? (

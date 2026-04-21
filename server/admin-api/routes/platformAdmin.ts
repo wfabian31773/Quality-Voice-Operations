@@ -184,7 +184,12 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
                 (
                   SELECT COUNT(*)::int FROM tool_invocations ti
                   WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
-                ) AS tool_count
+                ) AS tool_count,
+                (
+                  SELECT COUNT(*)::int FROM tool_invocations ti
+                  WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
+                    AND ti.status IN ('failed', 'timeout')
+                ) AS failed_tool_count
          FROM call_sessions cs
          LEFT JOIN agents a ON a.id = cs.agent_id
          WHERE ${where}
