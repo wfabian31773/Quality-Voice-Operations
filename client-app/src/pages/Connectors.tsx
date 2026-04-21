@@ -58,9 +58,12 @@ interface ConnectorDefinition {
 interface CredentialField {
   key: string;
   label: string;
-  type: 'text' | 'password';
+  type: 'text' | 'password' | 'select';
   placeholder: string;
   required?: boolean;
+  options?: Array<{ value: string; label: string }>;
+  defaultValue?: string;
+  helpText?: string;
 }
 
 const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
@@ -97,6 +100,18 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
       { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'Salesforce session/access token', required: true },
       { key: 'instance_url', label: 'Instance URL', type: 'text', placeholder: 'https://your-domain.my.salesforce.com', required: true },
       { key: 'refresh_token', label: 'Refresh Token', type: 'password', placeholder: 'Salesforce refresh token (recommended)' },
+      {
+        key: 'pipeline_mode',
+        label: 'New caller pipeline',
+        type: 'select',
+        placeholder: '',
+        defaultValue: 'leads',
+        options: [
+          { value: 'leads', label: 'Use Leads pipeline (top-of-funnel)' },
+          { value: 'contacts', label: 'Contacts + Opportunities' },
+        ],
+        helpText: 'Choose how new inbound callers are recorded. Leads convert to Contact + Opportunity automatically when the AI agent qualifies them or books an appointment.',
+      },
     ],
     events: ['call.completed', 'appointment.booked'],
   },
@@ -313,7 +328,13 @@ function ConnectModal({
   existingConnector?: Connector;
 }) {
   const queryClient = useQueryClient();
-  const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [credentials, setCredentials] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    for (const field of definition.fields) {
+      if (field.defaultValue !== undefined) initial[field.key] = field.defaultValue;
+    }
+    return initial;
+  });
   const [oauthPending, setOauthPending] = useState(false);
   const isReconnect = !!existingConnector;
   const isSalesforce = definition.provider === 'salesforce';
@@ -523,15 +544,30 @@ function ConnectModal({
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-text-primary mb-1">
                     {field.label}
-                    {field.required !== false && <span className="text-danger ml-0.5">*</span>}
+                    {field.required !== false && field.type !== 'select' && <span className="text-danger ml-0.5">*</span>}
                   </label>
-                  <input
-                    type={field.type}
-                    value={credentials[field.key] ?? ''}
-                    onChange={(e) => setCred(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
+                  {field.type === 'select' ? (
+                    <select
+                      value={credentials[field.key] ?? field.defaultValue ?? ''}
+                      onChange={(e) => setCred(field.key, e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      {(field.options ?? []).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type}
+                      value={credentials[field.key] ?? ''}
+                      onChange={(e) => setCred(field.key, e.target.value)}
+                      placeholder={field.placeholder}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  )}
+                  {field.helpText && (
+                    <p className="text-xs text-text-secondary mt-1">{field.helpText}</p>
+                  )}
                 </div>
               ))}
             </div>

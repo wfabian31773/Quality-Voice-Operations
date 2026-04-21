@@ -7,10 +7,14 @@ const logger = createLogger('SALESFORCE_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const API_VERSION = 'v60.0';
 
+type PipelineMode = 'leads' | 'contacts';
+
 interface SalesforceTokens {
   accessToken: string;
   instanceUrl: string;
 }
+
+type SfRecord = { id: string; object: 'Contact' | 'Lead' };
 
 export class SalesforceConnectorAdapter implements ConnectorAdapter {
   async execute(
@@ -31,6 +35,21 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       default:
         return { success: false, error: `Salesforce adapter does not handle event: ${payload.type}` };
     }
+  }
+
+  private resolvePipelineMode(config: ConnectorConfig, payload: ConnectorPayload): PipelineMode {
+    const fromPayload = (payload.pipelineMode as string | undefined)?.toLowerCase();
+    if (fromPayload === 'leads' || fromPayload === 'contacts') return fromPayload;
+    const fromCreds = (config.credentials.pipeline_mode ?? '').toLowerCase();
+    if (fromCreds === 'contacts') return 'contacts';
+    return 'leads';
+  }
+
+  private isQualified(payload: ConnectorPayload): boolean {
+    if (payload.qualified === true) return true;
+    if (typeof payload.qualified === 'string' && payload.qualified.toLowerCase() === 'true') return true;
+    if (payload.type === 'appointment.booked') return true;
+    return false;
   }
 
   private async ensureAccessToken(
@@ -54,7 +73,6 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     }
 
     if (!refreshToken) {
-      // No refresh token — return current token and let API call surface auth errors.
       return { accessToken, instanceUrl };
     }
 
@@ -88,7 +106,6 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       };
       const newAccessToken = data.access_token;
       const newInstanceUrl = data.instance_url ?? instanceUrl;
-      // Salesforce access tokens default to ~2h; cache for 90 minutes.
       const newExpiresAt = Date.now() + 90 * 60 * 1000;
       await upsertConnector(tenantId, {
         connectorType: 'crm',
@@ -120,13 +137,42 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     const duration = payload.durationSeconds as number | undefined;
     const callSid = payload.callSid as string | undefined;
     const disposition = payload.disposition as string | undefined;
+    const callerCompany = payload.callerCompany as string | undefined;
+    const mode = this.resolvePipelineMode(config, payload);
 
     try {
-      const who = callerPhone
-        ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload)
+      let who = callerPhone
+        ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload, mode)
         : undefined;
 
-      const whatId = await this.resolveWhatId(tokens, who, payload);
+      // If the AI agent qualified this caller and we matched/created a Lead,
+      // convert it to Contact + Account + Opportunity so the activity attaches downstream.
+      let convertedContactId: string | undefined;
+      let convertedOpportunityId: string | undefined;
+      let convertedAccountId: string | undefined;
+      let convertedFromLeadId: string | undefined;
+      if (who?.object === 'Lead' && this.isQualified(payload)) {
+        const reuseAccountId = (payload.accountId as string | undefined)
+          ?? (callerCompany ? await this.findOrCreateAccount(tokens, callerCompany) : undefined);
+        const opportunityName = callerCompany
+          ? `${callerCompany} - QVO Inbound Call`
+          : 'QVO Inbound Opportunity';
+        const conversion = await this.convertLead(tokens, who.id, {
+          accountId: reuseAccountId,
+          opportunityName,
+        });
+        if (conversion) {
+          convertedFromLeadId = who.id;
+          convertedContactId = conversion.contactId;
+          convertedOpportunityId = conversion.opportunityId;
+          convertedAccountId = conversion.accountId;
+          who = { id: conversion.contactId, object: 'Contact' };
+        }
+      }
+
+      const whatId = convertedOpportunityId
+        ?? convertedAccountId
+        ?? await this.resolveWhatId(tokens, who, payload);
       const customMap = parseDispositionMap(config.credentials);
       const dispositionFields = mapDispositionToTaskFields(disposition, customMap);
 
@@ -148,12 +194,30 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         : undefined;
 
       logger.info('Salesforce call task created', {
-        tenantId, whoId: who?.id, whatId, taskId, noteId, disposition,
+        tenantId, mode, whoObject: who?.object, whoId: who?.id, whatId, taskId, noteId,
+        disposition, convertedFromLeadId,
       });
       return {
         success: true,
         externalId: taskId,
-        meta: { whoId: who?.id, whatId, taskId, noteId, provider: 'salesforce' },
+        meta: {
+          whoId: who?.id,
+          whoObject: who?.object,
+          whatId,
+          taskId,
+          noteId,
+          pipelineMode: mode,
+          provider: 'salesforce',
+          ...(convertedContactId
+            ? {
+                convertedFromLead: true,
+                convertedFromLeadId,
+                contactId: convertedContactId,
+                accountId: convertedAccountId,
+                opportunityId: convertedOpportunityId,
+              }
+            : {}),
+        },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -171,10 +235,11 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     const callerPhone = payload.callerPhone as string | undefined;
     const summary = payload.summary as string | undefined;
     const callerCompany = payload.callerCompany as string | undefined;
+    const mode = this.resolvePipelineMode(config, payload);
 
     try {
       let who = callerPhone
-        ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload)
+        ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload, mode)
         : undefined;
 
       // Auto-convert Lead → Contact on the high-intent appointment.booked event
@@ -183,6 +248,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       let convertedContactId: string | undefined;
       let convertedOpportunityId: string | undefined;
       let convertedAccountId: string | undefined;
+      let convertedFromLeadId: string | undefined;
       if (who?.object === 'Lead') {
         const reuseAccountId = (payload.accountId as string | undefined)
           ?? (callerCompany ? await this.findOrCreateAccount(tokens, callerCompany) : undefined);
@@ -194,6 +260,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
           opportunityName,
         });
         if (conversion) {
+          convertedFromLeadId = who.id;
           convertedContactId = conversion.contactId;
           convertedOpportunityId = conversion.opportunityId;
           convertedAccountId = conversion.accountId;
@@ -240,21 +307,24 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         : undefined;
 
       logger.info('Salesforce appointment task created', {
-        tenantId, whoId: who?.id, whatId, taskId, noteId,
-        convertedFromLead: Boolean(convertedContactId),
+        tenantId, mode, whoObject: who?.object, whoId: who?.id, whatId, taskId, noteId,
+        convertedFromLeadId,
       });
       return {
         success: true,
         externalId: taskId,
         meta: {
           whoId: who?.id,
+          whoObject: who?.object,
           whatId,
           taskId,
           noteId,
+          pipelineMode: mode,
           provider: 'salesforce',
           ...(convertedContactId
             ? {
                 convertedFromLead: true,
+                convertedFromLeadId,
                 contactId: convertedContactId,
                 accountId: convertedAccountId,
                 opportunityId: convertedOpportunityId,
@@ -385,7 +455,8 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     tokens: SalesforceTokens,
     phone: string,
     payload: ConnectorPayload,
-  ): Promise<{ id: string; object: 'Contact' | 'Lead' } | undefined> {
+    mode: PipelineMode,
+  ): Promise<SfRecord | undefined> {
     const hintedContactId = payload.contactId as string | undefined;
     if (hintedContactId) return { id: hintedContactId, object: 'Contact' };
 
@@ -397,6 +468,22 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     const email = (payload.callerEmail as string) ?? '';
     const company = (payload.callerCompany as string) ?? '';
 
+    if (mode === 'contacts') {
+      // Pre-create Account from company name so the Contact can be linked.
+      const accountId = (payload.accountId as string | undefined)
+        ?? (company ? await this.findOrCreateAccount(tokens, company) : undefined);
+      const contactId = await this.createContact(tokens, { firstName, lastName, email, phone, accountId });
+      if (!contactId) return undefined;
+      // Best-effort opportunity creation alongside the new contact.
+      await this.createOpportunityForContact(tokens, contactId, {
+        name: company
+          ? `${company} - QVO Inbound`
+          : `${(firstName || lastName || 'Inbound')} – Inbound Call`,
+        accountId,
+      }).catch((err) => logger.warn('Salesforce Opportunity create skipped', { error: String(err) }));
+      return { id: contactId, object: 'Contact' };
+    }
+
     const leadId = await this.createLead(tokens, { firstName, lastName, email, phone, company });
     return leadId ? { id: leadId, object: 'Lead' } : undefined;
   }
@@ -404,11 +491,11 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
   private async findContactOrLeadByPhone(
     tokens: SalesforceTokens,
     phone: string,
-  ): Promise<{ id: string; object: 'Contact' | 'Lead' } | undefined> {
+  ): Promise<SfRecord | undefined> {
     const escaped = phone.replace(/'/g, "\\'");
     const queries: Array<{ object: 'Contact' | 'Lead'; soql: string }> = [
       { object: 'Contact', soql: `SELECT Id FROM Contact WHERE Phone = '${escaped}' OR MobilePhone = '${escaped}' LIMIT 1` },
-      { object: 'Lead', soql: `SELECT Id FROM Lead WHERE Phone = '${escaped}' OR MobilePhone = '${escaped}' LIMIT 1` },
+      { object: 'Lead', soql: `SELECT Id FROM Lead WHERE (Phone = '${escaped}' OR MobilePhone = '${escaped}') AND IsConverted = false LIMIT 1` },
     ];
 
     for (const { object, soql } of queries) {
@@ -582,6 +669,76 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     }
     const data = await res.json() as { id: string };
     return data.id;
+  }
+
+  private async createContact(
+    tokens: SalesforceTokens,
+    params: { firstName?: string; lastName: string; email?: string; phone: string; accountId?: string },
+  ): Promise<string | undefined> {
+    const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Contact`;
+    const body: Record<string, unknown> = {
+      LastName: params.lastName || 'Unknown Caller',
+      Phone: params.phone,
+      LeadSource: 'QVO AI Voice Agent',
+    };
+    if (params.firstName) body.FirstName = params.firstName;
+    if (params.email) body.Email = params.email;
+    if (params.accountId) body.AccountId = params.accountId;
+
+    const res = await this.fetchWithTimeout(url, {
+      method: 'POST',
+      headers: this.headers(tokens.accessToken),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      logger.warn('Salesforce Contact create failed', { status: res.status, body: text.slice(0, 200) });
+      return undefined;
+    }
+    const data = await res.json() as { id: string };
+    return data.id;
+  }
+
+  private async createOpportunityForContact(
+    tokens: SalesforceTokens,
+    contactId: string,
+    params: { name: string; closeDateDaysFromNow?: number; stageName?: string; accountId?: string },
+  ): Promise<string | undefined> {
+    const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Opportunity`;
+    const closeDate = new Date(Date.now() + (params.closeDateDaysFromNow ?? 30) * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+    const body: Record<string, unknown> = {
+      Name: params.name,
+      StageName: params.stageName ?? 'Prospecting',
+      CloseDate: closeDate,
+      LeadSource: 'QVO AI Voice Agent',
+    };
+    if (params.accountId) body.AccountId = params.accountId;
+
+    const res = await this.fetchWithTimeout(url, {
+      method: 'POST',
+      headers: this.headers(tokens.accessToken),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      logger.warn('Salesforce Opportunity create failed', { status: res.status, body: text.slice(0, 200) });
+      return undefined;
+    }
+    const data = await res.json() as { id: string };
+    const opportunityId = data.id;
+
+    // Attach contact role so future lookups associate this opportunity with the contact.
+    await this.fetchWithTimeout(
+      `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/OpportunityContactRole`,
+      {
+        method: 'POST',
+        headers: this.headers(tokens.accessToken),
+        body: JSON.stringify({ OpportunityId: opportunityId, ContactId: contactId, IsPrimary: true }),
+      },
+    ).catch(() => undefined);
+
+    return opportunityId;
   }
 
   private async createTask(
