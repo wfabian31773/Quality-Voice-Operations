@@ -91,8 +91,8 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Calls, Contacts, Leads, Tasks',
     logoId: 'salesforce',
     oauthProvider: 'salesforce',
-    docsUrl: 'https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm',
-    setupHelp: 'Sign in with Salesforce to authorize QVO. For sandbox orgs, set SALESFORCE_LOGIN_URL=https://test.salesforce.com on the server.',
+    docsUrl: '/docs/connecting-salesforce',
+    setupHelp: 'Create a Salesforce Connected App with api, refresh_token, and offline_access scopes. For sandbox orgs, set SALESFORCE_LOGIN_URL=https://test.salesforce.com on the server.',
     fields: [
       { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'Salesforce session/access token', required: true },
       { key: 'instance_url', label: 'Instance URL', type: 'text', placeholder: 'https://your-domain.my.salesforce.com', required: true },
@@ -131,8 +131,8 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     syncScope: 'Appointments, Availability',
     logoId: 'outlook-calendar',
     oauthProvider: 'outlook',
-    docsUrl: 'https://learn.microsoft.com/en-us/graph/auth-v2-user',
-    setupHelp: 'Sign in with Microsoft to grant calendar access, or paste OAuth client credentials manually.',
+    docsUrl: '/docs/connecting-outlook',
+    setupHelp: 'Register a Microsoft Entra app with Calendars.ReadWrite and offline_access scopes, then set MICROSOFT_TENANT_ID on the server.',
     fields: [
       { key: 'client_id', label: 'Client ID', type: 'text', placeholder: 'Microsoft Entra App Client ID', required: true },
       { key: 'client_secret', label: 'Client Secret', type: 'password', placeholder: 'Microsoft Entra App Client Secret', required: true },
@@ -384,7 +384,7 @@ function ConnectModal({
                     className="text-primary hover:underline inline-flex items-center gap-0.5"
                   >
                     Find your credentials in {definition.name} docs
-                    <ExternalLink className="h-3 w-3" />
+                    {!definition.docsUrl.startsWith('/') && <ExternalLink className="h-3 w-3" />}
                   </a>
                 </>
               )}
