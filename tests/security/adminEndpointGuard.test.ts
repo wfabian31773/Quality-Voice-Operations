@@ -135,6 +135,27 @@ describe('Admin marketplace/analytics routes are guarded', () => {
       expect(lines[idx]).toMatch(/requirePlatformAdmin/);
     });
   }
+
+  const toolExecutionsFile = readFileSync(
+    join(process.cwd(), 'server/admin-api/routes/toolExecutions.ts'),
+    'utf8',
+  );
+
+  it('global tool registry route /platform/tools/registry requires platform admin', () => {
+    const lines = toolExecutionsFile.split('\n');
+    const idx = lines.findIndex((l) => l.includes("'/platform/tools/registry'"));
+    expect(idx, 'route /platform/tools/registry not registered').toBeGreaterThan(-1);
+    expect(lines[idx]).toMatch(/requireAuth/);
+    expect(lines[idx]).toMatch(/requirePlatformAdmin/);
+  });
+
+  it('tenant-scoped tool registry route /tools/registry does not require platform admin', () => {
+    const lines = toolExecutionsFile.split('\n');
+    const idx = lines.findIndex((l) => /router\.get\(\s*'\/tools\/registry'/.test(l));
+    expect(idx, 'route /tools/registry not registered').toBeGreaterThan(-1);
+    expect(lines[idx]).toMatch(/requireAuth/);
+    expect(lines[idx]).not.toMatch(/requirePlatformAdmin/);
+  });
 });
 
 describe('Tenant routes never trust URL/query tenant_id', () => {

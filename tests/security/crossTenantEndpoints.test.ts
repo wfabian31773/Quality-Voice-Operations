@@ -233,6 +233,75 @@ describe('HTTP cross-tenant isolation', () => {
     });
   });
 
+  describe('Tool registry endpoints', () => {
+    const TENANT_C = randomUUID();
+    const USER_C = { id: randomUUID(), email: `user-c-${Date.now()}@x-tenant-test.local` };
+    let tokenC: string;
+
+    beforeAll(async () => {
+      const { registerTemplateTools } = await import('../../platform/tools/registerTemplateTools');
+      registerTemplateTools();
+
+      await seedTenant({ tenantId: TENANT_C, user: USER_C });
+      await withPrivilegedClient(async (client) => {
+        await client.query(
+          `INSERT INTO agents (id, tenant_id, name, type, status)
+           VALUES ($1, $2, 'XTest dental', 'dental', 'active')`,
+          [randomUUID(), TENANT_C],
+        );
+      });
+      tokenC = issueToken({
+        userId: USER_C.id,
+        tenantId: TENANT_C,
+        email: USER_C.email,
+        role: 'tenant_owner',
+        isPlatformAdmin: false,
+      });
+    });
+
+    afterAll(async () => {
+      await withPrivilegedClient(async (client) => {
+        await client.query(`DELETE FROM agents WHERE tenant_id = $1`, [TENANT_C]);
+        await client.query(`DELETE FROM user_roles WHERE tenant_id = $1`, [TENANT_C]);
+        await client.query(`DELETE FROM users WHERE tenant_id = $1`, [TENANT_C]);
+        await client.query(`DELETE FROM tenants WHERE id = $1`, [TENANT_C]);
+      });
+    });
+
+    it('GET /platform/tools/registry returns 403 for non-admin tenant users', async () => {
+      const res = await request(app)
+        .get('/platform/tools/registry')
+        .set('Authorization', `Bearer ${tokenC}`);
+      expect(res.status, `expected 403, got ${res.status}: ${JSON.stringify(res.body).slice(0, 200)}`).toBe(403);
+    });
+
+    it('GET /tools/registry only returns tools enabled by the tenant\u2019s agent templates', async () => {
+      const res = await request(app)
+        .get('/tools/registry')
+        .set('Authorization', `Bearer ${tokenC}`);
+      expect(res.status, `expected 200, got ${res.status}: ${JSON.stringify(res.body).slice(0, 200)}`).toBe(200);
+
+      const tools = (res.body?.tools ?? []) as Array<{ name: string }>;
+      const names = new Set(tools.map((t) => t.name));
+
+      // The dental template allows scheduleDentalAppointment.
+      expect(names.has('scheduleDentalAppointment'), 'scheduleDentalAppointment should be returned for a tenant with a dental agent').toBe(true);
+
+      // Tools denied by every one of the tenant\u2019s agent templates must not appear.
+      const deniedForDentalOnlyTenant = [
+        'createServiceTicket',
+        'createAfterHoursTicket',
+        'triageEscalate',
+        'scheduleConsultation',
+        'submitMaintenanceRequest',
+        'bookServiceAppointment',
+      ];
+      for (const denied of deniedForDentalOnlyTenant) {
+        expect(names.has(denied), `tool ${denied} should NOT be returned for a tenant whose only agent denies it`).toBe(false);
+      }
+    });
+  });
+
   describe('Platform admin endpoints reject non-admin tenant users', () => {
     const platformPaths = [
       '/platform/stats',
@@ -241,6 +310,7 @@ describe('HTTP cross-tenant isolation', () => {
       '/platform/template-analytics',
       '/platform/marketplace/submissions',
       '/platform/marketplace/revenue',
+      '/platform/tools/registry',
     ];
     for (const p of platformPaths) {
       it(`tenant_owner gets 403 from ${p}`, async () => {
