@@ -5,6 +5,7 @@ import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
 import { runDocsFeedbackAlertCycle } from '../../../platform/help/DocsFeedbackAlertScheduler';
+import { runDocsFeedbackReplyDigestCycle } from '../../../platform/help/DocsFeedbackReplyDigestScheduler';
 import { logError } from '../../../platform/core/observability';
 
 const logger = createLogger('SUPPORT');
@@ -405,25 +406,40 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
   const status = statusParam === 'all'
     ? null
     : (VALID_FEEDBACK_STATUSES.has(statusParam) ? statusParam : 'new');
+  const replyStateParam = req.query.reply_state ? String(req.query.reply_state) : null;
+  const replyFailedOnly = replyStateParam === 'failed';
   try {
     const pool = getPlatformPool();
     const params: unknown[] = [limit];
-    let where = `WHERE comment IS NOT NULL AND length(trim(comment)) > 0`;
+    let where = `WHERE f.comment IS NOT NULL AND length(trim(f.comment)) > 0`;
     if (slug) {
       params.push(slug);
-      where += ` AND article_slug = $${params.length}`;
+      where += ` AND f.article_slug = $${params.length}`;
     }
     if (status) {
       params.push(status);
-      where += ` AND status = $${params.length}`;
+      where += ` AND f.status = $${params.length}`;
+    }
+    if (replyFailedOnly) {
+      where += ` AND lr.email_error IS NOT NULL`;
     }
     const r = await pool.query(
-      `SELECT id, article_slug, vote, comment, page_path, created_at,
-              status, status_updated_at, status_updated_by,
-              reply_email, reply_count
-       FROM docs_feedback
+      `SELECT f.id, f.article_slug, f.vote, f.comment, f.page_path, f.created_at,
+              f.status, f.status_updated_at, f.status_updated_by,
+              f.reply_email, f.reply_count,
+              lr.created_at AS last_reply_at,
+              lr.email_error AS last_reply_error,
+              (lr.email_error IS NOT NULL) AS last_reply_failed
+       FROM docs_feedback f
+       LEFT JOIN LATERAL (
+         SELECT created_at, email_error
+         FROM docs_feedback_replies
+         WHERE feedback_id = f.id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) lr ON TRUE
        ${where}
-       ORDER BY created_at DESC
+       ORDER BY (lr.email_error IS NOT NULL) DESC, f.created_at DESC
        LIMIT $1`,
       params,
     );
@@ -718,6 +734,22 @@ router.post('/docs/feedback/alerts/run', requireAuth, requirePlatformAdmin, asyn
     res.status(500).json({ error: 'Failed to run docs feedback alert cycle', detail: String(err) });
   }
 });
+
+router.post(
+  '/docs/feedback/reply-failures/run',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const result = await runDocsFeedbackReplyDigestCycle();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: 'Failed to run docs feedback reply digest cycle', detail: String(err) });
+    }
+  },
+);
 
 router.get('/docs/feedback/alerts', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {

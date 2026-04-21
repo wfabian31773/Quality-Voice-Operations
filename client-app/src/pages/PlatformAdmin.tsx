@@ -36,6 +36,9 @@ interface DocsFeedbackComment {
   status_updated_by: string | null;
   reply_email: string | null;
   reply_count: number;
+  last_reply_at?: string | null;
+  last_reply_error?: string | null;
+  last_reply_failed?: boolean | null;
 }
 
 interface DocsFeedbackReply {
@@ -879,6 +882,7 @@ function DocsFeedbackTab() {
   const [sort, setSort] = useState<DocsFeedbackSort>('lowest_ratio');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<DocsFeedbackStatusFilter>('new');
+  const [replyFailedOnly, setReplyFailedOnly] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
@@ -888,11 +892,12 @@ function DocsFeedbackTab() {
   });
 
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
-    queryKey: ['docs-feedback-comments', selectedSlug, statusFilter],
+    queryKey: ['docs-feedback-comments', selectedSlug, statusFilter, replyFailedOnly],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('limit', selectedSlug ? '100' : '50');
-      params.set('status', statusFilter);
+      params.set('status', replyFailedOnly ? 'all' : statusFilter);
+      if (replyFailedOnly) params.set('reply_state', 'failed');
       if (selectedSlug) params.set('article_slug', selectedSlug);
       return api.get<{ comments: DocsFeedbackComment[] }>(`/docs/feedback/comments?${params.toString()}`);
     },
@@ -1019,12 +1024,23 @@ function DocsFeedbackTab() {
                 : 'Most recent reader comments across all articles'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={replyFailedOnly}
+                onChange={(e) => setReplyFailedOnly(e.target.checked)}
+              />
+              <span className={replyFailedOnly ? 'text-red-700 font-medium' : ''}>
+                Failed replies only
+              </span>
+            </label>
             <label className="text-xs text-muted">Status</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as DocsFeedbackStatusFilter)}
-              className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
+              disabled={replyFailedOnly}
+              className="text-sm px-2 py-1.5 rounded border border-border bg-surface disabled:opacity-50"
             >
               <option value="new">New</option>
               <option value="resolved">Resolved</option>
@@ -1111,9 +1127,29 @@ function DocsFeedbackCommentRow({
       : 'bg-blue-100 text-blue-700 border-blue-200';
 
   const replies = repliesData?.replies ?? [];
+  const lastReplyFailed = c.last_reply_failed === true;
 
   return (
-    <div className="px-4 py-3">
+    <div
+      className={`px-4 py-3 ${lastReplyFailed ? 'border-l-4 border-l-red-500 bg-red-50/40' : ''}`}
+    >
+      {lastReplyFailed && (
+        <div className="mb-2 flex items-start gap-2 text-xs text-red-700 bg-red-100/60 border border-red-200 rounded px-2 py-1.5">
+          <Mail className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+          <div>
+            <div className="font-semibold">Last reply failed to send</div>
+            {c.last_reply_error && (
+              <div className="text-red-600">{c.last_reply_error}</div>
+            )}
+            <div className="text-red-600/80">
+              Retry from the reply form below or reach out another way.
+              {c.last_reply_at && (
+                <> Attempted {new Date(c.last_reply_at).toLocaleString()}.</>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">
         {c.vote === 'helpful' ? (
           <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
