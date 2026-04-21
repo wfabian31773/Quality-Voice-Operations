@@ -16,6 +16,8 @@ import UsersPage from './pages/Users';
 import Analytics from './pages/Analytics';
 import AdminAnalytics from './pages/AdminAnalytics';
 import AdminTenantAnalytics from './pages/AdminTenantAnalytics';
+import AdminTenantCalls from './pages/AdminTenantCalls';
+import AdminTenantCampaign from './pages/AdminTenantCampaign';
 import AdminMarketplace from './pages/AdminMarketplace';
 import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
@@ -209,6 +211,8 @@ export default function App() {
         <Route path="/admin/dashboard" element={<PlatformAdmin />} />
         <Route path="/admin/analytics" element={<AdminAnalytics />} />
         <Route path="/admin/analytics/tenants/:tenantId" element={<AdminTenantAnalytics />} />
+        <Route path="/admin/analytics/tenants/:tenantId/calls" element={<AdminTenantCalls />} />
+        <Route path="/admin/analytics/tenants/:tenantId/campaigns/:campaignId" element={<AdminTenantCampaign />} />
         <Route path="/admin/marketplace" element={<AdminMarketplace />} />
         <Route path="/admin/billing" element={<Billing />} />
         <Route path="/admin/security" element={<Compliance />} />

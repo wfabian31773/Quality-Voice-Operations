@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
@@ -141,7 +141,12 @@ export default function AdminTenantAnalytics() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Calls" value={isLoading ? '—' : String(calls?.totalCalls ?? 0)} />
+        <KpiCard
+          label="Total Calls"
+          value={isLoading ? '—' : String(calls?.totalCalls ?? 0)}
+          to={tenantId ? `/admin/analytics/tenants/${tenantId}/calls?range=${range}` : undefined}
+          linkLabel="View calls →"
+        />
         <KpiCard
           label="Automation Rate"
           value={isLoading ? '—' : `${((calls?.automationRate ?? 0) * 100).toFixed(1)}%`}
@@ -238,8 +243,20 @@ export default function AdminTenantAnalytics() {
               </thead>
               <tbody>
                 {campaigns.map((c) => (
-                  <tr key={c.campaignId} className="border-b border-border/50">
-                    <td className="py-2.5 font-medium text-text-primary">{c.campaignName}</td>
+                  <tr
+                    key={c.campaignId}
+                    onClick={() => tenantId && navigate(`/admin/analytics/tenants/${tenantId}/campaigns/${c.campaignId}`)}
+                    className="border-b border-border/50 cursor-pointer hover:bg-surface-hover transition-colors"
+                  >
+                    <td className="py-2.5 font-medium text-text-primary">
+                      <Link
+                        to={tenantId ? `/admin/analytics/tenants/${tenantId}/campaigns/${c.campaignId}` : '#'}
+                        className="text-purple-300 hover:text-purple-200 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {c.campaignName}
+                      </Link>
+                    </td>
                     <td className="py-2.5 text-right">{c.totalContacts}</td>
                     <td className="py-2.5 text-right">{(c.answeredRate * 100).toFixed(1)}%</td>
                     <td className="py-2.5 text-right">{(c.voicemailRate * 100).toFixed(1)}%</td>
@@ -257,13 +274,39 @@ export default function AdminTenantAnalytics() {
   );
 }
 
-function KpiCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-card border border-border rounded-xl p-4">
+function KpiCard({
+  label,
+  value,
+  to,
+  linkLabel,
+}: {
+  label: string;
+  value: string;
+  to?: string;
+  linkLabel?: string;
+}) {
+  const inner = (
+    <>
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold mt-1 text-text-primary">{value}</p>
-    </div>
+      {to && (
+        <p className="text-xs text-purple-300 mt-2 group-hover:text-purple-200">
+          {linkLabel ?? 'View →'}
+        </p>
+      )}
+    </>
   );
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className="group block bg-card border border-border rounded-xl p-4 hover:border-purple-400/50 hover:bg-surface-hover transition-colors"
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return <div className="bg-card border border-border rounded-xl p-4">{inner}</div>;
 }
 
 function Row({ label, value, bold, muted }: { label: string; value: string; bold?: boolean; muted?: boolean }) {

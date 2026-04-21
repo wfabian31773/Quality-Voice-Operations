@@ -9,6 +9,8 @@ import {
   getCampaignAnalytics,
   getCostAnalytics,
 } from '../../../platform/analytics';
+import { getCampaign, getCampaignMetrics, listContacts } from '../../../platform/campaigns/CampaignService';
+import { redactPHI } from '../../../platform/core/phi/redact';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -99,6 +101,146 @@ router.get('/platform/tenants/:id/analytics', requireAuth, requirePlatformAdmin,
   } catch (err) {
     logger.error('Failed to fetch per-tenant analytics for admin', { tenantId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch tenant analytics' });
+  }
+});
+
+router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
+  const page = Math.max(parseInt(String(req.query.page ?? '1'), 10), 1);
+  const offset = (page - 1) * limit;
+  const { agent_id, direction, lifecycle_state, since } = req.query as Record<string, string>;
+
+  try {
+    const tenantExists = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, name, slug FROM tenants WHERE id = $1`,
+        [id],
+      );
+      return rows[0] ?? null;
+    });
+    if (!tenantExists) return res.status(404).json({ error: 'Tenant not found' });
+
+    const conditions: string[] = ['cs.tenant_id = $1'];
+    const values: unknown[] = [id];
+    if (agent_id) { values.push(agent_id); conditions.push(`cs.agent_id = $${values.length}`); }
+    if (direction) { values.push(direction); conditions.push(`cs.direction = $${values.length}`); }
+    if (lifecycle_state) { values.push(lifecycle_state); conditions.push(`cs.lifecycle_state = $${values.length}`); }
+    if (since) { values.push(since); conditions.push(`cs.start_time >= $${values.length}::timestamptz`); }
+    const where = conditions.join(' AND ');
+
+    const result = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT cs.id, cs.agent_id, cs.direction, cs.lifecycle_state,
+                cs.caller_number, cs.called_number,
+                cs.start_time, cs.end_time, cs.duration_seconds,
+                cs.total_cost_cents, cs.environment, cs.created_at,
+                a.name AS agent_name
+         FROM call_sessions cs
+         LEFT JOIN agents a ON a.id = cs.agent_id
+         WHERE ${where}
+         ORDER BY cs.created_at DESC
+         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, limit, offset],
+      );
+      const { rows: countRows } = await client.query(
+        `SELECT COUNT(*) AS total FROM call_sessions cs WHERE ${where}`,
+        values,
+      );
+      return { rows, total: parseInt(countRows[0].total as string, 10) };
+    });
+
+    const calls = result.rows.map((r) => {
+      const out = { ...r } as Record<string, unknown>;
+      if (typeof out.caller_number === 'string') out.caller_number = redactPHI(out.caller_number);
+      if (typeof out.called_number === 'string') out.called_number = redactPHI(out.called_number);
+      return out;
+    });
+
+    logger.info('Platform admin viewed tenant calls', {
+      tenantId: id,
+      adminUserId: req.user!.userId,
+      page,
+      limit,
+    });
+
+    return res.json({ tenant: tenantExists, calls, total: result.total, limit, offset });
+  } catch (err) {
+    logger.error('Failed to list tenant calls for admin', { tenantId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list tenant calls' });
+  }
+});
+
+router.get('/platform/tenants/:id/campaigns/:campaignId', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, campaignId } = req.params;
+  try {
+    const tenant = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, name, slug FROM tenants WHERE id = $1`,
+        [id],
+      );
+      return rows[0] ?? null;
+    });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const [campaign, metrics, agentRow] = await Promise.all([
+      getCampaign(id, campaignId),
+      getCampaignMetrics(id, campaignId).catch(() => null),
+      withPrivilegedClient(async (client) => {
+        const { rows } = await client.query(
+          `SELECT a.id, a.name FROM agents a
+            JOIN campaigns c ON c.agent_id = a.id
+            WHERE c.id = $1 AND c.tenant_id = $2`,
+          [campaignId, id],
+        );
+        return rows[0] ?? null;
+      }),
+    ]);
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    logger.info('Platform admin viewed tenant campaign', {
+      tenantId: id,
+      campaignId,
+      adminUserId: req.user!.userId,
+    });
+
+    return res.json({ tenant, campaign, metrics, agent: agentRow });
+  } catch (err) {
+    logger.error('Failed to fetch tenant campaign for admin', { tenantId: id, campaignId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch tenant campaign' });
+  }
+});
+
+router.get('/platform/tenants/:id/campaigns/:campaignId/contacts', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id, campaignId } = req.params;
+  const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
+  const page = Math.max(parseInt(String(req.query.page ?? '1'), 10), 1);
+  const offset = (page - 1) * limit;
+  const { status } = req.query as Record<string, string>;
+
+  try {
+    const tenant = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(`SELECT id FROM tenants WHERE id = $1`, [id]);
+      return rows[0] ?? null;
+    });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const result = await listContacts(id, campaignId, {
+      limit,
+      offset,
+      status: status as import('../../../platform/campaigns').ContactStatus,
+    });
+
+    const contacts = result.contacts.map((c) => ({
+      ...c,
+      phoneNumber: c.phoneNumber ? redactPHI(c.phoneNumber) : c.phoneNumber,
+    }));
+
+    return res.json({ contacts, total: result.total, limit, offset });
+  } catch (err) {
+    logger.error('Failed to list tenant campaign contacts for admin', { tenantId: id, campaignId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list campaign contacts' });
   }
 });
 
