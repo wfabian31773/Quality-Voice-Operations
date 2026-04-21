@@ -4,7 +4,10 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
-import { runDocsFeedbackAlertCycle } from '../../../platform/help/DocsFeedbackAlertScheduler';
+import {
+  runDocsFeedbackAlertCycle,
+  runDocsFeedbackPendingReplyAlertCycle,
+} from '../../../platform/help/DocsFeedbackAlertScheduler';
 import { runDocsFeedbackReplyDigestCycle } from '../../../platform/help/DocsFeedbackReplyDigestScheduler';
 import { logError } from '../../../platform/core/observability';
 
@@ -768,6 +771,23 @@ router.post('/docs/feedback/alerts/run', requireAuth, requirePlatformAdmin, asyn
     res.status(500).json({ error: 'Failed to run docs feedback alert cycle', detail: String(err) });
   }
 });
+
+router.post(
+  '/docs/feedback/pending-replies/run',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const result = await runDocsFeedbackPendingReplyAlertCycle();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res.status(500).json({
+        error: 'Failed to run docs feedback pending-reply alert cycle',
+        detail: String(err),
+      });
+    }
+  },
+);
 
 router.post(
   '/docs/feedback/reply-failures/run',

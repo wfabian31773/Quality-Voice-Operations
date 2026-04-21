@@ -12,6 +12,10 @@ const NOT_HELPFUL_THRESHOLD = 5;
 const RATIO_THRESHOLD_PCT = 40;
 const COOLDOWN_DAYS = 7;
 
+const PENDING_REPLY_THRESHOLD_HOURS = 24;
+const PENDING_REPLY_COOLDOWN_HOURS = 24;
+const PENDING_REPLY_MAX_PER_ALERT = 50;
+
 export interface UnderperformingArticle {
   article_slug: string;
   total_votes: number;
@@ -193,6 +197,202 @@ function renderAlertEmail(articles: UnderperformingArticle[]): {
   return { subject, html, text: textLines.join('\n') };
 }
 
+export interface PendingReplyComment {
+  id: number;
+  article_slug: string;
+  reply_email: string;
+  comment: string | null;
+  page_path: string | null;
+  created_at: Date;
+  hours_waiting: number;
+}
+
+export async function findPendingReplyComments(): Promise<PendingReplyComment[]> {
+  const pool = getPlatformPool();
+  const r = await pool.query<{
+    id: number;
+    article_slug: string;
+    reply_email: string;
+    comment: string | null;
+    page_path: string | null;
+    created_at: Date;
+    hours_waiting: number;
+  }>(
+    `SELECT
+       id,
+       article_slug,
+       reply_email,
+       comment,
+       page_path,
+       created_at,
+       EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600.0 AS hours_waiting
+     FROM docs_feedback
+     WHERE reply_email IS NOT NULL
+       AND reply_count = 0
+       AND status <> 'hidden'
+       AND created_at <= NOW() - ($1 || ' hours')::interval
+       AND (
+         pending_reply_alerted_at IS NULL
+         OR pending_reply_alerted_at <= NOW() - ($2 || ' hours')::interval
+       )
+     ORDER BY created_at ASC
+     LIMIT $3`,
+    [
+      String(PENDING_REPLY_THRESHOLD_HOURS),
+      String(PENDING_REPLY_COOLDOWN_HOURS),
+      PENDING_REPLY_MAX_PER_ALERT,
+    ],
+  );
+  return r.rows.map((row) => ({
+    ...row,
+    hours_waiting: Number(row.hours_waiting),
+  }));
+}
+
+async function markPendingReplyAlerted(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const pool = getPlatformPool();
+  await pool.query(
+    `UPDATE docs_feedback
+     SET pending_reply_alerted_at = NOW()
+     WHERE id = ANY($1::int[])`,
+    [ids],
+  );
+}
+
+function renderPendingReplyEmail(comments: PendingReplyComment[]): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const subject =
+    comments.length === 1
+      ? `[QVO Docs] 1 reader is waiting on a reply`
+      : `[QVO Docs] ${comments.length} readers are waiting on a reply`;
+
+  const rows = comments
+    .map((c) => {
+      const waited = c.hours_waiting >= 48
+        ? `${Math.round(c.hours_waiting / 24)}d`
+        : `${Math.round(c.hours_waiting)}h`;
+      const snippet = (c.comment ?? '').slice(0, 160);
+      return `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb"><code>${escapeHtml(c.article_slug)}</code></td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${escapeHtml(c.reply_email)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#b45309">${escapeHtml(waited)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#475569">${escapeHtml(snippet)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const baseUrl =
+    process.env.APP_URL ??
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : '');
+  const inboxPath = '/admin/help#docs-feedback?status=pending_reply';
+  const inboxLink = baseUrl ? `${baseUrl}${inboxPath}` : inboxPath;
+
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:720px">
+      <h2 style="margin:0 0 8px">Docs feedback waiting on a reply</h2>
+      <p style="margin:0 0 12px;color:#475569">
+        These readers left a contact email more than ${PENDING_REPLY_THRESHOLD_HOURS} hours ago
+        and have not received a reply. Open the
+        <a href="${inboxLink}">Docs Feedback inbox (Pending Reply)</a> to respond.
+      </p>
+      <table style="border-collapse:collapse;font-size:13px;width:100%">
+        <thead>
+          <tr style="background:#f1f5f9;text-align:left">
+            <th style="padding:8px 10px">Article</th>
+            <th style="padding:8px 10px">Reader</th>
+            <th style="padding:8px 10px">Waiting</th>
+            <th style="padding:8px 10px">Comment</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin:16px 0 0;color:#64748b;font-size:12px">
+        Each comment is only re-alerted every ${PENDING_REPLY_COOLDOWN_HOURS} hours.
+      </p>
+    </div>`;
+
+  const textLines = [
+    'Docs feedback waiting on a reply',
+    `Threshold: ${PENDING_REPLY_THRESHOLD_HOURS}h, cooldown: ${PENDING_REPLY_COOLDOWN_HOURS}h`,
+    '',
+    ...comments.map((c) => {
+      const waited = c.hours_waiting >= 48
+        ? `${Math.round(c.hours_waiting / 24)}d`
+        : `${Math.round(c.hours_waiting)}h`;
+      const snippet = (c.comment ?? '').slice(0, 160).replace(/\s+/g, ' ');
+      return `- ${c.article_slug} → ${c.reply_email} (waiting ${waited}): ${snippet}`;
+    }),
+    '',
+    `Open: ${inboxLink}`,
+  ];
+
+  return { subject, html, text: textLines.join('\n') };
+}
+
+export interface PendingReplyAlertResult {
+  pending: number;
+  alerted: number;
+  emailDelivered: boolean;
+  recipients: number;
+}
+
+export async function runDocsFeedbackPendingReplyAlertCycle(): Promise<PendingReplyAlertResult> {
+  const pending = await findPendingReplyComments();
+  if (pending.length === 0) {
+    logger.debug('No pending-reply docs feedback comments past threshold');
+    return { pending: 0, alerted: 0, emailDelivered: false, recipients: 0 };
+  }
+
+  const recipients = await getPlatformAdminEmails();
+  let emailDelivered = false;
+
+  if (recipients.length === 0) {
+    logger.warn(
+      'No platform admin recipients found; marking pending-reply comments as alerted anyway to avoid repeat logging',
+      { pending: pending.length },
+    );
+  } else {
+    const tpl = renderPendingReplyEmail(pending);
+    const result = await sendEmail({
+      to: recipients.join(', '),
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+    });
+    emailDelivered = result.success;
+    if (!result.success) {
+      logger.error('Failed to deliver docs feedback pending-reply alert email', {
+        error: result.error,
+      });
+    }
+  }
+
+  if (emailDelivered || recipients.length === 0) {
+    try {
+      await markPendingReplyAlerted(pending.map((c) => c.id));
+    } catch (err) {
+      logger.warn('Failed to mark pending-reply comments as alerted', { error: String(err) });
+    }
+  }
+
+  logger.info('Docs feedback pending-reply alert cycle complete', {
+    pending: pending.length,
+    recipients: recipients.length,
+    emailDelivered,
+  });
+
+  return {
+    pending: pending.length,
+    alerted: emailDelivered || recipients.length === 0 ? pending.length : 0,
+    emailDelivered,
+    recipients: recipients.length,
+  };
+}
+
 export interface AlertCycleResult {
   flagged: number;
   alerted: number;
@@ -287,11 +487,19 @@ export function startDocsFeedbackAlertScheduler(intervalMs: number = CHECK_INTER
     runDocsFeedbackAlertCycle().catch((err) => {
       logger.error('Initial docs feedback alert cycle failed', { error: String(err) });
     });
+    runDocsFeedbackPendingReplyAlertCycle().catch((err) => {
+      logger.error('Initial docs feedback pending-reply alert cycle failed', {
+        error: String(err),
+      });
+    });
   }, INITIAL_DELAY_MS);
 
   timer = setInterval(() => {
     runDocsFeedbackAlertCycle().catch((err) => {
       logger.error('Docs feedback alert cycle failed', { error: String(err) });
+    });
+    runDocsFeedbackPendingReplyAlertCycle().catch((err) => {
+      logger.error('Docs feedback pending-reply alert cycle failed', { error: String(err) });
     });
   }, intervalMs);
 
