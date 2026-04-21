@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -307,6 +307,7 @@ export default function Calls() {
   const [newViewShared, setNewViewShared] = useState(false);
   const [newViewDigest, setNewViewDigest] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [subscribersOpenFor, setSubscribersOpenFor] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const limit = 20;
 
@@ -468,6 +469,17 @@ export default function Calls() {
     }
   };
 
+  const handleRemoveSubscriber = async (view: SavedView, email: string) => {
+    const target = email.toLowerCase();
+    const next = (view.digest_subscribers ?? []).filter((e) => e.toLowerCase() !== target);
+    try {
+      await api.patch(`/call-saved-views/${view.id}`, { digest_subscribers: next });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to remove subscriber');
+    }
+  };
+
   const handleDeleteView = async (id: string) => {
     if (!window.confirm('Delete this saved view?')) return;
     try {
@@ -617,6 +629,18 @@ export default function Calls() {
                     >
                       {view.digest_enabled ? <Mail className="h-3.5 w-3.5" /> : <MailX className="h-3.5 w-3.5" />}
                     </button>
+                    {view.is_shared && (view.digest_subscribers?.length ?? 0) > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSubscribersOpenFor(subscribersOpenFor === view.id ? null : view.id); }}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs transition ${subscribersOpenFor === view.id ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+                        title={`${view.digest_subscribers!.length} teammate${view.digest_subscribers!.length === 1 ? '' : 's'} subscribed — click to manage`}
+                        aria-label={`Manage ${view.digest_subscribers!.length} subscribers for ${view.name}`}
+                        aria-expanded={subscribersOpenFor === view.id}
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        {view.digest_subscribers!.length}
+                      </button>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteView(view.id); }}
                       className="p-1 mr-1 rounded-full text-text-muted hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
@@ -654,6 +678,55 @@ export default function Calls() {
           )}
         </div>
       )}
+
+      {subscribersOpenFor && (() => {
+        const view = savedViews.find((v) => v.id === subscribersOpenFor);
+        if (!view || view.created_by !== currentUserId) return null;
+        const subs = view.digest_subscribers ?? [];
+        return (
+          <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">
+                  Digest subscribers — {view.name}
+                </h3>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Teammates who opted in to this shared view's daily email.
+                </p>
+              </div>
+              <button
+                onClick={() => setSubscribersOpenFor(null)}
+                className="p-1 rounded text-text-muted hover:text-text-primary"
+                aria-label="Close subscribers panel"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {subs.length === 0 ? (
+              <p className="text-sm text-text-secondary">No teammates have subscribed yet.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {subs.map((email) => (
+                  <li
+                    key={email}
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-hover pl-3 pr-1 py-1 text-sm text-text-primary"
+                  >
+                    <span className="truncate max-w-[240px]">{email}</span>
+                    <button
+                      onClick={() => handleRemoveSubscriber(view, email)}
+                      className="p-1 rounded-full text-text-muted hover:text-red-600 transition"
+                      title={`Remove ${email}`}
+                      aria-label={`Remove ${email} from ${view.name} digest`}
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
 
       {savingView && (
         <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
