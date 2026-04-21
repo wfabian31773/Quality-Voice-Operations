@@ -439,32 +439,66 @@ router.get('/operations/integration-diagnostics', requireAuth, requireOpsRole, a
       };
     });
 
-    const salesforceClient = await pool.connect();
-    let salesforceDispatches: unknown[] = [];
+    const providerFilter = (req.query.provider as string | undefined)?.trim();
+
+    const dispatchClient = await pool.connect();
+    let connectorDispatches: unknown[] = [];
+    let dispatchProviders: string[] = [];
     try {
-      await salesforceClient.query('BEGIN');
-      await withTenantContext(salesforceClient, tenantId, async () => {});
-      const { rows: sfRows } = await salesforceClient.query(
+      await dispatchClient.query('BEGIN');
+      await withTenantContext(dispatchClient, tenantId, async () => {});
+
+      const dispatchParams: (string | undefined)[] = [tenantId];
+      let providerSql = '';
+      if (providerFilter && providerFilter !== 'all') {
+        dispatchParams.push(providerFilter);
+        providerSql = ` AND split_part(iel.service_name, ':', 2) = $2`;
+      }
+
+      const { rows: dispatchRows } = await dispatchClient.query(
         `SELECT iel.id, iel.service_name, iel.request_url, iel.request_body,
                 iel.response_status, iel.error_message, iel.latency_ms,
                 iel.call_session_id, iel.created_at
          FROM integration_event_logs iel
          WHERE iel.tenant_id = $1
-           AND iel.service_name ILIKE '%salesforce%'
+           AND iel.service_name LIKE '%:%'
+           AND iel.request_url LIKE 'connector://%'
            AND iel.created_at > NOW() - INTERVAL '7 days'
+           ${providerSql}
          ORDER BY iel.created_at DESC
-         LIMIT 50`,
+         LIMIT 100`,
+        dispatchParams,
+      );
+
+      const { rows: providerRows } = await dispatchClient.query(
+        `SELECT DISTINCT split_part(iel.service_name, ':', 2) AS provider
+         FROM integration_event_logs iel
+         WHERE iel.tenant_id = $1
+           AND iel.service_name LIKE '%:%'
+           AND iel.request_url LIKE 'connector://%'
+           AND iel.created_at > NOW() - INTERVAL '7 days'
+         ORDER BY provider ASC`,
         [tenantId],
       );
-      await salesforceClient.query('COMMIT');
-      salesforceDispatches = sfRows.map((r: Record<string, unknown>) => {
+
+      await dispatchClient.query('COMMIT');
+
+      dispatchProviders = providerRows
+        .map((r: Record<string, unknown>) => String(r.provider ?? ''))
+        .filter((p) => p.length > 0);
+
+      connectorDispatches = dispatchRows.map((r: Record<string, unknown>) => {
         const status = r.response_status as number | null;
         const success = status !== null && status >= 200 && status < 300;
         const body = r.request_body as Record<string, unknown> | null;
+        const serviceName = String(r.service_name ?? '');
+        const [connectorType, provider] = serviceName.split(':');
         return {
           id: r.id,
           eventType: (body?.type as string) ?? 'unknown',
-          serviceName: r.service_name,
+          serviceName,
+          connectorType: connectorType ?? null,
+          provider: provider ?? null,
           status: success ? 'success' : 'error',
           responseStatus: status,
           errorMessage: r.error_message,
@@ -474,13 +508,23 @@ router.get('/operations/integration-diagnostics', requireAuth, requireOpsRole, a
         };
       });
     } catch (err) {
-      await salesforceClient.query('ROLLBACK').catch(() => {});
-      logger.warn('Failed to fetch Salesforce dispatches', { tenantId, error: String(err) });
+      await dispatchClient.query('ROLLBACK').catch(() => {});
+      logger.warn('Failed to fetch connector dispatches', { tenantId, error: String(err) });
     } finally {
-      salesforceClient.release();
+      dispatchClient.release();
     }
 
-    res.json({ webhooks, health: healthWithRate, salesforceDispatches });
+    const salesforceDispatches = (connectorDispatches as Array<{ provider: string | null }>).filter(
+      (d) => d.provider === 'salesforce',
+    );
+
+    res.json({
+      webhooks,
+      health: healthWithRate,
+      connectorDispatches,
+      dispatchProviders,
+      salesforceDispatches,
+    });
   } catch (err) {
     logger.error('Failed to fetch integration diagnostics', { tenantId, error: String(err) });
     res.status(500).json({ error: 'Failed to fetch integration diagnostics' });

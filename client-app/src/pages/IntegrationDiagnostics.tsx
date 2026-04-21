@@ -35,10 +35,12 @@ interface IntegrationHealth {
   last_event_at: string | null;
 }
 
-interface SalesforceDispatch {
+interface ConnectorDispatch {
   id: string;
   eventType: string;
   serviceName: string;
+  connectorType: string | null;
+  provider: string | null;
   status: 'success' | 'error';
   responseStatus: number | null;
   errorMessage: string | null;
@@ -50,7 +52,22 @@ interface SalesforceDispatch {
 interface DiagnosticsData {
   webhooks: WebhookDelivery[];
   health: IntegrationHealth[];
-  salesforceDispatches?: SalesforceDispatch[];
+  connectorDispatches?: ConnectorDispatch[];
+  dispatchProviders?: string[];
+}
+
+const AUTH_ERROR_REGEX = /\b(401|403|unauthorized|forbidden|invalid[_ -]?(grant|token|credential|auth)|expired|refresh.*(failed|token)|token.*expired|auth(entication)?[ _-]?(failed|error)|missing.*(token|credential)|not_authed|token_revoked|account_inactive)\b/i;
+
+function isAuthError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return AUTH_ERROR_REGEX.test(message);
+}
+
+function formatProviderLabel(provider: string): string {
+  return provider
+    .split(/[-_]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -187,13 +204,19 @@ function WebhookRow({ webhook, onRetry, retrying }: {
 export default function IntegrationDiagnostics() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [providerFilter, setProviderFilter] = useState<string>('all');
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['integration-diagnostics', statusFilter],
-    queryFn: () =>
-      api.get<DiagnosticsData>(
-        `/operations/integration-diagnostics${statusFilter !== 'all' ? `?status=${statusFilter}` : ''}`
-      ),
+    queryKey: ['integration-diagnostics', statusFilter, providerFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (providerFilter !== 'all') params.set('provider', providerFilter);
+      const qs = params.toString();
+      return api.get<DiagnosticsData>(
+        `/operations/integration-diagnostics${qs ? `?${qs}` : ''}`,
+      );
+    },
     refetchInterval: 30_000,
   });
 
@@ -207,7 +230,8 @@ export default function IntegrationDiagnostics() {
 
   const webhooks = data?.webhooks ?? [];
   const health = data?.health ?? [];
-  const salesforceDispatches = data?.salesforceDispatches ?? [];
+  const connectorDispatches = data?.connectorDispatches ?? [];
+  const dispatchProviders = data?.dispatchProviders ?? [];
 
   return (
     <div className="space-y-6">
@@ -290,27 +314,45 @@ export default function IntegrationDiagnostics() {
       )}
 
       <div className="bg-surface border border-border rounded-xl shadow-sm">
-        <div className="px-5 py-4 border-b border-border">
-          <h2 className="text-base font-semibold text-text-primary">
-            Salesforce Dispatches
-            {salesforceDispatches.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-muted">({salesforceDispatches.length})</span>
-            )}
-          </h2>
-          <p className="text-xs text-muted mt-1">
-            Per-event Salesforce sync attempts from the last 7 days.
-          </p>
+        <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">
+              Connector Dispatches
+              {connectorDispatches.length > 0 && (
+                <span className="ml-2 text-xs font-normal text-muted">({connectorDispatches.length})</span>
+              )}
+            </h2>
+            <p className="text-xs text-muted mt-1">
+              Per-event sync attempts to CRM, calendar, and messaging connectors from the last 7 days.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted">Provider</label>
+            <select
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              className="text-xs border border-border rounded-lg px-2 py-1.5 bg-surface focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="all">All providers</option>
+              {dispatchProviders.map((p) => (
+                <option key={p} value={p}>{formatProviderLabel(p)}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="overflow-x-auto">
-          {salesforceDispatches.length === 0 ? (
+          {connectorDispatches.length === 0 ? (
             <div className="text-center py-10 text-sm text-muted">
-              No Salesforce dispatches in the last 7 days.
+              {providerFilter === 'all'
+                ? 'No connector dispatches in the last 7 days.'
+                : `No ${formatProviderLabel(providerFilter)} dispatches in the last 7 days.`}
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-5 py-3 font-medium text-muted">Status</th>
+                  <th className="px-5 py-3 font-medium text-muted">Provider</th>
                   <th className="px-5 py-3 font-medium text-muted">Event</th>
                   <th className="px-5 py-3 font-medium text-muted">HTTP</th>
                   <th className="px-5 py-3 font-medium text-muted">Error</th>
@@ -319,42 +361,55 @@ export default function IntegrationDiagnostics() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {salesforceDispatches.map((d) => (
-                  <tr key={d.id} className="hover:bg-surface-secondary/50 transition-colors">
-                    <td className="px-5 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                          d.status === 'success'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        }`}
-                      >
-                        {d.status === 'success' ? (
-                          <CheckCircle2 className="h-3 w-3" />
-                        ) : (
-                          <XCircle className="h-3 w-3" />
+                {connectorDispatches.map((d) => {
+                  const authError = d.status === 'error' && isAuthError(d.errorMessage);
+                  return (
+                    <tr key={d.id} className="hover:bg-surface-secondary/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            d.status === 'success'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : authError
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                          }`}
+                        >
+                          {d.status === 'success' ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : authError ? (
+                            <AlertCircle className="h-3 w-3" />
+                          ) : (
+                            <XCircle className="h-3 w-3" />
+                          )}
+                          {d.status === 'success' ? 'Success' : authError ? 'Reconnect' : 'Failed'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-text-primary">
+                        {d.provider ? formatProviderLabel(d.provider) : '—'}
+                        {d.connectorType && (
+                          <span className="ml-1 text-xs text-muted">({d.connectorType})</span>
                         )}
-                        {d.status === 'success' ? 'Success' : 'Failed'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 font-medium text-text-primary">{d.eventType}</td>
-                    <td className="px-5 py-3 text-muted font-mono text-xs">
-                      {d.responseStatus ?? '—'}
-                    </td>
-                    <td
-                      className="px-5 py-3 text-xs text-red-600 dark:text-red-400 max-w-[320px] truncate"
-                      title={d.errorMessage ?? ''}
-                    >
-                      {d.errorMessage ?? '—'}
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono text-muted text-xs">
-                      {d.latencyMs !== null ? `${d.latencyMs}ms` : '—'}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-muted whitespace-nowrap">
-                      {new Date(d.createdAt).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-5 py-3 font-medium text-text-primary">{d.eventType}</td>
+                      <td className="px-5 py-3 text-muted font-mono text-xs">
+                        {d.responseStatus ?? '—'}
+                      </td>
+                      <td
+                        className="px-5 py-3 text-xs text-red-600 dark:text-red-400 max-w-[320px] truncate"
+                        title={d.errorMessage ?? ''}
+                      >
+                        {d.errorMessage ?? '—'}
+                      </td>
+                      <td className="px-5 py-3 text-right font-mono text-muted text-xs">
+                        {d.latencyMs !== null ? `${d.latencyMs}ms` : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-xs text-muted whitespace-nowrap">
+                        {new Date(d.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

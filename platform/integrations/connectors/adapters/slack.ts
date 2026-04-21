@@ -226,7 +226,18 @@ export class SlackConnectorAdapter implements ConnectorAdapter {
       const data = await res.json() as { ok: boolean; ts?: string; error?: string };
       if (!data.ok) {
         logger.error('Slack API returned error', { tenantId, error: data.error });
-        return { success: false, error: `Slack error: ${data.error}` };
+        const code = data.error ?? 'unknown_error';
+        const authCodes = new Set([
+          'not_authed', 'invalid_auth', 'account_inactive',
+          'token_revoked', 'token_expired', 'no_permission', 'missing_scope',
+        ]);
+        if (authCodes.has(code)) {
+          return {
+            success: false,
+            error: `Slack authentication error 401 (${code}): token may be expired or revoked, please reconnect`,
+          };
+        }
+        return { success: false, error: `Slack error: ${code}` };
       }
 
       logger.info('Slack message sent', { tenantId, ts: data.ts });

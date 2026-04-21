@@ -14,10 +14,20 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const accessToken = await this.getAccessToken(config);
+    let accessToken: string | null;
+    try {
+      accessToken = await this.getAccessToken(config);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('Outlook Calendar token refresh failed', { tenantId, error });
+      return { success: false, error: `Outlook Calendar token refresh failed (invalid_grant): ${error}` };
+    }
     if (!accessToken) {
       logger.error('Missing Outlook Calendar credentials', { tenantId });
-      return { success: false, error: 'Outlook Calendar connector not configured: missing credentials' };
+      return {
+        success: false,
+        error: 'Outlook Calendar authentication error 401: missing access token, please reconnect',
+      };
     }
 
     switch (payload.type) {
@@ -47,29 +57,25 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
       return config.credentials.access_token || null;
     }
 
-    try {
-      const res = await fetch(TOKEN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          client_id: clientId,
-          client_secret: clientSecret,
-          scope: DEFAULT_SCOPES,
-        }).toString(),
-      });
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: DEFAULT_SCOPES,
+      }).toString(),
+    });
 
-      if (!res.ok) {
-        logger.warn('Outlook token refresh failed', { status: res.status });
-        return config.credentials.access_token || null;
-      }
-      const data = await res.json() as { access_token: string };
-      return data.access_token;
-    } catch (err) {
-      logger.warn('Outlook token refresh error', { error: String(err) });
-      return config.credentials.access_token || null;
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      logger.warn('Outlook token refresh failed', { status: res.status });
+      throw new Error(`refresh_token rejected (${res.status}): ${text.slice(0, 200)}`);
     }
+    const data = await res.json() as { access_token: string };
+    return data.access_token;
   }
 
   private async createEvent(

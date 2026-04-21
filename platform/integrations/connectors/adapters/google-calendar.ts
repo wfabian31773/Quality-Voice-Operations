@@ -12,10 +12,20 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const accessToken = await this.getAccessToken(config);
+    let accessToken: string | null;
+    try {
+      accessToken = await this.getAccessToken(config);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('Google Calendar token refresh failed', { tenantId, error });
+      return { success: false, error: `Google Calendar token refresh failed (invalid_grant): ${error}` };
+    }
     if (!accessToken) {
       logger.error('Missing Google Calendar credentials', { tenantId });
-      return { success: false, error: 'Google Calendar connector not configured: missing credentials' };
+      return {
+        success: false,
+        error: 'Google Calendar authentication error 401: missing access token, please reconnect',
+      };
     }
 
     switch (payload.type) {
@@ -41,24 +51,23 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
       return null;
     }
 
-    try {
-      const res = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          client_id: clientId,
-          client_secret: clientSecret,
-        }).toString(),
-      });
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }).toString(),
+    });
 
-      if (!res.ok) return null;
-      const data = await res.json() as { access_token: string };
-      return data.access_token;
-    } catch {
-      return null;
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`refresh_token rejected (${res.status}): ${text.slice(0, 200)}`);
     }
+    const data = await res.json() as { access_token: string };
+    return data.access_token;
   }
 
   private async createEvent(
