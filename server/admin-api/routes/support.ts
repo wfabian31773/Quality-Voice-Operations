@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { sendEmail } from '../../../platform/email/EmailService';
+import { runDocsFeedbackAlertCycle } from '../../../platform/help/DocsFeedbackAlertScheduler';
 
 const logger = createLogger('SUPPORT');
 const router = Router();
@@ -363,6 +364,31 @@ router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, a
     res.json({ ticket: r.rows[0] });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update ticket', detail: String(err) });
+  }
+});
+
+router.post('/docs/feedback/alerts/run', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const result = await runDocsFeedbackAlertCycle();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to run docs feedback alert cycle', detail: String(err) });
+  }
+});
+
+router.get('/docs/feedback/alerts', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `SELECT article_slug, last_alerted_at, last_total_votes, last_not_helpful_count,
+              last_helpful_ratio, last_reason, alert_count
+       FROM docs_feedback_alerts
+       ORDER BY last_alerted_at DESC
+       LIMIT 200`,
+    );
+    res.json({ alerts: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load alert history', detail: String(err) });
   }
 });
 
