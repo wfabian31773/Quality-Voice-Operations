@@ -119,7 +119,7 @@ export default function Analytics() {
           </p>
         </div>
         {tab === 'performance' && (
-          <div className="flex gap-1 bg-muted rounded-lg p-1">
+          <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
             {RANGES.map((r) => (
               <button
                 key={r}
@@ -127,8 +127,8 @@ export default function Analytics() {
                 className={clsx(
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
                   range === r
-                    ? 'bg-background shadow text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-surface shadow text-text-primary'
+                    : 'text-text-secondary hover:text-text-primary',
                 )}
               >
                 {r}
@@ -150,8 +150,8 @@ export default function Analytics() {
               className={clsx(
                 'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
                 tab === t.key
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
+                  ? 'border-primary text-text-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary',
               )}
             >
               {t.label}
@@ -221,31 +221,31 @@ function PerformanceTab({
         />
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
+      <div className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4">Call Volume Trend</h2>
         {callsLoading ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>
+          <div className="h-64 flex items-center justify-center text-text-secondary">Loading...</div>
         ) : !calls?.dailyBreakdown?.length ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">No data for this period</div>
+          <div className="h-64 flex items-center justify-center text-text-secondary">No data for this period</div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={calls.dailyBreakdown}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #333)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
               <XAxis
                 dataKey="date"
                 tickFormatter={(v: string) => v.slice(5)}
                 tick={{ fontSize: 11 }}
-                stroke="var(--color-muted-foreground, #888)"
+                stroke="var(--color-text-secondary)"
               />
               <YAxis
                 allowDecimals={false}
                 tick={{ fontSize: 11 }}
-                stroke="var(--color-muted-foreground, #888)"
+                stroke="var(--color-text-secondary)"
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'var(--color-card, #1a1a1a)',
-                  border: '1px solid var(--color-border, #333)',
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
                   borderRadius: 8,
                   fontSize: 13,
                 }}
@@ -258,25 +258,25 @@ function PerformanceTab({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-xl p-6">
+        <div className="bg-surface border border-border rounded-xl p-6">
           <h2 className="text-lg font-semibold mb-4">Cost Breakdown</h2>
           {costsLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="text-text-secondary">Loading...</div>
           ) : (
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">OpenAI Inference</span>
+                <span className="text-text-secondary">OpenAI Inference</span>
                 <span className="font-medium">{formatCents(costs?.totalOpenaiCostCents ?? 0)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Twilio Telephony</span>
+                <span className="text-text-secondary">Twilio Telephony</span>
                 <span className="font-medium">{formatCents(costs?.totalTwilioCostCents ?? 0)}</span>
               </div>
               <div className="border-t border-border pt-2 flex justify-between text-sm font-semibold">
                 <span>Total</span>
                 <span>{formatCents(costs?.totalCostCents ?? 0)}</span>
               </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
+              <div className="flex justify-between text-sm text-text-secondary">
                 <span>Cost per Call</span>
                 <span>{formatCents(costs?.costPerCallCents ?? 0)}</span>
               </div>
@@ -284,10 +284,10 @@ function PerformanceTab({
           )}
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-6">
+        <div className="bg-surface border border-border rounded-xl p-6">
           <h2 className="text-lg font-semibold mb-4">Call Outcomes</h2>
           {callsLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="text-text-secondary">Loading...</div>
           ) : (
             <div className="space-y-3">
               <OutcomeRow label="Completed" count={calls?.completedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-green-500" />
@@ -298,7 +298,7 @@ function PerformanceTab({
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
+      <div className="bg-surface border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Tool Reliability</h2>
           <button
@@ -309,11 +309,11 @@ function PerformanceTab({
           </button>
         </div>
         {healthLoading ? (
-          <div className="text-muted-foreground">Loading...</div>
+          <div className="text-text-secondary">Loading...</div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <p className="text-xs text-muted-foreground">Tool Success Rate</p>
+              <p className="text-xs text-text-secondary">Tool Success Rate</p>
               <p className="text-xl font-bold">
                 {toolHealth?.overallSuccessRate != null
                   ? `${toolHealth.overallSuccessRate.toFixed(1)}%`
@@ -321,17 +321,17 @@ function PerformanceTab({
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total Retries</p>
+              <p className="text-xs text-text-secondary">Total Retries</p>
               <p className="text-xl font-bold">
                 {toolHealth?.tools?.reduce((a, m) => a + m.retryCount, 0) ?? 0}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Pending Escalations</p>
+              <p className="text-xs text-text-secondary">Pending Escalations</p>
               <p className="text-xl font-bold">{toolHealth?.escalationStats?.pending ?? 0}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Call Completion</p>
+              <p className="text-xs text-text-secondary">Call Completion</p>
               <p className="text-xl font-bold">
                 {toolHealth?.callCompletionRate != null
                   ? `${toolHealth.callCompletionRate.toFixed(1)}%`
@@ -342,17 +342,17 @@ function PerformanceTab({
         )}
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
+      <div className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4">Campaign Performance</h2>
         {campaignsLoading ? (
-          <div className="text-muted-foreground">Loading...</div>
+          <div className="text-text-secondary">Loading...</div>
         ) : !campaignData?.campaigns?.length ? (
-          <div className="text-muted-foreground">No campaigns in this period</div>
+          <div className="text-text-secondary">No campaigns in this period</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
+                <tr className="border-b border-border text-left text-text-secondary">
                   <th className="pb-2 font-medium">Campaign</th>
                   <th className="pb-2 font-medium text-right">Contacts</th>
                   <th className="pb-2 font-medium text-right">Answered</th>
@@ -385,8 +385,8 @@ function PerformanceTab({
 
 function KpiCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
+    <div className="bg-surface border border-border rounded-xl p-4">
+      <p className="text-sm text-text-secondary">{label}</p>
       <p className="text-2xl font-bold mt-1">{value}</p>
     </div>
   );
@@ -407,10 +407,10 @@ function OutcomeRow({
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
+        <span className="text-text-secondary">{label}</span>
         <span className="font-medium">{count} ({pct.toFixed(1)}%)</span>
       </div>
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+      <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
     </div>

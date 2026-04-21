@@ -18,6 +18,10 @@ import TrialBanner from './TrialBanner';
 import NotificationsCenter from './NotificationsCenter';
 import { Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import CommandPalette from './CommandPalette';
+import HelpWidget from './HelpWidget';
+import KeyboardShortcuts from './KeyboardShortcuts';
+import ProductTour, { getTourCompleted } from './ProductTour';
 
 interface NavItem {
   to: string;
@@ -64,6 +68,40 @@ export default function TenantLayout() {
     configureLinks.some((l) => location.pathname.startsWith(l.to)),
   );
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (isMod && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (e.key === '?' && !isMod) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+          e.preventDefault();
+          setShortcutsOpen(true);
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    const openCmd = () => setPaletteOpen(true);
+    window.addEventListener('qvo:open-command-palette', openCmd);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('qvo:open-command-palette', openCmd);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (needsOnboarding === false && !getTourCompleted()) {
+      const t = setTimeout(() => setTourOpen(true), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [needsOnboarding]);
 
   useEffect(() => {
     if (user?.isPlatformAdmin) {
@@ -130,25 +168,34 @@ export default function TenantLayout() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {tenantLinks.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end={link.to === '/dashboard'}
-            onClick={() => setMobileOpen(false)}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-sidebar-active text-white'
-                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
-              )
-            }
-          >
-            <link.icon className="h-4.5 w-4.5 shrink-0" />
-            {link.label}
-          </NavLink>
-        ))}
+        {tenantLinks.map((link) => {
+          const tourKey = link.to === '/dashboard' ? 'dashboard'
+            : link.to === '/agents' ? 'agents'
+            : link.to === '/calls' ? 'conversations'
+            : link.to === '/campaigns' ? 'campaigns'
+            : link.to === '/analytics' ? 'analytics'
+            : undefined;
+          return (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end={link.to === '/dashboard'}
+              onClick={() => setMobileOpen(false)}
+              data-tour={tourKey}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-sidebar-active text-white'
+                    : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                )
+              }
+            >
+              <link.icon className="h-4.5 w-4.5 shrink-0" />
+              {link.label}
+            </NavLink>
+          );
+        })}
 
         <NavGroup
           label="Operations"
@@ -248,6 +295,27 @@ export default function TenantLayout() {
 
       <PlatformAssistant />
       <HelpDrawer />
+
+      <div data-tour="help">
+        <HelpWidget
+          open={helpOpen}
+          setOpen={setHelpOpen}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          onStartTour={() => setTourOpen(true)}
+        />
+      </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onOpenHelp={() => setHelpOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onStartTour={() => setTourOpen(true)}
+      />
+
+      <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <ProductTour active={tourOpen} onClose={() => setTourOpen(false)} />
     </div>
   );
 }

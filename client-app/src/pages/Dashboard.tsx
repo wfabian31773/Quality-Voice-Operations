@@ -11,6 +11,9 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 import TrialConversionNudge from '../components/TrialConversionNudge';
+import Celebration from '../components/Celebration';
+
+const CELEBRATION_KEY = 'qvo_first_call_celebrated';
 
 interface CallSession {
   id: string;
@@ -72,7 +75,7 @@ function todayIso(): string {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 }
 
-function useSSEActiveCalls(): { activeCalls: ActiveCall[]; connected: boolean } {
+function useSSEActiveCalls(onFirstCall?: () => void): { activeCalls: ActiveCall[]; connected: boolean } {
   const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
   const [connected, setConnected] = useState(false);
   const queryClient = useQueryClient();
@@ -95,9 +98,14 @@ function useSSEActiveCalls(): { activeCalls: ActiveCall[]; connected: boolean } 
       queryClient.invalidateQueries({ queryKey: ['calls', 'recent'] });
     };
 
+    const handleCompleted = () => {
+      handleLifecycleEvent();
+      onFirstCall?.();
+    };
+
     es.addEventListener('call_started', handleLifecycleEvent);
     es.addEventListener('call_connected', handleLifecycleEvent);
-    es.addEventListener('call_completed', handleLifecycleEvent);
+    es.addEventListener('call_completed', handleCompleted);
     es.addEventListener('call_failed', handleLifecycleEvent);
     es.addEventListener('call_escalated', handleLifecycleEvent);
     es.addEventListener('call_updated', handleLifecycleEvent);
@@ -109,7 +117,7 @@ function useSSEActiveCalls(): { activeCalls: ActiveCall[]; connected: boolean } 
       es.close();
       esRef.current = null;
     };
-  }, [queryClient]);
+  }, [queryClient, onFirstCall]);
 
   return { activeCalls, connected };
 }
@@ -277,7 +285,17 @@ function ExampleWorkflowCards({ navigate }: { navigate: (path: string) => void }
 export default function Dashboard() {
   const navigate = useNavigate();
   const todaySince = todayIso();
-  const { activeCalls: liveActiveCalls, connected: sseConnected } = useSSEActiveCalls();
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  const triggerFirstCallCelebration = () => {
+    try {
+      if (localStorage.getItem(CELEBRATION_KEY) === '1') return;
+      localStorage.setItem(CELEBRATION_KEY, '1');
+    } catch {}
+    setShowCelebration(true);
+  };
+
+  const { activeCalls: liveActiveCalls, connected: sseConnected } = useSSEActiveCalls(triggerFirstCallCelebration);
 
   const { data: callsData, isLoading: callsLoading } = useQuery({
     queryKey: ['calls', 'recent'],
@@ -308,8 +326,32 @@ export default function Dashboard() {
     staleTime: 60000,
   });
 
+  const { data: bookingsData } = useQuery({
+    queryKey: ['scheduling', 'bookings-today', todaySince],
+    queryFn: () => api.get<{ bookings: { id: string }[]; total: number }>(`/scheduling/bookings?start=${encodeURIComponent(todaySince)}&limit=1`),
+    staleTime: 60000,
+    retry: false,
+  });
+
+  const { data: revenueData } = useQuery({
+    queryKey: ['analytics', 'revenue-30d'],
+    queryFn: () => api.get<{ totalRevenueCents: number }>('/analytics/revenue?range=30d'),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
   const calls = callsData?.calls ?? [];
   const agents = agentsData?.agents ?? [];
+
+  useEffect(() => {
+    if (calls.some((c) => c.duration_seconds && c.duration_seconds > 0)) {
+      try {
+        if (!localStorage.getItem(CELEBRATION_KEY)) {
+          localStorage.setItem(CELEBRATION_KEY, 'seeded');
+        }
+      } catch {}
+    }
+  }, [calls]);
   const activeCallCount = liveActiveCalls.length;
   const totalToday = todayData?.total ?? 0;
   const agentCount = agentsData?.total ?? agents.length;
@@ -323,6 +365,12 @@ export default function Dashboard() {
 
   const aiMinutesUsed = usageData?.usage?.ai_minutes ?? 0;
   const callsUsed = usageData?.usage?.calls ?? 0;
+
+  const bookingsToday = bookingsData?.total ?? 0;
+  const revenueCents = revenueData?.totalRevenueCents ?? 0;
+  const revenueDisplay = revenueCents > 0
+    ? `$${(revenueCents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+    : '$0';
 
   return (
     <div className="space-y-6">
@@ -356,9 +404,9 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard icon={PhoneCall} label="Calls Today" value={totalToday} color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" />
-        <StatCard icon={CalendarCheck} label="Bookings" value="--" trend="connect scheduling" color="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" />
+        <StatCard icon={CalendarCheck} label="Bookings Today" value={bookingsToday} trend={bookingsToday === 0 ? 'no bookings yet' : undefined} color="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" />
         <StatCard icon={Bot} label="Active Agents" value={agentCount} color="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" />
-        <StatCard icon={DollarSign} label="Revenue Generated" value="--" trend="connect billing" color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
+        <StatCard icon={DollarSign} label="Revenue (30d)" value={revenueDisplay} trend={revenueCents > 0 ? 'attributed' : 'no attribution yet'} color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
         <StatCard icon={TrendingUp} label="Live Calls" value={activeCallCount} color="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" />
       </div>
 
@@ -536,6 +584,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <Celebration show={showCelebration} onClose={() => setShowCelebration(false)} />
     </div>
   );
 }

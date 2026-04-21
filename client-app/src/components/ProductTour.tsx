@@ -1,0 +1,231 @@
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { X, ChevronRight, ChevronLeft } from 'lucide-react';
+
+export interface TourStep {
+  selector: string;
+  title: string;
+  description: string;
+  path?: string;
+  placement?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+const STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="agents"]',
+    title: 'Build voice agents',
+    description: 'Create and tune AI voice agents in minutes. Each agent can answer calls, follow workflows, and use tools.',
+    path: '/dashboard',
+    placement: 'right',
+  },
+  {
+    selector: '[data-tour="campaigns"]',
+    title: 'Run outbound campaigns',
+    description: 'Upload contact lists and launch outbound calls — appointment reminders, follow-ups, win-back, and more.',
+    path: '/dashboard',
+    placement: 'right',
+  },
+  {
+    selector: '[data-tour="conversations"]',
+    title: 'Review every call',
+    description: 'Listen to recordings, read transcripts, see outcomes, and follow up on escalations from one place.',
+    path: '/dashboard',
+    placement: 'right',
+  },
+  {
+    selector: '[data-tour="analytics"]',
+    title: 'Measure what matters',
+    description: 'Calls handled, automation rate, revenue attributed, and tool reliability — all live from your tenant data.',
+    path: '/dashboard',
+    placement: 'right',
+  },
+  {
+    selector: '[data-tour="help"]',
+    title: 'Help when you need it',
+    description: 'Press ⌘K for the command palette, or click here for docs, shortcuts, support, and what\'s new.',
+    path: '/dashboard',
+    placement: 'left',
+  },
+];
+
+const STORAGE_KEY = 'qvo_product_tour_v1';
+
+interface ProductTourProps {
+  active: boolean;
+  onClose: () => void;
+}
+
+export default function ProductTour({ active, onClose }: ProductTourProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [step, setStep] = useState(0);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const rafRef = useRef<number>(0);
+
+  const current = STEPS[step];
+
+  useEffect(() => {
+    if (!active) return;
+    if (current?.path && location.pathname !== current.path) {
+      navigate(current.path);
+    }
+  }, [active, step, current, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!active || !current) return;
+    let cancelled = false;
+    const measure = () => {
+      const el = document.querySelector(current.selector) as HTMLElement | null;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setRect(r);
+      } else {
+        setRect(null);
+      }
+      if (!cancelled) rafRef.current = requestAnimationFrame(measure);
+    };
+    rafRef.current = requestAnimationFrame(measure);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [active, step, current, location.pathname]);
+
+  if (!active || !current) return null;
+
+  const finish = () => {
+    try { localStorage.setItem(STORAGE_KEY, 'completed'); } catch {}
+    setStep(0);
+    onClose();
+  };
+
+  const PADDING = 8;
+  const cutoutStyle = rect
+    ? {
+        top: rect.top - PADDING,
+        left: rect.left - PADDING,
+        width: rect.width + PADDING * 2,
+        height: rect.height + PADDING * 2,
+      }
+    : null;
+
+  const tooltipPos = computeTooltipPosition(rect, current.placement ?? 'bottom');
+
+  return (
+    <div className="fixed inset-0 z-[110] pointer-events-none">
+      <svg className="absolute inset-0 w-full h-full pointer-events-auto" onClick={finish}>
+        <defs>
+          <mask id="qvo-tour-mask">
+            <rect width="100%" height="100%" fill="white" />
+            {cutoutStyle && (
+              <rect
+                x={cutoutStyle.left}
+                y={cutoutStyle.top}
+                width={cutoutStyle.width}
+                height={cutoutStyle.height}
+                rx={10}
+                fill="black"
+              />
+            )}
+          </mask>
+        </defs>
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#qvo-tour-mask)" />
+      </svg>
+
+      {cutoutStyle && (
+        <div
+          className="absolute border-2 border-primary rounded-[10px] pointer-events-none animate-pulse"
+          style={cutoutStyle}
+        />
+      )}
+
+      <div
+        className="absolute pointer-events-auto bg-surface border border-border rounded-xl shadow-2xl p-4 w-[320px] max-w-[calc(100vw-2rem)]"
+        style={tooltipPos}
+      >
+        <div className="flex items-start justify-between mb-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+            Step {step + 1} of {STEPS.length}
+          </span>
+          <button onClick={finish} className="text-text-muted hover:text-text-primary">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <h3 className="text-sm font-semibold text-text-primary">{current.title}</h3>
+        <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">{current.description}</p>
+        <div className="flex items-center justify-between mt-4">
+          <button
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={step === 0}
+            className="text-xs font-medium text-text-secondary hover:text-text-primary disabled:opacity-40 inline-flex items-center gap-1"
+          >
+            <ChevronLeft className="h-3 w-3" /> Back
+          </button>
+          <div className="flex gap-1">
+            {STEPS.map((_, i) => (
+              <span
+                key={i}
+                className={`h-1 w-4 rounded-full transition-colors ${i === step ? 'bg-primary' : 'bg-border'}`}
+              />
+            ))}
+          </div>
+          {step < STEPS.length - 1 ? (
+            <button
+              onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+              className="text-xs font-medium text-primary hover:text-primary-hover inline-flex items-center gap-1"
+            >
+              Next <ChevronRight className="h-3 w-3" />
+            </button>
+          ) : (
+            <button
+              onClick={finish}
+              className="text-xs font-medium bg-primary hover:bg-primary-hover text-white px-3 py-1.5 rounded-lg"
+            >
+              Finish
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function computeTooltipPosition(rect: DOMRect | null, placement: 'top' | 'bottom' | 'left' | 'right'): React.CSSProperties {
+  if (!rect) {
+    return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+  }
+  const W = 320;
+  const GAP = 16;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let top = 0, left = 0;
+  switch (placement) {
+    case 'right':
+      top = rect.top + rect.height / 2 - 60;
+      left = rect.right + GAP;
+      break;
+    case 'left':
+      top = rect.top + rect.height / 2 - 60;
+      left = rect.left - GAP - W;
+      break;
+    case 'top':
+      top = rect.top - GAP - 160;
+      left = rect.left + rect.width / 2 - W / 2;
+      break;
+    case 'bottom':
+    default:
+      top = rect.bottom + GAP;
+      left = rect.left + rect.width / 2 - W / 2;
+  }
+  left = Math.max(12, Math.min(vw - W - 12, left));
+  top = Math.max(12, Math.min(vh - 200, top));
+  return { top, left };
+}
+
+export function getTourCompleted(): boolean {
+  try { return localStorage.getItem(STORAGE_KEY) === 'completed'; } catch { return false; }
+}
+
+export function resetTour() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
