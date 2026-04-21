@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -263,6 +263,7 @@ interface SavedView {
   name: string;
   filters: Partial<FiltersState>;
   is_shared: boolean;
+  is_pinned: boolean;
   created_by: string | null;
   digest_enabled?: boolean;
   digest_subscribers?: string[];
@@ -364,40 +365,59 @@ export default function Calls() {
   const currentUserId = meData?.user?.userId ?? null;
   const currentUserEmail = meData?.user?.email?.toLowerCase() ?? null;
 
-  // Hydrate filters from a deep-link ?view=<id>: when the saved views load and the
-  // active view's filters differ from current state (because the URL only contained
-  // ?view=<id> with no individual filter params), apply the view's filters once.
-  const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false);
+  // Reactively sync the URL's ?view=<id> into local state. Runs on every URL change so
+  // that clicking a different pinned view in the sidebar (which only changes ?view=)
+  // hydrates the corresponding saved view's filters, not just on initial mount.
+  // On the very first hydration only, an explicit per-filter URL param wins over the
+  // stored view's filters (preserves manually-shared deep links).
+  const initialUrlHadExplicitFiltersRef = useRef<boolean>(
+    (Object.keys(EMPTY_FILTERS) as Array<keyof FiltersState>).some((k) => Boolean(searchParams.get(k))),
+  );
+  const [syncedViewId, setSyncedViewId] = useState<string | null>(null);
+  const hasInitialSyncedRef = useRef(false);
   useEffect(() => {
-    if (hasHydratedFromUrl) return;
-    if (!activeViewId) { setHasHydratedFromUrl(true); return; }
-    if (!savedViewsLoaded) return; // wait for the query to complete (success, even if empty)
-    const match = savedViews.find((v) => v.id === activeViewId);
-    if (!match) {
-      // Stale id in URL — drop it.
-      setActiveViewId(null);
-      setHasHydratedFromUrl(true);
+    const urlViewId = searchParams.get('view');
+    if (urlViewId !== activeViewId) {
+      setActiveViewId(urlViewId);
+    }
+    if (!urlViewId) {
+      setSyncedViewId(null);
+      hasInitialSyncedRef.current = true;
       return;
     }
-    const viewFilters = normalizeFilters(match.filters);
-    // Only overwrite filter state if the URL didn't already specify a richer filter set
-    // (any individual filter param wins over the saved view to preserve manual deep links).
-    const urlHasExplicitFilters = (Object.keys(EMPTY_FILTERS) as Array<keyof FiltersState>).some(
-      (k) => searchParams.get(k),
-    );
-    if (!urlHasExplicitFilters) {
+    if (!savedViewsLoaded) return;
+    if (syncedViewId === urlViewId) return;
+    const match = savedViews.find((v) => v.id === urlViewId);
+    if (!match) {
+      // Stale id in URL — drop it from URL and state.
+      const next = new URLSearchParams(searchParams);
+      next.delete('view');
+      setSearchParams(next, { replace: true });
+      setActiveViewId(null);
+      setSyncedViewId(null);
+      hasInitialSyncedRef.current = true;
+      return;
+    }
+    const isFirstSync = !hasInitialSyncedRef.current;
+    const shouldApplyViewFilters = !isFirstSync || !initialUrlHadExplicitFiltersRef.current;
+    if (shouldApplyViewFilters) {
+      const viewFilters = normalizeFilters(match.filters);
       setFilters(viewFilters);
       setSearchInput(viewFilters.q);
+      setPage(1);
     }
-    setHasHydratedFromUrl(true);
-  }, [activeViewId, savedViews, savedViewsLoaded, hasHydratedFromUrl, searchParams]);
+    setSyncedViewId(urlViewId);
+    hasInitialSyncedRef.current = true;
+  }, [searchParams, savedViews, savedViewsLoaded, activeViewId, syncedViewId, setSearchParams]);
 
   // If the active view's stored filters drift from the current filters, treat it as detached.
-  // Suppress dirty state until URL hydration finishes to avoid a flicker of "Update view".
+  // Suppress dirty state until the URL view has been synced into filters to avoid a flicker
+  // of "Update view" while applying a freshly-clicked pinned view.
   const isViewDirty = useMemo(() => {
-    if (!activeView || !hasHydratedFromUrl) return false;
+    if (!activeView) return false;
+    if (syncedViewId !== activeView.id) return false;
     return !filtersEqual(filters, normalizeFilters(activeView.filters));
-  }, [activeView, filters, hasHydratedFromUrl]);
+  }, [activeView, filters, syncedViewId]);
 
   const applySavedView = (view: SavedView) => {
     const next = normalizeFilters(view.filters);
@@ -419,6 +439,7 @@ export default function Calls() {
         name,
         filters,
         is_shared: newViewShared,
+        is_pinned: false,
         digest_enabled: newViewDigest,
       });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
@@ -477,6 +498,16 @@ export default function Calls() {
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to remove subscriber');
+    }
+  };
+
+  const handleTogglePin = async (view: SavedView) => {
+    try {
+      await api.patch(`/call-saved-views/${view.id}`, { is_pinned: !view.is_pinned });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to pin view');
     }
   };
 
@@ -614,6 +645,16 @@ export default function Calls() {
                   >
                     · {lastRunRel ? `${matchCount} ${lastRunRel}` : 'not run yet'}
                   </span>
+                )}
+                {isOwner && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleTogglePin(view); }}
+                    className={`p-1 rounded-full transition ${view.is_pinned ? 'text-primary' : 'text-text-muted hover:text-primary'}`}
+                    title={view.is_pinned ? 'Unpin from sidebar' : 'Pin to sidebar'}
+                    aria-label={view.is_pinned ? `Unpin saved view ${view.name}` : `Pin saved view ${view.name}`}
+                  >
+                    {view.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                  </button>
                 )}
                 {isOwner ? (
                   <>

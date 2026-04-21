@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Bot, PhoneCall, Plug, Network,
   LogOut, Moon, Sun, Menu, BarChart3, Settings2,
   Megaphone, BookOpen, Store, ChevronDown, Boxes, Wrench,
-  MessageSquare, CalendarClock, ClipboardList, Truck,
+  MessageSquare, CalendarClock, ClipboardList, Truck, Pin,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
@@ -176,24 +176,28 @@ export default function TenantLayout() {
             : link.to === '/analytics' ? 'analytics'
             : undefined;
           return (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.to === '/dashboard'}
-              onClick={() => setMobileOpen(false)}
-              data-tour={tourKey}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-sidebar-active text-white'
-                    : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
-                )
-              }
-            >
-              <link.icon className="h-4.5 w-4.5 shrink-0" />
-              {link.label}
-            </NavLink>
+            <div key={link.to}>
+              <NavLink
+                to={link.to}
+                end={link.to === '/dashboard'}
+                onClick={() => setMobileOpen(false)}
+                data-tour={tourKey}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-sidebar-active text-white'
+                      : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                  )
+                }
+              >
+                <link.icon className="h-4.5 w-4.5 shrink-0" />
+                {link.label}
+              </NavLink>
+              {link.to === '/calls' && !user?.isPlatformAdmin && (
+                <PinnedCallViews onLinkClick={() => setMobileOpen(false)} />
+              )}
+            </div>
           );
         })}
 
@@ -342,6 +346,54 @@ function ChangelogBadgeLink() {
         </span>
       )}
     </NavLink>
+  );
+}
+
+interface PinnedView {
+  id: string;
+  name: string;
+  count: number | null;
+}
+
+function PinnedCallViews({ onLinkClick }: { onLinkClick: () => void }) {
+  const { data } = useQuery({
+    queryKey: ['call-saved-views', 'pinned'],
+    queryFn: () => api.get<{ views: PinnedView[] }>('/call-saved-views/pinned').catch(() => ({ views: [] as PinnedView[] })),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const views = data?.views ?? [];
+  if (views.length === 0) return null;
+  return (
+    <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
+      {views.map((view) => (
+        <NavLink
+          key={view.id}
+          to={`/calls?view=${encodeURIComponent(view.id)}`}
+          onClick={onLinkClick}
+          className={({ isActive }) =>
+            clsx(
+              'flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              isActive
+                ? 'bg-sidebar-active text-white'
+                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+            )
+          }
+          title={view.name}
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <Pin className="h-3 w-3 shrink-0" />
+            <span className="truncate">{view.name}</span>
+          </span>
+          {view.count != null && (
+            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/10 text-sidebar-text">
+              {view.count > 999 ? '999+' : view.count}
+            </span>
+          )}
+        </NavLink>
+      ))}
+    </div>
   );
 }
 

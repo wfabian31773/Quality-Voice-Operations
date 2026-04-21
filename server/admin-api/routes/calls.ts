@@ -255,7 +255,7 @@ const listSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT id, name, filters, is_shared, created_by, created_at, updated_at,
+      `SELECT id, name, filters, is_shared, is_pinned, created_by, created_at, updated_at,
               digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count
        FROM call_saved_views
        WHERE tenant_id = $1 AND (created_by = $2 OR is_shared = true)
@@ -310,12 +310,115 @@ async function filterToTenantMembers(
   return { allowed, rejected };
 }
 
+function buildSavedViewCallConditions(filters: Record<string, unknown>): { conditions: string[]; values: unknown[] } {
+  const conditions: string[] = ['cs.tenant_id = $1'];
+  const values: unknown[] = [];
+  const get = (k: string): string => {
+    const v = filters[k];
+    return typeof v === 'string' ? v : '';
+  };
+  const agent_id = get('agent_id');
+  const direction = get('direction');
+  const lifecycle_state = get('lifecycle_state');
+  const dateRange = get('dateRange');
+  const has_transcript = get('has_transcript');
+  const has_events = get('has_events');
+  const has_tool_executions = get('has_tool_executions');
+  const tool_failures_only = get('tool_failures_only');
+  const q = get('q');
+
+  if (agent_id) { values.push(agent_id); conditions.push(`cs.agent_id = $${values.length + 1}`); }
+  if (direction) { values.push(direction); conditions.push(`cs.direction = $${values.length + 1}`); }
+  if (lifecycle_state) { values.push(lifecycle_state); conditions.push(`cs.lifecycle_state = $${values.length + 1}`); }
+  if (dateRange) {
+    const now = Date.now();
+    let sinceMs: number | null = null;
+    if (dateRange === 'today') {
+      const d = new Date();
+      sinceMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    } else if (dateRange === '7d') sinceMs = now - 7 * 86_400_000;
+    else if (dateRange === '30d') sinceMs = now - 30 * 86_400_000;
+    if (sinceMs !== null) {
+      values.push(new Date(sinceMs).toISOString());
+      conditions.push(`cs.start_time >= $${values.length + 1}::timestamptz`);
+    }
+  }
+  if (q && q.trim()) {
+    values.push(`%${q.trim()}%`);
+    const idx = values.length + 1;
+    conditions.push(`(cs.caller_number ILIKE $${idx} OR cs.called_number ILIKE $${idx} OR cs.id::text ILIKE $${idx})`);
+  }
+  const parseBool = (v: string): boolean | null => (v === 'true' || v === '1') ? true : (v === 'false' || v === '0') ? false : null;
+  const tf = parseBool(has_transcript);
+  if (tf !== null) {
+    const op = tf ? 'EXISTS' : 'NOT EXISTS';
+    conditions.push(`${op} (SELECT 1 FROM call_transcripts ct WHERE ct.call_session_id = cs.id AND ct.tenant_id = cs.tenant_id)`);
+  }
+  const ef = parseBool(has_events);
+  if (ef !== null) {
+    const op = ef ? 'EXISTS' : 'NOT EXISTS';
+    conditions.push(`${op} (SELECT 1 FROM call_events ce WHERE ce.call_session_id = cs.id AND ce.tenant_id = cs.tenant_id)`);
+  }
+  const xf = parseBool(has_tool_executions);
+  if (xf !== null) {
+    const op = xf ? 'EXISTS' : 'NOT EXISTS';
+    conditions.push(`${op} (SELECT 1 FROM tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id)`);
+  }
+  if (parseBool(tool_failures_only) === true) {
+    conditions.push(`EXISTS (SELECT 1 FROM tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id AND ti.status IN ('failed', 'timeout'))`);
+  }
+  return { conditions, values };
+}
+
+const listPinnedSavedViewsHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows: views } = await client.query(
+      `SELECT id, name, filters, is_shared, is_pinned, created_by
+       FROM call_saved_views
+       WHERE tenant_id = $1 AND is_pinned = true AND (created_by = $2 OR is_shared = true)
+       ORDER BY name ASC`,
+      [tenantId, userId],
+    );
+    const enriched = await Promise.all(
+      views.map(async (v: { id: string; name: string; filters: Record<string, unknown> | null; is_shared: boolean; is_pinned: boolean; created_by: string | null }) => {
+        const filters = (v.filters && typeof v.filters === 'object') ? v.filters : {};
+        const { conditions, values } = buildSavedViewCallConditions(filters);
+        const where = conditions.join(' AND ');
+        try {
+          const { rows: countRows } = await client.query(
+            `SELECT COUNT(*)::int AS count FROM call_sessions cs WHERE ${where}`,
+            [tenantId, ...values],
+          );
+          return { ...v, count: countRows[0]?.count ?? 0 };
+        } catch (err) {
+          logger.warn('Failed to count pinned view matches', { tenantId, viewId: v.id, error: String(err) });
+          return { ...v, count: null };
+        }
+      }),
+    );
+    await client.query('COMMIT');
+    return res.json({ views: enriched });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to list pinned call saved views', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list pinned saved views' });
+  } finally {
+    client.release();
+  }
+};
+
 const createSavedViewHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId, email: requesterEmail } = req.user!;
-  const { name, filters, is_shared, digest_enabled, digest_subscribers } = req.body as {
+  const { name, filters, is_shared, is_pinned, digest_enabled, digest_subscribers } = req.body as {
     name?: string;
     filters?: Record<string, unknown>;
     is_shared?: boolean;
+    is_pinned?: boolean;
     digest_enabled?: boolean;
     digest_subscribers?: unknown;
   };
@@ -345,11 +448,11 @@ const createSavedViewHandler: RequestHandler = async (req, res) => {
       allowedSubs = allowed;
     }
     const { rows } = await client.query(
-      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, created_by, digest_enabled, digest_subscribers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at,
+      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, is_pinned, created_by, digest_enabled, digest_subscribers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, name, filters, is_shared, is_pinned, created_by, created_at, updated_at,
                  digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
-      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), userId, Boolean(digest_enabled), allowedSubs],
+      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), Boolean(is_pinned), userId, Boolean(digest_enabled), allowedSubs],
     );
     await client.query('COMMIT');
     if (allowedSubs.length > 0) {
@@ -376,10 +479,11 @@ const createSavedViewHandler: RequestHandler = async (req, res) => {
 const updateSavedViewHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId, email: requesterEmail } = req.user!;
   const { id } = req.params;
-  const { name, filters, is_shared, digest_enabled, digest_subscribers } = req.body as {
+  const { name, filters, is_shared, is_pinned, digest_enabled, digest_subscribers } = req.body as {
     name?: string;
     filters?: Record<string, unknown>;
     is_shared?: boolean;
+    is_pinned?: boolean;
     digest_enabled?: boolean;
     digest_subscribers?: unknown;
   };
@@ -404,8 +508,8 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
       : [];
     // Allow non-owners to edit only their own digest_subscribers entry on a shared view.
     const onlyDigestSubsChange =
-      name === undefined && filters === undefined && is_shared === undefined && digest_enabled === undefined &&
-      digest_subscribers !== undefined;
+      name === undefined && filters === undefined && is_shared === undefined && is_pinned === undefined &&
+      digest_enabled === undefined && digest_subscribers !== undefined;
     if (!isOwner) {
       if (!(isShared && onlyDigestSubsChange)) {
         await client.query('ROLLBACK');
@@ -460,6 +564,9 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     if (typeof is_shared === 'boolean') {
       values.push(is_shared); updates.push(`is_shared = $${values.length}`);
     }
+    if (typeof is_pinned === 'boolean') {
+      values.push(is_pinned); updates.push(`is_pinned = $${values.length}`);
+    }
     if (typeof digest_enabled === 'boolean') {
       values.push(digest_enabled); updates.push(`digest_enabled = $${values.length}`);
     }
@@ -499,7 +606,7 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     const { rows } = await client.query(
       `UPDATE call_saved_views SET ${updates.join(', ')}
        WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
-       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at,
+       RETURNING id, name, filters, is_shared, is_pinned, created_by, created_at, updated_at,
                  digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
       values,
     );
@@ -567,6 +674,7 @@ const deleteSavedViewHandler: RequestHandler = async (req, res) => {
 const router = Router();
 router.get('/calls', requireAuth, listCallsHandler);
 router.get('/call-saved-views', requireAuth, listSavedViewsHandler);
+router.get('/call-saved-views/pinned', requireAuth, listPinnedSavedViewsHandler);
 router.post('/call-saved-views', requireAuth, createSavedViewHandler);
 router.patch('/call-saved-views/:id', requireAuth, updateSavedViewHandler);
 router.delete('/call-saved-views/:id', requireAuth, deleteSavedViewHandler);
