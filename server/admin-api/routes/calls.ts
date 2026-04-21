@@ -17,9 +17,19 @@ function paginate(req: { query: Record<string, unknown> }): { limit: number; off
 export const listCallsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
-  const { agent_id, direction, lifecycle_state, since } = req.query as Record<string, string>;
+  const { agent_id, direction, lifecycle_state, since, q, has_transcript, has_events, has_tool_executions, tool_failures_only } = req.query as Record<string, string>;
   const pool = getPlatformPool();
   const client = await pool.connect();
+
+  const parseBoolFilter = (v: string | undefined): boolean | null => {
+    if (v === 'true' || v === '1') return true;
+    if (v === 'false' || v === '0') return false;
+    return null;
+  };
+  const transcriptFilter = parseBoolFilter(has_transcript);
+  const eventsFilter = parseBoolFilter(has_events);
+  const toolsFilter = parseBoolFilter(has_tool_executions);
+  const toolFailuresOnly = parseBoolFilter(tool_failures_only) === true;
 
   try {
     await client.query('BEGIN');
@@ -32,13 +42,51 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
     if (direction) { values.push(direction); conditions.push(`cs.direction = $${values.length}`); }
     if (lifecycle_state) { values.push(lifecycle_state); conditions.push(`cs.lifecycle_state = $${values.length}`); }
     if (since) { values.push(since); conditions.push(`cs.start_time >= $${values.length}::timestamptz`); }
+    if (q && q.trim()) {
+      const term = `%${q.trim()}%`;
+      values.push(term);
+      const idx = values.length;
+      conditions.push(
+        `(cs.caller_number ILIKE $${idx} OR cs.called_number ILIKE $${idx} OR cs.id::text ILIKE $${idx})`,
+      );
+    }
+    if (transcriptFilter !== null) {
+      const op = transcriptFilter ? 'EXISTS' : 'NOT EXISTS';
+      conditions.push(`${op} (SELECT 1 FROM call_transcripts ct WHERE ct.call_session_id = cs.id AND ct.tenant_id = cs.tenant_id)`);
+    }
+    if (eventsFilter !== null) {
+      const op = eventsFilter ? 'EXISTS' : 'NOT EXISTS';
+      conditions.push(`${op} (SELECT 1 FROM call_events ce WHERE ce.call_session_id = cs.id AND ce.tenant_id = cs.tenant_id)`);
+    }
+    if (toolsFilter !== null) {
+      const op = toolsFilter ? 'EXISTS' : 'NOT EXISTS';
+      conditions.push(`${op} (SELECT 1 FROM tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id)`);
+    }
+    if (toolFailuresOnly) {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id AND ti.status IN ('failed', 'timeout'))`,
+      );
+    }
 
     const where = conditions.join(' AND ');
     const { rows } = await client.query(
-      `SELECT cs.id, cs.agent_id, cs.direction, cs.lifecycle_state,
+      `SELECT cs.id, cs.caller_number, cs.called_number,
+              cs.agent_id, cs.direction, cs.lifecycle_state,
               cs.start_time, cs.end_time, cs.duration_seconds,
               cs.total_cost_cents, cs.environment, cs.created_at,
               a.name AS agent_name,
+              EXISTS (
+                SELECT 1 FROM call_transcripts ct
+                WHERE ct.call_session_id = cs.id AND ct.tenant_id = cs.tenant_id
+              ) AS has_transcript,
+              EXISTS (
+                SELECT 1 FROM call_events ce
+                WHERE ce.call_session_id = cs.id AND ce.tenant_id = cs.tenant_id
+              ) AS has_events,
+              (
+                SELECT COUNT(*)::int FROM tool_invocations ti
+                WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
+              ) AS tool_count,
               (
                 SELECT COUNT(*)::int FROM tool_invocations ti
                 WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
@@ -58,8 +106,15 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
     );
     await client.query('COMMIT');
 
+    const calls = rows.map((r) => {
+      const out = { ...r } as Record<string, unknown>;
+      if (typeof out.caller_number === 'string') out.caller_number = redactPHI(out.caller_number);
+      if (typeof out.called_number === 'string') out.called_number = redactPHI(out.called_number);
+      return out;
+    });
+
     return res.json({
-      calls: rows,
+      calls,
       total: parseInt(countRows[0].total as string),
       limit,
       offset,

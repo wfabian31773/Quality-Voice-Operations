@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -244,11 +244,36 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
   );
 }
 
+const EMPTY_FILTERS = {
+  agent_id: '',
+  direction: '',
+  lifecycle_state: '',
+  dateRange: '',
+  has_transcript: '',
+  has_events: '',
+  has_tool_executions: '',
+  tool_failures_only: '',
+  q: '',
+};
+
+type FiltersState = typeof EMPTY_FILTERS;
+
 export default function Calls() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1));
   const [selectedCall, setSelectedCall] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ agent_id: '', direction: '', lifecycle_state: '', dateRange: '' });
+  const [filters, setFilters] = useState<FiltersState>(() => ({
+    agent_id: searchParams.get('agent_id') ?? '',
+    direction: searchParams.get('direction') ?? '',
+    lifecycle_state: searchParams.get('lifecycle_state') ?? '',
+    dateRange: searchParams.get('dateRange') ?? '',
+    has_transcript: searchParams.get('has_transcript') ?? '',
+    has_events: searchParams.get('has_events') ?? '',
+    has_tool_executions: searchParams.get('has_tool_executions') ?? '',
+    tool_failures_only: searchParams.get('tool_failures_only') === 'true' ? 'true' : '',
+    q: searchParams.get('q') ?? '',
+  }));
+  const [searchInput, setSearchInput] = useState<string>(searchParams.get('q') ?? '');
   const [showFilters, setShowFilters] = useState(false);
   const limit = 20;
 
@@ -256,14 +281,49 @@ export default function Calls() {
     const highlight = searchParams.get('highlight');
     if (highlight) {
       setSelectedCall(highlight);
-      setSearchParams({}, { replace: true });
+      const next = new URLSearchParams(searchParams);
+      next.delete('highlight');
+      setSearchParams(next, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchInput !== filters.q) {
+        setFilters((f) => ({ ...f, q: searchInput }));
+        setPage(1);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput, filters.q]);
+
+  // Sync state -> URL
+  useEffect(() => {
+    const next = new URLSearchParams();
+    (Object.keys(filters) as Array<keyof FiltersState>).forEach((k) => {
+      if (filters[k]) next.set(k, filters[k]);
+    });
+    if (page > 1) next.set('page', String(page));
+    const highlight = searchParams.get('highlight');
+    if (highlight) next.set('highlight', highlight);
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, page]);
 
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'filter-list'],
     queryFn: () => api.get<{ agents: Agent[] }>('/agents?limit=100'),
   });
+
+  const sinceIso = useMemo(() => {
+    if (!filters.dateRange) return '';
+    const now = new Date();
+    if (filters.dateRange === 'today') return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    if (filters.dateRange === '7d') return new Date(now.getTime() - 7 * 86400000).toISOString();
+    if (filters.dateRange === '30d') return new Date(now.getTime() - 30 * 86400000).toISOString();
+    return '';
+  }, [filters.dateRange]);
 
   const filterParams = new URLSearchParams();
   filterParams.set('limit', String(limit));
@@ -271,14 +331,12 @@ export default function Calls() {
   if (filters.agent_id) filterParams.set('agent_id', filters.agent_id);
   if (filters.direction) filterParams.set('direction', filters.direction);
   if (filters.lifecycle_state) filterParams.set('lifecycle_state', filters.lifecycle_state);
-  if (filters.dateRange) {
-    const now = new Date();
-    let since: Date | null = null;
-    if (filters.dateRange === 'today') { since = new Date(now.getFullYear(), now.getMonth(), now.getDate()); }
-    else if (filters.dateRange === '7d') { since = new Date(now.getTime() - 7 * 86400000); }
-    else if (filters.dateRange === '30d') { since = new Date(now.getTime() - 30 * 86400000); }
-    if (since) filterParams.set('since', since.toISOString());
-  }
+  if (sinceIso) filterParams.set('since', sinceIso);
+  if (filters.has_transcript) filterParams.set('has_transcript', filters.has_transcript);
+  if (filters.has_events) filterParams.set('has_events', filters.has_events);
+  if (filters.has_tool_executions) filterParams.set('has_tool_executions', filters.has_tool_executions);
+  if (filters.tool_failures_only) filterParams.set('tool_failures_only', 'true');
+  if (filters.q) filterParams.set('q', filters.q);
 
   const { data, isLoading } = useQuery({
     queryKey: ['calls', page, filters],
@@ -290,8 +348,14 @@ export default function Calls() {
   const totalPages = Math.ceil(total / limit);
   const agents = agentsData?.agents ?? [];
 
-  const setFilter = (key: string, val: string) => {
+  const setFilter = (key: keyof FiltersState, val: string) => {
     setFilters((f) => ({ ...f, [key]: val }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setSearchInput('');
     setPage(1);
   };
 
@@ -311,8 +375,34 @@ export default function Calls() {
       </div>
 
       {showFilters && (
-        <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="bg-surface border border-border rounded-xl p-4 shadow-sm space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">
+              Search caller number or call ID
+            </label>
+            <div className="relative">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="e.g. +1555 or partial call ID"
+                className="w-full pl-9 pr-9 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">Date Range</label>
               <select value={filters.dateRange} onChange={(e) => setFilter('dateRange', e.target.value)}
@@ -351,10 +441,49 @@ export default function Calls() {
                 <option value="CALL_FAILED">Failed</option>
               </select>
             </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Transcript</label>
+              <select value={filters.has_transcript} onChange={(e) => setFilter('has_transcript', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
+                <option value="">Any</option>
+                <option value="true">Has transcript</option>
+                <option value="false">No transcript</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Events</label>
+              <select value={filters.has_events} onChange={(e) => setFilter('has_events', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
+                <option value="">Any</option>
+                <option value="true">Has events</option>
+                <option value="false">No events</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Tool executions</label>
+              <select value={filters.has_tool_executions} onChange={(e) => setFilter('has_tool_executions', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
+                <option value="">Any</option>
+                <option value="true">Has tool executions</option>
+                <option value="false">No tool executions</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary cursor-pointer w-full">
+                <input
+                  type="checkbox"
+                  checked={filters.tool_failures_only === 'true'}
+                  onChange={(e) => setFilter('tool_failures_only', e.target.checked ? 'true' : '')}
+                  className="rounded border-border"
+                />
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                Tool failures only
+              </label>
+            </div>
           </div>
           {activeFilterCount > 0 && (
-            <button onClick={() => { setFilters({ agent_id: '', direction: '', lifecycle_state: '', dateRange: '' }); setPage(1); }}
-              className="mt-3 text-xs text-primary hover:text-primary-hover font-medium">Clear all filters</button>
+            <button onClick={clearFilters}
+              className="text-xs text-primary hover:text-primary-hover font-medium">Clear all filters</button>
           )}
         </div>
       )}
@@ -370,7 +499,7 @@ export default function Calls() {
               description="Try adjusting or clearing your filters to see more conversations."
               primaryAction={{
                 label: 'Clear filters',
-                onClick: () => { setFilters({ agent_id: '', direction: '', lifecycle_state: '', dateRange: '' }); setPage(1); },
+                onClick: clearFilters,
               }}
             />
           ) : (
