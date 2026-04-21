@@ -7,6 +7,8 @@ import { GoogleCalendarConnectorAdapter } from './adapters/google-calendar';
 import { OutlookCalendarConnectorAdapter } from './adapters/outlook-calendar';
 import { SlackConnectorAdapter } from './adapters/slack';
 import { ZapierWebhookConnectorAdapter } from './adapters/zapier';
+import { PipedriveConnectorAdapter } from './adapters/pipedrive';
+import { QuickBooksConnectorAdapter } from './adapters/quickbooks';
 import { recordIntegrationEvent } from '../../core/observability/traceLogger';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType, StandardEventType } from './types';
 import type { TenantId } from '../../core/types';
@@ -15,26 +17,40 @@ const logger = createLogger('CONNECTOR_SERVICE');
 
 const googleCalendarAdapter = new GoogleCalendarConnectorAdapter();
 const outlookCalendarAdapter = new OutlookCalendarConnectorAdapter();
+const hubspotAdapter = new HubSpotConnectorAdapter();
+const pipedriveAdapter = new PipedriveConnectorAdapter();
+const slackAdapter = new SlackConnectorAdapter();
+const zapierAdapter = new ZapierWebhookConnectorAdapter();
+const twilioSmsAdapter = new TwilioSmsConnectorAdapter();
+const quickbooksAdapter = new QuickBooksConnectorAdapter();
 
-const SCHEDULING_ADAPTERS: Record<string, ConnectorAdapter> = {
+const TYPE_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
+  ticketing: new TicketingConnectorAdapter(),
+  sms: twilioSmsAdapter,
+  crm: hubspotAdapter,
+  scheduling: googleCalendarAdapter,
+  webhook: zapierAdapter,
+  custom: slackAdapter,
+  accounting: quickbooksAdapter,
+};
+
+const PROVIDER_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
+  hubspot: hubspotAdapter,
+  pipedrive: pipedriveAdapter,
   'google-calendar': googleCalendarAdapter,
   'outlook-calendar': outlookCalendarAdapter,
+  slack: slackAdapter,
+  zapier: zapierAdapter,
+  webhook: zapierAdapter,
+  twilio: twilioSmsAdapter,
+  quickbooks: quickbooksAdapter,
 };
 
-const ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
-  ticketing: new TicketingConnectorAdapter(),
-  sms: new TwilioSmsConnectorAdapter(),
-  crm: new HubSpotConnectorAdapter(),
-  scheduling: googleCalendarAdapter,
-  webhook: new ZapierWebhookConnectorAdapter(),
-  custom: new SlackConnectorAdapter(),
-};
-
-function resolveAdapter(connectorType: ConnectorType, provider?: string): ConnectorAdapter | undefined {
-  if (connectorType === 'scheduling' && provider && SCHEDULING_ADAPTERS[provider]) {
-    return SCHEDULING_ADAPTERS[provider];
+function resolveAdapter(connectorType: ConnectorType, provider: string | undefined): ConnectorAdapter | undefined {
+  if (provider && PROVIDER_ADAPTER_REGISTRY[provider]) {
+    return PROVIDER_ADAPTER_REGISTRY[provider];
   }
-  return ADAPTER_REGISTRY[connectorType];
+  return TYPE_ADAPTER_REGISTRY[connectorType];
 }
 
 const STANDARD_EVENT_TYPES = new Set<string>([
@@ -46,8 +62,8 @@ const STANDARD_EVENT_TYPES = new Set<string>([
 ]);
 
 const EVENT_TO_CONNECTOR_TYPES: Record<string, ConnectorType[]> = {
-  'call.completed': ['crm', 'custom', 'webhook'],
-  'appointment.booked': ['crm', 'scheduling', 'custom', 'webhook'],
+  'call.completed': ['crm', 'accounting', 'custom', 'webhook'],
+  'appointment.booked': ['crm', 'scheduling', 'accounting', 'custom', 'webhook'],
   'sms.sent': ['custom', 'webhook'],
   'ticket.created': ['custom', 'webhook'],
   'call.missed': ['custom', 'webhook'],
@@ -88,7 +104,7 @@ export class ConnectorService {
 
     const adapter = resolveAdapter(connectorType, config.provider);
     if (!adapter) {
-      return { success: false, error: `No adapter registered for connector type: ${connectorType} (${config.provider})` };
+      return { success: false, error: `No adapter registered for ${connectorType}/${config.provider}` };
     }
 
     logger.info('Dispatching to connector', { tenantId, connectorType, provider: config.provider, payloadType: payload.type });
@@ -141,7 +157,7 @@ export class ConnectorService {
 
     const adapter = resolveAdapter(fallbackType, config.provider);
     if (!adapter) {
-      return { success: false, error: `No fallback adapter for connector type: ${fallbackType}` };
+      return { success: false, error: `No fallback adapter for ${fallbackType}/${config.provider}` };
     }
 
     logger.info('Executing fallback connector', { tenantId, fallbackType, provider: config.provider });

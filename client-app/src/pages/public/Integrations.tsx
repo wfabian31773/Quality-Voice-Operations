@@ -45,6 +45,20 @@ const primaryIntegrations = [
     features: ['Contact sync', 'Call log automation', 'Lead scoring', 'Task creation'],
   },
   {
+    logoId: 'pipedrive',
+    category: 'CRM',
+    title: 'Pipedrive',
+    desc: 'Sync contacts and deals to Pipedrive. Calls and meetings attach to the right open deal so reps always have the latest context.',
+    features: ['Contact sync', 'Deal attachment', 'Activity logging', 'OAuth sign-in'],
+  },
+  {
+    logoId: 'quickbooks',
+    category: 'Accounting',
+    title: 'QuickBooks',
+    desc: 'Push customers to QuickBooks and create invoices when calls complete. Pair with your service item to auto-bill jobs booked by the agent.',
+    features: ['Customer sync', 'Invoice automation', 'Sandbox or production', 'OAuth sign-in'],
+  },
+  {
     logoId: 'slack',
     category: 'Notifications',
     title: 'Slack',
@@ -95,8 +109,8 @@ export default function Integrations() {
   return (
     <div>
       <SEO
-        title="Integrations — Google Calendar, Twilio, Stripe, CRM, and More"
-        description="QVO integrates with Google Calendar, Twilio, Stripe, HubSpot, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use."
+        title="Integrations — Google Calendar, Twilio, Stripe, HubSpot, Pipedrive, QuickBooks, and More"
+        description="QVO integrates with Google Calendar, Twilio, Stripe, HubSpot, Pipedrive, QuickBooks, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use."
         canonicalPath="/integrations"
       />
       <section className="bg-harbor text-white py-20 lg:py-28">
@@ -140,7 +154,7 @@ export default function Integrations() {
                 Core Integrations
               </h2>
               <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
-                Six essential integrations that power every QVO deployment.
+                Essential integrations across calendar, telephony, payments, CRM, accounting, and notifications — wired into every QVO deployment.
               </p>
             </div>
           </RevealSection>

@@ -1,6 +1,6 @@
 import type { TenantId } from '../../core/types';
 
-export type ConnectorType = 'ticketing' | 'sms' | 'crm' | 'scheduling' | 'ehr' | 'email' | 'webhook' | 'custom';
+export type ConnectorType = 'ticketing' | 'sms' | 'crm' | 'scheduling' | 'ehr' | 'email' | 'webhook' | 'custom' | 'accounting';
 
 export type StandardEventType = 'call.completed' | 'appointment.booked' | 'sms.sent' | 'ticket.created' | 'call.missed';
 

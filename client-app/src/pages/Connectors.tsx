@@ -28,7 +28,7 @@ interface Connector {
   lastSyncStatus: string | null;
 }
 
-type Category = 'CRM' | 'Scheduling' | 'SMS' | 'Notifications' | 'Automation' | 'Ticketing';
+type Category = 'CRM' | 'Scheduling' | 'SMS' | 'Notifications' | 'Automation' | 'Ticketing' | 'Accounting';
 
 interface ConnectorDefinition {
   id: string;
@@ -184,6 +184,45 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     events: ['call.completed', 'appointment.booked', 'sms.sent', 'ticket.created'],
   },
   {
+    id: 'pipedrive',
+    name: 'Pipedrive',
+    provider: 'pipedrive',
+    connectorType: 'crm',
+    category: 'CRM',
+    description: 'Sync contacts and deals to Pipedrive. Calls and meetings attach to the right open deal automatically.',
+    syncScope: 'Contacts, Deals, Activities',
+    logoId: 'pipedrive',
+    oauthProvider: 'pipedrive',
+    docsUrl: 'https://developers.pipedrive.com/docs/api/v1/oauth-authorization',
+    setupHelp: 'Sign in with Pipedrive (OAuth) or paste a personal API token from Settings → Personal preferences → API.',
+    fields: [
+      { key: 'api_token', label: 'API Token', type: 'password', placeholder: 'Pipedrive personal API token', required: true },
+      { key: 'company_domain', label: 'Company Domain', type: 'text', placeholder: 'yourcompany (from yourcompany.pipedrive.com)' },
+    ],
+    events: ['call.completed', 'appointment.booked'],
+  },
+  {
+    id: 'quickbooks',
+    name: 'QuickBooks',
+    provider: 'quickbooks',
+    connectorType: 'accounting',
+    category: 'Accounting',
+    description: 'Sync customers and create invoices when calls complete. Pair with your service catalog item to auto-bill jobs booked by the agent.',
+    syncScope: 'Customers, Invoices',
+    logoId: 'quickbooks',
+    oauthProvider: 'quickbooks',
+    docsUrl: 'https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-2.0',
+    setupHelp: 'Sign in with QuickBooks (OAuth). Set the invoice item and default amount to enable auto-invoicing on call.completed.',
+    fields: [
+      { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'QuickBooks OAuth access token', required: true },
+      { key: 'realm_id', label: 'Company (Realm) ID', type: 'text', placeholder: '4620816365xxxxxx', required: true },
+      { key: 'environment', label: 'Environment', type: 'text', placeholder: 'production or sandbox' },
+      { key: 'invoice_item_id', label: 'Invoice Item ID (optional)', type: 'text', placeholder: 'Item ref to bill on call.completed' },
+      { key: 'default_invoice_amount', label: 'Default Invoice Amount (optional)', type: 'text', placeholder: 'e.g. 75.00' },
+    ],
+    events: ['call.completed', 'appointment.booked'],
+  },
+  {
     id: 'custom-ticketing',
     name: 'Custom Ticketing',
     provider: 'custom-ticketing',
@@ -201,7 +240,7 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
   },
 ];
 
-const CATEGORIES: Category[] = ['CRM', 'Scheduling', 'SMS', 'Notifications', 'Automation', 'Ticketing'];
+const CATEGORIES: Category[] = ['CRM', 'Scheduling', 'SMS', 'Notifications', 'Automation', 'Ticketing', 'Accounting'];
 
 function formatSyncTime(iso: string): string {
   const date = new Date(iso);

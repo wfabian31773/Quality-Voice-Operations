@@ -16,7 +16,7 @@ const router = Router();
 const logger = createLogger('ADMIN_CONNECTORS');
 
 const VALID_CONNECTOR_TYPES = new Set<ConnectorType>([
-  'ticketing', 'sms', 'crm', 'scheduling', 'ehr', 'email', 'webhook', 'custom',
+  'ticketing', 'sms', 'crm', 'scheduling', 'ehr', 'email', 'webhook', 'custom', 'accounting',
 ]);
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {
