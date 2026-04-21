@@ -381,6 +381,12 @@ router.get('/docs/feedback/summary', requireAuth, requirePlatformAdmin, async (r
          COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0 AND status = 'new')::int AS new_comment_count,
          COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0 AND status = 'resolved')::int AS resolved_comment_count,
          COUNT(*) FILTER (WHERE comment IS NOT NULL AND length(trim(comment)) > 0 AND status = 'hidden')::int AS hidden_comment_count,
+         COUNT(*) FILTER (
+           WHERE comment IS NOT NULL AND length(trim(comment)) > 0
+             AND reply_email IS NOT NULL
+             AND reply_count = 0
+             AND status <> 'hidden'
+         )::int AS pending_reply_count,
          CASE WHEN COUNT(*) > 0
               THEN ROUND(100.0 * COUNT(*) FILTER (WHERE vote = 'helpful') / COUNT(*))::int
               ELSE NULL END AS helpful_ratio,
@@ -403,7 +409,8 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
   const slug = req.query.article_slug ? String(req.query.article_slug) : null;
   const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 200);
   const statusParam = req.query.status ? String(req.query.status) : 'new';
-  const status = statusParam === 'all'
+  const pendingReply = statusParam === 'pending_reply';
+  const status = (statusParam === 'all' || pendingReply)
     ? null
     : (VALID_FEEDBACK_STATUSES.has(statusParam) ? statusParam : 'new');
   const replyStateParam = req.query.reply_state ? String(req.query.reply_state) : null;
@@ -422,6 +429,9 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
     }
     if (replyFailedOnly) {
       where += ` AND lr.email_error IS NOT NULL`;
+    }
+    if (pendingReply) {
+      where += ` AND reply_email IS NOT NULL AND reply_count = 0 AND status <> 'hidden'`;
     }
     const r = await pool.query(
       `SELECT f.id, f.article_slug, f.vote, f.comment, f.page_path, f.created_at,

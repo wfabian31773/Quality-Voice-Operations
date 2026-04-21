@@ -18,6 +18,7 @@ interface DocsFeedbackArticle {
   new_comment_count: number;
   resolved_comment_count: number;
   hidden_comment_count: number;
+  pending_reply_count: number;
   helpful_ratio: number | null;
   last_vote_at: string | null;
 }
@@ -54,7 +55,7 @@ interface DocsFeedbackReply {
 }
 
 type DocsFeedbackSort = 'lowest_ratio' | 'highest_ratio' | 'most_votes' | 'recent';
-type DocsFeedbackStatusFilter = DocsFeedbackStatus | 'all';
+type DocsFeedbackStatusFilter = DocsFeedbackStatus | 'all' | 'pending_reply';
 
 interface PlatformStats {
   active_tenants: string;
@@ -990,6 +991,20 @@ function DocsFeedbackTab() {
                               {a.new_comment_count} new · {a.resolved_comment_count} resolved · {a.hidden_comment_count} hidden
                             </span>
                           )}
+                          {a.pending_reply_count > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSlug(a.article_slug);
+                                setStatusFilter('pending_reply');
+                              }}
+                              className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-medium hover:bg-amber-100"
+                              title="Comments with a reply email that haven't been answered yet"
+                            >
+                              <Mail className="h-3 w-3" />
+                              {a.pending_reply_count} pending reply
+                            </button>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted whitespace-nowrap">
@@ -1043,6 +1058,7 @@ function DocsFeedbackTab() {
               className="text-sm px-2 py-1.5 rounded border border-border bg-surface disabled:opacity-50"
             >
               <option value="new">New</option>
+              <option value="pending_reply">Pending reply</option>
               <option value="resolved">Resolved</option>
               <option value="hidden">Hidden</option>
               <option value="all">All</option>
