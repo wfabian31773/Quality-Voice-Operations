@@ -109,7 +109,7 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
   const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
   const page = Math.max(parseInt(String(req.query.page ?? '1'), 10), 1);
   const offset = (page - 1) * limit;
-  const { agent_id, direction, lifecycle_state, since } = req.query as Record<string, string>;
+  const { agent_id, direction, lifecycle_state, since, q } = req.query as Record<string, string>;
 
   try {
     const tenantExists = await withPrivilegedClient(async (client) => {
@@ -127,6 +127,14 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
     if (direction) { values.push(direction); conditions.push(`cs.direction = $${values.length}`); }
     if (lifecycle_state) { values.push(lifecycle_state); conditions.push(`cs.lifecycle_state = $${values.length}`); }
     if (since) { values.push(since); conditions.push(`cs.start_time >= $${values.length}::timestamptz`); }
+    if (q && q.trim()) {
+      const term = `%${q.trim()}%`;
+      values.push(term);
+      const idx = values.length;
+      conditions.push(
+        `(cs.caller_number ILIKE $${idx} OR cs.called_number ILIKE $${idx} OR cs.id::text ILIKE $${idx})`,
+      );
+    }
     const where = conditions.join(' AND ');
 
     const result = await withPrivilegedClient(async (client) => {
@@ -168,6 +176,29 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
   } catch (err) {
     logger.error('Failed to list tenant calls for admin', { tenantId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to list tenant calls' });
+  }
+});
+
+router.get('/platform/tenants/:id/agents', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const tenant = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(`SELECT id FROM tenants WHERE id = $1`, [id]);
+      return rows[0] ?? null;
+    });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const agents = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, name FROM agents WHERE tenant_id = $1 ORDER BY name ASC`,
+        [id],
+      );
+      return rows;
+    });
+    return res.json({ agents });
+  } catch (err) {
+    logger.error('Failed to list tenant agents for admin', { tenantId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list tenant agents' });
   }
 });
 

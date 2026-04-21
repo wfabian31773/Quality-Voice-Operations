@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, PhoneCall } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, PhoneCall, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -34,6 +34,11 @@ interface ApiResp {
   offset: number;
 }
 
+interface AgentOption {
+  id: string;
+  name: string;
+}
+
 const RANGES: Array<{ value: string; label: string }> = [
   { value: '', label: 'All Time' },
   { value: '24h', label: 'Last 24h' },
@@ -42,14 +47,54 @@ const RANGES: Array<{ value: string; label: string }> = [
   { value: '90d', label: 'Last 90 Days' },
 ];
 
+const LIFECYCLE_STATES: Array<{ value: string; label: string }> = [
+  { value: '', label: 'All' },
+  { value: 'CALL_INITIATED', label: 'Initiated' },
+  { value: 'CALL_RINGING', label: 'Ringing' },
+  { value: 'CALL_ANSWERED', label: 'Answered' },
+  { value: 'CALL_IN_PROGRESS', label: 'In Progress' },
+  { value: 'CALL_COMPLETED', label: 'Completed' },
+  { value: 'CALL_FAILED', label: 'Failed' },
+  { value: 'WORKFLOW_FAILED', label: 'Workflow Failed' },
+  { value: 'ESCALATION_FAILED', label: 'Escalation Failed' },
+];
+
 export default function AdminTenantCalls() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1));
   const [direction, setDirection] = useState<string>(searchParams.get('direction') ?? '');
   const [range, setRange] = useState<string>(searchParams.get('range') ?? '');
+  const [agentId, setAgentId] = useState<string>(searchParams.get('agent_id') ?? '');
+  const [lifecycleState, setLifecycleState] = useState<string>(searchParams.get('lifecycle_state') ?? '');
+  const [searchInput, setSearchInput] = useState<string>(searchParams.get('q') ?? '');
+  const [search, setSearch] = useState<string>(searchParams.get('q') ?? '');
   const limit = 20;
+
+  // Debounce search input -> committed search
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchInput !== search) {
+        setSearch(searchInput);
+        setPage(1);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput, search]);
+
+  // Sync state -> URL
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (range) next.set('range', range);
+    if (direction) next.set('direction', direction);
+    if (agentId) next.set('agent_id', agentId);
+    if (lifecycleState) next.set('lifecycle_state', lifecycleState);
+    if (search) next.set('q', search);
+    if (page > 1) next.set('page', String(page));
+    setSearchParams(next, { replace: true });
+  }, [range, direction, agentId, lifecycleState, search, page, setSearchParams]);
 
   const sinceIso = useMemo(() => {
     if (!range) return '';
@@ -66,17 +111,38 @@ export default function AdminTenantCalls() {
   params.set('page', String(page));
   if (direction) params.set('direction', direction);
   if (sinceIso) params.set('since', sinceIso);
+  if (agentId) params.set('agent_id', agentId);
+  if (lifecycleState) params.set('lifecycle_state', lifecycleState);
+  if (search) params.set('q', search);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin-tenant-calls', tenantId, page, direction, range],
+    queryKey: ['admin-tenant-calls', tenantId, page, direction, range, agentId, lifecycleState, search],
     queryFn: () => api.get<ApiResp>(`/platform/tenants/${tenantId}/calls?${params.toString()}`),
     enabled: !!tenantId,
   });
+
+  const { data: agentsData } = useQuery({
+    queryKey: ['admin-tenant-agents', tenantId],
+    queryFn: () => api.get<{ agents: AgentOption[] }>(`/platform/tenants/${tenantId}/agents`),
+    enabled: !!tenantId,
+  });
+  const agents = agentsData?.agents ?? [];
 
   const tenant = data?.tenant;
   const calls = data?.calls ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const hasFilters = !!(range || direction || agentId || lifecycleState || search);
+  const clearFilters = () => {
+    setRange('');
+    setDirection('');
+    setAgentId('');
+    setLifecycleState('');
+    setSearchInput('');
+    setSearch('');
+    setPage(1);
+  };
 
   return (
     <div className="space-y-6">
@@ -105,8 +171,34 @@ export default function AdminTenantCalls() {
         tenantSlug={tenant?.slug}
       />
 
-      <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-3">
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">
+            Search caller number or call ID
+          </label>
+          <div className="relative">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="e.g. +1555 or partial call ID"
+              className="w-full pl-9 pr-9 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => { setSearchInput(''); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Date Range</label>
             <select
@@ -129,7 +221,45 @@ export default function AdminTenantCalls() {
               <option value="outbound">Outbound</option>
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Agent</label>
+            <select
+              value={agentId}
+              onChange={(e) => { setAgentId(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            >
+              <option value="">All Agents</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Lifecycle State</label>
+            <select
+              value={lifecycleState}
+              onChange={(e) => { setLifecycleState(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            >
+              {LIFECYCLE_STATES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {hasFilters && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs text-purple-300 hover:text-purple-200 inline-flex items-center gap-1"
+            >
+              <X className="h-3 w-3" />
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -143,7 +273,11 @@ export default function AdminTenantCalls() {
       ) : calls.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
           <PhoneCall className="h-12 w-12 text-text-muted mx-auto mb-3" />
-          <p className="text-text-secondary">No calls found for this tenant in the selected window.</p>
+          <p className="text-text-secondary">
+            {hasFilters
+              ? 'No calls match the current filters.'
+              : 'No calls found for this tenant in the selected window.'}
+          </p>
         </div>
       ) : (
         <>
