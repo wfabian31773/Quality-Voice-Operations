@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
@@ -88,8 +89,14 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+type TenantSortKey = 'plan' | 'status' | 'calls_last_30d' | 'total_calls' | 'last_call_at';
+type SortDir = 'asc' | 'desc';
+
 export default function AdminAnalytics() {
   const navigate = useNavigate();
+  const [tenantSearch, setTenantSearch] = useState('');
+  const [tenantSortKey, setTenantSortKey] = useState<TenantSortKey>('last_call_at');
+  const [tenantSortDir, setTenantSortDir] = useState<SortDir>('desc');
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin-platform-stats'],
@@ -116,6 +123,48 @@ export default function AdminAnalytics() {
   const platformStats = stats?.stats;
   const mon = monitoring?.monitoring;
   const tenants = tenantsData?.tenants ?? [];
+
+  const filteredSortedTenants = useMemo(() => {
+    const q = tenantSearch.trim().toLowerCase();
+    const filtered = q
+      ? tenants.filter(
+          (t) =>
+            t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q),
+        )
+      : tenants.slice();
+
+    const dir = tenantSortDir === 'asc' ? 1 : -1;
+    const key = tenantSortKey;
+
+    filtered.sort((a, b) => {
+      let av: number | string;
+      let bv: number | string;
+      if (key === 'plan' || key === 'status') {
+        av = (a[key] ?? '').toString().toLowerCase();
+        bv = (b[key] ?? '').toString().toLowerCase();
+      } else if (key === 'last_call_at') {
+        av = a.last_call_at ? new Date(a.last_call_at).getTime() : 0;
+        bv = b.last_call_at ? new Date(b.last_call_at).getTime() : 0;
+      } else {
+        av = toNum(a[key]);
+        bv = toNum(b[key]);
+      }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+
+    return filtered;
+  }, [tenants, tenantSearch, tenantSortKey, tenantSortDir]);
+
+  const toggleTenantSort = (key: TenantSortKey) => {
+    if (tenantSortKey === key) {
+      setTenantSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setTenantSortKey(key);
+      setTenantSortDir(key === 'plan' || key === 'status' ? 'asc' : 'desc');
+    }
+  };
   const templates = templateAnalytics?.templates ?? [];
 
   const trendData = (mon?.trend ?? [])
@@ -240,35 +289,47 @@ export default function AdminAnalytics() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
           <h2 className="text-lg font-semibold text-text-primary">
             Tenant-by-Tenant Breakdown
           </h2>
-          <span className="text-xs text-text-secondary">
-            {tenants.length} tenants &middot; sorted by recent activity
-          </span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              type="search"
+              value={tenantSearch}
+              onChange={(e) => setTenantSearch(e.target.value)}
+              placeholder="Search by name or slug..."
+              aria-label="Search tenants"
+              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-purple-400 w-64"
+            />
+            <span className="text-xs text-text-secondary">
+              {filteredSortedTenants.length} of {tenants.length} tenants
+            </span>
+          </div>
         </div>
         {tenantsLoading ? (
           <div className="text-muted-foreground">Loading...</div>
         ) : !tenants.length ? (
           <div className="text-muted-foreground">No tenants on the platform</div>
+        ) : !filteredSortedTenants.length ? (
+          <div className="text-muted-foreground">No tenants match "{tenantSearch}"</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="pb-2 font-medium">Tenant</th>
-                  <th className="pb-2 font-medium">Plan</th>
-                  <th className="pb-2 font-medium">Status</th>
+                  <SortableTh label="Plan" sortKey="plan" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} />
+                  <SortableTh label="Status" sortKey="status" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} />
                   <th className="pb-2 font-medium text-right">Users</th>
-                  <th className="pb-2 font-medium text-right">Calls (30d)</th>
-                  <th className="pb-2 font-medium text-right">Total Calls</th>
-                  <th className="pb-2 font-medium text-right">Last Activity</th>
+                  <SortableTh label="Calls (30d)" sortKey="calls_last_30d" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
+                  <SortableTh label="Total Calls" sortKey="total_calls" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
+                  <SortableTh label="Last Activity" sortKey="last_call_at" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
                   <th className="pb-2 font-medium text-right">&nbsp;</th>
                 </tr>
               </thead>
               <tbody>
-                {tenants.map((t) => (
+                {filteredSortedTenants.map((t) => (
                   <tr
                     key={t.id}
                     className="border-b border-border/40 cursor-pointer hover:bg-white/5 focus-within:bg-white/5 transition-colors outline-none"
@@ -368,6 +429,44 @@ function KpiCard({ label, value, sublabel }: { label: string; value: string; sub
       <p className="text-2xl font-bold mt-1 text-text-primary">{value}</p>
       {sublabel && <p className="text-xs text-text-secondary mt-0.5">{sublabel}</p>}
     </div>
+  );
+}
+
+function SortableTh({
+  label,
+  sortKey,
+  currentKey,
+  dir,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  sortKey: TenantSortKey;
+  currentKey: TenantSortKey;
+  dir: SortDir;
+  onSort: (key: TenantSortKey) => void;
+  align?: 'left' | 'right';
+}) {
+  const isActive = currentKey === sortKey;
+  const arrow = isActive ? (dir === 'asc' ? '▲' : '▼') : '';
+  return (
+    <th
+      className={clsx('pb-2 font-medium', align === 'right' && 'text-right')}
+      aria-sort={isActive ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`Sort by ${label}`}
+        className={clsx(
+          'inline-flex items-center gap-1 select-none cursor-pointer hover:text-text-primary transition-colors',
+          isActive && 'text-text-primary',
+        )}
+      >
+        <span>{label}</span>
+        <span className="text-[10px] w-2 inline-block">{arrow}</span>
+      </button>
+    </th>
   );
 }
 
