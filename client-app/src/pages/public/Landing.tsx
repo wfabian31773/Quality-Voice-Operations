@@ -9,6 +9,11 @@ import {
   CheckCircle2, Star, Wrench,
   CalendarCheck, Truck, HelpCircle, ShieldCheck,
 } from 'lucide-react';
+import {
+  VoiceAgentIcon, MegaphoneIcon, IntegrationsIcon, AlwaysOnIcon,
+  SmsFollowupIcon, AnalyticsIcon, VoiceEngineIcon, AutomationIcon,
+  DashboardIcon, CustomizationIcon, ApiIcon, SecurityIcon,
+} from '../../components/illustrations/FeatureIcons';
 import { useAuth } from '../../lib/auth';
 import SEO from '../../components/SEO';
 import { reducedMotion } from '../../hooks/useScrollReveal';
@@ -78,12 +83,12 @@ const painPoints = [
 ];
 
 const solutionFeatures = [
-  { icon: Bot, title: 'AI Voice Agents', desc: 'Natural-sounding agents that understand context and handle complex conversations.' },
-  { icon: Megaphone, title: 'Outbound Campaigns', desc: 'Automated outreach for appointment reminders, follow-ups, and lead nurturing.' },
-  { icon: Plug, title: 'CRM Integrations', desc: 'Sync with your existing tools — contacts, appointments, and notes flow automatically.' },
-  { icon: PhoneCall, title: '24/7 Call Answering', desc: 'Never miss a call again. Your AI agent works nights, weekends, and holidays.' },
-  { icon: MessageSquare, title: 'SMS Follow-ups', desc: 'Automatic text confirmations, reminders, and follow-up messages after every call.' },
-  { icon: BarChart3, title: 'Call Analytics', desc: 'Real-time dashboards with call outcomes, sentiment, and conversion tracking.' },
+  { icon: VoiceAgentIcon, title: 'AI Voice Agents', desc: 'Natural-sounding agents that understand context and handle complex conversations.' },
+  { icon: MegaphoneIcon, title: 'Outbound Campaigns', desc: 'Automated outreach for appointment reminders, follow-ups, and lead nurturing.' },
+  { icon: IntegrationsIcon, title: 'CRM Integrations', desc: 'Sync with your existing tools — contacts, appointments, and notes flow automatically.' },
+  { icon: AlwaysOnIcon, title: '24/7 Call Answering', desc: 'Never miss a call again. Your AI agent works nights, weekends, and holidays.' },
+  { icon: SmsFollowupIcon, title: 'SMS Follow-ups', desc: 'Automatic text confirmations, reminders, and follow-up messages after every call.' },
+  { icon: AnalyticsIcon, title: 'Call Analytics', desc: 'Real-time dashboards with call outcomes, sentiment, and conversion tracking.' },
 ];
 
 const agentTemplates = [
@@ -150,12 +155,12 @@ const agentTemplates = [
 ];
 
 const featureGrid = [
-  { icon: Mic, title: 'Voice AI Engine', desc: 'Natural language understanding with real-time speech synthesis and emotion detection.' },
-  { icon: Zap, title: 'Campaign Automation', desc: 'Schedule and launch outbound calling campaigns with dynamic scripts and branching logic.' },
-  { icon: TrendingUp, title: 'Analytics Dashboard', desc: 'Track call volume, outcomes, agent performance, and ROI in real-time dashboards.' },
-  { icon: Settings, title: 'Agent Customization', desc: 'Fine-tune voice, personality, scripts, and escalation rules for each agent.' },
-  { icon: Plug, title: 'API Integrations', desc: 'Connect to 50+ tools including Salesforce, HubSpot, Calendly, and custom webhooks.' },
-  { icon: Lock, title: 'Enterprise Security', desc: 'SOC 2 compliant, encrypted calls, role-based access, and audit logging.' },
+  { icon: VoiceEngineIcon, title: 'Voice AI Engine', desc: 'Natural language understanding with real-time speech synthesis and emotion detection.' },
+  { icon: AutomationIcon, title: 'Campaign Automation', desc: 'Schedule and launch outbound calling campaigns with dynamic scripts and branching logic.' },
+  { icon: DashboardIcon, title: 'Analytics Dashboard', desc: 'Track call volume, outcomes, agent performance, and ROI in real-time dashboards.' },
+  { icon: CustomizationIcon, title: 'Agent Customization', desc: 'Fine-tune voice, personality, scripts, and escalation rules for each agent.' },
+  { icon: ApiIcon, title: 'API Integrations', desc: 'Connect to 50+ tools including Salesforce, HubSpot, Calendly, and custom webhooks.' },
+  { icon: SecurityIcon, title: 'Enterprise Security', desc: 'SOC 2 compliant, encrypted calls, role-based access, and audit logging.' },
 ];
 
 const customerResults = [
