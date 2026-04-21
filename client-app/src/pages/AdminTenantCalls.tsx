@@ -339,6 +339,9 @@ export default function AdminTenantCalls() {
   const [range, setRange] = useState<string>(searchParams.get('range') ?? '');
   const [agentId, setAgentId] = useState<string>(searchParams.get('agent_id') ?? '');
   const [lifecycleState, setLifecycleState] = useState<string>(searchParams.get('lifecycle_state') ?? '');
+  const [hasTranscript, setHasTranscript] = useState<string>(searchParams.get('has_transcript') ?? '');
+  const [hasEvents, setHasEvents] = useState<string>(searchParams.get('has_events') ?? '');
+  const [hasToolExecutions, setHasToolExecutions] = useState<string>(searchParams.get('has_tool_executions') ?? '');
   const [searchInput, setSearchInput] = useState<string>(searchParams.get('q') ?? '');
   const [search, setSearch] = useState<string>(searchParams.get('q') ?? '');
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
@@ -362,10 +365,13 @@ export default function AdminTenantCalls() {
     if (direction) next.set('direction', direction);
     if (agentId) next.set('agent_id', agentId);
     if (lifecycleState) next.set('lifecycle_state', lifecycleState);
+    if (hasTranscript) next.set('has_transcript', hasTranscript);
+    if (hasEvents) next.set('has_events', hasEvents);
+    if (hasToolExecutions) next.set('has_tool_executions', hasToolExecutions);
     if (search) next.set('q', search);
     if (page > 1) next.set('page', String(page));
     setSearchParams(next, { replace: true });
-  }, [range, direction, agentId, lifecycleState, search, page, setSearchParams]);
+  }, [range, direction, agentId, lifecycleState, hasTranscript, hasEvents, hasToolExecutions, search, page, setSearchParams]);
 
   const sinceIso = useMemo(() => {
     if (!range) return '';
@@ -384,10 +390,13 @@ export default function AdminTenantCalls() {
   if (sinceIso) params.set('since', sinceIso);
   if (agentId) params.set('agent_id', agentId);
   if (lifecycleState) params.set('lifecycle_state', lifecycleState);
+  if (hasTranscript) params.set('has_transcript', hasTranscript);
+  if (hasEvents) params.set('has_events', hasEvents);
+  if (hasToolExecutions) params.set('has_tool_executions', hasToolExecutions);
   if (search) params.set('q', search);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin-tenant-calls', tenantId, page, direction, range, agentId, lifecycleState, search],
+    queryKey: ['admin-tenant-calls', tenantId, page, direction, range, agentId, lifecycleState, hasTranscript, hasEvents, hasToolExecutions, search],
     queryFn: () => api.get<ApiResp>(`/platform/tenants/${tenantId}/calls?${params.toString()}`),
     enabled: !!tenantId,
   });
@@ -404,12 +413,15 @@ export default function AdminTenantCalls() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const hasFilters = !!(range || direction || agentId || lifecycleState || search);
+  const hasFilters = !!(range || direction || agentId || lifecycleState || hasTranscript || hasEvents || hasToolExecutions || search);
   const clearFilters = () => {
     setRange('');
     setDirection('');
     setAgentId('');
     setLifecycleState('');
+    setHasTranscript('');
+    setHasEvents('');
+    setHasToolExecutions('');
     setSearchInput('');
     setSearch('');
     setPage(1);
@@ -515,6 +527,45 @@ export default function AdminTenantCalls() {
               {LIFECYCLE_STATES.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Transcript</label>
+            <select
+              value={hasTranscript}
+              onChange={(e) => { setHasTranscript(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            >
+              <option value="">Any</option>
+              <option value="true">With transcript</option>
+              <option value="false">Without transcript</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Events</label>
+            <select
+              value={hasEvents}
+              onChange={(e) => { setHasEvents(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            >
+              <option value="">Any</option>
+              <option value="true">With events</option>
+              <option value="false">Without events</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Tool Executions</label>
+            <select
+              value={hasToolExecutions}
+              onChange={(e) => { setHasToolExecutions(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            >
+              <option value="">Any</option>
+              <option value="true">With tool runs</option>
+              <option value="false">Without tool runs</option>
             </select>
           </div>
         </div>

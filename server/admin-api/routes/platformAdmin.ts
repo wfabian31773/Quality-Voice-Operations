@@ -111,7 +111,16 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
   const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
   const page = Math.max(parseInt(String(req.query.page ?? '1'), 10), 1);
   const offset = (page - 1) * limit;
-  const { agent_id, direction, lifecycle_state, since, q } = req.query as Record<string, string>;
+  const { agent_id, direction, lifecycle_state, since, q, has_transcript, has_events, has_tool_executions } = req.query as Record<string, string>;
+
+  const parseBoolFilter = (v: string | undefined): boolean | null => {
+    if (v === 'true' || v === '1') return true;
+    if (v === 'false' || v === '0') return false;
+    return null;
+  };
+  const transcriptFilter = parseBoolFilter(has_transcript);
+  const eventsFilter = parseBoolFilter(has_events);
+  const toolsFilter = parseBoolFilter(has_tool_executions);
 
   try {
     const tenantExists = await withPrivilegedClient(async (client) => {
@@ -136,6 +145,18 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
       conditions.push(
         `(cs.caller_number ILIKE $${idx} OR cs.called_number ILIKE $${idx} OR cs.id::text ILIKE $${idx})`,
       );
+    }
+    if (transcriptFilter !== null) {
+      const op = transcriptFilter ? 'EXISTS' : 'NOT EXISTS';
+      conditions.push(`${op} (SELECT 1 FROM call_transcripts ct WHERE ct.call_session_id = cs.id AND ct.tenant_id = cs.tenant_id)`);
+    }
+    if (eventsFilter !== null) {
+      const op = eventsFilter ? 'EXISTS' : 'NOT EXISTS';
+      conditions.push(`${op} (SELECT 1 FROM call_events ce WHERE ce.call_session_id = cs.id AND ce.tenant_id = cs.tenant_id)`);
+    }
+    if (toolsFilter !== null) {
+      const op = toolsFilter ? 'EXISTS' : 'NOT EXISTS';
+      conditions.push(`${op} (SELECT 1 FROM tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id)`);
     }
     const where = conditions.join(' AND ');
 
