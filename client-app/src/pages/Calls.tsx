@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -17,6 +17,7 @@ interface Call {
   agent_id: string;
   agent_name: string | null;
   duration_seconds: number | null;
+  failed_tool_count?: number;
 }
 
 interface TranscriptEntry {
@@ -404,9 +405,20 @@ export default function Calls() {
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${['CALL_CONNECTED', 'active'].includes(call.lifecycle_state) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-surface-hover text-text-secondary'}`}>
-                        {call.lifecycle_state}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${['CALL_CONNECTED', 'active'].includes(call.lifecycle_state) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-surface-hover text-text-secondary'}`}>
+                          {call.lifecycle_state}
+                        </span>
+                        {call.failed_tool_count && call.failed_tool_count > 0 ? (
+                          <span
+                            title={`${call.failed_tool_count} failed or timed-out tool execution${call.failed_tool_count === 1 ? '' : 's'}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {call.failed_tool_count} failed
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-text-secondary">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</td>
                     <td className="px-5 py-3 text-text-secondary">{call.start_time ? format(new Date(call.start_time), 'MMM d, h:mm a') : '--'}</td>

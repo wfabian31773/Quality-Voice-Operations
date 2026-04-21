@@ -38,7 +38,12 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
       `SELECT cs.id, cs.agent_id, cs.direction, cs.lifecycle_state,
               cs.start_time, cs.end_time, cs.duration_seconds,
               cs.total_cost_cents, cs.environment, cs.created_at,
-              a.name AS agent_name
+              a.name AS agent_name,
+              (
+                SELECT COUNT(*)::int FROM tool_invocations ti
+                WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
+                  AND ti.status IN ('failed', 'timeout')
+              ) AS failed_tool_count
        FROM call_sessions cs
        LEFT JOIN agents a ON a.id = cs.agent_id
        WHERE ${where}
