@@ -5,7 +5,7 @@ import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('SALESFORCE_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
-const API_VERSION = 'v59.0';
+const API_VERSION = 'v60.0';
 
 interface SalesforceTokens {
   accessToken: string;
@@ -167,13 +167,48 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
   ): Promise<ConnectorResult> {
     const callerPhone = payload.callerPhone as string | undefined;
     const summary = payload.summary as string | undefined;
+    const callerCompany = payload.callerCompany as string | undefined;
 
     try {
-      const who = callerPhone
+      let who = callerPhone
         ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload)
         : undefined;
 
-      const whatId = await this.resolveWhatId(tokens, who, payload);
+      // Auto-convert Lead → Contact on the high-intent appointment.booked event
+      // so downstream Account/Contact/Opportunity wiring fires end-to-end without
+      // sales reps manually running Lead conversion.
+      let convertedContactId: string | undefined;
+      let convertedOpportunityId: string | undefined;
+      let convertedAccountId: string | undefined;
+      if (who?.object === 'Lead') {
+        const reuseAccountId = (payload.accountId as string | undefined)
+          ?? (callerCompany ? await this.findOrCreateAccount(tokens, callerCompany) : undefined);
+        const opportunityName = callerCompany
+          ? `${callerCompany} - QVO Appointment`
+          : 'QVO Appointment Opportunity';
+        const conversion = await this.convertLead(tokens, who.id, {
+          accountId: reuseAccountId,
+          opportunityName,
+        });
+        if (conversion) {
+          convertedContactId = conversion.contactId;
+          convertedOpportunityId = conversion.opportunityId;
+          convertedAccountId = conversion.accountId;
+          who = { id: conversion.contactId, object: 'Contact' };
+          logger.info('Salesforce Lead converted on appointment.booked', {
+            tenantId,
+            leadId: conversion.leadId,
+            contactId: conversion.contactId,
+            accountId: conversion.accountId,
+            opportunityId: conversion.opportunityId,
+            reusedAccount: Boolean(reuseAccountId),
+          });
+        }
+      }
+
+      const whatId = convertedOpportunityId
+        ?? convertedAccountId
+        ?? await this.resolveWhatId(tokens, who, payload);
 
       const description = [
         'Appointment booked via QVO AI agent',
@@ -201,16 +236,113 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
 
       logger.info('Salesforce appointment task created', {
         tenantId, whoId: who?.id, whatId, taskId, noteId,
+        convertedFromLead: Boolean(convertedContactId),
       });
       return {
         success: true,
         externalId: taskId,
-        meta: { whoId: who?.id, whatId, taskId, noteId, provider: 'salesforce' },
+        meta: {
+          whoId: who?.id,
+          whatId,
+          taskId,
+          noteId,
+          provider: 'salesforce',
+          ...(convertedContactId
+            ? {
+                convertedFromLead: true,
+                contactId: convertedContactId,
+                accountId: convertedAccountId,
+                opportunityId: convertedOpportunityId,
+              }
+            : {}),
+        },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Salesforce appointment logging failed', { tenantId, error });
       return { success: false, error };
+    }
+  }
+
+  private async convertLead(
+    tokens: SalesforceTokens,
+    leadId: string,
+    options: { accountId?: string; opportunityName?: string },
+  ): Promise<
+    | {
+        leadId: string;
+        contactId: string;
+        accountId: string;
+        opportunityId?: string;
+      }
+    | undefined
+  > {
+    const convertedStatus = await this.getConvertedLeadStatus(tokens);
+    if (!convertedStatus) {
+      logger.warn('Skipping Salesforce Lead conversion: no IsConverted LeadStatus available', { leadId });
+      return undefined;
+    }
+
+    const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/LeadConvert/`;
+    const body: Record<string, unknown> = {
+      leadId,
+      convertedStatus,
+      doNotCreateOpportunity: false,
+    };
+    if (options.accountId) body.accountId = options.accountId;
+    if (options.opportunityName) body.opportunityName = options.opportunityName.slice(0, 120);
+
+    try {
+      const res = await this.fetchWithTimeout(url, {
+        method: 'POST',
+        headers: this.headers(tokens.accessToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        logger.warn('Salesforce Lead conversion failed', {
+          leadId, status: res.status, body: text.slice(0, 300),
+        });
+        return undefined;
+      }
+      const data = await res.json() as {
+        success?: boolean;
+        leadId?: string;
+        contactId?: string;
+        accountId?: string;
+        opportunityId?: string;
+        errors?: unknown;
+      };
+      if (data.success === false || !data.contactId || !data.accountId) {
+        logger.warn('Salesforce Lead conversion returned unsuccessful response', {
+          leadId, response: data,
+        });
+        return undefined;
+      }
+      return {
+        leadId: data.leadId ?? leadId,
+        contactId: data.contactId,
+        accountId: data.accountId,
+        opportunityId: data.opportunityId,
+      };
+    } catch (err) {
+      logger.warn('Salesforce Lead conversion threw', { leadId, error: String(err) });
+      return undefined;
+    }
+  }
+
+  private async getConvertedLeadStatus(
+    tokens: SalesforceTokens,
+  ): Promise<string | undefined> {
+    const soql = `SELECT MasterLabel FROM LeadStatus WHERE IsConverted = true ORDER BY SortOrder ASC NULLS LAST LIMIT 1`;
+    const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/query?q=${encodeURIComponent(soql)}`;
+    try {
+      const res = await this.fetchWithTimeout(url, { headers: this.headers(tokens.accessToken) });
+      if (!res.ok) return undefined;
+      const data = await res.json() as { records: Array<{ MasterLabel: string }> };
+      return data.records[0]?.MasterLabel;
+    } catch {
+      return undefined;
     }
   }
 
@@ -249,6 +381,9 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     phone: string,
     payload: ConnectorPayload,
   ): Promise<{ id: string; object: 'Contact' | 'Lead' } | undefined> {
+    const hintedContactId = payload.contactId as string | undefined;
+    if (hintedContactId) return { id: hintedContactId, object: 'Contact' };
+
     const existing = await this.findContactOrLeadByPhone(tokens, phone);
     if (existing) return existing;
 

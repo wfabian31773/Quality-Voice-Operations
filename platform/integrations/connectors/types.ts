@@ -74,6 +74,7 @@ export interface StandardEventPayload extends ConnectorPayload {
   disposition?: string;
   opportunityId?: string;
   accountId?: string;
+  contactId?: string;
   appointmentDate?: string;
   appointmentTime?: string;
   startTime?: string;
