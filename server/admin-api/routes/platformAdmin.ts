@@ -4,6 +4,11 @@ import { requirePlatformAdmin } from '../middleware/rbac';
 import { withPrivilegedClient, getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { getAllTenantsActivationMetrics } from '../../../platform/activation/ActivationService';
+import {
+  getCallAnalytics,
+  getCampaignAnalytics,
+  getCostAnalytics,
+} from '../../../platform/analytics';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -56,6 +61,44 @@ router.get('/platform/tenants/:id', requireAuth, requirePlatformAdmin, async (re
   } catch (err) {
     logger.error('Failed to get tenant details', { tenantId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to get tenant details' });
+  }
+});
+
+router.get('/platform/tenants/:id/analytics', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const range = String(req.query.range ?? '30d');
+  let days = 30;
+  if (range === '7d') days = 7;
+  else if (range === '90d') days = 90;
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+
+  try {
+    const tenant = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, name, slug, status, plan FROM tenants WHERE id = $1`,
+        [id],
+      );
+      return rows[0] ?? null;
+    });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const [calls, campaigns, costs] = await Promise.all([
+      getCallAnalytics(id, from, to),
+      getCampaignAnalytics(id, from, to),
+      getCostAnalytics(id, from, to),
+    ]);
+
+    logger.info('Platform admin viewed tenant analytics', {
+      tenantId: id,
+      adminUserId: req.user!.userId,
+      range,
+    });
+
+    return res.json({ tenant, range, calls, campaigns, costs });
+  } catch (err) {
+    logger.error('Failed to fetch per-tenant analytics for admin', { tenantId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to fetch tenant analytics' });
   }
 });
 

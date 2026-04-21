@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -88,6 +89,7 @@ function formatCents(cents: number): string {
 }
 
 export default function AdminAnalytics() {
+  const navigate = useNavigate();
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin-platform-stats'],
@@ -262,11 +264,26 @@ export default function AdminAnalytics() {
                   <th className="pb-2 font-medium text-right">Calls (30d)</th>
                   <th className="pb-2 font-medium text-right">Total Calls</th>
                   <th className="pb-2 font-medium text-right">Last Activity</th>
+                  <th className="pb-2 font-medium text-right">&nbsp;</th>
                 </tr>
               </thead>
               <tbody>
                 {tenants.map((t) => (
-                  <tr key={t.id} className="border-b border-border/40">
+                  <tr
+                    key={t.id}
+                    className="border-b border-border/40 cursor-pointer hover:bg-white/5 focus-within:bg-white/5 transition-colors outline-none"
+                    onClick={() => navigate(`/admin/analytics/tenants/${t.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/admin/analytics/tenants/${t.id}`);
+                      }
+                    }}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Drill into ${t.name}'s analytics`}
+                    title={`Drill into ${t.name}'s analytics`}
+                  >
                     <td className="py-2.5 font-medium text-text-primary">
                       <div>{t.name}</div>
                       <div className="text-xs text-text-secondary">{t.slug}</div>
@@ -290,6 +307,7 @@ export default function AdminAnalytics() {
                     <td className="py-2.5 text-right text-text-secondary text-xs">
                       {t.last_call_at ? new Date(t.last_call_at).toLocaleDateString() : 'never'}
                     </td>
+                    <td className="py-2.5 text-right text-xs text-purple-300">View →</td>
                   </tr>
                 ))}
               </tbody>
