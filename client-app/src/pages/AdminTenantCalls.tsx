@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, PhoneCall, Search, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, FileText, ListOrdered, PhoneCall, Search, Wrench, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -24,6 +24,9 @@ interface CallRow {
   end_time: string | null;
   duration_seconds: number | null;
   total_cost_cents: number | null;
+  has_transcript?: boolean;
+  has_events?: boolean;
+  tool_count?: number;
 }
 
 interface ApiResp {
@@ -558,6 +561,7 @@ export default function AdminTenantCalls() {
                   <th className="px-5 py-3 text-text-secondary font-medium">Status</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Caller</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Duration</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">Data</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Started</th>
                 </tr>
               </thead>
@@ -577,6 +581,40 @@ export default function AdminTenantCalls() {
                     <td className="px-5 py-3 text-text-secondary">{c.lifecycle_state}</td>
                     <td className="px-5 py-3 text-text-secondary font-mono text-xs">{c.caller_number || '--'}</td>
                     <td className="px-5 py-3 text-text-secondary">{c.duration_seconds ? `${c.duration_seconds}s` : '--'}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5">
+                        {c.has_transcript ? (
+                          <span
+                            title="Transcript available"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                          >
+                            <FileText className="h-3 w-3" />
+                            Transcript
+                          </span>
+                        ) : null}
+                        {c.has_events ? (
+                          <span
+                            title="Lifecycle events recorded"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                          >
+                            <ListOrdered className="h-3 w-3" />
+                            Events
+                          </span>
+                        ) : null}
+                        {c.tool_count && c.tool_count > 0 ? (
+                          <span
+                            title={`${c.tool_count} tool execution${c.tool_count === 1 ? '' : 's'}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                          >
+                            <Wrench className="h-3 w-3" />
+                            {c.tool_count}
+                          </span>
+                        ) : null}
+                        {!c.has_transcript && !c.has_events && !(c.tool_count && c.tool_count > 0) ? (
+                          <span className="text-xs text-text-muted">—</span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="px-5 py-3 text-text-secondary">{c.start_time ? format(new Date(c.start_time), 'MMM d, h:mm a') : '--'}</td>
                   </tr>
                 ))}

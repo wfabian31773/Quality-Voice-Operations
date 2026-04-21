@@ -145,7 +145,19 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
                 cs.caller_number, cs.called_number,
                 cs.start_time, cs.end_time, cs.duration_seconds,
                 cs.total_cost_cents, cs.environment, cs.created_at,
-                a.name AS agent_name
+                a.name AS agent_name,
+                EXISTS (
+                  SELECT 1 FROM call_transcripts ct
+                  WHERE ct.call_session_id = cs.id AND ct.tenant_id = cs.tenant_id
+                ) AS has_transcript,
+                EXISTS (
+                  SELECT 1 FROM call_events ce
+                  WHERE ce.call_session_id = cs.id AND ce.tenant_id = cs.tenant_id
+                ) AS has_events,
+                (
+                  SELECT COUNT(*)::int FROM tool_invocations ti
+                  WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
+                ) AS tool_count
          FROM call_sessions cs
          LEFT JOIN agents a ON a.id = cs.agent_id
          WHERE ${where}
