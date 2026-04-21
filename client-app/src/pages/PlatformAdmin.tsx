@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -6,6 +6,7 @@ import {
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
+  LifeBuoy, Mail,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -502,7 +503,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -649,6 +650,16 @@ export default function PlatformAdmin() {
           }`}
         >
           <span className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> Docs Feedback</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('support')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'support'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><LifeBuoy className="h-4 w-4" /> Support</span>
         </button>
       </div>
 
@@ -835,6 +846,8 @@ export default function PlatformAdmin() {
       )}
 
       {activeTab === 'docs-feedback' && <DocsFeedbackTab />}
+
+      {activeTab === 'support' && <SupportInboxTab />}
     </div>
   );
 }
@@ -986,6 +999,184 @@ function DocsFeedbackTab() {
             ))
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface SupportTicket {
+  id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  user_id: string | null;
+  user_email: string | null;
+  plan: string | null;
+  topic: string;
+  message: string;
+  recent_errors: string | null;
+  context: Record<string, unknown> | null;
+  routed_to: string;
+  status: string;
+  email_message_id: string | null;
+  email_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function SupportInboxTab() {
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'resolved' | 'closed'>('open');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['support-tickets', statusFilter],
+    queryFn: () => api.get<{ tickets: SupportTicket[] }>(`/support/tickets?status=${statusFilter}&limit=200`),
+    refetchInterval: 60_000,
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.patch(`/support/tickets/${id}/status`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['support-tickets'] }),
+  });
+
+  const tickets = data?.tickets ?? [];
+
+  const buildMailto = (t: SupportTicket): string => {
+    if (!t.user_email) return '';
+    const subject = encodeURIComponent(`Re: [QVO Support] ${t.topic.toUpperCase()} (${t.id})`);
+    const body = encodeURIComponent(
+      `Hi,\n\nThanks for reaching out about your ${t.topic} request (ref ${t.id}).\n\n— QVO Support\n\n----- Original message -----\n${t.message}`,
+    );
+    return `mailto:${t.user_email}?subject=${subject}&body=${body}`;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {(['open', 'in_progress', 'resolved', 'closed', 'all'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 text-sm rounded-lg border ${
+                statusFilter === s
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-surface border-border text-muted hover:text-foreground'
+              }`}
+            >
+              {s.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+        <div className="text-xs text-muted">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-secondary">
+              <th className="w-8 px-2"></th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Ticket</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">From</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Topic</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Routed To</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Created</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={9} className="text-center py-12 text-muted">Loading tickets...</td></tr>
+            ) : tickets.length === 0 ? (
+              <tr><td colSpan={9} className="text-center py-12 text-muted">No tickets found</td></tr>
+            ) : (
+              tickets.map((t) => (
+                <Fragment key={t.id}>
+                  <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                    <td className="px-2">
+                      <button
+                        onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
+                        className="p-1 rounded hover:bg-surface-secondary"
+                      >
+                        {expandedId === t.id
+                          ? <ChevronDown className="h-4 w-4 text-muted" />
+                          : <ChevronRight className="h-4 w-4 text-muted" />}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-mono text-xs">{t.id}</div>
+                      {t.email_error && (
+                        <div className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" /> email failed
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{t.user_email ?? '—'}</div>
+                      <div className="text-xs text-muted">{t.tenant_name ?? t.tenant_id ?? '—'}</div>
+                    </td>
+                    <td className="px-4 py-3">{t.topic}</td>
+                    <td className="px-4 py-3"><PlanBadge plan={t.plan ?? 'trial'} /></td>
+                    <td className="px-4 py-3 text-muted text-xs">{t.routed_to}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={t.status}
+                        onChange={(e) => updateStatus.mutate({ id: t.id, status: e.target.value })}
+                        className="text-xs px-2 py-1 rounded border border-border bg-surface"
+                      >
+                        <option value="open">open</option>
+                        <option value="in_progress">in_progress</option>
+                        <option value="resolved">resolved</option>
+                        <option value="closed">closed</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-muted text-xs">{new Date(t.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      {t.user_email && (
+                        <a
+                          href={buildMailto(t)}
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary text-white hover:opacity-90"
+                        >
+                          <Mail className="h-3 w-3" /> Reply
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                  {expandedId === t.id && (
+                    <tr className="bg-surface-secondary/30">
+                      <td colSpan={9} className="px-6 py-4">
+                        <div className="space-y-3">
+                          <div>
+                            <div className="text-xs font-medium text-muted mb-1">Message</div>
+                            <pre className="whitespace-pre-wrap text-sm bg-surface p-3 rounded border border-border">{t.message}</pre>
+                          </div>
+                          {t.recent_errors && (
+                            <div>
+                              <div className="text-xs font-medium text-muted mb-1">Recent errors</div>
+                              <pre className="whitespace-pre-wrap text-xs bg-red-50 dark:bg-red-950/20 p-3 rounded border border-border font-mono">{t.recent_errors}</pre>
+                            </div>
+                          )}
+                          {t.context && Object.keys(t.context).length > 0 && (
+                            <div>
+                              <div className="text-xs font-medium text-muted mb-1">Context</div>
+                              <pre className="text-xs bg-surface p-3 rounded border border-border font-mono">{JSON.stringify(t.context, null, 2)}</pre>
+                            </div>
+                          )}
+                          {t.email_error && (
+                            <div className="text-xs text-red-600">Email delivery error: {t.email_error}</div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

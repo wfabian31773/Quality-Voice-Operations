@@ -306,6 +306,66 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
   }
 });
 
+// ----- Platform admin: support ticket inbox -----
+const TICKET_STATUSES = new Set(['open', 'in_progress', 'resolved', 'closed']);
+
+router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : null;
+  const limit = Math.min(parseInt(String(req.query.limit ?? '100'), 10) || 100, 500);
+  if (status && status !== 'all' && !TICKET_STATUSES.has(status)) {
+    res.status(400).json({ error: 'invalid status filter' });
+    return;
+  }
+  try {
+    const pool = getPlatformPool();
+    const params: unknown[] = [];
+    let where = '';
+    if (status && status !== 'all') {
+      params.push(status);
+      where = `WHERE status = $${params.length}`;
+    }
+    params.push(limit);
+    const r = await pool.query(
+      `SELECT t.id, t.tenant_id, t.user_id, t.user_email, t.plan, t.topic, t.message,
+              t.recent_errors, t.context, t.routed_to, t.status, t.email_message_id,
+              t.email_error, t.created_at, t.updated_at,
+              tn.name AS tenant_name
+       FROM support_tickets t
+       LEFT JOIN tenants tn ON tn.id = t.tenant_id
+       ${where}
+       ORDER BY t.created_at DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+    res.json({ tickets: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load tickets', detail: String(err) });
+  }
+});
+
+router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body ?? {};
+  if (!status || typeof status !== 'string' || !TICKET_STATUSES.has(status)) {
+    res.status(400).json({ error: 'invalid status' });
+    return;
+  }
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `UPDATE support_tickets SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id, status],
+    );
+    if (r.rowCount === 0) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json({ ticket: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update ticket', detail: String(err) });
+  }
+});
+
 // ----- Platform admin: configurable routing (global config; not tenant-scoped) -----
 router.get('/support/routing', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
