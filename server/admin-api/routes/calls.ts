@@ -246,8 +246,160 @@ const getCallEventsHandler: RequestHandler = async (req, res) => {
   }
 };
 
+const listSavedViewsHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT id, name, filters, is_shared, created_by, created_at, updated_at
+       FROM call_saved_views
+       WHERE tenant_id = $1 AND (created_by = $2 OR is_shared = true)
+       ORDER BY name ASC`,
+      [tenantId, userId],
+    );
+    await client.query('COMMIT');
+    return res.json({ views: rows });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to list call saved views', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list saved views' });
+  } finally {
+    client.release();
+  }
+};
+
+const createSavedViewHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { name, filters, is_shared } = req.body as { name?: string; filters?: Record<string, unknown>; is_shared?: boolean };
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (!trimmed) return res.status(400).json({ error: 'name is required' });
+  if (trimmed.length > 255) return res.status(400).json({ error: 'name too long' });
+  if (filters && typeof filters !== 'object') return res.status(400).json({ error: 'filters must be an object' });
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at`,
+      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), userId],
+    );
+    await client.query('COMMIT');
+    return res.status(201).json({ view: rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to create call saved view', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to create saved view' });
+  } finally {
+    client.release();
+  }
+};
+
+const updateSavedViewHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const { name, filters, is_shared } = req.body as { name?: string; filters?: Record<string, unknown>; is_shared?: boolean };
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows: existing } = await client.query(
+      `SELECT created_by FROM call_saved_views WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (existing.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Saved view not found' });
+    }
+    if (existing[0].created_by !== userId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Only the owner can edit this view' });
+    }
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    if (typeof name === 'string') {
+      const trimmed = name.trim();
+      if (!trimmed) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'name cannot be empty' }); }
+      if (trimmed.length > 255) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'name too long' }); }
+      values.push(trimmed); updates.push(`name = $${values.length}`);
+    }
+    if (filters !== undefined) {
+      if (filters && typeof filters !== 'object') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'filters must be an object' }); }
+      values.push(JSON.stringify(filters || {})); updates.push(`filters = $${values.length}`);
+    }
+    if (typeof is_shared === 'boolean') {
+      values.push(is_shared); updates.push(`is_shared = $${values.length}`);
+    }
+    if (updates.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    updates.push(`updated_at = NOW()`);
+    values.push(id, tenantId);
+    const { rows } = await client.query(
+      `UPDATE call_saved_views SET ${updates.join(', ')}
+       WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
+       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at`,
+      values,
+    );
+    await client.query('COMMIT');
+    return res.json({ view: rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to update call saved view', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update saved view' });
+  } finally {
+    client.release();
+  }
+};
+
+const deleteSavedViewHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows: existing } = await client.query(
+      `SELECT created_by FROM call_saved_views WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (existing.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Saved view not found' });
+    }
+    if (existing[0].created_by !== userId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Only the owner can delete this view' });
+    }
+    await client.query(
+      `DELETE FROM call_saved_views WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    await client.query('COMMIT');
+    return res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to delete call saved view', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to delete saved view' });
+  } finally {
+    client.release();
+  }
+};
+
 const router = Router();
 router.get('/calls', requireAuth, listCallsHandler);
+router.get('/call-saved-views', requireAuth, listSavedViewsHandler);
+router.post('/call-saved-views', requireAuth, createSavedViewHandler);
+router.patch('/call-saved-views/:id', requireAuth, updateSavedViewHandler);
+router.delete('/call-saved-views/:id', requireAuth, deleteSavedViewHandler);
 router.get('/calls/:id', requireAuth, getCallHandler);
 router.get('/calls/:id/transcript', requireAuth, getTranscriptHandler);
 router.get('/calls/:id/events', requireAuth, getCallEventsHandler);

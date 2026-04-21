@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
@@ -258,6 +258,28 @@ const EMPTY_FILTERS = {
 
 type FiltersState = typeof EMPTY_FILTERS;
 
+interface SavedView {
+  id: string;
+  name: string;
+  filters: Partial<FiltersState>;
+  is_shared: boolean;
+  created_by: string | null;
+}
+
+function normalizeFilters(input: Partial<FiltersState> | null | undefined): FiltersState {
+  const out: FiltersState = { ...EMPTY_FILTERS };
+  if (!input) return out;
+  (Object.keys(EMPTY_FILTERS) as Array<keyof FiltersState>).forEach((k) => {
+    const v = input[k];
+    if (typeof v === 'string') out[k] = v;
+  });
+  return out;
+}
+
+function filtersEqual(a: FiltersState, b: FiltersState): boolean {
+  return (Object.keys(EMPTY_FILTERS) as Array<keyof FiltersState>).every((k) => (a[k] || '') === (b[k] || ''));
+}
+
 export default function Calls() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1));
@@ -275,6 +297,12 @@ export default function Calls() {
   }));
   const [searchInput, setSearchInput] = useState<string>(searchParams.get('q') ?? '');
   const [showFilters, setShowFilters] = useState(false);
+  const [activeViewId, setActiveViewId] = useState<string | null>(searchParams.get('view'));
+  const [savingView, setSavingView] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
+  const [newViewShared, setNewViewShared] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const limit = 20;
 
   useEffect(() => {
@@ -305,11 +333,116 @@ export default function Calls() {
       if (filters[k]) next.set(k, filters[k]);
     });
     if (page > 1) next.set('page', String(page));
+    if (activeViewId) next.set('view', activeViewId);
     const highlight = searchParams.get('highlight');
     if (highlight) next.set('highlight', highlight);
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, page]);
+  }, [filters, page, activeViewId]);
+
+  const { data: savedViewsData, isSuccess: savedViewsLoaded } = useQuery({
+    queryKey: ['call-saved-views'],
+    queryFn: () => api.get<{ views: SavedView[] }>('/call-saved-views'),
+  });
+  const savedViews = savedViewsData?.views ?? [];
+
+  const activeView = useMemo(
+    () => savedViews.find((v) => v.id === activeViewId) ?? null,
+    [savedViews, activeViewId],
+  );
+
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api.get<{ user: { userId: string } }>('/auth/me'),
+  });
+  const currentUserId = meData?.user?.userId ?? null;
+
+  // Hydrate filters from a deep-link ?view=<id>: when the saved views load and the
+  // active view's filters differ from current state (because the URL only contained
+  // ?view=<id> with no individual filter params), apply the view's filters once.
+  const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false);
+  useEffect(() => {
+    if (hasHydratedFromUrl) return;
+    if (!activeViewId) { setHasHydratedFromUrl(true); return; }
+    if (!savedViewsLoaded) return; // wait for the query to complete (success, even if empty)
+    const match = savedViews.find((v) => v.id === activeViewId);
+    if (!match) {
+      // Stale id in URL — drop it.
+      setActiveViewId(null);
+      setHasHydratedFromUrl(true);
+      return;
+    }
+    const viewFilters = normalizeFilters(match.filters);
+    // Only overwrite filter state if the URL didn't already specify a richer filter set
+    // (any individual filter param wins over the saved view to preserve manual deep links).
+    const urlHasExplicitFilters = (Object.keys(EMPTY_FILTERS) as Array<keyof FiltersState>).some(
+      (k) => searchParams.get(k),
+    );
+    if (!urlHasExplicitFilters) {
+      setFilters(viewFilters);
+      setSearchInput(viewFilters.q);
+    }
+    setHasHydratedFromUrl(true);
+  }, [activeViewId, savedViews, savedViewsLoaded, hasHydratedFromUrl, searchParams]);
+
+  // If the active view's stored filters drift from the current filters, treat it as detached.
+  // Suppress dirty state until URL hydration finishes to avoid a flicker of "Update view".
+  const isViewDirty = useMemo(() => {
+    if (!activeView || !hasHydratedFromUrl) return false;
+    return !filtersEqual(filters, normalizeFilters(activeView.filters));
+  }, [activeView, filters, hasHydratedFromUrl]);
+
+  const applySavedView = (view: SavedView) => {
+    const next = normalizeFilters(view.filters);
+    setFilters(next);
+    setSearchInput(next.q);
+    setActiveViewId(view.id);
+    setPage(1);
+  };
+
+  const handleSaveView = async () => {
+    const name = newViewName.trim();
+    if (!name) {
+      setSaveError('Please enter a name');
+      return;
+    }
+    setSaveError(null);
+    try {
+      const res = await api.post<{ view: SavedView }>('/call-saved-views', {
+        name,
+        filters,
+        is_shared: newViewShared,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+      setActiveViewId(res.view.id);
+      setSavingView(false);
+      setNewViewName('');
+      setNewViewShared(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save view');
+    }
+  };
+
+  const handleUpdateActiveView = async () => {
+    if (!activeView) return;
+    try {
+      await api.patch(`/call-saved-views/${activeView.id}`, { filters });
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to update view');
+    }
+  };
+
+  const handleDeleteView = async (id: string) => {
+    if (!window.confirm('Delete this saved view?')) return;
+    try {
+      await api.delete(`/call-saved-views/${id}`);
+      if (activeViewId === id) setActiveViewId(null);
+      await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to delete view');
+    }
+  };
 
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'filter-list'],
@@ -356,6 +489,7 @@ export default function Calls() {
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS);
     setSearchInput('');
+    setActiveViewId(null);
     setPage(1);
   };
 
@@ -368,11 +502,112 @@ export default function Calls() {
           <h1 className="text-2xl font-bold text-text-primary">Conversations</h1>
           <p className="text-sm text-text-secondary mt-1">Browse and review past calls with transcripts</p>
         </div>
-        <button onClick={() => setShowFilters(!showFilters)}
-          className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border transition ${activeFilterCount > 0 ? 'border-primary text-primary bg-primary-light' : 'border-border text-text-secondary hover:bg-surface-hover'}`}>
-          <Filter className="h-4 w-4" /> Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
-        </button>
+        <div className="flex items-center gap-2">
+          {activeView && isViewDirty && (
+            <button
+              onClick={handleUpdateActiveView}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
+              title={`Save current filters into "${activeView.name}"`}
+            >
+              <Star className="h-4 w-4" /> Update view
+            </button>
+          )}
+          {activeFilterCount > 0 && !savingView && (
+            <button
+              onClick={() => { setSavingView(true); setSaveError(null); setNewViewName(''); setNewViewShared(false); }}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
+            >
+              <Bookmark className="h-4 w-4" /> Save view
+            </button>
+          )}
+          <button onClick={() => setShowFilters(!showFilters)}
+            className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border transition ${activeFilterCount > 0 ? 'border-primary text-primary bg-primary-light' : 'border-border text-text-secondary hover:bg-surface-hover'}`}>
+            <Filter className="h-4 w-4" /> Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+          </button>
+        </div>
       </div>
+
+      {(savedViews.length > 0 || savingView) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {savedViews.map((view) => {
+            const isActive = activeViewId === view.id && !isViewDirty;
+            const isOwner = !!currentUserId && view.created_by === currentUserId;
+            return (
+              <div
+                key={view.id}
+                className={`group inline-flex items-center gap-1 rounded-full border text-sm transition ${isActive ? 'border-primary bg-primary-light text-primary' : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'}`}
+              >
+                <button
+                  onClick={() => applySavedView(view)}
+                  className={`inline-flex items-center gap-1.5 pl-3 ${isOwner ? 'pr-2' : 'pr-3'} py-1.5 font-medium`}
+                  title={view.is_shared ? (isOwner ? 'Shared with team' : 'Shared by a teammate') : 'Personal view'}
+                >
+                  {view.is_shared ? <Users className="h-3.5 w-3.5" /> : <Star className="h-3.5 w-3.5" />}
+                  {view.name}
+                </button>
+                {isOwner && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteView(view.id); }}
+                    className="p-1 mr-1 rounded-full text-text-muted hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                    title="Delete view"
+                    aria-label={`Delete saved view ${view.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {activeViewId && (
+            <button
+              onClick={() => { setActiveViewId(null); clearFilters(); }}
+              className="text-xs text-text-secondary hover:text-text-primary px-2 py-1"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      )}
+
+      {savingView && (
+        <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-text-primary mb-2">Save current filters as a view</h3>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              autoFocus
+              type="text"
+              value={newViewName}
+              onChange={(e) => setNewViewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveView(); if (e.key === 'Escape') setSavingView(false); }}
+              placeholder='e.g. "Failed tools, last 24h"'
+              maxLength={120}
+              className="flex-1 min-w-[220px] px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            />
+            <label className="inline-flex items-center gap-2 text-sm text-text-primary">
+              <input
+                type="checkbox"
+                checked={newViewShared}
+                onChange={(e) => setNewViewShared(e.target.checked)}
+                className="rounded border-border"
+              />
+              Share with my team
+            </label>
+            <button
+              onClick={handleSaveView}
+              className="text-sm font-medium px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => { setSavingView(false); setSaveError(null); }}
+              className="text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
+            >
+              Cancel
+            </button>
+          </div>
+          {saveError && <p className="text-xs text-red-600 mt-2">{saveError}</p>}
+        </div>
+      )}
 
       {showFilters && (
         <div className="bg-surface border border-border rounded-xl p-4 shadow-sm space-y-3">
