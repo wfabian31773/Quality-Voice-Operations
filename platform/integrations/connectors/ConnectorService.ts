@@ -4,6 +4,7 @@ import { TicketingConnectorAdapter } from './adapters/ticketing';
 import { TwilioSmsConnectorAdapter } from './adapters/sms';
 import { HubSpotConnectorAdapter } from './adapters/hubspot';
 import { GoogleCalendarConnectorAdapter } from './adapters/google-calendar';
+import { OutlookCalendarConnectorAdapter } from './adapters/outlook-calendar';
 import { SlackConnectorAdapter } from './adapters/slack';
 import { ZapierWebhookConnectorAdapter } from './adapters/zapier';
 import { recordIntegrationEvent } from '../../core/observability/traceLogger';
@@ -12,14 +13,29 @@ import type { TenantId } from '../../core/types';
 
 const logger = createLogger('CONNECTOR_SERVICE');
 
+const googleCalendarAdapter = new GoogleCalendarConnectorAdapter();
+const outlookCalendarAdapter = new OutlookCalendarConnectorAdapter();
+
+const SCHEDULING_ADAPTERS: Record<string, ConnectorAdapter> = {
+  'google-calendar': googleCalendarAdapter,
+  'outlook-calendar': outlookCalendarAdapter,
+};
+
 const ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
   ticketing: new TicketingConnectorAdapter(),
   sms: new TwilioSmsConnectorAdapter(),
   crm: new HubSpotConnectorAdapter(),
-  scheduling: new GoogleCalendarConnectorAdapter(),
+  scheduling: googleCalendarAdapter,
   webhook: new ZapierWebhookConnectorAdapter(),
   custom: new SlackConnectorAdapter(),
 };
+
+function resolveAdapter(connectorType: ConnectorType, provider?: string): ConnectorAdapter | undefined {
+  if (connectorType === 'scheduling' && provider && SCHEDULING_ADAPTERS[provider]) {
+    return SCHEDULING_ADAPTERS[provider];
+  }
+  return ADAPTER_REGISTRY[connectorType];
+}
 
 const STANDARD_EVENT_TYPES = new Set<string>([
   'call.completed',
@@ -57,11 +73,6 @@ export class ConnectorService {
     connectorType: ConnectorType,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const adapter = ADAPTER_REGISTRY[connectorType];
-    if (!adapter) {
-      return { success: false, error: `No adapter registered for connector type: ${connectorType}` };
-    }
-
     const config = await getConnectorConfig(tenantId, connectorType);
     if (!config) {
       logger.warn('No connector configured for type', { tenantId, connectorType });
@@ -73,6 +84,11 @@ export class ConnectorService {
 
     if (!config.isEnabled) {
       return { success: false, error: `${connectorType} connector is disabled for this tenant` };
+    }
+
+    const adapter = resolveAdapter(connectorType, config.provider);
+    if (!adapter) {
+      return { success: false, error: `No adapter registered for connector type: ${connectorType} (${config.provider})` };
     }
 
     logger.info('Dispatching to connector', { tenantId, connectorType, provider: config.provider, payloadType: payload.type });
@@ -118,14 +134,14 @@ export class ConnectorService {
     fallbackType: ConnectorType,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const adapter = ADAPTER_REGISTRY[fallbackType];
-    if (!adapter) {
-      return { success: false, error: `No fallback adapter for connector type: ${fallbackType}` };
-    }
-
     const config = await getConnectorConfig(tenantId, fallbackType);
     if (!config || !config.isEnabled) {
       return { success: false, error: `Fallback connector ${fallbackType} not available` };
+    }
+
+    const adapter = resolveAdapter(fallbackType, config.provider);
+    if (!adapter) {
+      return { success: false, error: `No fallback adapter for connector type: ${fallbackType}` };
     }
 
     logger.info('Executing fallback connector', { tenantId, fallbackType, provider: config.provider });

@@ -261,6 +261,111 @@ router.get('/connectors/oauth/google/callback', async (req, res) => {
   }
 });
 
+router.get('/connectors/oauth/outlook/init', requireAuth, requireRole('manager'), (req, res) => {
+  const clientId = process.env.MICROSOFT_CLIENT_ID ?? '';
+  if (!clientId) {
+    return res.status(400).json({ error: 'Microsoft OAuth not configured: MICROSOFT_CLIENT_ID missing' });
+  }
+
+  const baseUrl = getBaseUrl(req);
+  const redirectUri = `${baseUrl}/connectors/oauth/outlook/callback`;
+  const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'outlook' });
+  const tenant = process.env.MICROSOFT_TENANT_ID || 'common';
+
+  const scopes = [
+    'offline_access',
+    'https://graph.microsoft.com/Calendars.ReadWrite',
+    'https://graph.microsoft.com/User.Read',
+  ].join(' ');
+
+  const authUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&response_mode=query&scope=${encodeURIComponent(scopes)}&prompt=consent&state=${state}`;
+
+  return res.json({ authUrl, redirectUri });
+});
+
+router.get('/connectors/oauth/outlook/callback', async (req, res) => {
+  const { code, state } = req.query as { code?: string; state?: string };
+
+  if (!code || !state) {
+    return res.status(400).send('<html><body><script>window.close();</script>OAuth failed: missing code or state</body></html>');
+  }
+
+  const clientId = process.env.MICROSOFT_CLIENT_ID ?? '';
+  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET ?? '';
+
+  if (!clientId || !clientSecret) {
+    return res.status(500).send('<html><body><script>window.close();</script>Microsoft OAuth not configured</body></html>');
+  }
+
+  const parsed = verifyState(state, 'outlook');
+  if (!parsed) {
+    logger.warn('Outlook OAuth callback: invalid or expired state');
+    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+  }
+
+  try {
+    const baseUrl = getBaseUrl(req);
+    const tenant = process.env.MICROSOFT_TENANT_ID || 'common';
+    const tokenRes = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: `${baseUrl}/connectors/oauth/outlook/callback`,
+        code,
+        scope: 'offline_access https://graph.microsoft.com/Calendars.ReadWrite https://graph.microsoft.com/User.Read',
+      }).toString(),
+    });
+
+    if (!tokenRes.ok) {
+      const text = await tokenRes.text();
+      logger.error('Outlook token exchange failed', { status: tokenRes.status, body: text.slice(0, 200) });
+      return res.status(500).send('<html><body><script>window.close();</script>Token exchange failed</body></html>');
+    }
+
+    const tokens = await tokenRes.json() as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+    };
+
+    await upsertConnector(parsed.tenantId, {
+      connectorType: 'scheduling',
+      provider: 'outlook-calendar',
+      name: 'Outlook Calendar',
+      credentials: {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token ?? '',
+        client_id: clientId,
+        client_secret: clientSecret,
+        token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+      },
+      isEnabled: true,
+    });
+
+    logger.info('Outlook Calendar OAuth connected', { tenantId: parsed.tenantId });
+    writeAuditLog({
+      tenantId: parsed.tenantId,
+      actorUserId: parsed.userId,
+      actorRole: 'manager',
+      action: 'connector.oauth_connected',
+      resourceType: 'connector',
+      resourceId: 'outlook-calendar',
+      changes: { provider: 'outlook-calendar', connectorType: 'scheduling' },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    const appOrigin = getAppOrigin(req);
+    return res.send(oauthSuccessHtml('outlook-calendar', appOrigin, 'Outlook Calendar'));
+  } catch (err) {
+    logger.error('Outlook OAuth callback failed', { error: String(err) });
+    return res.status(500).send('<html><body><script>window.close();</script>OAuth failed</body></html>');
+  }
+});
+
 router.get('/connectors/oauth/slack/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.SLACK_CLIENT_ID ?? '';
   if (!clientId) {

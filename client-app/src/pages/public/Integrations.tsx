@@ -17,6 +17,13 @@ const primaryIntegrations = [
     features: ['Real-time availability', 'Automatic booking', 'Conflict detection', 'Reminder sync'],
   },
   {
+    logoId: 'outlook-calendar',
+    category: 'Scheduling',
+    title: 'Outlook Calendar',
+    desc: 'Sync appointments to Microsoft 365 calendars via Microsoft Graph. OAuth sign-in, timezone-aware booking, and real-time availability checks.',
+    features: ['Microsoft 365 sign-in', 'Timezone-aware events', 'Conflict detection', 'Calendars.ReadWrite scope'],
+  },
+  {
     logoId: 'twilio',
     category: 'Telephony',
     title: 'Twilio',
