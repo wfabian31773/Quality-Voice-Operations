@@ -47,6 +47,8 @@ interface SubmissionRow {
   status: string;
   reviewNotes: string | null;
   reviewedBy: string | null;
+  reviewerName: string | null;
+  reviewerEmail: string | null;
   reviewedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -334,7 +336,7 @@ function AuditTab() {
                   <div className="text-xs text-text-secondary">{s.developerEmail}</div>
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                <td className="px-4 py-3 text-text-secondary text-xs">{s.reviewedBy ?? '—'}</td>
+                <td className="px-4 py-3 text-text-secondary text-xs">{s.reviewerName ?? s.reviewerEmail ?? s.reviewedBy ?? '—'}</td>
                 <td className="px-4 py-3 text-text-secondary text-xs">
                   {s.reviewedAt ? new Date(s.reviewedAt).toLocaleString() : '—'}
                 </td>
@@ -379,34 +381,46 @@ function SubmissionsTab() {
               </tr>
             </thead>
             <tbody>
-              {submissions.map((s) => (
-                <tr key={s.id} className="border-t border-border/40">
-                  <td className="px-4 py-3 text-text-primary">
-                    <div className="font-medium">{s.packageName} <span className="text-xs text-text-secondary">v{s.version}</span></div>
-                    <div className="text-xs text-text-secondary truncate max-w-md">{s.shortDescription ?? s.description}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{s.developerName}</div>
-                    <div className="text-xs text-text-secondary">{s.developerEmail}</div>
-                  </td>
-                  <td className="px-4 py-3 capitalize">{s.marketplaceCategory.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={s.status} />
-                  </td>
-                  <td className="px-4 py-3 text-text-secondary text-xs">
-                    {new Date(s.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setReviewing(s)}
-                      disabled={!['submitted', 'in_review'].includes(s.status)}
-                      className="px-3 py-1 text-xs font-medium rounded bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      Review
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {submissions.map((s) => {
+                const isPending = ['submitted', 'in_review'].includes(s.status);
+                return (
+                  <tr key={s.id} className="border-t border-border/40 align-top">
+                    <td className="px-4 py-3 text-text-primary">
+                      <div className="font-medium">{s.packageName} <span className="text-xs text-text-secondary">v{s.version}</span></div>
+                      <div className="text-xs text-text-secondary truncate max-w-md">{s.shortDescription ?? s.description}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{s.developerName}</div>
+                      <div className="text-xs text-text-secondary">{s.developerEmail}</div>
+                    </td>
+                    <td className="px-4 py-3 capitalize">{s.marketplaceCategory.replace(/_/g, ' ')}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={s.status} />
+                      {!isPending && s.reviewedAt && (
+                        <div className="mt-1 text-xs text-text-secondary space-y-0.5">
+                          <div>by {s.reviewerName ?? s.reviewerEmail ?? s.reviewedBy ?? 'unknown'}</div>
+                          <div>{new Date(s.reviewedAt).toLocaleString()}</div>
+                          {s.reviewNotes && (
+                            <div className="italic max-w-xs truncate" title={s.reviewNotes}>"{s.reviewNotes}"</div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-text-secondary text-xs">
+                      {new Date(s.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => setReviewing(s)}
+                        disabled={!isPending}
+                        className="px-3 py-1 text-xs font-medium rounded bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

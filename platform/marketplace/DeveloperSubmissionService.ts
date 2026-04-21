@@ -36,6 +36,8 @@ export interface Submission {
   status: string;
   reviewNotes: string | null;
   reviewedBy: string | null;
+  reviewerName: string | null;
+  reviewerEmail: string | null;
   reviewedAt: string | null;
   templateId: string | null;
   createdAt: string;
@@ -183,10 +185,19 @@ export async function listSubmissions(options: {
   const limit = Math.min(options.limit ?? 50, 100);
   const offset = options.offset ?? 0;
 
+  const dsWhere = where.replace(/\b(developer_id|status)\b/g, 'ds.$1');
+
   const [countResult, dataResult] = await Promise.all([
-    pool.query(`SELECT COUNT(*)::int AS total FROM developer_submissions ${where}`, params),
+    pool.query(`SELECT COUNT(*)::int AS total FROM developer_submissions ds ${dsWhere}`, params),
     pool.query(
-      `SELECT * FROM developer_submissions ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
+      `SELECT ds.*,
+              u.email AS reviewer_email,
+              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS reviewer_name
+       FROM developer_submissions ds
+       LEFT JOIN users u ON u.id = ds.reviewed_by
+       ${dsWhere}
+       ORDER BY ds.created_at DESC
+       LIMIT $${idx++} OFFSET $${idx++}`,
       [...params, limit, offset],
     ),
   ]);
@@ -362,6 +373,8 @@ function formatSubmission(row: Record<string, unknown>): Submission {
     status: row.status as string,
     reviewNotes: row.review_notes as string | null,
     reviewedBy: row.reviewed_by as string | null,
+    reviewerName: (row.reviewer_name as string | null) ?? null,
+    reviewerEmail: (row.reviewer_email as string | null) ?? null,
     reviewedAt: row.reviewed_at as string | null,
     templateId: row.template_id as string | null,
     createdAt: row.created_at as string,
