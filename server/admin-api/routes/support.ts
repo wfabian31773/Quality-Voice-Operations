@@ -749,13 +749,41 @@ router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, a
   }
   try {
     const pool = getPlatformPool();
+    const before = await pool.query<{ status: string }>(
+      `SELECT status FROM support_tickets WHERE id = $1`,
+      [id],
+    );
+    if (before.rowCount === 0) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    const previousStatus = before.rows[0].status;
     const r = await pool.query(
       `UPDATE support_tickets SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id, status],
     );
-    if (r.rowCount === 0) {
-      res.status(404).json({ error: 'Not found' });
-      return;
+    if (previousStatus !== status) {
+      const actorEmail = req.user?.email ?? null;
+      const actorId = req.user?.userId ?? null;
+      const actorLabel = actorEmail ?? actorId ?? 'admin';
+      const verbMap: Record<string, string> = {
+        open: 'Reopened',
+        in_progress: 'Marked in progress',
+        resolved: 'Resolved',
+        closed: 'Closed',
+      };
+      const verb = verbMap[status] ?? `Status changed to ${status}`;
+      const body = `${verb} by ${actorLabel}`;
+      try {
+        await pool.query(
+          `INSERT INTO support_ticket_replies
+             (ticket_id, direction, author_user_id, author_email, body, source)
+           VALUES ($1, 'system', $2, $3, $4, 'status_change')`,
+          [id, actorId, actorEmail, body],
+        );
+      } catch (err) {
+        logger.warn('Failed to record system status entry', { ticketId: id, error: String(err) });
+      }
     }
     res.json({ ticket: r.rows[0] });
   } catch (err) {

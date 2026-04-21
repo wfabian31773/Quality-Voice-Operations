@@ -1361,7 +1361,7 @@ interface SupportTicket {
 interface SupportReply {
   id: number;
   ticket_id: string;
-  direction: 'outbound' | 'inbound';
+  direction: 'outbound' | 'inbound' | 'system';
   author_user_id: string | null;
   author_email: string | null;
   body: string;
@@ -1552,6 +1552,18 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
     },
   });
 
+  const changeStatus = useMutation({
+    mutationFn: (status: string) =>
+      api.patch(`/support/tickets/${ticket.id}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-stats'] });
+    },
+  });
+
+  const isResolved = ticket.status === 'resolved' || ticket.status === 'closed';
+
   const replies = data?.replies ?? [];
   const trimmed = draft.trim();
   const sendError = sendReply.error instanceof Error ? sendReply.error.message : null;
@@ -1593,6 +1605,16 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
             <div className="text-xs text-muted italic">No replies yet.</div>
           ) : (
             replies.map((r) => {
+              if (r.direction === 'system') {
+                return (
+                  <div
+                    key={r.id}
+                    className="text-xs text-muted italic text-center py-1.5 px-3 border-y border-dashed border-border"
+                  >
+                    {r.body} · {new Date(r.created_at).toLocaleString()}
+                  </div>
+                );
+              }
               const isOutbound = r.direction === 'outbound';
               let badge: { label: string; className: string; title: string } | null = null;
               if (isOutbound) {
@@ -1665,20 +1687,37 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
             placeholder="Type your reply…"
             className="w-full text-sm rounded-lg border border-border bg-surface p-3 focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="text-xs text-muted">
               Sent via the same SMTP path. Customer replies thread back automatically.
             </div>
-            <button
-              type="button"
-              onClick={() => trimmed && sendReply.mutate(trimmed)}
-              disabled={!trimmed || sendReply.isPending || !ticket.user_email}
-              className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-primary text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              {sendReply.isPending ? 'Sending…' : 'Send reply'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => changeStatus.mutate(isResolved ? 'open' : 'resolved')}
+                disabled={changeStatus.isPending}
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {changeStatus.isPending
+                  ? 'Updating…'
+                  : isResolved
+                    ? 'Reopen ticket'
+                    : 'Mark resolved'}
+              </button>
+              <button
+                type="button"
+                onClick={() => trimmed && sendReply.mutate(trimmed)}
+                disabled={!trimmed || sendReply.isPending || !ticket.user_email}
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-primary text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                {sendReply.isPending ? 'Sending…' : 'Send reply'}
+              </button>
+            </div>
           </div>
+          {changeStatus.error instanceof Error && (
+            <div className="text-xs text-red-600">{changeStatus.error.message}</div>
+          )}
           {sendError && <div className="text-xs text-red-600">{sendError}</div>}
           {lastReply && !sendError && (
             <div className="text-xs text-green-600">
