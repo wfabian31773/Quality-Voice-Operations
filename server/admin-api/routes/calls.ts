@@ -255,11 +255,14 @@ const listSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT id, name, filters, is_shared, is_pinned, pin_order, created_by, created_at, updated_at,
-              digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count
-       FROM call_saved_views
-       WHERE tenant_id = $1 AND (created_by = $2 OR is_shared = true)
-       ORDER BY is_pinned DESC, pin_order ASC, name ASC`,
+      `SELECT v.id, v.name, v.filters, v.is_shared, v.created_by, v.created_at, v.updated_at,
+              v.digest_enabled, v.digest_subscribers, v.digest_last_run_at, v.digest_last_match_count,
+              (p.user_id IS NOT NULL) AS is_pinned,
+              p.pin_order
+       FROM call_saved_views v
+       LEFT JOIN call_saved_view_pins p ON p.view_id = v.id AND p.user_id = $2
+       WHERE v.tenant_id = $1 AND (v.created_by = $2 OR v.is_shared = true)
+       ORDER BY (p.user_id IS NOT NULL) DESC, p.pin_order ASC NULLS LAST, v.name ASC`,
       [tenantId, userId],
     );
     await client.query('COMMIT');
@@ -378,10 +381,12 @@ const listPinnedSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows: views } = await client.query(
-      `SELECT id, name, filters, is_shared, is_pinned, pin_order, created_by
-       FROM call_saved_views
-       WHERE tenant_id = $1 AND is_pinned = true AND (created_by = $2 OR is_shared = true)
-       ORDER BY pin_order ASC, name ASC`,
+      `SELECT v.id, v.name, v.filters, v.is_shared, v.created_by, true AS is_pinned, p.pin_order
+       FROM call_saved_view_pins p
+       JOIN call_saved_views v ON v.id = p.view_id
+       WHERE p.tenant_id = $1 AND p.user_id = $2
+         AND (v.created_by = $2 OR v.is_shared = true)
+       ORDER BY p.pin_order ASC, v.name ASC`,
       [tenantId, userId],
     );
     const enriched = await Promise.all(
@@ -448,12 +453,29 @@ const createSavedViewHandler: RequestHandler = async (req, res) => {
       allowedSubs = allowed;
     }
     const { rows } = await client.query(
-      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, is_pinned, created_by, digest_enabled, digest_subscribers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, name, filters, is_shared, is_pinned, pin_order, created_by, created_at, updated_at,
+      `INSERT INTO call_saved_views (tenant_id, name, filters, is_shared, created_by, digest_enabled, digest_subscribers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, filters, is_shared, created_by, created_at, updated_at,
                  digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
-      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), Boolean(is_pinned), userId, Boolean(digest_enabled), allowedSubs],
+      [tenantId, trimmed, JSON.stringify(filters || {}), Boolean(is_shared), userId, Boolean(digest_enabled), allowedSubs],
     );
+    let createdPinOrder: number | null = null;
+    if (is_pinned === true) {
+      const { rows: maxRows } = await client.query(
+        `SELECT COALESCE(MAX(pin_order), -1) + 1 AS next_order
+           FROM call_saved_view_pins
+          WHERE tenant_id = $1 AND user_id = $2`,
+        [tenantId, userId],
+      );
+      createdPinOrder = Number(maxRows[0]?.next_order ?? 0);
+      await client.query(
+        `INSERT INTO call_saved_view_pins (user_id, view_id, tenant_id, pin_order)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [userId, rows[0].id, tenantId, createdPinOrder],
+      );
+    }
+    rows[0].is_pinned = is_pinned === true;
+    rows[0].pin_order = createdPinOrder;
     await client.query('COMMIT');
     if (allowedSubs.length > 0) {
       void notifySubscriberChanges({
@@ -506,15 +528,21 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     const currentSubs: string[] = Array.isArray(existing[0].digest_subscribers)
       ? (existing[0].digest_subscribers as string[]).map((e) => String(e).toLowerCase())
       : [];
-    // Allow non-owners to edit only their own digest_subscribers entry on a shared view.
+    // Allow non-owners to edit only their own digest_subscribers entry or toggle their own
+    // sidebar pin on a shared view.
     const onlyDigestSubsChange =
       name === undefined && filters === undefined && is_shared === undefined && is_pinned === undefined &&
       digest_enabled === undefined && digest_subscribers !== undefined;
+    const onlyPinChange =
+      name === undefined && filters === undefined && is_shared === undefined && digest_enabled === undefined &&
+      digest_subscribers === undefined && typeof is_pinned === 'boolean';
     if (!isOwner) {
-      if (!(isShared && onlyDigestSubsChange)) {
+      if (!(isShared && (onlyDigestSubsChange || onlyPinChange))) {
         await client.query('ROLLBACK');
         return res.status(403).json({ error: 'Only the owner can edit this view' });
       }
+    }
+    if (!isOwner && onlyDigestSubsChange) {
       // Non-owner subscriber edits are constrained to add/remove only the requester's own
       // verified account email, against the existing subscriber list. They cannot replace
       // the list, add other people, or invite arbitrary external addresses.
@@ -564,21 +592,6 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
     if (typeof is_shared === 'boolean') {
       values.push(is_shared); updates.push(`is_shared = $${values.length}`);
     }
-    if (typeof is_pinned === 'boolean') {
-      values.push(is_pinned); updates.push(`is_pinned = $${values.length}`);
-      // When a user pins a view, append it to the bottom of their existing pinned list
-      // so the order feels intuitive ("new pins appear last") instead of jumping to top.
-      if (is_pinned) {
-        const { rows: maxRows } = await client.query(
-          `SELECT COALESCE(MAX(pin_order), -1) + 1 AS next_order
-             FROM call_saved_views
-            WHERE tenant_id = $1 AND is_pinned = true AND created_by = $2 AND id <> $3`,
-          [tenantId, userId, id],
-        );
-        const nextOrder = Number(maxRows[0]?.next_order ?? 0);
-        values.push(nextOrder); updates.push(`pin_order = $${values.length}`);
-      }
-    }
     if (typeof digest_enabled === 'boolean') {
       values.push(digest_enabled); updates.push(`digest_enabled = $${values.length}`);
     }
@@ -609,19 +622,62 @@ const updateSavedViewHandler: RequestHandler = async (req, res) => {
       finalSubsForNotify = subs;
       values.push(subs); updates.push(`digest_subscribers = $${values.length}`);
     }
-    if (updates.length === 0) {
+    if (updates.length === 0 && typeof is_pinned !== 'boolean') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No fields to update' });
     }
-    updates.push(`updated_at = NOW()`);
-    values.push(id, tenantId);
-    const { rows } = await client.query(
-      `UPDATE call_saved_views SET ${updates.join(', ')}
-       WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
-       RETURNING id, name, filters, is_shared, is_pinned, pin_order, created_by, created_at, updated_at,
-                 digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
-      values,
-    );
+    let rows: Array<Record<string, unknown>>;
+    if (updates.length > 0) {
+      updates.push(`updated_at = NOW()`);
+      values.push(id, tenantId);
+      const result = await client.query(
+        `UPDATE call_saved_views SET ${updates.join(', ')}
+         WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
+         RETURNING id, name, filters, is_shared, created_by, created_at, updated_at,
+                   digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count`,
+        values,
+      );
+      rows = result.rows;
+    } else {
+      const result = await client.query(
+        `SELECT id, name, filters, is_shared, created_by, created_at, updated_at,
+                digest_enabled, digest_subscribers, digest_last_run_at, digest_last_match_count
+         FROM call_saved_views WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
+      );
+      rows = result.rows;
+    }
+    if (typeof is_pinned === 'boolean') {
+      if (is_pinned) {
+        // Append the new pin to the bottom of this user's existing pinned list
+        // so the order feels intuitive ("new pins appear last") instead of jumping to top.
+        const { rows: maxRows } = await client.query(
+          `SELECT COALESCE(MAX(pin_order), -1) + 1 AS next_order
+             FROM call_saved_view_pins
+            WHERE tenant_id = $1 AND user_id = $2 AND view_id <> $3`,
+          [tenantId, userId, id],
+        );
+        const nextOrder = Number(maxRows[0]?.next_order ?? 0);
+        await client.query(
+          `INSERT INTO call_saved_view_pins (user_id, view_id, tenant_id, pin_order)
+           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+          [userId, id, tenantId, nextOrder],
+        );
+      } else {
+        await client.query(
+          `DELETE FROM call_saved_view_pins WHERE user_id = $1 AND view_id = $2`,
+          [userId, id],
+        );
+      }
+    }
+    if (rows[0]) {
+      const { rows: pinRows } = await client.query(
+        `SELECT pin_order FROM call_saved_view_pins WHERE user_id = $1 AND view_id = $2 LIMIT 1`,
+        [userId, id],
+      );
+      rows[0].is_pinned = pinRows.length > 0;
+      rows[0].pin_order = pinRows[0]?.pin_order ?? null;
+    }
     await client.query('COMMIT');
     if (finalSubsForNotify !== null) {
       const { added, removed } = diffSubscribers(currentSubs, finalSubsForNotify);
@@ -702,19 +758,19 @@ const reorderPinnedSavedViewsHandler: RequestHandler = async (req, res) => {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows: existing } = await client.query(
-      `SELECT id FROM call_saved_views
-       WHERE tenant_id = $1 AND is_pinned = true AND id = ANY($2::text[]) AND created_by = $3`,
-      [tenantId, orderedIds, userId],
+      `SELECT view_id FROM call_saved_view_pins
+       WHERE tenant_id = $1 AND user_id = $2 AND view_id = ANY($3::text[])`,
+      [tenantId, userId, orderedIds],
     );
     if (existing.length !== orderedIds.length) {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'You can only reorder pinned views you own' });
+      return res.status(403).json({ error: 'You can only reorder views you have pinned' });
     }
     for (let i = 0; i < orderedIds.length; i++) {
       await client.query(
-        `UPDATE call_saved_views SET pin_order = $1, updated_at = NOW()
-         WHERE id = $2 AND tenant_id = $3`,
-        [i, orderedIds[i], tenantId],
+        `UPDATE call_saved_view_pins SET pin_order = $1
+         WHERE user_id = $2 AND view_id = $3`,
+        [i, userId, orderedIds[i]],
       );
     }
     await client.query('COMMIT');

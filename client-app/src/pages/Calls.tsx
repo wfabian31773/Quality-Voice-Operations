@@ -671,11 +671,13 @@ export default function Calls() {
       </div>
 
       {(savedViews.length > 0 || savingView) && (() => {
-        const ownedPinnedOrdered = savedViews
-          .filter((v) => v.is_pinned && !!currentUserId && v.created_by === currentUserId)
-          .sort((a, b) => (a.pin_order - b.pin_order) || a.name.localeCompare(b.name));
-        const ownedPinnedIndex = new Map(ownedPinnedOrdered.map((v, i) => [v.id, i]));
-        const pinnedIds = ownedPinnedOrdered.map((v) => v.id);
+        // Pins are per-user, so any view this user has pinned (whether they own it or not)
+        // participates in their personal drag-to-reorder list.
+        const myPinnedOrdered = savedViews
+          .filter((v) => v.is_pinned)
+          .sort((a, b) => ((a.pin_order ?? 0) - (b.pin_order ?? 0)) || a.name.localeCompare(b.name));
+        const myPinnedIndex = new Map(myPinnedOrdered.map((v, i) => [v.id, i]));
+        const pinnedIds = myPinnedOrdered.map((v) => v.id);
 
         const handleDragEnd = (event: DragEndEvent) => {
           const { active, over } = event;
@@ -699,8 +701,8 @@ export default function Calls() {
         const renderChipMarkup = (view: SavedView, sortable: PinnedSortableState | null) => {
           const isActive = activeViewId === view.id && !isViewDirty;
           const isOwner = !!currentUserId && view.created_by === currentUserId;
-          const ownedPinIdx = ownedPinnedIndex.get(view.id);
-          const isSortablePinned = ownedPinIdx !== undefined && ownedPinnedOrdered.length > 1;
+          const myPinIdx = myPinnedIndex.get(view.id);
+          const isSortablePinned = myPinIdx !== undefined && myPinnedOrdered.length > 1;
           const lastRunRel = view.digest_last_run_at
             ? formatDistanceToNow(new Date(view.digest_last_run_at), { addSuffix: true })
             : null;
@@ -733,7 +735,7 @@ export default function Calls() {
                 )}
                 <button
                   onClick={() => applySavedView(view)}
-                  className={`inline-flex items-center gap-1.5 ${isSortablePinned ? 'pl-1' : 'pl-3'} ${isOwner ? 'pr-2' : 'pr-3'} py-1.5 font-medium`}
+                  className={`inline-flex items-center gap-1.5 ${isSortablePinned ? 'pl-1' : 'pl-3'} pr-2 py-1.5 font-medium`}
                   title={[
                     view.is_shared ? (isOwner ? 'Shared with team' : 'Shared by a teammate') : 'Personal view',
                     digestStatus,
@@ -750,16 +752,14 @@ export default function Calls() {
                     · {lastRunRel ? `${matchCount} ${lastRunRel}` : 'not run yet'}
                   </span>
                 )}
-                {isOwner && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleTogglePin(view); }}
-                    className={`p-1 rounded-full transition ${view.is_pinned ? 'text-primary' : 'text-text-muted hover:text-primary'}`}
-                    title={view.is_pinned ? 'Unpin from sidebar' : 'Pin to sidebar'}
-                    aria-label={view.is_pinned ? `Unpin saved view ${view.name}` : `Pin saved view ${view.name}`}
-                  >
-                    {view.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                  </button>
-                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleTogglePin(view); }}
+                  className={`p-1 ${isOwner ? '' : 'mr-1'} rounded-full transition ${view.is_pinned ? 'text-primary' : 'text-text-muted hover:text-primary'}`}
+                  title={view.is_pinned ? 'Unpin from my sidebar' : 'Pin to my sidebar'}
+                  aria-label={view.is_pinned ? `Unpin saved view ${view.name} from my sidebar` : `Pin saved view ${view.name} to my sidebar`}
+                >
+                  {view.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                </button>
                 {isOwner ? (
                   <>
                     <button
@@ -823,12 +823,9 @@ export default function Calls() {
             <SortableContext items={pinnedIds} strategy={rectSortingStrategy}>
               <div className="flex flex-wrap items-center gap-2">
                 {savedViews.map((view) => {
-                  const isOwnerPinned =
-                    !!currentUserId &&
-                    view.created_by === currentUserId &&
-                    view.is_pinned &&
-                    ownedPinnedOrdered.length > 1;
-                  if (isOwnerPinned) {
+                  const isMyPinnedSortable =
+                    view.is_pinned && myPinnedOrdered.length > 1;
+                  if (isMyPinnedSortable) {
                     return (
                       <SortablePinnedChip
                         key={view.id}
