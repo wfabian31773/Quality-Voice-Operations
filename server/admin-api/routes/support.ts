@@ -1,0 +1,300 @@
+import { Router, type Request, type Response } from 'express';
+import { createLogger } from '../../../platform/core/logger';
+import { requireAuth } from '../middleware/auth';
+import { requirePlatformAdmin } from '../middleware/rbac';
+import { getPlatformPool } from '../../../platform/db';
+import { sendEmail } from '../../../platform/email/EmailService';
+
+const logger = createLogger('SUPPORT');
+const router = Router();
+
+const VALID_TOPICS = new Set([
+  'question', 'bug', 'billing', 'integration', 'onboarding', 'feature',
+]);
+
+const FALLBACK_DESTINATION = 'support@qvo.ai';
+
+/**
+ * Resolve the support destination email for a (plan, topic) pair using the
+ * admin-configurable support_routing table.
+ *
+ * Resolution order (highest priority wins; ties broken by `priority` column):
+ *   1. exact (plan, topic)
+ *   2. (any plan, topic)         — plan = '*'
+ *   3. (plan, any topic)         — topic = '*'
+ *   4. (any plan, any topic)     — plan = '*' AND topic = '*'
+ *   5. FALLBACK_DESTINATION
+ */
+async function resolveDestination(plan: string, topic: string): Promise<string> {
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query<{ destination: string }>(
+      `SELECT destination FROM support_routing
+       WHERE (plan = $1 OR plan = '*') AND (topic = $2 OR topic = '*')
+       ORDER BY
+         CASE WHEN plan = $1 AND topic = $2 THEN 4
+              WHEN plan = '*' AND topic = $2 THEN 3
+              WHEN plan = $1 AND topic = '*' THEN 2
+              ELSE 1
+         END DESC,
+         priority DESC
+       LIMIT 1`,
+      [plan, topic],
+    );
+    return r.rows[0]?.destination ?? FALLBACK_DESTINATION;
+  } catch (err) {
+    logger.warn('support_routing lookup failed, using fallback', { error: String(err) });
+    return FALLBACK_DESTINATION;
+  }
+}
+
+async function lookupPlan(tenantId: string): Promise<string | null> {
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query<{ plan: string | null }>(
+      'SELECT plan FROM tenants WHERE id = $1 LIMIT 1',
+      [tenantId],
+    );
+    return r.rows[0]?.plan ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderTicketEmail(input: {
+  ticketId: string;
+  topic: string;
+  plan: string;
+  message: string;
+  recentErrors: string | null;
+  user: { email: string; userId: string; tenantId: string };
+  context: Record<string, unknown>;
+}): { subject: string; html: string; text: string } {
+  const { ticketId, topic, plan, message, recentErrors, user, context } = input;
+  const subject = `[QVO Support] ${topic.toUpperCase()} from ${user.email} (${ticketId})`;
+  const ctxRows = Object.entries(context)
+    .map(([k, v]) => `<tr><td style="padding:2px 8px;color:#666"><code>${escapeHtml(k)}</code></td><td style="padding:2px 8px"><code>${escapeHtml(String(v ?? ''))}</code></td></tr>`)
+    .join('');
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
+      <h2 style="margin:0 0 12px">New support ticket — ${escapeHtml(ticketId)}</h2>
+      <p style="margin:0 0 8px"><strong>Topic:</strong> ${escapeHtml(topic)} &nbsp; <strong>Plan:</strong> ${escapeHtml(plan)}</p>
+      <p style="margin:0 0 8px"><strong>From:</strong> ${escapeHtml(user.email)} (user ${escapeHtml(user.userId)})<br/><strong>Tenant:</strong> ${escapeHtml(user.tenantId)}</p>
+      <h3 style="margin:16px 0 4px">Message</h3>
+      <pre style="white-space:pre-wrap;background:#f5f7fa;padding:12px;border-radius:8px;font-family:inherit">${escapeHtml(message)}</pre>
+      ${recentErrors ? `<h3 style="margin:16px 0 4px">Recent errors</h3><pre style="white-space:pre-wrap;background:#fef2f2;padding:12px;border-radius:8px;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(recentErrors)}</pre>` : ''}
+      <h3 style="margin:16px 0 4px">Context</h3>
+      <table style="font-size:12px;border-collapse:collapse">${ctxRows}</table>
+    </div>`;
+  const text = [
+    `New support ticket — ${ticketId}`,
+    `Topic: ${topic}   Plan: ${plan}`,
+    `From: ${user.email} (user ${user.userId})`,
+    `Tenant: ${user.tenantId}`,
+    '',
+    'Message:',
+    message,
+    recentErrors ? `\nRecent errors:\n${recentErrors}` : '',
+    '\nContext:',
+    ...Object.entries(context).map(([k, v]) => `  ${k}: ${String(v ?? '')}`),
+  ].join('\n');
+  return { subject, html, text };
+}
+
+function renderAckEmail(ticketId: string): { subject: string; html: string; text: string } {
+  return {
+    subject: `We received your message — ${ticketId}`,
+    html: `<div style="font-family:system-ui,sans-serif;color:#0f172a">
+      <p>Thanks for reaching out!</p>
+      <p>We've received your support request (reference <strong>${ticketId}</strong>) and a teammate will reply within one business day.</p>
+      <p style="color:#64748b;font-size:12px">— The QVO team</p>
+    </div>`,
+    text: `Thanks for reaching out!\n\nWe've received your support request (reference ${ticketId}) and a teammate will reply within one business day.\n\n— The QVO team`,
+  };
+}
+
+router.post('/support/tickets', requireAuth, async (req: Request, res: Response) => {
+  const { topic, message, recent_errors, context } = req.body ?? {};
+  const user = req.user!;
+
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    res.status(400).json({ error: 'Message is required' });
+    return;
+  }
+  if (message.length > 10000) {
+    res.status(400).json({ error: 'Message is too long' });
+    return;
+  }
+  const normalizedTopic = VALID_TOPICS.has(topic) ? topic : 'question';
+  const plan = (user.tenantId ? await lookupPlan(user.tenantId) : null) ?? 'trial';
+  const routedTo = await resolveDestination(plan.toLowerCase(), normalizedTopic);
+  const ticketId = `tkt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  const safeContext = (context && typeof context === 'object') ? context : {};
+
+  // Persist
+  let persisted = true;
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO support_tickets (id, tenant_id, user_id, user_email, plan, topic, message, recent_errors, context, routed_to)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        ticketId, user.tenantId, user.userId, user.email, plan,
+        normalizedTopic, message, recent_errors || null, JSON.stringify(safeContext), routedTo,
+      ],
+    );
+  } catch (err) {
+    persisted = false;
+    logger.error('Failed to persist support ticket', { ticketId, error: String(err) });
+  }
+
+  // Email the support inbox
+  const tplOps = renderTicketEmail({
+    ticketId,
+    topic: normalizedTopic,
+    plan,
+    message,
+    recentErrors: recent_errors || null,
+    user,
+    context: safeContext as Record<string, unknown>,
+  });
+  const opsResult = await sendEmail({ to: routedTo, subject: tplOps.subject, html: tplOps.html, text: tplOps.text });
+
+  // Update ticket with delivery state
+  if (persisted) {
+    try {
+      const pool = getPlatformPool();
+      await pool.query(
+        `UPDATE support_tickets SET email_message_id = $2, email_error = $3, updated_at = NOW() WHERE id = $1`,
+        [ticketId, opsResult.messageId ?? null, opsResult.success ? null : (opsResult.error ?? 'unknown')],
+      );
+    } catch { /* non-fatal */ }
+  }
+
+  // Auto-acknowledge the user (best-effort)
+  if (user.email) {
+    const tplAck = renderAckEmail(ticketId);
+    sendEmail({ to: user.email, subject: tplAck.subject, html: tplAck.html, text: tplAck.text })
+      .catch((e) => logger.warn('Ack email failed', { ticketId, error: String(e) }));
+  }
+
+  logger.info('Support ticket processed', {
+    ticket_id: ticketId,
+    tenant_id: user.tenantId,
+    topic: normalizedTopic,
+    plan,
+    routed_to: routedTo,
+    email_delivered: opsResult.success,
+    persisted,
+    page: (safeContext as Record<string, unknown>).page,
+  });
+
+  res.json({
+    success: true,
+    ticket_id: ticketId,
+    routed_to: routedTo,
+    email_delivered: opsResult.success,
+    auto_acknowledge:
+      "Thanks for reaching out — we received your message and a teammate will reply by email within one business day.",
+  });
+});
+
+router.post('/docs/feedback', async (req: Request, res: Response) => {
+  const { article_slug, vote, comment, page_path } = req.body ?? {};
+
+  if (!article_slug || typeof article_slug !== 'string' || article_slug.length > 128) {
+    res.status(400).json({ error: 'article_slug is required' });
+    return;
+  }
+  if (vote !== 'helpful' && vote !== 'not_helpful') {
+    res.status(400).json({ error: "vote must be 'helpful' or 'not_helpful'" });
+    return;
+  }
+  if (comment && (typeof comment !== 'string' || comment.length > 4000)) {
+    res.status(400).json({ error: 'Invalid comment' });
+    return;
+  }
+
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO docs_feedback (article_slug, vote, comment, page_path, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [article_slug, vote, comment || null, page_path || null, req.headers['user-agent'] || null],
+    );
+  } catch (err) {
+    logger.warn('docs_feedback insert failed', { error: String(err) });
+  }
+
+  res.json({ success: true });
+});
+
+// ----- Platform admin: configurable routing (global config; not tenant-scoped) -----
+router.get('/support/routing', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `SELECT id, plan, topic, destination, priority, notes, updated_at
+       FROM support_routing ORDER BY priority DESC, plan, topic`,
+    );
+    res.json({ routing: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load routing', detail: String(err) });
+  }
+});
+
+router.put('/support/routing/:id', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { destination, priority, notes } = req.body ?? {};
+  if (!destination || typeof destination !== 'string') {
+    res.status(400).json({ error: 'destination is required' });
+    return;
+  }
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `UPDATE support_routing
+       SET destination = $2, priority = COALESCE($3, priority), notes = COALESCE($4, notes), updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [id, destination, typeof priority === 'number' ? priority : null, notes ?? null],
+    );
+    if (r.rowCount === 0) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json({ routing: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update routing', detail: String(err) });
+  }
+});
+
+router.post('/support/routing', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { plan, topic, destination, priority, notes } = req.body ?? {};
+  if (!plan || !topic || !destination) {
+    res.status(400).json({ error: 'plan, topic, and destination are required' });
+    return;
+  }
+  try {
+    const pool = getPlatformPool();
+    const r = await pool.query(
+      `INSERT INTO support_routing (plan, topic, destination, priority, notes)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (plan, topic) DO UPDATE SET destination = EXCLUDED.destination, priority = EXCLUDED.priority, notes = EXCLUDED.notes, updated_at = NOW()
+       RETURNING *`,
+      [plan, topic, destination, typeof priority === 'number' ? priority : 0, notes ?? null],
+    );
+    res.json({ routing: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to upsert routing', detail: String(err) });
+  }
+});
+
+export default router;

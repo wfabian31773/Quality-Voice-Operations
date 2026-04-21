@@ -48,6 +48,7 @@ import UseCases from './pages/public/UseCases';
 import Integrations from './pages/public/Integrations';
 import Contact from './pages/public/Contact';
 import Docs from './pages/public/Docs';
+import DocArticle from './pages/public/DocArticle';
 import AgentsShowcase from './pages/public/AgentsShowcase';
 import Signup from './pages/public/Signup';
 import VerifyEmail from './pages/public/VerifyEmail';
@@ -102,6 +103,7 @@ export default function App() {
         <Route path="/demo" element={<Demo />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/docs" element={<Docs />} />
+        <Route path="/docs/:slug" element={<DocArticle />} />
         <Route path="/resources" element={<Resources />} />
         <Route path="/resources/:slug" element={<GuideDetail />} />
         <Route path="/signup" element={<Signup />} />

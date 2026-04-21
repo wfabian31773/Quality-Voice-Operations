@@ -13,6 +13,7 @@ import clsx from 'clsx';
 import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
+import { HelpDrawer } from './HelpDrawer';
 
 interface NavItem {
   to: string;
@@ -236,6 +237,7 @@ export default function TenantLayout() {
       </div>
 
       <PlatformAssistant />
+      <HelpDrawer />
     </div>
   );
 }
