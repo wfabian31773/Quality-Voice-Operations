@@ -15,5 +15,4 @@
   <rect x="60" y="180" width="320" height="10" rx="4" fill="#ffffff22"/>
   <rect x="60" y="200" width="260" height="10" rx="4" fill="#ffffff22"/>
   <rect x="60" y="240" width="120" height="36" rx="8" fill="#26a69a"/>
-  <text x="400" y="310" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#ffffff80">HubSpot field mapping — illustrative placeholder</text>
 </svg>

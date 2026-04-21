@@ -39,6 +39,7 @@ export type DocBlock =
   | { type: 'code'; lang?: string; text: string }
   | { type: 'callout'; tone: 'info' | 'warn' | 'tip'; text: string }
   | { type: 'image'; src: string; alt: string; caption?: string }
+  | { type: 'video'; provider: 'mp4' | 'youtube'; src: string; poster?: string; caption?: string; title?: string }
   | { type: 'common-issues'; items: { problem: string; fix: string }[] };
 
 export const docCategories: DocCategory[] = [
@@ -74,29 +75,33 @@ export const docArticles: DocArticle[] = [
     updated: '2026-04-21',
     body: [
       p('This quickstart walks you through everything you need to take your first live call on QVO. By the end you will have a tenant, an agent, a phone number, and a recorded test conversation.'),
+      { type: 'video', provider: 'mp4', src: '/docs/videos/quickstart-walkthrough.mp4', poster: '/docs/screenshots/quickstart-signup.jpg', caption: 'A short walkthrough of the steps below — signup, templates, demo, and live call panels.' },
       h2('1. Create your account'),
       ol([
         'Visit the signup page and enter your business email, company name, and a password.',
         'Confirm your email by clicking the link we send you.',
         'Choose your plan (Free Trial works for everything in this guide).',
       ]),
-      { type: 'image', src: '/docs/quickstart-signup.svg', alt: 'QVO signup form', caption: 'The signup form auto-provisions your tenant.' },
+      { type: 'image', src: '/docs/screenshots/quickstart-signup.jpg', alt: 'QVO signup form with organization name, email, password, and plan selection', caption: 'The signup form auto-provisions your tenant.' },
       tip('Your tenant environment is provisioned automatically — no waiting for sales or onboarding calls.'),
       h2('2. Pick an industry template'),
       p('On first login the onboarding wizard offers pre-tuned agent templates. Pick the one closest to your business; you can change it later.'),
       ul(['Medical / Dental — patient intake, appointment booking, urgent triage', 'Legal — new matter intake, conflict checks, callback scheduling', 'Home services — dispatch, quote requests, after-hours emergencies', 'General business — receptionist, call routing, voicemail capture']),
+      { type: 'image', src: '/docs/screenshots/demo-templates.jpg', alt: 'Industry agent templates: Answering Service, Collections, Customer Support, Dental, HVAC, Legal, Medical, Real Estate', caption: 'Pre-tuned templates for the most common industries.' },
       h2('3. Provision a phone number'),
       ol([
         'Go to Phone Numbers → Add Number.',
         'Choose a local or toll-free number.',
         'Assign it to the agent you just created.',
       ]),
-      { type: 'image', src: '/docs/quickstart-number.svg', alt: 'Phone number provisioning UI', caption: 'Pick a local area code or a toll-free number.' },
+      { type: 'image', src: '/docs/screenshots/product-section-2.jpg', alt: 'Three-step flow: Configure Agent, Connect Number, Go Live', caption: 'Provisioning a number is step 2 of the three-step go-live flow.' },
       info('Number provisioning typically completes in under 30 seconds. Your number is immediately routable.'),
       h2('4. Make a test call'),
       p('Call the number from your phone. The agent will greet you using the template prompt. Speak naturally — interruptions, pauses, and "uhms" are handled.'),
+      { type: 'image', src: '/docs/screenshots/demo-active-call.jpg', alt: 'Live demo agent card with a Call to try it phone number and Live Transcript / Tool Executions panels', caption: 'Dial the displayed number and watch the live transcript and tool activity panels populate.' },
       h2('5. Review the transcript'),
       p('Open the Conversations page. You will see your call with a full transcript, the recording, the tools the agent invoked, and a quality score.'),
+      { type: 'image', src: '/docs/screenshots/demo-transcript-panels.jpg', alt: 'Live Transcript, Tool Executions, Demo Stats, and System Activity panels', caption: 'Each call gets a transcript, tool traces, and stats — the same UI used in production.' },
       h3('Common issues'),
       issues([
         { problem: 'Number does not ring.', fix: 'Check that the agent is published (not draft). Drafts are not assigned to live numbers.' },
@@ -159,7 +164,8 @@ export const docArticles: DocArticle[] = [
     body: [
       h2('Open the builder'),
       p('From the Agents page click an agent (or "New Agent"). The builder splits into Identity, Behavior, Tools, Routing, and Test panels.'),
-      { type: 'image', src: '/docs/agent-builder.svg', alt: 'Agent builder layout', caption: 'The agent builder, with Behavior and Tools panels on the right.' },
+      { type: 'image', src: '/docs/screenshots/features-detail.jpg', alt: 'Agent Builder feature card listing industry templates, drag-and-drop prompt editor, voice personality tuning, conditional routing, and version-controlled prompts', caption: 'The Agent Builder bundles templates, prompt editing, voice tuning, and routing.' },
+      { type: 'image', src: '/docs/screenshots/agents-showcase.jpg', alt: 'Agent showcase cards: Medical Intake Agent and Dental Scheduling Agent', caption: 'Pre-built agent showcases you can deploy as a starting point.' },
       h2('Write the system prompt'),
       p('The prompt is plain English. Be specific about tone, what to collect, what to refuse, and when to escalate.'),
       code(`You are the after-hours receptionist for Riverside Clinic.
@@ -171,8 +177,10 @@ export const docArticles: DocArticle[] = [
       tip('Keep prompts under ~600 words. Longer prompts increase latency and reduce instruction-following.'),
       h2('Pick a voice'),
       p('Preview voices with a sample sentence. Match the voice to the audience — calm/measured for healthcare, warm for hospitality, energetic for sales.'),
+      { type: 'image', src: '/docs/agent-voice-picker.svg', alt: 'Voice picker showing three voice options with TTFB latency', caption: 'Each voice shows its time-to-first-byte so you can balance feel and latency.' },
       h2('Enable tools'),
       p('Toggle the tools your agent is allowed to call. Each tool has a JSON schema; the agent only sees tools you enable.'),
+      { type: 'image', src: '/docs/agent-tools-toggle.svg', alt: 'Tools panel with toggles for lookup_contact, schedule_appointment, create_ticket, and transfer_to_human', caption: 'Only enabled tools are visible to the agent at runtime.' },
       h2('Routing rules'),
       ul([
         'Escalation — keywords or intents that transfer the call to a human.',
@@ -277,11 +285,13 @@ export const docArticles: DocArticle[] = [
         'Drag steps onto the canvas and connect them.',
         'Use the side panel to configure each step.',
       ]),
-      { type: 'image', src: '/docs/workflow-canvas.svg', alt: 'Workflow canvas', caption: 'Drag steps and connect them on the canvas.' },
+      { type: 'image', src: '/docs/workflow-canvas.svg', alt: 'Workflow canvas with three connected steps and a side panel of node types', caption: 'Drag steps and connect them on the canvas.' },
+      { type: 'image', src: '/docs/screenshots/features-architecture.jpg', alt: 'Platform architecture: Voice AI Runtime, Agent Builder, Tool Engine, Knowledge RAG, Integrations, Security Layer', caption: 'Workflows orchestrate the Tool Engine, Agent Builder, and Integrations subsystems.' },
       h2('Version and publish'),
       p('Save creates a draft. Publish promotes a draft to production. Previous versions remain available — you can roll back at any time.'),
       h2('Test'),
       p('Use the Workflow Simulator to step through with synthetic input before publishing.'),
+      { type: 'image', src: '/docs/workflow-simulator.svg', alt: 'Workflow simulator showing trigger, verify_identity, and book_slot steps with sample step output', caption: 'Step through the workflow with synthetic input and inspect each step\u2019s output.' },
       h3('Common issues'),
       issues([
         { problem: 'Workflow never triggers.', fix: 'Confirm the workflow is Published and bound to the right agent.' },
@@ -326,6 +336,7 @@ export const docArticles: DocArticle[] = [
         'Choose which pipeline and contact owner new records should use.',
         'Map QVO call fields to HubSpot custom properties (optional).',
       ]),
+      { type: 'image', src: '/docs/screenshots/integrations-catalog.jpg', alt: 'Integrations catalog showing Google Calendar, Twilio, Stripe, CRM Systems (with HubSpot), Ticketing Systems, and Zapier / Webhooks', caption: 'HubSpot lives under CRM Systems in the integrations catalog.' },
       { type: 'image', src: '/docs/hubspot-mapping.svg', alt: 'HubSpot field mapping screen', caption: 'Map QVO fields to HubSpot properties.' },
       h2('What gets synced'),
       ul([

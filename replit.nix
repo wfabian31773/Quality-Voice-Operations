@@ -1,5 +1,7 @@
 {pkgs}: {
   deps = [
+    pkgs.ffmpeg
+    pkgs.libgbm
     pkgs.rsync
     pkgs.udev
     pkgs.cairo

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" width="800" height="360" role="img" aria-label="Voice picker">
+  <defs>
+    <linearGradient id="bg3" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0d1f2d"/>
+      <stop offset="100%" stop-color="#142a3d"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="360" rx="16" fill="url(#bg3)"/>
+  <rect x="20" y="20" width="760" height="40" rx="8" fill="#ffffff14"/>
+  <text x="40" y="46" font-family="system-ui, sans-serif" font-size="13" fill="#ffffff99">Agents / Riverside Clinic / Voice</text>
+  <g font-family="system-ui, sans-serif" font-size="12" fill="#ffffffcc">
+    <rect x="40" y="90" width="220" height="80" rx="10" fill="#26a69a22" stroke="#26a69a"/>
+    <text x="60" y="115" font-weight="600" fill="#80cbc4">Sarah · US English</text>
+    <text x="60" y="135" fill="#ffffff99">Calm, measured · 320ms TTFB</text>
+    <circle cx="230" cy="135" r="12" fill="#26a69a"/>
+    <polygon points="226,129 240,135 226,141" fill="#0d1f2d"/>
+
+    <rect x="280" y="90" width="220" height="80" rx="10" fill="#ffffff0a" stroke="#ffffff20"/>
+    <text x="300" y="115" font-weight="600">James · UK English</text>
+    <text x="300" y="135" fill="#ffffff99">Warm · 360ms TTFB</text>
+
+    <rect x="520" y="90" width="220" height="80" rx="10" fill="#ffffff0a" stroke="#ffffff20"/>
+    <text x="540" y="115" font-weight="600">Maya · Latin Spanish</text>
+    <text x="540" y="135" fill="#ffffff99">Energetic · 340ms TTFB</text>
+  </g>
+</svg>

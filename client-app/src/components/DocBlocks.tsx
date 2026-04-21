@@ -79,6 +79,36 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
             </div>
           );
         }
+        if (block.type === 'video') {
+          return (
+            <figure key={idx} className="my-4">
+              <div className="relative w-full overflow-hidden rounded-xl border border-soft-steel/50 bg-harbor" style={{ aspectRatio: '16 / 9' }}>
+                {block.provider === 'youtube' ? (
+                  <iframe
+                    src={`https://www.youtube.com/embed/${block.src}`}
+                    title={block.title || block.caption || 'Embedded video'}
+                    className="absolute inset-0 h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    src={block.src}
+                    poster={block.poster}
+                    controls
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  >
+                    Your browser does not support embedded video.
+                  </video>
+                )}
+              </div>
+              {block.caption && (
+                <figcaption className="text-xs text-slate-ink/50 mt-2 text-center font-body">{block.caption}</figcaption>
+              )}
+            </figure>
+          );
+        }
         if (block.type === 'image') {
           return (
             <figure key={idx} className="my-4">

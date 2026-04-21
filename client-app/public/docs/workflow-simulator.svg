@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" width="800" height="360" role="img" aria-label="Workflow simulator">
+  <defs>
+    <linearGradient id="bg6" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0d1f2d"/>
+      <stop offset="100%" stop-color="#142a3d"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="360" rx="16" fill="url(#bg6)"/>
+  <rect x="20" y="20" width="760" height="40" rx="8" fill="#ffffff14"/>
+  <text x="40" y="46" font-family="system-ui, sans-serif" font-size="13" fill="#ffffff99">Workflows / Intake / Simulator</text>
+  <g font-family="system-ui, sans-serif" font-size="12">
+    <rect x="40" y="90" width="160" height="60" rx="8" fill="#26a69a22" stroke="#26a69a"/>
+    <text x="120" y="116" text-anchor="middle" fill="#80cbc4" font-weight="600">call.started</text>
+    <text x="120" y="134" text-anchor="middle" fill="#ffffff99">trigger</text>
+
+    <line x1="200" y1="120" x2="240" y2="120" stroke="#26a69a" stroke-width="2"/>
+
+    <rect x="240" y="90" width="160" height="60" rx="8" fill="#26a69a22" stroke="#26a69a"/>
+    <text x="320" y="116" text-anchor="middle" fill="#80cbc4" font-weight="600">verify_identity</text>
+    <text x="320" y="134" text-anchor="middle" fill="#ffffff99">tool · 1.2s</text>
+
+    <line x1="400" y1="120" x2="440" y2="120" stroke="#26a69a" stroke-width="2"/>
+
+    <rect x="440" y="90" width="160" height="60" rx="8" fill="#ffffff0a" stroke="#ffffff30"/>
+    <text x="520" y="116" text-anchor="middle" fill="#ffffffcc" font-weight="600">book_slot</text>
+    <text x="520" y="134" text-anchor="middle" fill="#ffffff99">running…</text>
+
+    <rect x="40" y="180" width="720" height="120" rx="10" fill="#ffffff0a" stroke="#ffffff15"/>
+    <text x="60" y="206" fill="#80cbc4" font-weight="600">Step output</text>
+    <text x="60" y="232" fill="#ffffffcc" font-family="ui-monospace, monospace" font-size="11">{ "contact_id": "c_8821", "verified": true }</text>
+    <text x="60" y="254" fill="#ffffffcc" font-family="ui-monospace, monospace" font-size="11">→ next: book_slot</text>
+  </g>
+</svg>
