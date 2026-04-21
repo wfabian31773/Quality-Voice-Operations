@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { PhoneCall, X, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { format } from 'date-fns';
+import EmptyState from '../components/EmptyState';
 
 interface Call {
   id: string;
@@ -360,9 +361,24 @@ export default function Calls() {
       {isLoading ? (
         <div className="text-center py-12 text-text-secondary">Loading...</div>
       ) : calls.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl p-12 text-center">
-          <PhoneCall className="h-12 w-12 text-text-muted mx-auto mb-3" />
-          <p className="text-text-secondary">{activeFilterCount > 0 ? 'No calls match your filters' : 'No calls found'}</p>
+        <div className="bg-surface border border-border rounded-xl">
+          {activeFilterCount > 0 ? (
+            <EmptyState
+              icon={Filter}
+              title="No calls match your filters"
+              description="Try adjusting or clearing your filters to see more conversations."
+              primaryAction={{
+                label: 'Clear filters',
+                onClick: () => { setFilters({ agent_id: '', direction: '', lifecycle_state: '', dateRange: '' }); setPage(1); },
+              }}
+            />
+          ) : (
+            <EmptyState
+              icon={PhoneCall}
+              title="No calls yet"
+              description="When your agents handle calls, transcripts and recordings will show up here for review."
+            />
+          )}
         </div>
       ) : (
         <>

@@ -7,6 +7,7 @@ import {
   CheckCircle2, XCircle, ArrowRight, FileText, MessageSquare, Calendar,
   Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
 } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 
 interface DispatchJob {
   id: string;
@@ -531,7 +532,11 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
               </div>
               <div className="p-1.5 space-y-1.5 overflow-y-auto max-h-[500px]">
                 {colJobs.length === 0 ? (
-                  <div className="p-4 text-center text-[10px] text-muted">No jobs</div>
+                  <EmptyState
+                    icon={Truck}
+                    title="No jobs"
+                    variant="compact"
+                  />
                 ) : colJobs.map(job => (
                   <JobCard key={job.id} job={job} isReadOnly={isReadOnly} selected={selectedJobs.has(job.id)}
                     onSelect={() => { const s = new Set(selectedJobs); s.has(job.id) ? s.delete(job.id) : s.add(job.id); setSelectedJobs(s); }}
@@ -701,7 +706,24 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
               </tr>
             ))}
             {filteredJobs.length === 0 && (
-              <tr><td colSpan={8} className="p-8 text-center text-muted">No jobs found</td></tr>
+              <tr><td colSpan={isReadOnly ? 7 : 8} className="p-0">
+                <EmptyState
+                  icon={Truck}
+                  title={queueFilter || filters.search || filters.priority || filters.territory_id || filters.resource_id ? 'No jobs match your filters' : 'No jobs in the queue'}
+                  description={queueFilter || filters.search || filters.priority || filters.territory_id || filters.resource_id
+                    ? 'Try clearing filters to see more jobs in the queue.'
+                    : 'Create a dispatch job to start scheduling work for your field team.'}
+                  primaryAction={!isReadOnly && !queueFilter && !filters.search ? {
+                    label: 'New Job',
+                    icon: Plus,
+                    onClick: () => { setEditingJob(null); setShowJobForm(true); },
+                  } : undefined}
+                  secondaryAction={(queueFilter || filters.search || filters.priority || filters.territory_id || filters.resource_id) ? {
+                    label: 'Clear filters',
+                    onClick: () => { setQueueFilter(''); setFilters({ status: '', priority: '', territory_id: '', resource_id: '', search: '' }); },
+                  } : undefined}
+                />
+              </td></tr>
             )}
           </tbody>
         </table>
@@ -843,7 +865,19 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
           </div>
         ))}
         {resources.length === 0 && (
-          <div className="col-span-3 text-center py-12 text-muted text-sm">No resources configured yet</div>
+          <div className="col-span-3">
+            <EmptyState
+              icon={Wrench}
+              title="No resources configured yet"
+              description="Add the technicians, vehicles, or crews that can be assigned to dispatch jobs."
+              primaryAction={!isReadOnly ? {
+                label: 'Add Resource',
+                icon: Plus,
+                onClick: () => openForm(),
+              } : undefined}
+              variant="compact"
+            />
+          </div>
         )}
       </div>
 
@@ -1175,7 +1209,17 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                 )}
               </div>
             ))}
-            {territories.length === 0 && <div className="col-span-3 text-center py-8 text-muted text-sm">No territories defined</div>}
+            {territories.length === 0 && (
+              <div className="col-span-3">
+                <EmptyState
+                  icon={MapPin}
+                  title="No territories defined"
+                  description="Group resources and jobs by service area so dispatch can route work efficiently."
+                  primaryAction={!isReadOnly ? { label: 'Add Territory', icon: Plus, onClick: () => openForm('territory') } : undefined}
+                  variant="compact"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1214,7 +1258,17 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     )}
                   </tr>
                 ))}
-                {skillTypes.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted">No skill types defined</td></tr>}
+                {skillTypes.length === 0 && (
+                  <tr><td colSpan={5} className="p-0">
+                    <EmptyState
+                      icon={Wrench}
+                      title="No skill types defined"
+                      description="Define the skills your resources have so jobs can be matched to qualified people."
+                      primaryAction={!isReadOnly ? { label: 'Add Skill Type', icon: Plus, onClick: () => openForm('skill') } : undefined}
+                      variant="compact"
+                    />
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1250,7 +1304,17 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                 )}
               </div>
             ))}
-            {notifTemplates.length === 0 && <div className="col-span-2 text-center py-8 text-muted text-sm">No notification templates</div>}
+            {notifTemplates.length === 0 && (
+              <div className="col-span-2">
+                <EmptyState
+                  icon={Bell}
+                  title="No notification templates"
+                  description="Create templates to notify customers and crews about job updates over email or SMS."
+                  primaryAction={!isReadOnly ? { label: 'Add Template', icon: Plus, onClick: () => openForm('notification') } : undefined}
+                  variant="compact"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1289,7 +1353,17 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     )}
                   </tr>
                 ))}
-                {assignmentRules.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted">No assignment rules defined</td></tr>}
+                {assignmentRules.length === 0 && (
+                  <tr><td colSpan={5} className="p-0">
+                    <EmptyState
+                      icon={Shield}
+                      title="No assignment rules defined"
+                      description="Add rules so dispatch automatically picks the right resource based on territory, skills, or priority."
+                      primaryAction={!isReadOnly ? { label: 'Add Rule', icon: Plus, onClick: () => openForm('rule') } : undefined}
+                      variant="compact"
+                    />
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>

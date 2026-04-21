@@ -9,6 +9,7 @@ import {
   Calendar, UserPlus, Star, RefreshCw, TrendingUp, Phone,
   Info, CheckCircle2,
 } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 
 type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled';
 type ContactStatus = 'pending' | 'dialing' | 'connected' | 'completed' | 'failed' | 'skipped' | 'no_answer' | 'voicemail' | 'opted_out';
@@ -960,13 +961,15 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           ) : loadingContacts || !contactsData ? (
             <div className="flex items-center justify-center py-12"><div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" /></div>
           ) : contactsData.contacts.length === 0 ? (
-            <div className="text-center py-12 text-text-muted">
-              <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No contacts yet</p>
-              {isManager && ['draft', 'paused'].includes(campaign.status) && (
-                <button onClick={() => setShowAddContacts(true)} className="mt-3 text-sm text-primary hover:underline">Add contacts to get started</button>
-              )}
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No contacts yet"
+              description="Add the people this campaign should reach. You can upload a CSV, paste JSON, or enter contacts manually."
+              primaryAction={isManager && ['draft', 'paused'].includes(campaign.status)
+                ? { label: 'Add Contacts', onClick: () => setShowAddContacts(true), icon: Upload }
+                : undefined}
+              variant="compact"
+            />
           ) : (
             <>
               <div className="bg-surface border border-border rounded-lg overflow-hidden">
@@ -1096,10 +1099,12 @@ function DncPanel() {
       ) : isLoading ? (
         <div className="flex items-center justify-center py-12"><div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" /></div>
       ) : !dncData || dncData.entries.length === 0 ? (
-        <div className="text-center py-12 text-text-muted">
-          <ShieldOff className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No numbers on the DNC list</p>
-        </div>
+        <EmptyState
+          icon={ShieldOff}
+          title="No numbers on the DNC list"
+          description="Numbers added here will be automatically excluded from outbound campaigns."
+          variant="compact"
+        />
       ) : (
         <>
           <div className="bg-surface border border-border rounded-lg overflow-hidden">
@@ -1214,16 +1219,17 @@ export default function Campaigns() {
       {isLoading ? (
         <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
       ) : campaigns.length === 0 ? (
-        <div className="text-center py-20 text-text-muted">
-          <Megaphone className="h-10 w-10 mx-auto mb-3 opacity-50" />
-          <p className="text-lg font-medium text-text-primary mb-1">No campaigns yet</p>
-          <p className="text-sm">Create your first outbound campaign to get started.</p>
-          {isManager && (
-            <button onClick={() => setShowCreate(true)} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
-              <Plus className="h-4 w-4" /> New Campaign
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={Megaphone}
+          title={statusFilter ? `No ${statusFilter} campaigns` : 'No campaigns yet'}
+          description={statusFilter
+            ? 'Try a different status filter or create a new campaign.'
+            : 'Create your first outbound campaign to start reaching contacts at scale.'}
+          primaryAction={isManager
+            ? { label: 'New Campaign', onClick: () => setShowCreate(true), icon: Plus }
+            : undefined}
+          secondaryAction={statusFilter ? { label: 'Show all', onClick: () => { setStatusFilter(''); setPage(1); } } : undefined}
+        />
       ) : (
         <>
           <div className="bg-surface border border-border rounded-lg overflow-hidden">

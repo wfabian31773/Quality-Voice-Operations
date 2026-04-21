@@ -7,6 +7,7 @@ import {
   XCircle, UserCheck, PhoneOff, RotateCcw, Edit2, Trash2,
   Building, Layers, ClipboardList, Activity
 } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 
 interface Booking {
   id: string;
@@ -605,7 +606,12 @@ export default function Scheduling() {
     return (
       <div className="space-y-4 p-4 max-h-[600px] overflow-auto">
         {Object.keys(grouped).length === 0 && (
-          <p className="text-sm text-muted text-center py-8">No appointments in this period</p>
+          <EmptyState
+            icon={Calendar}
+            title="No appointments in this period"
+            description="Try selecting a different date range or create a new appointment."
+            variant="compact"
+          />
         )}
         {Object.entries(grouped).map(([dateStr, dayBookings]) => (
           <div key={dateStr}>
@@ -720,7 +726,21 @@ export default function Scheduling() {
             </div>
           </div>
         ))}
-        {providers.length === 0 && <p className="text-sm text-muted col-span-full text-center py-8">No providers yet</p>}
+        {providers.length === 0 && (
+          <div className="col-span-full">
+            <EmptyState
+              icon={Users}
+              title="No providers yet"
+              description="Add the people who deliver appointments so you can assign bookings to them."
+              primaryAction={!isReadOnly ? {
+                label: 'Add Provider',
+                icon: Plus,
+                onClick: () => { setEditingProvider(null); setProviderFormData({ name: '', specialty: '', email: '', phone: '', location: '' }); setShowProviderForm(true); },
+              } : undefined}
+              variant="compact"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -762,7 +782,21 @@ export default function Scheduling() {
             </div>
           </div>
         ))}
-        {appointmentTypes.length === 0 && <p className="text-sm text-muted col-span-full text-center py-8">No appointment types yet</p>}
+        {appointmentTypes.length === 0 && (
+          <div className="col-span-full">
+            <EmptyState
+              icon={Layers}
+              title="No appointment types yet"
+              description="Define the kinds of appointments you offer with their duration, capacity, and color."
+              primaryAction={!isReadOnly ? {
+                label: 'Add Type',
+                icon: Plus,
+                onClick: () => { setEditingType(null); setTypeFormData({ name: '', description: '', duration_minutes: 30, buffer_minutes: 0, capacity: 1, color: '#3b82f6', allow_self_scheduling: false }); setShowTypeForm(true); },
+              } : undefined}
+              variant="compact"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -801,7 +835,21 @@ export default function Scheduling() {
             </div>
           </div>
         ))}
-        {resources.length === 0 && <p className="text-sm text-muted col-span-full text-center py-8">No resources yet</p>}
+        {resources.length === 0 && (
+          <div className="col-span-full">
+            <EmptyState
+              icon={Building}
+              title="No resources yet"
+              description="Add rooms, equipment, or other shared resources that appointments need to book."
+              primaryAction={!isReadOnly ? {
+                label: 'Add Resource',
+                icon: Plus,
+                onClick: () => { setEditingResource(null); setResourceFormData({ name: '', type: 'room', location: '', capacity: 1 }); setShowResourceForm(true); },
+              } : undefined}
+              variant="compact"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -841,7 +889,19 @@ export default function Scheduling() {
             </div>
           </div>
         ))}
-        {waitlist.length === 0 && <p className="text-sm text-muted text-center py-8">No waitlist entries</p>}
+        {waitlist.length === 0 && (
+          <EmptyState
+            icon={ClipboardList}
+            title="No one on the waitlist"
+            description="Capture customers who couldn't get a slot. They'll appear here for follow-up."
+            primaryAction={!isReadOnly ? {
+              label: 'Add to Waitlist',
+              icon: Plus,
+              onClick: () => { setWaitlistFormData({ contact_name: '', contact_phone: '', contact_email: '', appointment_type_id: '', provider_id: '', notes: '' }); setShowWaitlistForm(true); },
+            } : undefined}
+            variant="compact"
+          />
+        )}
       </div>
     </div>
   );
@@ -1099,7 +1159,12 @@ export default function Scheduling() {
             <h3 className="font-semibold text-heading text-sm mb-3">Upcoming Appointments</h3>
             <div className="space-y-2">
               {bookings.filter(b => !['cancelled', 'rescheduled'].includes(b.status)).length === 0 ? (
-                <p className="text-sm text-muted py-4 text-center">No active bookings in this period</p>
+                <EmptyState
+                  icon={CheckCircle2}
+                  title="No active bookings"
+                  description="Active appointments for the selected period will appear here."
+                  variant="compact"
+                />
               ) : (
                 bookings.filter(b => !['cancelled', 'rescheduled'].includes(b.status)).slice(0, 10).map(b => (
                   <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-surface-secondary">
@@ -1524,7 +1589,15 @@ function BookingRulesManager({ tenantId, appointmentTypes, isReadOnly }: { tenan
           </div>
         </div>
       ))}
-      {rules.length === 0 && <p className="text-xs text-muted">No rules configured. Default: no restrictions.</p>}
+      {rules.length === 0 && (
+        <EmptyState
+          icon={Settings}
+          title="No rules configured"
+          description="By default there are no booking restrictions. Add a rule to control lead times, double-booking, or per-slot capacity."
+          primaryAction={!isReadOnly ? { label: 'Add Rule', icon: Plus, onClick: () => setShowForm(true) } : undefined}
+          variant="compact"
+        />
+      )}
       {!isReadOnly && !showForm && (
         <button onClick={() => setShowForm(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
           <Plus className="h-3 w-3" /> Add Rule
@@ -1622,7 +1695,15 @@ function ReminderConfigManager({ tenantId, appointmentTypes, isReadOnly }: { ten
           )}
         </div>
       ))}
-      {reminders.length === 0 && <p className="text-xs text-muted">No reminders configured.</p>}
+      {reminders.length === 0 && (
+        <EmptyState
+          icon={Clock}
+          title="No reminders configured"
+          description="Set up automated SMS, email, or call reminders to reduce no-shows."
+          primaryAction={!isReadOnly ? { label: 'Add Reminder', icon: Plus, onClick: () => setShowForm(true) } : undefined}
+          variant="compact"
+        />
+      )}
       {!isReadOnly && !showForm && (
         <button onClick={() => setShowForm(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
           <Plus className="h-3 w-3" /> Add Reminder

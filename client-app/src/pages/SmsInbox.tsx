@@ -8,6 +8,7 @@ import {
   FileText, Plus, Trash2, Edit, Filter, RefreshCw, Calendar,
   CheckCircle, XCircle, ArrowUpRight, Hash, Mail, MapPin, Bell,
 } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 
 interface PhoneLine {
   phoneNumberId: string;
@@ -551,10 +552,15 @@ function InboxView({
 
         <div className="flex-1 overflow-y-auto">
           {conversations.length === 0 ? (
-            <div className="p-8 text-center text-muted text-sm">
-              <Inbox className="h-10 w-10 mx-auto mb-3 opacity-40" />
-              <p>No conversations found</p>
-            </div>
+            <EmptyState
+              icon={Inbox}
+              title={activeFilter === 'all' ? 'No conversations yet' : 'No conversations match this view'}
+              description={activeFilter === 'all'
+                ? 'Inbound and outbound SMS threads will appear here once messaging is configured.'
+                : 'Try a different filter or clear your search to see more conversations.'}
+              secondaryAction={activeFilter !== 'all' ? { label: 'Show all', onClick: () => setActiveFilter('all') } : undefined}
+              variant="compact"
+            />
           ) : (
             conversations.map(conv => (
               <div
@@ -1059,7 +1065,14 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
           </div>
         ))}
         {cannedResponses.length === 0 && (
-          <div className="col-span-full text-center py-8 text-muted text-sm">No templates yet. Create one to get started.</div>
+          <div className="col-span-full">
+            <EmptyState
+              icon={FileText}
+              title="No templates yet"
+              description="Save common replies as templates so your team can respond faster with one click."
+              variant="compact"
+            />
+          </div>
         )}
       </div>
     </div>
@@ -1199,7 +1212,15 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
               )}
             </div>
           ))}
-          {autoRules.length === 0 && <p className="text-sm text-muted text-center py-4">No auto-reply rules configured</p>}
+          {autoRules.length === 0 && (
+            <EmptyState
+              icon={Zap}
+              title="No auto-reply rules configured"
+              description="Set up rules to automatically respond to common inbound messages like keywords or after-hours pings."
+              primaryAction={isManager ? { label: 'New Rule', icon: Plus, onClick: () => setShowAutoForm(true) } : undefined}
+              variant="compact"
+            />
+          )}
         </div>
       </div>
 
@@ -1249,7 +1270,15 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
               )}
             </div>
           ))}
-          {assignRules.length === 0 && <p className="text-sm text-muted text-center py-4">No assignment rules configured</p>}
+          {assignRules.length === 0 && (
+            <EmptyState
+              icon={Users}
+              title="No assignment rules configured"
+              description="Route incoming conversations to the right team or agent based on keywords, phone line, or location."
+              primaryAction={isManager ? { label: 'New Rule', icon: Plus, onClick: () => setShowAssignForm(true) } : undefined}
+              variant="compact"
+            />
+          )}
         </div>
       </div>
     </div>

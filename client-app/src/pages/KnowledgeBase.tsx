@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 
@@ -579,13 +580,22 @@ export default function KnowledgeBase() {
         documentsLoading ? (
           <div className="text-center py-12 text-text-secondary">Loading...</div>
         ) : filteredDocuments.length === 0 ? (
-          <div className="bg-surface border border-border rounded-xl p-12 text-center">
-            <BookOpen className="h-12 w-12 text-text-muted mx-auto mb-3" />
-            <p className="text-text-secondary">
-              {documents.length === 0
-                ? 'No documents yet. Upload PDFs, paste URLs, or add text to build your knowledge base.'
-                : 'No documents match your search.'}
-            </p>
+          <div className="bg-surface border border-border rounded-xl">
+            {documents.length === 0 ? (
+              <EmptyState
+                icon={BookOpen}
+                title="No documents yet"
+                description="Upload PDFs, paste URLs, or add text to build your knowledge base so your agents can answer questions accurately."
+                primaryAction={isManager ? { label: 'Add Source', onClick: () => setShowUpload(true), icon: Upload } : undefined}
+              />
+            ) : (
+              <EmptyState
+                icon={Search}
+                title="No documents match your search"
+                description="Try a different keyword or clear your search to see all documents."
+                primaryAction={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
+              />
+            )}
           </div>
         ) : (
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -684,13 +694,22 @@ export default function KnowledgeBase() {
         articlesLoading ? (
           <div className="text-center py-12 text-text-secondary">Loading...</div>
         ) : filteredArticles.length === 0 ? (
-          <div className="bg-surface border border-border rounded-xl p-12 text-center">
-            <BookOpen className="h-12 w-12 text-text-muted mx-auto mb-3" />
-            <p className="text-text-secondary">
-              {articles.length === 0
-                ? 'No articles yet. Create your first knowledge base article to get started.'
-                : 'No articles match your search.'}
-            </p>
+          <div className="bg-surface border border-border rounded-xl">
+            {articles.length === 0 ? (
+              <EmptyState
+                icon={BookOpen}
+                title="No articles yet"
+                description="Create your first knowledge base article so your agents can reference it on calls."
+                primaryAction={isManager ? { label: 'New Article', onClick: () => setEditingId('new'), icon: Plus } : undefined}
+              />
+            ) : (
+              <EmptyState
+                icon={Search}
+                title="No articles match your search"
+                description="Try a different keyword or clear your search to see all articles."
+                primaryAction={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
+              />
+            )}
           </div>
         ) : (
           <div className="bg-surface border border-border rounded-xl overflow-hidden">

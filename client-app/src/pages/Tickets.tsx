@@ -7,6 +7,7 @@ import {
   Search, Filter, AlertTriangle, Shield, Users, Eye, Inbox, RotateCcw,
   ArrowUpDown, ChevronDown, MoreHorizontal, User, ArrowUp,
 } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 
 interface TicketItem {
   id: string;
@@ -445,6 +446,18 @@ export default function Tickets() {
         </div>
       )}
 
+      {tickets.length === 0 ? (
+        <div className="bg-surface border border-border rounded-xl">
+          <EmptyState
+            icon={Ticket}
+            title="No tickets found"
+            description={isReadOnly
+              ? 'Tickets created by you or assigned to your team will appear here.'
+              : 'Create your first ticket to start tracking customer issues and team work.'}
+            primaryAction={!isReadOnly ? { label: 'New Ticket', onClick: () => setShowForm(true), icon: Plus } : undefined}
+          />
+        </div>
+      ) : (
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -471,12 +484,7 @@ export default function Tickets() {
               </tr>
             </thead>
             <tbody>
-              {tickets.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted">No tickets found</td>
-                </tr>
-              ) : (
-                tickets.map(ticket => {
+              {tickets.map(ticket => {
                   const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
                   const slaInd = getSlaIndicator(ticket);
                   return (
@@ -521,8 +529,7 @@ export default function Tickets() {
                       </td>
                     </tr>
                   );
-                })
-              )}
+                })}
             </tbody>
           </table>
         </div>
@@ -542,6 +549,7 @@ export default function Tickets() {
           </div>
         )}
       </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
