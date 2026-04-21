@@ -280,6 +280,52 @@ body {
   }
 }
 
+/* ----- Print stylesheet for ticket/booking/call/dispatch detail pages ----- */
+@media print {
+  @page { margin: 1.5cm; }
+  body { background: white; color: #000; }
+  aside, header, nav,
+  .print\:hidden,
+  .platform-assistant-launcher,
+  button[aria-label="Open menu"] {
+    display: none !important;
+  }
+  main { padding: 0 !important; overflow: visible !important; }
+  .bg-surface, .bg-surface-secondary { background: white !important; }
+  a { color: #000 !important; text-decoration: none !important; }
+  .shadow, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl { box-shadow: none !important; }
+  .rounded-xl, .rounded-2xl, .rounded-lg { border-radius: 4px !important; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  h1, h2, h3 { page-break-after: avoid; }
+}
+
+/* ----- Mobile responsive helpers ----- */
+@media (max-width: 640px) {
+  .responsive-table thead { display: none; }
+  .responsive-table tbody, .responsive-table tr, .responsive-table td {
+    display: block;
+    width: 100%;
+  }
+  .responsive-table tr {
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    background: var(--color-surface);
+  }
+  .responsive-table td {
+    padding: 0.25rem 0;
+    border: none;
+  }
+  .responsive-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-right: 0.5rem;
+  }
+}
+
 .dark {
   --color-surface: #1e293b;
   --color-surface-secondary: #0f172a;

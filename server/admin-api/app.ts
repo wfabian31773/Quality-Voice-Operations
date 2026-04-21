@@ -57,6 +57,7 @@ import dispatchRoutes from './routes/dispatch';
 import ingestRoutes from './routes/ingest';
 import legalComplianceRoutes from './routes/legalCompliance';
 import supportRoutes from './routes/support';
+import productionEssentialsRoutes from './routes/productionEssentials';
 
 const app = express();
 
@@ -135,6 +136,7 @@ app.use('/', dispatchRoutes);
 app.use('/', ingestRoutes);
 app.use('/', legalComplianceRoutes);
 app.use('/', supportRoutes);
+app.use('/', productionEssentialsRoutes);
 
 const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');

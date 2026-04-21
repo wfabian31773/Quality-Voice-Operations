@@ -4,7 +4,7 @@ import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import {
   LayoutDashboard, Bot, PhoneCall, Plug, Network,
-  LogOut, Moon, Sun, Menu, X, BarChart3, Settings2,
+  LogOut, Moon, Sun, Menu, BarChart3, Settings2,
   Megaphone, BookOpen, Store, ChevronDown, Boxes, Wrench,
   MessageSquare, CalendarClock, ClipboardList, Truck,
 } from 'lucide-react';
@@ -14,6 +14,10 @@ import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
 import { HelpDrawer } from './HelpDrawer';
+import TrialBanner from './TrialBanner';
+import NotificationsCenter from './NotificationsCenter';
+import { Sparkles } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 interface NavItem {
   to: string;
@@ -208,12 +212,12 @@ export default function TenantLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className="hidden lg:flex w-64 shrink-0 bg-sidebar-bg flex-col">
+      <aside className="hidden lg:flex w-64 shrink-0 bg-sidebar-bg flex-col print:hidden">
         {sidebar}
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden print:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <aside className="relative w-64 h-full bg-sidebar-bg">
             {sidebar}
@@ -222,15 +226,21 @@ export default function TenantLayout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-surface border-b border-border">
-          <button onClick={() => setMobileOpen(true)}>
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-          <span className="font-semibold text-sm font-display">QVO</span>
-          <div className="w-5" />
+        <TrialBanner />
+        <header className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border print:hidden">
+          <div className="flex items-center gap-2">
+            <button className="lg:hidden p-1.5 -ml-1.5" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+              <Menu className="h-5 w-5" />
+            </button>
+            <span className="font-semibold text-sm font-display lg:hidden">QVO</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <ChangelogBadgeLink />
+            <NotificationsCenter />
+          </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-8 print:p-0 print:overflow-visible">
           <Outlet />
         </main>
         <AppFooter />
@@ -239,6 +249,31 @@ export default function TenantLayout() {
       <PlatformAssistant />
       <HelpDrawer />
     </div>
+  );
+}
+
+function ChangelogBadgeLink() {
+  const { data } = useQuery({
+    queryKey: ['changelog-unread'],
+    queryFn: () => api.get<{ count: number }>('/platform/changelog/unread-count').catch(() => ({ count: 0 })),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
+  const count = data?.count ?? 0;
+  return (
+    <NavLink
+      to="/changelog"
+      className="relative p-2 rounded-lg hover:bg-surface-hover text-text-secondary transition-colors"
+      aria-label="What's new"
+      title="What's new"
+    >
+      <Sparkles className="h-5 w-5" />
+      {count > 0 && (
+        <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
+    </NavLink>
   );
 }
 

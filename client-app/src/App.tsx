@@ -73,6 +73,10 @@ import TicketDetail from './pages/TicketDetail';
 import TicketReporting from './pages/TicketReporting';
 import TicketAdmin from './pages/TicketAdmin';
 import Dispatch from './pages/Dispatch';
+import NotFound from './pages/NotFound';
+import Changelog from './pages/Changelog';
+import ErrorBoundary from './components/ErrorBoundary';
+import MaintenanceGate from './components/MaintenanceGate';
 
 const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys', 'privacy'];
 
@@ -87,6 +91,8 @@ function SettingsRedirect() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
+    <MaintenanceGate>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -184,6 +190,7 @@ export default function App() {
         <Route path="/tickets/admin" element={<RoleGuard minRole="manager"><TicketAdmin /></RoleGuard>} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route path="/dispatch" element={<Dispatch />} />
+        <Route path="/changelog" element={<Changelog />} />
       </Route>
 
       {/* Platform Admin Console */}
@@ -229,7 +236,9 @@ export default function App() {
       <Route path="/ops/tool-logs" element={<Navigate to="/ops/reliability" replace />} />
       <Route path="/ops/observability" element={<Navigate to="/ops/reliability" replace />} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
+    </MaintenanceGate>
+    </ErrorBoundary>
   );
 }
