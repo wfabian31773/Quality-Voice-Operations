@@ -26,6 +26,15 @@ interface Connector {
   configKeys: string[];
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  lastSyncErrorAt: string | null;
+}
+
+const AUTH_ERROR_REGEX = /\b(401|403|unauthorized|forbidden|invalid[_ -]?(grant|token|credential)|expired|refresh.*(failed|token)|token.*expired|auth(entication)?[ _-]?(failed|error)|missing.*(token|credential))\b/i;
+
+function isAuthError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return AUTH_ERROR_REGEX.test(message);
 }
 
 type Category = 'CRM' | 'Scheduling' | 'SMS' | 'Notifications' | 'Automation' | 'Ticketing' | 'Accounting';
@@ -485,8 +494,58 @@ function ConnectedCard({
   onReconnect: () => void;
   onDisconnect: () => void;
 }) {
+  const queryClient = useQueryClient();
   const enabled = connector.isEnabled;
   const syncError = connector.lastSyncStatus === 'error';
+  const errorMessage = connector.lastSyncError;
+  const authError = syncError && isAuthError(errorMessage);
+  const truncatedError = errorMessage && errorMessage.length > 90
+    ? `${errorMessage.slice(0, 90)}…`
+    : errorMessage;
+  const [reauthPending, setReauthPending] = useState(false);
+
+  const startReauth = async () => {
+    if (!definition.oauthProvider) {
+      onReconnect();
+      return;
+    }
+    setReauthPending(true);
+    try {
+      const data = await api.get<{ authUrl: string }>(`/connectors/oauth/${definition.oauthProvider}/init`);
+      const popup = window.open(
+        data.authUrl,
+        `oauth_${definition.oauthProvider}`,
+        'width=600,height=700,popup=yes',
+      );
+      if (!popup) {
+        setReauthPending(false);
+        alert('Please allow popups for this site to reconnect via OAuth.');
+        return;
+      }
+      let pollClosed: number | undefined;
+      let timeoutId: number | undefined;
+      const cleanup = () => {
+        window.removeEventListener('message', onMessage);
+        if (pollClosed !== undefined) window.clearInterval(pollClosed);
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+        setReauthPending(false);
+      };
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === 'oauth_complete' && event.data?.provider === definition.provider) {
+          queryClient.invalidateQueries({ queryKey: ['connectors'] });
+          cleanup();
+        }
+      };
+      window.addEventListener('message', onMessage);
+      pollClosed = window.setInterval(() => {
+        if (popup.closed) cleanup();
+      }, 1000);
+      timeoutId = window.setTimeout(cleanup, 5 * 60 * 1000);
+    } catch {
+      setReauthPending(false);
+    }
+  };
 
   return (
     <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all">
@@ -527,6 +586,40 @@ function ConnectedCard({
           )}
         </div>
       </div>
+
+      {syncError && errorMessage && (
+        <div
+          className="mb-3 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 p-2.5 text-xs"
+          title={errorMessage}
+        >
+          <div className="flex items-start gap-1.5 text-red-700 dark:text-red-400">
+            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-medium mb-0.5">
+                {authError ? 'Authorization expired' : 'Last sync failed'}
+              </p>
+              <p className="font-mono text-red-600 dark:text-red-300 break-all line-clamp-2">
+                {truncatedError}
+              </p>
+              {connector.lastSyncErrorAt && (
+                <p className="text-[10px] text-red-500/80 dark:text-red-400/70 mt-1">
+                  {formatSyncTime(connector.lastSyncErrorAt)}
+                </p>
+              )}
+            </div>
+          </div>
+          {authError && isManager && definition.oauthProvider && (
+            <button
+              onClick={startReauth}
+              disabled={reauthPending}
+              className="mt-2 w-full text-xs font-medium bg-primary text-white hover:bg-primary-hover transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            >
+              <ExternalLink className="h-3 w-3" />
+              {reauthPending ? 'Waiting for authorization…' : `Reconnect with ${definition.name}`}
+            </button>
+          )}
+        </div>
+      )}
 
       {isManager && (
         <div className="flex gap-2 pt-3 border-t border-border">

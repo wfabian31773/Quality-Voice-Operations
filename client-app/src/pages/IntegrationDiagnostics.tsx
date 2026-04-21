@@ -35,9 +35,22 @@ interface IntegrationHealth {
   last_event_at: string | null;
 }
 
+interface SalesforceDispatch {
+  id: string;
+  eventType: string;
+  serviceName: string;
+  status: 'success' | 'error';
+  responseStatus: number | null;
+  errorMessage: string | null;
+  latencyMs: number | null;
+  callSessionId: string | null;
+  createdAt: string;
+}
+
 interface DiagnosticsData {
   webhooks: WebhookDelivery[];
   health: IntegrationHealth[];
+  salesforceDispatches?: SalesforceDispatch[];
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -194,6 +207,7 @@ export default function IntegrationDiagnostics() {
 
   const webhooks = data?.webhooks ?? [];
   const health = data?.health ?? [];
+  const salesforceDispatches = data?.salesforceDispatches ?? [];
 
   return (
     <div className="space-y-6">
@@ -274,6 +288,78 @@ export default function IntegrationDiagnostics() {
           </div>
         </div>
       )}
+
+      <div className="bg-surface border border-border rounded-xl shadow-sm">
+        <div className="px-5 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-text-primary">
+            Salesforce Dispatches
+            {salesforceDispatches.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-muted">({salesforceDispatches.length})</span>
+            )}
+          </h2>
+          <p className="text-xs text-muted mt-1">
+            Per-event Salesforce sync attempts from the last 7 days.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          {salesforceDispatches.length === 0 ? (
+            <div className="text-center py-10 text-sm text-muted">
+              No Salesforce dispatches in the last 7 days.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-5 py-3 font-medium text-muted">Status</th>
+                  <th className="px-5 py-3 font-medium text-muted">Event</th>
+                  <th className="px-5 py-3 font-medium text-muted">HTTP</th>
+                  <th className="px-5 py-3 font-medium text-muted">Error</th>
+                  <th className="px-5 py-3 font-medium text-muted text-right">Latency</th>
+                  <th className="px-5 py-3 font-medium text-muted">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {salesforceDispatches.map((d) => (
+                  <tr key={d.id} className="hover:bg-surface-secondary/50 transition-colors">
+                    <td className="px-5 py-3">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          d.status === 'success'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        }`}
+                      >
+                        {d.status === 'success' ? (
+                          <CheckCircle2 className="h-3 w-3" />
+                        ) : (
+                          <XCircle className="h-3 w-3" />
+                        )}
+                        {d.status === 'success' ? 'Success' : 'Failed'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 font-medium text-text-primary">{d.eventType}</td>
+                    <td className="px-5 py-3 text-muted font-mono text-xs">
+                      {d.responseStatus ?? '—'}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-xs text-red-600 dark:text-red-400 max-w-[320px] truncate"
+                      title={d.errorMessage ?? ''}
+                    >
+                      {d.errorMessage ?? '—'}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-muted text-xs">
+                      {d.latencyMs !== null ? `${d.latencyMs}ms` : '—'}
+                    </td>
+                    <td className="px-5 py-3 text-xs text-muted whitespace-nowrap">
+                      {new Date(d.createdAt).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
 
       <div className="bg-surface border border-border rounded-xl shadow-sm">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">

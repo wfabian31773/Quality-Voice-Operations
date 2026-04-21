@@ -439,7 +439,48 @@ router.get('/operations/integration-diagnostics', requireAuth, requireOpsRole, a
       };
     });
 
-    res.json({ webhooks, health: healthWithRate });
+    const salesforceClient = await pool.connect();
+    let salesforceDispatches: unknown[] = [];
+    try {
+      await salesforceClient.query('BEGIN');
+      await withTenantContext(salesforceClient, tenantId, async () => {});
+      const { rows: sfRows } = await salesforceClient.query(
+        `SELECT iel.id, iel.service_name, iel.request_url, iel.request_body,
+                iel.response_status, iel.error_message, iel.latency_ms,
+                iel.call_session_id, iel.created_at
+         FROM integration_event_logs iel
+         WHERE iel.tenant_id = $1
+           AND iel.service_name ILIKE '%salesforce%'
+           AND iel.created_at > NOW() - INTERVAL '7 days'
+         ORDER BY iel.created_at DESC
+         LIMIT 50`,
+        [tenantId],
+      );
+      await salesforceClient.query('COMMIT');
+      salesforceDispatches = sfRows.map((r: Record<string, unknown>) => {
+        const status = r.response_status as number | null;
+        const success = status !== null && status >= 200 && status < 300;
+        const body = r.request_body as Record<string, unknown> | null;
+        return {
+          id: r.id,
+          eventType: (body?.type as string) ?? 'unknown',
+          serviceName: r.service_name,
+          status: success ? 'success' : 'error',
+          responseStatus: status,
+          errorMessage: r.error_message,
+          latencyMs: r.latency_ms,
+          callSessionId: r.call_session_id,
+          createdAt: r.created_at,
+        };
+      });
+    } catch (err) {
+      await salesforceClient.query('ROLLBACK').catch(() => {});
+      logger.warn('Failed to fetch Salesforce dispatches', { tenantId, error: String(err) });
+    } finally {
+      salesforceClient.release();
+    }
+
+    res.json({ webhooks, health: healthWithRate, salesforceDispatches });
   } catch (err) {
     logger.error('Failed to fetch integration diagnostics', { tenantId, error: String(err) });
     res.status(500).json({ error: 'Failed to fetch integration diagnostics' });

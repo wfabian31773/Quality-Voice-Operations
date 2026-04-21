@@ -175,6 +175,7 @@ export class ConnectorService {
       config.connectorType,
       result.success ? 'success' : 'error',
       config.provider,
+      result.success ? null : (result.error ?? 'Unknown error'),
     ).catch(() => {});
 
     if (!result.success && config.fallbackConnectorType) {

@@ -144,16 +144,19 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
   configKeys: string[];
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  lastSyncErrorAt: string | null;
 }>> {
   return withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
       `SELECT i.id, i.integration_type, i.provider, i.name, i.is_enabled,
-              i.last_sync_at, i.last_sync_status,
+              i.last_sync_at, i.last_sync_status, i.last_sync_error, i.last_sync_error_at,
               COALESCE(json_agg(cc.config_key) FILTER (WHERE cc.config_key IS NOT NULL), '[]') AS config_keys
        FROM integrations i
        LEFT JOIN connector_configs cc ON cc.integration_id = i.id AND cc.tenant_id = i.tenant_id
        WHERE i.tenant_id = $1
-       GROUP BY i.id, i.integration_type, i.provider, i.name, i.is_enabled, i.last_sync_at, i.last_sync_status
+       GROUP BY i.id, i.integration_type, i.provider, i.name, i.is_enabled,
+                i.last_sync_at, i.last_sync_status, i.last_sync_error, i.last_sync_error_at
        ORDER BY i.created_at`,
       [tenantId],
     );
@@ -167,6 +170,8 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
       configKeys: r.config_keys as string[],
       lastSyncAt: r.last_sync_at ? new Date(r.last_sync_at as string).toISOString() : null,
       lastSyncStatus: (r.last_sync_status as string) ?? null,
+      lastSyncError: (r.last_sync_error as string) ?? null,
+      lastSyncErrorAt: r.last_sync_error_at ? new Date(r.last_sync_error_at as string).toISOString() : null,
     }));
   });
 }
@@ -234,21 +239,51 @@ export async function updateConnectorSyncStatus(
   connectorType: ConnectorType,
   status: 'success' | 'error',
   provider?: string,
+  errorMessage?: string | null,
 ): Promise<void> {
   try {
+    const truncatedError = errorMessage ? errorMessage.slice(0, 1000) : null;
     await withTenant(tenantId, async (client) => {
-      if (provider) {
-        await client.query(
-          `UPDATE integrations SET last_sync_at = NOW(), last_sync_status = $3, updated_at = NOW()
-           WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
-          [tenantId, connectorType, status, provider],
-        );
+      if (status === 'success') {
+        if (provider) {
+          await client.query(
+            `UPDATE integrations
+             SET last_sync_at = NOW(), last_sync_status = $3,
+                 last_sync_error = NULL, last_sync_error_at = NULL,
+                 updated_at = NOW()
+             WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
+            [tenantId, connectorType, status, provider],
+          );
+        } else {
+          await client.query(
+            `UPDATE integrations
+             SET last_sync_at = NOW(), last_sync_status = $3,
+                 last_sync_error = NULL, last_sync_error_at = NULL,
+                 updated_at = NOW()
+             WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
+            [tenantId, connectorType, status],
+          );
+        }
       } else {
-        await client.query(
-          `UPDATE integrations SET last_sync_at = NOW(), last_sync_status = $3, updated_at = NOW()
-           WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
-          [tenantId, connectorType, status],
-        );
+        if (provider) {
+          await client.query(
+            `UPDATE integrations
+             SET last_sync_at = NOW(), last_sync_status = $3,
+                 last_sync_error = $5, last_sync_error_at = NOW(),
+                 updated_at = NOW()
+             WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
+            [tenantId, connectorType, status, provider, truncatedError],
+          );
+        } else {
+          await client.query(
+            `UPDATE integrations
+             SET last_sync_at = NOW(), last_sync_status = $3,
+                 last_sync_error = $4, last_sync_error_at = NOW(),
+                 updated_at = NOW()
+             WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
+            [tenantId, connectorType, status, truncatedError],
+          );
+        }
       }
     });
   } catch (err) {
@@ -280,7 +315,9 @@ export async function upsertConnector(
       `INSERT INTO integrations (tenant_id, name, integration_type, provider, is_enabled)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (tenant_id, provider)
-       DO UPDATE SET name = EXCLUDED.name, is_enabled = EXCLUDED.is_enabled, updated_at = NOW()
+       DO UPDATE SET name = EXCLUDED.name, is_enabled = EXCLUDED.is_enabled,
+                     last_sync_error = NULL, last_sync_error_at = NULL,
+                     updated_at = NOW()
        RETURNING id`,
       [tenantId, params.name, params.connectorType, params.provider, params.isEnabled ?? true],
     );
