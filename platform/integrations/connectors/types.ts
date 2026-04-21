@@ -66,10 +66,14 @@ export interface StandardEventPayload extends ConnectorPayload {
   callerFirstName?: string;
   callerLastName?: string;
   callerEmail?: string;
+  callerCompany?: string;
   summary?: string;
   durationSeconds?: number;
   agentName?: string;
   resolution?: string;
+  disposition?: string;
+  opportunityId?: string;
+  accountId?: string;
   appointmentDate?: string;
   appointmentTime?: string;
   startTime?: string;

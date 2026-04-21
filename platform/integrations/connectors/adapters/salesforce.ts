@@ -118,15 +118,15 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     const summary = payload.summary as string | undefined;
     const duration = payload.durationSeconds as number | undefined;
     const callSid = payload.callSid as string | undefined;
+    const disposition = payload.disposition as string | undefined;
 
     try {
       const who = callerPhone
         ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload)
         : undefined;
 
-      const whatId = who?.object === 'Contact'
-        ? await this.findOpenOpportunityForContact(tokens, who.id)
-        : undefined;
+      const whatId = await this.resolveWhatId(tokens, who, payload);
+      const dispositionFields = mapDispositionToTaskFields(disposition);
 
       const taskId = await this.createTask(tokens, {
         whoId: who?.id,
@@ -137,13 +137,21 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         callSid,
         callerPhone,
         taskSubtype: 'Call',
+        status: dispositionFields.status,
+        callDisposition: dispositionFields.callDisposition,
       });
 
-      logger.info('Salesforce call task created', { tenantId, whoId: who?.id, whatId, taskId });
+      const noteId = summary
+        ? await this.attachSummaryNote(tokens, taskId, 'AI Call Summary', summary)
+        : undefined;
+
+      logger.info('Salesforce call task created', {
+        tenantId, whoId: who?.id, whatId, taskId, noteId, disposition,
+      });
       return {
         success: true,
         externalId: taskId,
-        meta: { whoId: who?.id, whatId, taskId, provider: 'salesforce' },
+        meta: { whoId: who?.id, whatId, taskId, noteId, provider: 'salesforce' },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -165,9 +173,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         ? await this.findOrCreateLeadOrContact(tokens, callerPhone, payload)
         : undefined;
 
-      const whatId = who?.object === 'Contact'
-        ? await this.findOpenOpportunityForContact(tokens, who.id)
-        : undefined;
+      const whatId = await this.resolveWhatId(tokens, who, payload);
 
       const description = [
         'Appointment booked via QVO AI agent',
@@ -185,19 +191,57 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         callerPhone,
         taskSubtype: 'Task',
         activityDate: (payload.appointmentDate as string) ?? undefined,
+        status: 'Completed',
+        callDisposition: 'Booked Appointment',
       });
 
-      logger.info('Salesforce appointment task created', { tenantId, whoId: who?.id, whatId, taskId });
+      const noteId = summary
+        ? await this.attachSummaryNote(tokens, taskId, 'AI Appointment Summary', summary)
+        : undefined;
+
+      logger.info('Salesforce appointment task created', {
+        tenantId, whoId: who?.id, whatId, taskId, noteId,
+      });
       return {
         success: true,
         externalId: taskId,
-        meta: { whoId: who?.id, whatId, taskId, provider: 'salesforce' },
+        meta: { whoId: who?.id, whatId, taskId, noteId, provider: 'salesforce' },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Salesforce appointment logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  private async resolveWhatId(
+    tokens: SalesforceTokens,
+    who: { id: string; object: 'Contact' | 'Lead' } | undefined,
+    payload: ConnectorPayload,
+  ): Promise<string | undefined> {
+    const explicitOpportunityId = payload.opportunityId as string | undefined;
+    if (explicitOpportunityId) return explicitOpportunityId;
+
+    if (who?.object === 'Contact') {
+      const oppId = await this.findOpenOpportunityForContact(tokens, who.id);
+      if (oppId) return oppId;
+    }
+
+    const explicitAccountId = payload.accountId as string | undefined;
+    if (explicitAccountId) return explicitAccountId;
+
+    const callerCompany = payload.callerCompany as string | undefined;
+    if (callerCompany) {
+      const accountId = await this.findOrCreateAccount(tokens, callerCompany);
+      if (accountId) return accountId;
+    }
+
+    if (who?.object === 'Contact') {
+      const accountId = await this.findAccountForContact(tokens, who.id);
+      if (accountId) return accountId;
+    }
+
+    return undefined;
   }
 
   private async findOrCreateLeadOrContact(
@@ -211,8 +255,9 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     const firstName = (payload.callerFirstName as string) ?? '';
     const lastName = (payload.callerLastName as string) ?? 'Unknown Caller';
     const email = (payload.callerEmail as string) ?? '';
+    const company = (payload.callerCompany as string) ?? '';
 
-    const leadId = await this.createLead(tokens, { firstName, lastName, email, phone });
+    const leadId = await this.createLead(tokens, { firstName, lastName, email, phone, company });
     return leadId ? { id: leadId, object: 'Lead' } : undefined;
   }
 
@@ -236,6 +281,110 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       }
     }
     return undefined;
+  }
+
+  private async findAccountForContact(
+    tokens: SalesforceTokens,
+    contactId: string,
+  ): Promise<string | undefined> {
+    const escaped = contactId.replace(/'/g, "\\'");
+    const soql = `SELECT AccountId FROM Contact WHERE Id = '${escaped}' LIMIT 1`;
+    const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/query?q=${encodeURIComponent(soql)}`;
+    try {
+      const res = await this.fetchWithTimeout(url, { headers: this.headers(tokens.accessToken) });
+      if (!res.ok) return undefined;
+      const data = await res.json() as { records: Array<{ AccountId?: string }> };
+      return data.records[0]?.AccountId ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async findOrCreateAccount(
+    tokens: SalesforceTokens,
+    companyName: string,
+  ): Promise<string | undefined> {
+    const trimmed = companyName.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'unknown') return undefined;
+
+    const escaped = trimmed.replace(/'/g, "\\'");
+    const soql = `SELECT Id FROM Account WHERE Name = '${escaped}' LIMIT 1`;
+    const queryUrl = `${tokens.instanceUrl}/services/data/${API_VERSION}/query?q=${encodeURIComponent(soql)}`;
+    try {
+      const res = await this.fetchWithTimeout(queryUrl, { headers: this.headers(tokens.accessToken) });
+      if (res.ok) {
+        const data = await res.json() as { totalSize: number; records: Array<{ Id: string }> };
+        if (data.totalSize > 0 && data.records[0]?.Id) return data.records[0].Id;
+      }
+    } catch (err) {
+      logger.warn('Salesforce Account lookup threw', { error: String(err) });
+    }
+
+    const createUrl = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Account`;
+    try {
+      const res = await this.fetchWithTimeout(createUrl, {
+        method: 'POST',
+        headers: this.headers(tokens.accessToken),
+        body: JSON.stringify({ Name: trimmed }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        logger.warn('Salesforce Account create failed', { status: res.status, body: text.slice(0, 200) });
+        return undefined;
+      }
+      const data = await res.json() as { id: string };
+      return data.id;
+    } catch (err) {
+      logger.warn('Salesforce Account create threw', { error: String(err) });
+      return undefined;
+    }
+  }
+
+  private async attachSummaryNote(
+    tokens: SalesforceTokens,
+    parentId: string,
+    title: string,
+    summary: string,
+  ): Promise<string | undefined> {
+    try {
+      const htmlContent = `<p>${escapeHtml(summary).replace(/\n/g, '<br/>')}</p>`;
+      const base64Content = Buffer.from(htmlContent, 'utf8').toString('base64');
+
+      const noteUrl = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/ContentNote`;
+      const noteRes = await this.fetchWithTimeout(noteUrl, {
+        method: 'POST',
+        headers: this.headers(tokens.accessToken),
+        body: JSON.stringify({ Title: title.slice(0, 200), Content: base64Content }),
+      });
+      if (!noteRes.ok) {
+        const text = await noteRes.text().catch(() => '');
+        logger.warn('Salesforce ContentNote create failed', { status: noteRes.status, body: text.slice(0, 200) });
+        return undefined;
+      }
+      const noteData = await noteRes.json() as { id: string };
+
+      const linkUrl = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/ContentDocumentLink`;
+      const linkRes = await this.fetchWithTimeout(linkUrl, {
+        method: 'POST',
+        headers: this.headers(tokens.accessToken),
+        body: JSON.stringify({
+          ContentDocumentId: noteData.id,
+          LinkedEntityId: parentId,
+          ShareType: 'V',
+          Visibility: 'AllUsers',
+        }),
+      });
+      if (!linkRes.ok) {
+        const text = await linkRes.text().catch(() => '');
+        logger.warn('Salesforce ContentDocumentLink create failed', {
+          status: linkRes.status, body: text.slice(0, 200),
+        });
+      }
+      return noteData.id;
+    } catch (err) {
+      logger.warn('Salesforce summary note attach threw', { error: String(err) });
+      return undefined;
+    }
   }
 
   private async findOpenOpportunityForContact(
@@ -263,17 +412,23 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
 
   private async createLead(
     tokens: SalesforceTokens,
-    params: { firstName?: string; lastName: string; email?: string; phone: string },
+    params: { firstName?: string; lastName: string; email?: string; phone: string; company?: string },
   ): Promise<string | undefined> {
     const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Lead`;
+    const company = params.company?.trim() || 'Unknown';
     const body: Record<string, unknown> = {
       LastName: params.lastName || 'Unknown Caller',
-      Company: 'Unknown',
+      Company: company,
       Phone: params.phone,
       LeadSource: 'QVO AI Voice Agent',
     };
     if (params.firstName) body.FirstName = params.firstName;
     if (params.email) body.Email = params.email;
+
+    // Pre-create the Account so it exists at conversion time and can be linked.
+    if (params.company) {
+      await this.findOrCreateAccount(tokens, params.company);
+    }
 
     const res = await this.fetchWithTimeout(url, {
       method: 'POST',
@@ -301,13 +456,15 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       callerPhone?: string;
       taskSubtype: 'Call' | 'Task';
       activityDate?: string;
+      status?: string;
+      callDisposition?: string;
     },
   ): Promise<string> {
     const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Task`;
     const body: Record<string, unknown> = {
       Subject: params.subject,
       Description: params.description,
-      Status: 'Completed',
+      Status: params.status ?? 'Completed',
       Priority: 'Normal',
       TaskSubtype: params.taskSubtype,
       ActivityDate: params.activityDate ?? new Date().toISOString().slice(0, 10),
@@ -317,6 +474,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       body.CallDurationInSeconds = params.durationSeconds;
       if (params.callSid) body.CallObject = params.callSid;
     }
+    if (params.callDisposition) body.CallDisposition = params.callDisposition;
     if (params.whoId) body.WhoId = params.whoId;
     if (params.whatId) body.WhatId = params.whatId;
 
@@ -349,4 +507,40 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       clearTimeout(timeoutId);
     }
   }
+}
+
+function mapDispositionToTaskFields(
+  disposition: string | undefined,
+): { status: string; callDisposition?: string } {
+  const normalized = (disposition ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+  switch (normalized) {
+    case 'booked':
+    case 'appointment_booked':
+      return { status: 'Completed', callDisposition: 'Booked Appointment' };
+    case 'no_answer':
+    case 'noanswer':
+    case 'no_response':
+    case 'voicemail':
+      return { status: 'Completed', callDisposition: 'No Answer' };
+    case 'spam':
+    case 'junk':
+      return { status: 'Completed', callDisposition: 'Spam' };
+    case 'transferred':
+    case 'transfer':
+      return { status: 'Completed', callDisposition: 'Transferred' };
+    case 'completed':
+    case '':
+      return { status: 'Completed', callDisposition: 'Completed Call' };
+    default:
+      return { status: 'Completed', callDisposition: disposition };
+  }
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
