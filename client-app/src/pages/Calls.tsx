@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 
 interface Call {
@@ -567,6 +567,18 @@ export default function Calls() {
           {savedViews.map((view) => {
             const isActive = activeViewId === view.id && !isViewDirty;
             const isOwner = !!currentUserId && view.created_by === currentUserId;
+            const lastRunRel = view.digest_last_run_at
+              ? formatDistanceToNow(new Date(view.digest_last_run_at), { addSuffix: true })
+              : null;
+            const lastRunAbs = view.digest_last_run_at
+              ? format(new Date(view.digest_last_run_at), 'PPp')
+              : null;
+            const matchCount = view.digest_last_match_count ?? 0;
+            const digestStatus = view.digest_enabled
+              ? (lastRunRel
+                  ? `Last digest ran ${lastRunRel} (${lastRunAbs}) — ${matchCount} matching call${matchCount === 1 ? '' : 's'}`
+                  : 'Daily digest is on — has not run yet')
+              : null;
             return (
               <div
                 key={view.id}
@@ -575,17 +587,32 @@ export default function Calls() {
                 <button
                   onClick={() => applySavedView(view)}
                   className={`inline-flex items-center gap-1.5 pl-3 ${isOwner ? 'pr-2' : 'pr-3'} py-1.5 font-medium`}
-                  title={view.is_shared ? (isOwner ? 'Shared with team' : 'Shared by a teammate') : 'Personal view'}
+                  title={[
+                    view.is_shared ? (isOwner ? 'Shared with team' : 'Shared by a teammate') : 'Personal view',
+                    digestStatus,
+                  ].filter(Boolean).join('\n')}
                 >
                   {view.is_shared ? <Users className="h-3.5 w-3.5" /> : <Star className="h-3.5 w-3.5" />}
                   {view.name}
                 </button>
+                {view.digest_enabled && (
+                  <span
+                    className="text-xs text-text-muted whitespace-nowrap"
+                    title={digestStatus ?? undefined}
+                  >
+                    · {lastRunRel ? `${matchCount} ${lastRunRel}` : 'not run yet'}
+                  </span>
+                )}
                 {isOwner ? (
                   <>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleToggleDigest(view); }}
                       className={`p-1 rounded-full transition ${view.digest_enabled ? 'text-primary' : 'text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
-                      title={view.digest_enabled ? 'Daily email digest is on — click to turn off' : 'Send me a daily email digest'}
+                      title={
+                        view.digest_enabled
+                          ? `Daily email digest is on — click to turn off\n${digestStatus ?? ''}`.trim()
+                          : 'Send me a daily email digest'
+                      }
                       aria-label={view.digest_enabled ? `Turn off daily digest for ${view.name}` : `Turn on daily digest for ${view.name}`}
                     >
                       {view.digest_enabled ? <Mail className="h-3.5 w-3.5" /> : <MailX className="h-3.5 w-3.5" />}
