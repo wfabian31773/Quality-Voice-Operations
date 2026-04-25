@@ -1,7 +1,11 @@
 import { createLogger } from '../../core/logger';
 import { withPrivilegedClient } from '../../db';
 import { getConnectorConfig, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
-import { notifyConnectorSyncError, isRevenueCriticalProvider } from './SyncErrorAlerter';
+import {
+  notifyConnectorSyncError,
+  notifySustainedConnectorFailure,
+  isRevenueCriticalProvider,
+} from './SyncErrorAlerter';
 import type { ConnectorConfig as ConnectorConfigType } from './types';
 import { TicketingConnectorAdapter } from './adapters/ticketing';
 import { TwilioSmsConnectorAdapter } from './adapters/sms';
@@ -201,15 +205,33 @@ export class ConnectorService {
         if (result.success) return;
         if (!isRevenueCriticalProvider(config.provider)) return;
         for (const u of updates) {
-          if (!u.transitionedToError) continue;
-          notifyConnectorSyncError({
+          if (u.transitionedToError) {
+            notifyConnectorSyncError({
+              tenantId,
+              integrationId: u.integrationId,
+              connectorType: config.connectorType,
+              provider: u.provider,
+              errorMessage,
+            }).catch((err) => {
+              logger.warn('notifyConnectorSyncError failed', {
+                tenantId,
+                integrationId: u.integrationId,
+                error: String(err),
+              });
+            });
+          }
+          // Sustained-failure SMS escalation: fires on any error (including
+          // consecutive ones) once the integration has been failing past the
+          // sustained threshold, and respects its own throttle / opt-out.
+          notifySustainedConnectorFailure({
             tenantId,
             integrationId: u.integrationId,
             connectorType: config.connectorType,
             provider: u.provider,
             errorMessage,
+            firstFailedAt: u.firstFailedAt,
           }).catch((err) => {
-            logger.warn('notifyConnectorSyncError failed', {
+            logger.warn('notifySustainedConnectorFailure failed', {
               tenantId,
               integrationId: u.integrationId,
               error: String(err),

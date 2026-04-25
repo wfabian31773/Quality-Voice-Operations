@@ -239,6 +239,13 @@ export interface SyncStatusUpdateResult {
   provider: string;
   previousStatus: string | null;
   transitionedToError: boolean;
+  /**
+   * Timestamp the integration first started failing (i.e. when it last
+   * transitioned from a non-error state into the error state). Preserved
+   * across consecutive failures so callers can compute outage duration.
+   * Null when the integration is currently healthy.
+   */
+  firstFailedAt: string | null;
 }
 
 export async function updateConnectorSyncStatus(
@@ -253,13 +260,13 @@ export async function updateConnectorSyncStatus(
     return await withTenant(tenantId, async (client) => {
       const { rows: priorRows } = provider
         ? await client.query(
-            `SELECT id, provider, last_sync_status
+            `SELECT id, provider, last_sync_status, last_sync_error_at
              FROM integrations
              WHERE tenant_id = $1 AND integration_type = $2 AND provider = $3 AND is_enabled = TRUE`,
             [tenantId, connectorType, provider],
           )
         : await client.query(
-            `SELECT id, provider, last_sync_status
+            `SELECT id, provider, last_sync_status, last_sync_error_at
              FROM integrations
              WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
             [tenantId, connectorType],
@@ -286,11 +293,19 @@ export async function updateConnectorSyncStatus(
           );
         }
       } else {
+        // Preserve the original failure timestamp across consecutive errors so
+        // callers can compute outage duration. Only stamp NOW() on the first
+        // transition into the error state.
         if (provider) {
           await client.query(
             `UPDATE integrations
              SET last_sync_at = NOW(), last_sync_status = $3,
-                 last_sync_error = $5, last_sync_error_at = NOW(),
+                 last_sync_error = $5,
+                 last_sync_error_at = CASE
+                   WHEN last_sync_status = 'error' AND last_sync_error_at IS NOT NULL
+                     THEN last_sync_error_at
+                   ELSE NOW()
+                 END,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
             [tenantId, connectorType, status, provider, truncatedError],
@@ -299,7 +314,12 @@ export async function updateConnectorSyncStatus(
           await client.query(
             `UPDATE integrations
              SET last_sync_at = NOW(), last_sync_status = $3,
-                 last_sync_error = $4, last_sync_error_at = NOW(),
+                 last_sync_error = $4,
+                 last_sync_error_at = CASE
+                   WHEN last_sync_status = 'error' AND last_sync_error_at IS NOT NULL
+                     THEN last_sync_error_at
+                   ELSE NOW()
+                 END,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
             [tenantId, connectorType, status, truncatedError],
@@ -309,11 +329,21 @@ export async function updateConnectorSyncStatus(
 
       return priorRows.map((row) => {
         const previousStatus = (row.last_sync_status as string | null) ?? null;
+        const priorFailedAt = row.last_sync_error_at
+          ? new Date(row.last_sync_error_at as string).toISOString()
+          : null;
+        let firstFailedAt: string | null = null;
+        if (status === 'error') {
+          firstFailedAt = previousStatus === 'error' && priorFailedAt
+            ? priorFailedAt
+            : new Date().toISOString();
+        }
         return {
           integrationId: row.id as string,
           provider: row.provider as string,
           previousStatus,
-          transitionedToError: status === 'error' && previousStatus === 'success',
+          transitionedToError: status === 'error' && previousStatus !== 'error',
+          firstFailedAt,
         };
       });
     });
