@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Activity, AlertTriangle, CheckCircle, XCircle, RefreshCw,
   Clock, Wrench, ArrowUpRight, Shield, ChevronDown, ChevronUp,
-  Phone, Users,
+  Phone, Users, ShieldAlert, KeyRound, ServerCrash,
 } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 
 interface ToolMetric {
   toolName: string;
@@ -53,7 +54,46 @@ interface EscalationStats {
   completed: number;
 }
 
+type RejectionReason = 'missing_header' | 'invalid_signature' | 'validator_unavailable';
+
+interface WebhookSecuritySnapshot {
+  totals: Record<RejectionReason, number>;
+  ratePerMinute: Record<RejectionReason, number>;
+  buckets: Array<{ startedAt: string; counts: Record<RejectionReason, number> }>;
+  thresholdsPerMinute: Record<RejectionReason, number>;
+  lastRejectionAt: Record<RejectionReason, string | null>;
+  lastAlertAt: Record<RejectionReason, string | null>;
+  alertActive: Record<RejectionReason, boolean>;
+  alertCooldownMs: number;
+  startedAt: string;
+  generatedAt: string;
+}
+
 const API_BASE = '/api';
+
+const REJECTION_REASONS: RejectionReason[] = [
+  'invalid_signature',
+  'missing_header',
+  'validator_unavailable',
+];
+
+const REJECTION_LABELS: Record<RejectionReason, string> = {
+  invalid_signature: 'Invalid signature',
+  missing_header: 'Missing signature header',
+  validator_unavailable: 'Validator unavailable',
+};
+
+const REJECTION_DESCRIPTIONS: Record<RejectionReason, string> = {
+  invalid_signature: 'Webhook hit our endpoint with a bad HMAC — almost certainly a spoof attempt or misconfigured proxy.',
+  missing_header: 'Caller never sent the X-Twilio-Signature header — bots or unsigned probes.',
+  validator_unavailable: 'Our process could not verify signatures (missing TWILIO_AUTH_TOKEN or SDK). Real Twilio traffic is being rejected.',
+};
+
+const REJECTION_ICONS: Record<RejectionReason, typeof Shield> = {
+  invalid_signature: ShieldAlert,
+  missing_header: KeyRound,
+  validator_unavailable: ServerCrash,
+};
 
 async function apiFetch(path: string, options?: RequestInit) {
   const res = await fetch(`${API_BASE}${path}`, { credentials: 'include', ...options });
@@ -97,11 +137,16 @@ function successRateColor(rate: number): string {
 }
 
 export default function ToolHealth() {
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.isPlatformAdmin ?? false;
+
   const [window, setWindow] = useState('7d');
-  const [tab, setTab] = useState<'health' | 'escalations'>('health');
+  const [tab, setTab] = useState<'health' | 'escalations' | 'webhookSecurity'>('health');
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [escalationTasks, setEscalationTasks] = useState<EscalationTask[]>([]);
   const [escalationStats, setEscalationStats] = useState<EscalationStats | null>(null);
+  const [webhookSecurity, setWebhookSecurity] = useState<WebhookSecuritySnapshot | null>(null);
+  const [webhookSecurityError, setWebhookSecurityError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
 
@@ -111,13 +156,22 @@ export default function ToolHealth() {
       if (tab === 'health') {
         const data = await apiFetch(`/tool-health/metrics?window=${window}`);
         setHealthData(data);
-      } else {
+      } else if (tab === 'escalations') {
         const [tasksRes, statsRes] = await Promise.all([
           apiFetch('/escalation-tasks?limit=50'),
           apiFetch('/escalation-tasks/stats'),
         ]);
         setEscalationTasks(tasksRes.tasks);
         setEscalationStats(statsRes);
+      } else if (tab === 'webhookSecurity') {
+        try {
+          const data = await apiFetch('/observability/twilio-webhook-security');
+          setWebhookSecurity(data);
+          setWebhookSecurityError(null);
+        } catch (err) {
+          setWebhookSecurity(null);
+          setWebhookSecurityError(err instanceof Error ? err.message : 'Failed to load');
+        }
       }
     } catch {
       // silently handle fetch errors
@@ -127,6 +181,12 @@ export default function ToolHealth() {
   }, [window, tab]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (tab !== 'webhookSecurity') return;
+    const t = setInterval(fetchData, 15000);
+    return () => clearInterval(t);
+  }, [tab, fetchData]);
 
   const handleUpdateTask = async (taskId: string, status: string) => {
     try {
@@ -175,6 +235,18 @@ export default function ToolHealth() {
           <Users className="w-4 h-4 inline mr-1.5" />
           Escalation Queue
         </button>
+        {isPlatformAdmin && (
+          <button
+            onClick={() => setTab('webhookSecurity')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'webhookSecurity' ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-foreground'}`}
+          >
+            <ShieldAlert className="w-4 h-4 inline mr-1.5" />
+            Webhook Security
+            {webhookSecurity && Object.values(webhookSecurity.alertActive).some(Boolean) && (
+              <span className="ml-2 inline-flex items-center justify-center w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </button>
+        )}
       </div>
 
       {tab === 'health' && (
@@ -325,6 +397,15 @@ export default function ToolHealth() {
         </>
       )}
 
+      {tab === 'webhookSecurity' && isPlatformAdmin && (
+        <WebhookSecuritySection
+          loading={loading}
+          data={webhookSecurity}
+          error={webhookSecurityError}
+          onRefresh={fetchData}
+        />
+      )}
+
       {tab === 'escalations' && (
         <>
           {loading ? (
@@ -428,6 +509,173 @@ export default function ToolHealth() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function formatRelativeFromNow(iso: string | null): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return 'just now';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function WebhookSecuritySection({
+  loading,
+  data,
+  error,
+  onRefresh,
+}: {
+  loading: boolean;
+  data: WebhookSecuritySnapshot | null;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  if (loading && !data) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-40 bg-surface border border-border rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center">
+        <ServerCrash className="w-8 h-8 text-muted mx-auto mb-3" />
+        <p className="text-foreground font-medium">Could not load webhook security metrics</p>
+        <p className="text-sm text-muted mt-1">{error ?? 'Unknown error'}</p>
+        <button
+          onClick={onRefresh}
+          className="mt-4 px-3 py-1.5 text-xs bg-primary text-white rounded-md hover:opacity-90"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const anyAlertActive = Object.values(data.alertActive).some(Boolean);
+  const cooldownMinutes = Math.round(data.alertCooldownMs / 60_000);
+
+  return (
+    <>
+      {anyAlertActive && (
+        <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-500">Webhook spoofing alert is firing</p>
+            <p className="text-xs text-muted mt-1">
+              One or more rejection counters crossed their per-minute threshold within the last {cooldownMinutes} minutes.
+              A critical entry has been written to error logs. Investigate the source IPs and check Twilio configuration.
+            </p>
+            <ul className="mt-2 space-y-0.5 text-xs">
+              {REJECTION_REASONS.filter((r) => data.alertActive[r]).map((r) => (
+                <li key={r} className="text-foreground">
+                  <span className="font-mono">{r}</span> · last fired {formatRelativeFromNow(data.lastAlertAt[r])}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {REJECTION_REASONS.map((reason) => {
+          const Icon = REJECTION_ICONS[reason];
+          const total = data.totals[reason];
+          const rate = data.ratePerMinute[reason];
+          const threshold = data.thresholdsPerMinute[reason];
+          const breached = data.alertActive[reason];
+          const reasonBuckets = data.buckets.map((b) => ({ count: b.counts[reason] }));
+
+          return (
+            <div
+              key={reason}
+              className={`bg-surface border rounded-xl p-4 ${breached ? 'border-red-500/60' : 'border-border'}`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`p-1.5 rounded-lg ${breached ? 'bg-red-500/15 text-red-500' : 'bg-muted/10 text-muted'}`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">{REJECTION_LABELS[reason]}</span>
+                </div>
+                {breached && (
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-500">
+                    Alert
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted">Last 1m</div>
+                  <div className={`text-2xl font-bold ${rate >= threshold ? 'text-red-500' : 'text-foreground'}`}>
+                    {rate}
+                    <span className="text-xs font-normal text-muted ml-1">/ {threshold}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted">Total since boot</div>
+                  <div className="text-2xl font-bold text-foreground">{total.toLocaleString()}</div>
+                </div>
+              </div>
+
+              <Sparkline values={reasonBuckets.map((b) => b.count)} highlight={breached} />
+
+              <p className="text-[11px] text-muted mt-2 leading-snug">{REJECTION_DESCRIPTIONS[reason]}</p>
+              <p className="text-[10px] text-muted mt-1">
+                Last rejection: {formatRelativeFromNow(data.lastRejectionAt[reason])}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-4 text-xs text-muted">
+        <div className="flex items-center justify-between">
+          <span>
+            Rejection counters are in-process and reset on restart. Process started{' '}
+            {formatRelativeFromNow(data.startedAt)} · last refreshed {formatRelativeFromNow(data.generatedAt)}.
+          </span>
+          <button
+            onClick={onRefresh}
+            className="px-2.5 py-1 bg-surface-hover border border-border rounded-md hover:bg-surface text-foreground"
+          >
+            <RefreshCw className="w-3 h-3 inline mr-1" /> Refresh
+          </button>
+        </div>
+        <p className="mt-2">
+          When per-minute rejections cross their threshold, a critical entry is written to error logs (errorCode{' '}
+          <span className="font-mono">twilio_signature_*_spike</span>) at most once per {cooldownMinutes}-minute cooldown.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function Sparkline({ values, highlight }: { values: number[]; highlight: boolean }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="flex items-end gap-px h-10 w-full">
+      {values.slice(-60).map((v, i) => (
+        <div
+          key={i}
+          className={`flex-1 rounded-t min-h-[1px] ${highlight ? 'bg-red-500/60' : 'bg-primary/40'}`}
+          style={{ height: `${(v / max) * 100}%` }}
+          title={`${v}`}
+        />
+      ))}
     </div>
   );
 }

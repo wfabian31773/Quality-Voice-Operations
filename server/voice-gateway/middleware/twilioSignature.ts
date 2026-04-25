@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../../../platform/core/logger';
+import { recordRejection } from './twilioSignatureMetrics';
 
 const logger = createLogger('TWILIO_SIGNATURE');
 
@@ -31,6 +32,7 @@ export function twilioSignatureMiddleware(req: Request, res: Response, next: Nex
       hasAuthToken: !!authToken,
       hasValidator: !!validateRequestFn,
     });
+    recordRejection('validator_unavailable');
     res.status(503).send('Service Unavailable');
     return;
   }
@@ -41,6 +43,7 @@ export function twilioSignatureMiddleware(req: Request, res: Response, next: Nex
       path: req.path,
       remoteAddress: req.ip,
     });
+    recordRejection('missing_header');
     res.status(403).send('Forbidden');
     return;
   }
@@ -57,6 +60,7 @@ export function twilioSignatureMiddleware(req: Request, res: Response, next: Nex
       path: req.path,
       remoteAddress: req.ip,
     });
+    recordRejection('invalid_signature');
     res.status(403).send('Forbidden');
     return;
   }

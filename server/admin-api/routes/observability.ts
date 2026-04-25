@@ -7,6 +7,14 @@ import { getTenantMetrics, getRecentErrors, getSystemMetrics } from '../../../pl
 const logger = createLogger('OBSERVABILITY_API');
 const router = Router();
 
+function getVoiceGatewayBaseUrl(): string {
+  const explicit = process.env.VOICE_GATEWAY_BASE_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (devDomain) return `https://${devDomain}`;
+  return 'http://localhost:3001';
+}
+
 router.get('/observability/metrics', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const windowParam = String(req.query.window ?? '7d');
@@ -36,6 +44,60 @@ router.get('/observability/errors', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch error logs' });
   }
 });
+
+router.get(
+  '/observability/twilio-webhook-security',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    const adminToken = process.env.ADMIN_INTERNAL_TOKEN;
+    if (!adminToken) {
+      logger.error('ADMIN_INTERNAL_TOKEN not configured — cannot fetch voice gateway metrics');
+      return res.status(503).json({
+        error:
+          'Voice gateway metrics unavailable: ADMIN_INTERNAL_TOKEN not configured on the admin API',
+      });
+    }
+
+    const url = `${getVoiceGatewayBaseUrl()}/admin/twilio-webhook-security`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+
+    try {
+      const upstream = await fetch(url, {
+        headers: { 'x-admin-token': adminToken, accept: 'application/json' },
+        signal: controller.signal,
+      });
+
+      if (!upstream.ok) {
+        const body = await upstream.text().catch(() => '');
+        logger.error('Voice gateway returned non-OK for metrics snapshot', {
+          status: upstream.status,
+          body: body.slice(0, 200),
+        });
+        return res
+          .status(502)
+          .json({ error: 'Voice gateway returned an error', status: upstream.status });
+      }
+
+      const data = (await upstream.json()) as Record<string, unknown>;
+      return res.json(data);
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === 'AbortError';
+      logger.error('Failed to fetch twilio signature metrics from voice gateway', {
+        url,
+        error: String(err),
+      });
+      return res.status(isAbort ? 504 : 502).json({
+        error: isAbort
+          ? 'Voice gateway timed out while returning metrics'
+          : 'Failed to reach voice gateway for metrics',
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+);
 
 router.get('/observability/system', requireAuth, requirePlatformAdmin, async (req, res) => {
   try {
