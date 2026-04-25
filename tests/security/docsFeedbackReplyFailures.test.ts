@@ -43,6 +43,25 @@ describe('docs feedback failed-reply surfacing', () => {
     );
     expect(supportFile).toMatch(/runDocsFeedbackReplyDigestCycle/);
   });
+
+  it('exposes a one-click retry endpoint that re-sends the previous reply', () => {
+    expect(supportFile).toMatch(
+      /router\.post\(\s*\n?\s*'\/docs\/feedback\/comments\/:id\/reply\/retry'/,
+    );
+    expect(supportFile).toMatch(/FROM docs_feedback_replies\s*\n\s*WHERE feedback_id = \$1\s*\n\s*ORDER BY created_at DESC\s*\n\s*LIMIT 1/);
+    expect(supportFile).toMatch(/Docs feedback reply retried/);
+  });
+
+  it('only allows retry when the latest reply actually failed', () => {
+    expect(supportFile).toMatch(/Latest reply already delivered; nothing to retry/);
+    expect(supportFile).toMatch(/if \(!lastReply\.email_error\)/);
+  });
+
+  it('shares the email-send + persist logic between reply and retry', () => {
+    expect(supportFile).toMatch(/deliverDocsFeedbackReply/);
+    const occurrences = supportFile.match(/deliverDocsFeedbackReply\(/g) ?? [];
+    expect(occurrences.length).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe('docs feedback reply digest scheduler', () => {

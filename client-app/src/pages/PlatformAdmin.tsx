@@ -1137,6 +1137,25 @@ function DocsFeedbackCommentRow({
     },
   });
 
+  const retryReply = useMutation({
+    mutationFn: () =>
+      api.post<{ success: boolean; message_id?: string; subject?: string }>(
+        `/docs/feedback/comments/${c.id}/reply/retry`,
+        {},
+      ),
+    onSuccess: () => {
+      setSuccess('Reply re-sent.');
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['docs-feedback-comments'] });
+      queryClient.invalidateQueries({ queryKey: ['docs-feedback-replies', c.id] });
+    },
+    onError: (err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(detail || 'Failed to re-send reply');
+      setSuccess(null);
+    },
+  });
+
   const statusBadge =
     c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
       : c.status === 'hidden' ? 'bg-gray-100 text-gray-600 border-gray-200'
@@ -1152,18 +1171,31 @@ function DocsFeedbackCommentRow({
       {lastReplyFailed && (
         <div className="mb-2 flex items-start gap-2 text-xs text-red-700 bg-red-100/60 border border-red-200 rounded px-2 py-1.5">
           <Mail className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-          <div>
+          <div className="flex-1">
             <div className="font-semibold">Last reply failed to send</div>
             {c.last_reply_error && (
               <div className="text-red-600">{c.last_reply_error}</div>
             )}
             <div className="text-red-600/80">
-              Retry from the reply form below or reach out another way.
+              Retry below to re-send the same body, or open the reply form to
+              edit before sending.
               {c.last_reply_at && (
                 <> Attempted {new Date(c.last_reply_at).toLocaleString()}.</>
               )}
             </div>
           </div>
+          <button
+            type="button"
+            disabled={retryReply.isPending}
+            onClick={() => {
+              setError(null);
+              setSuccess(null);
+              retryReply.mutate();
+            }}
+            className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+          >
+            {retryReply.isPending ? 'Retrying…' : 'Retry send'}
+          </button>
         </div>
       )}
       <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">

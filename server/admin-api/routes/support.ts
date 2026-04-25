@@ -541,6 +541,109 @@ router.get('/docs/feedback/comments/:id/replies', requireAuth, requirePlatformAd
   }
 });
 
+interface DocsFeedbackComment {
+  id: number;
+  article_slug: string;
+  comment: string | null;
+  reply_email: string | null;
+}
+
+async function loadDocsFeedbackComment(
+  id: number,
+): Promise<DocsFeedbackComment | null> {
+  const pool = getPlatformPool();
+  const r = await pool.query<DocsFeedbackComment>(
+    `SELECT id, article_slug, comment, reply_email FROM docs_feedback WHERE id = $1`,
+    [id],
+  );
+  if (r.rowCount === 0) return null;
+  return r.rows[0];
+}
+
+/**
+ * Send a docs-feedback reply email, persist the attempt to
+ * docs_feedback_replies, and on success bump reply_count (optionally marking
+ * the comment as resolved). Returns the EmailResult plus the resolved subject
+ * so callers can report it back to the admin UI.
+ */
+async function deliverDocsFeedbackReply(input: {
+  comment: DocsFeedbackComment;
+  body: string;
+  subject: string;
+  actor: string | null;
+  markResolved: boolean;
+}): Promise<{ result: EmailResult; finalSubject: string }> {
+  const { comment, body, subject, actor, markResolved } = input;
+  if (!comment.reply_email) {
+    throw new Error('comment has no reply_email');
+  }
+  const pool = getPlatformPool();
+  const escapedBody = escapeHtml(body).replace(/\n/g, '<br/>');
+  const originalBlock = comment.comment
+    ? `<hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb"/>
+       <p style="color:#64748b;font-size:12px;margin:0 0 4px">You wrote about <code>${escapeHtml(comment.article_slug)}</code>:</p>
+       <blockquote style="margin:0;padding:8px 12px;border-left:3px solid #cbd5e1;color:#475569;background:#f8fafc;font-size:13px;white-space:pre-wrap">${escapeHtml(comment.comment)}</blockquote>`
+    : '';
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
+      <p style="white-space:pre-wrap">${escapedBody}</p>
+      ${originalBlock}
+      <p style="color:#64748b;font-size:12px;margin-top:16px">— The QVO docs team</p>
+    </div>`;
+  const textOriginal = comment.comment
+    ? `\n\n----- Your original feedback (${comment.article_slug}) -----\n${comment.comment}`
+    : '';
+  const text = `${body}\n${textOriginal}\n\n— The QVO docs team`;
+
+  const result = await sendEmail({
+    to: comment.reply_email,
+    subject,
+    html,
+    text,
+  });
+
+  try {
+    await pool.query(
+      `INSERT INTO docs_feedback_replies
+         (feedback_id, sent_by, to_email, subject, body, email_message_id, email_error)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        comment.id,
+        actor,
+        comment.reply_email,
+        subject,
+        body,
+        result.messageId ?? null,
+        result.success ? null : (result.error ?? 'unknown'),
+      ],
+    );
+  } catch (err) {
+    logger.error('Failed to log docs feedback reply', {
+      feedback_id: comment.id,
+      error: String(err),
+    });
+  }
+
+  if (result.success) {
+    try {
+      await pool.query(
+        `UPDATE docs_feedback
+         SET reply_count = reply_count + 1
+         ${markResolved ? `, status = 'resolved', status_updated_at = NOW(), status_updated_by = $2` : ''}
+         WHERE id = $1`,
+        markResolved ? [comment.id, actor] : [comment.id],
+      );
+    } catch (err) {
+      logger.warn('Failed to bump reply_count', {
+        feedback_id: comment.id,
+        error: String(err),
+      });
+    }
+  }
+
+  return { result, finalSubject: subject };
+}
+
 router.post('/docs/feedback/comments/:id/reply', requireAuth, requirePlatformAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) {
@@ -566,33 +669,17 @@ router.post('/docs/feedback/comments/:id/reply', requireAuth, requirePlatformAdm
   }
   const shouldMarkResolved = mark_resolved === true;
 
-  const pool = getPlatformPool();
-  let comment: {
-    id: number;
-    article_slug: string;
-    comment: string | null;
-    reply_email: string | null;
-  };
+  let comment: DocsFeedbackComment | null;
   try {
-    const r = await pool.query<{
-      id: number;
-      article_slug: string;
-      comment: string | null;
-      reply_email: string | null;
-    }>(
-      `SELECT id, article_slug, comment, reply_email FROM docs_feedback WHERE id = $1`,
-      [id],
-    );
-    if (r.rowCount === 0) {
-      res.status(404).json({ error: 'Not found' });
-      return;
-    }
-    comment = r.rows[0];
+    comment = await loadDocsFeedbackComment(id);
   } catch (err) {
     res.status(500).json({ error: 'Failed to load comment', detail: String(err) });
     return;
   }
-
+  if (!comment) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
   if (!comment.reply_email) {
     res.status(400).json({ error: 'No reply email captured for this comment' });
     return;
@@ -603,48 +690,14 @@ router.post('/docs/feedback/comments/:id/reply', requireAuth, requirePlatformAdm
     (subject && subject.trim().length > 0)
       ? subject.trim()
       : `Re: your feedback on ${comment.article_slug}`;
-  const escapedBody = escapeHtml(body).replace(/\n/g, '<br/>');
-  const originalBlock = comment.comment
-    ? `<hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb"/>
-       <p style="color:#64748b;font-size:12px;margin:0 0 4px">You wrote about <code>${escapeHtml(comment.article_slug)}</code>:</p>
-       <blockquote style="margin:0;padding:8px 12px;border-left:3px solid #cbd5e1;color:#475569;background:#f8fafc;font-size:13px;white-space:pre-wrap">${escapeHtml(comment.comment)}</blockquote>`
-    : '';
-  const html = `
-    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
-      <p style="white-space:pre-wrap">${escapedBody}</p>
-      ${originalBlock}
-      <p style="color:#64748b;font-size:12px;margin-top:16px">— The QVO docs team</p>
-    </div>`;
-  const textOriginal = comment.comment
-    ? `\n\n----- Your original feedback (${comment.article_slug}) -----\n${comment.comment}`
-    : '';
-  const text = `${body}\n${textOriginal}\n\n— The QVO docs team`;
 
-  const result = await sendEmail({
-    to: comment.reply_email,
+  const { result } = await deliverDocsFeedbackReply({
+    comment,
+    body,
     subject: finalSubject,
-    html,
-    text,
+    actor,
+    markResolved: shouldMarkResolved,
   });
-
-  try {
-    await pool.query(
-      `INSERT INTO docs_feedback_replies
-         (feedback_id, sent_by, to_email, subject, body, email_message_id, email_error)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        id,
-        actor,
-        comment.reply_email,
-        finalSubject,
-        body,
-        result.messageId ?? null,
-        result.success ? null : (result.error ?? 'unknown'),
-      ],
-    );
-  } catch (err) {
-    logger.error('Failed to log docs feedback reply', { feedback_id: id, error: String(err) });
-  }
 
   if (!result.success) {
     res.status(502).json({
@@ -652,18 +705,6 @@ router.post('/docs/feedback/comments/:id/reply', requireAuth, requirePlatformAdm
       detail: result.error,
     });
     return;
-  }
-
-  try {
-    await pool.query(
-      `UPDATE docs_feedback
-       SET reply_count = reply_count + 1
-       ${shouldMarkResolved ? `, status = 'resolved', status_updated_at = NOW(), status_updated_by = $2` : ''}
-       WHERE id = $1`,
-      shouldMarkResolved ? [id, actor] : [id],
-    );
-  } catch (err) {
-    logger.warn('Failed to bump reply_count', { feedback_id: id, error: String(err) });
   }
 
   logger.info('Docs feedback reply sent', {
@@ -680,6 +721,114 @@ router.post('/docs/feedback/comments/:id/reply', requireAuth, requirePlatformAdm
     subject: finalSubject,
   });
 });
+
+/**
+ * Re-send the most recent reply for a docs-feedback comment. Used by the
+ * "Retry send" button on the failed-reply banner so admins do not have to
+ * copy/paste the previous reply body to try delivery again.
+ */
+router.post(
+  '/docs/feedback/comments/:id/reply/retry',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'Invalid id' });
+      return;
+    }
+
+    let comment: DocsFeedbackComment | null;
+    try {
+      comment = await loadDocsFeedbackComment(id);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load comment', detail: String(err) });
+      return;
+    }
+    if (!comment) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    if (!comment.reply_email) {
+      res.status(400).json({ error: 'No reply email captured for this comment' });
+      return;
+    }
+
+    const pool = getPlatformPool();
+    let lastReply: {
+      subject: string;
+      body: string;
+      to_email: string;
+      email_error: string | null;
+    } | null = null;
+    try {
+      const r = await pool.query<{
+        subject: string;
+        body: string;
+        to_email: string;
+        email_error: string | null;
+      }>(
+        `SELECT subject, body, to_email, email_error
+         FROM docs_feedback_replies
+         WHERE feedback_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [id],
+      );
+      lastReply = r.rowCount && r.rowCount > 0 ? r.rows[0] : null;
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load previous reply', detail: String(err) });
+      return;
+    }
+
+    if (!lastReply) {
+      res.status(400).json({ error: 'No previous reply to retry' });
+      return;
+    }
+
+    // Only allow retrying when the latest reply actually failed to deliver.
+    // This prevents accidental duplicate sends if /retry is called directly
+    // against a comment whose last reply already went through.
+    if (!lastReply.email_error) {
+      res.status(409).json({
+        error: 'Latest reply already delivered; nothing to retry',
+      });
+      return;
+    }
+
+    const actor = req.user?.email ?? req.user?.userId ?? null;
+    const { result, finalSubject } = await deliverDocsFeedbackReply({
+      comment,
+      body: lastReply.body,
+      subject: lastReply.subject,
+      actor,
+      markResolved: false,
+    });
+
+    if (!result.success) {
+      res.status(502).json({
+        error: 'Failed to send reply email',
+        detail: result.error,
+      });
+      return;
+    }
+
+    logger.info('Docs feedback reply retried', {
+      feedback_id: id,
+      to: comment.reply_email,
+      sent_by: actor,
+      message_id: result.messageId,
+    });
+
+    res.json({
+      success: true,
+      message_id: result.messageId,
+      to: comment.reply_email,
+      subject: finalSubject,
+      retried: true,
+    });
+  },
+);
 
 // ----- Platform admin: support ticket inbox -----
 const TICKET_STATUSES = new Set(['open', 'in_progress', 'resolved', 'closed']);
