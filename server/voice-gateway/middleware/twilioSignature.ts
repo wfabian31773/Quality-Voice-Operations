@@ -12,14 +12,16 @@ try {
   logger.warn('Twilio SDK not available — signature validation will fail-closed in production');
 }
 
-const appEnv = (process.env.APP_ENV ?? process.env.NODE_ENV ?? 'development').toLowerCase();
-const isDev = !appEnv.startsWith('prod') && appEnv !== 'staging';
+function isDevEnv(): boolean {
+  const appEnv = (process.env.APP_ENV ?? process.env.NODE_ENV ?? 'development').toLowerCase();
+  return !appEnv.startsWith('prod') && appEnv !== 'staging';
+}
 
 export function twilioSignatureMiddleware(req: Request, res: Response, next: NextFunction): void {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
 
   if (!authToken || !validateRequestFn) {
-    if (isDev) {
+    if (isDevEnv()) {
       logger.debug('Twilio signature validation skipped (dev mode, missing auth token or SDK)');
       next();
       return;
