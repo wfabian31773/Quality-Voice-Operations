@@ -1,4 +1,5 @@
 import { createLogger } from '../../../core/logger';
+import { safeFetch, SsrfBlockedError } from '../ssrfGuard';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult, CreateTicketPayload } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -99,7 +100,7 @@ export class TicketingConnectorAdapter implements ConnectorAdapter {
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(url, {
+      const response = await safeFetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,6 +132,10 @@ export class TicketingConnectorAdapter implements ConnectorAdapter {
       return { success: true, ticketNumber, externalId, meta: { provider: config.provider } };
     } catch (err) {
       clearTimeout(timeoutId);
+      if (err instanceof SsrfBlockedError) {
+        logger.error('Ticketing base_url blocked by SSRF policy', { tenantId, reason: err.reason });
+        return { success: false, error: 'Ticketing base_url must be a public HTTPS URL' };
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Ticketing request failed', { tenantId, error });
       return { success: false, error };

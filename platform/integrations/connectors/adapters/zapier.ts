@@ -1,4 +1,5 @@
 import { createLogger } from '../../../core/logger';
+import { safeFetch, SsrfBlockedError } from '../ssrfGuard';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -12,33 +13,6 @@ const SUPPORTED_EVENTS = new Set([
   'ticket.created',
 ]);
 
-function isAllowedWebhookUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') return false;
-    const hostname = parsed.hostname.toLowerCase();
-    const blocked = [
-      'localhost', '127.0.0.1', '0.0.0.0', '::1',
-      '169.254.169.254', 'metadata.google.internal',
-    ];
-    if (blocked.includes(hostname)) return false;
-    if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return false;
-    const parts = hostname.split('.');
-    if (parts.length >= 1) {
-      const first = parseInt(parts[0], 10);
-      if (first === 10) return false;
-      if (first === 172 && parts.length >= 2) {
-        const second = parseInt(parts[1], 10);
-        if (second >= 16 && second <= 31) return false;
-      }
-      if (first === 192 && parts.length >= 2 && parseInt(parts[1], 10) === 168) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
   async execute(
     tenantId: TenantId,
@@ -49,11 +23,6 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
     if (!webhookUrl) {
       logger.error('Missing Zapier webhook URL', { tenantId });
       return { success: false, error: 'Zapier connector not configured: missing webhook_url' };
-    }
-
-    if (!isAllowedWebhookUrl(webhookUrl)) {
-      logger.error('Webhook URL blocked by SSRF policy', { tenantId });
-      return { success: false, error: 'Webhook URL must be a public HTTPS URL' };
     }
 
     if (!SUPPORTED_EVENTS.has(payload.type)) {
@@ -80,7 +49,7 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
         headers['X-API-Key'] = apiKey;
       }
 
-      const res = await fetch(webhookUrl, {
+      const res = await safeFetch(webhookUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(eventPayload),
@@ -111,6 +80,10 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
       };
     } catch (err) {
       clearTimeout(timeoutId);
+      if (err instanceof SsrfBlockedError) {
+        logger.error('Webhook URL blocked by SSRF policy', { tenantId, reason: err.reason });
+        return { success: false, error: 'Webhook URL must be a public HTTPS URL' };
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Zapier webhook request failed', { tenantId, error });
       return { success: false, error };
