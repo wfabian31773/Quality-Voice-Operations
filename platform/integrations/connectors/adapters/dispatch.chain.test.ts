@@ -413,4 +413,195 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
       deal_id: 999,
     });
   });
+
+  test('Salesforce: appointment.booked reuses contactId, accountId, and opportunityId from call.completed (no Lead lookup or conversion)', async () => {
+    const INSTANCE_URL = 'https://acme.my.salesforce.com';
+    const config: ConnectorConfig = {
+      integrationId: 'int-sf-1',
+      tenantId: TENANT,
+      connectorType: 'crm',
+      provider: 'salesforce',
+      isEnabled: true,
+      credentials: {
+        access_token: 'tok-sf',
+        instance_url: INSTANCE_URL,
+        // Far in the future under the fake clock so ensureSalesforceAccessToken
+        // skips the OAuth refresh round-trip.
+        token_expires_at: String(Date.now() + 60 * 60 * 1000),
+      },
+    };
+    vi.mocked(connectorDb.listEnabledConnectorConfigs).mockResolvedValue([config]);
+
+    // ---- Event 1: call.completed (qualified=true) ----
+    // Phone search misses on Contact and Lead -> createLead pre-creates the
+    // Account (search miss + POST) then creates the Lead. qualified=true
+    // triggers Lead -> Contact + Account + Opportunity conversion. The reused
+    // Account search resolves to the just-created Account (no second POST).
+    // The summary triggers a ContentNote + ContentDocumentLink pair.
+    const eventOneFetch = setupFetch([
+      {
+        match: (u) => u.includes('/services/data/v60.0/query?q=') && u.includes('FROM%20Contact'),
+        response: { body: { totalSize: 0, records: [] } },
+      },
+      {
+        match: (u) => u.includes('/services/data/v60.0/query?q=') && u.includes('FROM%20Lead'),
+        response: { body: { totalSize: 0, records: [] } },
+      },
+      // First Account search (createLead pre-create): empty.
+      {
+        match: (u) => u.includes('/services/data/v60.0/query?q=') && u.includes('FROM%20Account'),
+        response: { body: { totalSize: 0, records: [] } },
+        times: 1,
+      },
+      // Second Account search (reuseAccountId resolution): finds the Account
+      // created moments earlier so we don't double-create it.
+      {
+        match: (u) => u.includes('/services/data/v60.0/query?q=') && u.includes('FROM%20Account'),
+        response: { body: { totalSize: 1, records: [{ Id: '001ACC0000000001' }] } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/Account') && i?.method === 'POST',
+        response: { body: { id: '001ACC0000000001' } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/Lead') && i?.method === 'POST',
+        response: { body: { id: '00QLEAD000000001' } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/LeadConvert/') && i?.method === 'POST',
+        response: {
+          body: {
+            success: true,
+            leadId: '00QLEAD000000001',
+            contactId: '003CONT000000001',
+            accountId: '001ACC0000000001',
+            opportunityId: '006OPP0000000001',
+          },
+        },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/Task') && i?.method === 'POST',
+        response: { body: { id: '00TTASK000000001' } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/ContentNote') && i?.method === 'POST',
+        response: { body: { id: 'CN0000000000001' } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/ContentDocumentLink') && i?.method === 'POST',
+        response: { body: { id: 'CDL000000000001' } },
+      },
+    ]);
+
+    const service = new ConnectorService();
+    const sharedPayload = {
+      callerPhone: CALLER_PHONE,
+      callerFirstName: 'Jane',
+      callerLastName: 'Doe',
+      callerCompany: 'Acme Inc',
+    };
+
+    const callResult = await service.dispatchEvent(TENANT, 'call.completed', {
+      type: 'call.completed',
+      ...sharedPayload,
+      qualified: true,
+      summary: 'AI voice call',
+      durationSeconds: 120,
+      callSid: 'CA-3',
+    });
+
+    expect(callResult.dispatched).toBe(1);
+    expect(callResult.results[0]).toMatchObject({ provider: 'salesforce', success: true });
+
+    // Sanity: event 1 actually created the Lead and ran the conversion.
+    expect(eventOneFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/sobjects/Lead'))).toBeDefined();
+    expect(eventOneFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/sobjects/LeadConvert/'))).toBeDefined();
+
+    // The dispatch layer should have persisted all three IDs from meta into
+    // the canonical Salesforce-style slots used by the cache.
+    expect(identityModule.upsertCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'salesforce',
+      CALLER_PHONE,
+      expect.objectContaining({
+        contactId: '003CONT000000001',
+        accountId: '001ACC0000000001',
+        opportunityId: '006OPP0000000001',
+      }),
+    );
+
+    // ---- Event 2: appointment.booked ----
+    // With contactId + accountId + opportunityId hints injected by the
+    // dispatch layer, the adapter must skip the phone lookup, the Lead /
+    // Contact / Account creates, AND the Lead conversion code path entirely.
+    // The only writes are the Task plus its ContentNote attachment.
+    vi.unstubAllGlobals();
+    const eventTwoFetch = setupFetch([
+      {
+        match: (u, i) => u.endsWith('/sobjects/Task') && i?.method === 'POST',
+        response: { body: { id: '00TTASK000000002' } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/ContentNote') && i?.method === 'POST',
+        response: { body: { id: 'CN0000000000002' } },
+      },
+      {
+        match: (u, i) => u.endsWith('/sobjects/ContentDocumentLink') && i?.method === 'POST',
+        response: { body: { id: 'CDL000000000002' } },
+      },
+    ]);
+
+    const apptResult = await service.dispatchEvent(TENANT, 'appointment.booked', {
+      type: 'appointment.booked',
+      ...sharedPayload,
+      summary: 'Demo booked',
+      appointmentDate: '2026-05-01',
+      appointmentTime: '14:00',
+    });
+
+    expect(apptResult.dispatched).toBe(1);
+    expect(apptResult.results[0]).toMatchObject({ provider: 'salesforce', success: true });
+
+    // The dispatch layer must have looked up the cached identity for event 2.
+    expect(identityModule.lookupCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'salesforce',
+      CALLER_PHONE,
+    );
+
+    // No phone search on Contact or Lead - contactId hint short-circuits
+    // findOrCreateLeadOrContact before it queries.
+    expect(eventTwoFetch.calls.find((c) => c.url.includes('FROM%20Contact'))).toBeUndefined();
+    expect(eventTwoFetch.calls.find((c) => c.url.includes('FROM%20Lead'))).toBeUndefined();
+    // No Lead conversion - who.object is 'Contact' (from the hint), not 'Lead'.
+    expect(eventTwoFetch.calls.find((c) => c.url.endsWith('/sobjects/LeadConvert/'))).toBeUndefined();
+    // No new Lead, Contact, or Account writes.
+    expect(eventTwoFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/sobjects/Lead'))).toBeUndefined();
+    expect(eventTwoFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/sobjects/Contact'))).toBeUndefined();
+    expect(eventTwoFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/sobjects/Account'))).toBeUndefined();
+    // No open-opportunity SOQL - opportunityId hint short-circuits resolveWhatId.
+    expect(eventTwoFetch.calls.find((c) => c.url.includes('OpportunityContactRole'))).toBeUndefined();
+
+    // The Task POST must reference the cached contact via WhoId and the
+    // cached opportunity via WhatId - i.e. the IDs really did flow through.
+    const taskCreate = eventTwoFetch.calls.find(
+      (c) => c.method === 'POST' && c.url.endsWith('/sobjects/Task'),
+    );
+    expect(taskCreate).toBeDefined();
+    expect(taskCreate!.body).toMatchObject({
+      WhoId: '003CONT000000001',
+      WhatId: '006OPP0000000001',
+    });
+
+    // The ContentDocumentLink for the appointment summary must attach to the
+    // Task we just created (not to a stale/old one).
+    const linkCreate = eventTwoFetch.calls.find(
+      (c) => c.method === 'POST' && c.url.endsWith('/sobjects/ContentDocumentLink'),
+    );
+    expect(linkCreate).toBeDefined();
+    expect(linkCreate!.body).toMatchObject({
+      LinkedEntityId: '00TTASK000000002',
+      ContentDocumentId: 'CN0000000000002',
+    });
+  });
 });
