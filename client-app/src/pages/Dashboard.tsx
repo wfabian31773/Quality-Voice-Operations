@@ -12,6 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 import TrialConversionNudge from '../components/TrialConversionNudge';
 import Celebration from '../components/Celebration';
+import ConnectorAuthBanner from '../components/ConnectorAuthBanner';
 
 const CELEBRATION_KEY = 'qvo_first_call_celebrated';
 
@@ -395,6 +396,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <ConnectorAuthBanner />
 
       <OnboardingChecklist />
 
