@@ -21,7 +21,16 @@ interface Agent {
   remote_system?: string;
   remote_agent_id?: string;
   last_sync_at?: string;
+  scheduling_provider?: string | null;
   created_at: string;
+}
+
+interface ConnectorListItem {
+  integrationId: string;
+  connectorType: string;
+  provider: string;
+  name?: string;
+  isEnabled: boolean;
 }
 
 interface AgentToolInfo {
@@ -65,6 +74,21 @@ interface AgentFormData {
   system_prompt: string;
   welcome_greeting: string;
   temperature: number;
+  scheduling_provider: string;
+}
+
+interface SchedulingConnectorOption {
+  provider: string;
+  name: string;
+}
+
+const SCHEDULING_PROVIDER_LABELS: Record<string, string> = {
+  'google-calendar': 'Google Calendar',
+  'outlook-calendar': 'Outlook Calendar',
+};
+
+function formatSchedulingProvider(provider: string, fallback?: string): string {
+  return SCHEDULING_PROVIDER_LABELS[provider] ?? fallback ?? provider;
 }
 
 function ToolsConfigSection({ agentId }: { agentId: string }) {
@@ -174,9 +198,27 @@ function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: 
     system_prompt: '',
     welcome_greeting: '',
     temperature: 0.7,
+    scheduling_provider: '',
   });
   const [loaded, setLoaded] = useState(!agentId);
   const [activeTab, setActiveTab] = useState<'general' | 'tools'>('general');
+  const [schedulingOptions, setSchedulingOptions] = useState<SchedulingConnectorOption[]>([]);
+
+  useEffect(() => {
+    api.get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100')
+      .then((res) => {
+        const enabled = (res.connectors ?? []).filter(
+          (c) => c.connectorType === 'scheduling' && c.isEnabled,
+        );
+        setSchedulingOptions(
+          enabled.map((c) => ({
+            provider: c.provider,
+            name: c.name && c.name !== c.provider ? c.name : formatSchedulingProvider(c.provider),
+          })),
+        );
+      })
+      .catch(() => setSchedulingOptions([]));
+  }, []);
 
   useEffect(() => {
     if (!agentId) return;
@@ -190,16 +232,22 @@ function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: 
         system_prompt: a.system_prompt ?? '',
         welcome_greeting: a.welcome_greeting ?? '',
         temperature: a.temperature ?? 0.7,
+        scheduling_provider: a.scheduling_provider ?? '',
       });
       setLoaded(true);
     });
   }, [agentId]);
 
   const mutation = useMutation({
-    mutationFn: (data: AgentFormData) =>
-      agentId
-        ? api.patch<Record<string, unknown>>(`/agents/${agentId}`, data)
-        : api.post<{ agent: { id: string } }>('/agents', data),
+    mutationFn: (data: AgentFormData) => {
+      const payload: Record<string, unknown> = {
+        ...data,
+        scheduling_provider: data.scheduling_provider || null,
+      };
+      return agentId
+        ? api.patch<Record<string, unknown>>(`/agents/${agentId}`, payload)
+        : api.post<{ agent: { id: string } }>('/agents', payload);
+    },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       const newId = !agentId && result && typeof result === 'object' && 'agent' in result
@@ -305,6 +353,30 @@ function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: 
               <input type="range" min="0" max="1" step="0.1" value={form.temperature}
                 onChange={(e) => set('temperature', parseFloat(e.target.value))}
                 className="w-full" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1">Scheduling Calendar</label>
+              <select
+                value={form.scheduling_provider}
+                onChange={(e) => set('scheduling_provider', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Tenant default (any enabled)</option>
+                {schedulingOptions.map((opt) => (
+                  <option key={opt.provider} value={opt.provider}>
+                    {opt.name}
+                  </option>
+                ))}
+                {form.scheduling_provider &&
+                  !schedulingOptions.some((o) => o.provider === form.scheduling_provider) && (
+                    <option value={form.scheduling_provider}>
+                      {formatSchedulingProvider(form.scheduling_provider)} (not connected)
+                    </option>
+                  )}
+              </select>
+              <p className="mt-1 text-xs text-text-secondary">
+                Appointments booked by this agent are sent only to the chosen calendar. Phone-number setting overrides this.
+              </p>
             </div>
             {mutation.error && <p className="text-danger text-sm">{(mutation.error as Error).message}</p>}
             <div className="flex justify-end gap-3 pt-2">

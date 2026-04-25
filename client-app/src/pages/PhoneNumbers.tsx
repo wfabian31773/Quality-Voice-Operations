@@ -20,7 +20,25 @@ interface PhoneNumber {
   is_free_number: boolean;
   monthly_cost_cents: number;
   provisioned_via: string;
+  scheduling_provider: string | null;
   created_at: string;
+}
+
+interface ConnectorListItem {
+  integrationId: string;
+  connectorType: string;
+  provider: string;
+  name?: string;
+  isEnabled: boolean;
+}
+
+const SCHEDULING_PROVIDER_LABELS: Record<string, string> = {
+  'google-calendar': 'Google Calendar',
+  'outlook-calendar': 'Outlook Calendar',
+};
+
+function formatSchedulingProvider(provider: string, fallback?: string): string {
+  return SCHEDULING_PROVIDER_LABELS[provider] ?? fallback ?? provider;
 }
 
 interface Agent {
@@ -479,11 +497,31 @@ function ReassignModal({
 }) {
   const queryClient = useQueryClient();
   const [agentId, setAgentId] = useState(phone.routed_agent_id ?? '');
+  const [schedulingProvider, setSchedulingProvider] = useState(phone.scheduling_provider ?? '');
+  const [schedulingOptions, setSchedulingOptions] = useState<{ provider: string; name: string }[]>([]);
+
+  useEffect(() => {
+    api
+      .get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100')
+      .then((res) => {
+        const enabled = (res.connectors ?? []).filter(
+          (c) => c.connectorType === 'scheduling' && c.isEnabled,
+        );
+        setSchedulingOptions(
+          enabled.map((c) => ({
+            provider: c.provider,
+            name: c.name && c.name !== c.provider ? c.name : formatSchedulingProvider(c.provider),
+          })),
+        );
+      })
+      .catch(() => setSchedulingOptions([]));
+  }, []);
 
   const mutation = useMutation({
-    mutationFn: (newAgentId: string) =>
+    mutationFn: (vars: { newAgentId: string; provider: string }) =>
       api.patch(`/phone-numbers/${phone.id}/routing`, {
-        agent_id: newAgentId || null,
+        agent_id: vars.newAgentId || null,
+        scheduling_provider: vars.provider || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['phone-numbers'] });
@@ -503,7 +541,7 @@ function ReassignModal({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            mutation.mutate(agentId);
+            mutation.mutate({ newAgentId: agentId, provider: schedulingProvider });
           }}
           className="p-5 space-y-4"
         >
@@ -527,6 +565,30 @@ function ReassignModal({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-1">Scheduling Calendar</label>
+            <select
+              value={schedulingProvider}
+              onChange={(e) => setSchedulingProvider(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
+            >
+              <option value="">Use agent / tenant default</option>
+              {schedulingOptions.map((opt) => (
+                <option key={opt.provider} value={opt.provider}>
+                  {opt.name}
+                </option>
+              ))}
+              {schedulingProvider &&
+                !schedulingOptions.some((o) => o.provider === schedulingProvider) && (
+                  <option value={schedulingProvider}>
+                    {formatSchedulingProvider(schedulingProvider)} (not connected)
+                  </option>
+                )}
+            </select>
+            <p className="mt-1 text-xs text-text-secondary">
+              Overrides the agent's calendar choice for appointments booked on this number.
+            </p>
           </div>
           {mutation.error && (
             <p className="text-danger text-sm">{(mutation.error as Error).message}</p>

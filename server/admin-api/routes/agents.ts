@@ -54,6 +54,11 @@ function validateAgentInput(body: Record<string, unknown>, isCreate: boolean): s
     if (err) return err;
   }
 
+  if (body.scheduling_provider !== undefined && body.scheduling_provider !== null) {
+    if (typeof body.scheduling_provider !== 'string') return 'scheduling_provider must be a string or null';
+    if ((body.scheduling_provider as string).length > 60) return 'scheduling_provider exceeds maximum length of 60 characters';
+  }
+
   return null;
 }
 
@@ -71,6 +76,7 @@ router.get('/agents', requireAuth, async (req, res) => {
       `SELECT id, tenant_id, name, type, status, voice, model, temperature,
               system_prompt, welcome_greeting, escalation_config, metadata,
               execution_mode, remote_system, remote_agent_id, last_sync_at,
+              scheduling_provider,
               created_at, updated_at
        FROM agents WHERE tenant_id = $1
        ORDER BY created_at DESC
@@ -98,7 +104,7 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
   const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-4o-realtime-preview',
-          temperature = 0.8, tools = [], escalation_config = {}, metadata = {} } = body;
+          temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null } = body;
 
   const validationError = validateAgentInput(body, true);
   if (validationError) return res.status(400).json({ error: validationError });
@@ -117,11 +123,12 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata, scheduling_provider)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [tenantId, name, type, system_prompt ?? null, welcome_greeting ?? null, voice, model, temperature,
-       JSON.stringify(tools), JSON.stringify(escalation_config), JSON.stringify(metadata)],
+       JSON.stringify(tools), JSON.stringify(escalation_config), JSON.stringify(metadata),
+       scheduling_provider ?? null],
     );
     await client.query('COMMIT');
 
@@ -171,7 +178,7 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
   const validationError = validateAgentInput(body, false);
   if (validationError) return res.status(400).json({ error: validationError });
 
-  const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition', 'workflow_id'];
+  const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition', 'workflow_id', 'scheduling_provider'];
   const updates: string[] = ['updated_at = NOW()'];
   const values: unknown[] = [id, tenantId];
 

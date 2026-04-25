@@ -639,6 +639,54 @@ export async function listRefreshableConnectorConfigs(
   return results;
 }
 
+/**
+ * Resolve the scheduling provider chosen for a particular agent or phone
+ * number. Phone-number selection wins over agent selection when both are
+ * present, so a single inbound number can override the agent default. Returns
+ * null when neither target carries an explicit preference (the legacy
+ * "broadcast to every enabled scheduling integration" behaviour).
+ */
+export async function getPreferredSchedulingProvider(
+  tenantId: TenantId,
+  context: { agentId?: string | null; phoneNumberId?: string | null },
+): Promise<string | null> {
+  const agentId = context.agentId ?? null;
+  const phoneNumberId = context.phoneNumberId ?? null;
+  if (!agentId && !phoneNumberId) return null;
+
+  try {
+    return await withTenant(tenantId, async (client) => {
+      if (phoneNumberId) {
+        const { rows } = await client.query(
+          `SELECT scheduling_provider FROM phone_numbers
+           WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+          [tenantId, phoneNumberId],
+        );
+        const value = rows[0]?.scheduling_provider as string | null | undefined;
+        if (value) return value;
+      }
+      if (agentId) {
+        const { rows } = await client.query(
+          `SELECT scheduling_provider FROM agents
+           WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+          [tenantId, agentId],
+        );
+        const value = rows[0]?.scheduling_provider as string | null | undefined;
+        if (value) return value;
+      }
+      return null;
+    });
+  } catch (err) {
+    logger.warn('Failed to resolve preferred scheduling provider', {
+      tenantId,
+      agentId,
+      phoneNumberId,
+      error: String(err),
+    });
+    return null;
+  }
+}
+
 export async function deleteConnector(tenantId: TenantId, integrationId: string): Promise<void> {
   await withTenant(tenantId, async (client) => {
     await client.query(

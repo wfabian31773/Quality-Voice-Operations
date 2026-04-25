@@ -1,6 +1,6 @@
 import { createLogger } from '../../core/logger';
 import { withPrivilegedClient } from '../../db';
-import { getConnectorConfig, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
+import { getConnectorConfig, getPreferredSchedulingProvider, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
 import {
   notifyConnectorSyncError,
   notifySustainedConnectorFailure,
@@ -346,6 +346,7 @@ export class ConnectorService {
     tenantId: TenantId,
     eventType: StandardEventType,
     payload: ConnectorPayload,
+    options?: { schedulingProvider?: string | null },
   ): Promise<{ dispatched: number; results: Array<{ connectorType: string; provider: string; success: boolean; error?: string }> }> {
     const eventPayload = { ...payload, type: eventType };
     const results: Array<{ connectorType: string; provider: string; success: boolean; error?: string }> = [];
@@ -355,10 +356,35 @@ export class ConnectorService {
       return { dispatched: 0, results };
     }
 
+    let schedulingProvider: string | null | undefined = options?.schedulingProvider;
+    if (schedulingProvider === undefined && targetTypes.includes('scheduling')) {
+      const payloadObj = payload as Record<string, unknown>;
+      const agentId = typeof payloadObj.agentId === 'string'
+        ? (payloadObj.agentId as string)
+        : null;
+      const phoneNumberId = typeof payloadObj.phoneNumberId === 'string'
+        ? (payloadObj.phoneNumberId as string)
+        : null;
+      if (agentId || phoneNumberId) {
+        schedulingProvider = await getPreferredSchedulingProvider(tenantId, {
+          agentId,
+          phoneNumberId,
+        });
+      } else {
+        schedulingProvider = null;
+      }
+    }
+
     const configs = await listEnabledConnectorConfigs(tenantId, targetTypes);
     const dispatched = new Set<string>();
 
     for (const config of configs) {
+      // Honour the per-agent / per-phone-number scheduling provider choice so
+      // bookings only land in the calendar the tenant picked, rather than
+      // fanning out to every enabled scheduling integration.
+      if (config.connectorType === 'scheduling' && schedulingProvider && config.provider !== schedulingProvider) {
+        continue;
+      }
       const key = `${config.connectorType}:${config.provider}`;
       if (dispatched.has(key)) continue;
       dispatched.add(key);

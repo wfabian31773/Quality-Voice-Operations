@@ -59,6 +59,7 @@ router.get('/phone-numbers', requireAuth, async (req, res) => {
       `SELECT pn.id, pn.phone_number, pn.friendly_name, pn.twilio_sid, pn.capabilities,
               pn.status, pn.provisioned_at, pn.created_at,
               pn.is_free_number, pn.monthly_cost_cents, pn.provisioned_via,
+              pn.scheduling_provider,
               nr.agent_id AS routed_agent_id, nr.is_active AS routing_active
        FROM phone_numbers pn
        LEFT JOIN number_routing nr ON nr.phone_number_id = pn.id AND nr.is_active = TRUE
@@ -323,7 +324,16 @@ router.post('/phone-numbers', requireAuth, requireRole('manager'), async (req, r
 router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
-  const { agent_id } = req.body as Record<string, unknown>;
+  const { agent_id, scheduling_provider } = req.body as Record<string, unknown>;
+
+  if (
+    scheduling_provider !== undefined &&
+    scheduling_provider !== null &&
+    (typeof scheduling_provider !== 'string' || (scheduling_provider as string).length > 60)
+  ) {
+    return res.status(400).json({ error: 'scheduling_provider must be a string (≤60 chars) or null' });
+  }
+
   const pool = getPlatformPool();
   const client = await pool.connect();
 
@@ -354,8 +364,21 @@ router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('manager'), 
       );
     }
 
+    if (scheduling_provider !== undefined) {
+      await client.query(
+        `UPDATE phone_numbers SET scheduling_provider = $3, updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId, scheduling_provider ?? null],
+      );
+    }
+
     await client.query('COMMIT');
-    logger.info('Phone number routing updated', { tenantId, phoneId: id, agentId: agent_id ?? null });
+    logger.info('Phone number routing updated', {
+      tenantId,
+      phoneId: id,
+      agentId: agent_id ?? null,
+      schedulingProvider: scheduling_provider ?? null,
+    });
     await writeAuditLog({
       tenantId,
       actorUserId: req.user!.userId,
@@ -363,11 +386,19 @@ router.patch('/phone-numbers/:id/routing', requireAuth, requireRole('manager'), 
       action: 'phone_number.routing_updated',
       resourceType: 'phone_number',
       resourceId: id,
-      changes: { agentId: agent_id ?? null },
+      changes: {
+        agentId: agent_id ?? null,
+        ...(scheduling_provider !== undefined ? { schedulingProvider: scheduling_provider ?? null } : {}),
+      },
       ipAddress: extractIp(req),
       userAgent: req.headers['user-agent'],
     });
-    return res.json({ updated: true, phoneNumberId: id, agentId: agent_id ?? null });
+    return res.json({
+      updated: true,
+      phoneNumberId: id,
+      agentId: agent_id ?? null,
+      schedulingProvider: scheduling_provider !== undefined ? scheduling_provider ?? null : undefined,
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error('Failed to update routing', { tenantId, phoneId: id, error: String(err) });
