@@ -49,13 +49,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
       throw new Error('Account setup incomplete');
     }
-    if (res.status === 403) {
-      const msg = body.error || 'Insufficient permissions';
-      const err = new Error(msg);
-      (err as Record<string, unknown>).status = 403;
-      throw err;
-    }
-    throw new Error(body.error || body.message || `Request failed: ${res.status}`);
+    const msg = body.error || body.message || (res.status === 403 ? 'Insufficient permissions' : `Request failed: ${res.status}`);
+    const err = new Error(msg);
+    Object.assign(err, { status: res.status, body });
+    throw err;
   }
 
   if (res.status === 204) return {} as T;

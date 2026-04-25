@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { upsertConnector } from '../../../platform/integrations/connectors';
 import { requireAuth } from '../middleware/auth';
@@ -8,6 +8,20 @@ import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
 const router = Router();
 const logger = createLogger('CONNECTOR_OAUTH');
+
+function sendOAuthNotConfigured(
+  res: Response,
+  opts: { provider: string; providerLabel: string; missingEnv: string; docsUrl: string },
+) {
+  return res.status(400).json({
+    error: `${opts.providerLabel} OAuth not configured: ${opts.missingEnv} missing`,
+    code: 'OAUTH_NOT_CONFIGURED',
+    provider: opts.provider,
+    providerLabel: opts.providerLabel,
+    missingEnv: opts.missingEnv,
+    docsUrl: opts.docsUrl,
+  });
+}
 
 function getBaseUrl(req: { headers: Record<string, string | string[] | undefined> }): string {
   const proto = req.headers['x-forwarded-proto'] ?? 'https';
@@ -61,7 +75,12 @@ function oauthSuccessHtml(provider: string, appOrigin: string, displayName: stri
 router.get('/connectors/oauth/hubspot/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.HUBSPOT_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'HubSpot OAuth not configured: HUBSPOT_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'hubspot',
+      providerLabel: 'HubSpot',
+      missingEnv: 'HUBSPOT_CLIENT_ID',
+      docsUrl: '/docs/connecting-hubspot',
+    });
   }
 
   const baseUrl = getBaseUrl(req);
@@ -163,7 +182,12 @@ router.get('/connectors/oauth/hubspot/callback', async (req, res) => {
 router.get('/connectors/oauth/google/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'Google OAuth not configured: GOOGLE_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'google',
+      providerLabel: 'Google',
+      missingEnv: 'GOOGLE_CLIENT_ID',
+      docsUrl: '/docs/connecting-calendar',
+    });
   }
 
   const baseUrl = getBaseUrl(req);
@@ -264,7 +288,12 @@ router.get('/connectors/oauth/google/callback', async (req, res) => {
 router.get('/connectors/oauth/outlook/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.MICROSOFT_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'Microsoft OAuth not configured: MICROSOFT_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'outlook',
+      providerLabel: 'Microsoft',
+      missingEnv: 'MICROSOFT_CLIENT_ID',
+      docsUrl: '/docs/connecting-outlook',
+    });
   }
 
   const baseUrl = getBaseUrl(req);
@@ -369,7 +398,12 @@ router.get('/connectors/oauth/outlook/callback', async (req, res) => {
 router.get('/connectors/oauth/slack/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.SLACK_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'Slack OAuth not configured: SLACK_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'slack',
+      providerLabel: 'Slack',
+      missingEnv: 'SLACK_CLIENT_ID',
+      docsUrl: '/docs/connecting-slack',
+    });
   }
 
   const baseUrl = getBaseUrl(req);
@@ -471,7 +505,12 @@ router.get('/connectors/oauth/slack/callback', async (req, res) => {
 router.get('/connectors/oauth/pipedrive/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.PIPEDRIVE_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'Pipedrive OAuth not configured: PIPEDRIVE_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'pipedrive',
+      providerLabel: 'Pipedrive',
+      missingEnv: 'PIPEDRIVE_CLIENT_ID',
+      docsUrl: '/docs/connecting-pipedrive',
+    });
   }
 
   const baseUrl = getBaseUrl(req);
@@ -486,7 +525,12 @@ router.get('/connectors/oauth/pipedrive/init', requireAuth, requireRole('manager
 router.get('/connectors/oauth/salesforce/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.SALESFORCE_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'Salesforce OAuth not configured: SALESFORCE_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'salesforce',
+      providerLabel: 'Salesforce',
+      missingEnv: 'SALESFORCE_CLIENT_ID',
+      docsUrl: '/docs/connecting-salesforce',
+    });
   }
 
   const loginUrl = process.env.SALESFORCE_LOGIN_URL ?? 'https://login.salesforce.com';
@@ -685,7 +729,12 @@ router.get('/connectors/oauth/salesforce/callback', async (req, res) => {
 router.get('/connectors/oauth/quickbooks/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID ?? '';
   if (!clientId) {
-    return res.status(400).json({ error: 'QuickBooks OAuth not configured: QUICKBOOKS_CLIENT_ID missing' });
+    return sendOAuthNotConfigured(res, {
+      provider: 'quickbooks',
+      providerLabel: 'QuickBooks',
+      missingEnv: 'QUICKBOOKS_CLIENT_ID',
+      docsUrl: '/docs/connecting-quickbooks',
+    });
   }
 
   const baseUrl = getBaseUrl(req);

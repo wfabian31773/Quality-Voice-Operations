@@ -38,6 +38,23 @@ function isAuthError(message: string | null | undefined): boolean {
   return AUTH_ERROR_REGEX.test(message);
 }
 
+interface OAuthNotConfigured {
+  providerLabel: string;
+  missingEnv: string;
+  docsUrl: string;
+}
+
+function parseOAuthNotConfigured(err: unknown, fallback: { providerLabel: string; docsUrl?: string }): OAuthNotConfigured | null {
+  if (!err || typeof err !== 'object') return null;
+  const body = (err as { body?: { code?: string; providerLabel?: string; missingEnv?: string; docsUrl?: string } }).body;
+  if (!body || body.code !== 'OAUTH_NOT_CONFIGURED') return null;
+  return {
+    providerLabel: body.providerLabel || fallback.providerLabel,
+    missingEnv: body.missingEnv || '',
+    docsUrl: body.docsUrl || fallback.docsUrl || '',
+  };
+}
+
 type Category = 'CRM' | 'Scheduling' | 'SMS' | 'Notifications' | 'Automation' | 'Ticketing' | 'Accounting';
 
 interface ConnectorDefinition {
@@ -527,6 +544,8 @@ function ConnectModal({
     return initial;
   });
   const [oauthPending, setOauthPending] = useState(false);
+  const [oauthConfigError, setOauthConfigError] = useState<OAuthNotConfigured | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
   const isReconnect = !!existingConnector;
   const isSalesforce = definition.provider === 'salesforce';
   const dispositionConfig = DISPOSITION_MAPPING_CONFIGS[definition.provider];
@@ -633,16 +652,27 @@ function ConnectModal({
 
   const startOAuth = async () => {
     if (!definition.oauthProvider) return;
+    setOauthConfigError(null);
+    setOauthError(null);
     setOauthPending(true);
     try {
       const data = await api.get<{ authUrl: string }>(`/connectors/oauth/${definition.oauthProvider}/init`);
       const popup = window.open(data.authUrl, `oauth_${definition.oauthProvider}`, 'width=600,height=700,popup=yes');
       if (!popup) {
         setOauthPending(false);
-        alert('Please allow popups for this site to connect via OAuth.');
+        setOauthError('Please allow popups for this site to connect via OAuth.');
       }
-    } catch {
+    } catch (err) {
       setOauthPending(false);
+      const notConfigured = parseOAuthNotConfigured(err, {
+        providerLabel: definition.name,
+        docsUrl: definition.docsUrl,
+      });
+      if (notConfigured) {
+        setOauthConfigError(notConfigured);
+      } else {
+        setOauthError(err instanceof Error ? err.message : 'Failed to start OAuth.');
+      }
     }
   };
 
@@ -772,6 +802,53 @@ function ConnectModal({
 
           {definition.oauthProvider && (
             <div>
+              {oauthConfigError && (
+                <div
+                  role="alert"
+                  className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-3 text-xs"
+                >
+                  <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-semibold">QVO is missing the {oauthConfigError.providerLabel} server credentials.</p>
+                      <p className="text-amber-700 dark:text-amber-200/90">
+                        Your platform admin needs to set{' '}
+                        {oauthConfigError.missingEnv ? (
+                          <code className="font-mono">{oauthConfigError.missingEnv}</code>
+                        ) : (
+                          'the OAuth client credentials'
+                        )}{' '}
+                        before this integration can be connected.
+                        {oauthConfigError.docsUrl && (
+                          <>
+                            {' '}
+                            <a
+                              href={oauthConfigError.docsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                            >
+                              See the setup guide
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {oauthError && !oauthConfigError && (
+                <div
+                  role="alert"
+                  className="mb-3 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 p-2.5 text-xs text-red-700 dark:text-red-400"
+                >
+                  <div className="flex items-start gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                    <span>{oauthError}</span>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={startOAuth}
                 disabled={oauthPending}
@@ -1028,12 +1105,14 @@ function ConnectedCard({
     ? `${errorMessage.slice(0, 90)}…`
     : errorMessage;
   const [reauthPending, setReauthPending] = useState(false);
+  const [reauthConfigError, setReauthConfigError] = useState<OAuthNotConfigured | null>(null);
 
   const startReauth = async () => {
     if (!definition.oauthProvider) {
       onReconnect();
       return;
     }
+    setReauthConfigError(null);
     setReauthPending(true);
     try {
       const data = await api.get<{ authUrl: string }>(`/connectors/oauth/${definition.oauthProvider}/init`);
@@ -1067,8 +1146,15 @@ function ConnectedCard({
         if (popup.closed) cleanup();
       }, 1000);
       timeoutId = window.setTimeout(cleanup, 5 * 60 * 1000);
-    } catch {
+    } catch (err) {
       setReauthPending(false);
+      const notConfigured = parseOAuthNotConfigured(err, {
+        providerLabel: definition.name,
+        docsUrl: definition.docsUrl,
+      });
+      if (notConfigured) {
+        setReauthConfigError(notConfigured);
+      }
     }
   };
 
@@ -1149,6 +1235,34 @@ function ConnectedCard({
                   ? `Reconnect with ${definition.name}`
                   : `Reconnect ${definition.name}`}
             </button>
+          )}
+          {reauthConfigError && (
+            <div role="alert" className="mt-2 rounded-md border border-amber-400/70 bg-amber-100/70 dark:bg-amber-900/30 p-2 text-amber-900 dark:text-amber-200">
+              <p className="font-semibold">QVO is missing the {reauthConfigError.providerLabel} server credentials.</p>
+              <p>
+                Ask your platform admin to set{' '}
+                {reauthConfigError.missingEnv ? (
+                  <code className="font-mono">{reauthConfigError.missingEnv}</code>
+                ) : (
+                  'the OAuth client credentials'
+                )}
+                .
+                {reauthConfigError.docsUrl && (
+                  <>
+                    {' '}
+                    <a
+                      href={reauthConfigError.docsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                    >
+                      See the setup guide
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </>
+                )}
+              </p>
+            </div>
           )}
         </div>
       )}
