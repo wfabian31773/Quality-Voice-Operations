@@ -10,6 +10,7 @@ export type BrandLogoId =
   | 'custom-ticketing'
   | 'salesforce'
   | 'pipedrive'
+  | 'zoho'
   | 'outlook-calendar'
   | 'quickbooks'
   | 'stripe';
@@ -119,6 +120,18 @@ function PipedriveLogo({ size }: { size: number }) {
   );
 }
 
+function ZohoLogo({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect width="32" height="32" rx="6" fill="#fff" />
+      <path d="M5 11h7l-7 9h7v2H4v-2l7-9H5v-2Z" fill="#E42527" />
+      <path d="M16 11h2v2h-2v-2Zm0 3h2v8h-2v-8Z" fill="#089949" />
+      <path d="M21 11.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z" fill="#226DB4" />
+      <path d="M27 11.5h2v8.6h-2v-8.6Z" fill="#F9B21D" />
+    </svg>
+  );
+}
+
 function OutlookCalendarLogo({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -203,6 +216,7 @@ const LOGO_MAP: Record<string, (props: { size: number }) => ReactElement> = {
   'custom-ticketing': CustomTicketingLogo,
   salesforce: SalesforceLogo,
   pipedrive: PipedriveLogo,
+  zoho: ZohoLogo,
   'outlook-calendar': OutlookCalendarLogo,
   outlook: OutlookCalendarLogo,
   quickbooks: QuickBooksLogo,

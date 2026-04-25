@@ -15,6 +15,7 @@ import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { fetchSalesforceTaskPicklists } from '../../../platform/integrations/connectors/adapters/salesforce';
 import { fetchHubSpotDealPipelines } from '../../../platform/integrations/connectors/adapters/hubspot';
 import { fetchPipedrivePipelinesAndStages } from '../../../platform/integrations/connectors/adapters/pipedrive';
+import { resolveZohoApiDomain, resolveZohoAccountsServer } from '../../../platform/integrations/connectors/zohoRegion';
 
 const router = Router();
 const logger = createLogger('ADMIN_CONNECTORS');
@@ -22,6 +23,33 @@ const logger = createLogger('ADMIN_CONNECTORS');
 const VALID_CONNECTOR_TYPES = new Set<ConnectorType>([
   'ticketing', 'sms', 'crm', 'scheduling', 'ehr', 'email', 'webhook', 'custom', 'accounting',
 ]);
+
+/**
+ * Provider-specific guards for tenant-supplied credentials. Today this only
+ * locks down Zoho's region/host fields, which are used as the base URL for
+ * privileged outbound calls (OAuth token + CRM data) and would otherwise be
+ * a tenant-controlled SSRF / token-exfiltration primitive.
+ *
+ * Returns `null` when the credentials are acceptable, or a human-readable
+ * error string to surface to the caller.
+ */
+function validateProviderSpecificCredentials(
+  provider: string,
+  credentials: Record<string, string>,
+): string | null {
+  if (provider !== 'zoho') return null;
+  if (typeof credentials.api_domain === 'string' && credentials.api_domain.trim() !== '') {
+    if (!resolveZohoApiDomain(credentials.api_domain)) {
+      return 'api_domain is not a recognized Zoho API host. Reconnect via OAuth to set it.';
+    }
+  }
+  if (typeof credentials.accounts_server === 'string' && credentials.accounts_server.trim() !== '') {
+    if (!resolveZohoAccountsServer(credentials.accounts_server)) {
+      return 'accounts_server is not a recognized Zoho accounts host. Reconnect via OAuth to set it.';
+    }
+  }
+  return null;
+}
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {
   const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
@@ -68,6 +96,10 @@ router.post('/connectors', requireAuth, requireRole('manager'), async (req, res)
     return res.status(400).json({
       error: `Invalid connectorType. Allowed: ${[...VALID_CONNECTOR_TYPES].join(', ')}`,
     });
+  }
+  const credsValidationError = validateProviderSpecificCredentials(provider, credentials);
+  if (credsValidationError) {
+    return res.status(400).json({ error: credsValidationError });
   }
   const sanitizedCredentialsToDelete = Array.isArray(credentialsToDelete)
     ? credentialsToDelete.filter((k): k is string => typeof k === 'string' && k.length > 0)
@@ -120,6 +152,13 @@ router.patch('/connectors/:integrationId', requireAuth, requireRole('manager'), 
       return res.status(404).json({ error: 'Connector not found' });
     }
 
+    if (credentials) {
+      const credsValidationError = validateProviderSpecificCredentials(existing.provider, credentials);
+      if (credsValidationError) {
+        return res.status(400).json({ error: credsValidationError });
+      }
+    }
+
     const sanitizedCredentialsToDelete = Array.isArray(credentialsToDelete)
       ? credentialsToDelete.filter((k): k is string => typeof k === 'string' && k.length > 0)
       : undefined;
@@ -151,7 +190,7 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
     const fullConfig = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
     const credentials = fullConfig?.credentials ?? {};
     const settings: Record<string, unknown> = {};
-    if (meta.provider === 'salesforce' || meta.provider === 'hubspot' || meta.provider === 'pipedrive') {
+    if (meta.provider === 'salesforce' || meta.provider === 'hubspot' || meta.provider === 'pipedrive' || meta.provider === 'zoho') {
       const raw = credentials.disposition_map;
       let dispositionMap: unknown = null;
       let dispositionMapError: string | null = null;
@@ -244,6 +283,10 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
         settings.appointmentStageLabel = null;
         settings.pipelineLookupError = null;
       }
+    }
+    if (meta.provider === 'zoho') {
+      settings.appointmentPipelineId = credentials.appointment_pipeline_id ?? null;
+      settings.appointmentStageId = credentials.appointment_stage_id ?? null;
     }
     return res.json({ provider: meta.provider, settings });
   } catch (err) {

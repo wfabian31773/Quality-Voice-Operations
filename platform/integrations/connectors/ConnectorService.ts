@@ -18,6 +18,7 @@ import { ZapierWebhookConnectorAdapter } from './adapters/zapier';
 import { PipedriveConnectorAdapter } from './adapters/pipedrive';
 import { SalesforceConnectorAdapter } from './adapters/salesforce';
 import { QuickBooksConnectorAdapter } from './adapters/quickbooks';
+import { ZohoConnectorAdapter } from './adapters/zoho';
 import { recordIntegrationEvent } from '../../core/observability/traceLogger';
 import {
   extractIdentityFromMeta,
@@ -38,6 +39,7 @@ const slackAdapter = new SlackConnectorAdapter();
 const zapierAdapter = new ZapierWebhookConnectorAdapter();
 const twilioSmsAdapter = new TwilioSmsConnectorAdapter();
 const quickbooksAdapter = new QuickBooksConnectorAdapter();
+const zohoAdapter = new ZohoConnectorAdapter();
 
 const TYPE_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
   ticketing: new TicketingConnectorAdapter(),
@@ -53,6 +55,7 @@ const PROVIDER_ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
   hubspot: hubspotAdapter,
   salesforce: salesforceAdapter,
   pipedrive: pipedriveAdapter,
+  zoho: zohoAdapter,
   'google-calendar': googleCalendarAdapter,
   'outlook-calendar': outlookCalendarAdapter,
   slack: slackAdapter,
@@ -67,6 +70,7 @@ const ADAPTER_REGISTRY: Record<string, ConnectorAdapter> = {
   'crm:salesforce': salesforceAdapter,
   'crm:hubspot': hubspotAdapter,
   'crm:pipedrive': pipedriveAdapter,
+  'crm:zoho': zohoAdapter,
   'accounting:quickbooks': quickbooksAdapter,
 };
 
@@ -519,6 +523,11 @@ export class ConnectorService {
       const dealId = extras.dealId ?? cached.opportunityId;
       if (!current.dealId && dealId) {
         out.dealId = dealId;
+        injected = true;
+      }
+    } else if (config.provider === 'zoho') {
+      if (!current.dealId && cached.opportunityId) {
+        out.dealId = cached.opportunityId;
         injected = true;
       }
     }

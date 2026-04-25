@@ -263,6 +263,24 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     events: ['call.completed', 'appointment.booked'],
   },
   {
+    id: 'zoho',
+    name: 'Zoho CRM',
+    provider: 'zoho',
+    connectorType: 'crm',
+    category: 'CRM',
+    description: 'Sync contacts, accounts, and deals to Zoho CRM. Calls and appointments auto-attach to the right open deal.',
+    syncScope: 'Contacts, Accounts, Deals, Calls',
+    logoId: 'zoho',
+    oauthProvider: 'zoho',
+    docsUrl: '/docs/connecting-zoho',
+    setupHelp: 'Sign in with Zoho (OAuth) to connect your Zoho CRM. The agent will write Calls, Notes, and Deals into the matching pipeline stage.',
+    fields: [
+      { key: 'access_token', label: 'Access Token', type: 'password', placeholder: 'Zoho OAuth access token', required: true },
+      { key: 'refresh_token', label: 'Refresh Token', type: 'password', placeholder: 'Zoho OAuth refresh token (recommended)' },
+    ],
+    events: ['call.completed', 'appointment.booked'],
+  },
+  {
     id: 'quickbooks',
     name: 'QuickBooks',
     provider: 'quickbooks',
@@ -400,6 +418,25 @@ const DISPOSITION_MAPPING_CONFIGS: Record<string, DispositionMappingConfig> = {
         Map QVO call dispositions to Pipedrive activity fields. <code>Activity type</code> is
         the key from your Pipedrive activity types (e.g. <code>call</code>, <code>meeting</code>,
         or any custom key). <code>Subject</code> is the activity title that appears in the timeline.
+      </>
+    ),
+  },
+  zoho: {
+    defaults: {
+      booked: { status: 'Completed', callDisposition: 'Appointment Booked' },
+      no_answer: { status: 'Missed', callDisposition: 'No Answer' },
+      spam: { status: 'Completed', callDisposition: 'Spam Call' },
+      transferred: { status: 'Completed', callDisposition: 'Call Transferred' },
+      completed: { status: 'Completed', callDisposition: 'AI Voice Call' },
+    },
+    statusLabel: 'Zoho Call_Status',
+    callDispositionLabel: 'Zoho Call_Purpose',
+    description: (
+      <>
+        Map QVO call dispositions to Zoho CRM Call fields. <code>Call_Status</code> is one of
+        Zoho's call status values (e.g. <code>Completed</code>, <code>Missed</code>,{' '}
+        <code>Scheduled</code>). <code>Call_Purpose</code> is a short label that appears on the
+        Call record (e.g. <code>Appointment Booked</code>, <code>No Answer</code>).
       </>
     ),
   },

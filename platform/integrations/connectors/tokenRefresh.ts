@@ -1,6 +1,7 @@
 import { createLogger } from '../../core/logger';
 import { writeAuditLog } from '../../audit/AuditService';
 import { updateConnectorCredentials, markConnectorReconnectNeeded } from './db';
+import { resolveZohoAccountsServer } from './zohoRegion';
 import type { ConnectorConfig } from './types';
 
 const logger = createLogger('CONNECTOR_TOKEN_REFRESH');
@@ -17,7 +18,10 @@ interface ProviderRefreshResult {
   extra?: Record<string, string>;
 }
 
-type ProviderRefresher = (refreshToken: string) => Promise<ProviderRefreshResult>;
+type ProviderRefresher = (
+  refreshToken: string,
+  credentials?: Record<string, string>,
+) => Promise<ProviderRefreshResult>;
 
 function shouldRefresh(config: ConnectorConfig, leadMs: number = REFRESH_LEAD_MS): boolean {
   const expiresAtRaw = config.credentials.token_expires_at;
@@ -91,6 +95,56 @@ async function refreshPipedrive(refreshToken: string): Promise<ProviderRefreshRe
   };
 }
 
+async function refreshZoho(
+  refreshToken: string,
+  credentials?: Record<string, string>,
+): Promise<ProviderRefreshResult> {
+  const clientId = process.env.ZOHO_CLIENT_ID ?? '';
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET ?? '';
+  if (!clientId || !clientSecret) {
+    throw new Error('Zoho OAuth env vars missing (ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET)');
+  }
+  // Zoho stores the per-region token endpoint on the connector credentials at
+  // connect time (e.g. https://accounts.zoho.com, .eu, .in, .com.au, .jp).
+  // Use it first so EU/IN/AU/JP tenants don't fail refresh against the global
+  // endpoint. Each candidate is allowlist-validated against Zoho's published
+  // data-center hosts before we POST our `client_secret` + `refresh_token`,
+  // so a tampered/credential-injected `accounts_server` cannot redirect the
+  // exchange to an attacker-controlled host.
+  const accountsServer = resolveZohoAccountsServer(credentials?.accounts_server)
+    ?? resolveZohoAccountsServer(process.env.ZOHO_ACCOUNTS_SERVER)
+    ?? 'https://accounts.zoho.com';
+  if (credentials?.accounts_server && !resolveZohoAccountsServer(credentials.accounts_server)) {
+    throw new Error(
+      `Zoho refresh refused: stored accounts_server "${credentials.accounts_server}" is not in the allowed Zoho hosts list. Reconnect required.`,
+    );
+  }
+  const res = await timedFetch(`${accountsServer}/oauth/v2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }).toString(),
+  });
+  const json = await res.json() as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+    api_domain?: string;
+  };
+  const extra: Record<string, string> = {};
+  if (json.api_domain) extra.api_domain = json.api_domain;
+  return {
+    access_token: json.access_token,
+    refresh_token: json.refresh_token,
+    expires_in: json.expires_in,
+    extra,
+  };
+}
+
 async function refreshQuickBooks(refreshToken: string): Promise<ProviderRefreshResult> {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID ?? '';
   const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET ?? '';
@@ -140,6 +194,7 @@ const REFRESHERS: Record<string, ProviderRefresher> = {
   hubspot: refreshHubSpot,
   pipedrive: refreshPipedrive,
   quickbooks: refreshQuickBooks,
+  zoho: refreshZoho,
 };
 
 export function isRefreshableProvider(provider: string): boolean {
@@ -179,7 +234,7 @@ export async function ensureFreshOAuthToken(
 
   const promise = (async (): Promise<ConnectorConfig> => {
     try {
-      const result = await refresher(refreshToken);
+      const result = await refresher(refreshToken, config.credentials);
       const newCreds: Record<string, string> = {
         access_token: result.access_token,
         token_expires_at: String(Date.now() + result.expires_in * 1000),

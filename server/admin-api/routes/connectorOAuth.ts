@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { upsertConnector } from '../../../platform/integrations/connectors';
+import { resolveZohoAccountsServer, resolveZohoApiDomain } from '../../../platform/integrations/connectors/zohoRegion';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
@@ -833,6 +834,177 @@ router.get('/connectors/oauth/quickbooks/callback', async (req, res) => {
     return res.send(oauthSuccessHtml('quickbooks', appOrigin, 'QuickBooks'));
   } catch (err) {
     logger.error('QuickBooks OAuth callback failed', { error: String(err) });
+    return res.status(500).send('<html><body><script>window.close();</script>OAuth failed</body></html>');
+  }
+});
+
+router.get('/connectors/oauth/zoho/init', requireAuth, requireRole('manager'), (req, res) => {
+  const clientId = process.env.ZOHO_CLIENT_ID ?? '';
+  if (!clientId) {
+    return sendOAuthNotConfigured(res, {
+      provider: 'zoho',
+      providerLabel: 'Zoho CRM',
+      missingEnv: 'ZOHO_CLIENT_ID',
+      docsUrl: '/docs/connecting-zoho',
+    });
+  }
+
+  // Region-specific accounts servers: .com, .eu, .in, .com.au, .jp, .com.cn,
+  // .sa, zohocloud.ca. Default to global (.com); ops can override per-deployment
+  // via env. The override is allowlist-validated to prevent SSRF / OAuth
+  // secret leakage if the env var is misconfigured.
+  const envOverride = resolveZohoAccountsServer(process.env.ZOHO_ACCOUNTS_SERVER);
+  if (process.env.ZOHO_ACCOUNTS_SERVER && !envOverride) {
+    logger.error('ZOHO_ACCOUNTS_SERVER env value is not in the Zoho hosts allowlist; refusing to start OAuth flow', {
+      configured: process.env.ZOHO_ACCOUNTS_SERVER,
+    });
+    return res.status(500).json({ error: 'zoho_oauth_misconfigured' });
+  }
+  const accountsServer = envOverride ?? 'https://accounts.zoho.com';
+  const baseUrl = getBaseUrl(req);
+  const redirectUri = `${baseUrl}/connectors/oauth/zoho/callback`;
+  const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'zoho' });
+
+  const scopes = [
+    'ZohoCRM.modules.ALL',
+    'ZohoCRM.settings.READ',
+    'ZohoCRM.users.READ',
+  ].join(',');
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    scope: scopes,
+    redirect_uri: redirectUri,
+    access_type: 'offline',
+    prompt: 'consent',
+    state,
+  });
+
+  const authUrl = `${accountsServer}/oauth/v2/auth?${params.toString()}`;
+  return res.json({ authUrl, redirectUri });
+});
+
+router.get('/connectors/oauth/zoho/callback', async (req, res) => {
+  const { code, state, location, 'accounts-server': accountsServerParam } = req.query as {
+    code?: string;
+    state?: string;
+    location?: string;
+    'accounts-server'?: string;
+  };
+
+  if (!code || !state) {
+    return res.status(400).send('<html><body><script>window.close();</script>OAuth failed: missing code or state</body></html>');
+  }
+
+  const clientId = process.env.ZOHO_CLIENT_ID ?? '';
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET ?? '';
+
+  if (!clientId || !clientSecret) {
+    return res.status(500).send('<html><body><script>window.close();</script>Zoho OAuth not configured</body></html>');
+  }
+
+  const parsed = verifyState(state, 'zoho');
+  if (!parsed) {
+    logger.warn('Zoho OAuth callback: invalid or expired state');
+    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+  }
+
+  // Zoho returns the user's region via the `accounts-server` query param on
+  // the callback. Use that for the token exchange so users in EU/IN/AU/JP
+  // data centers don't fail with a `INVALID_CLIENT` error against the
+  // global endpoint. The host is allowlist-validated against Zoho's
+  // published data-center hostnames before we POST our `client_secret` —
+  // otherwise an attacker who has a signed state could redirect the token
+  // exchange to an attacker-controlled host (SSRF + secret exfiltration).
+  const validatedFromCallback = resolveZohoAccountsServer(accountsServerParam);
+  if (accountsServerParam && !validatedFromCallback) {
+    logger.warn('Zoho OAuth callback: rejected non-allowlisted accounts-server host', {
+      received: accountsServerParam,
+    });
+    return res.status(400).send('<html><body><script>window.close();</script>Invalid Zoho accounts server</body></html>');
+  }
+  const accountsServer = validatedFromCallback
+    ?? resolveZohoAccountsServer(process.env.ZOHO_ACCOUNTS_SERVER)
+    ?? 'https://accounts.zoho.com';
+
+  try {
+    const baseUrl = getBaseUrl(req);
+    const tokenRes = await fetch(`${accountsServer}/oauth/v2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: `${baseUrl}/connectors/oauth/zoho/callback`,
+        code,
+      }).toString(),
+    });
+
+    if (!tokenRes.ok) {
+      const text = await tokenRes.text();
+      logger.error('Zoho token exchange failed', { status: tokenRes.status, body: text.slice(0, 200) });
+      return res.status(500).send('<html><body><script>window.close();</script>Token exchange failed</body></html>');
+    }
+
+    const tokens = await tokenRes.json() as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+      api_domain?: string;
+    };
+
+    if (!tokens.refresh_token) {
+      logger.error('Zoho token exchange returned no refresh_token (consent prompt likely skipped)');
+      return res.status(500).send('<html><body><script>window.close();</script>Zoho did not return a refresh token. Please try again.</body></html>');
+    }
+
+    // Validate the api_domain returned by Zoho before we persist it — it
+    // becomes the base URL for every CRM call (which carries the tenant's
+    // OAuth bearer), so a non-allowlisted host would be an SSRF + token
+    // exfiltration primitive. If Zoho returned an unrecognized host, fail
+    // closed instead of silently storing a hostile value.
+    const validatedApiDomain = resolveZohoApiDomain(tokens.api_domain);
+    if (tokens.api_domain && !validatedApiDomain) {
+      logger.error('Zoho token exchange returned a non-allowlisted api_domain', {
+        received: tokens.api_domain,
+      });
+      return res.status(502).send('<html><body><script>window.close();</script>Zoho returned an unexpected API domain</body></html>');
+    }
+
+    await upsertConnector(parsed.tenantId, {
+      connectorType: 'crm',
+      provider: 'zoho',
+      name: 'Zoho CRM',
+      credentials: {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        ...(validatedApiDomain ? { api_domain: validatedApiDomain } : {}),
+        accounts_server: accountsServer,
+        ...(location ? { region: location } : {}),
+      },
+      isEnabled: true,
+    });
+
+    logger.info('Zoho OAuth connected', { tenantId: parsed.tenantId, region: location });
+    writeAuditLog({
+      tenantId: parsed.tenantId,
+      actorUserId: parsed.userId,
+      actorRole: 'manager',
+      action: 'connector.oauth_connected',
+      resourceType: 'connector',
+      resourceId: 'zoho',
+      changes: { provider: 'zoho', connectorType: 'crm', region: location ?? null },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    const appOrigin = getAppOrigin(req);
+    return res.send(oauthSuccessHtml('zoho', appOrigin, 'Zoho CRM'));
+  } catch (err) {
+    logger.error('Zoho OAuth callback failed', { error: String(err) });
     return res.status(500).send('<html><body><script>window.close();</script>OAuth failed</body></html>');
   }
 });

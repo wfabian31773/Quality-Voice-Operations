@@ -1,6 +1,6 @@
 export type DispositionMap = Record<string, { status: string; callDisposition?: string }>;
 
-export type DispositionProvider = 'salesforce' | 'hubspot' | 'pipedrive';
+export type DispositionProvider = 'salesforce' | 'hubspot' | 'pipedrive' | 'zoho';
 
 export const DEFAULT_SALESFORCE_DISPOSITION_MAP: DispositionMap = {
   booked: { status: 'Completed', callDisposition: 'Booked Appointment' },
@@ -26,16 +26,26 @@ export const DEFAULT_PIPEDRIVE_DISPOSITION_MAP: DispositionMap = {
   completed: { status: 'call', callDisposition: 'AI Voice Call' },
 };
 
+export const DEFAULT_ZOHO_DISPOSITION_MAP: DispositionMap = {
+  booked: { status: 'Completed', callDisposition: 'Appointment Booked' },
+  no_answer: { status: 'Missed', callDisposition: 'No Answer' },
+  spam: { status: 'Completed', callDisposition: 'Spam Call' },
+  transferred: { status: 'Completed', callDisposition: 'Call Transferred' },
+  completed: { status: 'Completed', callDisposition: 'AI Voice Call' },
+};
+
 const DEFAULT_MAPS: Record<DispositionProvider, DispositionMap> = {
   salesforce: DEFAULT_SALESFORCE_DISPOSITION_MAP,
   hubspot: DEFAULT_HUBSPOT_DISPOSITION_MAP,
   pipedrive: DEFAULT_PIPEDRIVE_DISPOSITION_MAP,
+  zoho: DEFAULT_ZOHO_DISPOSITION_MAP,
 };
 
 const PROVIDER_LABELS: Record<DispositionProvider, string> = {
   salesforce: 'Salesforce',
   hubspot: 'HubSpot',
   pipedrive: 'Pipedrive',
+  zoho: 'Zoho CRM',
 };
 
 const DISPOSITION_ALIASES: Record<string, string> = {

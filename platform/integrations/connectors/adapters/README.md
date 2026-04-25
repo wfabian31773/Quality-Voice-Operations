@@ -33,6 +33,7 @@ Adapters that follow this contract today:
 | `salesforce.ts` | Find/create Lead or Contact → convert Lead to Contact + Account + Opportunity (`convertLead` with `doNotCreateOpportunity: false`) |
 | `hubspot.ts`    | Find/create Contact (+ Company) → reuse open Deal or create one in `appointment_pipeline_id` / `appointment_stage_id` |
 | `pipedrive.ts`  | Find/create Person (+ Organization) → reuse open Deal or create one, optionally moved to `appointment_stage_id` |
+| `zoho.ts`       | Find/create Contact (+ Account) → reuse open Deal or create one, optionally moved to `appointment_stage_id` (Zoho `Stage` name) within the configured `appointment_pipeline_id` (Zoho `Layout`) |
 
 Adapters that **opt out** of this contract (and why):
 
