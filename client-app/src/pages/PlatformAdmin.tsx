@@ -6,7 +6,7 @@ import {
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
-  LifeBuoy, Mail, RotateCw,
+  LifeBuoy, Mail, RotateCw, Plug, XCircle,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -527,10 +527,172 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
   );
 }
 
+interface IntegrationProviderStatus {
+  provider: string;
+  label: string;
+  category: string;
+  configured: boolean;
+  requiredEnv: string[];
+  missingEnv: string[];
+  optionalEnv: { name: string; set: boolean }[];
+  docsUrl: string;
+}
+
+interface IntegrationsStatusResponse {
+  providers: IntegrationProviderStatus[];
+  summary: { total: number; configured: number; missing: number };
+}
+
+function IntegrationsStatusPanel() {
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-integrations-status'],
+    queryFn: () => api.get<IntegrationsStatusResponse>('/platform/integrations-status'),
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-muted">
+        Loading integration status...
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+        Failed to load integration status: {error ? (error as Error).message : 'no data'}
+      </div>
+    );
+  }
+
+  const grouped = data.providers.reduce<Record<string, IntegrationProviderStatus[]>>((acc, p) => {
+    (acc[p.category] ||= []).push(p);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-4 flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <Plug className="h-4 w-4 text-primary" /> OAuth Integration Credentials
+          </h2>
+          <p className="text-xs text-muted mt-1">
+            Server-side check of <code className="font-mono">*_CLIENT_ID</code> /{' '}
+            <code className="font-mono">*_CLIENT_SECRET</code> environment variables. No secret values are shown — only whether they are set.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-muted">
+            <span className="font-semibold text-green-600 dark:text-green-400">{data.summary.configured}</span>
+            {' / '}
+            {data.summary.total} configured
+          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground disabled:opacity-50"
+            title="Refresh"
+          >
+            <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {data.summary.missing > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900 dark:text-amber-200">
+            <div className="font-medium">
+              {data.summary.missing} provider{data.summary.missing === 1 ? '' : 's'} {data.summary.missing === 1 ? 'is' : 'are'} missing server credentials.
+            </div>
+            <p className="text-xs mt-1 opacity-80">
+              Tenants will see a "not configured" message when they try to connect these providers. Set the listed environment variables and restart the server.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {Object.entries(grouped).map(([category, providers]) => (
+        <div key={category} className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-2 bg-surface-secondary/50 border-b border-border">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">{category}</h3>
+          </div>
+          <div className="divide-y divide-border">
+            {providers.map((p) => (
+              <div key={p.provider} className="px-4 py-4 flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium">{p.label}</span>
+                    {p.configured ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        <CheckCircle className="h-3 w-3" /> Configured
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                        <XCircle className="h-3 w-3" /> Missing credentials
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {p.requiredEnv.map((env) => {
+                      const isMissing = p.missingEnv.includes(env);
+                      return (
+                        <code
+                          key={env}
+                          className={`text-xs font-mono px-2 py-0.5 rounded border ${
+                            isMissing
+                              ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
+                              : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
+                          }`}
+                          title={isMissing ? 'Not set in environment' : 'Set in environment'}
+                        >
+                          {env}
+                        </code>
+                      );
+                    })}
+                  </div>
+                  {p.optionalEnv.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+                      <span className="text-xs text-muted">Optional:</span>
+                      {p.optionalEnv.map((env) => (
+                        <code
+                          key={env.name}
+                          className={`text-xs font-mono px-2 py-0.5 rounded border ${
+                            env.set
+                              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
+                              : 'bg-surface-hover text-muted border-border'
+                          }`}
+                          title={env.set ? 'Set in environment' : 'Not set (uses default)'}
+                        >
+                          {env.name}
+                        </code>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <a
+                  href={p.docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-primary hover:underline whitespace-nowrap flex items-center gap-1 flex-shrink-0"
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Setup guide
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support' | 'integrations'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -688,7 +850,19 @@ export default function PlatformAdmin() {
         >
           <span className="flex items-center gap-2"><LifeBuoy className="h-4 w-4" /> Support</span>
         </button>
+        <button
+          onClick={() => setActiveTab('integrations')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'integrations'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><Plug className="h-4 w-4" /> Integrations</span>
+        </button>
       </div>
+
+      {activeTab === 'integrations' && <IntegrationsStatusPanel />}
 
       {activeTab === 'tenants' && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
