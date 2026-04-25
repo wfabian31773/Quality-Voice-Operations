@@ -143,6 +143,19 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
       }
       settings.dispositionMap = dispositionMap;
       settings.dispositionMapError = dispositionMapError;
+
+      const leadStatusRaw = credentials.lead_status_map;
+      let leadStatusMap: unknown = null;
+      let leadStatusMapError: string | null = null;
+      if (leadStatusRaw && leadStatusRaw.trim()) {
+        try {
+          leadStatusMap = JSON.parse(leadStatusRaw);
+        } catch (err) {
+          leadStatusMapError = err instanceof Error ? err.message : String(err);
+        }
+      }
+      settings.leadStatusMap = leadStatusMap;
+      settings.leadStatusMapError = leadStatusMapError;
     }
     return res.json({ provider: meta.provider, settings });
   } catch (err) {

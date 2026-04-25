@@ -375,6 +375,36 @@ const DISPOSITION_MAPPING_CONFIGS: Record<string, DispositionMappingConfig> = {
   },
 };
 
+type SalesforceLeadOutcome = 'qualified' | 'disqualified' | 'nurture' | 'no_answer';
+
+const SALESFORCE_LEAD_OUTCOMES: SalesforceLeadOutcome[] = [
+  'qualified',
+  'disqualified',
+  'nurture',
+  'no_answer',
+];
+
+const DEFAULT_SALESFORCE_LEAD_STATUS_MAP: Record<SalesforceLeadOutcome, string> = {
+  qualified: 'Qualified',
+  disqualified: 'Unqualified',
+  nurture: 'Working - Contacted',
+  no_answer: 'Open - Not Contacted',
+};
+
+const SALESFORCE_LEAD_OUTCOME_LABELS: Record<SalesforceLeadOutcome, string> = {
+  qualified: 'Qualified caller',
+  disqualified: 'Disqualified / spam',
+  nurture: 'Nurture (not yet ready)',
+  no_answer: 'No answer / voicemail',
+};
+
+const SALESFORCE_LEAD_OUTCOME_HINTS: Record<SalesforceLeadOutcome, string> = {
+  qualified: 'Used as the converted-status when QVO converts the Lead to Contact + Opportunity.',
+  disqualified: 'Lead is updated to this status; no conversion happens.',
+  nurture: 'Lead is updated to this status so reps can follow up later.',
+  no_answer: 'Lead is updated to this status when the caller didn\'t reach a person.',
+};
+
 function ConnectModal({
   definition,
   onClose,
@@ -399,14 +429,22 @@ function ConnectModal({
   const [dispositionMap, setDispositionMap] = useState<Record<string, DispositionMapEntry>>(
     () => (dispositionConfig ? { ...dispositionConfig.defaults } : {}),
   );
+  const [leadStatusMap, setLeadStatusMap] = useState<Record<SalesforceLeadOutcome, string>>(
+    () => ({ ...DEFAULT_SALESFORCE_LEAD_STATUS_MAP }),
+  );
+  const [leadStatusMapLoadError, setLeadStatusMapLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasDispositionMapping || !existingConnector || !dispositionConfig) return;
     let cancelled = false;
     api
-      .get<{ settings: { dispositionMap: Record<string, Partial<DispositionMapEntry>> | null } }>(
-        `/connectors/${existingConnector.integrationId}/settings`,
-      )
+      .get<{
+        settings: {
+          dispositionMap: Record<string, Partial<DispositionMapEntry>> | null;
+          leadStatusMap: Record<string, unknown> | null;
+          leadStatusMapError?: string | null;
+        };
+      }>(`/connectors/${existingConnector.integrationId}/settings`)
       .then((data) => {
         if (cancelled) return;
         const remote = data?.settings?.dispositionMap;
@@ -426,6 +464,20 @@ function ConnectModal({
             return next;
           });
         }
+        const remoteLeadStatus = data?.settings?.leadStatusMap;
+        if (remoteLeadStatus && typeof remoteLeadStatus === 'object') {
+          setLeadStatusMap((prev) => {
+            const next = { ...prev };
+            for (const outcome of SALESFORCE_LEAD_OUTCOMES) {
+              const value = (remoteLeadStatus as Record<string, unknown>)[outcome];
+              if (typeof value === 'string' && value.trim()) {
+                next[outcome] = value;
+              }
+            }
+            return next;
+          });
+        }
+        setLeadStatusMapLoadError(data?.settings?.leadStatusMapError ?? null);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -504,6 +556,16 @@ function ConnectModal({
         out[key] = { status, callDisposition };
       }
       creds.disposition_map = JSON.stringify(out);
+
+      const leadOut: Record<SalesforceLeadOutcome, string> = { ...DEFAULT_SALESFORCE_LEAD_STATUS_MAP };
+      for (const outcome of SALESFORCE_LEAD_OUTCOMES) {
+        const value = (leadStatusMap[outcome] ?? '').trim();
+        if (!value) {
+          return { error: `Salesforce Lead status for "${SALESFORCE_LEAD_OUTCOME_LABELS[outcome]}" is required.` };
+        }
+        leadOut[outcome] = value;
+      }
+      creds.lead_status_map = JSON.stringify(leadOut);
     }
     return creds;
   };
@@ -668,6 +730,60 @@ function ConnectModal({
                 <button
                   type="button"
                   onClick={() => setDispositionMap({ ...dispositionConfig.defaults })}
+                  className="text-xs text-text-secondary hover:text-primary underline"
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            )}
+
+            {isSalesforce && (
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-text-primary">Lead status mapping</h4>
+                  <p className="text-xs text-text-secondary mt-1">
+                    Route AI qualification outcomes to specific Salesforce <code>Lead.Status</code>{' '}
+                    picklist values. Qualified callers convert their Lead to Contact + Opportunity
+                    using the &ldquo;qualified&rdquo; status; the others update the Lead in place so
+                    reps can pick up the right downstream playbook.
+                  </p>
+                </div>
+                {leadStatusMapLoadError && (
+                  <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+                    Saved Lead status mapping couldn&rsquo;t be parsed
+                    ({leadStatusMapLoadError}). Defaults are shown below — saving will overwrite the
+                    broken value.
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-text-secondary px-1">
+                    <div className="sm:col-span-5">QVO outcome</div>
+                    <div className="sm:col-span-7">Salesforce Lead Status</div>
+                  </div>
+                  {SALESFORCE_LEAD_OUTCOMES.map((outcome) => (
+                    <div key={outcome} className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                      <div className="sm:col-span-5 text-sm text-text-primary">
+                        {SALESFORCE_LEAD_OUTCOME_LABELS[outcome]}
+                        <span className="block text-[11px] text-text-secondary font-mono">{outcome}</span>
+                        <span className="block text-[11px] text-text-secondary mt-0.5">
+                          {SALESFORCE_LEAD_OUTCOME_HINTS[outcome]}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={leadStatusMap[outcome] ?? ''}
+                        onChange={(e) =>
+                          setLeadStatusMap((prev) => ({ ...prev, [outcome]: e.target.value }))
+                        }
+                        placeholder={DEFAULT_SALESFORCE_LEAD_STATUS_MAP[outcome]}
+                        className="sm:col-span-7 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLeadStatusMap({ ...DEFAULT_SALESFORCE_LEAD_STATUS_MAP })}
                   className="text-xs text-text-secondary hover:text-primary underline"
                 >
                   Reset to defaults

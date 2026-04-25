@@ -3,6 +3,7 @@ import { upsertConnector } from '../db';
 import {
   parseDispositionMap as parseSharedDispositionMap,
   mapDisposition,
+  normalizeDispositionKey,
   DEFAULT_SALESFORCE_DISPOSITION_MAP,
   type DispositionMap,
 } from '../dispositionMap';
@@ -73,6 +74,22 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     if (typeof payload.qualified === 'string' && payload.qualified.toLowerCase() === 'true') return true;
     if (payload.type === 'appointment.booked') return true;
     return false;
+  }
+
+  private resolveLeadOutcome(payload: ConnectorPayload): LeadOutcome {
+    const explicit = typeof payload.outcome === 'string'
+      ? payload.outcome.toLowerCase().trim().replace(/[\s-]+/g, '_')
+      : '';
+    if (explicit === 'qualified' || explicit === 'disqualified' || explicit === 'nurture' || explicit === 'no_answer') {
+      return explicit;
+    }
+    if (this.isQualified(payload)) return 'qualified';
+    const dispoKey = normalizeDispositionKey(payload.disposition as string | undefined);
+    if (dispoKey === 'no_answer') return 'no_answer';
+    if (dispoKey === 'spam') return 'disqualified';
+    if (payload.qualified === false) return 'disqualified';
+    if (typeof payload.qualified === 'string' && payload.qualified.toLowerCase() === 'false') return 'disqualified';
+    return 'nurture';
   }
 
   private async ensureAccessToken(
@@ -170,26 +187,45 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
 
       // If the AI agent qualified this caller and we matched/created a Lead,
       // convert it to Contact + Account + Opportunity so the activity attaches downstream.
+      // Otherwise, update the Lead's Status field to reflect the QVO outcome
+      // (disqualified / nurture / no_answer) so sales reps can route to the
+      // right downstream playbook.
       let convertedContactId: string | undefined;
       let convertedOpportunityId: string | undefined;
       let convertedAccountId: string | undefined;
       let convertedFromLeadId: string | undefined;
-      if (who?.object === 'Lead' && this.isQualified(payload)) {
-        const reuseAccountId = (payload.accountId as string | undefined)
-          ?? (callerCompany ? await this.findOrCreateAccount(tokens, callerCompany) : undefined);
-        const opportunityName = callerCompany
-          ? `${callerCompany} - QVO Inbound Call`
-          : 'QVO Inbound Opportunity';
-        const conversion = await this.convertLead(tokens, who.id, {
-          accountId: reuseAccountId,
-          opportunityName,
-        });
-        if (conversion) {
-          convertedFromLeadId = who.id;
-          convertedContactId = conversion.contactId;
-          convertedOpportunityId = conversion.opportunityId;
-          convertedAccountId = conversion.accountId;
-          who = { id: conversion.contactId, object: 'Contact' };
+      let updatedLeadStatus: string | undefined;
+      let updatedLeadOutcome: LeadOutcome | undefined;
+      if (who?.object === 'Lead') {
+        const outcome = this.resolveLeadOutcome(payload);
+        const leadStatusMap = resolveLeadStatusMap(config.credentials);
+        if (outcome === 'qualified') {
+          const reuseAccountId = (payload.accountId as string | undefined)
+            ?? (callerCompany ? await this.findOrCreateAccount(tokens, callerCompany) : undefined);
+          const opportunityName = callerCompany
+            ? `${callerCompany} - QVO Inbound Call`
+            : 'QVO Inbound Opportunity';
+          const conversion = await this.convertLead(tokens, who.id, {
+            accountId: reuseAccountId,
+            opportunityName,
+            convertedStatus: leadStatusMap.qualified,
+          });
+          if (conversion) {
+            convertedFromLeadId = who.id;
+            convertedContactId = conversion.contactId;
+            convertedOpportunityId = conversion.opportunityId;
+            convertedAccountId = conversion.accountId;
+            who = { id: conversion.contactId, object: 'Contact' };
+          }
+        } else {
+          const targetStatus = leadStatusMap[outcome];
+          if (targetStatus) {
+            const ok = await this.updateLeadStatus(tokens, who.id, targetStatus);
+            if (ok) {
+              updatedLeadStatus = targetStatus;
+              updatedLeadOutcome = outcome;
+            }
+          }
         }
       }
 
@@ -223,7 +259,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
 
       logger.info('Salesforce call task created', {
         tenantId, mode, whoObject: who?.object, whoId: who?.id, whatId, taskId, noteId,
-        disposition, convertedFromLeadId,
+        disposition, convertedFromLeadId, updatedLeadOutcome, updatedLeadStatus,
       });
       return {
         success: true,
@@ -246,6 +282,13 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
                 convertedFromLead: true,
                 convertedFromLeadId,
                 contactId: convertedContactId,
+              }
+            : {}),
+          ...(updatedLeadStatus
+            ? {
+                leadStatusUpdated: true,
+                leadOutcome: updatedLeadOutcome,
+                leadStatus: updatedLeadStatus,
               }
             : {}),
         },
@@ -286,9 +329,11 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         const opportunityName = callerCompany
           ? `${callerCompany} - QVO Appointment`
           : 'QVO Appointment Opportunity';
+        const leadStatusMap = resolveLeadStatusMap(config.credentials);
         const conversion = await this.convertLead(tokens, who.id, {
           accountId: reuseAccountId,
           opportunityName,
+          convertedStatus: leadStatusMap.qualified,
         });
         if (conversion) {
           convertedFromLeadId = who.id;
@@ -381,7 +426,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
   private async convertLead(
     tokens: SalesforceTokens,
     leadId: string,
-    options: { accountId?: string; opportunityName?: string },
+    options: { accountId?: string; opportunityName?: string; convertedStatus?: string },
   ): Promise<
     | {
         leadId: string;
@@ -391,7 +436,8 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       }
     | undefined
   > {
-    const convertedStatus = await this.getConvertedLeadStatus(tokens);
+    const requestedStatus = options.convertedStatus?.trim();
+    let convertedStatus = requestedStatus || await this.getConvertedLeadStatus(tokens);
     if (!convertedStatus) {
       logger.warn('Skipping Salesforce Lead conversion: no IsConverted LeadStatus available', { leadId });
       return undefined;
@@ -407,15 +453,33 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     if (options.opportunityName) body.opportunityName = options.opportunityName.slice(0, 120);
 
     try {
-      const res = await this.fetchWithTimeout(url, {
+      let res = await this.fetchWithTimeout(url, {
         method: 'POST',
         headers: this.headers(tokens.accessToken),
         body: JSON.stringify(body),
       });
+      // If the manager-mapped "qualified" status isn't a valid converted
+      // status in this org, retry once with the auto-detected one so the
+      // conversion still happens.
+      if (!res.ok && requestedStatus) {
+        const fallback = await this.getConvertedLeadStatus(tokens);
+        if (fallback && fallback !== convertedStatus) {
+          logger.warn('Salesforce Lead conversion retrying with auto-detected status', {
+            leadId, attempted: convertedStatus, fallback,
+          });
+          convertedStatus = fallback;
+          body.convertedStatus = fallback;
+          res = await this.fetchWithTimeout(url, {
+            method: 'POST',
+            headers: this.headers(tokens.accessToken),
+            body: JSON.stringify(body),
+          });
+        }
+      }
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         logger.warn('Salesforce Lead conversion failed', {
-          leadId, status: res.status, body: text.slice(0, 300),
+          leadId, status: res.status, convertedStatus, body: text.slice(0, 300),
         });
         return undefined;
       }
@@ -442,6 +506,34 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     } catch (err) {
       logger.warn('Salesforce Lead conversion threw', { leadId, error: String(err) });
       return undefined;
+    }
+  }
+
+  private async updateLeadStatus(
+    tokens: SalesforceTokens,
+    leadId: string,
+    status: string,
+  ): Promise<boolean> {
+    const trimmed = status.trim();
+    if (!trimmed) return false;
+    const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Lead/${encodeURIComponent(leadId)}`;
+    try {
+      const res = await this.fetchWithTimeout(url, {
+        method: 'PATCH',
+        headers: this.headers(tokens.accessToken),
+        body: JSON.stringify({ Status: trimmed }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        logger.warn('Salesforce Lead status update failed', {
+          leadId, status: trimmed, httpStatus: res.status, body: text.slice(0, 200),
+        });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.warn('Salesforce Lead status update threw', { leadId, status: trimmed, error: String(err) });
+      return false;
     }
   }
 
@@ -847,6 +939,62 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
 
 export { DEFAULT_SALESFORCE_DISPOSITION_MAP } from '../dispositionMap';
 export type { DispositionMap } from '../dispositionMap';
+
+export type LeadOutcome = 'qualified' | 'disqualified' | 'nurture' | 'no_answer';
+
+export type LeadStatusMap = Record<LeadOutcome, string>;
+
+const LEAD_OUTCOMES: LeadOutcome[] = ['qualified', 'disqualified', 'nurture', 'no_answer'];
+
+export const DEFAULT_SALESFORCE_LEAD_STATUS_MAP: LeadStatusMap = {
+  qualified: 'Qualified',
+  disqualified: 'Unqualified',
+  nurture: 'Working - Contacted',
+  no_answer: 'Open - Not Contacted',
+};
+
+export function parseLeadStatusMap(
+  credentials: Record<string, string>,
+): Partial<LeadStatusMap> | undefined {
+  const raw = credentials.lead_status_map;
+  if (!raw || !raw.trim()) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `Invalid Salesforce lead_status_map JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid Salesforce lead_status_map: expected an object of { qualified, disqualified, nurture, no_answer } string entries');
+  }
+  const result: Partial<LeadStatusMap> = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    const normalized = key.toLowerCase().trim().replace(/[\s-]+/g, '_') as LeadOutcome;
+    if (!LEAD_OUTCOMES.includes(normalized)) continue;
+    if (typeof value !== 'string') {
+      throw new Error(`Invalid Salesforce lead_status_map entry for "${key}": expected a string LeadStatus value`);
+    }
+    const trimmed = value.trim();
+    if (trimmed) result[normalized] = trimmed;
+  }
+  return result;
+}
+
+export function resolveLeadStatusMap(
+  credentials: Record<string, string>,
+): LeadStatusMap {
+  let override: Partial<LeadStatusMap> | undefined;
+  try {
+    override = parseLeadStatusMap(credentials);
+  } catch {
+    // Fall back to defaults silently if the persisted JSON is invalid.
+    // The settings endpoint surfaces parse errors back to the UI.
+    override = undefined;
+  }
+  return { ...DEFAULT_SALESFORCE_LEAD_STATUS_MAP, ...(override ?? {}) };
+}
 
 export function parseDispositionMap(
   credentials: Record<string, string>,
