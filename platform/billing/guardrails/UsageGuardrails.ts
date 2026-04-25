@@ -2,6 +2,10 @@ import { getPlatformPool, withPrivilegedClient } from '../../db';
 import { PLAN_LIMITS, PLAN_RATE_LIMITS } from '../stripe/plans';
 import type { PlanTier } from '../stripe/plans';
 import { createLogger } from '../../core/logger';
+import {
+  categoryForNotificationType,
+  fanoutInAppNotification,
+} from '../../notifications/NotificationPreferences';
 
 const logger = createLogger('USAGE_GUARDRAILS');
 
@@ -78,6 +82,9 @@ async function sendNotification(
 ): Promise<void> {
   const pool = getPlatformPool();
   try {
+    // Tenant-wide 24h throttle: don't re-warn the org about the same metric.
+    // We deliberately match either tenant-wide rows or any per-user row of
+    // this type so the throttle still works after the per-user fan-out below.
     const { rows: recent } = await pool.query(
       `SELECT id FROM tenant_notifications
        WHERE tenant_id = $1 AND type = $2 AND created_at > NOW() - INTERVAL '24 hours'
@@ -86,11 +93,25 @@ async function sendNotification(
     );
     if (recent.length > 0) return;
 
-    await pool.query(
-      `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [tenantId, type, title, message, JSON.stringify(metadata)],
-    );
+    const category = categoryForNotificationType(type);
+    if (category) {
+      await fanoutInAppNotification({
+        tenantId,
+        type,
+        title,
+        message,
+        metadata,
+        category,
+      });
+    } else {
+      // Unknown type — keep the legacy tenant-wide row so the inbox still shows
+      // it. Per-user prefs only apply to mapped categories.
+      await pool.query(
+        `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [tenantId, type, title, message, JSON.stringify(metadata)],
+      );
+    }
   } catch (err) {
     logger.error('Failed to send notification', { tenantId, type, error: String(err) });
   }

@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
 import {
   Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
-  Lock, Download, Trash2,
+  Lock, Download, Trash2, Bell,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 
@@ -45,10 +45,11 @@ const ALL_TIMEZONES = (() => {
   }
 })();
 
-type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy';
+type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy' | 'notifications';
 
 const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
   { key: 'general', label: 'General', icon: Settings2 },
+  { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'roles', label: 'Roles & Permissions', icon: Users },
   { key: 'security', label: 'Security', icon: Shield },
   { key: 'api-keys', label: 'API Keys', icon: Key },
@@ -666,6 +667,198 @@ function PrivacySettings() {
   );
 }
 
+type NotificationCategory = 'call' | 'billing' | 'sms' | 'integration' | 'escalation';
+type NotificationChannel = 'in_app' | 'email';
+type PreferenceMatrix = Record<NotificationCategory, Record<NotificationChannel, boolean>>;
+
+interface PreferencesResponse {
+  preferences: PreferenceMatrix;
+  categories: NotificationCategory[];
+  channels: NotificationChannel[];
+}
+
+const CATEGORY_META: Record<NotificationCategory, { label: string; description: string }> = {
+  call: {
+    label: 'Calls',
+    description: 'Saved-view subscriptions, transcript-ready alerts, and other call activity.',
+  },
+  billing: {
+    label: 'Billing & usage',
+    description: 'Plan limit warnings, usage spikes, and account-status changes.',
+  },
+  sms: {
+    label: 'SMS alerts',
+    description: 'Outbound SMS escalations and text-channel incident alerts.',
+  },
+  integration: {
+    label: 'Integrations',
+    description: 'Connector sync errors, OAuth re-auth requests, and integration outages.',
+  },
+  escalation: {
+    label: 'Escalations',
+    description: 'High-priority operator escalations from agent runs and tickets.',
+  },
+};
+
+const CHANNEL_LABELS: Record<NotificationChannel, string> = {
+  in_app: 'In-app inbox',
+  email: 'Email',
+};
+
+function NotificationSettings() {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<PreferenceMatrix | null>(null);
+  const [savedAt, setSavedAt] = useState(0);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: () => api.get<PreferencesResponse>('/platform/notifications/preferences'),
+  });
+
+  useEffect(() => {
+    if (data?.preferences) setDraft(data.preferences);
+  }, [data]);
+
+  const mutation = useMutation({
+    mutationFn: (preferences: PreferenceMatrix) =>
+      api.put<PreferencesResponse>('/platform/notifications/preferences', { preferences }),
+    onSuccess: (resp) => {
+      if (resp.preferences) setDraft(resp.preferences);
+      setSavedAt(Date.now());
+      queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
+    },
+  });
+
+  if (error) {
+    return (
+      <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Couldn't load your notification preferences. Please try again.</span>
+      </div>
+    );
+  }
+
+  if (isLoading || !draft) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  const categories = (data?.categories ?? (Object.keys(draft) as NotificationCategory[]));
+  const channels = (data?.channels ?? (['in_app', 'email'] as NotificationChannel[]));
+
+  const dirty =
+    !!data?.preferences &&
+    JSON.stringify(draft) !== JSON.stringify(data.preferences);
+  const showSaved = savedAt > 0 && Date.now() - savedAt < 3000;
+
+  const toggle = (category: NotificationCategory, channel: NotificationChannel) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const next: PreferenceMatrix = { ...prev };
+      const row = { ...(next[category] ?? { in_app: true, email: true }) };
+      row[channel] = !(row[channel] ?? true);
+      next[category] = row;
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Notification preferences</h2>
+        <p className="text-sm text-text-muted mt-0.5">
+          Mute the categories you don't care about. Defaults are everything on, so changes only suppress
+          the rows you turn off — your teammates' inboxes are unaffected.
+        </p>
+      </div>
+
+      {mutation.error && (
+        <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {(mutation.error as Error).message || 'Failed to save preferences'}
+        </div>
+      )}
+      {showSaved && (
+        <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          Preferences saved
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="grid grid-cols-[1fr_repeat(2,minmax(110px,auto))] gap-x-4 px-5 py-3 border-b border-border bg-surface-hover text-xs font-semibold text-text-secondary uppercase tracking-wide">
+          <div>Category</div>
+          {channels.map((ch) => (
+            <div key={ch} className="text-center">{CHANNEL_LABELS[ch]}</div>
+          ))}
+        </div>
+        <div className="divide-y divide-border">
+          {categories.map((cat) => {
+            const meta = CATEGORY_META[cat] ?? { label: cat, description: '' };
+            const row = draft[cat] ?? { in_app: true, email: true };
+            return (
+              <div
+                key={cat}
+                className="grid grid-cols-[1fr_repeat(2,minmax(110px,auto))] gap-x-4 px-5 py-4 items-center"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-text-primary">{meta.label}</div>
+                  <p className="text-xs text-text-muted mt-0.5">{meta.description}</p>
+                </div>
+                {channels.map((ch) => {
+                  const enabled = row[ch] ?? true;
+                  return (
+                    <div key={ch} className="flex justify-center">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={enabled}
+                        aria-label={`${meta.label} — ${CHANNEL_LABELS[ch]}`}
+                        onClick={() => toggle(cat, ch)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          enabled ? 'bg-primary' : 'bg-surface-hover border border-border'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                            enabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
+        {dirty && (
+          <button
+            onClick={() => data?.preferences && setDraft(data.preferences)}
+            className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary"
+          >
+            Discard changes
+          </button>
+        )}
+        <button
+          onClick={() => draft && mutation.mutate(draft)}
+          disabled={!dirty || mutation.isPending}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
+        >
+          <Save className="h-4 w-4" />
+          {mutation.isPending ? 'Saving…' : 'Save preferences'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -702,6 +895,7 @@ export default function Settings() {
       </div>
 
       {tab === 'general' && <GeneralSettings />}
+      {tab === 'notifications' && <NotificationSettings />}
       {tab === 'roles' && <RolesPermissions />}
       {tab === 'security' && <SecuritySettings />}
       {tab === 'api-keys' && <ApiKeys />}

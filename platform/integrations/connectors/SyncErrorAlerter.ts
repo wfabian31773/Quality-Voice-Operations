@@ -1,6 +1,11 @@
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import { sendEmail, connectorSyncErrorEmail } from '../../email';
+import {
+  fanoutInAppNotification,
+  filterEmailRecipientsByPreference,
+  filterUserIdsByPreference,
+} from '../../notifications/NotificationPreferences';
 import type { ConnectorType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -83,26 +88,25 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
   const title = `${providerLabel} integration is failing`;
   const message = `Latest sync to ${providerLabel} failed: ${errorMessage.slice(0, 200)}. Open Connectors to reconnect.`;
 
+  const inAppMetadata = {
+    link: reconnectPath,
+    integrationId,
+    connectorType,
+    provider,
+    errorMessage: errorMessage.slice(0, 500),
+  };
+
   try {
-    await pool.query(
-      `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [
-        tenantId,
-        NOTIFICATION_TYPE,
-        title,
-        message,
-        JSON.stringify({
-          link: reconnectPath,
-          integrationId,
-          connectorType,
-          provider,
-          errorMessage: errorMessage.slice(0, 500),
-        }),
-      ],
-    );
+    await fanoutInAppNotification({
+      tenantId,
+      type: NOTIFICATION_TYPE,
+      title,
+      message,
+      metadata: inAppMetadata,
+      category: 'integration',
+    });
   } catch (err) {
-    logger.error('Failed to insert connector sync in-app notification', {
+    logger.error('Failed to fan out connector sync in-app notification', {
       tenantId,
       integrationId,
       error: String(err),
@@ -144,6 +148,18 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
       tenantId,
       integrationId,
       provider,
+    });
+    return;
+  }
+
+  const beforeFilter = recipients.length;
+  recipients = await filterEmailRecipientsByPreference(tenantId, recipients, 'integration');
+  if (recipients.length === 0) {
+    logger.info('All admin recipients opted out of integration email notifications', {
+      tenantId,
+      integrationId,
+      provider,
+      removed: beforeFilter,
     });
     return;
   }
@@ -346,11 +362,12 @@ export async function notifySustainedConnectorFailure(
     });
   }
 
-  // Admin/owner phone numbers.
-  let phones: string[] = [];
+  // Admin/owner phone numbers, joined with user id so we can filter by the
+  // per-user "sms" notification preference.
+  let phoneRows: Array<{ user_id: string; phone: string }> = [];
   try {
-    const { rows: userRows } = await pool.query(
-      `SELECT phone_number FROM users
+    const { rows: userRows } = await pool.query<{ id: string; phone_number: string | null }>(
+      `SELECT id, phone_number FROM users
         WHERE tenant_id = $1
           AND role IN ('admin', 'owner')
           AND phone_number IS NOT NULL
@@ -359,9 +376,13 @@ export async function notifySustainedConnectorFailure(
         LIMIT 5`,
       [tenantId],
     );
-    phones = userRows
-      .map((r) => normalizeE164(r.phone_number as string | null))
-      .filter((p): p is string => p !== null);
+    phoneRows = userRows
+      .map((r) => {
+        const normalized = normalizeE164(r.phone_number);
+        if (!normalized) return null;
+        return { user_id: r.id, phone: normalized };
+      })
+      .filter((p): p is { user_id: string; phone: string } => p !== null);
   } catch (err) {
     logger.warn('Failed to look up admin phone numbers for sustained SMS alert', {
       tenantId,
@@ -370,11 +391,34 @@ export async function notifySustainedConnectorFailure(
     return;
   }
 
-  if (phones.length === 0) {
+  if (phoneRows.length === 0) {
     logger.info('No admin phone numbers on file for sustained SMS alert', {
       tenantId,
       integrationId,
       provider,
+    });
+    return;
+  }
+
+  // Drop recipients whose per-user "sms" in_app preference is off — that's
+  // their proxy for "I don't want SMS-style outage alerts at all". Falls open
+  // (everyone receives) on DB errors so a broken prefs table never silences
+  // the page.
+  const optedInUsers = new Set(
+    await filterUserIdsByPreference(
+      phoneRows.map((p) => p.user_id),
+      'sms',
+      'in_app',
+    ),
+  );
+  const beforeOptOut = phoneRows.length;
+  const phones = phoneRows.filter((p) => optedInUsers.has(p.user_id)).map((p) => p.phone);
+  if (phones.length === 0) {
+    logger.info('All admins opted out of SMS-category alerts', {
+      tenantId,
+      integrationId,
+      provider,
+      removed: beforeOptOut,
     });
     return;
   }
@@ -425,30 +469,27 @@ export async function notifySustainedConnectorFailure(
   const shouldRecord = !twilio || succeeded > 0;
   if (shouldRecord) {
     try {
-      await pool.query(
-        `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          tenantId,
-          SMS_NOTIFICATION_TYPE,
-          `${providerLabel} sustained outage`,
-          smsBody,
-          JSON.stringify({
-            integrationId,
-            connectorType,
-            provider,
-            firstFailedAt,
-            outageMinutes,
-            recipientCount: phones.length,
-            smsAttempted: attempted,
-            smsSucceeded: succeeded,
-            twilioConfigured: Boolean(twilio),
-            link: reconnectPath,
-          }),
-        ],
-      );
+      await fanoutInAppNotification({
+        tenantId,
+        type: SMS_NOTIFICATION_TYPE,
+        title: `${providerLabel} sustained outage`,
+        message: smsBody,
+        metadata: {
+          integrationId,
+          connectorType,
+          provider,
+          firstFailedAt,
+          outageMinutes,
+          recipientCount: phones.length,
+          smsAttempted: attempted,
+          smsSucceeded: succeeded,
+          twilioConfigured: Boolean(twilio),
+          link: reconnectPath,
+        },
+        category: 'sms',
+      });
     } catch (err) {
-      logger.error('Failed to insert sustained SMS alert record', {
+      logger.error('Failed to fan out sustained SMS alert record', {
         tenantId,
         integrationId,
         error: String(err),

@@ -174,11 +174,21 @@ describe('notifySustainedConnectorFailure', () => {
       .mockResolvedValueOnce({ rows: [] }) // throttle empty
       .mockResolvedValueOnce({
         rows: [
-          { phone_number: '+15551234567' },
-          { phone_number: '+15557654321' },
+          { id: 'user-a', phone_number: '+15551234567' },
+          { id: 'user-b', phone_number: '+15557654321' },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] }); // INSERT tenant_notifications
+      // filterUserIdsByPreference for SMS phones — nobody opted out.
+      .mockResolvedValueOnce({ rows: [] })
+      // fanoutInAppNotification: load tenant users
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a' }, { id: 'user-b' }],
+      })
+      // fanoutInAppNotification: filterUserIdsByPreference for in_app
+      .mockResolvedValueOnce({ rows: [] })
+      // Per-user inserts (one per opted-in user).
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
     fetchMock.mockResolvedValue({
       ok: true,
@@ -205,15 +215,76 @@ describe('notifySustainedConnectorFailure', () => {
     expect(body).toContain('From=%2B15555550100');
     expect(body).toContain('Salesforce');
 
-    // Final query should be the tenant_notifications insert with the SMS type.
-    const lastQueryArgs = queryMock.mock.calls[queryMock.mock.calls.length - 1];
-    expect(lastQueryArgs[0]).toContain('INSERT INTO tenant_notifications');
-    expect(lastQueryArgs[1][1]).toBe('integration_sms');
-    const metadata = JSON.parse(lastQueryArgs[1][4] as string);
-    expect(metadata.integrationId).toBe('int-1');
-    expect(metadata.smsAttempted).toBe(2);
-    expect(metadata.smsSucceeded).toBe(2);
-    expect(metadata.twilioConfigured).toBe(true);
+    // The dispatch is now fanned out per-user — every insert should target
+    // the SMS notification type with the integration metadata.
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(2);
+    for (const call of insertCalls) {
+      const args = call[1] as unknown[];
+      expect(args[2]).toBe('integration_sms');
+      const metadata = JSON.parse(args[5] as string);
+      expect(metadata.integrationId).toBe('int-1');
+      expect(metadata.smsAttempted).toBe(2);
+      expect(metadata.smsSucceeded).toBe(2);
+      expect(metadata.twilioConfigured).toBe(true);
+    }
+  });
+
+  it('skips SMS sends to admins who opted out of the sms category', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // throttle empty
+      .mockResolvedValueOnce({
+        rows: [
+          { id: 'user-a', phone_number: '+15551234567' },
+          { id: 'user-b', phone_number: '+15557654321' },
+        ],
+      })
+      // filterUserIdsByPreference for SMS phones — user-a opted out.
+      .mockResolvedValueOnce({
+        rows: [{ user_id: 'user-a', enabled: false }],
+      })
+      // fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a' }, { id: 'user-b' }],
+      })
+      // fanoutInAppNotification: filterUserIdsByPreference (in_app sms)
+      // user-a has the sms in_app channel off.
+      .mockResolvedValueOnce({
+        rows: [{ user_id: 'user-a', enabled: false }],
+      })
+      .mockResolvedValueOnce({ rows: [] }); // insert for user-b only
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () => '',
+    } as unknown as Response);
+
+    const { notifySustainedConnectorFailure } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifySustainedConnectorFailure({
+      ...baseParams,
+      firstFailedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+    });
+
+    // Only user-b's phone got an SMS.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('To=%2B15557654321');
+    expect(body).not.toContain('To=%2B15551234567');
+
+    // And only one in-app row was inserted (for user-b).
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(1);
+    expect((insertCalls[0][1] as unknown[])[1]).toBe('user-b');
   });
 
   it('does NOT record a throttle entry when Twilio is configured but every send fails', async () => {
@@ -224,12 +295,14 @@ describe('notifySustainedConnectorFailure', () => {
       .mockResolvedValueOnce({ rows: [] }) // throttle empty
       .mockResolvedValueOnce({
         rows: [
-          { phone_number: '+15551234567' },
-          { phone_number: '+15557654321' },
+          { id: 'user-a', phone_number: '+15551234567' },
+          { id: 'user-b', phone_number: '+15557654321' },
         ],
-      });
-    // No 4th query — the INSERT into tenant_notifications must be skipped
-    // when every Twilio send fails so the next sync error can retry.
+      })
+      // filterUserIdsByPreference for SMS phones — nobody opted out.
+      .mockResolvedValueOnce({ rows: [] });
+    // No further queries — the fan-out into tenant_notifications must be
+    // skipped when every Twilio send fails so the next sync error can retry.
 
     fetchMock.mockResolvedValue({
       ok: false,
@@ -246,9 +319,10 @@ describe('notifySustainedConnectorFailure', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // Only the three pre-send queries (tenant lookup, throttle check, phones)
-    // should have been issued — no tenant_notifications insert.
-    expect(queryMock).toHaveBeenCalledTimes(3);
+    // Only the four pre-send queries (tenant lookup, throttle check, phones,
+    // SMS-pref filter) should have been issued — no tenant_notifications
+    // insert.
+    expect(queryMock).toHaveBeenCalledTimes(4);
     const insertCalls = queryMock.mock.calls.filter((c) =>
       String(c[0]).includes('INSERT INTO tenant_notifications'),
     );
@@ -266,7 +340,13 @@ describe('notifySustainedConnectorFailure', () => {
         rows: [{ name: 'Acme', sms_alerts_disabled: false }],
       })
       .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({ rows: [{ phone_number: '+15551234567' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a', phone_number: '+15551234567' }] })
+      // filterUserIdsByPreference for SMS phones — nobody opted out.
+      .mockResolvedValueOnce({ rows: [] })
+      // fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      // fanoutInAppNotification: filterUserIdsByPreference
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] }); // insert
 
     const { notifySustainedConnectorFailure } = await import(
@@ -278,9 +358,11 @@ describe('notifySustainedConnectorFailure', () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    const lastQueryArgs = queryMock.mock.calls[queryMock.mock.calls.length - 1];
-    expect(lastQueryArgs[0]).toContain('INSERT INTO tenant_notifications');
-    const metadata = JSON.parse(lastQueryArgs[1][4] as string);
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(1);
+    const metadata = JSON.parse((insertCalls[0][1] as unknown[])[5] as string);
     expect(metadata.twilioConfigured).toBe(false);
     expect(metadata.smsAttempted).toBe(0);
   });

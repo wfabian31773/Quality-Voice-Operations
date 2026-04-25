@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, X, Check, Trash2, AlertCircle, CreditCard, MessageSquare, PhoneCall, Megaphone, Wrench } from 'lucide-react';
+import { Bell, X, Check, Trash2, AlertCircle, CreditCard, MessageSquare, PhoneCall, Megaphone, Wrench, Settings as SettingsIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { Link } from 'react-router-dom';
 
@@ -117,13 +117,24 @@ export default function NotificationsCenter() {
         <div className="absolute right-0 mt-2 w-[360px] max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <h3 className="font-semibold text-sm">Notifications</h3>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-text-muted hover:text-text-primary"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <Link
+                to="/settings/notifications"
+                onClick={() => setOpen(false)}
+                className="text-text-muted hover:text-text-primary p-1 rounded"
+                aria-label="Notification preferences"
+                title="Notification preferences"
+              >
+                <SettingsIcon className="h-4 w-4" />
+              </Link>
+              <button
+                onClick={() => setOpen(false)}
+                className="text-text-muted hover:text-text-primary p-1 rounded"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="px-3 py-2 border-b border-border flex items-center gap-1 overflow-x-auto">

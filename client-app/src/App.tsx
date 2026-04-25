@@ -84,7 +84,7 @@ import Changelog from './pages/Changelog';
 import ErrorBoundary from './components/ErrorBoundary';
 import MaintenanceGate from './components/MaintenanceGate';
 
-const SETTINGS_TABS = ['general', 'roles', 'security', 'api-keys', 'privacy'];
+const SETTINGS_TABS = ['general', 'notifications', 'roles', 'security', 'api-keys', 'privacy'];
 
 function SettingsRedirect() {
   const [searchParams] = useSearchParams();
@@ -177,6 +177,7 @@ export default function App() {
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/settings" element={<SettingsRedirect />} />
         <Route path="/settings/general" element={<Settings />} />
+        <Route path="/settings/notifications" element={<Settings />} />
         <Route path="/settings/roles" element={<Settings />} />
         <Route path="/settings/security" element={<Settings />} />
         <Route path="/settings/api-keys" element={<Settings />} />

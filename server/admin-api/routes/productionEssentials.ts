@@ -3,6 +3,15 @@ import { getPlatformPool } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import {
+  getUserPreferences,
+  setUserPreferences,
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CHANNELS,
+  isNotificationCategory,
+  isNotificationChannel,
+  type PreferenceMatrix,
+} from '../../../platform/notifications/NotificationPreferences';
 
 const router = Router();
 const logger = createLogger('PRODUCTION_ESSENTIALS');
@@ -170,6 +179,57 @@ router.post('/platform/notifications/read-all', requireAuth, async (req, res) =>
   } catch (err) {
     logger.error('notifications read-all failed', { error: String(err) });
     return res.status(500).json({ error: 'Failed to update notifications' });
+  }
+});
+
+router.get('/platform/notifications/preferences', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  try {
+    const preferences = await getUserPreferences(userId);
+    return res.json({
+      preferences,
+      categories: NOTIFICATION_CATEGORIES,
+      channels: NOTIFICATION_CHANNELS,
+    });
+  } catch (err) {
+    logger.error('notification preferences load failed', { userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to load notification preferences' });
+  }
+});
+
+router.put('/platform/notifications/preferences', requireAuth, async (req, res) => {
+  const { userId } = req.user!;
+  const body = (req.body ?? {}) as { preferences?: unknown };
+  const raw = body.preferences;
+  if (!raw || typeof raw !== 'object') {
+    return res.status(400).json({ error: 'preferences object is required' });
+  }
+
+  const sanitized: Partial<PreferenceMatrix> = {};
+  for (const [category, channels] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isNotificationCategory(category)) continue;
+    if (!channels || typeof channels !== 'object') continue;
+    const row: Record<string, boolean> = {};
+    for (const [channel, value] of Object.entries(channels as Record<string, unknown>)) {
+      if (!isNotificationChannel(channel)) continue;
+      if (typeof value !== 'boolean') continue;
+      row[channel] = value;
+    }
+    if (Object.keys(row).length > 0) {
+      (sanitized as Record<string, Record<string, boolean>>)[category] = row;
+    }
+  }
+
+  try {
+    const preferences = await setUserPreferences(userId, sanitized);
+    return res.json({
+      preferences,
+      categories: NOTIFICATION_CATEGORIES,
+      channels: NOTIFICATION_CHANNELS,
+    });
+  } catch (err) {
+    logger.error('notification preferences save failed', { userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to save notification preferences' });
   }
 });
 

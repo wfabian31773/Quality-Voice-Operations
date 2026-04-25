@@ -1,6 +1,10 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email/EmailService';
+import {
+  filterEmailRecipientsByPreference,
+  filterUserIdsByPreference,
+} from '../notifications/NotificationPreferences';
 
 const logger = createLogger('CALL_VIEW_SUBSCRIBER_NOTIFIER');
 
@@ -236,9 +240,18 @@ export async function notifySubscriberChanges(params: SubscriberChangeNotificati
     }
   }
 
+  // Per-user in-app preference gate. Users who have muted the "call" category
+  // for in-app notifications are removed from the recipient list before we
+  // insert any rows. Recipients without a matching user row (external
+  // collaborators) are unaffected — they only get the email anyway.
+  const matchedUserIds = Array.from(new Set(userIdMap.values()));
+  const inAppEligibleUserIds = new Set(
+    await filterUserIdsByPreference(matchedUserIds, 'call', 'in_app'),
+  );
+
   for (const recipient of addedTargets) {
     const uid = userIdMap.get(recipient);
-    if (uid) {
+    if (uid && inAppEligibleUserIds.has(uid)) {
       await createInAppNotification({
         tenantId: params.tenantId,
         userId: uid,
@@ -251,7 +264,7 @@ export async function notifySubscriberChanges(params: SubscriberChangeNotificati
   }
   for (const recipient of removedTargets) {
     const uid = userIdMap.get(recipient);
-    if (uid) {
+    if (uid && inAppEligibleUserIds.has(uid)) {
       await createInAppNotification({
         tenantId: params.tenantId,
         userId: uid,
@@ -263,7 +276,21 @@ export async function notifySubscriberChanges(params: SubscriberChangeNotificati
     }
   }
 
-  for (const recipient of addedTargets) {
+  // Email channel: drop recipients whose tenant user has opted out of the
+  // "call" email channel. External collaborators (no user row) still get
+  // the email so saved-view sharing keeps working.
+  const addedEmailTargets = await filterEmailRecipientsByPreference(
+    params.tenantId,
+    addedTargets,
+    'call',
+  );
+  const removedEmailTargets = await filterEmailRecipientsByPreference(
+    params.tenantId,
+    removedTargets,
+    'call',
+  );
+
+  for (const recipient of addedEmailTargets) {
     try {
       const tpl = renderAdded(params.viewName, actor.displayName, params.viewId);
       const result = await sendEmail({
@@ -290,7 +317,7 @@ export async function notifySubscriberChanges(params: SubscriberChangeNotificati
     }
   }
 
-  for (const recipient of removedTargets) {
+  for (const recipient of removedEmailTargets) {
     try {
       const tpl = renderRemoved(params.viewName, actor.displayName);
       const result = await sendEmail({
@@ -322,5 +349,7 @@ export async function notifySubscriberChanges(params: SubscriberChangeNotificati
     viewId: params.viewId,
     added: addedTargets.length,
     removed: removedTargets.length,
+    addedEmails: addedEmailTargets.length,
+    removedEmails: removedEmailTargets.length,
   });
 }

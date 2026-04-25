@@ -1,6 +1,10 @@
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import { sendEmail, connectorSyncErrorEmail } from '../../email';
+import {
+  fanoutInAppNotification,
+  filterEmailRecipientsByPreference,
+} from '../../notifications/NotificationPreferences';
 
 const logger = createLogger('CONNECTOR_AUTH_ALERT');
 
@@ -160,27 +164,24 @@ async function insertInAppNotification(params: {
   message: string;
   errorMessage: string;
 }): Promise<void> {
-  const pool = getPlatformPool();
   try {
-    await pool.query(
-      `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
-       VALUES ($1, 'integration', $2, $3, $4)`,
-      [
-        params.tenantId,
-        params.title,
-        params.message,
-        JSON.stringify({
-          link: params.reconnectPath,
-          integrationId: params.integrationId,
-          connectorType: params.connectorType,
-          provider: params.provider,
-          reason: 'auth_error',
-          errorMessage: params.errorMessage.slice(0, 500),
-        }),
-      ],
-    );
+    await fanoutInAppNotification({
+      tenantId: params.tenantId,
+      type: 'integration',
+      title: params.title,
+      message: params.message,
+      metadata: {
+        link: params.reconnectPath,
+        integrationId: params.integrationId,
+        connectorType: params.connectorType,
+        provider: params.provider,
+        reason: 'auth_error',
+        errorMessage: params.errorMessage.slice(0, 500),
+      },
+      category: 'integration',
+    });
   } catch (err) {
-    logger.warn('Failed to insert in-app auth alert notification', {
+    logger.warn('Failed to fan out in-app auth alert notification', {
       tenantId: params.tenantId,
       integrationId: params.integrationId,
       error: String(err),
@@ -241,14 +242,34 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
       });
     }
 
-    const { name: tenantName, emails: recipients } = await getTenantAdmins(tenantId);
+    const { name: tenantName, emails: rawRecipients } = await getTenantAdmins(tenantId);
 
-    if (recipients.length === 0) {
+    if (rawRecipients.length === 0) {
       logger.info('Connector auth-alert: no admin recipients, marking sent to avoid retries', {
         tenantId,
         integrationId,
         provider,
       });
+      skippedNoRecipients += 1;
+      await recordAlertSent(integrationId, tenantId);
+      continue;
+    }
+
+    const recipients = await filterEmailRecipientsByPreference(
+      tenantId,
+      rawRecipients,
+      'integration',
+    );
+    if (recipients.length === 0) {
+      logger.info(
+        'Connector auth-alert: all admin recipients opted out of integration emails, marking sent to avoid retries',
+        {
+          tenantId,
+          integrationId,
+          provider,
+          removed: rawRecipients.length,
+        },
+      );
       skippedNoRecipients += 1;
       await recordAlertSent(integrationId, tenantId);
       continue;
