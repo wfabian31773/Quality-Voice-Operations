@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -302,20 +302,77 @@ function formatSyncTime(iso: string): string {
 
 interface DispositionMapEntry { status: string; callDisposition: string }
 
-const DEFAULT_SALESFORCE_DISPOSITION_MAP: Record<string, DispositionMapEntry> = {
-  booked: { status: 'Completed', callDisposition: 'Booked Appointment' },
-  no_answer: { status: 'Completed', callDisposition: 'No Answer' },
-  spam: { status: 'Completed', callDisposition: 'Spam' },
-  transferred: { status: 'Completed', callDisposition: 'Transferred' },
-  completed: { status: 'Completed', callDisposition: 'Completed Call' },
-};
-
-const SALESFORCE_DISPOSITION_LABELS: Record<string, string> = {
+const QVO_DISPOSITION_LABELS: Record<string, string> = {
   booked: 'Booked appointment',
   no_answer: 'No answer / voicemail',
   spam: 'Spam / junk',
   transferred: 'Transferred to human',
   completed: 'Completed call (other)',
+};
+
+interface DispositionMappingConfig {
+  defaults: Record<string, DispositionMapEntry>;
+  statusLabel: string;
+  callDispositionLabel: string;
+  description: ReactNode;
+}
+
+const DISPOSITION_MAPPING_CONFIGS: Record<string, DispositionMappingConfig> = {
+  salesforce: {
+    defaults: {
+      booked: { status: 'Completed', callDisposition: 'Booked Appointment' },
+      no_answer: { status: 'Completed', callDisposition: 'No Answer' },
+      spam: { status: 'Completed', callDisposition: 'Spam' },
+      transferred: { status: 'Completed', callDisposition: 'Transferred' },
+      completed: { status: 'Completed', callDisposition: 'Completed Call' },
+    },
+    statusLabel: 'Salesforce Status',
+    callDispositionLabel: 'Salesforce CallDisposition',
+    description: (
+      <>
+        Map QVO call dispositions to your Salesforce Task <code>Status</code> and{' '}
+        <code>CallDisposition</code> picklist values. Defaults work for most orgs — change
+        these only if your org has customized those picklists.
+      </>
+    ),
+  },
+  hubspot: {
+    defaults: {
+      booked: { status: 'COMPLETED', callDisposition: 'Booked Appointment' },
+      no_answer: { status: 'NO_ANSWER', callDisposition: 'No Answer' },
+      spam: { status: 'COMPLETED', callDisposition: 'Spam' },
+      transferred: { status: 'COMPLETED', callDisposition: 'Transferred' },
+      completed: { status: 'COMPLETED', callDisposition: 'Completed Call' },
+    },
+    statusLabel: 'HubSpot hs_call_status',
+    callDispositionLabel: 'HubSpot hs_call_disposition',
+    description: (
+      <>
+        Map QVO call dispositions to HubSpot call engagement properties. <code>Status</code>{' '}
+        is one of HubSpot's call status enums (e.g. <code>COMPLETED</code>, <code>NO_ANSWER</code>,{' '}
+        <code>BUSY</code>). <code>Call disposition</code> can be a label or the GUID from your
+        HubSpot call outcome settings.
+      </>
+    ),
+  },
+  pipedrive: {
+    defaults: {
+      booked: { status: 'meeting', callDisposition: 'Appointment Booked' },
+      no_answer: { status: 'call', callDisposition: 'No Answer' },
+      spam: { status: 'call', callDisposition: 'Spam Call' },
+      transferred: { status: 'call', callDisposition: 'Call Transferred' },
+      completed: { status: 'call', callDisposition: 'AI Voice Call' },
+    },
+    statusLabel: 'Pipedrive activity type',
+    callDispositionLabel: 'Pipedrive activity subject',
+    description: (
+      <>
+        Map QVO call dispositions to Pipedrive activity fields. <code>Activity type</code> is
+        the key from your Pipedrive activity types (e.g. <code>call</code>, <code>meeting</code>,
+        or any custom key). <code>Subject</code> is the activity title that appears in the timeline.
+      </>
+    ),
+  },
 };
 
 function ConnectModal({
@@ -337,13 +394,14 @@ function ConnectModal({
   });
   const [oauthPending, setOauthPending] = useState(false);
   const isReconnect = !!existingConnector;
-  const isSalesforce = definition.provider === 'salesforce';
+  const dispositionConfig = DISPOSITION_MAPPING_CONFIGS[definition.provider];
+  const hasDispositionMapping = !!dispositionConfig;
   const [dispositionMap, setDispositionMap] = useState<Record<string, DispositionMapEntry>>(
-    () => ({ ...DEFAULT_SALESFORCE_DISPOSITION_MAP }),
+    () => (dispositionConfig ? { ...dispositionConfig.defaults } : {}),
   );
 
   useEffect(() => {
-    if (!isSalesforce || !existingConnector) return;
+    if (!hasDispositionMapping || !existingConnector || !dispositionConfig) return;
     let cancelled = false;
     api
       .get<{ settings: { dispositionMap: Record<string, Partial<DispositionMapEntry>> | null } }>(
@@ -355,7 +413,7 @@ function ConnectModal({
         if (remote && typeof remote === 'object') {
           setDispositionMap((prev) => {
             const next = { ...prev };
-            for (const key of Object.keys(DEFAULT_SALESFORCE_DISPOSITION_MAP)) {
+            for (const key of Object.keys(dispositionConfig.defaults)) {
               const entry = remote[key];
               if (entry && typeof entry === 'object') {
                 next[key] = {
@@ -371,7 +429,7 @@ function ConnectModal({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [isSalesforce, existingConnector]);
+  }, [hasDispositionMapping, dispositionConfig, existingConnector]);
 
   const handleOAuthMessage = useCallback((event: MessageEvent) => {
     if (event.origin !== window.location.origin) return;
@@ -435,13 +493,13 @@ function ConnectModal({
     for (const [k, v] of Object.entries(credentials)) {
       if (v && v.trim().length > 0) creds[k] = v;
     }
-    if (isSalesforce) {
+    if (hasDispositionMapping && dispositionConfig) {
       const out: Record<string, DispositionMapEntry> = {};
       for (const [key, entry] of Object.entries(dispositionMap)) {
         const status = entry.status.trim();
         const callDisposition = entry.callDisposition.trim();
         if (!status) {
-          return { error: `Status for "${SALESFORCE_DISPOSITION_LABELS[key] ?? key}" is required.` };
+          return { error: `${dispositionConfig.statusLabel} for "${QVO_DISPOSITION_LABELS[key] ?? key}" is required.` };
         }
         out[key] = { status, callDisposition };
       }
@@ -460,7 +518,7 @@ function ConnectModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className={`bg-surface border border-border rounded-xl shadow-lg w-full ${isSalesforce ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto`}>
+      <div className={`bg-surface border border-border rounded-xl shadow-lg w-full ${hasDispositionMapping ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <BrandLogo provider={definition.logoId} size={40} />
@@ -572,40 +630,36 @@ function ConnectModal({
               ))}
             </div>
 
-            {isSalesforce && (
+            {hasDispositionMapping && dispositionConfig && (
               <div className="rounded-lg border border-border p-4 space-y-3">
                 <div>
                   <h4 className="text-sm font-semibold text-text-primary">Disposition mapping</h4>
-                  <p className="text-xs text-text-secondary mt-1">
-                    Map QVO call dispositions to your Salesforce Task <code>Status</code> and{' '}
-                    <code>CallDisposition</code> picklist values. Defaults work for most orgs — change
-                    these only if your org has customized those picklists.
-                  </p>
+                  <p className="text-xs text-text-secondary mt-1">{dispositionConfig.description}</p>
                 </div>
                 <div className="space-y-2">
                   <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-text-secondary px-1">
                     <div className="sm:col-span-4">QVO disposition</div>
-                    <div className="sm:col-span-4">Salesforce Status</div>
-                    <div className="sm:col-span-4">Salesforce CallDisposition</div>
+                    <div className="sm:col-span-4">{dispositionConfig.statusLabel}</div>
+                    <div className="sm:col-span-4">{dispositionConfig.callDispositionLabel}</div>
                   </div>
-                  {Object.keys(DEFAULT_SALESFORCE_DISPOSITION_MAP).map((key) => (
+                  {Object.keys(dispositionConfig.defaults).map((key) => (
                     <div key={key} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                       <div className="sm:col-span-4 text-sm text-text-primary">
-                        {SALESFORCE_DISPOSITION_LABELS[key]}
+                        {QVO_DISPOSITION_LABELS[key] ?? key}
                         <span className="block text-[11px] text-text-secondary font-mono">{key}</span>
                       </div>
                       <input
                         type="text"
                         value={dispositionMap[key]?.status ?? ''}
                         onChange={(e) => setDispositionField(key, 'status', e.target.value)}
-                        placeholder={DEFAULT_SALESFORCE_DISPOSITION_MAP[key].status}
+                        placeholder={dispositionConfig.defaults[key].status}
                         className="sm:col-span-4 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                       />
                       <input
                         type="text"
                         value={dispositionMap[key]?.callDisposition ?? ''}
                         onChange={(e) => setDispositionField(key, 'callDisposition', e.target.value)}
-                        placeholder={DEFAULT_SALESFORCE_DISPOSITION_MAP[key].callDisposition}
+                        placeholder={dispositionConfig.defaults[key].callDisposition}
                         className="sm:col-span-4 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                       />
                     </div>
@@ -613,7 +667,7 @@ function ConnectModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setDispositionMap({ ...DEFAULT_SALESFORCE_DISPOSITION_MAP })}
+                  onClick={() => setDispositionMap({ ...dispositionConfig.defaults })}
                   className="text-xs text-text-secondary hover:text-primary underline"
                 >
                   Reset to defaults

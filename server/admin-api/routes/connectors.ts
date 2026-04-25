@@ -130,7 +130,7 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
     const fullConfig = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
     const credentials = fullConfig?.credentials ?? {};
     const settings: Record<string, unknown> = {};
-    if (meta.provider === 'salesforce') {
+    if (meta.provider === 'salesforce' || meta.provider === 'hubspot' || meta.provider === 'pipedrive') {
       const raw = credentials.disposition_map;
       let dispositionMap: unknown = null;
       let dispositionMapError: string | null = null;

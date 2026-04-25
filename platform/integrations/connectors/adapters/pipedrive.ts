@@ -1,5 +1,6 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
+import { parseDispositionMap, mapDisposition } from '../dispositionMap';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -102,9 +103,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'call.completed':
-        return this.handleCallCompleted(tenantId, auth, payload);
+        return this.handleCallCompleted(tenantId, activeConfig, auth, payload);
       case 'appointment.booked':
-        return this.handleAppointmentBooked(tenantId, auth, payload);
+        return this.handleAppointmentBooked(tenantId, activeConfig, auth, payload);
       default:
         return { success: false, error: `Pipedrive adapter does not handle event: ${payload.type}` };
     }
@@ -112,6 +113,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
 
   private async handleCallCompleted(
     tenantId: TenantId,
+    config: ConnectorConfig,
     auth: PipedriveAuth,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
@@ -119,8 +121,12 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     const summary = (payload.summary as string | undefined) ?? 'AI voice call completed';
     const duration = (payload.durationSeconds as number | undefined) ?? 0;
     const callSid = payload.callSid as string | undefined;
+    const disposition = payload.disposition as string | undefined;
 
     try {
+      const customMap = parseDispositionMap(config.credentials, 'pipedrive');
+      const dispositionFields = mapDisposition('pipedrive', disposition, customMap);
+
       let personId: number | undefined;
       if (callerPhone) {
         personId = await this.findOrCreatePerson(auth, callerPhone, payload);
@@ -137,8 +143,8 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       const activityRes = await pdFetch<{ success: boolean; data: { id: number } }>(auth, '/activities', {
         method: 'POST',
         body: {
-          subject: 'AI Voice Call',
-          type: 'call',
+          subject: dispositionFields.callDisposition || 'AI Voice Call',
+          type: dispositionFields.status || 'call',
           done: 1,
           duration: this.formatDuration(duration),
           note: summary + (callSid ? `\n\nCall SID: ${callSid}` : ''),
@@ -167,6 +173,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
 
   private async handleAppointmentBooked(
     tenantId: TenantId,
+    config: ConnectorConfig,
     auth: PipedriveAuth,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
@@ -176,6 +183,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     const timeStr = payload.appointmentTime as string | undefined;
 
     try {
+      const customMap = parseDispositionMap(config.credentials, 'pipedrive');
+      const dispositionFields = mapDisposition('pipedrive', 'booked', customMap);
+
       let personId: number | undefined;
       if (callerPhone) {
         personId = await this.findOrCreatePerson(auth, callerPhone, payload);
@@ -199,8 +209,8 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       const activityRes = await pdFetch<{ success: boolean; data: { id: number } }>(auth, '/activities', {
         method: 'POST',
         body: {
-          subject: 'Appointment Booked',
-          type: 'meeting',
+          subject: dispositionFields.callDisposition || 'Appointment Booked',
+          type: dispositionFields.status || 'meeting',
           done: 0,
           note: noteBody,
           ...(dateStr ? { due_date: dateStr } : {}),

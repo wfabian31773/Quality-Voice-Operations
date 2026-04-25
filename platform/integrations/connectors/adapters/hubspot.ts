@@ -1,5 +1,6 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
+import { parseDispositionMap, mapDisposition } from '../dispositionMap';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -29,9 +30,9 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'call.completed':
-        return this.handleCallCompleted(tenantId, accessToken, payload);
+        return this.handleCallCompleted(tenantId, activeConfig, accessToken, payload);
       case 'appointment.booked':
-        return this.handleAppointmentBooked(tenantId, accessToken, payload);
+        return this.handleAppointmentBooked(tenantId, activeConfig, accessToken, payload);
       default:
         return { success: false, error: `HubSpot adapter does not handle event: ${payload.type}` };
     }
@@ -39,6 +40,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
 
   private async handleCallCompleted(
     tenantId: TenantId,
+    config: ConnectorConfig,
     accessToken: string,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
@@ -46,8 +48,12 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     const summary = payload.summary as string | undefined;
     const duration = payload.durationSeconds as number | undefined;
     const callSid = payload.callSid as string | undefined;
+    const disposition = payload.disposition as string | undefined;
 
     try {
+      const customMap = parseDispositionMap(config.credentials, 'hubspot');
+      const dispositionFields = mapDisposition('hubspot', disposition, customMap);
+
       let contactId: string | undefined;
       if (callerPhone) {
         contactId = await this.findOrCreateContact(accessToken, callerPhone, payload);
@@ -59,6 +65,8 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         durationMs: (duration ?? 0) * 1000,
         callSid,
         callerPhone,
+        callStatus: dispositionFields.status,
+        callDisposition: dispositionFields.callDisposition,
       });
 
       logger.info('HubSpot call logged', { tenantId, contactId, engagementId: engagementResult });
@@ -76,6 +84,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
 
   private async handleAppointmentBooked(
     tenantId: TenantId,
+    config: ConnectorConfig,
     accessToken: string,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
@@ -83,6 +92,11 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     const summary = payload.summary as string | undefined;
 
     try {
+      // Validate disposition map up-front so a bad config surfaces in the
+      // connector activity log even when the appointment path doesn't otherwise
+      // touch call disposition fields.
+      parseDispositionMap(config.credentials, 'hubspot');
+
       let contactId: string | undefined;
       if (callerPhone) {
         contactId = await this.findOrCreateContact(accessToken, callerPhone, payload);
@@ -174,6 +188,8 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       durationMs: number;
       callSid?: string;
       callerPhone?: string;
+      callStatus?: string;
+      callDisposition?: string;
     },
   ): Promise<string> {
     const controller = new AbortController();
@@ -185,8 +201,9 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
           hs_call_title: 'AI Voice Call',
           hs_call_body: params.summary,
           hs_call_duration: String(params.durationMs),
-          hs_call_status: 'COMPLETED',
+          hs_call_status: params.callStatus ?? 'COMPLETED',
           hs_call_direction: 'INBOUND',
+          ...(params.callDisposition && { hs_call_disposition: params.callDisposition }),
           ...(params.callerPhone && { hs_call_from_number: params.callerPhone }),
           ...(params.callSid && { hs_call_external_id: params.callSid }),
         },
