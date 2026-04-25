@@ -51,6 +51,7 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'ADMIN_EMAIL', required: 'development', purpose: 'Seed admin email (used by seed-admin script)' },
   { name: 'ADMIN_PASSWORD', required: 'development', purpose: 'Seed admin password (used by seed-admin script)' },
   { name: 'ADMIN_INTERNAL_TOKEN', required: 'development', purpose: 'Internal bearer token for inter-service calls' },
+  { name: 'OPS_SLACK_WEBHOOK_URL', required: 'development', purpose: 'Incoming-webhook URL for the ops Slack channel (used by docs-feedback alerts; falls back to SLACK_WEBHOOK_URL / SLACK_WEBHOOK)' },
 ];
 
 export function validateEnvironment(options?: { exitOnFailure?: boolean }): {

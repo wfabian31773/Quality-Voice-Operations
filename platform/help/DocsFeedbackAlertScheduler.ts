@@ -1,6 +1,7 @@
 import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
+import { postToOpsSlackWebhook } from '../messaging/SlackWebhookNotifier';
 
 const logger = createLogger('DOCS_FEEDBACK_ALERTS');
 
@@ -333,10 +334,73 @@ function renderPendingReplyEmail(comments: PendingReplyComment[]): {
   return { subject, html, text: textLines.join('\n') };
 }
 
+function renderPendingReplySlackMessage(comments: PendingReplyComment[]): {
+  text: string;
+  blocks: unknown[];
+} {
+  const baseUrl =
+    process.env.APP_URL ??
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : '');
+  const inboxPath = '/admin/help#docs-feedback?status=pending_reply';
+  const inboxLink = baseUrl ? `${baseUrl}${inboxPath}` : inboxPath;
+
+  const headerText =
+    comments.length === 1
+      ? '1 reader is waiting on a docs reply'
+      : `${comments.length} readers are waiting on docs replies`;
+
+  const fallbackText = `[QVO Docs] ${headerText}`;
+
+  const previewLimit = 5;
+  const preview = comments.slice(0, previewLimit);
+  const moreCount = comments.length - preview.length;
+
+  const lines = preview.map((c) => {
+    const waited =
+      c.hours_waiting >= 48
+        ? `${Math.round(c.hours_waiting / 24)}d`
+        : `${Math.round(c.hours_waiting)}h`;
+    const snippet = (c.comment ?? '').slice(0, 140).replace(/\s+/g, ' ').trim();
+    const snippetSuffix = snippet ? ` — ${snippet}` : '';
+    return `• \`${c.article_slug}\` → ${c.reply_email} (waiting ${waited})${snippetSuffix}`;
+  });
+
+  if (moreCount > 0) {
+    lines.push(`…and ${moreCount} more.`);
+  }
+
+  const blocks: unknown[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: ':inbox_tray: Docs feedback waiting on a reply', emoji: true },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${headerText}. Threshold ${PENDING_REPLY_THRESHOLD_HOURS}h, cooldown ${PENDING_REPLY_COOLDOWN_HOURS}h.`,
+      },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: lines.join('\n') },
+    },
+    {
+      type: 'context',
+      elements: [
+        { type: 'mrkdwn', text: `<${inboxLink}|Open Docs Feedback inbox (Pending Reply)>` },
+      ],
+    },
+  ];
+
+  return { text: fallbackText, blocks };
+}
+
 export interface PendingReplyAlertResult {
   pending: number;
   alerted: number;
   emailDelivered: boolean;
+  slackDelivered: boolean;
   recipients: number;
 }
 
@@ -344,7 +408,32 @@ export async function runDocsFeedbackPendingReplyAlertCycle(): Promise<PendingRe
   const pending = await findPendingReplyComments();
   if (pending.length === 0) {
     logger.debug('No pending-reply docs feedback comments past threshold');
-    return { pending: 0, alerted: 0, emailDelivered: false, recipients: 0 };
+    return {
+      pending: 0,
+      alerted: 0,
+      emailDelivered: false,
+      slackDelivered: false,
+      recipients: 0,
+    };
+  }
+
+  let slackDelivered = false;
+  try {
+    const slackTpl = renderPendingReplySlackMessage(pending);
+    const slackResult = await postToOpsSlackWebhook({
+      text: slackTpl.text,
+      blocks: slackTpl.blocks,
+    });
+    slackDelivered = slackResult.success;
+    if (!slackResult.success && !slackResult.skipped) {
+      logger.warn('Failed to deliver docs feedback pending-reply alert to Slack', {
+        error: slackResult.error,
+      });
+    }
+  } catch (err) {
+    logger.warn('Slack notification threw while alerting pending-reply comments', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const recipients = await getPlatformAdminEmails();
@@ -383,12 +472,14 @@ export async function runDocsFeedbackPendingReplyAlertCycle(): Promise<PendingRe
     pending: pending.length,
     recipients: recipients.length,
     emailDelivered,
+    slackDelivered,
   });
 
   return {
     pending: pending.length,
     alerted: emailDelivered || recipients.length === 0 ? pending.length : 0,
     emailDelivered,
+    slackDelivered,
     recipients: recipients.length,
   };
 }
