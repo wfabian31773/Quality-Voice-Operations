@@ -517,6 +517,114 @@ export async function listActiveConnectorsByType(tenantId: TenantId): Promise<Ar
   });
 }
 
+/**
+ * List all enabled connector configs (across tenants) whose provider is in
+ * the given set and which are not currently flagged as `needs_reconnect`.
+ * Used by the proactive OAuth token refresh scheduler.
+ *
+ * NOTE: We cannot filter by `token_expires_at` in SQL because credentials are
+ * stored encrypted in `connector_configs`. The caller is expected to inspect
+ * the decrypted `token_expires_at` and decide whether to refresh.
+ */
+export async function listRefreshableConnectorConfigs(
+  providers: string[],
+): Promise<ConnectorConfig[]> {
+  if (providers.length === 0) return [];
+
+  const pool = getPlatformPool();
+  const { rows: integRows } = await pool.query(
+    `SELECT tenant_id, id, integration_type, provider, is_enabled, config,
+            fallback_connector_type, fallback_provider
+       FROM integrations
+      WHERE is_enabled = TRUE
+        AND provider = ANY($1::text[])
+        AND COALESCE(last_sync_status, '') <> 'needs_reconnect'`,
+    [providers],
+  );
+
+  if (integRows.length === 0) return [];
+
+  const byTenant = new Map<string, Record<string, unknown>[]>();
+  for (const row of integRows) {
+    const tid = row.tenant_id as string;
+    const arr = byTenant.get(tid) ?? [];
+    arr.push(row);
+    byTenant.set(tid, arr);
+  }
+
+  const results: ConnectorConfig[] = [];
+  for (const [tenantId, integrations] of byTenant) {
+    try {
+      const tenantConfigs = await withTenant(tenantId, async (client) => {
+        let envelopeDecrypt: ((ciphertext: string) => Promise<string>) | null = null;
+        try {
+          const { decryptSensitiveField } = await import('../../security/FieldEncryption');
+          envelopeDecrypt = (ciphertext: string) => decryptSensitiveField(tenantId, ciphertext);
+        } catch {
+          // Envelope decryption not available
+        }
+
+        const integrationIds = integrations.map((i) => i.id as string);
+        const { rows: configRows } = await client.query(
+          `SELECT integration_id, config_key, encrypted_value
+             FROM connector_configs
+            WHERE tenant_id = $1 AND integration_id = ANY($2::uuid[])`,
+          [tenantId, integrationIds],
+        );
+
+        const credsByIntegration = new Map<string, Record<string, string>>();
+        for (const row of configRows) {
+          const integrationId = row.integration_id as string;
+          const key = row.config_key as string;
+          const val = row.encrypted_value as string | null;
+          if (!val) continue;
+          let decrypted: string;
+          try {
+            if (isEnvelopeEncrypted(val) && envelopeDecrypt) {
+              decrypted = await envelopeDecrypt(val);
+            } else {
+              decrypted = decryptValue(val);
+            }
+          } catch {
+            logger.warn('Failed to decrypt connector config value', { tenantId, key });
+            decrypted = val;
+          }
+          const existing = credsByIntegration.get(integrationId) ?? {};
+          existing[key] = decrypted;
+          credsByIntegration.set(integrationId, existing);
+        }
+
+        return integrations.map((integration) => {
+          const integrationId = integration.id as string;
+          const credentials = credsByIntegration.get(integrationId) ?? {};
+          const staticConfig = typeof integration.config === 'object' && integration.config !== null
+            ? (integration.config as Record<string, string>)
+            : {};
+          return {
+            integrationId,
+            tenantId: tenantId as TenantId,
+            connectorType: integration.integration_type as ConnectorType,
+            provider: integration.provider as string,
+            isEnabled: integration.is_enabled as boolean,
+            credentials: { ...staticConfig, ...credentials },
+            fallbackConnectorType:
+              (integration.fallback_connector_type as ConnectorType) ?? undefined,
+            fallbackProvider: (integration.fallback_provider as string) ?? undefined,
+          };
+        });
+      });
+      results.push(...tenantConfigs);
+    } catch (err) {
+      logger.warn('Failed to load refreshable connector configs for tenant', {
+        tenantId,
+        error: String(err),
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function deleteConnector(tenantId: TenantId, integrationId: string): Promise<void> {
   await withTenant(tenantId, async (client) => {
     await client.query(

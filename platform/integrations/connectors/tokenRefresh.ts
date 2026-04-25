@@ -19,12 +19,12 @@ interface ProviderRefreshResult {
 
 type ProviderRefresher = (refreshToken: string) => Promise<ProviderRefreshResult>;
 
-function shouldRefresh(config: ConnectorConfig): boolean {
+function shouldRefresh(config: ConnectorConfig, leadMs: number = REFRESH_LEAD_MS): boolean {
   const expiresAtRaw = config.credentials.token_expires_at;
   if (!expiresAtRaw) return false;
   const expiresAt = Number(expiresAtRaw);
   if (!Number.isFinite(expiresAt)) return false;
-  return Date.now() + REFRESH_LEAD_MS >= expiresAt;
+  return Date.now() + leadMs >= expiresAt;
 }
 
 async function refreshHubSpot(refreshToken: string): Promise<ProviderRefreshResult> {
@@ -146,15 +146,26 @@ export function isRefreshableProvider(provider: string): boolean {
   return Object.prototype.hasOwnProperty.call(REFRESHERS, provider);
 }
 
+export interface EnsureFreshOAuthTokenOptions {
+  /** Refresh window in milliseconds — refresh if token expires within this lead time. */
+  leadMs?: number;
+}
+
 /**
  * Refresh the OAuth access_token if it is expired or about to expire.
  * Returns the (possibly updated) config. On refresh failure, marks the
  * integration as `needs_reconnect` and emits an audit event, then throws.
+ *
+ * Pass a larger `leadMs` to proactively refresh tokens earlier (e.g. from a
+ * scheduled background job).
  */
-export async function ensureFreshOAuthToken(config: ConnectorConfig): Promise<ConnectorConfig> {
+export async function ensureFreshOAuthToken(
+  config: ConnectorConfig,
+  options: EnsureFreshOAuthTokenOptions = {},
+): Promise<ConnectorConfig> {
   const refresher = REFRESHERS[config.provider];
   if (!refresher) return config;
-  if (!shouldRefresh(config)) return config;
+  if (!shouldRefresh(config, options.leadMs)) return config;
 
   const refreshToken = config.credentials.refresh_token ?? '';
   if (!refreshToken) {
