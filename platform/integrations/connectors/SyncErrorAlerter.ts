@@ -1,6 +1,6 @@
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
-import { sendEmail, connectorSyncErrorEmail } from '../../email';
+import { sendEmail, connectorSyncErrorEmail, connectorSyncRecoveryEmail } from '../../email';
 import {
   fanoutInAppNotification,
   filterEmailRecipientsByPreference,
@@ -21,8 +21,10 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const NOTIFICATION_TYPE = 'integration';
 const SMS_NOTIFICATION_TYPE = 'integration_sms';
+const RECOVERY_NOTIFICATION_TYPE = 'integration_recovery';
 const THROTTLE_HOURS = 24;
 const SMS_THROTTLE_HOURS = 24;
+const RECOVERY_THROTTLE_HOURS = 24;
 
 // How long an integration must be in the error state before we escalate to SMS.
 export const SUSTAINED_FAILURE_MS = 60 * 60 * 1000; // 1 hour
@@ -515,5 +517,190 @@ export async function notifySustainedConnectorFailure(
     smsSucceeded: succeeded,
     outageMinutes,
     throttleRecorded: shouldRecord,
+  });
+}
+
+interface RecoveryAlertParams {
+  tenantId: TenantId;
+  integrationId: string;
+  connectorType: ConnectorType;
+  provider: string;
+  /** Outage duration in milliseconds, if known. */
+  outageDurationMs: number | null;
+}
+
+function describeOutage(ms: number | null): string | null {
+  if (ms === null || !Number.isFinite(ms) || ms <= 0) return null;
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 1) return 'less than a minute';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
+/**
+ * Send an "all clear" notification when a previously-failing connector starts
+ * syncing successfully again. Mirrors notifyConnectorSyncError's gating:
+ *   - only for revenue-critical providers
+ *   - throttled to once per integration per 24h to prevent spam during
+ *     flapping outages
+ *
+ * Callers should only invoke this when an integration actually transitioned
+ * from an error state into success (see SyncStatusUpdateResult.transitionedToRecovery).
+ */
+export async function notifyConnectorRecovery(params: RecoveryAlertParams): Promise<void> {
+  const { tenantId, integrationId, connectorType, provider, outageDurationMs } = params;
+
+  if (!isRevenueCriticalProvider(provider)) return;
+
+  const pool = getPlatformPool();
+
+  // Recovery throttle: don't fire more than once per integration per 24h, even
+  // if the connector flaps error -> success -> error -> success rapidly. This
+  // is keyed by integrationId so two separate connectors for the same
+  // provider (e.g. two HubSpot accounts) each get their own recovery alerts.
+  try {
+    const { rows: throttleRows } = await pool.query(
+      `SELECT id FROM tenant_notifications
+       WHERE tenant_id = $1
+         AND type = $2
+         AND metadata ->> 'integrationId' = $3
+         AND created_at > NOW() - ($4 || ' hours')::interval
+       LIMIT 1`,
+      [tenantId, RECOVERY_NOTIFICATION_TYPE, integrationId, String(RECOVERY_THROTTLE_HOURS)],
+    );
+    if (throttleRows.length > 0) {
+      logger.debug('Connector recovery alert suppressed by 24h throttle', {
+        tenantId,
+        integrationId,
+        provider,
+      });
+      return;
+    }
+  } catch (err) {
+    logger.warn('Failed to check recovery alert throttle (will still attempt to send)', {
+      tenantId,
+      integrationId,
+      error: String(err),
+    });
+  }
+
+  const providerLabel = PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
+  const outageDescription = describeOutage(outageDurationMs);
+  const connectorsPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
+  const connectorsUrl = `${appBaseUrl().replace(/\/$/, '')}${connectorsPath}`;
+
+  const title = `${providerLabel} integration is back online`;
+  const message = outageDescription
+    ? `${providerLabel} synced successfully again after ~${outageDescription}. No action needed.`
+    : `${providerLabel} synced successfully again. No action needed.`;
+
+  try {
+    await pool.query(
+      `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        tenantId,
+        RECOVERY_NOTIFICATION_TYPE,
+        title,
+        message,
+        JSON.stringify({
+          link: connectorsPath,
+          integrationId,
+          connectorType,
+          provider,
+          outageDurationMs: outageDurationMs ?? null,
+          outageDescription: outageDescription ?? null,
+        }),
+      ],
+    );
+  } catch (err) {
+    logger.error('Failed to insert connector recovery in-app notification', {
+      tenantId,
+      integrationId,
+      error: String(err),
+    });
+    // Bail out before sending email so a transient DB outage doesn't dodge
+    // the throttle on the next call.
+    return;
+  }
+
+  let tenantName: string | undefined;
+  let recipients: string[] = [];
+  try {
+    const { rows: tenantRows } = await pool.query(
+      `SELECT name FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    if (tenantRows.length > 0) {
+      tenantName = (tenantRows[0].name as string | null) ?? undefined;
+    }
+
+    const { rows: userRows } = await pool.query(
+      `SELECT email FROM users
+       WHERE tenant_id = $1
+         AND role IN ('admin', 'owner')
+         AND email IS NOT NULL
+         AND COALESCE(is_active, TRUE) = TRUE
+       LIMIT 5`,
+      [tenantId],
+    );
+    recipients = userRows
+      .map((r) => (r.email as string | null) ?? '')
+      .filter((e): e is string => Boolean(e));
+  } catch (err) {
+    logger.warn('Failed to look up tenant admins for recovery email', {
+      tenantId,
+      error: String(err),
+    });
+  }
+
+  if (recipients.length === 0) {
+    logger.info('Connector recovery in-app notification recorded (no admin emails on file)', {
+      tenantId,
+      integrationId,
+      provider,
+    });
+    return;
+  }
+
+  const recoveredAt = new Date().toUTCString();
+  const { subject, html, text } = connectorSyncRecoveryEmail({
+    tenantName,
+    providerLabel,
+    connectorsUrl,
+    recoveredAt,
+    outageDescription,
+  });
+
+  for (const to of recipients) {
+    try {
+      const result = await sendEmail({ to, subject, html, text });
+      if (!result.success) {
+        logger.warn('Connector recovery email send failed', {
+          tenantId,
+          integrationId,
+          to,
+          error: result.error,
+        });
+      }
+    } catch (err) {
+      logger.warn('Connector recovery email threw', {
+        tenantId,
+        integrationId,
+        to,
+        error: String(err),
+      });
+    }
+  }
+
+  logger.info('Connector recovery alert dispatched', {
+    tenantId,
+    integrationId,
+    provider,
+    recipients: recipients.length,
+    outageDurationMs,
   });
 }

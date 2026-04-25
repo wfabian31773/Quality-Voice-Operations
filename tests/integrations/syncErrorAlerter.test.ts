@@ -7,9 +7,16 @@ vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
 }));
 
+const sendEmailMock = vi.fn(async () => ({ success: true }));
+
 vi.mock('../../platform/email', () => ({
-  sendEmail: vi.fn(async () => ({ success: true })),
+  sendEmail: (...args: unknown[]) => sendEmailMock(...args as []),
   connectorSyncErrorEmail: () => ({ subject: 's', html: 'h', text: 't' }),
+  connectorSyncRecoveryEmail: () => ({
+    subject: 'recovery',
+    html: 'h',
+    text: 't',
+  }),
 }));
 
 const originalFetch = globalThis.fetch;
@@ -18,6 +25,8 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   queryMock.mockReset();
   fetchMock.mockReset();
+  sendEmailMock.mockReset();
+  sendEmailMock.mockResolvedValue({ success: true });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   process.env.TWILIO_ACCOUNT_SID = 'AC_test';
   process.env.TWILIO_AUTH_TOKEN = 'token_test';
@@ -365,5 +374,117 @@ describe('notifySustainedConnectorFailure', () => {
     const metadata = JSON.parse((insertCalls[0][1] as unknown[])[5] as string);
     expect(metadata.twilioConfigured).toBe(false);
     expect(metadata.smsAttempted).toBe(0);
+  });
+});
+
+describe('notifyConnectorRecovery', () => {
+  const baseParams = {
+    tenantId: 'tenant-1',
+    integrationId: 'int-1',
+    connectorType: 'crm' as const,
+    provider: 'salesforce',
+    outageDurationMs: 90 * 60 * 1000,
+  };
+
+  it('skips non-revenue-critical providers', async () => {
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery({ ...baseParams, provider: 'slack' });
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('respects the 24h recovery throttle (per-integration, not per-provider)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'prev-recovery' }] });
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    // Throttle query must filter on integrationId so two HubSpot connectors
+    // for the same tenant don't suppress each other's recovery alerts.
+    const throttleArgs = queryMock.mock.calls[0];
+    expect(String(throttleArgs[0])).toContain("metadata ->> 'integrationId'");
+    expect(throttleArgs[1]).toContain('int-1');
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('records an in-app notification and emails admins on recovery', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // recovery throttle empty
+      .mockResolvedValueOnce({ rows: [] }) // INSERT tenant_notifications
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
+      .mockResolvedValueOnce({
+        rows: [{ email: 'admin@acme.test' }, { email: 'owner@acme.test' }],
+      }); // admin emails
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    const insertCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCall).toBeDefined();
+    expect(insertCall![1][1]).toBe('integration_recovery');
+    const metadata = JSON.parse(insertCall![1][4] as string);
+    expect(metadata.integrationId).toBe('int-1');
+    expect(metadata.provider).toBe('salesforce');
+    expect(metadata.outageDurationMs).toBe(90 * 60 * 1000);
+    expect(metadata.outageDescription).toBeTruthy();
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(2);
+    const recipients = sendEmailMock.mock.calls.map(
+      (c) => (c[0] as { to: string }).to,
+    );
+    expect(recipients).toEqual(
+      expect.arrayContaining(['admin@acme.test', 'owner@acme.test']),
+    );
+  });
+
+  it('still notifies after a long outage (>7 days)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // recovery throttle empty
+      .mockResolvedValueOnce({ rows: [] }) // INSERT tenant_notifications
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }); // admins
+
+    const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery({ ...baseParams, outageDurationMs: tenDaysMs });
+
+    const insertCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCall).toBeDefined();
+    const metadata = JSON.parse(insertCall![1][4] as string);
+    expect(metadata.outageDurationMs).toBe(tenDaysMs);
+    expect(metadata.outageDescription).toMatch(/day/);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('still records the in-app notification when no admin emails are on file', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // recovery throttle empty
+      .mockResolvedValueOnce({ rows: [] }) // INSERT tenant_notifications
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
+      .mockResolvedValueOnce({ rows: [] }); // no admin emails
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery({ ...baseParams, outageDurationMs: null });
+
+    const insertCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCall).toBeDefined();
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

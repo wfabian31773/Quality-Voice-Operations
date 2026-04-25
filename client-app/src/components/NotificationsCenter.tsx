@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, X, Check, Trash2, AlertCircle, CreditCard, MessageSquare, PhoneCall, Megaphone, Wrench, Settings as SettingsIcon } from 'lucide-react';
+import { Bell, X, Check, Trash2, AlertCircle, CreditCard, MessageSquare, PhoneCall, Megaphone, Wrench, Settings as SettingsIcon, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Link } from 'react-router-dom';
 
@@ -21,6 +21,8 @@ const TYPE_META: Record<string, { icon: typeof Bell; color: string; label: strin
   sms: { icon: MessageSquare, color: 'text-blue-600 bg-blue-50', label: 'SMS' },
   campaign: { icon: Megaphone, color: 'text-purple-600 bg-purple-50', label: 'Campaigns' },
   integration: { icon: Wrench, color: 'text-orange-600 bg-orange-50', label: 'Integrations' },
+  integration_sms: { icon: Wrench, color: 'text-orange-600 bg-orange-50', label: 'Integrations' },
+  integration_recovery: { icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50', label: 'Integrations' },
 };
 
 const FILTERS = ['all', 'escalation', 'billing', 'integration'] as const;
@@ -96,7 +98,14 @@ export default function NotificationsCenter() {
 
   const count = countData?.count ?? 0;
   const all = listData?.notifications ?? [];
-  const filtered = filter === 'all' ? all : all.filter((n) => n.type === filter);
+  const filtered =
+    filter === 'all'
+      ? all
+      : all.filter((n) =>
+          filter === 'integration'
+            ? n.type === 'integration' || n.type.startsWith('integration_')
+            : n.type === filter,
+        );
 
   return (
     <div className="relative print:hidden" ref={ref}>

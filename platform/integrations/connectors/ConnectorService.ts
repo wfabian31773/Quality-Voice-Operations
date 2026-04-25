@@ -4,6 +4,7 @@ import { getConnectorConfig, getPreferredSchedulingProvider, listEnabledConnecto
 import {
   notifyConnectorSyncError,
   notifySustainedConnectorFailure,
+  notifyConnectorRecovery,
   isRevenueCriticalProvider,
 } from './SyncErrorAlerter';
 import type { ConnectorConfig as ConnectorConfigType } from './types';
@@ -213,9 +214,29 @@ export class ConnectorService {
       errorMessage,
     )
       .then((updates) => {
-        if (result.success) return;
         if (!isRevenueCriticalProvider(config.provider)) return;
         for (const u of updates) {
+          if (result.success) {
+            // Recovery path: fire an "all clear" the first time a previously
+            // erroring integration syncs successfully again. Throttled inside
+            // notifyConnectorRecovery to prevent flapping spam.
+            if (u.transitionedToRecovery) {
+              notifyConnectorRecovery({
+                tenantId,
+                integrationId: u.integrationId,
+                connectorType: config.connectorType,
+                provider: u.provider,
+                outageDurationMs: u.outageDurationMs,
+              }).catch((err) => {
+                logger.warn('notifyConnectorRecovery failed', {
+                  tenantId,
+                  integrationId: u.integrationId,
+                  error: String(err),
+                });
+              });
+            }
+            continue;
+          }
           if (u.transitionedToError) {
             notifyConnectorSyncError({
               tenantId,

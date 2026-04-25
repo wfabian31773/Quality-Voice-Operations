@@ -240,12 +240,24 @@ export interface SyncStatusUpdateResult {
   previousStatus: string | null;
   transitionedToError: boolean;
   /**
+   * True when the integration just flipped from an error state (`error` or
+   * `needs_reconnect`) back to `success`. Callers can use this to dispatch
+   * an "all clear" recovery notification.
+   */
+  transitionedToRecovery: boolean;
+  /**
    * Timestamp the integration first started failing (i.e. when it last
    * transitioned from a non-error state into the error state). Preserved
    * across consecutive failures so callers can compute outage duration.
    * Null when the integration is currently healthy.
    */
   firstFailedAt: string | null;
+  /**
+   * Duration of the outage that just ended, in milliseconds. Populated only
+   * when `transitionedToRecovery` is true and the prior failure timestamp
+   * was known.
+   */
+  outageDurationMs: number | null;
 }
 
 export async function updateConnectorSyncStatus(
@@ -340,12 +352,21 @@ export async function updateConnectorSyncStatus(
             ? priorFailedAt
             : new Date().toISOString();
         }
+        const wasErrored = previousStatus === 'error' || previousStatus === 'needs_reconnect';
+        const transitionedToRecovery = status === 'success' && wasErrored;
+        let outageDurationMs: number | null = null;
+        if (transitionedToRecovery && priorFailedAt) {
+          const ms = Date.now() - Date.parse(priorFailedAt);
+          outageDurationMs = Number.isFinite(ms) && ms >= 0 ? ms : null;
+        }
         return {
           integrationId: row.id as string,
           provider: row.provider as string,
           previousStatus,
           transitionedToError: status === 'error' && previousStatus !== 'error',
+          transitionedToRecovery,
           firstFailedAt,
+          outageDurationMs,
         };
       });
     });

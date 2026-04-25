@@ -177,6 +177,36 @@ export function connectorSyncErrorEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorSyncRecoveryEmail(params: {
+  tenantName?: string;
+  providerLabel: string;
+  connectorsUrl: string;
+  recoveredAt: string;
+  outageDescription?: string | null;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const subject = `${params.providerLabel} integration is back online`;
+  const outageLine = params.outageDescription
+    ? `<p>The integration was failing for approximately <strong>${params.outageDescription}</strong>.</p>`
+    : '';
+  const outageTextLine = params.outageDescription
+    ? `\nThe integration was failing for approximately ${params.outageDescription}.`
+    : '';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>Good news — the <strong>${params.providerLabel}</strong> integration for <strong>${org}</strong> just synced successfully again. No further action is needed.</p>
+    ${outageLine}
+    <p class="muted">Recovered at ${params.recoveredAt}</p>
+    <p><a href="${params.connectorsUrl}" class="btn">View Connectors</a></p>
+    <p class="muted">You'll only get one of these recovery emails per integration during a 24-hour window, even if the connector recovers again.</p>
+  `);
+
+  const text = `${subject}\n\nThe ${params.providerLabel} integration for ${org} is syncing successfully again. No action needed.${outageTextLine}\n\nRecovered at ${params.recoveredAt}\n\nView connectors: ${params.connectorsUrl}`;
+
+  return { subject, html, text };
+}
+
 export function dataExportEmail(params: {
   tenantName?: string;
   generatedAt: string;
