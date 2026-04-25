@@ -780,6 +780,7 @@ function ConnectModal({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connectors'] });
+      queryClient.invalidateQueries({ queryKey: ['connector-settings'] });
       onClose();
     },
   });
@@ -1404,6 +1405,144 @@ function ConnectModal({
   );
 }
 
+interface ConnectorPipelineSettings {
+  appointmentPipelineId?: string | null;
+  appointmentStageId?: string | null;
+  appointmentPipelineLabel?: string | null;
+  appointmentStageLabel?: string | null;
+  defaultPipelineId?: string | null;
+  defaultStageId?: string | null;
+  defaultPipelineLabel?: string | null;
+  defaultStageLabel?: string | null;
+  pipelineLookupError?: string | null;
+}
+
+function PipelineSummary({
+  provider,
+  integrationId,
+}: {
+  provider: 'hubspot' | 'pipedrive';
+  integrationId: string;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['connector-settings', integrationId],
+    queryFn: () =>
+      api.get<{ provider: string; settings: ConnectorPipelineSettings }>(
+        `/connectors/${integrationId}/settings`,
+      ),
+    staleTime: 60_000,
+  });
+
+  if (isLoading || !data) return null;
+  const settings = data.settings ?? {};
+
+  type Row = { label: string; value: string; hint?: string; raw: boolean };
+  const rows: Row[] = [];
+
+  if (provider === 'hubspot') {
+    const id = settings.appointmentPipelineId;
+    const stageId = settings.appointmentStageId;
+    if (id || stageId) {
+      const pipelineLabel = settings.appointmentPipelineLabel;
+      const stageLabel = settings.appointmentStageLabel;
+      const pipelineMissing = !!id && !pipelineLabel;
+      const stageMissing = !!stageId && !stageLabel;
+      const useRaw = !!settings.pipelineLookupError || pipelineMissing || stageMissing;
+      const pipelinePart = pipelineLabel ?? (id ? `pipeline ${id}` : null);
+      const stagePart = stageLabel ?? (stageId ? `stage ${stageId}` : null);
+      const value = [pipelinePart, stagePart].filter(Boolean).join(' → ');
+      let hint: string | undefined;
+      if (settings.pipelineLookupError) {
+        hint = 'Could not load pipeline names from HubSpot — open Manage to reconfigure.';
+      } else if (pipelineMissing && stageMissing) {
+        hint = 'Saved pipeline and stage no longer exist in HubSpot — open Manage to reconfigure.';
+      } else if (pipelineMissing) {
+        hint = 'Saved pipeline no longer exists in HubSpot — open Manage to reconfigure.';
+      } else if (stageMissing) {
+        hint = 'Saved stage no longer exists in this pipeline — open Manage to reconfigure.';
+      }
+      rows.push({
+        label: 'Appointment pipeline',
+        value: value || '—',
+        hint,
+        raw: useRaw,
+      });
+    }
+  } else if (provider === 'pipedrive') {
+    const defPipelineId = settings.defaultPipelineId;
+    const defStageId = settings.defaultStageId;
+    const apptStageId = settings.appointmentStageId;
+    const lookupError = !!settings.pipelineLookupError;
+    if (defPipelineId || defStageId) {
+      const pipelineMissing = !!defPipelineId && !settings.defaultPipelineLabel;
+      const stageMissing = !!defStageId && !settings.defaultStageLabel;
+      const pipelinePart = settings.defaultPipelineLabel ?? (defPipelineId ? `pipeline ${defPipelineId}` : null);
+      const stagePart = settings.defaultStageLabel ?? (defStageId ? `stage ${defStageId}` : null);
+      const value = [pipelinePart, stagePart].filter(Boolean).join(' → ');
+      const useRaw = lookupError || pipelineMissing || stageMissing;
+      let hint: string | undefined;
+      if (lookupError) {
+        hint = 'Could not load pipeline names from Pipedrive — open Manage to reconfigure.';
+      } else if (pipelineMissing && stageMissing) {
+        hint = 'Saved pipeline and stage no longer exist in Pipedrive — open Manage to reconfigure.';
+      } else if (pipelineMissing) {
+        hint = 'Saved pipeline no longer exists in Pipedrive — open Manage to reconfigure.';
+      } else if (stageMissing) {
+        hint = 'Saved stage no longer exists in this pipeline — open Manage to reconfigure.';
+      }
+      rows.push({
+        label: 'Default pipeline',
+        value: value || '—',
+        hint,
+        raw: useRaw,
+      });
+    }
+    if (apptStageId) {
+      const stageLabel = settings.appointmentStageLabel;
+      const stageMissing = !stageLabel;
+      const value = stageLabel ?? `stage ${apptStageId}`;
+      const useRaw = lookupError || stageMissing;
+      let hint: string | undefined;
+      if (lookupError) {
+        hint = 'Could not load stage name from Pipedrive — open Manage to reconfigure.';
+      } else if (stageMissing) {
+        hint = 'Saved stage no longer exists in this pipeline — open Manage to reconfigure.';
+      }
+      rows.push({
+        label: 'Appointment stage',
+        value,
+        hint,
+        raw: useRaw,
+      });
+    }
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <>
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-start gap-2">
+          <Settings className="h-3 w-3 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <span>
+              {row.label}:{' '}
+              <span className={`font-medium ${row.raw ? 'text-amber-700 dark:text-amber-400 font-mono' : 'text-text-primary'}`}>
+                {row.value}
+              </span>
+            </span>
+            {row.hint && (
+              <span className="block text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                {row.hint}
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function ConnectedCard({
   definition,
   connector,
@@ -1528,6 +1667,12 @@ function ConnectedCard({
             <span>Awaiting first sync</span>
           )}
         </div>
+        {(definition.provider === 'hubspot' || definition.provider === 'pipedrive') && (
+          <PipelineSummary
+            provider={definition.provider}
+            integrationId={connector.integrationId}
+          />
+        )}
       </div>
 
       {needsReconnect && (

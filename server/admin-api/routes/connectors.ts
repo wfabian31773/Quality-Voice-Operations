@@ -179,13 +179,71 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
       settings.leadStatusMapError = leadStatusMapError;
     }
     if (meta.provider === 'hubspot') {
-      settings.appointmentPipelineId = credentials.appointment_pipeline_id ?? null;
-      settings.appointmentStageId = credentials.appointment_stage_id ?? null;
+      const appointmentPipelineId = credentials.appointment_pipeline_id ?? null;
+      const appointmentStageId = credentials.appointment_stage_id ?? null;
+      settings.appointmentPipelineId = appointmentPipelineId;
+      settings.appointmentStageId = appointmentStageId;
+      if (fullConfig && (appointmentPipelineId || appointmentStageId)) {
+        try {
+          const pipelines = await fetchHubSpotDealPipelines(tenantId, fullConfig);
+          const pipeline = appointmentPipelineId
+            ? pipelines.find((p) => p.id === appointmentPipelineId) ?? null
+            : null;
+          const stage = pipeline && appointmentStageId
+            ? pipeline.stages.find((s) => s.id === appointmentStageId) ?? null
+            : null;
+          settings.appointmentPipelineLabel = pipeline?.label ?? null;
+          settings.appointmentStageLabel = stage?.label ?? null;
+          settings.pipelineLookupError = null;
+        } catch (err) {
+          settings.appointmentPipelineLabel = null;
+          settings.appointmentStageLabel = null;
+          settings.pipelineLookupError = err instanceof Error ? err.message : String(err);
+        }
+      } else {
+        settings.appointmentPipelineLabel = null;
+        settings.appointmentStageLabel = null;
+        settings.pipelineLookupError = null;
+      }
     }
     if (meta.provider === 'pipedrive') {
-      settings.appointmentStageId = credentials.appointment_stage_id ?? null;
-      settings.defaultPipelineId = credentials.default_pipeline_id ?? null;
-      settings.defaultStageId = credentials.default_stage_id ?? null;
+      const appointmentStageId = credentials.appointment_stage_id ?? null;
+      const defaultPipelineId = credentials.default_pipeline_id ?? null;
+      const defaultStageId = credentials.default_stage_id ?? null;
+      settings.appointmentStageId = appointmentStageId;
+      settings.defaultPipelineId = defaultPipelineId;
+      settings.defaultStageId = defaultStageId;
+      if (fullConfig && (defaultPipelineId || defaultStageId || appointmentStageId)) {
+        try {
+          const pipelines = await fetchPipedrivePipelinesAndStages(tenantId, fullConfig);
+          const defaultPipelineNum = defaultPipelineId ? Number(defaultPipelineId) : NaN;
+          const pipeline = Number.isFinite(defaultPipelineNum)
+            ? pipelines.find((p) => p.id === defaultPipelineNum) ?? null
+            : null;
+          const defaultStageNum = defaultStageId ? Number(defaultStageId) : NaN;
+          const appointmentStageNum = appointmentStageId ? Number(appointmentStageId) : NaN;
+          const defaultStage = pipeline && Number.isFinite(defaultStageNum)
+            ? pipeline.stages.find((s) => s.id === defaultStageNum) ?? null
+            : null;
+          const appointmentStage = pipeline && Number.isFinite(appointmentStageNum)
+            ? pipeline.stages.find((s) => s.id === appointmentStageNum) ?? null
+            : null;
+          settings.defaultPipelineLabel = pipeline?.name ?? null;
+          settings.defaultStageLabel = defaultStage?.name ?? null;
+          settings.appointmentStageLabel = appointmentStage?.name ?? null;
+          settings.pipelineLookupError = null;
+        } catch (err) {
+          settings.defaultPipelineLabel = null;
+          settings.defaultStageLabel = null;
+          settings.appointmentStageLabel = null;
+          settings.pipelineLookupError = err instanceof Error ? err.message : String(err);
+        }
+      } else {
+        settings.defaultPipelineLabel = null;
+        settings.defaultStageLabel = null;
+        settings.appointmentStageLabel = null;
+        settings.pipelineLookupError = null;
+      }
     }
     return res.json({ provider: meta.provider, settings });
   } catch (err) {
