@@ -5,6 +5,7 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Clock,
   Unplug,
   ExternalLink,
@@ -1019,6 +1020,7 @@ function ConnectedCard({
 }) {
   const queryClient = useQueryClient();
   const enabled = connector.isEnabled;
+  const needsReconnect = connector.lastSyncStatus === 'needs_reconnect';
   const syncError = connector.lastSyncStatus === 'error';
   const errorMessage = connector.lastSyncError;
   const authError = syncError && isAuthError(errorMessage);
@@ -1083,7 +1085,14 @@ function ConnectedCard({
             <p className="text-xs text-text-secondary">{definition.category}</p>
           </div>
         </div>
-        {enabled && !syncError ? (
+        {needsReconnect ? (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 ring-1 ring-amber-400/60 dark:ring-amber-500/40 whitespace-nowrap"
+            title="The stored access token can no longer be refreshed. Sign in again to restore syncing."
+          >
+            <AlertTriangle className="h-3 w-3" /> Reconnect needed
+          </span>
+        ) : enabled && !syncError ? (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap">
             <CheckCircle2 className="h-3 w-3" /> Connected
           </span>
@@ -1112,6 +1121,37 @@ function ConnectedCard({
           )}
         </div>
       </div>
+
+      {needsReconnect && (
+        <div
+          className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-3 text-xs"
+          title="The stored OAuth refresh token expired or was revoked. Reconnect to restore syncing."
+        >
+          <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-semibold mb-0.5">Reconnect needed</p>
+              <p className="text-amber-700 dark:text-amber-200/90">
+                {definition.name}'s access expired or was revoked. Events to this integration are paused until you sign in again.
+              </p>
+            </div>
+          </div>
+          {isManager && (
+            <button
+              onClick={definition.oauthProvider ? startReauth : onReconnect}
+              disabled={reauthPending}
+              className="mt-2 w-full text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            >
+              <ExternalLink className="h-3 w-3" />
+              {reauthPending
+                ? 'Waiting for authorization…'
+                : definition.oauthProvider
+                  ? `Reconnect with ${definition.name}`
+                  : `Reconnect ${definition.name}`}
+            </button>
+          )}
+        </div>
+      )}
 
       {syncError && errorMessage && (
         <div
@@ -1262,6 +1302,23 @@ export default function Connectors() {
     [connectors],
   );
 
+  const reconnectNeededDefs = useMemo(
+    () =>
+      connectedDefs.filter(
+        (def) => findConnector(def)?.lastSyncStatus === 'needs_reconnect',
+      ),
+    [connectedDefs, connectors],
+  );
+
+  const scrollToConnector = (integrationId: string) => {
+    if (typeof document === 'undefined') return;
+    const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+      ? CSS.escape(integrationId)
+      : integrationId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const el = document.querySelector<HTMLElement>(`[data-integration-id="${escaped}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   const availableDefs = useMemo(() => {
     return CONNECTOR_DEFINITIONS.filter((def) => !findConnector(def)).filter((def) => {
       if (activeCategory !== 'All' && def.category !== activeCategory) return false;
@@ -1297,6 +1354,45 @@ export default function Connectors() {
           Connect your tools in one click. Events flow automatically to all active integrations.
         </p>
       </div>
+
+      {reconnectNeededDefs.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                {reconnectNeededDefs.length === 1
+                  ? `${reconnectNeededDefs[0].name} needs to be reconnected`
+                  : `${reconnectNeededDefs.length} integrations need to be reconnected`}
+              </p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-1">
+                Their stored access expired or was revoked, so events are paused until you sign in again.
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {reconnectNeededDefs.map((def) => {
+                  const c = findConnector(def);
+                  if (!c) return null;
+                  return (
+                    <button
+                      key={def.id}
+                      onClick={() => scrollToConnector(c.integrationId)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition"
+                    >
+                      <BrandLogo provider={def.logoId} size={14} />
+                      {def.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-12 text-text-secondary">Loading integrations...</div>
