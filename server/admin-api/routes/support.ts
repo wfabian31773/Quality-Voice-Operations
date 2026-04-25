@@ -1078,6 +1078,27 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
   }
 });
 
+/**
+ * Render the outbound admin reply email for a ticket. Extracted so that the
+ * initial send and the one-click retry produce byte-identical messages.
+ */
+function renderOutboundTicketReplyEmail(input: {
+  ticketId: string;
+  topic: string;
+  body: string;
+}): { subject: string; html: string; text: string } {
+  const { ticketId, topic, body } = input;
+  const subject = `Re: [QVO Support] ${topic.toUpperCase()} (${ticketId})`;
+  const escaped = escapeHtml(body).replace(/\n/g, '<br/>');
+  const html = `<div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
+    <div>${escaped}</div>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+    <p style="color:#64748b;font-size:12px">Ticket reference: <strong>${escapeHtml(ticketId)}</strong> — please keep this in the subject when replying.</p>
+  </div>`;
+  const text = `${body}\n\n---\nTicket reference: ${ticketId} — please keep this in the subject when replying.`;
+  return { subject, html, text };
+}
+
 router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const { body } = req.body ?? {};
@@ -1130,14 +1151,11 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
     } catch { /* non-fatal */ }
   }
 
-  const subject = `Re: [QVO Support] ${ticket.topic.toUpperCase()} (${ticket.id})`;
-  const escaped = escapeHtml(body).replace(/\n/g, '<br/>');
-  const html = `<div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
-    <div>${escaped}</div>
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-    <p style="color:#64748b;font-size:12px">Ticket reference: <strong>${escapeHtml(ticket.id)}</strong> — please keep this in the subject when replying.</p>
-  </div>`;
-  const text = `${body}\n\n---\nTicket reference: ${ticket.id} — please keep this in the subject when replying.`;
+  const { subject, html, text } = renderOutboundTicketReplyEmail({
+    ticketId: ticket.id,
+    topic: ticket.topic,
+    body,
+  });
 
   const result = await sendEmail({
     to: ticket.user_email,
@@ -1191,6 +1209,156 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
 
   res.json({ success: true, email_delivered: result.success, reply: replyRow });
 });
+
+/**
+ * One-click retry for a failed outbound admin reply. Re-sends the same body to
+ * the same recipient via the existing SMTP path and updates the existing reply
+ * row's email_message_id / email_error so the badge in the admin UI flips from
+ * Failed → Sent on success.
+ */
+router.post(
+  '/support/tickets/:id/replies/:replyId/retry',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { id, replyId } = req.params;
+    // Strict digits-only check so values like "42abc" are rejected outright
+    // rather than silently becoming 42 via parseInt.
+    if (!/^\d+$/.test(replyId)) {
+      res.status(400).json({ error: 'Invalid replyId' });
+      return;
+    }
+    const replyIdNum = parseInt(replyId, 10);
+    if (!Number.isFinite(replyIdNum) || replyIdNum <= 0) {
+      res.status(400).json({ error: 'Invalid replyId' });
+      return;
+    }
+
+    const pool = getPlatformPool();
+
+    // Load the reply and verify it belongs to this ticket and is a previously
+    // failed outbound message. We never re-send already-Sent replies (that would
+    // duplicate emails to the customer) and never touch inbound messages.
+    let reply: {
+      id: number;
+      ticket_id: string;
+      direction: string;
+      body: string;
+      email_message_id: string | null;
+      email_error: string | null;
+    };
+    try {
+      const r = await pool.query<typeof reply>(
+        `SELECT id, ticket_id, direction, body, email_message_id, email_error
+         FROM support_ticket_replies
+         WHERE id = $1 AND ticket_id = $2
+         LIMIT 1`,
+        [replyIdNum, id],
+      );
+      if (r.rowCount === 0) {
+        res.status(404).json({ error: 'Reply not found' });
+        return;
+      }
+      reply = r.rows[0];
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load reply', detail: String(err) });
+      return;
+    }
+
+    if (reply.direction !== 'outbound') {
+      res.status(400).json({ error: 'Only outbound replies can be retried' });
+      return;
+    }
+    if (!reply.email_error) {
+      res.status(409).json({ error: 'Reply did not fail to send — nothing to retry' });
+      return;
+    }
+
+    // Load the ticket for the recipient address, topic, and inbound token.
+    let ticket: {
+      id: string;
+      user_email: string | null;
+      topic: string;
+      inbound_token: string | null;
+    };
+    try {
+      const r = await pool.query<typeof ticket>(
+        `SELECT id, user_email, topic, inbound_token FROM support_tickets WHERE id = $1 LIMIT 1`,
+        [id],
+      );
+      if (r.rowCount === 0) {
+        res.status(404).json({ error: 'Ticket not found' });
+        return;
+      }
+      ticket = r.rows[0];
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load ticket', detail: String(err) });
+      return;
+    }
+
+    if (!ticket.user_email) {
+      res.status(400).json({ error: 'Ticket has no user email to reply to' });
+      return;
+    }
+
+    let token = ticket.inbound_token;
+    if (!token) {
+      token = generateInboundToken();
+      try {
+        await pool.query(`UPDATE support_tickets SET inbound_token = $2 WHERE id = $1`, [id, token]);
+      } catch { /* non-fatal */ }
+    }
+
+    const { subject, html, text } = renderOutboundTicketReplyEmail({
+      ticketId: ticket.id,
+      topic: ticket.topic,
+      body: reply.body,
+    });
+
+    const result = await sendEmail({
+      to: ticket.user_email,
+      subject,
+      html,
+      text,
+      replyTo: buildReplyToAddress(token),
+      headers: { 'X-QVO-Ticket-Id': ticket.id },
+    });
+
+    let updatedRow: unknown = null;
+    try {
+      const upd = await pool.query(
+        `UPDATE support_ticket_replies
+         SET email_message_id = $2, email_error = $3
+         WHERE id = $1
+         RETURNING id, ticket_id, direction, author_user_id, author_email, body,
+                   email_message_id, email_error, source, created_at`,
+        [
+          replyIdNum,
+          result.messageId ?? null,
+          result.success ? null : (result.error ?? 'unknown'),
+        ],
+      );
+      updatedRow = upd.rows[0];
+      // Bump ticket updated_at so dashboards reflect the activity.
+      await pool.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [id]);
+    } catch (err) {
+      logger.error('Failed to update support reply after retry', {
+        ticketId: id, replyId: replyIdNum, error: String(err),
+      });
+      res.status(500).json({ error: 'Failed to record retry result', detail: String(err) });
+      return;
+    }
+
+    logger.info('Support reply retry attempted', {
+      ticket_id: id,
+      reply_id: replyIdNum,
+      by: req.user?.email,
+      email_delivered: result.success,
+    });
+
+    res.json({ success: true, email_delivered: result.success, reply: updatedRow });
+  },
+);
 
 // ----- Inbound email webhook (provider: SendGrid Inbound Parse, Mailgun, etc.) -----
 //

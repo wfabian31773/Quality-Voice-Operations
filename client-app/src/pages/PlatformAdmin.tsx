@@ -6,7 +6,7 @@ import {
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
-  LifeBuoy, Mail,
+  LifeBuoy, Mail, RotateCw,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -1594,6 +1594,56 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
     },
   });
 
+  // Track which reply id is mid-retry and per-reply error text. Multiple
+  // failed replies in the same thread can each have their own retry button.
+  const [retryingReplyId, setRetryingReplyId] = useState<number | null>(null);
+  const [retryErrors, setRetryErrors] = useState<Record<number, string>>({});
+
+  const retryReply = useMutation({
+    mutationFn: (replyId: number) =>
+      api.post<{ success: boolean; email_delivered: boolean; reply: SupportReply }>(
+        `/support/tickets/${ticket.id}/replies/${replyId}/retry`,
+        {},
+      ),
+    onMutate: (replyId) => {
+      setRetryingReplyId(replyId);
+      setRetryErrors((prev) => {
+        if (!(replyId in prev)) return prev;
+        const next = { ...prev };
+        delete next[replyId];
+        return next;
+      });
+    },
+    onSuccess: (_data, replyId) => {
+      // Whether the retry delivered or not, the server has already updated the
+      // existing reply row with the latest email_message_id / email_error and
+      // we'll re-render it via the invalidated query — no extra inline error
+      // is needed here (it would just duplicate the "Email delivery error: …"
+      // line below the body).
+      setRetryErrors((prev) => {
+        if (!(replyId in prev)) return prev;
+        const next = { ...prev };
+        delete next[replyId];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-stats'] });
+    },
+    onError: (err, replyId) => {
+      // The HTTP call itself failed (network error, 5xx, etc.) so the row
+      // state on the server didn't change — surface the transport error
+      // inline so the admin knows the retry never actually ran.
+      setRetryErrors((prev) => ({
+        ...prev,
+        [replyId]: err instanceof Error ? err.message : 'Retry failed',
+      }));
+    },
+    onSettled: () => {
+      setRetryingReplyId(null);
+    },
+  });
+
   const isResolved = ticket.status === 'resolved' || ticket.status === 'closed';
 
   const replies = data?.replies ?? [];
@@ -1670,6 +1720,9 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   };
                 }
               }
+              const canRetry = isOutbound && !!r.email_error && !!ticket.user_email;
+              const isRetrying = retryingReplyId === r.id && retryReply.isPending;
+              const retryError = retryErrors[r.id];
               return (
                 <div
                   key={r.id}
@@ -1682,7 +1735,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs text-muted mb-1 gap-2">
-                    <span className="flex items-center gap-2 min-w-0">
+                    <span className="flex items-center gap-2 min-w-0 flex-wrap">
                       <strong className="text-foreground">
                         {isOutbound ? 'Support' : 'Customer'}
                       </strong>
@@ -1695,12 +1748,27 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           {badge.label}
                         </span>
                       )}
+                      {canRetry && (
+                        <button
+                          type="button"
+                          onClick={() => retryReply.mutate(r.id)}
+                          disabled={isRetrying}
+                          title={`Re-send to ${ticket.user_email}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-red-300 dark:border-red-900 bg-white dark:bg-red-950/20 text-red-700 dark:text-red-300 text-[11px] font-medium hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          <RotateCw className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`} />
+                          {isRetrying ? 'Retrying…' : 'Retry send'}
+                        </button>
+                      )}
                     </span>
                     <span className="shrink-0">{new Date(r.created_at).toLocaleString()}</span>
                   </div>
                   <div className="whitespace-pre-wrap text-sm">{r.body}</div>
                   {r.email_error && (
                     <div className="text-xs text-red-600 mt-1">Email delivery error: {r.email_error}</div>
+                  )}
+                  {retryError && (
+                    <div className="text-xs text-red-600 mt-1">Retry failed: {retryError}</div>
                   )}
                 </div>
               );
