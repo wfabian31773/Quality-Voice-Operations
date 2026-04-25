@@ -13,6 +13,12 @@ interface PipedriveAuth {
   apiBase: string;
 }
 
+interface DealRefs {
+  personId?: number;
+  orgId?: number;
+  dealId?: number;
+}
+
 function resolveAuth(config: ConnectorConfig): PipedriveAuth | null {
   const accessToken = config.credentials.access_token ?? '';
   const apiToken = config.credentials.api_token ?? '';
@@ -78,7 +84,16 @@ interface PdPersonCreate {
 
 interface PdDealsResponse {
   success: boolean;
-  data: Array<{ id: number; status: string; title: string }> | null;
+  data: Array<{ id: number; status: string; title: string; stage_id?: number }> | null;
+}
+
+function toNumericId(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
 }
 
 export class PipedriveConnectorAdapter implements ConnectorAdapter {
@@ -103,9 +118,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'call.completed':
-        return this.handleCallCompleted(tenantId, activeConfig, auth, payload);
+        return this.handleCallCompleted(tenantId, auth, payload, activeConfig);
       case 'appointment.booked':
-        return this.handleAppointmentBooked(tenantId, activeConfig, auth, payload);
+        return this.handleAppointmentBooked(tenantId, auth, payload, activeConfig);
       default:
         return { success: false, error: `Pipedrive adapter does not handle event: ${payload.type}` };
     }
@@ -113,11 +128,12 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
 
   private async handleCallCompleted(
     tenantId: TenantId,
-    config: ConnectorConfig,
     auth: PipedriveAuth,
     payload: ConnectorPayload,
+    config: ConnectorConfig,
   ): Promise<ConnectorResult> {
     const callerPhone = payload.callerPhone as string | undefined;
+    const callerCompany = payload.callerCompany as string | undefined;
     const summary = (payload.summary as string | undefined) ?? 'AI voice call completed';
     const duration = (payload.durationSeconds as number | undefined) ?? 0;
     const callSid = payload.callSid as string | undefined;
@@ -127,16 +143,24 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       const customMap = parseDispositionMap(config.credentials, 'pipedrive');
       const dispositionFields = mapDisposition('pipedrive', disposition, customMap);
 
-      let personId: number | undefined;
-      if (callerPhone) {
-        personId = await this.findOrCreatePerson(auth, callerPhone, payload);
+      const refs: DealRefs = {
+        personId: toNumericId(payload.personId),
+        orgId: toNumericId(payload.orgId),
+        dealId: toNumericId(payload.dealId),
+      };
+
+      if (!refs.orgId && callerCompany) {
+        refs.orgId = await this.findOrCreateOrganization(auth, callerCompany);
       }
 
-      let dealId: number | undefined;
-      if (personId) {
-        dealId = await this.findOpenDealForPerson(auth, personId);
-        if (!dealId) {
-          dealId = await this.createDealForPerson(auth, personId, payload);
+      if (!refs.personId && callerPhone) {
+        refs.personId = await this.findOrCreatePerson(auth, callerPhone, payload, refs.orgId);
+      }
+
+      if (refs.personId && !refs.dealId) {
+        refs.dealId = await this.findOpenDealForPerson(auth, refs.personId);
+        if (!refs.dealId) {
+          refs.dealId = await this.createDealForPerson(auth, refs.personId, payload, refs.orgId, config);
         }
       }
 
@@ -148,8 +172,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
           done: 1,
           duration: this.formatDuration(duration),
           note: summary + (callSid ? `\n\nCall SID: ${callSid}` : ''),
-          ...(personId ? { person_id: personId } : {}),
-          ...(dealId ? { deal_id: dealId } : {}),
+          ...(refs.personId ? { person_id: refs.personId } : {}),
+          ...(refs.orgId ? { org_id: refs.orgId } : {}),
+          ...(refs.dealId ? { deal_id: refs.dealId } : {}),
         },
       });
 
@@ -158,11 +183,23 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       }
 
       const activityId = String(activityRes.data.data.id);
-      logger.info('Pipedrive call activity logged', { tenantId, personId, dealId, activityId });
+      logger.info('Pipedrive call activity logged', {
+        tenantId,
+        personId: refs.personId,
+        orgId: refs.orgId,
+        dealId: refs.dealId,
+        activityId,
+      });
       return {
         success: true,
         externalId: activityId,
-        meta: { personId, dealId, activityId, provider: 'pipedrive' },
+        meta: {
+          personId: refs.personId,
+          orgId: refs.orgId,
+          dealId: refs.dealId,
+          activityId,
+          provider: 'pipedrive',
+        },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -173,29 +210,58 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
 
   private async handleAppointmentBooked(
     tenantId: TenantId,
-    config: ConnectorConfig,
     auth: PipedriveAuth,
     payload: ConnectorPayload,
+    config: ConnectorConfig,
   ): Promise<ConnectorResult> {
     const callerPhone = payload.callerPhone as string | undefined;
+    const callerCompany = payload.callerCompany as string | undefined;
     const summary = payload.summary as string | undefined;
     const dateStr = payload.appointmentDate as string | undefined;
     const timeStr = payload.appointmentTime as string | undefined;
+    const appointmentStageId = toNumericId(payload.appointmentStageId)
+      ?? toNumericId(config.credentials.appointment_stage_id);
 
     try {
       const customMap = parseDispositionMap(config.credentials, 'pipedrive');
       const dispositionFields = mapDisposition('pipedrive', 'booked', customMap);
 
-      let personId: number | undefined;
-      if (callerPhone) {
-        personId = await this.findOrCreatePerson(auth, callerPhone, payload);
+      const refs: DealRefs = {
+        personId: toNumericId(payload.personId),
+        orgId: toNumericId(payload.orgId),
+        dealId: toNumericId(payload.dealId),
+      };
+
+      // Resolve org first so the new Person can be linked at create time.
+      if (!refs.orgId && callerCompany) {
+        refs.orgId = await this.findOrCreateOrganization(auth, callerCompany);
       }
 
-      let dealId: number | undefined;
-      if (personId) {
-        dealId = await this.findOpenDealForPerson(auth, personId);
-        if (!dealId) {
-          dealId = await this.createDealForPerson(auth, personId, payload);
+      if (!refs.personId && callerPhone) {
+        refs.personId = await this.findOrCreatePerson(auth, callerPhone, payload, refs.orgId);
+      }
+
+      // Auto-promote: ensure a Deal exists tied to the Person (and Org when present)
+      // so the booked appointment is reflected in pipeline reporting.
+      let dealMoved = false;
+      if (refs.personId) {
+        if (!refs.dealId) {
+          refs.dealId = await this.findOpenDealForPerson(auth, refs.personId);
+        }
+        if (!refs.dealId) {
+          refs.dealId = await this.createDealForPerson(
+            auth,
+            refs.personId,
+            payload,
+            refs.orgId,
+            config,
+            appointmentStageId,
+          );
+        } else if (appointmentStageId) {
+          dealMoved = await this.moveDealStage(auth, refs.dealId, appointmentStageId, refs.orgId);
+        } else if (refs.orgId) {
+          // Backfill org link on a pre-existing deal.
+          await this.ensureDealOrg(auth, refs.dealId, refs.orgId);
         }
       }
 
@@ -204,6 +270,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
         summary ? `Details: ${summary}` : '',
         dateStr ? `Date: ${dateStr}` : '',
         timeStr ? `Time: ${timeStr}` : '',
+        refs.dealId ? `Deal ID: ${refs.dealId}` : '',
       ].filter(Boolean).join('\n');
 
       const activityRes = await pdFetch<{ success: boolean; data: { id: number } }>(auth, '/activities', {
@@ -215,8 +282,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
           note: noteBody,
           ...(dateStr ? { due_date: dateStr } : {}),
           ...(timeStr ? { due_time: timeStr } : {}),
-          ...(personId ? { person_id: personId } : {}),
-          ...(dealId ? { deal_id: dealId } : {}),
+          ...(refs.personId ? { person_id: refs.personId } : {}),
+          ...(refs.orgId ? { org_id: refs.orgId } : {}),
+          ...(refs.dealId ? { deal_id: refs.dealId } : {}),
         },
       });
 
@@ -225,11 +293,27 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       }
 
       const activityId = String(activityRes.data.data.id);
-      logger.info('Pipedrive appointment activity created', { tenantId, personId, dealId, activityId });
+      logger.info('Pipedrive appointment processed', {
+        tenantId,
+        personId: refs.personId,
+        orgId: refs.orgId,
+        dealId: refs.dealId,
+        activityId,
+        appointmentStageId,
+        dealMoved,
+      });
       return {
         success: true,
         externalId: activityId,
-        meta: { personId, dealId, activityId, provider: 'pipedrive' },
+        meta: {
+          personId: refs.personId,
+          orgId: refs.orgId,
+          dealId: refs.dealId,
+          activityId,
+          provider: 'pipedrive',
+          ...(appointmentStageId ? { stageId: appointmentStageId } : {}),
+          ...(dealMoved ? { dealStageMoved: true } : {}),
+        },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -242,6 +326,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     auth: PipedriveAuth,
     phone: string,
     payload: ConnectorPayload,
+    orgId?: number,
   ): Promise<number | undefined> {
     const searchPath = `/persons/search?term=${encodeURIComponent(phone)}&fields=phone&exact_match=true`;
     const search = await pdFetch<{
@@ -264,11 +349,39 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
         name,
         phone: [{ value: phone, primary: true, label: 'work' }],
         ...(email ? { email: [{ value: email, primary: true, label: 'work' }] } : {}),
+        ...(orgId ? { org_id: orgId } : {}),
       },
     });
 
     if (!create.ok || !create.data?.success) {
       logger.warn('Pipedrive person create failed', { error: create.error });
+      return undefined;
+    }
+    return create.data.data.id;
+  }
+
+  private async findOrCreateOrganization(
+    auth: PipedriveAuth,
+    name: string,
+  ): Promise<number | undefined> {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'unknown') return undefined;
+
+    const searchPath = `/organizations/search?term=${encodeURIComponent(trimmed)}&fields=name&exact_match=true&limit=1`;
+    const search = await pdFetch<{
+      success: boolean;
+      data: { items: Array<{ item: { id: number } }> } | null;
+    }>(auth, searchPath);
+    if (search.ok && search.data?.success && search.data.data?.items?.length) {
+      return search.data.data.items[0].item.id;
+    }
+
+    const create = await pdFetch<{ success: boolean; data: { id: number } }>(auth, '/organizations', {
+      method: 'POST',
+      body: { name: trimmed },
+    });
+    if (!create.ok || !create.data?.success) {
+      logger.warn('Pipedrive organization create failed', { error: create.error });
       return undefined;
     }
     return create.data.data.id;
@@ -286,17 +399,34 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     auth: PipedriveAuth,
     personId: number,
     payload: ConnectorPayload,
+    orgId?: number,
+    config?: ConnectorConfig,
+    overrideStageId?: number,
   ): Promise<number | undefined> {
     const summary = (payload.summary as string | undefined) ?? '';
-    const title = summary
-      ? `AI Voice Call: ${summary.slice(0, 60)}`
-      : 'AI Voice Call - Inbound Lead';
+    const company = (payload.callerCompany as string | undefined) ?? '';
+    const titleSeed = company
+      || summary.slice(0, 60)
+      || 'Inbound Lead';
+    const title = payload.type === 'appointment.booked'
+      ? `${titleSeed} - QVO Appointment`
+      : `AI Voice Call: ${titleSeed}`;
+
+    const stageId = overrideStageId
+      ?? toNumericId(payload.stageId)
+      ?? toNumericId(config?.credentials.default_stage_id);
+    const pipelineId = toNumericId(payload.pipelineId)
+      ?? toNumericId(config?.credentials.default_pipeline_id);
+
     const create = await pdFetch<{ success: boolean; data: { id: number } }>(auth, '/deals', {
       method: 'POST',
       body: {
-        title,
+        title: title.slice(0, 250),
         person_id: personId,
         status: 'open',
+        ...(orgId ? { org_id: orgId } : {}),
+        ...(stageId ? { stage_id: stageId } : {}),
+        ...(pipelineId ? { pipeline_id: pipelineId } : {}),
       },
     });
     if (!create.ok || !create.data?.success) {
@@ -306,6 +436,40 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     return create.data.data.id;
   }
 
+  private async moveDealStage(
+    auth: PipedriveAuth,
+    dealId: number,
+    stageId: number,
+    orgId?: number,
+  ): Promise<boolean> {
+    const update = await pdFetch<{ success: boolean }>(auth, `/deals/${dealId}`, {
+      method: 'PUT',
+      body: {
+        stage_id: stageId,
+        ...(orgId ? { org_id: orgId } : {}),
+      },
+    });
+    if (!update.ok || !update.data?.success) {
+      logger.warn('Pipedrive deal stage move failed', { dealId, stageId, error: update.error });
+      return false;
+    }
+    return true;
+  }
+
+  private async ensureDealOrg(
+    auth: PipedriveAuth,
+    dealId: number,
+    orgId: number,
+  ): Promise<void> {
+    const update = await pdFetch<{ success: boolean }>(auth, `/deals/${dealId}`, {
+      method: 'PUT',
+      body: { org_id: orgId },
+    });
+    if (!update.ok || !update.data?.success) {
+      logger.warn('Pipedrive deal org link failed', { dealId, orgId, error: update.error });
+    }
+  }
+
   private formatDuration(seconds: number): string {
     const total = Math.max(0, Math.round(seconds));
     const mm = Math.floor(total / 60).toString().padStart(2, '0');
@@ -313,4 +477,3 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     return `${mm}:${ss}`;
   }
 }
-
