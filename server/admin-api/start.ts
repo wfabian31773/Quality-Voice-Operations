@@ -19,6 +19,7 @@ import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityT
 import { startMilestoneScheduler, stopMilestoneScheduler } from '../../platform/analytics/MilestoneScheduler';
 import { startDocsFeedbackAlertScheduler, stopDocsFeedbackAlertScheduler } from '../../platform/help/DocsFeedbackAlertScheduler';
 import { startDocsFeedbackReplyDigestScheduler, stopDocsFeedbackReplyDigestScheduler } from '../../platform/help/DocsFeedbackReplyDigestScheduler';
+import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } from '../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
 
 const logger = createLogger('ADMIN_API');
 
@@ -76,6 +77,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startMilestoneScheduler();
   startDocsFeedbackAlertScheduler();
   startDocsFeedbackReplyDigestScheduler();
+  startConnectorAuthAlertScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
 
@@ -96,6 +98,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopMilestoneScheduler();
   stopDocsFeedbackAlertScheduler();
   stopDocsFeedbackReplyDigestScheduler();
+  stopConnectorAuthAlertScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
 

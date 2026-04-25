@@ -278,6 +278,7 @@ export async function updateConnectorSyncStatus(
             `UPDATE integrations
              SET last_sync_at = NOW(), last_sync_status = $3,
                  last_sync_error = NULL, last_sync_error_at = NULL,
+                 auth_alert_sent_at = NULL,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
             [tenantId, connectorType, status, provider],
@@ -287,6 +288,7 @@ export async function updateConnectorSyncStatus(
             `UPDATE integrations
              SET last_sync_at = NOW(), last_sync_status = $3,
                  last_sync_error = NULL, last_sync_error_at = NULL,
+                 auth_alert_sent_at = NULL,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
             [tenantId, connectorType, status],

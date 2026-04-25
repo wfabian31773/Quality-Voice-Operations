@@ -178,6 +178,21 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     }
   }
 
+  try {
+    await pool.query(
+      `UPDATE integrations
+          SET auth_alert_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2`,
+      [integrationId, tenantId],
+    );
+  } catch (err) {
+    logger.warn('Failed to stamp auth_alert_sent_at after per-event alert', {
+      tenantId,
+      integrationId,
+      error: String(err),
+    });
+  }
+
   logger.info('Connector sync error alert dispatched', {
     tenantId,
     integrationId,
