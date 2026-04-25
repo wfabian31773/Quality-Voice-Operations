@@ -17,6 +17,7 @@ describe('categoryForNotificationType', () => {
     );
     expect(categoryForNotificationType('call')).toBe('call');
     expect(categoryForNotificationType('integration')).toBe('integration');
+    expect(categoryForNotificationType('integration_recovery')).toBe('integration_recovery');
     expect(categoryForNotificationType('integration_sms')).toBe('sms');
     expect(categoryForNotificationType('sms')).toBe('sms');
     expect(categoryForNotificationType('escalation')).toBe('escalation');
@@ -49,6 +50,7 @@ describe('getUserPreferences', () => {
       billing: { in_app: true, email: true },
       sms: { in_app: true, email: true },
       integration: { in_app: true, email: true },
+      integration_recovery: { in_app: true, email: true },
       escalation: { in_app: true, email: true },
     });
   });

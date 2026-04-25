@@ -8,6 +8,7 @@ export const NOTIFICATION_CATEGORIES = [
   'billing',
   'sms',
   'integration',
+  'integration_recovery',
   'escalation',
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
@@ -46,6 +47,7 @@ export function categoryForNotificationType(type: string | null | undefined): No
   const t = type.toLowerCase();
   if (t === 'call') return 'call';
   if (t === 'integration') return 'integration';
+  if (t === 'integration_recovery') return 'integration_recovery';
   if (t === 'integration_sms' || t === 'sms') return 'sms';
   if (t === 'campaign') return null; // not yet user-toggleable
   if (t === 'escalation') return 'escalation';

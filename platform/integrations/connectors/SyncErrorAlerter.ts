@@ -561,23 +561,34 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
   // if the connector flaps error -> success -> error -> success rapidly. This
   // is keyed by integrationId so two separate connectors for the same
   // provider (e.g. two HubSpot accounts) each get their own recovery alerts.
+  //
+  // The marker lives on `integrations.recovery_alert_sent_at` rather than on
+  // tenant_notifications so per-user in_app preferences for the
+  // 'integration_recovery' category can never bypass the throttle (an
+  // installation where every admin has in_app off for recoveries used to
+  // leave no row behind, which would let recovery emails be re-sent
+  // every flap).
   try {
-    const { rows: throttleRows } = await pool.query(
-      `SELECT id FROM tenant_notifications
-       WHERE tenant_id = $1
-         AND type = $2
-         AND metadata ->> 'integrationId' = $3
-         AND created_at > NOW() - ($4 || ' hours')::interval
-       LIMIT 1`,
-      [tenantId, RECOVERY_NOTIFICATION_TYPE, integrationId, String(RECOVERY_THROTTLE_HOURS)],
+    const { rows: throttleRows } = await pool.query<{ recovery_alert_sent_at: Date | string | null }>(
+      `SELECT recovery_alert_sent_at FROM integrations
+        WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [integrationId, tenantId],
     );
     if (throttleRows.length > 0) {
-      logger.debug('Connector recovery alert suppressed by 24h throttle', {
-        tenantId,
-        integrationId,
-        provider,
-      });
-      return;
+      const sentAt = throttleRows[0].recovery_alert_sent_at;
+      const sentMs = sentAt ? new Date(sentAt as string | Date).getTime() : null;
+      if (
+        sentMs !== null &&
+        Number.isFinite(sentMs) &&
+        Date.now() - sentMs < RECOVERY_THROTTLE_HOURS * 60 * 60 * 1000
+      ) {
+        logger.debug('Connector recovery alert suppressed by 24h throttle', {
+          tenantId,
+          integrationId,
+          provider,
+        });
+        return;
+      }
     }
   } catch (err) {
     logger.warn('Failed to check recovery alert throttle (will still attempt to send)', {
@@ -597,33 +608,62 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
     ? `${providerLabel} synced successfully again after ~${outageDescription}. No action needed.`
     : `${providerLabel} synced successfully again. No action needed.`;
 
+  const recoveryMetadata = {
+    link: connectorsPath,
+    integrationId,
+    connectorType,
+    provider,
+    outageDurationMs: outageDurationMs ?? null,
+    outageDescription: outageDescription ?? null,
+  };
+
+  // Best-effort in-app fan-out — fanoutInAppNotification swallows its own
+  // DB errors and returns 0, so we deliberately do not gate the email step
+  // on the count. The throttle marker (stamped below) is what protects us
+  // from re-sending emails when in-app inserts fail or every admin has
+  // opted out of in-app for this category.
   try {
-    await pool.query(
-      `INSERT INTO tenant_notifications (tenant_id, type, title, message, metadata)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [
-        tenantId,
-        RECOVERY_NOTIFICATION_TYPE,
-        title,
-        message,
-        JSON.stringify({
-          link: connectorsPath,
-          integrationId,
-          connectorType,
-          provider,
-          outageDurationMs: outageDurationMs ?? null,
-          outageDescription: outageDescription ?? null,
-        }),
-      ],
-    );
+    await fanoutInAppNotification({
+      tenantId,
+      type: RECOVERY_NOTIFICATION_TYPE,
+      title,
+      message,
+      metadata: recoveryMetadata,
+      category: 'integration_recovery',
+    });
   } catch (err) {
-    logger.error('Failed to insert connector recovery in-app notification', {
+    logger.error('Failed to fan out connector recovery in-app notification', {
       tenantId,
       integrationId,
       error: String(err),
     });
-    // Bail out before sending email so a transient DB outage doesn't dodge
-    // the throttle on the next call.
+  }
+
+  // Stamp the throttle marker BEFORE the email step so even a partial /
+  // failed email loop won't let the next sync re-fire recovery emails
+  // within the throttle window. If this UPDATE itself fails OR matches
+  // zero rows (e.g. the integration was deleted mid-flight), we bail
+  // rather than risk an unbounded email loop without a persisted marker.
+  try {
+    const stampResult = await pool.query(
+      `UPDATE integrations
+          SET recovery_alert_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2`,
+      [integrationId, tenantId],
+    );
+    if ((stampResult.rowCount ?? 0) < 1) {
+      logger.warn('recovery_alert_sent_at stamp matched zero rows; skipping email', {
+        tenantId,
+        integrationId,
+      });
+      return;
+    }
+  } catch (err) {
+    logger.error('Failed to stamp recovery_alert_sent_at; skipping email to avoid unbounded retries', {
+      tenantId,
+      integrationId,
+      error: String(err),
+    });
     return;
   }
 
@@ -662,6 +702,22 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
       tenantId,
       integrationId,
       provider,
+    });
+    return;
+  }
+
+  const beforeFilter = recipients.length;
+  recipients = await filterEmailRecipientsByPreference(
+    tenantId,
+    recipients,
+    'integration_recovery',
+  );
+  if (recipients.length === 0) {
+    logger.info('All admin recipients opted out of recovery email notifications', {
+      tenantId,
+      integrationId,
+      provider,
+      removed: beforeFilter,
     });
     return;
   }

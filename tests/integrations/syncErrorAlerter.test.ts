@@ -395,8 +395,11 @@ describe('notifyConnectorRecovery', () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it('respects the 24h recovery throttle (per-integration, not per-provider)', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ id: 'prev-recovery' }] });
+  it('respects the 24h throttle from integrations.recovery_alert_sent_at', async () => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    queryMock.mockResolvedValueOnce({
+      rows: [{ recovery_alert_sent_at: oneHourAgo }],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -404,38 +407,86 @@ describe('notifyConnectorRecovery', () => {
     await notifyConnectorRecovery(baseParams);
 
     expect(queryMock).toHaveBeenCalledTimes(1);
-    // Throttle query must filter on integrationId so two HubSpot connectors
-    // for the same tenant don't suppress each other's recovery alerts.
     const throttleArgs = queryMock.mock.calls[0];
-    expect(String(throttleArgs[0])).toContain("metadata ->> 'integrationId'");
-    expect(throttleArgs[1]).toContain('int-1');
+    expect(String(throttleArgs[0])).toContain('recovery_alert_sent_at');
+    expect(String(throttleArgs[0])).toContain('FROM integrations');
+    // Must scope by both id and tenant_id so two HubSpot connectors for
+    // the same tenant don't suppress each other.
+    expect(throttleArgs[1]).toEqual(['int-1', 'tenant-1']);
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it('records an in-app notification and emails admins on recovery', async () => {
+  it('proceeds when the recovery throttle marker is older than the window', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
     queryMock
-      .mockResolvedValueOnce({ rows: [] }) // recovery throttle empty
-      .mockResolvedValueOnce({ rows: [] }) // INSERT tenant_notifications
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
       .mockResolvedValueOnce({
-        rows: [{ email: 'admin@acme.test' }, { email: 'owner@acme.test' }],
-      }); // admin emails
+        rows: [{ recovery_alert_sent_at: twoDaysAgo }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({ rows: [] }); // email pref filter
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
     await notifyConnectorRecovery(baseParams);
 
-    const insertCall = queryMock.mock.calls.find((c) =>
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('records an in-app notification and emails admins on recovery', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle marker absent
+      // fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a' }, { id: 'user-b' }],
+      })
+      // fanoutInAppNotification: filterUserIdsByPreference (in_app)
+      .mockResolvedValueOnce({ rows: [] })
+      // Per-user INSERTs into tenant_notifications
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      // UPDATE integrations SET recovery_alert_sent_at
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      // tenant name lookup
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // admin email lookup
+      .mockResolvedValueOnce({
+        rows: [{ email: 'admin@acme.test' }, { email: 'owner@acme.test' }],
+      })
+      // filterEmailRecipientsByPreference for integration_recovery email
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    const insertCalls = queryMock.mock.calls.filter((c) =>
       String(c[0]).includes('INSERT INTO tenant_notifications'),
     );
-    expect(insertCall).toBeDefined();
-    expect(insertCall![1][1]).toBe('integration_recovery');
-    const metadata = JSON.parse(insertCall![1][4] as string);
-    expect(metadata.integrationId).toBe('int-1');
-    expect(metadata.provider).toBe('salesforce');
-    expect(metadata.outageDurationMs).toBe(90 * 60 * 1000);
-    expect(metadata.outageDescription).toBeTruthy();
+    expect(insertCalls.length).toBe(2);
+    for (const call of insertCalls) {
+      const args = call[1] as unknown[];
+      expect(args[2]).toBe('integration_recovery');
+      const metadata = JSON.parse(args[5] as string);
+      expect(metadata.integrationId).toBe('int-1');
+      expect(metadata.provider).toBe('salesforce');
+      expect(metadata.outageDurationMs).toBe(90 * 60 * 1000);
+      expect(metadata.outageDescription).toBeTruthy();
+    }
+
+    // The throttle marker must have been stamped.
+    const stampCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('UPDATE integrations') &&
+      String(c[0]).includes('recovery_alert_sent_at'),
+    );
+    expect(stampCall).toBeDefined();
+    expect(stampCall![1]).toEqual(['int-1', 'tenant-1']);
 
     expect(sendEmailMock).toHaveBeenCalledTimes(2);
     const recipients = sendEmailMock.mock.calls.map(
@@ -448,10 +499,14 @@ describe('notifyConnectorRecovery', () => {
 
   it('still notifies after a long outage (>7 days)', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [] }) // recovery throttle empty
-      .mockResolvedValueOnce({ rows: [] }) // INSERT tenant_notifications
+      .mockResolvedValueOnce({ rows: [] }) // throttle: no integration row found
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }); // admins
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({ rows: [] }); // email pref filter
 
     const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
     const { notifyConnectorRecovery } = await import(
@@ -463,7 +518,7 @@ describe('notifyConnectorRecovery', () => {
       String(c[0]).includes('INSERT INTO tenant_notifications'),
     );
     expect(insertCall).toBeDefined();
-    const metadata = JSON.parse(insertCall![1][4] as string);
+    const metadata = JSON.parse((insertCall![1] as unknown[])[5] as string);
     expect(metadata.outageDurationMs).toBe(tenDaysMs);
     expect(metadata.outageDescription).toMatch(/day/);
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
@@ -471,8 +526,11 @@ describe('notifyConnectorRecovery', () => {
 
   it('still records the in-app notification when no admin emails are on file', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [] }) // recovery throttle empty
-      .mockResolvedValueOnce({ rows: [] }) // INSERT tenant_notifications
+      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
       .mockResolvedValueOnce({ rows: [] }); // no admin emails
 
@@ -485,6 +543,116 @@ describe('notifyConnectorRecovery', () => {
       String(c[0]).includes('INSERT INTO tenant_notifications'),
     );
     expect(insertCall).toBeDefined();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('suppresses recovery email when all admins opted out of integration_recovery email but still inserts in-app entry', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // throttle absent
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admin emails
+      // filterEmailRecipientsByPreference: admin@acme.test opted OUT of recovery email
+      .mockResolvedValueOnce({
+        rows: [{ email: 'admin@acme.test', enabled: false }],
+      });
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    // The in-app notification should still have been recorded.
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(1);
+    expect((insertCalls[0][1] as unknown[])[2]).toBe('integration_recovery');
+
+    // But no email should have been sent.
+    expect(sendEmailMock).not.toHaveBeenCalled();
+
+    // And the email-pref filter must have been called with the
+    // 'integration_recovery' category (not the failure category).
+    const prefFilterCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return sql.includes('user_notification_preferences') && sql.includes('LOWER(u.email)');
+    });
+    expect(prefFilterCall).toBeDefined();
+    expect(prefFilterCall![1][2]).toBe('integration_recovery');
+  });
+
+  it('still stamps the throttle marker when every admin opts out of in_app for integration_recovery, preventing repeated emails', async () => {
+    // Simulate "in-app off, email on" — every active admin has opted out
+    // of the in_app channel for integration_recovery, so fanout produces
+    // zero rows. The throttle marker MUST still be stamped so a second
+    // call within the window does not re-send the email.
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // throttle absent (1st call)
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      // in_app pref filter — user-a explicitly OFF
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-a', enabled: false }] })
+      // No per-user INSERT happens because eligible list is empty.
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({ rows: [] }); // email pref filter — nobody opted out
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    // No in-app rows inserted (everyone opted out).
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(0);
+
+    // Throttle marker stamped despite zero in-app inserts.
+    const stampCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('UPDATE integrations') &&
+      String(c[0]).includes('recovery_alert_sent_at'),
+    );
+    expect(stampCall).toBeDefined();
+
+    // Email DID go out (only in_app was muted, not email).
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not send email if the throttle stamp matches zero rows (e.g. integration deleted mid-flight)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // UPDATE matched 0 rows
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('does not send email if stamping the throttle marker fails (avoids unbounded retries)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
+      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockRejectedValueOnce(new Error('db down')); // UPDATE recovery_alert_sent_at FAILS
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    // No email sent — bail to avoid spamming on every retry.
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

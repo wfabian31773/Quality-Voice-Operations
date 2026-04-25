@@ -667,7 +667,13 @@ function PrivacySettings() {
   );
 }
 
-type NotificationCategory = 'call' | 'billing' | 'sms' | 'integration' | 'escalation';
+type NotificationCategory =
+  | 'call'
+  | 'billing'
+  | 'sms'
+  | 'integration'
+  | 'integration_recovery'
+  | 'escalation';
 type NotificationChannel = 'in_app' | 'email';
 type PreferenceMatrix = Record<NotificationCategory, Record<NotificationChannel, boolean>>;
 
@@ -691,8 +697,12 @@ const CATEGORY_META: Record<NotificationCategory, { label: string; description: 
     description: 'Outbound SMS escalations and text-channel incident alerts.',
   },
   integration: {
-    label: 'Integrations',
+    label: 'Integration failures',
     description: 'Connector sync errors, OAuth re-auth requests, and integration outages.',
+  },
+  integration_recovery: {
+    label: 'Integration recoveries',
+    description: 'All-clear notifications when a previously-failing connector starts syncing again.',
   },
   escalation: {
     label: 'Escalations',
