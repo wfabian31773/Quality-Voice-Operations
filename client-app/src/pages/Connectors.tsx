@@ -320,6 +320,18 @@ function formatSyncTime(iso: string): string {
 
 interface DispositionMapEntry { status: string; callDisposition: string }
 
+interface HubSpotPipelineSummary {
+  id: string;
+  label: string;
+  stages: Array<{ id: string; label: string }>;
+}
+
+interface PipedrivePipelineSummary {
+  id: number;
+  name: string;
+  stages: Array<{ id: number; name: string }>;
+}
+
 const QVO_DISPOSITION_LABELS: Record<string, string> = {
   booked: 'Booked appointment',
   no_answer: 'No answer / voicemail',
@@ -561,6 +573,57 @@ function ConnectModal({
   const [picklistsLoading, setPicklistsLoading] = useState(false);
   const [picklistsError, setPicklistsError] = useState<string | null>(null);
 
+  const isHubspot = definition.provider === 'hubspot';
+  const isPipedrive = definition.provider === 'pipedrive';
+  const supportsPipelinePicker = isHubspot || isPipedrive;
+  const [hubspotPipelines, setHubspotPipelines] = useState<HubSpotPipelineSummary[] | null>(null);
+  const [pipedrivePipelines, setPipedrivePipelines] = useState<PipedrivePipelineSummary[] | null>(null);
+  const [pipelinesLoading, setPipelinesLoading] = useState(false);
+  const [pipelinesError, setPipelinesError] = useState<string | null>(null);
+  const [appointmentPipelineId, setAppointmentPipelineId] = useState<string>('');
+  const [appointmentStageId, setAppointmentStageId] = useState<string>('');
+  const [defaultPipelineId, setDefaultPipelineId] = useState<string>('');
+  const [defaultStageId, setDefaultStageId] = useState<string>('');
+  const [originallySetPipelineKeys, setOriginallySetPipelineKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!supportsPipelinePicker || !existingConnector) return;
+    let cancelled = false;
+    api
+      .get<{
+        settings: {
+          appointmentPipelineId?: string | null;
+          appointmentStageId?: string | null;
+          defaultPipelineId?: string | null;
+          defaultStageId?: string | null;
+        };
+      }>(`/connectors/${existingConnector.integrationId}/settings`)
+      .then((data) => {
+        if (cancelled) return;
+        const settings = data?.settings ?? {};
+        const originalKeys = new Set<string>();
+        if (typeof settings.appointmentPipelineId === 'string' && settings.appointmentPipelineId) {
+          setAppointmentPipelineId(settings.appointmentPipelineId);
+          originalKeys.add('appointment_pipeline_id');
+        }
+        if (typeof settings.appointmentStageId === 'string' && settings.appointmentStageId) {
+          setAppointmentStageId(settings.appointmentStageId);
+          originalKeys.add('appointment_stage_id');
+        }
+        if (typeof settings.defaultPipelineId === 'string' && settings.defaultPipelineId) {
+          setDefaultPipelineId(settings.defaultPipelineId);
+          originalKeys.add('default_pipeline_id');
+        }
+        if (typeof settings.defaultStageId === 'string' && settings.defaultStageId) {
+          setDefaultStageId(settings.defaultStageId);
+          originalKeys.add('default_stage_id');
+        }
+        setOriginallySetPipelineKeys(originalKeys);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [supportsPipelinePicker, existingConnector]);
+
   useEffect(() => {
     if (!hasDispositionMapping || !existingConnector || !dispositionConfig) return;
     let cancelled = false;
@@ -636,6 +699,35 @@ function ConnectModal({
     return () => { cancelled = true; };
   }, [isSalesforce, existingConnector]);
 
+  useEffect(() => {
+    if (!supportsPipelinePicker || !existingConnector) return;
+    let cancelled = false;
+    setPipelinesLoading(true);
+    setPipelinesError(null);
+    const path = isHubspot
+      ? `/connectors/${existingConnector.integrationId}/hubspot/pipelines`
+      : `/connectors/${existingConnector.integrationId}/pipedrive/pipelines`;
+    api
+      .get<{ pipelines: HubSpotPipelineSummary[] | PipedrivePipelineSummary[] }>(path)
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.pipelines) ? data.pipelines : [];
+        if (isHubspot) {
+          setHubspotPipelines(list as HubSpotPipelineSummary[]);
+        } else {
+          setPipedrivePipelines(list as PipedrivePipelineSummary[]);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPipelinesError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setPipelinesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [supportsPipelinePicker, isHubspot, existingConnector]);
+
   const handleOAuthMessage = useCallback((event: MessageEvent) => {
     if (event.origin !== window.location.origin) return;
     if (event.data?.type === 'oauth_complete' && event.data?.provider === definition.provider) {
@@ -677,12 +769,13 @@ function ConnectModal({
   };
 
   const connectMutation = useMutation({
-    mutationFn: (creds: Record<string, string>) =>
+    mutationFn: (input: { creds: Record<string, string>; credentialsToDelete: string[] }) =>
       api.post('/connectors', {
         connectorType: definition.connectorType,
         provider: definition.provider,
         name: definition.name,
-        credentials: creds,
+        credentials: input.creds,
+        credentialsToDelete: input.credentialsToDelete,
         isEnabled: true,
       }),
     onSuccess: () => {
@@ -704,8 +797,11 @@ function ConnectModal({
       [key]: { ...prev[key], [field]: val },
     }));
 
-  const buildSubmitCredentials = (): Record<string, string> | { error: string } => {
+  const buildSubmitCredentials = ():
+    | { creds: Record<string, string>; credentialsToDelete: string[] }
+    | { error: string } => {
     const creds: Record<string, string> = {};
+    const credentialsToDelete: string[] = [];
     for (const [k, v] of Object.entries(credentials)) {
       if (v && v.trim().length > 0) creds[k] = v;
     }
@@ -748,7 +844,56 @@ function ConnectModal({
       }
       creds.lead_status_map = JSON.stringify(leadOut);
     }
-    return creds;
+    const noteClearedKey = (key: string, currentValue: string) => {
+      if (!currentValue.trim() && originallySetPipelineKeys.has(key)) {
+        credentialsToDelete.push(key);
+      }
+    };
+    if (isHubspot) {
+      if (appointmentPipelineId.trim()) creds.appointment_pipeline_id = appointmentPipelineId.trim();
+      if (appointmentStageId.trim()) creds.appointment_stage_id = appointmentStageId.trim();
+      noteClearedKey('appointment_pipeline_id', appointmentPipelineId);
+      noteClearedKey('appointment_stage_id', appointmentStageId);
+      if (appointmentStageId.trim() && !appointmentPipelineId.trim()) {
+        return { error: 'Choose an appointment pipeline before choosing a stage.' };
+      }
+      if (hubspotPipelines && appointmentPipelineId.trim() && appointmentStageId.trim()) {
+        const pipeline = hubspotPipelines.find((p) => p.id === appointmentPipelineId.trim());
+        if (pipeline && !pipeline.stages.some((s) => s.id === appointmentStageId.trim())) {
+          return { error: 'The selected appointment stage does not belong to the selected pipeline.' };
+        }
+      }
+    }
+    if (isPipedrive) {
+      if (defaultPipelineId.trim()) creds.default_pipeline_id = defaultPipelineId.trim();
+      if (defaultStageId.trim()) creds.default_stage_id = defaultStageId.trim();
+      if (appointmentStageId.trim()) creds.appointment_stage_id = appointmentStageId.trim();
+      noteClearedKey('default_pipeline_id', defaultPipelineId);
+      noteClearedKey('default_stage_id', defaultStageId);
+      noteClearedKey('appointment_stage_id', appointmentStageId);
+      if (defaultStageId.trim() && !defaultPipelineId.trim()) {
+        return { error: 'Choose a default pipeline before choosing a default stage.' };
+      }
+      if (pipedrivePipelines && defaultPipelineId.trim()) {
+        const pipelineNum = Number(defaultPipelineId.trim());
+        const pipeline = pipedrivePipelines.find((p) => p.id === pipelineNum);
+        if (pipeline) {
+          if (defaultStageId.trim()) {
+            const stageNum = Number(defaultStageId.trim());
+            if (!pipeline.stages.some((s) => s.id === stageNum)) {
+              return { error: 'The selected default stage does not belong to the selected default pipeline.' };
+            }
+          }
+          if (appointmentStageId.trim()) {
+            const stageNum = Number(appointmentStageId.trim());
+            if (!pipeline.stages.some((s) => s.id === stageNum)) {
+              return { error: 'The selected appointment stage does not belong to the selected default pipeline.' };
+            }
+          }
+        }
+      }
+    }
+    return { creds, credentialsToDelete };
   };
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -919,6 +1064,183 @@ function ConnectModal({
                 </div>
               ))}
             </div>
+
+            {supportsPipelinePicker && (
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-text-primary">
+                    {isHubspot ? 'Appointment pipeline & stage' : 'Default pipeline & appointment stage'}
+                  </h4>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {isHubspot
+                      ? 'When the AI agent books an appointment, the matching deal is created or moved into this pipeline and stage. Leave blank to use HubSpot defaults.'
+                      : 'Pipedrive deals created from inbound calls land in the default pipeline + stage. The appointment stage is used to advance an existing deal when an appointment is booked. Leave blank to fall back to Pipedrive defaults.'}
+                  </p>
+                  {!existingConnector ? (
+                    <p className="text-[11px] text-text-secondary mt-2">
+                      Pipelines load after the initial connection. You can come back to set these once {definition.name} is connected.
+                    </p>
+                  ) : pipelinesLoading ? (
+                    <p className="text-[11px] text-text-secondary mt-2">Loading pipelines from {definition.name}…</p>
+                  ) : pipelinesError ? (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                      Could not load pipelines ({pipelinesError}). You can still paste raw IDs below.
+                    </p>
+                  ) : null}
+                </div>
+                {isHubspot && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-medium text-text-primary mb-1">Appointment pipeline</label>
+                      {hubspotPipelines && hubspotPipelines.length > 0 ? (
+                        <select
+                          value={appointmentPipelineId}
+                          onChange={(e) => {
+                            setAppointmentPipelineId(e.target.value);
+                            setAppointmentStageId('');
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          <option value="">— Use HubSpot default pipeline —</option>
+                          {hubspotPipelines.map((p) => (
+                            <option key={p.id} value={p.id}>{p.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={appointmentPipelineId}
+                          onChange={(e) => setAppointmentPipelineId(e.target.value)}
+                          placeholder="HubSpot pipeline ID (e.g. default)"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-primary mb-1">Appointment stage</label>
+                      {hubspotPipelines && appointmentPipelineId ? (() => {
+                        const pipeline = hubspotPipelines.find((p) => p.id === appointmentPipelineId);
+                        const stages = pipeline?.stages ?? [];
+                        return stages.length > 0 ? (
+                          <select
+                            value={appointmentStageId}
+                            onChange={(e) => setAppointmentStageId(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          >
+                            <option value="">— Choose a stage —</option>
+                            {stages.map((s) => (
+                              <option key={s.id} value={s.id}>{s.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-[11px] text-text-secondary">No stages found for this pipeline.</p>
+                        );
+                      })() : (
+                        <input
+                          type="text"
+                          value={appointmentStageId}
+                          onChange={(e) => setAppointmentStageId(e.target.value)}
+                          placeholder="HubSpot stage ID (choose a pipeline first to see options)"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          disabled={hubspotPipelines !== null && hubspotPipelines.length > 0 && !appointmentPipelineId}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+                {isPipedrive && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-medium text-text-primary mb-1">Default pipeline</label>
+                      {pipedrivePipelines && pipedrivePipelines.length > 0 ? (
+                        <select
+                          value={defaultPipelineId}
+                          onChange={(e) => {
+                            setDefaultPipelineId(e.target.value);
+                            setDefaultStageId('');
+                            setAppointmentStageId('');
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          <option value="">— Use Pipedrive default pipeline —</option>
+                          {pipedrivePipelines.map((p) => (
+                            <option key={p.id} value={String(p.id)}>{p.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={defaultPipelineId}
+                          onChange={(e) => setDefaultPipelineId(e.target.value)}
+                          placeholder="Pipedrive pipeline ID (numeric)"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      )}
+                    </div>
+                    {(() => {
+                      const pipelineNum = Number(defaultPipelineId);
+                      const pipeline = pipedrivePipelines && Number.isFinite(pipelineNum)
+                        ? pipedrivePipelines.find((p) => p.id === pipelineNum)
+                        : null;
+                      const stages = pipeline?.stages ?? [];
+                      const useSelect = pipedrivePipelines && pipeline && stages.length > 0;
+                      return (
+                        <>
+                          <div>
+                            <label className="block text-xs font-medium text-text-primary mb-1">Default deal stage</label>
+                            {useSelect ? (
+                              <select
+                                value={defaultStageId}
+                                onChange={(e) => setDefaultStageId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              >
+                                <option value="">— Use Pipedrive first stage —</option>
+                                {stages.map((s) => (
+                                  <option key={s.id} value={String(s.id)}>{s.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={defaultStageId}
+                                onChange={(e) => setDefaultStageId(e.target.value)}
+                                placeholder="Pipedrive stage ID (numeric)"
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                disabled={pipedrivePipelines !== null && pipedrivePipelines.length > 0 && !defaultPipelineId}
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-primary mb-1">Appointment stage</label>
+                            {useSelect ? (
+                              <select
+                                value={appointmentStageId}
+                                onChange={(e) => setAppointmentStageId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              >
+                                <option value="">— No automatic stage move —</option>
+                                {stages.map((s) => (
+                                  <option key={s.id} value={String(s.id)}>{s.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={appointmentStageId}
+                                onChange={(e) => setAppointmentStageId(e.target.value)}
+                                placeholder="Pipedrive stage ID (numeric)"
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                disabled={pipedrivePipelines !== null && pipedrivePipelines.length > 0 && !defaultPipelineId}
+                              />
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
 
             {hasDispositionMapping && dispositionConfig && (
               <div className="rounded-lg border border-border p-4 space-y-3">

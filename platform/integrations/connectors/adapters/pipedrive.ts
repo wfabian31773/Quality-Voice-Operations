@@ -96,6 +96,93 @@ function toNumericId(value: unknown): number | undefined {
   return undefined;
 }
 
+export interface PipedrivePipelineStage {
+  id: number;
+  name: string;
+  orderNr: number;
+}
+
+export interface PipedrivePipelineWithStages {
+  id: number;
+  name: string;
+  orderNr: number;
+  active: boolean;
+  stages: PipedrivePipelineStage[];
+}
+
+export async function fetchPipedrivePipelinesAndStages(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+): Promise<PipedrivePipelineWithStages[]> {
+  let activeConfig = config;
+  try {
+    activeConfig = await ensureFreshOAuthToken(config);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    throw new Error(`Pipedrive token refresh failed: ${error}`);
+  }
+  const auth = resolveAuth(activeConfig);
+  if (!auth) {
+    throw new Error('Pipedrive connector not configured: missing access_token or api_token');
+  }
+
+  const [pipelinesRes, stagesRes] = await Promise.all([
+    pdFetch<{
+      success: boolean;
+      data: Array<{
+        id: number;
+        name: string;
+        order_nr?: number;
+        active?: boolean;
+      }> | null;
+    }>(auth, '/pipelines'),
+    pdFetch<{
+      success: boolean;
+      data: Array<{
+        id: number;
+        name: string;
+        order_nr?: number;
+        pipeline_id: number;
+        active_flag?: boolean;
+      }> | null;
+    }>(auth, '/stages'),
+  ]);
+
+  if (!pipelinesRes.ok || !pipelinesRes.data?.success) {
+    throw new Error(pipelinesRes.error ?? 'Pipedrive pipelines fetch failed');
+  }
+  if (!stagesRes.ok || !stagesRes.data?.success) {
+    throw new Error(stagesRes.error ?? 'Pipedrive stages fetch failed');
+  }
+
+  const stagesByPipeline = new Map<number, PipedrivePipelineStage[]>();
+  for (const stage of stagesRes.data.data ?? []) {
+    if (stage.active_flag === false) continue;
+    const list = stagesByPipeline.get(stage.pipeline_id) ?? [];
+    list.push({
+      id: stage.id,
+      name: stage.name,
+      orderNr: typeof stage.order_nr === 'number' ? stage.order_nr : 0,
+    });
+    stagesByPipeline.set(stage.pipeline_id, list);
+  }
+  for (const list of stagesByPipeline.values()) {
+    list.sort((a, b) => a.orderNr - b.orderNr);
+  }
+
+  const pipelines = (pipelinesRes.data.data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    orderNr: typeof p.order_nr === 'number' ? p.order_nr : 0,
+    active: p.active !== false,
+    stages: stagesByPipeline.get(p.id) ?? [],
+  }));
+  pipelines.sort((a, b) => a.orderNr - b.orderNr);
+
+  logger.info('Pipedrive pipelines fetched', { tenantId, pipelineCount: pipelines.length });
+  return pipelines;
+}
+
 export class PipedriveConnectorAdapter implements ConnectorAdapter {
   async execute(
     tenantId: TenantId,

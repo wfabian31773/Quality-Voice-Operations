@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { HubSpotConnectorAdapter } from './hubspot';
+import { HubSpotConnectorAdapter, fetchHubSpotDealPipelines } from './hubspot';
 import type { ConnectorConfig, ConnectorPayload } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -233,5 +233,64 @@ describe('HubSpotConnectorAdapter appointment.booked', () => {
     expect(calls.find((c) => c.url.endsWith('/objects/contacts') && c.method === 'POST')).toBeUndefined();
     expect(calls.find((c) => c.url.endsWith('/objects/companies') && c.method === 'POST')).toBeUndefined();
     expect(calls.find((c) => c.url.endsWith('/objects/deals') && c.method === 'POST')).toBeUndefined();
+  });
+});
+
+describe('fetchHubSpotDealPipelines', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('returns pipelines with stages sorted by displayOrder', async () => {
+    setupFetch([
+      {
+        match: (u, i) =>
+          u.endsWith('/crm/v3/pipelines/deals') && (i?.method ?? 'GET') === 'GET',
+        response: {
+          body: {
+            results: [
+              {
+                id: 'pipe-2',
+                label: 'Sales Pipeline',
+                displayOrder: 1,
+                stages: [
+                  { id: 'stage-b', label: 'Closed Won', displayOrder: 2 },
+                  { id: 'stage-a', label: 'New Lead', displayOrder: 0 },
+                ],
+              },
+              {
+                id: 'pipe-1',
+                label: 'Onboarding',
+                displayOrder: 0,
+                stages: [{ id: 'stage-c', label: 'Welcome', displayOrder: 0 }],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const pipelines = await fetchHubSpotDealPipelines(TENANT, CONFIG);
+    expect(pipelines.map((p) => p.id)).toEqual(['pipe-1', 'pipe-2']);
+    expect(pipelines[1].stages.map((s) => s.id)).toEqual(['stage-a', 'stage-b']);
+  });
+
+  test('throws when access token is missing', async () => {
+    await expect(
+      fetchHubSpotDealPipelines(TENANT, {
+        ...CONFIG,
+        credentials: {},
+      }),
+    ).rejects.toThrow(/missing access_token/);
+  });
+
+  test('throws on non-OK response', async () => {
+    setupFetch([
+      {
+        match: (u) => u.endsWith('/crm/v3/pipelines/deals'),
+        response: { status: 401, body: { message: 'Invalid token' } },
+      },
+    ]);
+    await expect(fetchHubSpotDealPipelines(TENANT, CONFIG)).rejects.toThrow(/401/);
   });
 });

@@ -362,6 +362,7 @@ export async function upsertConnector(
     provider: string;
     name: string;
     credentials: Record<string, string>;
+    credentialsToDelete?: string[];
     isEnabled?: boolean;
   },
 ): Promise<string> {
@@ -406,6 +407,19 @@ export async function upsertConnector(
          DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, updated_at = NOW()`,
         [tenantId, integrationId, key, encrypted],
       );
+    }
+
+    if (params.credentialsToDelete && params.credentialsToDelete.length > 0) {
+      const keysToDelete = params.credentialsToDelete.filter(
+        (k) => typeof k === 'string' && k.length > 0 && !(k in params.credentials),
+      );
+      if (keysToDelete.length > 0) {
+        await client.query(
+          `DELETE FROM connector_configs
+           WHERE tenant_id = $1 AND integration_id = $2 AND config_key = ANY($3::text[])`,
+          [tenantId, integrationId, keysToDelete],
+        );
+      }
     }
 
     return integrationId;

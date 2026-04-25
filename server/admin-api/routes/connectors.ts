@@ -13,6 +13,8 @@ import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { fetchSalesforceTaskPicklists } from '../../../platform/integrations/connectors/adapters/salesforce';
+import { fetchHubSpotDealPipelines } from '../../../platform/integrations/connectors/adapters/hubspot';
+import { fetchPipedrivePipelinesAndStages } from '../../../platform/integrations/connectors/adapters/pipedrive';
 
 const router = Router();
 const logger = createLogger('ADMIN_CONNECTORS');
@@ -43,11 +45,19 @@ router.get('/connectors', requireAuth, async (req, res) => {
 
 router.post('/connectors', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
-  const { connectorType, provider, name, credentials, isEnabled = true } = req.body as {
+  const {
+    connectorType,
+    provider,
+    name,
+    credentials,
+    credentialsToDelete,
+    isEnabled = true,
+  } = req.body as {
     connectorType?: string;
     provider?: string;
     name?: string;
     credentials?: Record<string, string>;
+    credentialsToDelete?: string[];
     isEnabled?: boolean;
   };
 
@@ -59,6 +69,9 @@ router.post('/connectors', requireAuth, requireRole('manager'), async (req, res)
       error: `Invalid connectorType. Allowed: ${[...VALID_CONNECTOR_TYPES].join(', ')}`,
     });
   }
+  const sanitizedCredentialsToDelete = Array.isArray(credentialsToDelete)
+    ? credentialsToDelete.filter((k): k is string => typeof k === 'string' && k.length > 0)
+    : undefined;
 
   try {
     const integrationId = await upsertConnector(tenantId, {
@@ -66,6 +79,7 @@ router.post('/connectors', requireAuth, requireRole('manager'), async (req, res)
       provider,
       name,
       credentials,
+      credentialsToDelete: sanitizedCredentialsToDelete,
       isEnabled,
     });
     logger.info('Connector upserted', { tenantId, connectorType, provider, integrationId });
@@ -93,8 +107,9 @@ router.post('/connectors', requireAuth, requireRole('manager'), async (req, res)
 router.patch('/connectors/:integrationId', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { integrationId } = req.params;
-  const { credentials, isEnabled, name } = req.body as {
+  const { credentials, credentialsToDelete, isEnabled, name } = req.body as {
     credentials?: Record<string, string>;
+    credentialsToDelete?: string[];
     isEnabled?: boolean;
     name?: string;
   };
@@ -105,11 +120,16 @@ router.patch('/connectors/:integrationId', requireAuth, requireRole('manager'), 
       return res.status(404).json({ error: 'Connector not found' });
     }
 
+    const sanitizedCredentialsToDelete = Array.isArray(credentialsToDelete)
+      ? credentialsToDelete.filter((k): k is string => typeof k === 'string' && k.length > 0)
+      : undefined;
+
     await upsertConnector(tenantId, {
       connectorType: existing.connectorType,
       provider: existing.provider,
       name: name ?? existing.name,
       credentials: credentials ?? {},
+      credentialsToDelete: sanitizedCredentialsToDelete,
       isEnabled: isEnabled ?? existing.isEnabled,
     });
 
@@ -158,6 +178,15 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
       settings.leadStatusMap = leadStatusMap;
       settings.leadStatusMapError = leadStatusMapError;
     }
+    if (meta.provider === 'hubspot') {
+      settings.appointmentPipelineId = credentials.appointment_pipeline_id ?? null;
+      settings.appointmentStageId = credentials.appointment_stage_id ?? null;
+    }
+    if (meta.provider === 'pipedrive') {
+      settings.appointmentStageId = credentials.appointment_stage_id ?? null;
+      settings.defaultPipelineId = credentials.default_pipeline_id ?? null;
+      settings.defaultStageId = credentials.default_stage_id ?? null;
+    }
     return res.json({ provider: meta.provider, settings });
   } catch (err) {
     logger.error('Failed to read connector settings', { tenantId, integrationId, error: String(err) });
@@ -185,6 +214,54 @@ router.get('/connectors/:integrationId/salesforce/picklists', requireAuth, async
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('Failed to fetch Salesforce Task picklists', { tenantId, integrationId, error: message });
+    return res.status(502).json({ error: message });
+  }
+});
+
+router.get('/connectors/:integrationId/hubspot/pipelines', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { integrationId } = req.params;
+  try {
+    const meta = await getConnectorById(tenantId, integrationId);
+    if (!meta) {
+      return res.status(404).json({ error: 'Connector not found' });
+    }
+    if (meta.provider !== 'hubspot') {
+      return res.status(400).json({ error: 'Pipeline fetch is only available for HubSpot connectors' });
+    }
+    const config = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
+    if (!config) {
+      return res.status(404).json({ error: 'HubSpot connector configuration not found' });
+    }
+    const pipelines = await fetchHubSpotDealPipelines(tenantId, config);
+    return res.json({ pipelines });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to fetch HubSpot pipelines', { tenantId, integrationId, error: message });
+    return res.status(502).json({ error: message });
+  }
+});
+
+router.get('/connectors/:integrationId/pipedrive/pipelines', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { integrationId } = req.params;
+  try {
+    const meta = await getConnectorById(tenantId, integrationId);
+    if (!meta) {
+      return res.status(404).json({ error: 'Connector not found' });
+    }
+    if (meta.provider !== 'pipedrive') {
+      return res.status(400).json({ error: 'Pipeline fetch is only available for Pipedrive connectors' });
+    }
+    const config = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
+    if (!config) {
+      return res.status(404).json({ error: 'Pipedrive connector configuration not found' });
+    }
+    const pipelines = await fetchPipedrivePipelinesAndStages(tenantId, config);
+    return res.json({ pipelines });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to fetch Pipedrive pipelines', { tenantId, integrationId, error: message });
     return res.status(502).json({ error: message });
   }
 });

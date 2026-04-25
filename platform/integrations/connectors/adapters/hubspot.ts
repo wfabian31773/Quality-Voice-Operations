@@ -23,6 +23,79 @@ interface DealRefs {
   dealId?: string;
 }
 
+export interface HubSpotPipelineStage {
+  id: string;
+  label: string;
+  displayOrder: number;
+}
+
+export interface HubSpotPipeline {
+  id: string;
+  label: string;
+  displayOrder: number;
+  stages: HubSpotPipelineStage[];
+}
+
+export async function fetchHubSpotDealPipelines(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+): Promise<HubSpotPipeline[]> {
+  let activeConfig = config;
+  try {
+    activeConfig = await ensureFreshOAuthToken(config);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    throw new Error(`HubSpot token refresh failed: ${error}`);
+  }
+  const accessToken = activeConfig.credentials.access_token ?? '';
+  if (!accessToken) {
+    throw new Error('HubSpot connector not configured: missing access_token');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/pipelines/deals`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HubSpot pipelines fetch failed (${res.status}): ${text.slice(0, 200)}`);
+    }
+    const data = await res.json() as {
+      results?: Array<{
+        id: string;
+        label: string;
+        displayOrder?: number;
+        stages?: Array<{ id: string; label: string; displayOrder?: number }>;
+      }>;
+    };
+    const pipelines = Array.isArray(data.results) ? data.results : [];
+    logger.info('HubSpot pipelines fetched', { tenantId, pipelineCount: pipelines.length });
+    return pipelines
+      .map((p) => ({
+        id: String(p.id),
+        label: typeof p.label === 'string' ? p.label : String(p.id),
+        displayOrder: typeof p.displayOrder === 'number' ? p.displayOrder : 0,
+        stages: (Array.isArray(p.stages) ? p.stages : [])
+          .map((s) => ({
+            id: String(s.id),
+            label: typeof s.label === 'string' ? s.label : String(s.id),
+            displayOrder: typeof s.displayOrder === 'number' ? s.displayOrder : 0,
+          }))
+          .sort((a, b) => a.displayOrder - b.displayOrder),
+      }))
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export class HubSpotConnectorAdapter implements ConnectorAdapter {
   async execute(
     tenantId: TenantId,

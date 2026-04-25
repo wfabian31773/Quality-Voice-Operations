@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { PipedriveConnectorAdapter } from './pipedrive';
+import { PipedriveConnectorAdapter, fetchPipedrivePipelinesAndStages } from './pipedrive';
 import type { ConnectorConfig, ConnectorPayload } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -201,5 +201,69 @@ describe('PipedriveConnectorAdapter appointment.booked', () => {
     expect(calls.find((c) => c.url.includes('/persons/search'))).toBeUndefined();
     expect(calls.find((c) => c.url.includes('/organizations/search'))).toBeUndefined();
     expect(calls.find((c) => c.url.includes('/deals') && c.method === 'POST')).toBeUndefined();
+  });
+});
+
+describe('fetchPipedrivePipelinesAndStages', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('groups stages under their pipelines and sorts by order_nr', async () => {
+    setupFetch([
+      {
+        match: (u) => u.includes('/api/v1/pipelines'),
+        response: {
+          body: {
+            success: true,
+            data: [
+              { id: 2, name: 'Pipeline B', order_nr: 1 },
+              { id: 1, name: 'Pipeline A', order_nr: 0 },
+            ],
+          },
+        },
+      },
+      {
+        match: (u) => u.includes('/api/v1/stages'),
+        response: {
+          body: {
+            success: true,
+            data: [
+              { id: 11, name: 'Won', pipeline_id: 1, order_nr: 1 },
+              { id: 10, name: 'Lead', pipeline_id: 1, order_nr: 0 },
+              { id: 20, name: 'Welcome', pipeline_id: 2, order_nr: 0 },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const pipelines = await fetchPipedrivePipelinesAndStages(TENANT, CONFIG);
+    expect(pipelines.map((p) => p.id)).toEqual([1, 2]);
+    expect(pipelines[0].stages.map((s) => s.id)).toEqual([10, 11]);
+    expect(pipelines[1].stages.map((s) => s.id)).toEqual([20]);
+  });
+
+  test('throws when both access_token and api_token are missing', async () => {
+    await expect(
+      fetchPipedrivePipelinesAndStages(TENANT, {
+        ...CONFIG,
+        credentials: { company_domain: 'acmedomain' },
+      }),
+    ).rejects.toThrow(/missing access_token or api_token/);
+  });
+
+  test('throws on non-OK pipelines response', async () => {
+    setupFetch([
+      {
+        match: (u) => u.includes('/api/v1/pipelines'),
+        response: { status: 500, body: { success: false } },
+      },
+      {
+        match: (u) => u.includes('/api/v1/stages'),
+        response: { body: { success: true, data: [] } },
+      },
+    ]);
+    await expect(fetchPipedrivePipelinesAndStages(TENANT, CONFIG)).rejects.toThrow(/500/);
   });
 });
