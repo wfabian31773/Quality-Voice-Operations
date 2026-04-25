@@ -481,27 +481,44 @@ export class ConnectorService {
     }
 
     // Provider-specific aliases so the HubSpot and Pipedrive adapters can
-    // read hints under the field names they expect.
+    // read hints under the field names they expect. Native IDs live in
+    // `cached.extras` keyed by the adapter-facing field name (e.g. `companyId`,
+    // `dealId`, `personId`, `orgId`) so we can re-inject them verbatim. The
+    // canonical Salesforce-shaped slots are kept as a fallback for already-
+    // cached rows that pre-date the `extras` column.
+    const extras = cached.extras ?? {};
     if (config.provider === 'hubspot') {
-      if (!current.companyId && cached.accountId) {
-        out.companyId = cached.accountId;
+      const companyId = extras.companyId ?? cached.accountId;
+      if (!current.companyId && companyId) {
+        out.companyId = companyId;
         injected = true;
       }
-      if (!current.dealId && cached.opportunityId) {
-        out.dealId = cached.opportunityId;
+      const dealId = extras.dealId ?? cached.opportunityId;
+      if (!current.dealId && dealId) {
+        out.dealId = dealId;
+        injected = true;
+      }
+      // HubSpot's contactId already matches the canonical slot name, but
+      // prefer the verbatim extras value when present for full round-trip.
+      const hsContactId = extras.contactId ?? cached.contactId;
+      if (!current.contactId && hsContactId) {
+        out.contactId = hsContactId;
         injected = true;
       }
     } else if (config.provider === 'pipedrive') {
-      if (!current.personId && cached.contactId) {
-        out.personId = cached.contactId;
+      const personId = extras.personId ?? cached.contactId;
+      if (!current.personId && personId) {
+        out.personId = personId;
         injected = true;
       }
-      if (!current.orgId && cached.accountId) {
-        out.orgId = cached.accountId;
+      const orgId = extras.orgId ?? cached.accountId;
+      if (!current.orgId && orgId) {
+        out.orgId = orgId;
         injected = true;
       }
-      if (!current.dealId && cached.opportunityId) {
-        out.dealId = cached.opportunityId;
+      const dealId = extras.dealId ?? cached.opportunityId;
+      if (!current.dealId && dealId) {
+        out.dealId = dealId;
         injected = true;
       }
     }
@@ -533,8 +550,9 @@ export class ConnectorService {
     if (config.connectorType !== 'crm') return;
     const callerPhone = (payload as Record<string, unknown>).callerPhone as string | undefined;
     if (!callerPhone) return;
-    const identity = extractIdentityFromMeta(result.meta);
-    if (!identity.contactId && !identity.accountId && !identity.opportunityId) return;
+    const identity = extractIdentityFromMeta(result.meta, config.provider);
+    const hasExtras = identity.extras && Object.keys(identity.extras).length > 0;
+    if (!identity.contactId && !identity.accountId && !identity.opportunityId && !hasExtras) return;
     await upsertCrmCallerIdentity(tenantId, config.provider, callerPhone, identity);
   }
 }

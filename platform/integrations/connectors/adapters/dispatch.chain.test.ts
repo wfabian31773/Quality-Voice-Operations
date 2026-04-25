@@ -11,12 +11,20 @@ vi.mock('../tokenRefresh', () => ({
 
 // In-memory CRM caller identity store. We keep `extractIdentityFromMeta` and
 // `normalizeCallerPhone` real so the test exercises the actual meta-extraction
-// logic, and only swap the DB persistence for an in-process Map.
+// logic, and only swap the DB persistence for an in-process Map. The mock
+// round-trips the `extras` JSONB column the same way the real DB does:
+// per-key merge so a later event can't blank out a previously cached native ID.
+interface StoredIdentity {
+  contactId?: string;
+  accountId?: string;
+  opportunityId?: string;
+  extras?: Record<string, string>;
+}
 vi.mock('../crmCallerIdentity', async () => {
   const actual = await vi.importActual<typeof import('../crmCallerIdentity')>(
     '../crmCallerIdentity',
   );
-  const store = new Map<string, { contactId?: string; accountId?: string; opportunityId?: string }>();
+  const store = new Map<string, StoredIdentity>();
   return {
     ...actual,
     __store: store,
@@ -29,16 +37,18 @@ vi.mock('../crmCallerIdentity', async () => {
       tenantId: string,
       provider: string,
       phone: string,
-      identity: { contactId?: string; accountId?: string; opportunityId?: string },
+      identity: StoredIdentity,
     ) => {
       const norm = actual.normalizeCallerPhone(phone);
       if (!norm) return;
       const key = `${tenantId}:${provider}:${norm}`;
       const prior = store.get(key) ?? {};
+      const mergedExtras = { ...(prior.extras ?? {}), ...(identity.extras ?? {}) };
       store.set(key, {
         contactId: identity.contactId ?? prior.contactId,
         accountId: identity.accountId ?? prior.accountId,
         opportunityId: identity.opportunityId ?? prior.opportunityId,
+        extras: Object.keys(mergedExtras).length > 0 ? mergedExtras : undefined,
       });
     }),
   };
@@ -204,12 +214,21 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
     expect(eventOneFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/crm/v3/objects/contacts'))).toBeDefined();
     expect(eventOneFetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/crm/v3/objects/companies'))).toBeDefined();
 
-    // The dispatch layer should have persisted the IDs from meta.
+    // The dispatch layer should have persisted the IDs from meta. Provider-
+    // native field names land verbatim under `extras` so HubSpot's
+    // `companyId` is not silently remapped to the Salesforce `accountId`.
     expect(identityModule.upsertCrmCallerIdentity).toHaveBeenCalledWith(
       TENANT,
       'hubspot',
       CALLER_PHONE,
-      expect.objectContaining({ contactId: 'hs-contact-1', accountId: 'hs-company-1' }),
+      expect.objectContaining({
+        contactId: 'hs-contact-1',
+        accountId: 'hs-company-1',
+        extras: expect.objectContaining({
+          contactId: 'hs-contact-1',
+          companyId: 'hs-company-1',
+        }),
+      }),
     );
 
     // ---- Event 2: appointment.booked expectations ----
@@ -351,12 +370,23 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
     expect(eventOneFetch.calls.find((c) => c.method === 'POST' && /\/deals(\?|$)/.test(c.url))).toBeDefined();
 
     // The dispatch layer should have persisted the IDs from meta. Pipedrive's
-    // numeric IDs are normalized to strings in the cache slots.
+    // numeric IDs are normalized to strings in the cache slots, and the raw
+    // provider-native field names (personId/orgId/dealId) round-trip verbatim
+    // through `extras` instead of being remapped to Salesforce slot names.
     expect(identityModule.upsertCrmCallerIdentity).toHaveBeenCalledWith(
       TENANT,
       'pipedrive',
       CALLER_PHONE,
-      expect.objectContaining({ contactId: '111', accountId: '555', opportunityId: '999' }),
+      expect.objectContaining({
+        contactId: '111',
+        accountId: '555',
+        opportunityId: '999',
+        extras: expect.objectContaining({
+          personId: '111',
+          orgId: '555',
+          dealId: '999',
+        }),
+      }),
     );
 
     // ---- Event 2: appointment.booked expectations ----
