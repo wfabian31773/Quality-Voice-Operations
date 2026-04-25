@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from '
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical, ExternalLink, ArrowRightLeft, UserPlus, Building2, Briefcase, ClipboardCheck, Cloud } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 import {
@@ -104,6 +104,208 @@ interface Agent {
   name: string;
 }
 
+interface ConnectorDispatchPayload {
+  connectorType?: string;
+  provider?: string;
+  payloadType?: string;
+  success?: boolean;
+  error?: string | null;
+  externalId?: string | null;
+  latencyMs?: number;
+  usedFallback?: boolean;
+  meta?: {
+    provider?: string;
+    pipelineMode?: 'leads' | 'contacts';
+    instanceUrl?: string;
+    eventType?: string;
+    whoId?: string;
+    whoObject?: 'Contact' | 'Lead';
+    whatId?: string;
+    whatObject?: 'Account' | 'Opportunity' | 'Lead' | 'Contact' | 'Task' | 'Event';
+    taskId?: string;
+    noteId?: string;
+    convertedFromLead?: boolean;
+    convertedFromLeadId?: string;
+    contactId?: string;
+    accountId?: string;
+    opportunityId?: string;
+    usedFallback?: boolean;
+    [key: string]: unknown;
+  } | null;
+}
+
+function isConnectorDispatchEvent(event: CallEvent): event is CallEvent & { payload: ConnectorDispatchPayload } {
+  return event.event_type === 'connector_dispatched' && !!event.payload && typeof event.payload === 'object';
+}
+
+function buildSalesforceUrl(instanceUrl: string | undefined, sobject: string, id: string | undefined): string | undefined {
+  if (!instanceUrl || !id) return undefined;
+  const base = instanceUrl.replace(/\/+$/, '');
+  return `${base}/lightning/r/${sobject}/${id}/view`;
+}
+
+function shortId(id: string | undefined): string {
+  if (!id) return '--';
+  return id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
+}
+
+function SalesforceRecordCard({ event }: { event: CallEvent & { payload: ConnectorDispatchPayload } }) {
+  const payload = event.payload;
+  const meta = payload.meta ?? {};
+  const instanceUrl = meta.instanceUrl;
+  const isSuccess = payload.success !== false;
+  const eventLabel = (() => {
+    switch (meta.eventType ?? payload.payloadType) {
+      case 'call.completed': return 'Call logged';
+      case 'appointment.booked': return 'Appointment booked';
+      default: return payload.payloadType ?? 'Event dispatched';
+    }
+  })();
+
+  const records: Array<{ icon: typeof UserPlus; label: string; sobject: string; id: string | undefined; sublabel?: string }> = [];
+  if (meta.convertedFromLead && meta.convertedFromLeadId) {
+    records.push({ icon: ArrowRightLeft, label: 'Converted from Lead', sobject: 'Lead', id: meta.convertedFromLeadId, sublabel: 'Lead → Contact' });
+  }
+  if (meta.contactId || (meta.whoObject === 'Contact' && meta.whoId)) {
+    const id = meta.contactId ?? meta.whoId;
+    records.push({
+      icon: UserPlus,
+      label: meta.contactId ? 'Contact (created/linked)' : 'Contact attached',
+      sobject: 'Contact',
+      id,
+    });
+  } else if (meta.whoObject === 'Lead' && meta.whoId) {
+    records.push({ icon: UserPlus, label: 'Lead attached', sobject: 'Lead', id: meta.whoId });
+  }
+  if (meta.accountId) {
+    records.push({ icon: Building2, label: 'Account', sobject: 'Account', id: meta.accountId });
+  }
+  if (meta.opportunityId) {
+    records.push({ icon: Briefcase, label: 'Opportunity', sobject: 'Opportunity', id: meta.opportunityId });
+  }
+  if (meta.taskId) {
+    records.push({ icon: ClipboardCheck, label: 'Activity (Task)', sobject: 'Task', id: meta.taskId });
+  }
+  if (meta.whatId && !meta.opportunityId && !meta.accountId && meta.whatObject && meta.whatObject !== 'Task' && meta.whatObject !== 'Event') {
+    const icon = meta.whatObject === 'Opportunity' ? Briefcase : Building2;
+    records.push({ icon, label: `Related ${meta.whatObject}`, sobject: meta.whatObject, id: meta.whatId });
+  }
+
+  return (
+    <div className="bg-surface-hover rounded-lg p-3 border border-border">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Cloud className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-medium text-text-primary">Salesforce</span>
+          {meta.pipelineMode && (
+            <span className="text-[10px] uppercase tracking-wide text-text-muted bg-surface px-1.5 py-0.5 rounded">{meta.pipelineMode}</span>
+          )}
+          {payload.usedFallback && (
+            <span className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">fallback</span>
+          )}
+        </div>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+          {isSuccess ? 'success' : 'failed'}
+        </span>
+      </div>
+
+      <div className="text-xs text-text-secondary mb-2 flex items-center justify-between">
+        <span>{eventLabel}</span>
+        <span className="text-text-muted">{event.occurred_at ? format(new Date(event.occurred_at), 'h:mm:ss a') : '--'}</span>
+      </div>
+
+      {!isSuccess && payload.error && (
+        <p className="text-xs text-red-600 dark:text-red-400 mb-2">{payload.error}</p>
+      )}
+
+      {records.length > 0 ? (
+        <ul className="space-y-1.5">
+          {records.map((r, i) => {
+            const url = buildSalesforceUrl(instanceUrl, r.sobject, r.id);
+            return (
+              <li key={`${r.sobject}-${r.id}-${i}`} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <r.icon className="h-3.5 w-3.5 text-text-secondary flex-shrink-0" />
+                  <span className="text-text-primary truncate">{r.label}</span>
+                  {r.sublabel && <span className="text-text-muted">· {r.sublabel}</span>}
+                </div>
+                {r.id && (
+                  url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 font-mono text-text-secondary hover:text-primary"
+                      title={r.id}
+                    >
+                      {shortId(r.id)}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="font-mono text-text-muted" title={r.id}>{shortId(r.id)}</span>
+                  )
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        isSuccess && <p className="text-xs text-text-muted">No records returned</p>
+      )}
+    </div>
+  );
+}
+
+function GenericConnectorCard({ event }: { event: CallEvent & { payload: ConnectorDispatchPayload } }) {
+  const payload = event.payload;
+  const isSuccess = payload.success !== false;
+  return (
+    <div className="bg-surface-hover rounded-lg p-3 border border-border">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-sm font-medium text-text-primary capitalize">
+          {payload.provider ?? payload.connectorType ?? 'Connector'}
+        </span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+          {isSuccess ? 'success' : 'failed'}
+        </span>
+      </div>
+      <div className="text-xs text-text-secondary flex items-center justify-between">
+        <span>{payload.payloadType ?? '--'}</span>
+        <span className="text-text-muted">{event.occurred_at ? format(new Date(event.occurred_at), 'h:mm:ss a') : '--'}</span>
+      </div>
+      {!isSuccess && payload.error && (
+        <p className="text-xs text-red-600 dark:text-red-400 mt-2">{payload.error}</p>
+      )}
+      {payload.externalId && (
+        <p className="text-xs text-text-muted mt-1 font-mono">id: {shortId(payload.externalId)}</p>
+      )}
+    </div>
+  );
+}
+
+function CrmRecordsSection({ events }: { events: CallEvent[] }) {
+  const dispatchEvents = useMemo(
+    () => events.filter(isConnectorDispatchEvent),
+    [events],
+  );
+  if (dispatchEvents.length === 0) return null;
+
+  return (
+    <div className="px-5 py-4 border-b border-border">
+      <h3 className="text-sm font-semibold text-text-primary mb-3">CRM &amp; Connector Records</h3>
+      <div className="space-y-3">
+        {dispatchEvents.map((event) => {
+          const provider = event.payload?.provider ?? event.payload?.meta?.provider;
+          if (provider === 'salesforce') {
+            return <SalesforceRecordCard key={event.id} event={event} />;
+          }
+          return <GenericConnectorCard key={event.id} event={event} />;
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => void }) {
   const { data: callData } = useQuery({
     queryKey: ['call', callId],
@@ -154,6 +356,8 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
             </div>
           </div>
         )}
+
+        <CrmRecordsSection events={events} />
 
         {costBreakdown && (
           <div className="px-5 py-4 border-b border-border">
@@ -233,20 +437,31 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
                 <div className="relative">
                   <div className="absolute left-3 top-0 bottom-0 w-px bg-border" />
                   <div className="space-y-4">
-                    {events.map((event) => (
-                      <div key={event.id} className="relative pl-8">
-                        <div className="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-primary border-2 border-surface" />
-                        <div className="bg-surface-hover rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-text-primary">{event.event_type}</span>
-                            <span className="text-xs text-text-muted">{event.occurred_at ? format(new Date(event.occurred_at), 'h:mm:ss a') : '--'}</span>
+                    {events.map((event) => {
+                      const dispatchPayload = isConnectorDispatchEvent(event) ? event.payload : null;
+                      const dispatchProvider = dispatchPayload?.provider ?? dispatchPayload?.meta?.provider;
+                      const dispatchSuccess = dispatchPayload ? dispatchPayload.success !== false : null;
+                      const eventLabel = dispatchPayload
+                        ? `${dispatchProvider ?? dispatchPayload.connectorType ?? 'connector'} · ${dispatchPayload.payloadType ?? 'dispatched'}`
+                        : event.event_type;
+                      return (
+                        <div key={event.id} className="relative pl-8">
+                          <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 border-surface ${dispatchSuccess === false ? 'bg-red-500' : 'bg-primary'}`} />
+                          <div className="bg-surface-hover rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-text-primary capitalize">{eventLabel}</span>
+                              <span className="text-xs text-text-muted">{event.occurred_at ? format(new Date(event.occurred_at), 'h:mm:ss a') : '--'}</span>
+                            </div>
+                            {event.from_state && event.to_state && (
+                              <p className="text-xs text-text-secondary">{event.from_state} → {event.to_state}</p>
+                            )}
+                            {dispatchPayload && dispatchSuccess === false && dispatchPayload.error && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">{dispatchPayload.error}</p>
+                            )}
                           </div>
-                          {event.from_state && event.to_state && (
-                            <p className="text-xs text-text-secondary">{event.from_state} → {event.to_state}</p>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

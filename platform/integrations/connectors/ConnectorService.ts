@@ -1,4 +1,5 @@
 import { createLogger } from '../../core/logger';
+import { withPrivilegedClient } from '../../db';
 import { getConnectorConfig, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
 import { notifyConnectorSyncError, isRevenueCriticalProvider } from './SyncErrorAlerter';
 import type { ConnectorConfig as ConnectorConfigType } from './types';
@@ -171,6 +172,23 @@ export class ConnectorService {
       serviceName: `${config.connectorType}:${config.provider}`,
     }).catch(() => {});
 
+    recordConnectorDispatchEvent({
+      tenantId,
+      callSessionId,
+      connectorType: config.connectorType,
+      provider: config.provider,
+      payloadType: payload.type,
+      result,
+      latencyMs,
+    }).catch((err) => {
+      logger.warn('Failed to record connector dispatch call event', {
+        tenantId,
+        connectorType: config.connectorType,
+        provider: config.provider,
+        error: String(err),
+      });
+    });
+
     const errorMessage = result.success ? null : (result.error ?? 'Unknown error');
     updateConnectorSyncStatus(
       tenantId,
@@ -251,7 +269,27 @@ export class ConnectorService {
       serviceName: `${fallbackType}:${config.provider}`,
     }).catch(() => {});
 
-    return { ...result, meta: { ...result.meta, usedFallback: true } };
+    const fallbackResult = { ...result, meta: { ...result.meta, usedFallback: true } };
+
+    recordConnectorDispatchEvent({
+      tenantId,
+      callSessionId,
+      connectorType: fallbackType,
+      provider: config.provider,
+      payloadType: payload.type,
+      result: fallbackResult,
+      latencyMs,
+      usedFallback: true,
+    }).catch((err) => {
+      logger.warn('Failed to record fallback connector dispatch call event', {
+        tenantId,
+        connectorType: fallbackType,
+        provider: config.provider,
+        error: String(err),
+      });
+    });
+
+    return fallbackResult;
   }
 
   async executeByPayload(
@@ -321,3 +359,52 @@ export class ConnectorService {
 }
 
 export const connectorService = new ConnectorService();
+
+async function recordConnectorDispatchEvent(args: {
+  tenantId: TenantId;
+  callSessionId?: string;
+  connectorType: string;
+  provider: string;
+  payloadType: string;
+  result: { success: boolean; error?: string; externalId?: string; meta?: Record<string, unknown> };
+  latencyMs: number;
+  usedFallback?: boolean;
+}): Promise<void> {
+  if (!args.callSessionId) return;
+
+  const safeMeta = sanitizeConnectorMeta(args.result.meta);
+  const eventPayload = {
+    connectorType: args.connectorType,
+    provider: args.provider,
+    payloadType: args.payloadType,
+    success: args.result.success,
+    error: args.result.error ?? null,
+    externalId: args.result.externalId ?? null,
+    latencyMs: args.latencyMs,
+    usedFallback: Boolean(args.usedFallback),
+    meta: safeMeta,
+  };
+
+  await withPrivilegedClient(async (client) => {
+    await client.query(
+      `INSERT INTO call_events
+         (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at)
+       VALUES (gen_random_uuid(), $1, $2, 'connector_dispatched', NULL, NULL, $3, NOW())`,
+      [args.tenantId, args.callSessionId, JSON.stringify(eventPayload)],
+    );
+  });
+}
+
+// Drop sensitive auth-style fields if any adapter ever puts them into meta.
+// CRM record IDs (Salesforce 15/18-char IDs, HubSpot numeric IDs, etc.) are
+// safe to surface — they are required to render deep-links to the records.
+function sanitizeConnectorMeta(meta: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const REDACT_KEYS = ['accessToken', 'access_token', 'refreshToken', 'refresh_token', 'apiKey', 'api_key', 'secret', 'password', 'token'];
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    if (REDACT_KEYS.some((r) => k.toLowerCase().includes(r.toLowerCase()))) continue;
+    out[k] = v;
+  }
+  return out;
+}

@@ -13,6 +13,23 @@ const logger = createLogger('SALESFORCE_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const API_VERSION = 'v60.0';
 
+// Salesforce IDs encode the sObject in the first 3 chars (the "key prefix").
+// We use this to classify whatId so the call detail UI can render Account /
+// Opportunity records even when the activity attached to an existing record
+// (no Lead conversion happened).
+function classifySalesforceId(id: string | undefined): 'Lead' | 'Contact' | 'Account' | 'Opportunity' | 'Task' | 'Event' | undefined {
+  if (!id || id.length < 3) return undefined;
+  switch (id.slice(0, 3)) {
+    case '00Q': return 'Lead';
+    case '003': return 'Contact';
+    case '001': return 'Account';
+    case '006': return 'Opportunity';
+    case '00T': return 'Task';
+    case '00U': return 'Event';
+    default: return undefined;
+  }
+}
+
 type PipelineMode = 'leads' | 'contacts';
 
 interface SalesforceTokens {
@@ -179,6 +196,11 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       const whatId = convertedOpportunityId
         ?? convertedAccountId
         ?? await this.resolveWhatId(tokens, who, payload);
+      const whatObject = classifySalesforceId(whatId);
+      const derivedOpportunityId = convertedOpportunityId
+        ?? (whatObject === 'Opportunity' ? whatId : undefined);
+      const derivedAccountId = convertedAccountId
+        ?? (whatObject === 'Account' ? whatId : undefined);
       const customMap = parseSharedDispositionMap(config.credentials, 'salesforce');
       const dispositionFields = mapDisposition('salesforce', disposition, customMap);
 
@@ -210,17 +232,20 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
           whoId: who?.id,
           whoObject: who?.object,
           whatId,
+          whatObject,
           taskId,
           noteId,
           pipelineMode: mode,
           provider: 'salesforce',
+          instanceUrl: tokens.instanceUrl,
+          eventType: 'call.completed',
+          ...(derivedOpportunityId ? { opportunityId: derivedOpportunityId } : {}),
+          ...(derivedAccountId ? { accountId: derivedAccountId } : {}),
           ...(convertedContactId
             ? {
                 convertedFromLead: true,
                 convertedFromLeadId,
                 contactId: convertedContactId,
-                accountId: convertedAccountId,
-                opportunityId: convertedOpportunityId,
               }
             : {}),
         },
@@ -285,6 +310,11 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       const whatId = convertedOpportunityId
         ?? convertedAccountId
         ?? await this.resolveWhatId(tokens, who, payload);
+      const whatObject = classifySalesforceId(whatId);
+      const derivedOpportunityId = convertedOpportunityId
+        ?? (whatObject === 'Opportunity' ? whatId : undefined);
+      const derivedAccountId = convertedAccountId
+        ?? (whatObject === 'Account' ? whatId : undefined);
       const customMap = parseSharedDispositionMap(config.credentials, 'salesforce');
       const dispositionFields = mapDisposition('salesforce', 'booked', customMap);
 
@@ -323,17 +353,20 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
           whoId: who?.id,
           whoObject: who?.object,
           whatId,
+          whatObject,
           taskId,
           noteId,
           pipelineMode: mode,
           provider: 'salesforce',
+          instanceUrl: tokens.instanceUrl,
+          eventType: 'appointment.booked',
+          ...(derivedOpportunityId ? { opportunityId: derivedOpportunityId } : {}),
+          ...(derivedAccountId ? { accountId: derivedAccountId } : {}),
           ...(convertedContactId
             ? {
                 convertedFromLead: true,
                 convertedFromLeadId,
                 contactId: convertedContactId,
-                accountId: convertedAccountId,
-                opportunityId: convertedOpportunityId,
               }
             : {}),
         },
