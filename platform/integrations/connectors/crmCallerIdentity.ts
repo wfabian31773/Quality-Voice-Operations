@@ -46,24 +46,33 @@ export function normalizeCallerPhone(phone: string | undefined | null): string |
   return digits;
 }
 
+function coerceId(value: unknown): string | undefined {
+  if (typeof value === 'string' && value) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
 /**
  * Heuristically extract `{ contactId, accountId, opportunityId }` from a
- * connector adapter's `result.meta`. Adapters return slightly different shapes
- * (Salesforce: contactId/accountId/opportunityId; HubSpot: contactId), so we
- * also fall back to Salesforce ID-prefix detection on `whoId` / `whatId`.
+ * connector adapter's `result.meta`. Adapters return different field names for
+ * the same conceptual entities (Salesforce: contactId/accountId/opportunityId;
+ * HubSpot: contactId/companyId/dealId; Pipedrive: personId/orgId/dealId), so
+ * we map them all into the canonical Salesforce-style slots used by the cache.
+ * Salesforce ID-prefix detection on `whoId`/`whatId` remains as a fallback.
  */
 export function extractIdentityFromMeta(meta: Record<string, unknown> | undefined): CrmCallerIdentity {
   if (!meta) return {};
   const out: CrmCallerIdentity = {};
 
-  const contactId = meta.contactId;
-  if (typeof contactId === 'string' && contactId) out.contactId = contactId;
+  // Direct Salesforce-style names (also used by HubSpot for contactId).
+  const contactId = coerceId(meta.contactId) ?? coerceId(meta.personId);
+  if (contactId) out.contactId = contactId;
 
-  const accountId = meta.accountId;
-  if (typeof accountId === 'string' && accountId) out.accountId = accountId;
+  const accountId = coerceId(meta.accountId) ?? coerceId(meta.companyId) ?? coerceId(meta.orgId);
+  if (accountId) out.accountId = accountId;
 
-  const opportunityId = meta.opportunityId;
-  if (typeof opportunityId === 'string' && opportunityId) out.opportunityId = opportunityId;
+  const opportunityId = coerceId(meta.opportunityId) ?? coerceId(meta.dealId);
+  if (opportunityId) out.opportunityId = opportunityId;
 
   // Salesforce-specific fallback: derive from whoId/whatId using the standard
   // 3-character object key prefix (003 = Contact, 001 = Account, 006 = Opportunity).

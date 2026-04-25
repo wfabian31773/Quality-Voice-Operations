@@ -415,27 +415,58 @@ export class ConnectorService {
 
     const merged: ConnectorPayload = { ...payload };
     const current = payload as Record<string, unknown>;
+    const out = merged as Record<string, unknown>;
     let injected = false;
+
+    // Salesforce-style hints (always set when cached + missing — Salesforce
+    // adapter and any other adapter that reads these names benefits).
     if (!current.contactId && cached.contactId) {
-      (merged as Record<string, unknown>).contactId = cached.contactId;
+      out.contactId = cached.contactId;
       injected = true;
     }
     if (!current.accountId && cached.accountId) {
-      (merged as Record<string, unknown>).accountId = cached.accountId;
+      out.accountId = cached.accountId;
       injected = true;
     }
     if (!current.opportunityId && cached.opportunityId) {
-      (merged as Record<string, unknown>).opportunityId = cached.opportunityId;
+      out.opportunityId = cached.opportunityId;
       injected = true;
     }
+
+    // Provider-specific aliases so the HubSpot and Pipedrive adapters can
+    // read hints under the field names they expect.
+    if (config.provider === 'hubspot') {
+      if (!current.companyId && cached.accountId) {
+        out.companyId = cached.accountId;
+        injected = true;
+      }
+      if (!current.dealId && cached.opportunityId) {
+        out.dealId = cached.opportunityId;
+        injected = true;
+      }
+    } else if (config.provider === 'pipedrive') {
+      if (!current.personId && cached.contactId) {
+        out.personId = cached.contactId;
+        injected = true;
+      }
+      if (!current.orgId && cached.accountId) {
+        out.orgId = cached.accountId;
+        injected = true;
+      }
+      if (!current.dealId && cached.opportunityId) {
+        out.dealId = cached.opportunityId;
+        injected = true;
+      }
+    }
+
     if (injected) {
       logger.info('Injected cached CRM caller identity into payload', {
         tenantId,
         provider: config.provider,
         payloadType: payload.type,
-        hasContact: Boolean((merged as Record<string, unknown>).contactId),
-        hasAccount: Boolean((merged as Record<string, unknown>).accountId),
-        hasOpportunity: Boolean((merged as Record<string, unknown>).opportunityId),
+        hasContact: Boolean(out.contactId ?? out.personId),
+        hasAccount: Boolean(out.accountId ?? out.companyId ?? out.orgId),
+        hasOpportunity: Boolean(out.opportunityId ?? out.dealId),
       });
     }
     return merged;
