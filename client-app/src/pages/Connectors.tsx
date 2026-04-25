@@ -404,6 +404,109 @@ const SALESFORCE_LEAD_OUTCOME_HINTS: Record<SalesforceLeadOutcome, string> = {
   nurture: 'Lead is updated to this status so reps can follow up later.',
   no_answer: 'Lead is updated to this status when the caller didn\'t reach a person.',
 };
+const PICKLIST_CUSTOM_SENTINEL = '__qvo_custom__';
+
+function PicklistField({
+  value,
+  options,
+  placeholder,
+  className,
+  ariaLabel,
+  allowEmpty,
+  onChange,
+}: {
+  value: string;
+  options: string[] | null;
+  placeholder?: string;
+  className?: string;
+  ariaLabel?: string;
+  allowEmpty?: boolean;
+  onChange: (val: string) => void;
+}) {
+  const hasOptions = Array.isArray(options) && options.length > 0;
+  const matchesOption = hasOptions && value !== '' && options!.includes(value);
+  const [customMode, setCustomMode] = useState(
+    () => hasOptions && value !== '' && !options!.includes(value),
+  );
+
+  useEffect(() => {
+    if (!hasOptions) {
+      setCustomMode(false);
+      return;
+    }
+    if (value !== '' && !options!.includes(value)) {
+      setCustomMode(true);
+    }
+  }, [hasOptions, options, value]);
+
+  const inputClass = `px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${className ?? ''}`;
+
+  if (!hasOptions) {
+    return (
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        className={inputClass}
+      />
+    );
+  }
+
+  if (customMode) {
+    return (
+      <div className={`flex flex-col gap-1 ${className ?? ''}`}>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          className="px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <button
+          type="button"
+          className="text-[11px] text-text-secondary hover:text-primary underline self-start"
+          onClick={() => {
+            setCustomMode(false);
+            if (!options!.includes(value)) {
+              onChange(allowEmpty ? '' : (options![0] ?? ''));
+            }
+          }}
+        >
+          Pick from picklist instead
+        </button>
+      </div>
+    );
+  }
+
+  const selectValue = matchesOption ? value : '';
+
+  return (
+    <select
+      value={selectValue}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === PICKLIST_CUSTOM_SENTINEL) {
+          setCustomMode(true);
+          return;
+        }
+        onChange(v);
+      }}
+      aria-label={ariaLabel}
+      className={inputClass}
+    >
+      {(allowEmpty || selectValue === '') && (
+        <option value="">{allowEmpty ? '— None —' : '— Choose a value —'}</option>
+      )}
+      {options!.map((opt) => (
+        <option key={opt} value={opt}>{opt}</option>
+      ))}
+      <option value={PICKLIST_CUSTOM_SENTINEL}>Custom value…</option>
+    </select>
+  );
+}
 
 function ConnectModal({
   definition,
@@ -424,6 +527,7 @@ function ConnectModal({
   });
   const [oauthPending, setOauthPending] = useState(false);
   const isReconnect = !!existingConnector;
+  const isSalesforce = definition.provider === 'salesforce';
   const dispositionConfig = DISPOSITION_MAPPING_CONFIGS[definition.provider];
   const hasDispositionMapping = !!dispositionConfig;
   const [dispositionMap, setDispositionMap] = useState<Record<string, DispositionMapEntry>>(
@@ -433,6 +537,9 @@ function ConnectModal({
     () => ({ ...DEFAULT_SALESFORCE_LEAD_STATUS_MAP }),
   );
   const [leadStatusMapLoadError, setLeadStatusMapLoadError] = useState<string | null>(null);
+  const [picklists, setPicklists] = useState<{ status: string[]; callDisposition: string[] } | null>(null);
+  const [picklistsLoading, setPicklistsLoading] = useState(false);
+  const [picklistsError, setPicklistsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasDispositionMapping || !existingConnector || !dispositionConfig) return;
@@ -482,6 +589,32 @@ function ConnectModal({
       .catch(() => {});
     return () => { cancelled = true; };
   }, [hasDispositionMapping, dispositionConfig, existingConnector]);
+
+  useEffect(() => {
+    if (!isSalesforce || !existingConnector) return;
+    let cancelled = false;
+    setPicklistsLoading(true);
+    setPicklistsError(null);
+    api
+      .get<{ status: string[]; callDisposition: string[] }>(
+        `/connectors/${existingConnector.integrationId}/salesforce/picklists`,
+      )
+      .then((data) => {
+        if (cancelled) return;
+        setPicklists({
+          status: Array.isArray(data?.status) ? data.status : [],
+          callDisposition: Array.isArray(data?.callDisposition) ? data.callDisposition : [],
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPicklistsError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setPicklistsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isSalesforce, existingConnector]);
 
   const handleOAuthMessage = useCallback((event: MessageEvent) => {
     if (event.origin !== window.location.origin) return;
@@ -550,8 +683,25 @@ function ConnectModal({
       for (const [key, entry] of Object.entries(dispositionMap)) {
         const status = entry.status.trim();
         const callDisposition = entry.callDisposition.trim();
+        const label = QVO_DISPOSITION_LABELS[key] ?? key;
         if (!status) {
-          return { error: `${dispositionConfig.statusLabel} for "${QVO_DISPOSITION_LABELS[key] ?? key}" is required.` };
+          return { error: `${dispositionConfig.statusLabel} for "${label}" is required.` };
+        }
+        if (isSalesforce && picklists) {
+          if (picklists.status.length > 0 && !picklists.status.includes(status)) {
+            return {
+              error: `${dispositionConfig.statusLabel} "${status}" for "${label}" is not in your Salesforce Task Status picklist. Choose an existing value or update the picklist in Salesforce first.`,
+            };
+          }
+          if (
+            callDisposition &&
+            picklists.callDisposition.length > 0 &&
+            !picklists.callDisposition.includes(callDisposition)
+          ) {
+            return {
+              error: `${dispositionConfig.callDispositionLabel} "${callDisposition}" for "${label}" is not in your Salesforce Task CallDisposition picklist. Choose an existing value or update the picklist in Salesforce first.`,
+            };
+          }
         }
         out[key] = { status, callDisposition };
       }
@@ -697,6 +847,25 @@ function ConnectModal({
                 <div>
                   <h4 className="text-sm font-semibold text-text-primary">Disposition mapping</h4>
                   <p className="text-xs text-text-secondary mt-1">{dispositionConfig.description}</p>
+                  {isSalesforce && (
+                    existingConnector ? (
+                      picklistsLoading ? (
+                        <p className="text-[11px] text-text-secondary mt-2">Loading picklists from Salesforce…</p>
+                      ) : picklistsError ? (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                          Could not load Salesforce picklists ({picklistsError}). Falling back to free-text entry; values are not validated.
+                        </p>
+                      ) : picklists ? (
+                        <p className="text-[11px] text-text-secondary mt-2">
+                          Loaded {picklists.status.length} Status and {picklists.callDisposition.length} CallDisposition values from your Salesforce org. Save is blocked if a value is not in the picklist.
+                        </p>
+                      ) : null
+                    ) : (
+                      <p className="text-[11px] text-text-secondary mt-2">
+                        Picklist values from your Salesforce org will load after the initial connection. Until then, entries are not validated.
+                      </p>
+                    )
+                  )}
                 </div>
                 <div className="space-y-2">
                   <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-text-secondary px-1">
@@ -710,19 +879,22 @@ function ConnectModal({
                         {QVO_DISPOSITION_LABELS[key] ?? key}
                         <span className="block text-[11px] text-text-secondary font-mono">{key}</span>
                       </div>
-                      <input
-                        type="text"
+                      <PicklistField
+                        className="sm:col-span-4"
                         value={dispositionMap[key]?.status ?? ''}
-                        onChange={(e) => setDispositionField(key, 'status', e.target.value)}
+                        options={isSalesforce ? (picklists?.status ?? null) : null}
                         placeholder={dispositionConfig.defaults[key].status}
-                        className="sm:col-span-4 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        ariaLabel={`${dispositionConfig.statusLabel} for ${QVO_DISPOSITION_LABELS[key] ?? key}`}
+                        onChange={(val) => setDispositionField(key, 'status', val)}
                       />
-                      <input
-                        type="text"
+                      <PicklistField
+                        className="sm:col-span-4"
                         value={dispositionMap[key]?.callDisposition ?? ''}
-                        onChange={(e) => setDispositionField(key, 'callDisposition', e.target.value)}
+                        options={isSalesforce ? (picklists?.callDisposition ?? null) : null}
                         placeholder={dispositionConfig.defaults[key].callDisposition}
-                        className="sm:col-span-4 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        ariaLabel={`${dispositionConfig.callDispositionLabel} for ${QVO_DISPOSITION_LABELS[key] ?? key}`}
+                        onChange={(val) => setDispositionField(key, 'callDisposition', val)}
+                        allowEmpty
                       />
                     </div>
                   ))}

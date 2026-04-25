@@ -40,6 +40,139 @@ interface SalesforceTokens {
 
 type SfRecord = { id: string; object: 'Contact' | 'Lead' };
 
+const SALESFORCE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
+
+async function salesforceFetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SALESFORCE_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function ensureSalesforceAccessToken(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+): Promise<SalesforceTokens | null> {
+  const accessToken = config.credentials.access_token ?? '';
+  const refreshToken = config.credentials.refresh_token ?? '';
+  const instanceUrl = config.credentials.instance_url ?? '';
+  const expiresAtRaw = config.credentials.token_expires_at ?? '0';
+  const expiresAt = parseInt(expiresAtRaw, 10) || 0;
+
+  if (!accessToken || !instanceUrl) {
+    logger.error('Missing Salesforce credentials', { tenantId });
+    return null;
+  }
+
+  const skewMs = 60_000;
+  if (expiresAt && Date.now() < expiresAt - skewMs) {
+    return { accessToken, instanceUrl };
+  }
+
+  if (!refreshToken) {
+    return { accessToken, instanceUrl };
+  }
+
+  const clientId = process.env.SALESFORCE_CLIENT_ID ?? '';
+  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET ?? '';
+  const loginUrl = process.env.SALESFORCE_LOGIN_URL ?? 'https://login.salesforce.com';
+  if (!clientId || !clientSecret) {
+    logger.warn('Cannot refresh Salesforce token: SALESFORCE_CLIENT_ID/SECRET not set', { tenantId });
+    return { accessToken, instanceUrl };
+  }
+
+  try {
+    const res = await fetch(`${loginUrl}/services/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+      }).toString(),
+    });
+    if (!res.ok) {
+      logger.error('Salesforce token refresh failed', { tenantId, status: res.status });
+      return { accessToken, instanceUrl };
+    }
+    const data = await res.json() as {
+      access_token: string;
+      instance_url?: string;
+      issued_at?: string;
+    };
+    const newAccessToken = data.access_token;
+    const newInstanceUrl = data.instance_url ?? instanceUrl;
+    const newExpiresAt = Date.now() + 90 * 60 * 1000;
+    await upsertConnector(tenantId, {
+      connectorType: 'crm',
+      provider: 'salesforce',
+      name: 'Salesforce',
+      credentials: {
+        ...config.credentials,
+        access_token: newAccessToken,
+        instance_url: newInstanceUrl,
+        token_expires_at: String(newExpiresAt),
+      },
+      isEnabled: true,
+    });
+    return { accessToken: newAccessToken, instanceUrl: newInstanceUrl };
+  } catch (err) {
+    logger.error('Salesforce token refresh threw', { tenantId, error: String(err) });
+    return { accessToken, instanceUrl };
+  }
+}
+
+export interface SalesforceTaskPicklists {
+  status: string[];
+  callDisposition: string[];
+}
+
+export async function fetchSalesforceTaskPicklists(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+): Promise<SalesforceTaskPicklists> {
+  const tokens = await ensureSalesforceAccessToken(tenantId, config);
+  if (!tokens) {
+    throw new Error('Salesforce connector not configured: missing or invalid tokens');
+  }
+
+  const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/Task/describe`;
+  const res = await salesforceFetchWithTimeout(url, {
+    headers: {
+      Authorization: `Bearer ${tokens.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Salesforce Task describe failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const data = await res.json() as {
+    fields?: Array<{
+      name: string;
+      picklistValues?: Array<{ value: string; active?: boolean }>;
+    }>;
+  };
+
+  const fields = Array.isArray(data.fields) ? data.fields : [];
+  const pick = (name: string): string[] => {
+    const field = fields.find((f) => f.name === name);
+    if (!field || !Array.isArray(field.picklistValues)) return [];
+    return field.picklistValues
+      .filter((v) => v.active !== false && typeof v.value === 'string' && v.value.length > 0)
+      .map((v) => v.value);
+  };
+
+  return {
+    status: pick('Status'),
+    callDisposition: pick('CallDisposition'),
+  };
+}
+
 export class SalesforceConnectorAdapter implements ConnectorAdapter {
   async execute(
     tenantId: TenantId,
@@ -96,74 +229,7 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     tenantId: TenantId,
     config: ConnectorConfig,
   ): Promise<SalesforceTokens | null> {
-    const accessToken = config.credentials.access_token ?? '';
-    const refreshToken = config.credentials.refresh_token ?? '';
-    const instanceUrl = config.credentials.instance_url ?? '';
-    const expiresAtRaw = config.credentials.token_expires_at ?? '0';
-    const expiresAt = parseInt(expiresAtRaw, 10) || 0;
-
-    if (!accessToken || !instanceUrl) {
-      logger.error('Missing Salesforce credentials', { tenantId });
-      return null;
-    }
-
-    const skewMs = 60_000;
-    if (expiresAt && Date.now() < expiresAt - skewMs) {
-      return { accessToken, instanceUrl };
-    }
-
-    if (!refreshToken) {
-      return { accessToken, instanceUrl };
-    }
-
-    const clientId = process.env.SALESFORCE_CLIENT_ID ?? '';
-    const clientSecret = process.env.SALESFORCE_CLIENT_SECRET ?? '';
-    const loginUrl = process.env.SALESFORCE_LOGIN_URL ?? 'https://login.salesforce.com';
-    if (!clientId || !clientSecret) {
-      logger.warn('Cannot refresh Salesforce token: SALESFORCE_CLIENT_ID/SECRET not set', { tenantId });
-      return { accessToken, instanceUrl };
-    }
-
-    try {
-      const res = await fetch(`${loginUrl}/services/oauth2/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: clientId,
-          client_secret: clientSecret,
-          refresh_token: refreshToken,
-        }).toString(),
-      });
-      if (!res.ok) {
-        logger.error('Salesforce token refresh failed', { tenantId, status: res.status });
-        return { accessToken, instanceUrl };
-      }
-      const data = await res.json() as {
-        access_token: string;
-        instance_url?: string;
-        issued_at?: string;
-      };
-      const newAccessToken = data.access_token;
-      const newInstanceUrl = data.instance_url ?? instanceUrl;
-      const newExpiresAt = Date.now() + 90 * 60 * 1000;
-      await upsertConnector(tenantId, {
-        connectorType: 'crm',
-        provider: 'salesforce',
-        name: 'Salesforce',
-        credentials: {
-          ...config.credentials,
-          access_token: newAccessToken,
-          instance_url: newInstanceUrl,
-          token_expires_at: String(newExpiresAt),
-        },
-        isEnabled: true,
-      });
-      return { accessToken: newAccessToken, instanceUrl: newInstanceUrl };
-    } catch (err) {
-      logger.error('Salesforce token refresh threw', { tenantId, error: String(err) });
-      return { accessToken, instanceUrl };
-    }
+    return ensureSalesforceAccessToken(tenantId, config);
   }
 
   private async handleCallCompleted(

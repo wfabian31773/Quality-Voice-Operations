@@ -12,6 +12,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import { fetchSalesforceTaskPicklists } from '../../../platform/integrations/connectors/adapters/salesforce';
 
 const router = Router();
 const logger = createLogger('ADMIN_CONNECTORS');
@@ -161,6 +162,30 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
   } catch (err) {
     logger.error('Failed to read connector settings', { tenantId, integrationId, error: String(err) });
     return res.status(500).json({ error: 'Failed to read connector settings' });
+  }
+});
+
+router.get('/connectors/:integrationId/salesforce/picklists', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { integrationId } = req.params;
+  try {
+    const meta = await getConnectorById(tenantId, integrationId);
+    if (!meta) {
+      return res.status(404).json({ error: 'Connector not found' });
+    }
+    if (meta.provider !== 'salesforce') {
+      return res.status(400).json({ error: 'Picklist describe is only available for Salesforce connectors' });
+    }
+    const config = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
+    if (!config) {
+      return res.status(404).json({ error: 'Salesforce connector configuration not found' });
+    }
+    const picklists = await fetchSalesforceTaskPicklists(tenantId, config);
+    return res.json(picklists);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to fetch Salesforce Task picklists', { tenantId, integrationId, error: message });
+    return res.status(502).json({ error: message });
   }
 });
 
