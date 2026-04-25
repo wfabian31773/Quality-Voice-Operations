@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search, LayoutDashboard, Bot, PhoneCall, Megaphone, BarChart3,
   MessageSquare, CalendarClock, ClipboardList, Truck, Network, Plug,
-  BookOpen, Store, Settings2, Phone, FileText, HelpCircle, Plus, type LucideIcon,
+  BookOpen, Store, Settings2, Phone, FileText, HelpCircle, Plus, Zap, type LucideIcon,
 } from 'lucide-react';
 
 interface Command {
@@ -44,6 +44,7 @@ export default function CommandPalette({
     { id: 'scheduling', label: 'Go to Scheduling', icon: CalendarClock, group: 'Navigate', run: go('/scheduling') },
     { id: 'tickets', label: 'Go to Tickets', icon: ClipboardList, group: 'Navigate', run: go('/tickets') },
     { id: 'dispatch', label: 'Go to Dispatch', icon: Truck, group: 'Navigate', run: go('/dispatch') },
+    { id: 'autopilot', label: 'Go to Autopilot', icon: Zap, group: 'Navigate', keywords: ['ai', 'business', 'recommendations'], run: go('/autopilot') },
     { id: 'workflows', label: 'Go to Workflows', icon: Network, group: 'Navigate', run: go('/workflows') },
     { id: 'integrations', label: 'Go to Integrations', icon: Plug, group: 'Navigate', keywords: ['connectors'], run: go('/connectors') },
     { id: 'knowledge', label: 'Go to Knowledge', icon: BookOpen, group: 'Navigate', run: go('/knowledge-base') },

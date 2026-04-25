@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Bot, PhoneCall, Plug, Network,
   LogOut, Moon, Sun, Menu, BarChart3, Settings2,
   Megaphone, BookOpen, Store, ChevronDown, Boxes, Wrench,
-  MessageSquare, CalendarClock, ClipboardList, Truck, Pin,
+  MessageSquare, CalendarClock, ClipboardList, Truck, Pin, Zap,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
@@ -23,13 +23,13 @@ import HelpWidget from './HelpWidget';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import ProductTour, { getTourCompleted } from './ProductTour';
 
-interface NavItem {
+export interface NavItem {
   to: string;
   icon: typeof LayoutDashboard;
   label: string;
 }
 
-const tenantLinks: NavItem[] = [
+export const tenantLinks: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/calls', icon: PhoneCall, label: 'Conversations' },
@@ -37,21 +37,22 @@ const tenantLinks: NavItem[] = [
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
 ];
 
-const operationsLinks: NavItem[] = [
+export const operationsLinks: NavItem[] = [
+  { to: '/autopilot', icon: Zap, label: 'Autopilot' },
   { to: '/sms-inbox', icon: MessageSquare, label: 'SMS Inbox' },
   { to: '/scheduling', icon: CalendarClock, label: 'Scheduling' },
   { to: '/tickets', icon: ClipboardList, label: 'Tickets' },
   { to: '/dispatch', icon: Truck, label: 'Dispatch' },
 ];
 
-const configureLinks: NavItem[] = [
+export const configureLinks: NavItem[] = [
   { to: '/workflows', icon: Network, label: 'Workflows' },
   { to: '/connectors', icon: Plug, label: 'Integrations' },
   { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge' },
   { to: '/marketplace', icon: Store, label: 'Marketplace' },
 ];
 
-const settingsLink: NavItem = { to: '/settings', icon: Settings2, label: 'Settings' };
+export const settingsLink: NavItem = { to: '/settings', icon: Settings2, label: 'Settings' };
 
 export default function TenantLayout() {
   const { user, logout } = useAuth();

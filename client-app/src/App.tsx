@@ -43,6 +43,7 @@ import ToolHealth from './pages/ToolHealth';
 import CostOptimization from './pages/CostOptimization';
 import CallDebug from './pages/CallDebug';
 import Compliance from './pages/Compliance';
+import Autopilot from './pages/Autopilot';
 import IntegrationDiagnostics from './pages/IntegrationDiagnostics';
 import PlatformAssistant from './components/PlatformAssistant';
 import Landing from './pages/public/Landing';
@@ -195,6 +196,7 @@ export default function App() {
         <Route path="/tickets/admin" element={<RoleGuard minRole="manager"><TicketAdmin /></RoleGuard>} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route path="/dispatch" element={<Dispatch />} />
+        <Route path="/autopilot" element={<RoleGuard minRole="manager"><Autopilot /></RoleGuard>} />
         <Route path="/changelog" element={<Changelog />} />
       </Route>
 
