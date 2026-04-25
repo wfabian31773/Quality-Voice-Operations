@@ -18,6 +18,11 @@ import { PipedriveConnectorAdapter } from './adapters/pipedrive';
 import { SalesforceConnectorAdapter } from './adapters/salesforce';
 import { QuickBooksConnectorAdapter } from './adapters/quickbooks';
 import { recordIntegrationEvent } from '../../core/observability/traceLogger';
+import {
+  extractIdentityFromMeta,
+  lookupCrmCallerIdentity,
+  upsertCrmCallerIdentity,
+} from './crmCallerIdentity';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType, StandardEventType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -155,9 +160,15 @@ export class ConnectorService {
       payloadType: payload.type,
     });
 
+    const effectivePayload = await this.maybeInjectCachedCrmIdentity(tenantId, config, payload);
+
     const startTime = Date.now();
-    const result = await adapter.execute(tenantId, config, payload);
+    const result = await adapter.execute(tenantId, config, effectivePayload);
     const latencyMs = Date.now() - startTime;
+
+    if (result.success) {
+      this.maybePersistCrmIdentity(tenantId, config, effectivePayload, result).catch(() => {});
+    }
 
     const callSessionId = (payload as Record<string, unknown>).callSessionId as string | undefined;
     const toolInvocationId = (payload as Record<string, unknown>).toolInvocationId as string | undefined;
@@ -270,9 +281,14 @@ export class ConnectorService {
     }
 
     logger.info('Executing fallback connector', { tenantId, fallbackType, provider: config.provider });
+    const effectivePayload = await this.maybeInjectCachedCrmIdentity(tenantId, config, payload);
     const startTime = Date.now();
-    const result = await adapter.execute(tenantId, config, payload);
+    const result = await adapter.execute(tenantId, config, effectivePayload);
     const latencyMs = Date.now() - startTime;
+
+    if (result.success) {
+      this.maybePersistCrmIdentity(tenantId, config, effectivePayload, result).catch(() => {});
+    }
 
     const callSessionId = (payload as Record<string, unknown>).callSessionId as string | undefined;
     const toolInvocationId = (payload as Record<string, unknown>).toolInvocationId as string | undefined;
@@ -377,6 +393,71 @@ export class ConnectorService {
 
   isStandardEvent(eventType: string): boolean {
     return STANDARD_EVENT_TYPES.has(eventType);
+  }
+
+  /**
+   * For CRM dispatches, look up any cached `{ contactId, accountId, opportunityId }`
+   * for this caller and merge them into the payload so the adapter can skip
+   * phone/company lookups and Lead conversion. Explicit IDs already on the
+   * payload always win.
+   */
+  private async maybeInjectCachedCrmIdentity(
+    tenantId: TenantId,
+    config: ConnectorConfigType,
+    payload: ConnectorPayload,
+  ): Promise<ConnectorPayload> {
+    if (config.connectorType !== 'crm') return payload;
+    const callerPhone = (payload as Record<string, unknown>).callerPhone as string | undefined;
+    if (!callerPhone) return payload;
+
+    const cached = await lookupCrmCallerIdentity(tenantId, config.provider, callerPhone);
+    if (!cached) return payload;
+
+    const merged: ConnectorPayload = { ...payload };
+    const current = payload as Record<string, unknown>;
+    let injected = false;
+    if (!current.contactId && cached.contactId) {
+      (merged as Record<string, unknown>).contactId = cached.contactId;
+      injected = true;
+    }
+    if (!current.accountId && cached.accountId) {
+      (merged as Record<string, unknown>).accountId = cached.accountId;
+      injected = true;
+    }
+    if (!current.opportunityId && cached.opportunityId) {
+      (merged as Record<string, unknown>).opportunityId = cached.opportunityId;
+      injected = true;
+    }
+    if (injected) {
+      logger.info('Injected cached CRM caller identity into payload', {
+        tenantId,
+        provider: config.provider,
+        payloadType: payload.type,
+        hasContact: Boolean((merged as Record<string, unknown>).contactId),
+        hasAccount: Boolean((merged as Record<string, unknown>).accountId),
+        hasOpportunity: Boolean((merged as Record<string, unknown>).opportunityId),
+      });
+    }
+    return merged;
+  }
+
+  /**
+   * After a successful CRM dispatch, persist any IDs returned by the adapter
+   * (in `result.meta`) keyed by tenant + caller phone + provider, so the next
+   * event for this caller can re-use them.
+   */
+  private async maybePersistCrmIdentity(
+    tenantId: TenantId,
+    config: ConnectorConfigType,
+    payload: ConnectorPayload,
+    result: ConnectorResult,
+  ): Promise<void> {
+    if (config.connectorType !== 'crm') return;
+    const callerPhone = (payload as Record<string, unknown>).callerPhone as string | undefined;
+    if (!callerPhone) return;
+    const identity = extractIdentityFromMeta(result.meta);
+    if (!identity.contactId && !identity.accountId && !identity.opportunityId) return;
+    await upsertCrmCallerIdentity(tenantId, config.provider, callerPhone, identity);
   }
 }
 
