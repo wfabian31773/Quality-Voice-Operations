@@ -1,4 +1,5 @@
-import { Info, Lightbulb, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Info, Lightbulb, AlertTriangle, X } from 'lucide-react';
 import type { DocBlock } from '../data/docs';
 
 const calloutStyles = {
@@ -8,7 +9,24 @@ const calloutStyles = {
 };
 
 export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense?: boolean }) {
+  const [zoomed, setZoomed] = useState<{ src: string; alt: string; caption?: string } | null>(null);
+
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomed(null);
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [zoomed]);
+
   return (
+    <>
     <div className={dense ? 'space-y-3' : 'space-y-4'}>
       {blocks.map((block, idx) => {
         if (block.type === 'p') {
@@ -112,7 +130,18 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         if (block.type === 'image') {
           return (
             <figure key={idx} className="my-4">
-              <img src={block.src} alt={block.alt} className="rounded-xl border border-soft-steel/50 w-full" />
+              <button
+                type="button"
+                onClick={() => setZoomed({ src: block.src, alt: block.alt, caption: block.caption })}
+                className="group block w-full rounded-xl border border-soft-steel/50 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal cursor-zoom-in"
+                aria-label={`Zoom image: ${block.alt}`}
+              >
+                <img
+                  src={block.src}
+                  alt={block.alt}
+                  className="w-full transition-transform duration-200 group-hover:scale-[1.01]"
+                />
+              </button>
               {block.caption && (
                 <figcaption className="text-xs text-slate-ink/50 mt-2 text-center font-body">{block.caption}</figcaption>
               )}
@@ -134,6 +163,40 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         return null;
       })}
     </div>
+    {zoomed && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={zoomed.alt}
+        onClick={() => setZoomed(null)}
+        className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 cursor-zoom-out"
+      >
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setZoomed(null); }}
+          aria-label="Close zoomed image"
+          className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <figure
+          className="max-w-full max-h-full flex flex-col items-center gap-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <img
+            src={zoomed.src}
+            alt={zoomed.alt}
+            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+          />
+          {zoomed.caption && (
+            <figcaption className="text-xs sm:text-sm text-white/70 font-body text-center max-w-2xl">
+              {zoomed.caption}
+            </figcaption>
+          )}
+        </figure>
+      </div>
+    )}
+    </>
   );
 }
 
