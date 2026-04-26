@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -623,6 +624,7 @@ export default function PhoneNumbers() {
   const [reassigning, setReassigning] = useState<PhoneNumber | null>(null);
   const queryClient = useQueryClient();
   const { isManager } = useRole();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
     queryKey: ['phone-numbers'],
@@ -648,6 +650,7 @@ export default function PhoneNumbers() {
   });
 
   const connectedProviders = new Set(schedulingOptions.map((o) => o.provider));
+  const enabledSchedulingProviders = connectedProviders;
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.delete(`/phone-numbers/${id}`),
@@ -736,7 +739,12 @@ export default function PhoneNumbers() {
                 </tr>
               </thead>
               <tbody>
-                {numbers.map((pn) => (
+                {numbers.map((pn) => {
+                  const schedulingDrift = !!(
+                    pn.scheduling_provider &&
+                    !enabledSchedulingProviders.has(pn.scheduling_provider)
+                  );
+                  return (
                   <tr
                     key={pn.id}
                     className="border-b border-border last:border-0 hover:bg-surface-hover transition-colors"
@@ -750,14 +758,27 @@ export default function PhoneNumbers() {
                       {pn.friendly_name || '--'}
                     </td>
                     <td className="px-5 py-3">
-                      {pn.routed_agent_id ? (
-                        <span className="inline-flex items-center gap-1.5 text-text-primary text-xs">
-                          <Bot className="h-3.5 w-3.5 text-primary" />
-                          {agents.find((a) => a.id === pn.routed_agent_id)?.name || 'Unknown'}
-                        </span>
-                      ) : (
-                        <span className="text-text-muted text-xs">Not assigned</span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {pn.routed_agent_id ? (
+                          <span className="inline-flex items-center gap-1.5 text-text-primary text-xs">
+                            <Bot className="h-3.5 w-3.5 text-primary" />
+                            {agents.find((a) => a.id === pn.routed_agent_id)?.name || 'Unknown'}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted text-xs">Not assigned</span>
+                        )}
+                        {schedulingDrift && (
+                          <button
+                            type="button"
+                            onClick={() => navigate('/connectors')}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline"
+                            title={`${formatSchedulingProvider(pn.scheduling_provider!)} isn't connected — appointments booked on this number won't sync until you reconnect it.`}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {formatSchedulingProvider(pn.scheduling_provider!)} not connected
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       {(() => {
@@ -825,7 +846,8 @@ export default function PhoneNumbers() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

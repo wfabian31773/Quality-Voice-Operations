@@ -5,11 +5,13 @@ const {
   getPreferredMock,
   recordAppointmentMock,
   getRecordedAppointmentMock,
+  writeAuditMock,
 } = vi.hoisted(() => ({
   listEnabledMock: vi.fn(),
   getPreferredMock: vi.fn(),
   recordAppointmentMock: vi.fn(),
   getRecordedAppointmentMock: vi.fn(),
+  writeAuditMock: vi.fn(),
 }));
 
 vi.mock('../../platform/integrations/connectors/db', () => ({
@@ -19,6 +21,10 @@ vi.mock('../../platform/integrations/connectors/db', () => ({
   getAppointmentSchedulingProvider: getRecordedAppointmentMock,
   getConnectorConfig: vi.fn(),
   updateConnectorSyncStatus: vi.fn(),
+}));
+
+vi.mock('../../platform/audit/AuditService', () => ({
+  writeAuditLog: writeAuditMock,
 }));
 
 vi.mock('../../platform/integrations/connectors/SyncErrorAlerter', () => ({
@@ -71,6 +77,8 @@ describe('ConnectorService.dispatchEvent scheduling provider routing', () => {
     recordAppointmentMock.mockResolvedValue(undefined);
     getRecordedAppointmentMock.mockReset();
     getRecordedAppointmentMock.mockResolvedValue(null);
+    writeAuditMock.mockReset();
+    writeAuditMock.mockResolvedValue(undefined);
     executeSpy = vi
       .spyOn(connectorService as unknown as { executeWithConfig: (...args: unknown[]) => Promise<unknown> }, 'executeWithConfig')
       .mockImplementation(async () => ({ success: true }));
@@ -148,6 +156,66 @@ describe('ConnectorService.dispatchEvent scheduling provider routing', () => {
     expect(getPreferredMock).not.toHaveBeenCalled();
     expect(executeSpy).toHaveBeenCalledTimes(2);
     expect(result.dispatched).toBe(2);
+  });
+
+  it('writes an audit log entry when the chosen scheduling provider has no enabled connector', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig]);
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.booked',
+      {
+        type: 'appointment.booked',
+        agentId: `agent-drift-${Date.now()}`,
+        phoneNumberId: `phone-drift-${Date.now()}`,
+      } as never,
+      { schedulingProvider: 'outlook-calendar' },
+    );
+
+    expect(executeSpy).not.toHaveBeenCalled();
+    expect(result.dispatched).toBe(0);
+    expect(writeAuditMock).toHaveBeenCalledTimes(1);
+    expect(writeAuditMock.mock.calls[0]?.[0]).toMatchObject({
+      action: 'connector.scheduling_provider_drift',
+      severity: 'warning',
+      changes: expect.objectContaining({
+        schedulingProvider: 'outlook-calendar',
+        reason: 'no_enabled_scheduling_connector_matches',
+      }),
+    });
+  });
+
+  it('dedupes the drift audit log entry within the TTL window', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig]);
+    const agentId = `agent-dedupe-${Date.now()}`;
+
+    await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.booked',
+      { type: 'appointment.booked', agentId } as never,
+      { schedulingProvider: 'outlook-calendar' },
+    );
+    await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.booked',
+      { type: 'appointment.booked', agentId } as never,
+      { schedulingProvider: 'outlook-calendar' },
+    );
+
+    expect(writeAuditMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write a drift audit when an enabled scheduling provider matches', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+
+    await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.booked',
+      { type: 'appointment.booked' } as never,
+      { schedulingProvider: 'google-calendar' },
+    );
+
+    expect(writeAuditMock).not.toHaveBeenCalled();
   });
 
   it('does not affect non-scheduling connectors when scheduling provider is set', async () => {

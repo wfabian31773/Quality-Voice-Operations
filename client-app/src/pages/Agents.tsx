@@ -425,12 +425,14 @@ export default function Agents() {
 
   const connectedProviders = new Set(schedulingOptions.map((o) => o.provider));
 
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.delete(`/agents/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
   });
 
   const agents = data?.agents ?? [];
+  const enabledSchedulingProviders = connectedProviders;
 
   return (
     <div className="space-y-6">
@@ -465,6 +467,10 @@ export default function Agents() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent) => {
             const isFederated = agent.execution_mode === 'federated';
+            const schedulingDrift = !!(
+              agent.scheduling_provider &&
+              !enabledSchedulingProviders.has(agent.scheduling_provider)
+            );
             return (
             <div key={agent.id} className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
@@ -520,6 +526,20 @@ export default function Agents() {
                   );
                 })()}
               </div>
+              {schedulingDrift && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/connectors')}
+                  className="w-full text-left flex items-start gap-2 text-xs mb-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/25 transition"
+                  title="Open Integrations to reconnect this calendar"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <span className="text-amber-800 dark:text-amber-200">
+                    {formatSchedulingProvider(agent.scheduling_provider!)} isn't connected.
+                    Appointments booked by this agent won't sync until you reconnect it.
+                  </span>
+                </button>
+              )}
               {!isFederated && agent.system_prompt && (
                 <p className="text-xs text-text-secondary line-clamp-2 mb-4">{agent.system_prompt}</p>
               )}

@@ -2344,6 +2344,28 @@ function OutageAlertHistory() {
   );
 }
 
+interface SchedulingDriftAgent {
+  id: string;
+  name: string;
+  scheduling_provider: string | null;
+}
+
+interface SchedulingDriftPhone {
+  id: string;
+  phone_number: string;
+  friendly_name: string | null;
+  scheduling_provider: string | null;
+}
+
+const SCHEDULING_PROVIDER_LABELS: Record<string, string> = {
+  'google-calendar': 'Google Calendar',
+  'outlook-calendar': 'Outlook Calendar',
+};
+
+function formatSchedulingProvider(provider: string): string {
+  return SCHEDULING_PROVIDER_LABELS[provider] ?? provider;
+}
+
 export default function Connectors() {
   const [connectTarget, setConnectTarget] = useState<ConnectorDefinition | null>(null);
   const [search, setSearch] = useState('');
@@ -2363,6 +2385,16 @@ export default function Connectors() {
   });
 
   const oauthAvailability = oauthAvailabilityData?.providers;
+
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents', 'scheduling-drift'],
+    queryFn: () => api.get<{ agents: SchedulingDriftAgent[] }>('/agents?limit=100'),
+  });
+
+  const { data: phoneNumbersData } = useQuery({
+    queryKey: ['phone-numbers', 'scheduling-drift'],
+    queryFn: () => api.get<{ phoneNumbers: SchedulingDriftPhone[] }>('/phone-numbers?limit=100'),
+  });
 
   useEffect(() => {
     if (isLoading) return;
@@ -2406,6 +2438,30 @@ export default function Connectors() {
         (def) => findConnector(def)?.lastSyncStatus === 'needs_reconnect',
       ),
     [connectedDefs, connectors],
+  );
+
+  const enabledSchedulingProviders = useMemo(
+    () =>
+      new Set(
+        connectors.filter((c) => c.connectorType === 'scheduling' && c.isEnabled).map((c) => c.provider),
+      ),
+    [connectors],
+  );
+
+  const schedulingDriftAgents = useMemo(
+    () =>
+      (agentsData?.agents ?? []).filter(
+        (a) => !!a.scheduling_provider && !enabledSchedulingProviders.has(a.scheduling_provider),
+      ),
+    [agentsData, enabledSchedulingProviders],
+  );
+
+  const schedulingDriftPhones = useMemo(
+    () =>
+      (phoneNumbersData?.phoneNumbers ?? []).filter(
+        (p) => !!p.scheduling_provider && !enabledSchedulingProviders.has(p.scheduling_provider),
+      ),
+    [phoneNumbersData, enabledSchedulingProviders],
   );
 
   const scrollToConnector = (integrationId: string) => {
@@ -2452,6 +2508,61 @@ export default function Connectors() {
           Connect your tools in one click. Events flow automatically to all active integrations.
         </p>
       </div>
+
+      {(schedulingDriftAgents.length > 0 || schedulingDriftPhones.length > 0) && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Some agents and phone numbers point to a calendar that isn't connected
+              </p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-1">
+                Appointments routed through them won't sync until you reconnect the calendar or pick a different one in the agent / phone-number settings.
+              </p>
+              {schedulingDriftAgents.length > 0 && (
+                <div className="mt-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Agents ({schedulingDriftAgents.length})
+                  </p>
+                  <ul className="mt-1 text-xs text-amber-900 dark:text-amber-100 space-y-0.5">
+                    {schedulingDriftAgents.map((a) => (
+                      <li key={a.id}>
+                        <span className="font-medium">{a.name}</span>{' '}
+                        <span className="text-amber-800/80 dark:text-amber-200/80">
+                          → {formatSchedulingProvider(a.scheduling_provider!)} (not connected)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {schedulingDriftPhones.length > 0 && (
+                <div className="mt-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Phone numbers ({schedulingDriftPhones.length})
+                  </p>
+                  <ul className="mt-1 text-xs text-amber-900 dark:text-amber-100 space-y-0.5">
+                    {schedulingDriftPhones.map((p) => (
+                      <li key={p.id}>
+                        <span className="font-medium">{p.friendly_name || p.phone_number}</span>{' '}
+                        <span className="text-amber-800/80 dark:text-amber-200/80">
+                          → {formatSchedulingProvider(p.scheduling_provider!)} (not connected)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {reconnectNeededDefs.length > 0 && (
         <div

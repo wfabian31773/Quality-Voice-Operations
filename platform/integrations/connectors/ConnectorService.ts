@@ -1,5 +1,6 @@
 import { createLogger } from '../../core/logger';
 import { withPrivilegedClient } from '../../db';
+import { writeAuditLog } from '../../audit/AuditService';
 import {
   getConnectorConfig,
   getPreferredSchedulingProvider,
@@ -97,6 +98,22 @@ function resolveAdapter(connectorType: ConnectorType, provider?: string): Connec
     if (keyed) return keyed;
   }
   return ADAPTER_REGISTRY[connectorType];
+}
+
+const SCHEDULING_DRIFT_AUDIT_TTL_MS = 60 * 60 * 1000;
+const schedulingDriftAuditCache = new Map<string, number>();
+
+function shouldAuditSchedulingDrift(key: string): boolean {
+  const now = Date.now();
+  const last = schedulingDriftAuditCache.get(key);
+  if (last && now - last < SCHEDULING_DRIFT_AUDIT_TTL_MS) return false;
+  schedulingDriftAuditCache.set(key, now);
+  if (schedulingDriftAuditCache.size > 1024) {
+    for (const [k, ts] of schedulingDriftAuditCache) {
+      if (now - ts >= SCHEDULING_DRIFT_AUDIT_TTL_MS) schedulingDriftAuditCache.delete(k);
+    }
+  }
+  return true;
 }
 
 const STANDARD_EVENT_TYPES = new Set<string>([
@@ -497,6 +514,7 @@ export class ConnectorService {
 
     const configs = await listEnabledConnectorConfigs(tenantId, targetTypes);
     const dispatched = new Set<string>();
+    let schedulingProviderMatched = false;
 
     for (const config of configs) {
       // Honour the per-agent / per-phone-number scheduling provider choice so
@@ -504,6 +522,9 @@ export class ConnectorService {
       // fanning out to every enabled scheduling integration.
       if (config.connectorType === 'scheduling' && schedulingProvider && config.provider !== schedulingProvider) {
         continue;
+      }
+      if (config.connectorType === 'scheduling' && schedulingProvider && config.provider === schedulingProvider) {
+        schedulingProviderMatched = true;
       }
       const key = `${config.connectorType}:${config.provider}`;
       if (dispatched.has(key)) continue;
@@ -571,6 +592,53 @@ export class ConnectorService {
       dispatched: results.length,
       successful: results.filter((r) => r.success).length,
     });
+
+    if (
+      schedulingProvider &&
+      targetTypes.includes('scheduling') &&
+      !schedulingProviderMatched
+    ) {
+      const payloadObj = payload as Record<string, unknown>;
+      const agentId = typeof payloadObj.agentId === 'string' ? (payloadObj.agentId as string) : null;
+      const phoneNumberId = typeof payloadObj.phoneNumberId === 'string'
+        ? (payloadObj.phoneNumberId as string)
+        : null;
+      const refKey = phoneNumberId
+        ? `phone:${phoneNumberId}`
+        : agentId
+          ? `agent:${agentId}`
+          : 'tenant';
+      const dedupeKey = `${tenantId}:${refKey}:${schedulingProvider}`;
+      logger.warn('Scheduling provider drift: chosen calendar is not connected', {
+        tenantId,
+        eventType,
+        schedulingProvider,
+        agentId,
+        phoneNumberId,
+      });
+      if (shouldAuditSchedulingDrift(dedupeKey)) {
+        try {
+          await writeAuditLog({
+            tenantId,
+            actorUserId: 'system',
+            actorRole: 'system',
+            action: 'connector.scheduling_provider_drift',
+            resourceType: phoneNumberId ? 'phone_number' : agentId ? 'agent' : 'tenant',
+            resourceId: phoneNumberId ?? agentId ?? undefined,
+            severity: 'warning',
+            changes: {
+              eventType,
+              schedulingProvider,
+              agentId,
+              phoneNumberId,
+              reason: 'no_enabled_scheduling_connector_matches',
+            },
+          });
+        } catch {
+          // best-effort; writeAuditLog already logs
+        }
+      }
+    }
 
     return { dispatched: results.length, results };
   }
