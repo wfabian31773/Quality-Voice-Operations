@@ -129,6 +129,27 @@ async function recordLeadEvent(
   }
 }
 
+/**
+ * Returns the distinct, non-empty authors recorded against marketing lead
+ * events, sorted alphabetically. Powers the "Acted on by" dropdown in the
+ * Sales Inbox so reps can pick from the list of teammates who have actually
+ * touched a lead. Excludes auto-generated rows (e.g. the inbound-email
+ * "created" events whose author is the lead's own email).
+ */
+export async function listLeadEventAuthors(): Promise<string[]> {
+  await ensureTable();
+  const pool = getPlatformPool();
+  const result = await pool.query<{ author: string }>(
+    `SELECT DISTINCT author
+       FROM marketing_lead_events
+      WHERE author IS NOT NULL
+        AND TRIM(author) <> ''
+        AND event_type <> 'created'
+      ORDER BY author ASC`,
+  );
+  return result.rows.map((r) => r.author);
+}
+
 export async function listLeadEvents(leadId: number): Promise<LeadEvent[]> {
   await ensureTable();
   const pool = getPlatformPool();
@@ -159,6 +180,17 @@ export interface LeadListFilters {
   status?: LeadStatus | 'all';
   bookingStatus?: BookingStatusFilter;
   q?: string;
+  /**
+   * Filter to leads that have at least one event in `marketing_lead_events`
+   * whose `author` matches (case-insensitive substring).  Allows reps to
+   * narrow the inbox to "leads I touched" or "leads Alice touched".
+   */
+  actedOnBy?: string;
+  /**
+   * Filter to leads with no events recorded in the last N days. Useful for
+   * surfacing stale leads that need a follow-up.
+   */
+  inactiveForDays?: number;
   limit?: number;
   offset?: number;
 }
@@ -220,6 +252,37 @@ function buildLeadWhereClause(filters: LeadListFilters): { where: string; values
     values.push(term);
     const idx = values.length;
     conditions.push(`(LOWER(email) LIKE LOWER($${idx}) OR LOWER(COALESCE(name,'')) LIKE LOWER($${idx}) OR LOWER(COALESCE(company,'')) LIKE LOWER($${idx}))`);
+  }
+  if (filters.actedOnBy && filters.actedOnBy.trim()) {
+    const term = `%${filters.actedOnBy.trim()}%`;
+    values.push(term);
+    const idx = values.length;
+    conditions.push(
+      `EXISTS (
+        SELECT 1 FROM marketing_lead_events e
+        WHERE e.lead_id = marketing_leads.id
+          AND e.author IS NOT NULL
+          AND LOWER(e.author) LIKE LOWER($${idx})
+      )`,
+    );
+  }
+  if (
+    typeof filters.inactiveForDays === 'number' &&
+    Number.isFinite(filters.inactiveForDays) &&
+    filters.inactiveForDays > 0
+  ) {
+    values.push(filters.inactiveForDays);
+    const idx = values.length;
+    // Lead is "inactive" when *no* event row exists in the last N days. Leads
+    // with no events at all (e.g. legacy rows from before event tracking) also
+    // qualify, which is the desired behaviour.
+    conditions.push(
+      `NOT EXISTS (
+        SELECT 1 FROM marketing_lead_events e
+        WHERE e.lead_id = marketing_leads.id
+          AND e.created_at > NOW() - make_interval(days => $${idx}::int)
+      )`,
+    );
   }
 
   return {
@@ -317,7 +380,10 @@ export async function listLeads(filters: LeadListFilters = {}): Promise<LeadList
   };
 }
 
-export type LeadExportFilters = Pick<LeadListFilters, 'source' | 'status' | 'bookingStatus' | 'q'>;
+export type LeadExportFilters = Pick<
+  LeadListFilters,
+  'source' | 'status' | 'bookingStatus' | 'q' | 'actedOnBy' | 'inactiveForDays'
+>;
 
 export async function* iterateLeadsForExport(
   filters: LeadExportFilters = {},

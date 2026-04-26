@@ -175,6 +175,8 @@ export default function AdminSalesInbox() {
   const [booking, setBooking] = useState<BookingStatusFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
+  const [actedOnBy, setActedOnBy] = useState('');
+  const [inactiveDays, setInactiveDays] = useState('');
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
@@ -194,7 +196,22 @@ export default function AdminSalesInbox() {
     if (Number.isFinite(id) && id > 0) setExpandedId(id);
   }, []);
 
-  const queryKey = ['marketing-leads', { source, booking, status, search, page }];
+  // List of authors that have ever touched a lead — powers the "Acted on by"
+  // dropdown so reps can quickly pick a teammate without remembering their
+  // exact email. The endpoint is cheap (DISTINCT scan over a small table) so
+  // we just refresh on a long interval.
+  const { data: authorsData } = useQuery<{ authors: string[] }>({
+    queryKey: ['marketing-lead-authors'],
+    queryFn: () => api.get<{ authors: string[] }>('/platform/marketing-lead-authors'),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+  const knownAuthors = authorsData?.authors ?? [];
+
+  const queryKey = [
+    'marketing-leads',
+    { source, booking, status, search, actedOnBy, inactiveDays, page },
+  ];
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<LeadListResponse>({
     queryKey,
     queryFn: () => {
@@ -203,6 +220,11 @@ export default function AdminSalesInbox() {
       if (booking !== 'all') params.set('booking', booking);
       if (status !== 'all') params.set('status', status);
       if (search.trim()) params.set('q', search.trim());
+      if (actedOnBy.trim()) params.set('actedOnBy', actedOnBy.trim());
+      if (inactiveDays.trim()) {
+        const n = parseInt(inactiveDays.trim(), 10);
+        if (Number.isFinite(n) && n > 0) params.set('inactiveDays', String(n));
+      }
       params.set('page', String(page));
       params.set('limit', String(limit));
       return api.get<LeadListResponse>(`/platform/marketing-leads?${params.toString()}`);
@@ -244,6 +266,11 @@ export default function AdminSalesInbox() {
       if (booking !== 'all') params.set('booking', booking);
       if (status !== 'all') params.set('status', status);
       if (search.trim()) params.set('q', search.trim());
+      if (actedOnBy.trim()) params.set('actedOnBy', actedOnBy.trim());
+      if (inactiveDays.trim()) {
+        const n = parseInt(inactiveDays.trim(), 10);
+        if (Number.isFinite(n) && n > 0) params.set('inactiveDays', String(n));
+      }
 
       const token = getToken();
       const headers: Record<string, string> = {};
@@ -352,7 +379,7 @@ export default function AdminSalesInbox() {
           <Filter className="h-4 w-4" />
           <span className="font-semibold">Filters</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <FilterGroup
             label="Source"
             value={source}
@@ -387,10 +414,70 @@ export default function AdminSalesInbox() {
             ]}
           />
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Search</label>
+            <label
+              htmlFor="lead-acted-on-by"
+              className="block text-xs font-medium text-slate-400 mb-1"
+              title="Show leads with at least one triage action by this teammate"
+            >
+              Acted on by
+            </label>
+            <div className="relative">
+              <UserCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <input
+                id="lead-acted-on-by"
+                type="search"
+                list="lead-acted-on-by-options"
+                value={actedOnBy}
+                onChange={(e) => { setActedOnBy(e.target.value); setPage(1); }}
+                placeholder="Anyone"
+                className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <datalist id="lead-acted-on-by-options">
+                {knownAuthors.map((a) => (
+                  <option key={a} value={a} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="lead-inactive-days"
+              className="block text-xs font-medium text-slate-400 mb-1"
+              title="Highlight leads with no events recorded in the last N days"
+            >
+              Inactive for (days)
+            </label>
+            <div className="relative">
+              <CalendarClock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <input
+                id="lead-inactive-days"
+                type="number"
+                min={1}
+                step={1}
+                value={inactiveDays}
+                onChange={(e) => {
+                  // Strip negatives / decimals so we always pass a positive
+                  // integer to the API (or an empty string to disable).
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setInactiveDays('');
+                  } else {
+                    const n = parseInt(raw, 10);
+                    setInactiveDays(Number.isFinite(n) && n > 0 ? String(n) : '');
+                  }
+                  setPage(1);
+                }}
+                placeholder="e.g. 7"
+                className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="lead-search" className="block text-xs font-medium text-slate-400 mb-1">Search</label>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
+                id="lead-search"
                 type="search"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}

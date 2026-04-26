@@ -17,6 +17,7 @@ import {
   iterateLeadsForExport,
   listLeads,
   listLeadEvents,
+  listLeadEventAuthors,
   updateLeadStatus,
   sendAlertMessage,
   type BookingStatusFilter,
@@ -779,11 +780,37 @@ const CSV_COLUMNS = [
   'created_at',
 ] as const;
 
-router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, async (req, res) => {
-  const sourceParam = String(req.query.source ?? 'all');
-  const bookingParam = String(req.query.booking ?? 'all');
-  const statusParam = String(req.query.status ?? 'all');
-  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+/**
+ * Parse the shared subset of marketing-lead filter query params used by the
+ * Sales Inbox list, CSV export, and (future) other read endpoints. Unknown /
+ * malformed values are coerced to safe defaults rather than rejected so the
+ * UI can remain a thin pass-through over the query string.
+ */
+export function parseLeadFilters(query: Record<string, unknown>): {
+  source: LeadSource | 'all';
+  booking: BookingStatusFilter;
+  status: LeadStatus | 'all';
+  q: string | undefined;
+  actedOnBy: string | undefined;
+  inactiveForDays: number | undefined;
+} {
+  const sourceParam = String(query.source ?? 'all');
+  const bookingParam = String(query.booking ?? 'all');
+  const statusParam = String(query.status ?? 'all');
+  const q = typeof query.q === 'string' && query.q.trim() ? query.q.trim() : undefined;
+
+  const actedOnByRaw = typeof query.actedOnBy === 'string' ? query.actedOnBy.trim() : '';
+  const actedOnBy = actedOnByRaw ? actedOnByRaw : undefined;
+
+  let inactiveForDays: number | undefined;
+  const inactiveRaw = query.inactiveDays;
+  if (inactiveRaw !== undefined && inactiveRaw !== null && String(inactiveRaw).trim() !== '') {
+    const parsed = parseInt(String(inactiveRaw), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      // Cap at ~10 years to keep `make_interval` happy and bound the query.
+      inactiveForDays = Math.min(parsed, 3650);
+    }
+  }
 
   const source = (VALID_LEAD_SOURCES as readonly string[]).includes(sourceParam)
     ? (sourceParam as LeadSource | 'all')
@@ -794,6 +821,14 @@ router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, a
   const status = (VALID_LEAD_STATUSES as readonly string[]).includes(statusParam)
     ? (statusParam as LeadStatus | 'all')
     : 'all';
+
+  return { source, booking, status, q, actedOnBy, inactiveForDays };
+}
+
+router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { source, booking, status, q, actedOnBy, inactiveForDays } = parseLeadFilters(
+    req.query as Record<string, unknown>,
+  );
 
   const stamp = new Date().toISOString().slice(0, 10);
   const filename = `sales-inbox-${stamp}.csv`;
@@ -807,7 +842,14 @@ router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, a
   let exported = 0;
   try {
     res.write(CSV_COLUMNS.join(',') + '\r\n');
-    for await (const lead of iterateLeadsForExport({ source, status, bookingStatus: booking, q })) {
+    for await (const lead of iterateLeadsForExport({
+      source,
+      status,
+      bookingStatus: booking,
+      q,
+      actedOnBy,
+      inactiveForDays,
+    })) {
       const latest = getLatestBooking(lead);
       const row = [
         lead.id,
@@ -830,7 +872,14 @@ router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, a
     res.end();
     logger.info('Marketing leads CSV exported', {
       adminUserId: req.user?.userId,
-      filters: { source, booking, status, q: q ?? null },
+      filters: {
+        source,
+        booking,
+        status,
+        q: q ?? null,
+        actedOnBy: actedOnBy ?? null,
+        inactiveForDays: inactiveForDays ?? null,
+      },
       rows: exported,
     });
   } catch (err) {
@@ -851,23 +900,21 @@ router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async
   const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
   const offset = (page - 1) * limit;
 
-  const sourceParam = String(req.query.source ?? 'all');
-  const bookingParam = String(req.query.booking ?? 'all');
-  const statusParam = String(req.query.status ?? 'all');
-  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
-
-  const source = (VALID_LEAD_SOURCES as readonly string[]).includes(sourceParam)
-    ? (sourceParam as LeadSource | 'all')
-    : 'all';
-  const booking = (VALID_BOOKING_STATUSES as readonly string[]).includes(bookingParam)
-    ? (bookingParam as BookingStatusFilter)
-    : 'all';
-  const status = (VALID_LEAD_STATUSES as readonly string[]).includes(statusParam)
-    ? (statusParam as LeadStatus | 'all')
-    : 'all';
+  const { source, booking, status, q, actedOnBy, inactiveForDays } = parseLeadFilters(
+    req.query as Record<string, unknown>,
+  );
 
   try {
-    const result = await listLeads({ source, status, bookingStatus: booking, q, limit, offset });
+    const result = await listLeads({
+      source,
+      status,
+      bookingStatus: booking,
+      q,
+      actedOnBy,
+      inactiveForDays,
+      limit,
+      offset,
+    });
     return res.json({
       leads: result.leads,
       total: result.total,
@@ -881,6 +928,21 @@ router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async
     return res.status(500).json({ error: 'Failed to list marketing leads' });
   }
 });
+
+router.get(
+  '/platform/marketing-lead-authors',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const authors = await listLeadEventAuthors();
+      return res.json({ authors });
+    } catch (err) {
+      logger.error('Failed to list marketing lead authors', { error: String(err) });
+      return res.status(500).json({ error: 'Failed to list marketing lead authors' });
+    }
+  },
+);
 
 router.get('/platform/marketing-leads/:id/events', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
