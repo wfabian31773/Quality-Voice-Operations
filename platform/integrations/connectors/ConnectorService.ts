@@ -252,6 +252,7 @@ export class ConnectorService {
               connectorType: config.connectorType,
               provider: u.provider,
               errorMessage,
+              firstFailedAt: u.firstFailedAt,
             }).catch((err) => {
               logger.warn('notifyConnectorSyncError failed', {
                 tenantId,

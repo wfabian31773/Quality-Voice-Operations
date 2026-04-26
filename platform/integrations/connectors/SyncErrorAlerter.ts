@@ -51,10 +51,17 @@ interface AlertParams {
   connectorType: ConnectorType;
   provider: string;
   errorMessage: string | null;
+  /**
+   * ISO timestamp of the first consecutive sync failure for this integration,
+   * if known. Used to enrich the persisted alert metadata so the tenant
+   * portal's outage history can show how long the integration had been down
+   * when the email alert went out.
+   */
+  firstFailedAt?: string | null;
 }
 
 export async function notifyConnectorSyncError(params: AlertParams): Promise<void> {
-  const { tenantId, integrationId, connectorType, provider } = params;
+  const { tenantId, integrationId, connectorType, provider, firstFailedAt } = params;
 
   if (!isRevenueCriticalProvider(provider)) return;
 
@@ -106,12 +113,68 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
   const title = `${providerLabel} integration is failing`;
   const message = `Latest sync to ${providerLabel} failed: ${errorMessage.slice(0, 200)}. Open Connectors to reconnect.`;
 
+  // Compute outage minutes from firstFailedAt (if known) so the persisted
+  // alert metadata can power the tenant portal's outage history view.
+  let outageMinutes: number | null = null;
+  if (firstFailedAt) {
+    const failedAtMs = Date.parse(firstFailedAt);
+    if (Number.isFinite(failedAtMs)) {
+      outageMinutes = Math.max(0, Math.round((Date.now() - failedAtMs) / 60000));
+    }
+  }
+
+  // Look up tenant + admin emails BEFORE the in-app fan-out so the recorded
+  // metadata can carry the actual recipient count. Falls back to an empty
+  // recipient list on DB errors so the in-app row still gets written.
+  let tenantName: string | undefined;
+  let allAdminEmails: string[] = [];
+  try {
+    const { rows: tenantRows } = await pool.query(
+      `SELECT name FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    if (tenantRows.length > 0) {
+      tenantName = (tenantRows[0].name as string | null) ?? undefined;
+    }
+
+    const { rows: userRows } = await pool.query(
+      `SELECT email FROM users
+       WHERE tenant_id = $1
+         AND role IN ('admin', 'owner')
+         AND email IS NOT NULL
+         AND COALESCE(is_active, TRUE) = TRUE
+       LIMIT 5`,
+      [tenantId],
+    );
+    allAdminEmails = userRows
+      .map((r) => (r.email as string | null) ?? '')
+      .filter((e): e is string => Boolean(e));
+  } catch (err) {
+    logger.warn('Failed to look up tenant admins for sync alert email', {
+      tenantId,
+      error: String(err),
+    });
+  }
+
+  let recipients: string[] = [];
+  if (allAdminEmails.length > 0) {
+    recipients = await filterEmailRecipientsByPreference(
+      tenantId,
+      allAdminEmails,
+      'integration',
+    );
+  }
+
   const inAppMetadata = {
     link: reconnectPath,
     integrationId,
     connectorType,
     provider,
     errorMessage: errorMessage.slice(0, 500),
+    firstFailedAt: firstFailedAt ?? null,
+    outageMinutes,
+    recipientCount: recipients.length,
+    emailRecipientCount: recipients.length,
   };
 
   try {
@@ -131,37 +194,7 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     });
   }
 
-  let tenantName: string | undefined;
-  let recipients: string[] = [];
-  try {
-    const { rows: tenantRows } = await pool.query(
-      `SELECT name FROM tenants WHERE id = $1`,
-      [tenantId],
-    );
-    if (tenantRows.length > 0) {
-      tenantName = (tenantRows[0].name as string | null) ?? undefined;
-    }
-
-    const { rows: userRows } = await pool.query(
-      `SELECT email FROM users
-       WHERE tenant_id = $1
-         AND role IN ('admin', 'owner')
-         AND email IS NOT NULL
-         AND COALESCE(is_active, TRUE) = TRUE
-       LIMIT 5`,
-      [tenantId],
-    );
-    recipients = userRows
-      .map((r) => (r.email as string | null) ?? '')
-      .filter((e): e is string => Boolean(e));
-  } catch (err) {
-    logger.warn('Failed to look up tenant admins for sync alert email', {
-      tenantId,
-      error: String(err),
-    });
-  }
-
-  if (recipients.length === 0) {
+  if (allAdminEmails.length === 0) {
     logger.info('No tenant admins found to email about connector sync failure', {
       tenantId,
       integrationId,
@@ -169,7 +202,6 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     });
     return;
   }
-
   // When the tenant has digest mode enabled, skip the per-event email and
   // skip stamping auth_alert_sent_at so the scheduler can pick this failure
   // up and roll it into the next 24h digest. The in-app fan-out above has
@@ -184,14 +216,12 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     return;
   }
 
-  const beforeFilter = recipients.length;
-  recipients = await filterEmailRecipientsByPreference(tenantId, recipients, 'integration');
   if (recipients.length === 0) {
     logger.info('All admin recipients opted out of integration email notifications', {
       tenantId,
       integrationId,
       provider,
-      removed: beforeFilter,
+      removed: allAdminEmails.length,
     });
     return;
   }

@@ -14,6 +14,9 @@ import {
   Plug,
   Settings,
   RefreshCw,
+  Mail,
+  MessageSquare,
+  ShieldAlert,
 } from 'lucide-react';
 import { useRole } from '../lib/useRole';
 import BrandLogo from '../components/BrandLogo';
@@ -1981,6 +1984,276 @@ function AvailableCard({
 
 const SUGGESTED_FIRST = ['hubspot', 'google-calendar', 'slack'];
 
+interface OutageAlert {
+  id: string;
+  integrationId: string;
+  integrationName: string | null;
+  provider: string | null;
+  connectorType: string | null;
+  type: string;
+  channel: 'email' | 'sms';
+  title: string | null;
+  message: string | null;
+  createdAt: string;
+  recipientCount: number | null;
+  inAppRecipientCount: number;
+  outageMinutes: number | null;
+  firstFailedAt: string | null;
+  errorMessage: string | null;
+  smsAttempted: number | null;
+  smsSucceeded: number | null;
+  twilioConfigured: boolean | null;
+}
+
+function formatOutageMinutes(minutes: number | null): string | null {
+  if (minutes === null || !Number.isFinite(minutes) || minutes < 0) return null;
+  if (minutes < 1) return '<1 min';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours < 24) {
+    return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const hrLeft = hours % 24;
+  return hrLeft ? `${days}d ${hrLeft}h` : `${days}d`;
+}
+
+function formatExactTimestamp(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+function providerLabelFromAlert(alert: OutageAlert): string {
+  if (alert.integrationName) return alert.integrationName;
+  if (alert.provider) {
+    const def = CONNECTOR_DEFINITIONS.find((d) => d.provider === alert.provider);
+    if (def) return def.name;
+    return alert.provider.charAt(0).toUpperCase() + alert.provider.slice(1);
+  }
+  return 'Integration';
+}
+
+function OutageAlertHistory() {
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
+    queryKey: ['connector-outage-alerts', page],
+    queryFn: () =>
+      api.get<{ alerts: OutageAlert[]; total: number; limit: number; offset: number }>(
+        `/connectors/alerts?page=${page}&limit=${PAGE_SIZE}`,
+      ),
+    placeholderData: (prev) => prev,
+  });
+
+  const alerts = data?.alerts ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+            <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            Outage alert history
+          </h2>
+          <p className="text-xs text-text-secondary mt-1 max-w-xl">
+            Recent connector failure escalations sent to your admins. SMS escalations only fire after a revenue-critical integration has been failing for over an hour.
+          </p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-border text-text-secondary hover:bg-surface-hover transition disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-text-secondary py-6 text-center">Loading alert history…</div>
+      ) : isError ? (
+        <div className="text-sm text-red-600 dark:text-red-400 py-6 text-center">
+          Couldn't load alert history. Try refreshing.
+        </div>
+      ) : alerts.length === 0 ? (
+        <div className="text-sm text-text-secondary py-8 text-center border border-dashed border-border rounded-lg">
+          No outage alerts have been sent. We'll log every email or SMS escalation here so you can audit who got paged.
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-text-secondary border-b border-border">
+                  <th className="font-medium py-2 px-2">When</th>
+                  <th className="font-medium py-2 px-2">Integration</th>
+                  <th className="font-medium py-2 px-2">Channel</th>
+                  <th className="font-medium py-2 px-2">Outage</th>
+                  <th className="font-medium py-2 px-2">Recipients</th>
+                  <th className="font-medium py-2 px-2">Delivery</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((alert) => {
+                  const isSms = alert.channel === 'sms';
+                  const provider = alert.provider ?? '';
+                  const def = CONNECTOR_DEFINITIONS.find((d) => d.provider === provider);
+                  const outage = formatOutageMinutes(alert.outageMinutes);
+                  const recipientCount = alert.recipientCount ?? alert.inAppRecipientCount;
+                  let deliveryNode: ReactNode;
+                  if (isSms) {
+                    if (alert.twilioConfigured === false) {
+                      deliveryNode = (
+                        <span
+                          className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"
+                          title="Twilio credentials are not configured on this environment, so the SMS was logged only — no message was actually sent. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_FROM to enable real delivery."
+                        >
+                          <AlertTriangle className="h-3 w-3" /> Twilio not configured
+                        </span>
+                      );
+                    } else {
+                      const succeeded = alert.smsSucceeded ?? 0;
+                      const attempted = alert.smsAttempted ?? 0;
+                      const allOk = attempted > 0 && succeeded === attempted;
+                      const partial = succeeded > 0 && succeeded < attempted;
+                      deliveryNode = (
+                        <span
+                          className={`inline-flex items-center gap-1 ${
+                            allOk
+                              ? 'text-green-700 dark:text-green-400'
+                              : partial
+                                ? 'text-amber-700 dark:text-amber-400'
+                                : 'text-red-700 dark:text-red-400'
+                          }`}
+                          title={
+                            allOk
+                              ? `Twilio accepted all ${succeeded} SMS sends.`
+                              : partial
+                                ? `Twilio accepted ${succeeded} of ${attempted} SMS sends — see server logs for failures.`
+                                : `Twilio rejected every SMS send (${attempted} attempted).`
+                          }
+                        >
+                          {allOk ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <AlertCircle className="h-3 w-3" />
+                          )}
+                          {succeeded}/{attempted} sent
+                        </span>
+                      );
+                    }
+                  } else {
+                    deliveryNode = (
+                      <span
+                        className="inline-flex items-center gap-1 text-text-secondary"
+                        title="Email is dispatched best-effort to each admin. Per-send delivery failures are recorded in server logs."
+                      >
+                        <Mail className="h-3 w-3" /> Emailed
+                      </span>
+                    );
+                  }
+                  return (
+                    <tr
+                      key={alert.id}
+                      className="border-b border-border/60 last:border-b-0 align-top"
+                    >
+                      <td
+                        className="py-2.5 px-2 text-text-primary whitespace-nowrap"
+                        title={formatExactTimestamp(alert.createdAt)}
+                      >
+                        {formatSyncTime(alert.createdAt)}
+                      </td>
+                      <td className="py-2.5 px-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {def ? <BrandLogo provider={def.logoId} size={16} /> : null}
+                          <span className="text-text-primary font-medium truncate">
+                            {providerLabelFromAlert(alert)}
+                          </span>
+                        </div>
+                        {alert.errorMessage && (
+                          <div
+                            className="text-[11px] text-text-secondary mt-0.5 max-w-xs truncate"
+                            title={alert.errorMessage}
+                          >
+                            {alert.errorMessage}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
+                            isSms
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          }`}
+                        >
+                          {isSms ? (
+                            <MessageSquare className="h-3 w-3" />
+                          ) : (
+                            <Mail className="h-3 w-3" />
+                          )}
+                          {isSms ? 'SMS' : 'Email'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-2 text-text-primary whitespace-nowrap">
+                        {outage ?? <span className="text-text-secondary">—</span>}
+                      </td>
+                      <td className="py-2.5 px-2 text-text-primary">
+                        {recipientCount}
+                        {alert.inAppRecipientCount > 0 && alert.inAppRecipientCount !== recipientCount && (
+                          <span className="text-text-secondary text-[11px]">
+                            {' '}
+                            · {alert.inAppRecipientCount} in-app
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2">{deliveryNode}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 text-xs text-text-secondary">
+              <span>
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-2.5 py-1 rounded-md border border-border hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="px-2.5 py-1 rounded-md border border-border hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Connectors() {
   const [connectTarget, setConnectTarget] = useState<ConnectorDefinition | null>(null);
   const [search, setSearch] = useState('');
@@ -2261,6 +2534,8 @@ export default function Connectors() {
               </div>
             )}
           </div>
+
+          <OutageAlertHistory />
 
           <div className="bg-surface border border-border rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text-primary mb-2">Event Bus</h3>

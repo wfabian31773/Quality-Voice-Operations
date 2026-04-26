@@ -700,34 +700,38 @@ describe('notifyConnectorSyncError', () => {
 
   it('honors per-user opt-outs: drops in-app for users with integration in_app off and drops email for opted-out admins', async () => {
     queryMock
+      // 0. isConnectorMuted — not muted
+      .mockResolvedValueOnce({ rows: [] })
       // 1. throttle check — empty
       .mockResolvedValueOnce({ rows: [] })
-      // 2a. fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a' }, { id: 'user-b' }],
-      })
-      // 2b. fanoutInAppNotification: in_app pref filter — user-a opted OUT
-      //     of integration in_app channel.
-      .mockResolvedValueOnce({
-        rows: [{ user_id: 'user-a', enabled: false }],
-      })
-      // 2c. INSERT for user-b only (user-a was filtered out)
-      .mockResolvedValueOnce({ rows: [] })
-      // 3. tenant name
+      // 2. tenant name (fetched up-front so metadata can carry recipient counts)
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 4. admin email lookup
+      // 3. admin email lookup
       .mockResolvedValueOnce({
         rows: [
           { email: 'owner@acme.test' },
           { email: 'admin@acme.test' },
         ],
       })
-      // 5. filterEmailRecipientsByPreference — admin@acme.test opted OUT of
+      // 4. filterEmailRecipientsByPreference — admin@acme.test opted OUT of
       //    integration email channel.
       .mockResolvedValueOnce({
         rows: [{ email: 'admin@acme.test', enabled: false }],
       })
-      // 6. UPDATE integrations SET auth_alert_sent_at
+      // 5a. fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a' }, { id: 'user-b' }],
+      })
+      // 5b. fanoutInAppNotification: in_app pref filter — user-a opted OUT
+      //     of integration in_app channel.
+      .mockResolvedValueOnce({
+        rows: [{ user_id: 'user-a', enabled: false }],
+      })
+      // 5c. INSERT for user-b only (user-a was filtered out)
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. getConnectorAlertSettings — digest mode disabled
+      .mockResolvedValueOnce({ rows: [] })
+      // 7. UPDATE integrations SET auth_alert_sent_at
       .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
     const { notifyConnectorSyncError } = await import(
@@ -762,24 +766,28 @@ describe('notifyConnectorSyncError', () => {
 
   it('suppresses email entirely (and logs) when every admin has opted out of integration email', async () => {
     queryMock
+      // 0. isConnectorMuted — not muted
+      .mockResolvedValueOnce({ rows: [] })
       // 1. throttle check — empty
       .mockResolvedValueOnce({ rows: [] })
-      // 2a. tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // 2b. in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // 2c. INSERT for user-a
-      .mockResolvedValueOnce({ rows: [] })
-      // 3. tenant name
+      // 2. tenant name
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 4. admin emails
+      // 3. admin emails
       .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
-      // 5. filterEmailRecipientsByPreference: admin opted OUT
+      // 4. filterEmailRecipientsByPreference: admin opted OUT
       .mockResolvedValueOnce({
         rows: [{ email: 'admin@acme.test', enabled: false }],
-      });
-    // No further queries expected — early return before stamping
-    // auth_alert_sent_at because there's nobody to email.
+      })
+      // 5a. tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      // 5b. in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 5c. INSERT for user-a
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. getConnectorAlertSettings — digest mode disabled
+      .mockResolvedValueOnce({ rows: [] });
+    // No UPDATE expected — recipients list is empty after the email pref
+    // filter, so the function bails before stamping auth_alert_sent_at.
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -805,22 +813,26 @@ describe('notifyConnectorSyncError', () => {
 
   it('suppresses in-app entirely when every active user has opted out of integration in_app, but still emails admins who allow integration email', async () => {
     queryMock
+      // 0. isConnectorMuted — not muted
+      .mockResolvedValueOnce({ rows: [] })
       // 1. throttle check — empty
       .mockResolvedValueOnce({ rows: [] })
-      // 2a. tenant users
+      // 2. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 3. admin emails
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
+      // 4. email pref filter — nobody opted out of email
+      .mockResolvedValueOnce({ rows: [] })
+      // 5a. tenant users
       .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // 2b. in_app pref filter — user-a OFF
+      // 5b. in_app pref filter — user-a OFF
       .mockResolvedValueOnce({
         rows: [{ user_id: 'user-a', enabled: false }],
       })
-      // 2c. (no INSERT — eligible list empty)
-      // 3. tenant name
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 4. admin emails
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
-      // 5. email pref filter — nobody opted out of email
+      // 5c. (no INSERT — eligible list empty)
+      // 6. getConnectorAlertSettings — digest mode disabled
       .mockResolvedValueOnce({ rows: [] })
-      // 6. UPDATE integrations SET auth_alert_sent_at
+      // 7. UPDATE integrations SET auth_alert_sent_at
       .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
     const { notifyConnectorSyncError } = await import(

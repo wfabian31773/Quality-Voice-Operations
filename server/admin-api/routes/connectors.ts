@@ -71,6 +71,151 @@ router.get('/connectors', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Outage alert audit history. Surfaces the per-tenant connector escalation
+ * trail recorded in `tenant_notifications` (types `integration` and
+ * `integration_sms`) so admins can answer "did anyone get paged for that
+ * outage?" without reading server logs.
+ *
+ * The alerter fans each alert out as one row per opted-in user, so we
+ * collapse rows that belong to the same dispatch (same integration + type +
+ * minute bucket) and report the in-app recipient count alongside the
+ * email/SMS metadata stored on the alert. Tenant-scoped via req.user.
+ */
+router.get('/connectors/alerts', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { limit, offset } = paginate(req);
+  const integrationFilter =
+    typeof req.query.integrationId === 'string' && req.query.integrationId.trim() !== ''
+      ? req.query.integrationId.trim()
+      : null;
+
+  try {
+    const { getPlatformPool } = await import('../../../platform/db');
+    const pool = getPlatformPool();
+
+    // Group fanned-out per-user rows back into a single alert event keyed by
+    // (integrationId, type, minute). MIN(created_at) anchors the event time;
+    // MAX(metadata) is safe because every per-user row in a single fan-out
+    // carries identical metadata (the alerter computes the JSON once and
+    // reuses it for every INSERT).
+    const params: unknown[] = [tenantId];
+    let integrationClause = '';
+    if (integrationFilter) {
+      params.push(integrationFilter);
+      integrationClause = `AND metadata->>'integrationId' = $${params.length}`;
+    }
+
+    const totalQuery = `
+      SELECT COUNT(*)::bigint AS total FROM (
+        SELECT 1
+          FROM tenant_notifications
+         WHERE tenant_id = $1
+           AND type IN ('integration', 'integration_sms')
+           AND metadata->>'integrationId' IS NOT NULL
+           ${integrationClause}
+         GROUP BY metadata->>'integrationId', type, date_trunc('minute', created_at)
+      ) t
+    `;
+    const totalResult = await pool.query<{ total: string }>(totalQuery, params);
+    const total = Number(totalResult.rows[0]?.total ?? 0);
+
+    params.push(limit);
+    params.push(offset);
+    const limitParam = params.length - 1;
+    const offsetParam = params.length;
+
+    const rowsQuery = `
+      SELECT
+        metadata->>'integrationId'                AS integration_id,
+        type,
+        MIN(created_at)                           AS created_at,
+        COUNT(*)::int                             AS in_app_recipients,
+        (array_agg(metadata ORDER BY created_at))[1] AS metadata,
+        (array_agg(title    ORDER BY created_at))[1] AS title,
+        (array_agg(message  ORDER BY created_at))[1] AS message
+      FROM tenant_notifications
+      WHERE tenant_id = $1
+        AND type IN ('integration', 'integration_sms')
+        AND metadata->>'integrationId' IS NOT NULL
+        ${integrationClause}
+      GROUP BY metadata->>'integrationId', type, date_trunc('minute', created_at)
+      ORDER BY MIN(created_at) DESC
+      LIMIT $${limitParam} OFFSET $${offsetParam}
+    `;
+    const { rows } = await pool.query(rowsQuery, params);
+
+    // Resolve integration -> connector display name in one round-trip so the
+    // UI doesn't have to guess from the raw provider slug.
+    const integrationIds = Array.from(
+      new Set(rows.map((r) => r.integration_id as string).filter(Boolean)),
+    );
+    const nameByIntegration = new Map<string, string>();
+    if (integrationIds.length > 0) {
+      const { rows: nameRows } = await pool.query<{ id: string; name: string | null }>(
+        `SELECT id, name FROM integrations
+          WHERE tenant_id = $1 AND id = ANY($2::text[])`,
+        [tenantId, integrationIds],
+      );
+      for (const r of nameRows) {
+        if (r.name) nameByIntegration.set(r.id, r.name);
+      }
+    }
+
+    const alerts = rows.map((r) => {
+      const meta = (r.metadata ?? {}) as Record<string, unknown>;
+      const integrationId = (r.integration_id as string) ?? '';
+      const channel = r.type === 'integration_sms' ? 'sms' : 'email';
+      // Email rows store the emailed recipient count under
+      // `recipientCount`/`emailRecipientCount`. SMS rows store the SMS
+      // recipient count under `recipientCount`. Fall back to the in-app
+      // fan-out row count for older email alerts that pre-date the
+      // metadata enrichment.
+      const recordedRecipientCount =
+        typeof meta.recipientCount === 'number'
+          ? meta.recipientCount
+          : typeof meta.emailRecipientCount === 'number'
+            ? (meta.emailRecipientCount as number)
+            : null;
+      return {
+        id: `${integrationId}:${r.type}:${new Date(r.created_at).getTime()}`,
+        integrationId,
+        integrationName: nameByIntegration.get(integrationId) ?? null,
+        provider: (meta.provider as string | undefined) ?? null,
+        connectorType: (meta.connectorType as string | undefined) ?? null,
+        type: r.type as string,
+        channel,
+        title: r.title as string | null,
+        message: r.message as string | null,
+        createdAt: new Date(r.created_at).toISOString(),
+        recipientCount:
+          recordedRecipientCount ?? (r.in_app_recipients as number) ?? null,
+        inAppRecipientCount: (r.in_app_recipients as number) ?? 0,
+        outageMinutes:
+          typeof meta.outageMinutes === 'number' ? (meta.outageMinutes as number) : null,
+        firstFailedAt: (meta.firstFailedAt as string | null) ?? null,
+        errorMessage: (meta.errorMessage as string | null) ?? null,
+        smsAttempted:
+          typeof meta.smsAttempted === 'number' ? (meta.smsAttempted as number) : null,
+        smsSucceeded:
+          typeof meta.smsSucceeded === 'number' ? (meta.smsSucceeded as number) : null,
+        twilioConfigured:
+          typeof meta.twilioConfigured === 'boolean'
+            ? (meta.twilioConfigured as boolean)
+            : null,
+      };
+    });
+
+    return res.json({ alerts, total, limit, offset });
+  } catch (err) {
+    logger.error('Failed to list connector outage alerts', {
+      tenantId,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to list connector outage alerts' });
+  }
+});
+
 router.post('/connectors', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const {
