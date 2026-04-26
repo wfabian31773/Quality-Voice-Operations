@@ -4,9 +4,15 @@ const {
   queryMock,
   sendEmailMock,
   connectorAutoDisabledEmailMock,
+  connectorReconnectNeededEmailMock,
+  connectorSyncErrorEmailMock,
+  connectorSyncDigestEmailMock,
   fanoutMock,
   filterRecipientsMock,
   writeAuditLogMock,
+  getConnectorAlertSettingsMock,
+  loadMuteSetsForTenantsMock,
+  recordDigestSentMock,
 } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   sendEmailMock: vi.fn(),
@@ -15,9 +21,32 @@ const {
     html: '<p>html</p>',
     text: 'text',
   })),
+  connectorReconnectNeededEmailMock: vi.fn(() => ({
+    subject: 'Reconnect needed',
+    html: '<p>html</p>',
+    text: 'text',
+  })),
+  connectorSyncErrorEmailMock: vi.fn(() => ({
+    subject: 'Sync error',
+    html: '<p>html</p>',
+    text: 'text',
+  })),
+  connectorSyncDigestEmailMock: vi.fn(() => ({
+    subject: 'Connector digest',
+    html: '<p>html</p>',
+    text: 'text',
+  })),
   fanoutMock: vi.fn().mockResolvedValue(undefined),
   filterRecipientsMock: vi.fn(async (_t: string, e: string[]) => e),
   writeAuditLogMock: vi.fn().mockResolvedValue(undefined),
+  getConnectorAlertSettingsMock: vi.fn(async () => ({
+    digestMode: false,
+    digestLastSentAt: null,
+    updatedAt: null,
+    updatedBy: null,
+  })),
+  loadMuteSetsForTenantsMock: vi.fn(async () => new Map()),
+  recordDigestSentMock: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../db', () => ({
@@ -26,8 +55,10 @@ vi.mock('../../db', () => ({
 
 vi.mock('../../email', () => ({
   sendEmail: sendEmailMock,
-  connectorSyncErrorEmail: vi.fn(() => ({ subject: 's', html: 'h', text: 't' })),
+  connectorSyncErrorEmail: connectorSyncErrorEmailMock,
   connectorAutoDisabledEmail: connectorAutoDisabledEmailMock,
+  connectorReconnectNeededEmail: connectorReconnectNeededEmailMock,
+  connectorSyncDigestEmail: connectorSyncDigestEmailMock,
 }));
 
 vi.mock('../../notifications/NotificationPreferences', () => ({
@@ -39,9 +70,17 @@ vi.mock('../../audit/AuditService', () => ({
   writeAuditLog: writeAuditLogMock,
 }));
 
+vi.mock('./ConnectorAlertPreferences', () => ({
+  getConnectorAlertSettings: getConnectorAlertSettingsMock,
+  loadMuteSetsForTenants: loadMuteSetsForTenantsMock,
+  recordDigestSent: recordDigestSentMock,
+}));
+
 import {
+  dispatchConnectorAuthAlert,
   getAutoDisableThresholdDays,
   isAuthError,
+  runConnectorAuthAlertCycle,
   runConnectorAutoDisableCycle,
 } from './ConnectorAuthAlertScheduler';
 
@@ -83,8 +122,22 @@ beforeEach(() => {
   sendEmailMock.mockResolvedValue({ success: true });
   fanoutMock.mockClear();
   filterRecipientsMock.mockClear();
+  filterRecipientsMock.mockImplementation(async (_t: string, e: string[]) => e);
   writeAuditLogMock.mockClear();
   connectorAutoDisabledEmailMock.mockClear();
+  connectorReconnectNeededEmailMock.mockClear();
+  connectorSyncErrorEmailMock.mockClear();
+  connectorSyncDigestEmailMock.mockClear();
+  getConnectorAlertSettingsMock.mockClear();
+  getConnectorAlertSettingsMock.mockResolvedValue({
+    digestMode: false,
+    digestLastSentAt: null,
+    updatedAt: null,
+    updatedBy: null,
+  });
+  loadMuteSetsForTenantsMock.mockClear();
+  loadMuteSetsForTenantsMock.mockResolvedValue(new Map());
+  recordDigestSentMock.mockClear();
   delete process.env.CONNECTOR_AUTO_DISABLE_DAYS;
 });
 
@@ -380,5 +433,195 @@ describe('runConnectorAutoDisableCycle', () => {
     expect(fanoutMock).not.toHaveBeenCalled();
     expect(writeAuditLogMock).not.toHaveBeenCalled();
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('dispatchConnectorAuthAlert opt-out', () => {
+  // Regression: locks in the per-event reconnect/auth-error opt-out filter
+  // contract. If a future refactor stops routing recipients through the
+  // 'integration' opt-out filter, this test fails.
+  it('claims throttle slot and fans out in-app but skips email when admins opted out', async () => {
+    queryMock.mockReset();
+    // 1. SELECT integration row
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [
+        {
+          name: 'Salesforce',
+          integration_type: 'crm',
+          auth_alert_sent_at: null,
+          last_sync_error: 'invalid_grant',
+          last_sync_error_at: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ],
+    }));
+    // 2. claimAuthAlertSlot UPDATE — must still happen
+    queryMock.mockImplementationOnce(async () => ({ rowCount: 1 }));
+    // 3. SELECT name FROM tenants
+    queryMock.mockImplementationOnce(async () => ({ rows: [{ name: 'Acme' }] }));
+    // 4. SELECT users (getTenantAlertEmailRecipients)
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [
+        { id: 'u-1', email: 'owner@acme.test' },
+        { id: 'u-2', email: 'admin@acme.test' },
+      ],
+    }));
+    // 5. recentInAppNotificationExists SELECT
+    queryMock.mockImplementationOnce(async () => ({ rows: [] }));
+
+    filterRecipientsMock.mockResolvedValueOnce([]);
+
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-optout',
+      integrationId: 'integration-optout',
+      provider: 'salesforce',
+      connectorType: 'crm',
+      errorMessage: 'invalid_grant',
+      reason: 'needs_reconnect',
+    });
+
+    expect(result.status).toBe('no_recipients');
+    expect(result.emailedRecipients).toBe(0);
+
+    // Filter MUST be invoked with the 'integration' category for the
+    // per-event reconnect path.
+    expect(filterRecipientsMock).toHaveBeenCalledTimes(1);
+    expect(filterRecipientsMock).toHaveBeenCalledWith(
+      'tenant-optout',
+      ['owner@acme.test', 'admin@acme.test'],
+      'integration',
+    );
+
+    // Email must not go out when everyone opted out, and the email
+    // template constructor must not be invoked either.
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(connectorReconnectNeededEmailMock).not.toHaveBeenCalled();
+    expect(connectorSyncErrorEmailMock).not.toHaveBeenCalled();
+
+    // Other side effects still happen: throttle slot was claimed (UPDATE
+    // ran) and the in-app notification was fanned out so the inbox row
+    // exists for users who didn't opt out of in-app.
+    const updateCall = queryMock.mock.calls[1];
+    expect(updateCall[0]).toMatch(/UPDATE integrations[\s\S]*auth_alert_sent_at = NOW\(\)/);
+    expect(updateCall[1]).toEqual(['integration-optout', 'tenant-optout']);
+
+    expect(fanoutMock).toHaveBeenCalledTimes(1);
+    expect(fanoutMock.mock.calls[0][0]).toMatchObject({
+      tenantId: 'tenant-optout',
+      type: 'integration',
+      category: 'integration',
+      metadata: expect.objectContaining({
+        integrationId: 'integration-optout',
+        provider: 'salesforce',
+        reason: 'needs_reconnect',
+      }),
+    });
+  });
+});
+
+describe('runConnectorAuthAlertCycle digest opt-out', () => {
+  // Regression: locks in the digest-cycle opt-out filter contract. The
+  // per-tenant 24h digest email must route recipients through the
+  // 'integration' opt-out filter, and when nobody is left it must NOT
+  // record the digest sent timestamp or stamp auth_alert_sent_at on the
+  // queued integrations (otherwise the next cycle would silently skip
+  // the same failures for 24h).
+  it('skips digest email and digest stamping when all admins opted out', async () => {
+    getConnectorAlertSettingsMock.mockResolvedValue({
+      digestMode: true,
+      digestLastSentAt: null,
+      updatedAt: null,
+      updatedBy: null,
+    });
+
+    queryMock.mockReset();
+    // 1. findPendingAuthFailures SELECT
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [
+        {
+          tenant_id: 'tenant-digest',
+          integration_id: 'integration-digest',
+          provider: 'hubspot',
+          integration_type: 'crm',
+          name: 'HubSpot',
+          last_sync_status: 'needs_reconnect',
+          last_sync_error: 'invalid_grant',
+          last_sync_error_at: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ],
+    }));
+    // dispatchConnectorAuthAlert(suppressEmail=true) per-row queries:
+    // 2. SELECT integration row
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [
+        {
+          name: 'HubSpot',
+          integration_type: 'crm',
+          auth_alert_sent_at: null,
+          last_sync_error: 'invalid_grant',
+          last_sync_error_at: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ],
+    }));
+    // (suppressEmail=true skips claimAuthAlertSlot here)
+    // 3. SELECT name FROM tenants (getTenantAdmins)
+    queryMock.mockImplementationOnce(async () => ({ rows: [{ name: 'Acme' }] }));
+    // 4. SELECT users (getTenantAlertEmailRecipients)
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{ id: 'u-1', email: 'admin@acme.test' }],
+    }));
+    // 5. recentInAppNotificationExists SELECT
+    queryMock.mockImplementationOnce(async () => ({ rows: [] }));
+
+    // Digest loop per-tenant queries:
+    // 6. SELECT name FROM tenants (getTenantAdmins)
+    queryMock.mockImplementationOnce(async () => ({ rows: [{ name: 'Acme' }] }));
+    // 7. SELECT users (getTenantAlertEmailRecipients)
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{ id: 'u-1', email: 'admin@acme.test' }],
+    }));
+
+    filterRecipientsMock.mockResolvedValueOnce([]);
+
+    const result = await runConnectorAuthAlertCycle();
+
+    // Filter must be invoked with the 'integration' category for the
+    // digest path.
+    expect(filterRecipientsMock).toHaveBeenCalledTimes(1);
+    expect(filterRecipientsMock).toHaveBeenCalledWith(
+      'tenant-digest',
+      ['admin@acme.test'],
+      'integration',
+    );
+
+    // No digest email, no digest template render.
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(connectorSyncDigestEmailMock).not.toHaveBeenCalled();
+
+    // Digest stamping side effects must NOT happen when the email never
+    // delivered — leaving them clear lets the next cycle re-evaluate
+    // the same failures for any not-opted-out admin instead of locking
+    // them out for 24h.
+    expect(recordDigestSentMock).not.toHaveBeenCalled();
+    // No second UPDATE auth_alert_sent_at slot claim was issued for the
+    // queued entry (we only issued the per-row dispatch lookups above).
+    const slotClaims = queryMock.mock.calls.filter((c) =>
+      typeof c[0] === 'string' && /UPDATE integrations[\s\S]*auth_alert_sent_at = NOW\(\)/.test(c[0]),
+    );
+    expect(slotClaims).toHaveLength(0);
+
+    // Other side effects still happen: per-row in-app fan-out fired
+    // during dispatchConnectorAuthAlert (suppressEmail=true) so the
+    // inbox row exists for users who didn't opt out of in-app.
+    expect(fanoutMock).toHaveBeenCalledTimes(1);
+    expect(fanoutMock.mock.calls[0][0]).toMatchObject({
+      tenantId: 'tenant-digest',
+      type: 'integration',
+      category: 'integration',
+    });
+
+    expect(result.inspected).toBe(1);
+    expect(result.alerted).toBe(0);
+    expect(result.emailedRecipients).toBe(0);
+    expect(result.digestEmailsSent).toBe(0);
   });
 });
