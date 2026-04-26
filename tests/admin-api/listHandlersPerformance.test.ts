@@ -229,6 +229,38 @@ describe('empty-page fallback path stays bounded', () => {
   });
 });
 
+describe('query count is invariant in row count (no N+1 regression)', () => {
+  const sizes = [10, 50, 200, 1000];
+
+  it.each(sizes)('dispatch listJobsHandler still issues exactly 1 query at %i rows', async (n) => {
+    const dbMock = buildPoolMock({ rows: fakeRowsForList(n, n), perQueryDelayMs: 5 });
+    type Handler = (req: Request, res: Response) => Promise<void>;
+    const handler = await loadHandler<Handler>(
+      '../../server/admin-api/routes/dispatch',
+      'listJobsHandler',
+      dbMock,
+    );
+    const { res, getJson } = makeRes();
+    await handler(makeReq({ query: { limit: String(n) } }), res);
+    expect(dbMock.records.length).toBe(1);
+    expect(getJson()?.total).toBe(n);
+  });
+
+  it.each(sizes)('tickets listTicketsHandler still issues exactly 1 query at %i rows', async (n) => {
+    const dbMock = buildPoolMock({ rows: fakeRowsForList(n, n), perQueryDelayMs: 5 });
+    type Handler = (req: Request, res: Response) => Promise<void>;
+    const handler = await loadHandler<Handler>(
+      '../../server/admin-api/routes/tickets',
+      'listTicketsHandler',
+      dbMock,
+    );
+    const { res, getJson } = makeRes();
+    await handler(makeReq({ query: { limit: String(Math.min(n, 200)) } }), res);
+    expect(dbMock.records.length).toBe(1);
+    expect(getJson()?.total).toBe(n);
+  });
+});
+
 describe('source contract — no per-row correlated subqueries remain', () => {
   it('tickets list source replaces correlated row_to_json with LEFT JOIN LATERAL', () => {
     const src = readFileSync(
