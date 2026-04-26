@@ -6,6 +6,10 @@ const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
   'utf8',
 );
+const sharedReplyHelperFile = readFileSync(
+  join(process.cwd(), 'platform/help/supportReplyEmail.ts'),
+  'utf8',
+);
 const adminUiFile = readFileSync(
   join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
   'utf8',
@@ -38,8 +42,13 @@ describe('support ticket reply retry — server', () => {
   });
 
   it('shares the email-rendering helper with the initial send so retry payloads match', () => {
-    expect(supportFile).toMatch(/function renderOutboundTicketReplyEmail/);
-    // Both call sites use the shared helper.
+    // The renderer now lives in platform/help/supportReplyEmail.ts so both the
+    // route and the background auto-retry scheduler can reuse it.
+    expect(sharedReplyHelperFile).toMatch(/export function renderOutboundTicketReplyEmail/);
+    expect(supportFile).toMatch(
+      /from '\.\.\/\.\.\/\.\.\/platform\/help\/supportReplyEmail'/,
+    );
+    // Both the create-reply route and the manual /retry route call the shared helper.
     const usages = supportFile.match(/renderOutboundTicketReplyEmail\(/g) ?? [];
     expect(usages.length).toBeGreaterThanOrEqual(2);
   });

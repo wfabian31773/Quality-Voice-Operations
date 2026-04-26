@@ -9,6 +9,12 @@ import {
   runDocsFeedbackPendingReplyAlertCycle,
 } from '../../../platform/help/DocsFeedbackAlertScheduler';
 import { runDocsFeedbackReplyDigestCycle } from '../../../platform/help/DocsFeedbackReplyDigestScheduler';
+import {
+  buildReplyToAddress,
+  generateInboundToken,
+  renderOutboundTicketReplyEmail,
+  escapeHtml,
+} from '../../../platform/help/supportReplyEmail';
 import { logError } from '../../../platform/core/observability';
 
 const logger = createLogger('SUPPORT');
@@ -95,19 +101,7 @@ const VALID_TOPICS = new Set([
 ]);
 
 const FALLBACK_DESTINATION = 'support@qvo.ai';
-const INBOUND_DOMAIN = process.env.SUPPORT_INBOUND_DOMAIN ?? 'reply.qvo.ai';
 const INBOUND_SECRET = process.env.SUPPORT_INBOUND_SECRET ?? '';
-
-function generateInboundToken(): string {
-  // 24 hex chars (~96 bits) — collision risk is negligible.
-  return Array.from({ length: 24 }, () =>
-    Math.floor(Math.random() * 16).toString(16),
-  ).join('');
-}
-
-function buildReplyToAddress(token: string): string {
-  return `support+${token}@${INBOUND_DOMAIN}`;
-}
 
 /**
  * Resolve the support destination email for a (plan, topic) pair using the
@@ -154,14 +148,6 @@ async function lookupPlan(tenantId: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function renderTicketEmail(input: {
@@ -1077,27 +1063,6 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
     res.status(500).json({ error: 'Failed to load replies', detail: String(err) });
   }
 });
-
-/**
- * Render the outbound admin reply email for a ticket. Extracted so that the
- * initial send and the one-click retry produce byte-identical messages.
- */
-function renderOutboundTicketReplyEmail(input: {
-  ticketId: string;
-  topic: string;
-  body: string;
-}): { subject: string; html: string; text: string } {
-  const { ticketId, topic, body } = input;
-  const subject = `Re: [QVO Support] ${topic.toUpperCase()} (${ticketId})`;
-  const escaped = escapeHtml(body).replace(/\n/g, '<br/>');
-  const html = `<div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
-    <div>${escaped}</div>
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-    <p style="color:#64748b;font-size:12px">Ticket reference: <strong>${escapeHtml(ticketId)}</strong> — please keep this in the subject when replying.</p>
-  </div>`;
-  const text = `${body}\n\n---\nTicket reference: ${ticketId} — please keep this in the subject when replying.`;
-  return { subject, html, text };
-}
 
 router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
