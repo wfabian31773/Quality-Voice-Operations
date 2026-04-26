@@ -23,6 +23,92 @@ interface DealRefs {
   dealId?: string;
 }
 
+/**
+ * HubSpot error categories that mean the targeted record (contact, company,
+ * deal, note, call) genuinely no longer exists in the upstream CRM. Anything
+ * else (rate limit, validation error, auth error, etc.) is NOT a stale signal
+ * and must NOT clear the caller-identity cache.
+ */
+const HUBSPOT_STALE_ERROR_CATEGORIES = new Set([
+  'OBJECT_NOT_FOUND',
+]);
+
+/**
+ * Thrown by HubSpot write helpers when an HTTP 404 (or one of the
+ * `HUBSPOT_STALE_ERROR_CATEGORIES`) is returned for a request that referenced
+ * a cached/hinted record ID. Carries the IDs the failing call referenced so
+ * `handleCallCompleted` / `handleAppointmentBooked` can surface them via
+ * `result.meta.staleIds`, and the dispatch layer can scrub them from the
+ * caller-identity cache.
+ */
+class HubSpotStaleRecordError extends Error {
+  staleIds: { contactId?: string; companyId?: string; dealId?: string };
+  errorCode?: string;
+  constructor(
+    message: string,
+    staleIds: { contactId?: string; companyId?: string; dealId?: string },
+    errorCode?: string,
+  ) {
+    super(message);
+    this.name = 'HubSpotStaleRecordError';
+    this.staleIds = staleIds;
+    this.errorCode = errorCode;
+  }
+}
+
+/**
+ * Inspect a HubSpot REST error response and decide whether it should be
+ * treated as a stale-record signal. HubSpot returns errors shaped like:
+ *   `{ status: "error", message: "...", category: "OBJECT_NOT_FOUND", ... }`
+ *
+ * - When the body's `category` field is in `HUBSPOT_STALE_ERROR_CATEGORIES`,
+ *   that's the most specific signal — use it.
+ * - For raw 404s where the body did NOT carry a recognised non-stale category,
+ *   treat the response as `NOT_FOUND` (HubSpot's canonical response when the
+ *   path-targeted object truly does not exist).
+ *
+ * Returns the matching errorCode when stale, otherwise undefined. This mirrors
+ * `extractSalesforceStaleErrorCode` so a non-stale 404 (e.g. a misrouted URL
+ * with a recognised non-stale category) does not over-clear the cache.
+ */
+function extractHubSpotStaleErrorCode(status: number, body: string): string | undefined {
+  let parsed: unknown;
+  if (body) {
+    try { parsed = JSON.parse(body); } catch { /* falls through */ }
+  }
+  let sawNonStaleCategory = false;
+  if (parsed && typeof parsed === 'object') {
+    const category = (parsed as { category?: unknown }).category;
+    if (typeof category === 'string') {
+      if (HUBSPOT_STALE_ERROR_CATEGORIES.has(category)) return category;
+      sawNonStaleCategory = true;
+    }
+  }
+  if (status === 404 && !sawNonStaleCategory) return 'NOT_FOUND';
+  return undefined;
+}
+
+/**
+ * Translate HubSpot object names (`contacts`, `companies`, `deals`) plus the
+ * IDs that referenced them in a failing call into the `staleIds` shape carried
+ * on `HubSpotStaleRecordError`. Used by helpers (`associate`, `createNote`,
+ * `logCallEngagement`) that touch multiple records at once and can't tell from
+ * HubSpot's response which specific one is the stale culprit — flag all
+ * candidates and let the dispatch layer's value-match scrub do the rest.
+ */
+function mapHubSpotObjectsToStaleIds(
+  refs: Array<{ object: string; id: string }>,
+): { contactId?: string; companyId?: string; dealId?: string } {
+  const out: { contactId?: string; companyId?: string; dealId?: string } = {};
+  for (const ref of refs) {
+    if (!ref.id) continue;
+    if (ref.object === 'contacts') out.contactId = ref.id;
+    else if (ref.object === 'companies') out.companyId = ref.id;
+    else if (ref.object === 'deals') out.dealId = ref.id;
+  }
+  return out;
+}
+
 export interface HubSpotPipelineStage {
   id: string;
   label: string;
@@ -195,10 +281,57 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof HubSpotStaleRecordError) {
+        logger.warn('HubSpot call logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('HubSpot call logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * Build a `ConnectorResult` for a stale-record failure. Only IDs that
+   * actually appeared on the inbound payload (i.e. came from the cache or
+   * the explicit hint) are surfaced as `meta.staleIds` so the dispatch
+   * layer can scrub the matching `crm_caller_identities` slots without
+   * touching anything else. Mirrors `SalesforceConnectorAdapter.staleRecordResult`.
+   */
+  private staleRecordResult(
+    err: HubSpotStaleRecordError,
+    payload: ConnectorPayload,
+  ): ConnectorResult {
+    const filtered: Record<string, string> = {};
+    // Accept both HubSpot-native keys and the canonical Salesforce-style
+    // aliases. Inbound payloads from cache injection use native field names,
+    // but explicit hints from upstream callers may use the canonical aliases.
+    const payloadContactId = payload.contactId as string | undefined;
+    const payloadCompanyId = (payload.companyId as string | undefined)
+      ?? (payload.accountId as string | undefined);
+    const payloadDealId = (payload.dealId as string | undefined)
+      ?? (payload.opportunityId as string | undefined);
+    if (err.staleIds.contactId && err.staleIds.contactId === payloadContactId) {
+      filtered.contactId = err.staleIds.contactId;
+    }
+    if (err.staleIds.companyId && err.staleIds.companyId === payloadCompanyId) {
+      filtered.companyId = err.staleIds.companyId;
+    }
+    if (err.staleIds.dealId && err.staleIds.dealId === payloadDealId) {
+      filtered.dealId = err.staleIds.dealId;
+    }
+    return {
+      success: false,
+      error: err.message,
+      meta: {
+        provider: 'hubspot',
+        staleRecord: true,
+        ...(err.errorCode ? { staleErrorCode: err.errorCode } : {}),
+        ...(Object.keys(filtered).length > 0 ? { staleIds: filtered } : {}),
+      },
+    };
   }
 
   private async handleAppointmentBooked(
@@ -304,6 +437,12 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof HubSpotStaleRecordError) {
+        logger.warn('HubSpot appointment logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('HubSpot appointment logging failed', { tenantId, error });
       return { success: false, error };
@@ -509,12 +648,26 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // The deal create body references contactId / companyId via the
+        // associations array. If HubSpot rejects with OBJECT_NOT_FOUND, one
+        // of those referenced records has been deleted upstream — we don't
+        // know which one, so flag both as potentially stale and let the
+        // dispatch layer's value-match scrub clear only the truly stale ID.
+        const staleCode = extractHubSpotStaleErrorCode(res.status, text);
+        if (staleCode) {
+          throw new HubSpotStaleRecordError(
+            `HubSpot deal create failed (${res.status}, ${staleCode}): ${text.slice(0, 200)}`,
+            { contactId: params.contactId, ...(params.companyId ? { companyId: params.companyId } : {}) },
+            staleCode,
+          );
+        }
         logger.warn('HubSpot deal create failed', { status: res.status, body: text.slice(0, 200) });
         return undefined;
       }
       const data = await res.json() as { id: string };
       return data.id;
     } catch (err) {
+      if (err instanceof HubSpotStaleRecordError) throw err;
       logger.warn('HubSpot deal create threw', { error: String(err) });
       return undefined;
     } finally {
@@ -541,11 +694,22 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // dealId is in the URL path, so a stale signal here unambiguously
+        // identifies the dealId as the deleted/archived record.
+        const staleCode = extractHubSpotStaleErrorCode(res.status, text);
+        if (staleCode) {
+          throw new HubSpotStaleRecordError(
+            `HubSpot deal stage move failed (${res.status}, ${staleCode}): ${text.slice(0, 200)}`,
+            { dealId },
+            staleCode,
+          );
+        }
         logger.warn('HubSpot deal stage move failed', { dealId, status: res.status, body: text.slice(0, 200) });
         return false;
       }
       return true;
     } catch (err) {
+      if (err instanceof HubSpotStaleRecordError) throw err;
       logger.warn('HubSpot deal stage move threw', { dealId, error: String(err) });
       return false;
     } finally {
@@ -577,11 +741,28 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       );
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // Both fromId and toId are in the URL path, so HubSpot's response
+        // doesn't tell us which one is missing. Flag both as potentially
+        // stale and let the dispatch layer's value-match scrub do the rest:
+        // only the value that actually equals a cached ID gets cleared.
+        const staleCode = extractHubSpotStaleErrorCode(res.status, text);
+        if (staleCode) {
+          const staleIds = mapHubSpotObjectsToStaleIds([
+            { object: fromObject, id: fromId },
+            { object: toObject, id: toId },
+          ]);
+          throw new HubSpotStaleRecordError(
+            `HubSpot association failed (${res.status}, ${staleCode}): ${text.slice(0, 200)}`,
+            staleIds,
+            staleCode,
+          );
+        }
         logger.warn('HubSpot association failed', {
           fromObject, fromId, toObject, toId, status: res.status, body: text.slice(0, 200),
         });
       }
     } catch (err) {
+      if (err instanceof HubSpotStaleRecordError) throw err;
       logger.warn('HubSpot association threw', {
         fromObject, fromId, toObject, toId, error: String(err),
       });
@@ -634,6 +815,17 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // The call engagement references contactId via the associations array.
+        // If HubSpot rejects with OBJECT_NOT_FOUND, the only ID we sent that
+        // could be the stale one is the contactId.
+        const staleCode = extractHubSpotStaleErrorCode(res.status, text);
+        if (staleCode && params.contactId) {
+          throw new HubSpotStaleRecordError(
+            `HubSpot call engagement create failed (${res.status}, ${staleCode}): ${text.slice(0, 200)}`,
+            { contactId: params.contactId },
+            staleCode,
+          );
+        }
         throw new Error(`HubSpot API error ${res.status}: ${text.slice(0, 200)}`);
       }
 
@@ -685,6 +877,21 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // The note's associations array references contactId and/or dealId.
+        // If HubSpot rejects with OBJECT_NOT_FOUND, one of those records is
+        // gone — flag both candidates and let the dispatch layer's
+        // value-match scrub clear only the truly stale ID(s).
+        const staleCode = extractHubSpotStaleErrorCode(res.status, text);
+        if (staleCode && (contactId || dealId)) {
+          throw new HubSpotStaleRecordError(
+            `HubSpot note creation failed (${res.status}, ${staleCode}): ${text.slice(0, 200)}`,
+            {
+              ...(contactId ? { contactId } : {}),
+              ...(dealId ? { dealId } : {}),
+            },
+            staleCode,
+          );
+        }
         throw new Error(`HubSpot note creation failed ${res.status}: ${text.slice(0, 200)}`);
       }
 

@@ -96,6 +96,52 @@ function toNumericId(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Thrown by Pipedrive write/lookup helpers when the upstream returns a 404
+ * (or a body indicating the targeted Person/Organization/Deal no longer
+ * exists). Carries the IDs the failing call referenced so the handlers can
+ * surface them via `result.meta.staleIds`, and the dispatch layer can scrub
+ * them from the caller-identity cache.
+ */
+class PipedriveStaleRecordError extends Error {
+  staleIds: { personId?: string; orgId?: string; dealId?: string };
+  errorCode?: string;
+  constructor(
+    message: string,
+    staleIds: { personId?: string; orgId?: string; dealId?: string },
+    errorCode?: string,
+  ) {
+    super(message);
+    this.name = 'PipedriveStaleRecordError';
+    this.staleIds = staleIds;
+    this.errorCode = errorCode;
+  }
+}
+
+/**
+ * Decide whether a Pipedrive non-OK response should be treated as a
+ * stale-record signal. Pipedrive returns a JSON envelope on failure shaped
+ * like `{ success: false, error: "Person not found", error_info: "..." }`.
+ *
+ * - HTTP 404 / 410 on path-targeted resources is the canonical "object is
+ *   gone" response. Treated as stale unless the body explicitly says
+ *   otherwise (Pipedrive is consistent here, unlike Salesforce/HubSpot).
+ * - For other non-OK statuses (commonly 400/410 on POST /activities when a
+ *   referenced person_id / org_id / deal_id no longer exists), look for
+ *   "not found" / "does not exist" / "deleted" wording in the error string.
+ *
+ * Returns the matching errorCode when stale, otherwise undefined.
+ */
+function extractPipedriveStaleErrorCode(status: number, error?: string): string | undefined {
+  if (status === 404) return 'NOT_FOUND';
+  if (status === 410) return 'GONE';
+  if (!error) return undefined;
+  if (/not\s*found|does\s*not\s*exist|has\s*been\s*deleted|is\s*deleted/i.test(error)) {
+    return 'NOT_FOUND';
+  }
+  return undefined;
+}
+
 export interface PipedrivePipelineStage {
   id: number;
   name: string;
@@ -266,6 +312,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       });
 
       if (!activityRes.ok || !activityRes.data?.success) {
+        this.maybeThrowActivityStale(activityRes, refs);
         throw new Error(activityRes.error ?? 'Pipedrive activity create failed');
       }
 
@@ -290,6 +337,12 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof PipedriveStaleRecordError) {
+        logger.warn('Pipedrive call logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Pipedrive call logging failed', { tenantId, error });
       return { success: false, error };
@@ -377,6 +430,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       });
 
       if (!activityRes.ok || !activityRes.data?.success) {
+        this.maybeThrowActivityStale(activityRes, refs);
         throw new Error(activityRes.error ?? 'Pipedrive activity create failed');
       }
 
@@ -405,10 +459,77 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof PipedriveStaleRecordError) {
+        logger.warn('Pipedrive appointment logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Pipedrive appointment logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * For activity creation (`POST /activities`), the IDs are in the request
+   * body — not the URL — so a stale signal could implicate person_id, org_id,
+   * or deal_id. Flag all three candidates and let the dispatch layer's
+   * value-match scrub clear only the truly stale one(s).
+   */
+  private maybeThrowActivityStale(
+    res: { ok: boolean; status: number; error?: string },
+    refs: DealRefs,
+  ): void {
+    if (res.ok) return;
+    const staleCode = extractPipedriveStaleErrorCode(res.status, res.error);
+    if (!staleCode) return;
+    const staleIds: { personId?: string; orgId?: string; dealId?: string } = {};
+    if (refs.personId !== undefined) staleIds.personId = String(refs.personId);
+    if (refs.orgId !== undefined) staleIds.orgId = String(refs.orgId);
+    if (refs.dealId !== undefined) staleIds.dealId = String(refs.dealId);
+    if (Object.keys(staleIds).length === 0) return;
+    throw new PipedriveStaleRecordError(
+      `Pipedrive activity create failed (${res.status}, ${staleCode}): ${res.error ?? ''}`,
+      staleIds,
+      staleCode,
+    );
+  }
+
+  /**
+   * Build a `ConnectorResult` for a stale-record failure. Only IDs that
+   * actually appeared on the inbound payload (matched against either the
+   * native Pipedrive name OR the canonical Salesforce-style alias the
+   * adapter emits in `meta`) are surfaced as `meta.staleIds`. Mirrors
+   * `SalesforceConnectorAdapter.staleRecordResult` and the HubSpot one.
+   */
+  private staleRecordResult(
+    err: PipedriveStaleRecordError,
+    payload: ConnectorPayload,
+  ): ConnectorResult {
+    const filtered: Record<string, string> = {};
+    const payloadPersonId = (payload.personId ?? payload.contactId) as string | undefined;
+    const payloadOrgId = (payload.orgId ?? payload.accountId) as string | undefined;
+    const payloadDealId = (payload.dealId ?? payload.opportunityId) as string | undefined;
+    if (err.staleIds.personId && err.staleIds.personId === String(payloadPersonId ?? '')) {
+      filtered.personId = err.staleIds.personId;
+    }
+    if (err.staleIds.orgId && err.staleIds.orgId === String(payloadOrgId ?? '')) {
+      filtered.orgId = err.staleIds.orgId;
+    }
+    if (err.staleIds.dealId && err.staleIds.dealId === String(payloadDealId ?? '')) {
+      filtered.dealId = err.staleIds.dealId;
+    }
+    return {
+      success: false,
+      error: err.message,
+      meta: {
+        provider: 'pipedrive',
+        staleRecord: true,
+        ...(err.errorCode ? { staleErrorCode: err.errorCode } : {}),
+        ...(Object.keys(filtered).length > 0 ? { staleIds: filtered } : {}),
+      },
+    };
   }
 
   /**
@@ -500,6 +621,18 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     if (res.ok && res.data?.success && res.data.data?.length) {
       return res.data.data[0].id;
     }
+    // personId is in the URL path, so a stale signal here unambiguously
+    // identifies the personId as the deleted/merged record.
+    if (!res.ok) {
+      const staleCode = extractPipedriveStaleErrorCode(res.status, res.error);
+      if (staleCode) {
+        throw new PipedriveStaleRecordError(
+          `Pipedrive open deal lookup failed (${res.status}, ${staleCode}): ${res.error ?? ''}`,
+          { personId: String(personId) },
+          staleCode,
+        );
+      }
+    }
     return undefined;
   }
 
@@ -538,6 +671,18 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       },
     });
     if (!create.ok || !create.data?.success) {
+      // The deal-create body references person_id (always) and org_id (when
+      // provided). If Pipedrive rejects with a stale signal, either record
+      // could be the gone one — flag both candidates and let the dispatch
+      // layer's value-match scrub clear only the truly stale ID.
+      const staleCode = extractPipedriveStaleErrorCode(create.status, create.error);
+      if (staleCode) {
+        throw new PipedriveStaleRecordError(
+          `Pipedrive deal create failed (${create.status}, ${staleCode}): ${create.error ?? ''}`,
+          { personId: String(personId), ...(orgId !== undefined ? { orgId: String(orgId) } : {}) },
+          staleCode,
+        );
+      }
       logger.warn('Pipedrive deal create failed', { personId, error: create.error });
       return undefined;
     }
@@ -558,6 +703,18 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       },
     });
     if (!update.ok || !update.data?.success) {
+      // dealId is in the URL path; org_id (when provided) is in the request
+      // body. A stale signal could mean either record is gone — flag both
+      // candidates and let the dispatch layer's value-match scrub clear
+      // only the truly stale ID(s).
+      const staleCode = extractPipedriveStaleErrorCode(update.status, update.error);
+      if (staleCode) {
+        throw new PipedriveStaleRecordError(
+          `Pipedrive deal stage move failed (${update.status}, ${staleCode}): ${update.error ?? ''}`,
+          { dealId: String(dealId), ...(orgId !== undefined ? { orgId: String(orgId) } : {}) },
+          staleCode,
+        );
+      }
       logger.warn('Pipedrive deal stage move failed', { dealId, stageId, error: update.error });
       return false;
     }
@@ -574,6 +731,18 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       body: { org_id: orgId },
     });
     if (!update.ok || !update.data?.success) {
+      // dealId is in the URL path; orgId is the only field in the body. A
+      // stale signal could mean either record is gone — flag both
+      // candidates so the dispatch layer's value-match scrub clears the
+      // truly stale ID(s) without over-scrubbing the still-valid one.
+      const staleCode = extractPipedriveStaleErrorCode(update.status, update.error);
+      if (staleCode) {
+        throw new PipedriveStaleRecordError(
+          `Pipedrive deal org link failed (${update.status}, ${staleCode}): ${update.error ?? ''}`,
+          { dealId: String(dealId), orgId: String(orgId) },
+          staleCode,
+        );
+      }
       logger.warn('Pipedrive deal org link failed', { dealId, orgId, error: update.error });
     }
   }

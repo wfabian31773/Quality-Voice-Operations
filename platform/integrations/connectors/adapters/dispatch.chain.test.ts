@@ -972,4 +972,378 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
       accountId: 'hs-company-keep',
     });
   });
+
+  test('HubSpot: stale cached dealId triggers targeted cache invalidation while preserving valid contactId/companyId', async () => {
+    const config: ConnectorConfig = {
+      integrationId: 'int-hs-stale-deal',
+      tenantId: TENANT,
+      connectorType: 'crm',
+      provider: 'hubspot',
+      isEnabled: true,
+      credentials: {
+        access_token: 'tok-hs',
+        // Configured appointment stage forces handleAppointmentBooked into
+        // the moveDealStage path (PATCH /crm/v3/objects/deals/{dealId}),
+        // which is what we want to fail with OBJECT_NOT_FOUND.
+        appointment_stage_id: 'stage-appt',
+        appointment_pipeline_id: 'pipeline-default',
+      },
+    };
+    vi.mocked(connectorDb.listEnabledConnectorConfigs).mockResolvedValue([config]);
+
+    // Pre-seed a HubSpot cache row with a deal that has since been deleted
+    // upstream. The contact and company are still valid and must NOT be
+    // scrubbed. We mirror the real DB shape: canonical Salesforce-style slot
+    // names (contactId / accountId / opportunityId) plus the HubSpot-native
+    // names (contactId / companyId / dealId) round-tripped via `extras`.
+    const store = (identityModule as unknown as { __store: Map<string, StoredIdentity> }).__store;
+    const normPhone = identityModule.normalizeCallerPhone(CALLER_PHONE)!;
+    store.set(`${TENANT}:hubspot:${normPhone}`, {
+      contactId: 'hs-contact-keep',
+      accountId: 'hs-company-keep',
+      opportunityId: 'hs-deal-zombie',
+      extras: {
+        contactId: 'hs-contact-keep',
+        companyId: 'hs-company-keep',
+        dealId: 'hs-deal-zombie',
+      },
+    });
+
+    // The hint chain pre-populates contact/company/deal so the only HubSpot
+    // call we need to mock for handleAppointmentBooked is the deal stage
+    // PATCH (which 404s) and any subsequent association/note/engagement
+    // calls if the adapter still attempts them after the throw.
+    const fetchScope = setupFetch([
+      {
+        match: (u, i) => /\/crm\/v3\/objects\/deals\/hs-deal-zombie(\?|$)/.test(u) && i?.method === 'PATCH',
+        response: {
+          status: 404,
+          body: {
+            status: 'error',
+            message: 'resource not found',
+            category: 'OBJECT_NOT_FOUND',
+          },
+        },
+      },
+    ]);
+
+    const service = new ConnectorService();
+    const apptResult = await service.dispatchEvent(TENANT, 'appointment.booked', {
+      type: 'appointment.booked',
+      callerPhone: CALLER_PHONE,
+      callerFirstName: 'Jane',
+      callerLastName: 'Doe',
+      callerCompany: 'Acme Inc',
+      summary: 'Demo booked',
+      appointmentDate: '2026-05-01',
+      appointmentTime: '14:00',
+    });
+
+    expect(apptResult.dispatched).toBe(1);
+    expect(apptResult.results[0]).toMatchObject({ provider: 'hubspot', success: false });
+
+    // Sanity: the deal stage move really did target the stale dealId, proving
+    // the cache hint flowed end-to-end into the HTTP layer.
+    const dealPatch = fetchScope.calls.find(
+      (c) => c.method === 'PATCH' && /\/crm\/v3\/objects\/deals\/hs-deal-zombie/.test(c.url),
+    );
+    expect(dealPatch).toBeDefined();
+
+    // The dispatch layer scrubbed the cache using the HubSpot-native dealId
+    // key the adapter surfaced (NOT the canonical opportunityId remap).
+    expect(identityModule.clearCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'hubspot',
+      CALLER_PHONE,
+      expect.objectContaining({ dealId: 'hs-deal-zombie' }),
+    );
+    const lastCall = vi.mocked(identityModule.clearCrmCallerIdentity).mock.calls.at(-1)!;
+    const passedStale = lastCall[3] as Record<string, string> | undefined;
+    expect(passedStale?.contactId).toBeUndefined();
+    expect(passedStale?.companyId).toBeUndefined();
+
+    // Targeted scrub: the canonical opportunityId column AND the
+    // extras.dealId entry must both be cleared (value-match), while the
+    // still-valid contact and company slots are preserved.
+    const after = store.get(`${TENANT}:hubspot:${normPhone}`);
+    expect(after).toBeDefined();
+    expect(after!.opportunityId).toBeUndefined();
+    expect(after!.contactId).toBe('hs-contact-keep');
+    expect(after!.accountId).toBe('hs-company-keep');
+    expect(after!.extras).toEqual({
+      contactId: 'hs-contact-keep',
+      companyId: 'hs-company-keep',
+    });
+  });
+
+  test('Pipedrive: stale cached dealId triggers targeted cache invalidation while preserving valid personId', async () => {
+    const config: ConnectorConfig = {
+      integrationId: 'int-pd-stale-deal',
+      tenantId: TENANT,
+      connectorType: 'crm',
+      provider: 'pipedrive',
+      isEnabled: true,
+      credentials: {
+        access_token: 'tok-pd',
+        company_domain: 'acmedomain',
+        // Configured appointment stage forces handleAppointmentBooked into
+        // the moveDealStage path (PUT /deals/{dealId}), which is what we
+        // want to fail with a Pipedrive "deal not found" 404.
+        appointment_stage_id: '42',
+      },
+    };
+    vi.mocked(connectorDb.listEnabledConnectorConfigs).mockResolvedValue([config]);
+
+    // Pre-seed a Pipedrive cache row with a deal that has since been deleted
+    // upstream. The person is still valid. We deliberately omit the org so
+    // that moveDealStage's PUT body has only `stage_id` (no `org_id`) — the
+    // only Pipedrive call path that targets a single ID unambiguously, which
+    // lets the adapter flag *only* `dealId` as stale (and therefore only
+    // scrub `dealId`, leaving `personId` untouched).
+    const store = (identityModule as unknown as { __store: Map<string, StoredIdentity> }).__store;
+    const normPhone = identityModule.normalizeCallerPhone(CALLER_PHONE)!;
+    store.set(`${TENANT}:pipedrive:${normPhone}`, {
+      contactId: '111',
+      opportunityId: '999',
+      extras: {
+        personId: '111',
+        dealId: '999',
+      },
+    });
+
+    // No callerCompany on the inbound payload → the adapter doesn't try to
+    // resolve an organization, so moveDealStage is invoked with orgId=undefined.
+    const fetchScope = setupFetch([
+      {
+        match: (u, i) => /\/deals\/999(\?|$)/.test(u) && i?.method === 'PUT',
+        response: {
+          status: 404,
+          body: { success: false, error: 'Deal not found', error_info: 'Please check your input' },
+        },
+      },
+    ]);
+
+    const service = new ConnectorService();
+    const apptResult = await service.dispatchEvent(TENANT, 'appointment.booked', {
+      type: 'appointment.booked',
+      callerPhone: CALLER_PHONE,
+      callerFirstName: 'Jane',
+      callerLastName: 'Doe',
+      summary: 'Demo booked',
+      appointmentDate: '2026-05-01',
+      appointmentTime: '14:00',
+    });
+
+    expect(apptResult.dispatched).toBe(1);
+    expect(apptResult.results[0]).toMatchObject({ provider: 'pipedrive', success: false });
+
+    // Sanity: the deal stage move really did target the stale dealId.
+    const dealPut = fetchScope.calls.find(
+      (c) => c.method === 'PUT' && /\/deals\/999/.test(c.url),
+    );
+    expect(dealPut).toBeDefined();
+    // And the body did NOT include org_id (proves our pure-dealId path).
+    expect(dealPut!.body).not.toHaveProperty('org_id');
+
+    // The dispatch layer scrubbed the cache using the Pipedrive-native dealId
+    // key the adapter surfaced. Crucially, no other native key was passed —
+    // so the value-match scrub can't accidentally clear personId/orgId.
+    expect(identityModule.clearCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'pipedrive',
+      CALLER_PHONE,
+      expect.objectContaining({ dealId: '999' }),
+    );
+    const lastCall = vi.mocked(identityModule.clearCrmCallerIdentity).mock.calls.at(-1)!;
+    const passedStale = lastCall[3] as Record<string, string> | undefined;
+    expect(passedStale?.personId).toBeUndefined();
+    expect(passedStale?.orgId).toBeUndefined();
+
+    // Targeted scrub: opportunityId column + extras.dealId cleared (value-match),
+    // still-valid person preserved.
+    const after = store.get(`${TENANT}:pipedrive:${normPhone}`);
+    expect(after).toBeDefined();
+    expect(after!.opportunityId).toBeUndefined();
+    expect(after!.contactId).toBe('111');
+    expect(after!.extras).toEqual({
+      personId: '111',
+    });
+  });
+
+  test('HubSpot: stale cached contactId triggers targeted cache invalidation while preserving valid companyId/dealId', async () => {
+    const config: ConnectorConfig = {
+      integrationId: 'int-hs-stale-contact',
+      tenantId: TENANT,
+      connectorType: 'crm',
+      provider: 'hubspot',
+      isEnabled: true,
+      credentials: { access_token: 'tok-hs' },
+    };
+    vi.mocked(connectorDb.listEnabledConnectorConfigs).mockResolvedValue([config]);
+
+    // Pre-seed cache: contactId is the stale one, company + deal are still
+    // valid in HubSpot. We use call.completed because handleCallCompleted's
+    // logCallEngagement POSTs the call engagement with ONLY contactId in its
+    // associations array — that's the single path-targeted-by-contactId-only
+    // signal in the HubSpot adapter, so a 404/OBJECT_NOT_FOUND there cleanly
+    // identifies contactId (and only contactId) as the stale record.
+    const store = (identityModule as unknown as { __store: Map<string, StoredIdentity> }).__store;
+    const normPhone = identityModule.normalizeCallerPhone(CALLER_PHONE)!;
+    store.set(`${TENANT}:hubspot:${normPhone}`, {
+      contactId: 'hs-contact-zombie',
+      accountId: 'hs-company-keep',
+      opportunityId: 'hs-deal-keep',
+      extras: {
+        contactId: 'hs-contact-zombie',
+        companyId: 'hs-company-keep',
+        dealId: 'hs-deal-keep',
+      },
+    });
+
+    // No callerCompany on the inbound payload → handleCallCompleted skips
+    // findOrCreateCompany AND the contacts→companies association, so the
+    // only HubSpot call is the call-engagement POST that fails.
+    const fetchScope = setupFetch([
+      {
+        match: (u, i) => /\/crm\/v3\/objects\/calls(\?|$)/.test(u) && i?.method === 'POST',
+        response: {
+          status: 404,
+          body: {
+            status: 'error',
+            message: 'resource not found',
+            category: 'OBJECT_NOT_FOUND',
+          },
+        },
+      },
+    ]);
+
+    const service = new ConnectorService();
+    const callResult = await service.dispatchEvent(TENANT, 'call.completed', {
+      type: 'call.completed',
+      callerPhone: CALLER_PHONE,
+      callerFirstName: 'Jane',
+      callerLastName: 'Doe',
+      summary: 'AI voice call',
+      durationSeconds: 60,
+      callSid: 'CA-stale-contact',
+    });
+
+    expect(callResult.dispatched).toBe(1);
+    expect(callResult.results[0]).toMatchObject({ provider: 'hubspot', success: false });
+
+    // Sanity: the engagement POST really did reference the stale contactId.
+    const engagementPost = fetchScope.calls.find(
+      (c) => c.method === 'POST' && /\/crm\/v3\/objects\/calls/.test(c.url),
+    );
+    expect(engagementPost).toBeDefined();
+    const associations = (engagementPost!.body as { associations?: Array<{ to?: { id: string } }> }).associations;
+    expect(associations?.[0]?.to?.id).toBe('hs-contact-zombie');
+
+    // The dispatch layer scrubbed the cache using the HubSpot-native contactId
+    // key the adapter surfaced — and only that key (no companyId or dealId).
+    expect(identityModule.clearCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'hubspot',
+      CALLER_PHONE,
+      expect.objectContaining({ contactId: 'hs-contact-zombie' }),
+    );
+    const lastCall = vi.mocked(identityModule.clearCrmCallerIdentity).mock.calls.at(-1)!;
+    const passedStale = lastCall[3] as Record<string, string> | undefined;
+    expect(passedStale?.companyId).toBeUndefined();
+    expect(passedStale?.dealId).toBeUndefined();
+
+    // Targeted scrub: contactId column + extras.contactId cleared (value-match),
+    // still-valid company and deal slots preserved.
+    const after = store.get(`${TENANT}:hubspot:${normPhone}`);
+    expect(after).toBeDefined();
+    expect(after!.contactId).toBeUndefined();
+    expect(after!.accountId).toBe('hs-company-keep');
+    expect(after!.opportunityId).toBe('hs-deal-keep');
+    expect(after!.extras).toEqual({
+      companyId: 'hs-company-keep',
+      dealId: 'hs-deal-keep',
+    });
+  });
+
+  test('Pipedrive: stale cached personId triggers targeted cache invalidation while preserving valid orgId', async () => {
+    const config: ConnectorConfig = {
+      integrationId: 'int-pd-stale-person',
+      tenantId: TENANT,
+      connectorType: 'crm',
+      provider: 'pipedrive',
+      isEnabled: true,
+      credentials: { access_token: 'tok-pd', company_domain: 'acmedomain' },
+    };
+    vi.mocked(connectorDb.listEnabledConnectorConfigs).mockResolvedValue([config]);
+
+    // Pre-seed cache: personId is stale, orgId is still valid. No dealId so
+    // findOpenDealForPerson is invoked — that's the single path-targeted-by-
+    // personId-only signal in the Pipedrive adapter. The 404 there cleanly
+    // identifies personId (and only personId) as the stale record.
+    const store = (identityModule as unknown as { __store: Map<string, StoredIdentity> }).__store;
+    const normPhone = identityModule.normalizeCallerPhone(CALLER_PHONE)!;
+    store.set(`${TENANT}:pipedrive:${normPhone}`, {
+      contactId: '111',
+      accountId: '555',
+      extras: {
+        personId: '111',
+        orgId: '555',
+      },
+    });
+
+    // call.completed flow: with personId + orgId hints injected, the adapter
+    // skips findOrCreatePerson + findOrCreateOrganization, then attempts
+    // findOpenDealForPerson(111) which returns a Pipedrive "person not found"
+    // 404 envelope.
+    const fetchScope = setupFetch([
+      {
+        match: (u) => /\/persons\/111\/deals/.test(u),
+        response: {
+          status: 404,
+          body: { success: false, error: 'Person not found' },
+        },
+      },
+    ]);
+
+    const service = new ConnectorService();
+    const callResult = await service.dispatchEvent(TENANT, 'call.completed', {
+      type: 'call.completed',
+      callerPhone: CALLER_PHONE,
+      callerFirstName: 'Jane',
+      callerLastName: 'Doe',
+      summary: 'AI voice call',
+      durationSeconds: 60,
+      callSid: 'CA-stale-person',
+    });
+
+    expect(callResult.dispatched).toBe(1);
+    expect(callResult.results[0]).toMatchObject({ provider: 'pipedrive', success: false });
+
+    // Sanity: findOpenDealForPerson really did target the stale personId.
+    const personDealsLookup = fetchScope.calls.find((c) => /\/persons\/111\/deals/.test(c.url));
+    expect(personDealsLookup).toBeDefined();
+
+    // The dispatch layer scrubbed the cache using the Pipedrive-native personId
+    // key the adapter surfaced — and only that key (no orgId or dealId).
+    expect(identityModule.clearCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'pipedrive',
+      CALLER_PHONE,
+      expect.objectContaining({ personId: '111' }),
+    );
+    const lastCall = vi.mocked(identityModule.clearCrmCallerIdentity).mock.calls.at(-1)!;
+    const passedStale = lastCall[3] as Record<string, string> | undefined;
+    expect(passedStale?.orgId).toBeUndefined();
+    expect(passedStale?.dealId).toBeUndefined();
+
+    // Targeted scrub: contactId column + extras.personId cleared (value-match),
+    // still-valid org slot preserved.
+    const after = store.get(`${TENANT}:pipedrive:${normPhone}`);
+    expect(after).toBeDefined();
+    expect(after!.contactId).toBeUndefined();
+    expect(after!.accountId).toBe('555');
+    expect(after!.extras).toEqual({
+      orgId: '555',
+    });
+  });
 });
