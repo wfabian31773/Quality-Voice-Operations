@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Info, Lightbulb, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DocBlock } from '../data/docs';
@@ -37,6 +37,193 @@ function translateImageStrings(
     ? t(captionKey)
     : caption;
   return { alt: translatedAlt, caption: translatedCaption };
+}
+
+const MIN_SCALE = 1;
+const MAX_SCALE = 3;
+const DOUBLE_TAP_SCALE = 2;
+const DOUBLE_TAP_MS = 300;
+
+function ZoomableImage({ src, alt }: { src: string; alt: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Use refs for transform state so native touch listeners can read/write
+  // without re-binding on every state change. We mirror to React state only
+  // for re-rendering the transform style.
+  const stateRef = useRef({ scale: 1, tx: 0, ty: 0 });
+  const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0, animate: false });
+
+  const gestureRef = useRef({
+    mode: 'idle' as 'idle' | 'pan' | 'pinch',
+    startDist: 0,
+    startScale: 1,
+    startTx: 0,
+    startTy: 0,
+    startX: 0,
+    startY: 0,
+    startMidX: 0,
+    startMidY: 0,
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0,
+  });
+
+  const clampPan = (scale: number, x: number, y: number) => {
+    const c = containerRef.current;
+    const img = imgRef.current;
+    if (!c || !img) return { x, y };
+    const cw = c.clientWidth;
+    const ch = c.clientHeight;
+    const iw = img.clientWidth * scale;
+    const ih = img.clientHeight * scale;
+    const maxX = Math.max(0, (iw - cw) / 2);
+    const maxY = Math.max(0, (ih - ch) / 2);
+    return {
+      x: Math.max(-maxX, Math.min(maxX, x)),
+      y: Math.max(-maxY, Math.min(maxY, y)),
+    };
+  };
+
+  const apply = (scale: number, tx: number, ty: number, animate = false) => {
+    stateRef.current = { scale, tx, ty };
+    setTransform({ scale, tx, ty, animate });
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches;
+      if (t.length === 2) {
+        e.preventDefault();
+        const dx = t[0].clientX - t[1].clientX;
+        const dy = t[0].clientY - t[1].clientY;
+        gestureRef.current.mode = 'pinch';
+        gestureRef.current.startDist = Math.hypot(dx, dy) || 1;
+        gestureRef.current.startScale = stateRef.current.scale;
+        gestureRef.current.startTx = stateRef.current.tx;
+        gestureRef.current.startTy = stateRef.current.ty;
+        gestureRef.current.startMidX = (t[0].clientX + t[1].clientX) / 2;
+        gestureRef.current.startMidY = (t[0].clientY + t[1].clientY) / 2;
+      } else if (t.length === 1) {
+        const now = Date.now();
+        const sinceLast = now - gestureRef.current.lastTapTime;
+        const dxTap = t[0].clientX - gestureRef.current.lastTapX;
+        const dyTap = t[0].clientY - gestureRef.current.lastTapY;
+        const tapDist = Math.hypot(dxTap, dyTap);
+        if (sinceLast > 0 && sinceLast < DOUBLE_TAP_MS && tapDist < 30) {
+          // Double tap: toggle zoom
+          e.preventDefault();
+          gestureRef.current.lastTapTime = 0;
+          gestureRef.current.mode = 'idle';
+          if (stateRef.current.scale > 1.01) {
+            apply(1, 0, 0, true);
+          } else {
+            const rect = container.getBoundingClientRect();
+            const cx = t[0].clientX - rect.left - rect.width / 2;
+            const cy = t[0].clientY - rect.top - rect.height / 2;
+            const newScale = DOUBLE_TAP_SCALE;
+            const newTx = -cx * (newScale - 1);
+            const newTy = -cy * (newScale - 1);
+            const clamped = clampPan(newScale, newTx, newTy);
+            apply(newScale, clamped.x, clamped.y, true);
+          }
+          return;
+        }
+        gestureRef.current.lastTapTime = now;
+        gestureRef.current.lastTapX = t[0].clientX;
+        gestureRef.current.lastTapY = t[0].clientY;
+        if (stateRef.current.scale > 1.01) {
+          e.preventDefault();
+          gestureRef.current.mode = 'pan';
+          gestureRef.current.startTx = stateRef.current.tx;
+          gestureRef.current.startTy = stateRef.current.ty;
+          gestureRef.current.startX = t[0].clientX;
+          gestureRef.current.startY = t[0].clientY;
+        } else {
+          gestureRef.current.mode = 'idle';
+        }
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches;
+      if (gestureRef.current.mode === 'pinch' && t.length === 2) {
+        e.preventDefault();
+        const dx = t[0].clientX - t[1].clientX;
+        const dy = t[0].clientY - t[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        let newScale = gestureRef.current.startScale * (dist / gestureRef.current.startDist);
+        newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+        const midX = (t[0].clientX + t[1].clientX) / 2;
+        const midY = (t[0].clientY + t[1].clientY) / 2;
+        const newTx = gestureRef.current.startTx + (midX - gestureRef.current.startMidX);
+        const newTy = gestureRef.current.startTy + (midY - gestureRef.current.startMidY);
+        const clamped = clampPan(newScale, newTx, newTy);
+        apply(newScale, clamped.x, clamped.y, false);
+      } else if (gestureRef.current.mode === 'pan' && t.length === 1) {
+        e.preventDefault();
+        const newTx = gestureRef.current.startTx + (t[0].clientX - gestureRef.current.startX);
+        const newTy = gestureRef.current.startTy + (t[0].clientY - gestureRef.current.startY);
+        const clamped = clampPan(stateRef.current.scale, newTx, newTy);
+        apply(stateRef.current.scale, clamped.x, clamped.y, false);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        gestureRef.current.mode = 'idle';
+        if (stateRef.current.scale <= 1.01) {
+          apply(1, 0, 0, true);
+        }
+      } else if (e.touches.length === 1 && gestureRef.current.mode === 'pinch') {
+        if (stateRef.current.scale > 1.01) {
+          gestureRef.current.mode = 'pan';
+          gestureRef.current.startTx = stateRef.current.tx;
+          gestureRef.current.startTy = stateRef.current.ty;
+          gestureRef.current.startX = e.touches[0].clientX;
+          gestureRef.current.startY = e.touches[0].clientY;
+        } else {
+          gestureRef.current.mode = 'idle';
+        }
+      }
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: false });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: false });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative max-w-full max-h-[85vh] overflow-hidden rounded-lg shadow-2xl select-none"
+      style={{ touchAction: 'none' }}
+    >
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        draggable={false}
+        className="max-w-full max-h-[85vh] object-contain block"
+        style={{
+          transform: `translate3d(${transform.tx}px, ${transform.ty}px, 0) scale(${transform.scale})`,
+          transformOrigin: 'center center',
+          transition: transform.animate ? 'transform 200ms ease-out' : 'none',
+          willChange: 'transform',
+        }}
+      />
+    </div>
+  );
 }
 
 const calloutStyles = {
@@ -264,12 +451,9 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         <figure
           className="max-w-full max-h-full flex flex-col items-center gap-3"
           onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
-          <img
-            src={zoomed.src}
-            alt={zoomed.alt}
-            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
-          />
+          <ZoomableImage key={zoomed.src} src={zoomed.src} alt={zoomed.alt} />
           {zoomed.caption && (
             <figcaption className="text-xs sm:text-sm text-white/70 font-body text-center max-w-2xl">
               {zoomed.caption}
