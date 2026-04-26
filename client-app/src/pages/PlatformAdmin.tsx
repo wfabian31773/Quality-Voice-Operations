@@ -14,7 +14,7 @@ import {
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
-  AlertTriangle, ShieldAlert, ExternalLink, Send,
+  AlertTriangle, ShieldAlert, ExternalLink, Send, MailX,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -2503,6 +2503,8 @@ function SupportInboxTab() {
         }}
       />
 
+      <UnsubscribedAddressesPanel />
+
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -2818,6 +2820,127 @@ function BouncedRecipientsPanel({
             )}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+interface UnsubscribedAddress {
+  email_lower: string;
+  source: string | null;
+  unsubscribed_at: string;
+}
+
+interface UnsubscribedAddressesResponse {
+  unsubscribes: UnsubscribedAddress[];
+  total: number;
+  truncated: boolean;
+}
+
+// Lists addresses on the support unsubscribe list. The send-side gate
+// (`checkSupportEmailSkip`) already blocks outbound mail to these recipients;
+// this panel just gives ops a discoverable answer to "is X@Y opted out?"
+// without dropping into SQL.
+function UnsubscribedAddressesPanel() {
+  const [expanded, setExpanded] = useState(false);
+  const [filter, setFilter] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['support-unsubscribed-addresses'],
+    queryFn: () =>
+      api.get<UnsubscribedAddressesResponse>(`/support/unsubscribed?limit=200`),
+    refetchInterval: 60_000,
+  });
+
+  const unsubscribes = data?.unsubscribes ?? [];
+  const total = data?.total ?? 0;
+  const truncated = data?.truncated ?? false;
+
+  // Hide the panel entirely when nothing has been opted out — same posture
+  // as the bounced-recipients panel above, so the inbox stays uncluttered
+  // in the happy case.
+  if (!isLoading && unsubscribes.length === 0) {
+    return null;
+  }
+
+  const needle = filter.trim().toLowerCase();
+  const filtered = needle
+    ? unsubscribes.filter((u) => u.email_lower.includes(needle))
+    : unsubscribes;
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-secondary border-b border-border hover:bg-surface-secondary/70"
+      >
+        <div className="flex items-center gap-2 text-left">
+          {expanded
+            ? <ChevronDown className="h-4 w-4 text-muted" />
+            : <ChevronRight className="h-4 w-4 text-muted" />}
+          <MailX className="h-4 w-4 text-amber-600" />
+          <div>
+            <div className="text-sm font-medium">
+              Unsubscribed addresses
+              <span className="ml-2 text-xs text-muted font-normal">
+                {isLoading
+                  ? 'loading…'
+                  : `${total} address${total === 1 ? '' : 'es'} on the support opt-out list`}
+                {truncated && ` (showing first ${unsubscribes.length})`}
+              </span>
+            </div>
+            <div className="text-xs text-muted mt-0.5">
+              Recipients who clicked the unsubscribe link or sent a one-click
+              opt-out header. Outbound support replies skip these addresses
+              automatically.
+            </div>
+          </div>
+        </div>
+      </button>
+      {expanded && (
+        <div>
+          <div className="px-4 py-2 border-b border-border bg-surface">
+            <input
+              type="search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter by email (e.g. user@example.com)"
+              className="w-full max-w-sm text-xs px-2 py-1 rounded border border-border bg-surface"
+            />
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface">
+                <th className="text-left px-4 py-3 font-medium text-muted">Address</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Source</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Unsubscribed at</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={3} className="text-center py-8 text-muted">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={3} className="text-center py-8 text-muted">No matching addresses</td></tr>
+              ) : (
+                filtered.map((u) => (
+                  <tr
+                    key={u.email_lower}
+                    className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs">{u.email_lower}</td>
+                    <td className="px-4 py-3 text-xs text-muted">
+                      {u.source ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted">
+                      {new Date(u.unsubscribed_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

@@ -1403,6 +1403,61 @@ router.get(
   },
 );
 
+// ----- Platform admin: unsubscribed addresses -----
+//
+// Lists recent rows from `support_email_unsubscribes` so ops can see who has
+// opted out without dropping into SQL. The send-side gate
+// (`checkSupportEmailSkip`) already enforces these entries; this endpoint
+// is purely a discoverability surface.
+//
+// Returns the most recent N rows ordered by `unsubscribed_at DESC`, plus a
+// total-count and a `truncated` flag — same shape as the bounced-recipients
+// endpoint so the admin UI can render them with consistent affordances.
+router.get(
+  '/support/unsubscribed',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const limit = Math.min(
+      Math.max(parseInt(String(req.query.limit ?? '100'), 10) || 100, 1),
+      500,
+    );
+    try {
+      const pool = getPlatformPool();
+      // Two cheap reads: the bounded slice for display and a separate
+      // `COUNT(*)` so the panel can show "showing N of M" honestly without
+      // pulling the entire table just to count it.
+      const [rowsRes, totalRes] = await Promise.all([
+        pool.query<{
+          email_lower: string;
+          source: string | null;
+          unsubscribed_at: string;
+        }>(
+          `SELECT email_lower, source, unsubscribed_at
+             FROM support_email_unsubscribes
+             ORDER BY unsubscribed_at DESC
+             LIMIT $1`,
+          [limit],
+        ),
+        pool.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM support_email_unsubscribes`,
+        ),
+      ]);
+
+      const total = parseInt(totalRes.rows[0]?.count ?? '0', 10) || 0;
+      res.json({
+        unsubscribes: rowsRes.rows,
+        total,
+        truncated: total > rowsRes.rows.length,
+      });
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: 'Failed to load unsubscribed addresses', detail: String(err) });
+    }
+  },
+);
+
 router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body ?? {};
