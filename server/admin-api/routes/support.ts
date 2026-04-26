@@ -1427,6 +1427,49 @@ router.get(
   },
 );
 
+// ----- Platform admin: bounced-recipient dedup table stats -----
+//
+// Surfaces the size of the platform-wide `support_recipient_bounce_alerts`
+// dedup table at a glance for the Platform Admin dashboard. The table is
+// monotonic — every distinct address that has ever produced a hard bounce
+// gets a row, and rows are only removed by ops when an address is known to
+// be repaired. As a result the total row count is a useful long-term
+// platform-health signal ("how many distinct customer addresses have hit a
+// permanent SMTP failure ever?"), and the 7d / 30d windows make a sudden
+// spike obvious — a strong indicator of an upstream sender-reputation issue.
+//
+// The query is intentionally a single round-trip: COUNT(*) plus two
+// COUNT(*) FILTER (...) windows, all against the PK-indexed
+// `first_alerted_at` column. Cheap even with millions of rows.
+router.get(
+  '/support/replies/bounced-recipients/stats',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const pool = getPlatformPool();
+      const r = await pool.query<{
+        total: number;
+        last_7d: number;
+        last_30d: number;
+      }>(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE first_alerted_at > NOW() - INTERVAL '7 days')::int AS last_7d,
+           COUNT(*) FILTER (WHERE first_alerted_at > NOW() - INTERVAL '30 days')::int AS last_30d
+         FROM support_recipient_bounce_alerts`,
+      );
+      const row = r.rows[0] ?? { total: 0, last_7d: 0, last_30d: 0 };
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({
+        error: 'Failed to load bounced recipient alert stats',
+        detail: String(err),
+      });
+    }
+  },
+);
+
 // ----- Platform admin: unsubscribed addresses -----
 //
 // Lists recent rows from `support_email_unsubscribes` so ops can see who has

@@ -359,6 +359,97 @@ describe('GET /support/replies/bounced-recipients — runtime behavior', () => {
   });
 });
 
+// ---- Stats endpoint contract ------------------------------------------------
+//
+// The Platform Admin dashboard surfaces the size of the
+// `support_recipient_bounce_alerts` dedup table at a glance via a counter
+// card (total + last-7d + last-30d). This is a single COUNT-only query
+// against a separate endpoint so the dashboard load doesn't pay for the
+// full per-recipient aggregation that the BouncedRecipientsPanel uses.
+
+describe('/support/replies/bounced-recipients/stats — endpoint contract', () => {
+  it('mounts the stats endpoint guarded by requireAuth + requirePlatformAdmin', () => {
+    expect(supportFile).toMatch(
+      /router\.get\(\s*['"]\/support\/replies\/bounced-recipients\/stats['"][\s\S]*?requireAuth[\s\S]*?requirePlatformAdmin/,
+    );
+  });
+
+  it('reads the dedup table with a single round-trip (total + 7d + 30d windows)', () => {
+    const start = supportFile.indexOf("'/support/replies/bounced-recipients/stats'");
+    expect(start).toBeGreaterThan(-1);
+    const after = supportFile.slice(start, start + 2000);
+    // One COUNT(*) for the total, two COUNT(*) FILTER (...) windows for the
+    // 7d / 30d slices. All against the dedup table.
+    expect(after).toMatch(/FROM support_recipient_bounce_alerts/);
+    expect(after).toMatch(/COUNT\(\*\)::int AS total/);
+    expect(after).toMatch(
+      /COUNT\(\*\) FILTER \(WHERE first_alerted_at > NOW\(\) - INTERVAL '7 days'\)/,
+    );
+    expect(after).toMatch(
+      /COUNT\(\*\) FILTER \(WHERE first_alerted_at > NOW\(\) - INTERVAL '30 days'\)/,
+    );
+  });
+});
+
+describe('PlatformAdmin dashboard — bounced recipient counter card', () => {
+  it('queries the new stats endpoint from the dashboard', () => {
+    expect(adminUiFile).toMatch(
+      /\/support\/replies\/bounced-recipients\/stats/,
+    );
+  });
+
+  it('renders a "Recipients ever hard-bounced" StatCard wired up to the stats query', () => {
+    expect(adminUiFile).toMatch(/Recipients ever hard-bounced/);
+  });
+
+  it('shows the 7d / 30d sub-line so a sender-reputation regression is visible at a glance', () => {
+    // The sub line is built from bouncedStats.last_7d / bouncedStats.last_30d.
+    expect(adminUiFile).toMatch(/last_7d/);
+    expect(adminUiFile).toMatch(/last_30d/);
+    expect(adminUiFile).toMatch(/in 7d/);
+    expect(adminUiFile).toMatch(/in 30d/);
+  });
+
+  it('makes the card click jump to the support inbox and scroll to the BouncedRecipientsPanel', () => {
+    // The panel exposes a stable id that the dashboard scrolls into view.
+    expect(adminUiFile).toMatch(/id="bounced-recipients-panel"/);
+    expect(adminUiFile).toMatch(/getElementById\(\s*['"]bounced-recipients-panel['"]\s*\)/);
+    expect(adminUiFile).toMatch(/setActiveTab\(\s*['"]support['"]\s*\)/);
+  });
+});
+
+describe('GET /support/replies/bounced-recipients/stats — runtime behavior', () => {
+  const STATS_PATH = '/support/replies/bounced-recipients/stats';
+
+  it('returns the COUNT row from the dedup table', async () => {
+    queryMock.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ total: 42, last_7d: 5, last_30d: 17 }],
+    });
+
+    const r = await request(buildApp()).get(STATS_PATH).send();
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ total: 42, last_7d: 5, last_30d: 17 });
+  });
+
+  it('falls back to all-zero counters when the table is empty', async () => {
+    queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+    const r = await request(buildApp()).get(STATS_PATH).send();
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ total: 0, last_7d: 0, last_30d: 0 });
+  });
+
+  it('returns 500 with a detail message when the count query fails', async () => {
+    queryMock.mockRejectedValueOnce(new Error('kaboom'));
+
+    const r = await request(buildApp()).get(STATS_PATH).send();
+    expect(r.status).toBe(500);
+    expect(r.body.error).toMatch(/Failed to load bounced recipient alert stats/);
+    expect(r.body.detail).toContain('kaboom');
+  });
+});
+
 describe('DELETE /support/replies/bounced-recipients/:email/alert — runtime behavior', () => {
   it('deletes the dedup row by lowercased email and reports cleared=true on success', async () => {
     queryMock.mockResolvedValueOnce({

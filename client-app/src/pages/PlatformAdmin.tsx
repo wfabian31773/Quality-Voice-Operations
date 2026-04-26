@@ -108,6 +108,16 @@ interface PlatformStats {
   revenue_last_30d_cents: string;
 }
 
+// Snapshot of the platform-wide `support_recipient_bounce_alerts` dedup
+// table — total distinct addresses we've ever paged ops about for a hard
+// bounce, plus the last-7d / last-30d windows that make a sender-reputation
+// regression visible at a glance.
+interface BouncedRecipientStats {
+  total: number;
+  last_7d: number;
+  last_30d: number;
+}
+
 interface Tenant {
   id: string;
   name: string;
@@ -1238,6 +1248,18 @@ export default function PlatformAdmin() {
     refetchInterval: 60_000,
   });
 
+  // Counter for the platform-wide hard-bounce dedup table. Refreshed at the
+  // same cadence as the rest of the dashboard cards so the 7d / 30d windows
+  // stay current without the admin having to reload. Failures here must not
+  // hide the rest of the dashboard, so the card just shows "—" if the query
+  // errors and the rest of the page renders unaffected.
+  const { data: bouncedStats, isLoading: bouncedStatsLoading } = useQuery({
+    queryKey: ['support-bounced-recipient-stats'],
+    queryFn: () =>
+      api.get<BouncedRecipientStats>('/support/replies/bounced-recipients/stats'),
+    refetchInterval: 60_000,
+  });
+
   const { data: tenantsData, isLoading: tenantsLoading } = useQuery({
     queryKey: ['platform-tenants'],
     queryFn: () => api.get<{ tenants: Tenant[] }>('/platform/tenants'),
@@ -1289,7 +1311,7 @@ export default function PlatformAdmin() {
         <h1 className="text-2xl font-bold">Platform Administration</h1>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard
           icon={Building2}
           label="Active Tenants"
@@ -1311,6 +1333,44 @@ export default function PlatformAdmin() {
           label="Revenue (30d)"
           value={statsLoading ? '...' : formatCents(stats?.revenue_last_30d_cents ?? '0')}
           sub={statsLoading ? '' : `${formatCents(stats?.total_revenue_cents ?? '0')} total`}
+        />
+        {/* Platform-wide hard-bounce dedup table size. Click jumps to the
+            Support Inbox tab and scrolls to the BouncedRecipientsPanel so the
+            admin can drill into the offending addresses. The 7d / 30d sub-line
+            is what makes this a useful sender-reputation tripwire — a sudden
+            jump in the 7d window is the signal worth paging on. */}
+        <StatCard
+          icon={ShieldAlert}
+          label="Recipients ever hard-bounced"
+          value={
+            bouncedStatsLoading
+              ? '...'
+              : String(bouncedStats?.total ?? 0)
+          }
+          sub={
+            bouncedStatsLoading
+              ? ''
+              : `+${bouncedStats?.last_7d ?? 0} in 7d · +${bouncedStats?.last_30d ?? 0} in 30d`
+          }
+          tone={
+            !bouncedStatsLoading && (bouncedStats?.last_7d ?? 0) > 0
+              ? 'warning'
+              : undefined
+          }
+          onClick={() => {
+            setActiveTab('support');
+            // Defer the scroll until after the tab swap has rendered the
+            // panel — the support inbox isn't mounted on other tabs, so
+            // getElementById would otherwise return null on the first click
+            // from a non-support tab.
+            requestAnimationFrame(() => {
+              setTimeout(() => {
+                document
+                  .getElementById('bounced-recipients-panel')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 0);
+            });
+          }}
         />
       </div>
 
@@ -2818,7 +2878,13 @@ function BouncedRecipientsPanel({
   };
 
   return (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+    // The id is the scroll target for the "Recipients ever hard-bounced"
+    // dashboard card — clicking the card switches to the support tab and
+    // calls scrollIntoView on this element.
+    <div
+      id="bounced-recipients-panel"
+      className="bg-surface border border-border rounded-xl overflow-hidden scroll-mt-4"
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -4287,15 +4353,52 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub }: { icon: typeof Building2; label: string; value: string; sub?: string }) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4">
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  onClick,
+  tone,
+}: {
+  icon: typeof Building2;
+  label: string;
+  value: string;
+  sub?: string;
+  onClick?: () => void;
+  // 'warning' tints the value red so a non-zero recent-bounce window is
+  // visually distinct from the steady-state total. Kept opt-in so the
+  // existing four cards stay neutral.
+  tone?: 'warning';
+}) {
+  const valueClass =
+    tone === 'warning' && value !== '0' && value !== '...'
+      ? 'text-2xl font-bold text-red-600 dark:text-red-400'
+      : 'text-2xl font-bold';
+  const body = (
+    <>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className="h-4 w-4 text-muted" />
+        <Icon className={`h-4 w-4 ${tone === 'warning' ? 'text-red-600 dark:text-red-400' : 'text-muted'}`} />
         <span className="text-sm text-muted">{label}</span>
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className={valueClass}>{value}</div>
       {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="bg-surface border border-border rounded-xl p-4 text-left w-full hover:border-primary/50 hover:bg-surface-secondary/40 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40"
+      >
+        {body}
+      </button>
+    );
+  }
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4">
+      {body}
     </div>
   );
 }
