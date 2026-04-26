@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { isPermanentSmtpError } from '../lib/smtpErrorClass';
 import {
   Building2, Users, PhoneCall, DollarSign, ChevronDown, ChevronRight,
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
@@ -1805,13 +1806,24 @@ function DocsFeedbackCommentRow({
         <div className="mb-2 flex items-start gap-2 text-xs text-red-700 bg-red-100/60 border border-red-200 rounded px-2 py-1.5">
           <Mail className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
-            <div className="font-semibold">Last reply failed to send</div>
+            <div className="font-semibold flex items-center gap-2 flex-wrap">
+              Last reply failed to send
+              {isPermanentSmtpError(c.last_reply_error) && (
+                <span
+                  className="px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium"
+                  title="Permanent SMTP failure — auto-retry skipped"
+                >
+                  Hard bounce — won&rsquo;t auto-retry
+                </span>
+              )}
+            </div>
             {c.last_reply_error && (
               <div className="text-red-600">{c.last_reply_error}</div>
             )}
             <div className="text-red-600/80">
-              Retry below to re-send the same body, or open the reply form to
-              edit before sending.
+              {isPermanentSmtpError(c.last_reply_error)
+                ? 'The recipient address looks permanently unreachable, so the background scheduler will not auto-retry. Fix the address before pressing Retry below.'
+                : 'Retry below to re-send the same body, or open the reply form to edit before sending.'}
               {c.last_reply_at && (
                 <> Attempted {new Date(c.last_reply_at).toLocaleString()}.</>
               )}
@@ -1996,7 +2008,19 @@ function DocsFeedbackCommentRow({
                     <span>· from {r.sent_by ?? 'admin'}</span>
                     <span>· to {r.to_email}</span>
                     {r.email_error
-                      ? <span className="text-red-600">· failed: {r.email_error}</span>
+                      ? (
+                        <span className="text-red-600 inline-flex items-center gap-1">
+                          · failed: {r.email_error}
+                          {isPermanentSmtpError(r.email_error) && (
+                            <span
+                              className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                              title="Permanent SMTP failure — auto-retry skipped"
+                            >
+                              Hard bounce
+                            </span>
+                          )}
+                        </span>
+                      )
                       : <span className="text-green-700">· delivered</span>}
                     {chain.retries.length > 0 && (
                       <span
@@ -2028,7 +2052,19 @@ function DocsFeedbackCommentRow({
                           <span>{new Date(retry.created_at).toLocaleString()}</span>
                           <span>· from {retry.sent_by ?? 'admin'}</span>
                           {retry.email_error
-                            ? <span className="text-red-600">· failed: {retry.email_error}</span>
+                            ? (
+                              <span className="text-red-600 inline-flex items-center gap-1">
+                                · failed: {retry.email_error}
+                                {isPermanentSmtpError(retry.email_error) && (
+                                  <span
+                                    className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                                    title="Permanent SMTP failure — auto-retry skipped"
+                                  >
+                                    Hard bounce
+                                  </span>
+                                )}
+                              </span>
+                            )
                             : <span className="text-green-700">· delivered</span>}
                         </div>
                       ))}
@@ -2208,8 +2244,14 @@ function SupportInboxTab() {
                     <td className="px-4 py-3">
                       <div className="font-mono text-xs">{t.id}</div>
                       {t.email_error && (
-                        <div className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" /> email failed
+                        <div
+                          className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                          title={t.email_error}
+                        >
+                          <AlertCircle className="h-3 w-3" />
+                          {isPermanentSmtpError(t.email_error)
+                            ? 'email failed (hard bounce)'
+                            : 'email failed'}
                         </div>
                       )}
                     </td>
@@ -2374,7 +2416,17 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
           </div>
         )}
         {ticket.email_error && (
-          <div className="text-xs text-red-600">Initial email delivery error: {ticket.email_error}</div>
+          <div className="text-xs text-red-600">
+            Initial email delivery error: {ticket.email_error}
+            {isPermanentSmtpError(ticket.email_error) && (
+              <span
+                className="ml-1 px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                title="Permanent SMTP failure — auto-retry skipped"
+              >
+                Hard bounce — won&rsquo;t auto-retry
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -2398,14 +2450,21 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 );
               }
               const isOutbound = r.direction === 'outbound';
+              const replyHardBounce = !!r.email_error && isPermanentSmtpError(r.email_error);
               let badge: { label: string; className: string; title: string } | null = null;
               if (isOutbound) {
                 if (r.email_error) {
-                  badge = {
-                    label: 'Failed',
-                    className: 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
-                    title: r.email_error,
-                  };
+                  badge = replyHardBounce
+                    ? {
+                        label: 'Hard bounce — won\u2019t auto-retry',
+                        className: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+                        title: `Permanent SMTP failure — auto-retry skipped. ${r.email_error}`,
+                      }
+                    : {
+                        label: 'Failed',
+                        className: 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
+                        title: r.email_error,
+                      };
                 } else if (r.email_message_id) {
                   badge = {
                     label: 'Sent',
@@ -2465,7 +2524,17 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   </div>
                   <div className="whitespace-pre-wrap text-sm">{r.body}</div>
                   {r.email_error && (
-                    <div className="text-xs text-red-600 mt-1">Email delivery error: {r.email_error}</div>
+                    <div className="text-xs text-red-600 mt-1">
+                      Email delivery error: {r.email_error}
+                      {replyHardBounce && (
+                        <div className="text-amber-700 dark:text-amber-400 mt-0.5">
+                          Classified as a permanent SMTP failure — the
+                          background scheduler will not auto-retry this reply.
+                          Use “Retry send” above only after fixing the
+                          recipient address.
+                        </div>
+                      )}
+                    </div>
                   )}
                   {retryError && (
                     <div className="text-xs text-red-600 mt-1">Retry failed: {retryError}</div>
