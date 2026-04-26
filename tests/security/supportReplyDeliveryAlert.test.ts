@@ -174,6 +174,18 @@ vi.mock('../../platform/help/DocsFeedbackReplyDigestScheduler', () => ({
   runDocsFeedbackReplyDigestCycle: vi.fn(),
 }));
 
+// The retry-rate limiter now talks to the shared `retry_attempts` Postgres
+// table, which would consume one of the queryMock responses below and shift
+// every subsequent expectation. These tests are about alert-firing behavior
+// downstream of the limiter, so short-circuit it to always allow.
+vi.mock('../../platform/help/supportReplyRetryLimiter', () => ({
+  tryReserveSupportReplyRetrySlot: async () => ({ allowed: true as const }),
+  __setCooldownSecondsForTesting: () => {},
+  __reloadCooldownFromEnvForTesting: () => {},
+  __resetForTesting: async () => {},
+  getSupportReplyRetryCooldownSeconds: () => 0,
+}));
+
 const router = (await import('../../server/admin-api/routes/support')).default;
 const { runSupportReplyRetryCycle } = await import(
   '../../platform/help/SupportReplyRetryScheduler'

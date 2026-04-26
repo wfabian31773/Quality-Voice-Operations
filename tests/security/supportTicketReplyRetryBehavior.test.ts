@@ -60,6 +60,18 @@ vi.mock('../../platform/core/observability', () => ({
   logError: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The retry-rate limiter now talks to the shared `retry_attempts` Postgres
+// table, which would consume one of the queryMock responses below and shift
+// every subsequent expectation. These tests are about the post-limiter
+// behavior of the route, so short-circuit the limiter to always allow.
+vi.mock('../../platform/help/supportReplyRetryLimiter', () => ({
+  tryReserveSupportReplyRetrySlot: async () => ({ allowed: true as const }),
+  __setCooldownSecondsForTesting: () => {},
+  __reloadCooldownFromEnvForTesting: () => {},
+  __resetForTesting: async () => {},
+  getSupportReplyRetryCooldownSeconds: () => 0,
+}));
+
 const router = (await import('../../server/admin-api/routes/support')).default;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const queryMock = ((await import('../../platform/db')) as any).__queryMock as ReturnType<typeof vi.fn>;

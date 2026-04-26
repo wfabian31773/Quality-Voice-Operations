@@ -732,13 +732,14 @@ router.post(
       return;
     }
 
-    // Atomically check the per-feedback cooldown AND reserve the slot in a
-    // single synchronous step before doing any awaited work. This is the
-    // anti-spam gate: two concurrent retries against the same broken inbox
-    // cannot both pass the limiter — Node is single-threaded, and the
-    // reserve happens before any await, so the second handler always sees
-    // the first handler's reservation.
-    const limit = tryReserveRetrySlot(id);
+    // Atomically check the per-feedback cooldown AND reserve the slot in
+    // the shared `retry_attempts` Postgres table before doing any other
+    // awaited work. This is the anti-spam gate: two concurrent retries
+    // against the same broken inbox cannot both pass the limiter — the
+    // underlying INSERT ... ON CONFLICT DO UPDATE is atomic at the DB
+    // level, so even clicks routed to different admin servers always see
+    // a single shared reservation.
+    const limit = await tryReserveRetrySlot(id);
     if (!limit.allowed) {
       res.setHeader('Retry-After', String(limit.retryAfterSeconds));
       res.status(429).json({
@@ -1256,15 +1257,15 @@ router.post(
       return;
     }
 
-    // Atomically check the per-reply cooldown AND reserve the slot in a
-    // single synchronous step before doing any awaited work. Mirrors the
-    // docs-feedback retry limiter: two concurrent retries against the same
-    // failed reply cannot both pass the gate — Node is single-threaded, and
-    // the reserve happens before any await, so the second handler always
-    // observes the first handler's reservation. This is the anti-spam gate
-    // that keeps an admin mashing the Retry button from re-sending to a
-    // bouncing recipient on every click.
-    const limit = tryReserveSupportReplyRetrySlot(replyIdNum);
+    // Atomically check the per-reply cooldown AND reserve the slot in the
+    // shared `retry_attempts` Postgres table before doing any other awaited
+    // work. Mirrors the docs-feedback retry limiter: two concurrent retries
+    // against the same failed reply cannot both pass the gate — the
+    // underlying INSERT ... ON CONFLICT DO UPDATE is atomic at the DB
+    // level, so even clicks routed to different admin servers always see a
+    // single shared reservation. This keeps an admin mashing the Retry
+    // button from re-sending to a bouncing recipient on every click.
+    const limit = await tryReserveSupportReplyRetrySlot(replyIdNum);
     if (!limit.allowed) {
       res.setHeader('Retry-After', String(limit.retryAfterSeconds));
       res.status(429).json({

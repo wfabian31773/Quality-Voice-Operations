@@ -10,19 +10,26 @@
  * single broken inbox can only be hammered once per cooldown window,
  * regardless of who is clicking.
  *
- * The check-and-set is performed in a single synchronous step
- * (`tryReserveSupportReplyRetrySlot`) so two near-simultaneous handler
- * invocations cannot both pass the gate before either records its attempt —
- * Node is single-threaded, and the reserve happens before any `await`, so
- * the second caller always observes the first caller's reservation.
+ * Storage: cooldowns are persisted in the shared `retry_attempts` table via
+ * `platform/help/retryAttemptStore.ts` so the gate is enforced cluster-wide.
+ * A horizontally-scaled admin API where two clicks land on different
+ * instances still sees a single shared `last_attempt_at` row, and the
+ * underlying `INSERT ... ON CONFLICT DO UPDATE WHERE` is atomic at the
+ * Postgres level so concurrent reservations cannot both pass.
  *
- * Scope: this limiter is **in-memory and per-process**. The cooldown resets
- * on process restart and is not shared across instances. That is enough for
- * the current single-process admin API deployment; a future multi-instance
- * setup would need to back this with shared storage (Redis / DB advisory
- * lock) for cluster-wide enforcement.
+ * Only the cooldown duration is per-process state — the *attempt history*
+ * lives entirely in Postgres.
  */
 
+import {
+  tryReserveSharedAttempt,
+  __deleteAttemptsByPrefixForTesting,
+  type ReserveResult,
+} from './retryAttemptStore';
+
+export type { ReserveResult };
+
+const KEY_PREFIX = 'support_reply_retry:';
 const DEFAULT_COOLDOWN_SECONDS = 60;
 
 function readCooldownFromEnv(): number {
@@ -35,36 +42,22 @@ function readCooldownFromEnv(): number {
 
 let cooldownSeconds = readCooldownFromEnv();
 
-/** Last-attempt timestamp (ms) keyed on support_ticket_replies.id. */
-const lastAttemptAt = new Map<number, number>();
-
-export type ReserveResult =
-  | { allowed: true }
-  | { allowed: false; retryAfterSeconds: number };
-
 /**
- * Atomically check the cooldown for `replyId` and, if allowed, reserve
- * the slot by recording the attempt timestamp. The check and the write run
- * in a single synchronous block so concurrent callers cannot both pass.
+ * Atomically check the cluster-wide cooldown for `replyId` and, if allowed,
+ * reserve the slot by recording the attempt timestamp in the shared
+ * `retry_attempts` table. The check and the write run in a single Postgres
+ * statement so concurrent callers — even on different admin servers —
+ * cannot both pass the gate.
+ *
+ * `now` is optional. Production callers omit it so the comparison uses
+ * Postgres `NOW()` and is therefore immune to clock skew between admin
+ * nodes. Tests pass an explicit `now` for determinism.
  */
-export function tryReserveSupportReplyRetrySlot(
+export async function tryReserveSupportReplyRetrySlot(
   replyId: number,
-  now: number = Date.now(),
-): ReserveResult {
-  if (cooldownSeconds <= 0) return { allowed: true };
-  const cooldownMs = cooldownSeconds * 1000;
-  const last = lastAttemptAt.get(replyId);
-  if (last !== undefined) {
-    const elapsedMs = now - last;
-    if (elapsedMs < cooldownMs) {
-      return {
-        allowed: false,
-        retryAfterSeconds: Math.max(1, Math.ceil((cooldownMs - elapsedMs) / 1000)),
-      };
-    }
-  }
-  lastAttemptAt.set(replyId, now);
-  return { allowed: true };
+  now?: number,
+): Promise<ReserveResult> {
+  return tryReserveSharedAttempt(`${KEY_PREFIX}${replyId}`, cooldownSeconds, now);
 }
 
 /** Currently configured cooldown in seconds (after env override). */
@@ -82,24 +75,11 @@ export function __reloadCooldownFromEnvForTesting(): void {
   cooldownSeconds = readCooldownFromEnv();
 }
 
-/** Wipe the in-memory map — only used by tests. */
-export function __resetForTesting(): void {
-  lastAttemptAt.clear();
-}
-
 /**
- * Periodically prune entries whose cooldown has fully elapsed so the map
- * does not grow unbounded over the lifetime of the process. The timer is
- * unref'd so it does not hold the event loop open in tests / shutdown.
+ * Wipe this limiter's rows from the shared `retry_attempts` table. Only the
+ * support-reply prefix is touched, so concurrent suites using the same DB
+ * (e.g. the docs-feedback limiter) are not affected.
  */
-const cleanupTimer = setInterval(() => {
-  if (cooldownSeconds <= 0) {
-    lastAttemptAt.clear();
-    return;
-  }
-  const cutoff = Date.now() - cooldownSeconds * 1000;
-  for (const [id, ts] of lastAttemptAt) {
-    if (ts < cutoff) lastAttemptAt.delete(id);
-  }
-}, 60 * 1000);
-cleanupTimer.unref?.();
+export async function __resetForTesting(): Promise<void> {
+  await __deleteAttemptsByPrefixForTesting(KEY_PREFIX);
+}
