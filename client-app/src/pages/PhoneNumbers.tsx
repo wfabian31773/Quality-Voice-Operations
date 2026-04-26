@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   Plus, Trash2, Phone, X, Search, Sparkles, ArrowRight,
-  RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot,
+  RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot, Calendar,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
@@ -717,6 +717,7 @@ export default function PhoneNumbers() {
                   <th className="px-5 py-3 text-text-secondary font-medium">Number</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Name</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Agent</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">Calendar</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Cost</th>
                   <th className="px-5 py-3 text-text-secondary font-medium w-32">Actions</th>
                 </tr>
@@ -744,6 +745,21 @@ export default function PhoneNumbers() {
                       ) : (
                         <span className="text-text-muted text-xs">Not assigned</span>
                       )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
+                        title={
+                          pn.scheduling_provider
+                            ? `Books appointments into ${formatSchedulingProvider(pn.scheduling_provider)}`
+                            : 'Uses the agent or tenant default scheduling calendar'
+                        }
+                      >
+                        <Calendar className="h-3 w-3" />
+                        {pn.scheduling_provider
+                          ? formatSchedulingProvider(pn.scheduling_provider)
+                          : 'Default'}
+                      </span>
                     </td>
                     <td className="px-5 py-3">
                       {pn.is_free_number ? (

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 
@@ -472,6 +472,21 @@ export default function Agents() {
                   <span>Managed externally via {agent.remote_system ?? 'remote system'}{agent.last_sync_at ? ` · Last sync: ${new Date(agent.last_sync_at).toLocaleDateString()}` : ''}</span>
                 </div>
               )}
+              <div className="flex items-center gap-2 mb-3">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
+                  title={
+                    agent.scheduling_provider
+                      ? `Books appointments into ${formatSchedulingProvider(agent.scheduling_provider)}`
+                      : 'Uses the tenant default scheduling calendar'
+                  }
+                >
+                  <Calendar className="h-3 w-3" />
+                  {agent.scheduling_provider
+                    ? formatSchedulingProvider(agent.scheduling_provider)
+                    : 'Default'}
+                </span>
+              </div>
               {!isFederated && agent.system_prompt && (
                 <p className="text-xs text-text-secondary line-clamp-2 mb-4">{agent.system_prompt}</p>
               )}
