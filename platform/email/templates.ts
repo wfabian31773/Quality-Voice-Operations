@@ -341,6 +341,78 @@ export function connectorSyncRecoveryEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorSchedulingDriftEmail(params: {
+  tenantName?: string;
+  connectorsUrl: string;
+  detectedAt: string;
+  /**
+   * Each entry is one agent or phone number whose chosen scheduling provider
+   * doesn't match any enabled scheduling integration on the tenant. We bundle
+   * them into a single per-tenant email so an admin gets one nudge with the
+   * full list rather than one email per drifted target.
+   */
+  drifted: Array<{
+    refType: 'agent' | 'phone_number';
+    name: string;
+    providerLabel: string;
+  }>;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const count = params.drifted.length;
+  const subject =
+    count === 1
+      ? `Action required: 1 calendar booking target for ${org} has no connected calendar`
+      : `Action required: ${count} calendar booking targets for ${org} have no connected calendar`;
+
+  const rowsHtml = params.drifted
+    .map((d) => {
+      const targetLabel = d.refType === 'phone_number' ? 'Phone number' : 'Agent';
+      const safeName = (d.name || 'Unnamed').slice(0, 200);
+      const safeProvider = (d.providerLabel || 'Unknown calendar').slice(0, 80);
+      return `
+        <li style="margin:0 0 6px;">
+          <strong>${targetLabel}:</strong> ${safeName}
+          <span class="muted">→ ${safeProvider} (not connected)</span>
+        </li>`;
+    })
+    .join('');
+
+  const rowsText = params.drifted
+    .map((d) => {
+      const targetLabel = d.refType === 'phone_number' ? 'Phone number' : 'Agent';
+      const safeName = (d.name || 'Unnamed').slice(0, 200);
+      const safeProvider = (d.providerLabel || 'Unknown calendar').slice(0, 80);
+      return `• ${targetLabel}: ${safeName} → ${safeProvider} (not connected)`;
+    })
+    .join('\n');
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>${count === 1 ? 'One booking target' : `${count} booking targets`} for <strong>${org}</strong> ${count === 1 ? 'is' : 'are'} configured to book into a calendar that is no longer connected. Until the calendar is reconnected (or the target is pointed at a different calendar), bookings made by these agents and numbers won't actually land on a calendar.</p>
+    <div class="alert-error">
+      <p style="margin:0 0 8px"><strong>Affected agents and phone numbers</strong></p>
+      <ul style="margin:0; padding-left:20px; color:#374151; font-size:14px; line-height:1.6;">
+        ${rowsHtml}
+      </ul>
+      <p style="margin:8px 0 0" class="muted">Detected at ${params.detectedAt}</p>
+    </div>
+    <p>Open the Connectors page to reconnect the missing calendars or change the booking target's calendar selection:</p>
+    <p><a href="${params.connectorsUrl}" class="btn">Open Connectors</a></p>
+    <p class="muted">You won't get another email about scheduling drift for 24 hours, even if more targets become misconfigured. Reconnect the calendar or change the assigned calendar to clear this warning.</p>
+  `);
+
+  const text =
+    `${subject}\n\n` +
+    `${count === 1 ? 'One booking target' : `${count} booking targets`} for ${org} ${count === 1 ? 'is' : 'are'} configured to book into a calendar that is no longer connected. ` +
+    `Until the calendar is reconnected, bookings made by these agents and numbers won't actually land on a calendar.\n\n` +
+    `Affected agents and phone numbers:\n${rowsText}\n\n` +
+    `Detected at ${params.detectedAt}\n\n` +
+    `Open Connectors: ${params.connectorsUrl}\n\n` +
+    `You won't get another email about scheduling drift for 24 hours.`;
+
+  return { subject, html, text };
+}
+
 export function escalationAlertEmail(params: {
   tenantName?: string;
   reason: string;

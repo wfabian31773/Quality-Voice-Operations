@@ -22,6 +22,7 @@ import { startDocsFeedbackReplyDigestScheduler, stopDocsFeedbackReplyDigestSched
 import { startDocsFeedbackReplyRetryScheduler, stopDocsFeedbackReplyRetryScheduler } from '../../platform/help/DocsFeedbackReplyRetryScheduler';
 import { startSupportReplyRetryScheduler, stopSupportReplyRetryScheduler } from '../../platform/help/SupportReplyRetryScheduler';
 import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } from '../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
+import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler } from '../../platform/integrations/connectors/SchedulingDriftAlertScheduler';
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler } from '../../platform/integrations/connectors';
 
 const logger = createLogger('ADMIN_API');
@@ -83,6 +84,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startDocsFeedbackReplyRetryScheduler();
   startSupportReplyRetryScheduler();
   startConnectorAuthAlertScheduler();
+  startSchedulingDriftAlertScheduler();
   startOAuthTokenRefreshScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
@@ -107,6 +109,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopDocsFeedbackReplyRetryScheduler();
   stopSupportReplyRetryScheduler();
   stopConnectorAuthAlertScheduler();
+  stopSchedulingDriftAlertScheduler();
   stopOAuthTokenRefreshScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
