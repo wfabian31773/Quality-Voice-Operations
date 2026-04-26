@@ -1,5 +1,9 @@
 import { createLogger } from '../../core/logger';
-import { ensureFreshOAuthToken, isRefreshableProvider } from './tokenRefresh';
+import {
+  ensureFreshOAuthToken,
+  getRefreshableProviders,
+  isRefreshableProvider,
+} from './tokenRefresh';
 import { listRefreshableConnectorConfigs } from './db';
 
 const logger = createLogger('OAUTH_TOKEN_REFRESH_SCHEDULER');
@@ -7,16 +11,6 @@ const logger = createLogger('OAUTH_TOKEN_REFRESH_SCHEDULER');
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const INITIAL_DELAY_MS = 60 * 1000;
 const REFRESH_HORIZON_MS = 30 * 60 * 1000;
-
-const REFRESHABLE_PROVIDERS = [
-  'hubspot',
-  'pipedrive',
-  'quickbooks',
-  'salesforce',
-  'outlook-calendar',
-  'google-calendar',
-  'zoho',
-];
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let initialTimer: ReturnType<typeof setTimeout> | null = null;
@@ -48,7 +42,7 @@ export async function runOAuthTokenRefreshCycle(
     skippedNoRefreshToken: 0,
   };
 
-  const configs = await listRefreshableConnectorConfigs(REFRESHABLE_PROVIDERS);
+  const configs = await listRefreshableConnectorConfigs(getRefreshableProviders());
   result.scanned = configs.length;
   const cutoff = Date.now() + horizonMs;
 
@@ -128,7 +122,7 @@ export function startOAuthTokenRefreshScheduler(
   logger.info('OAuth token refresh scheduler started', {
     intervalMs,
     horizonMs: REFRESH_HORIZON_MS,
-    providers: REFRESHABLE_PROVIDERS,
+    providers: getRefreshableProviders(),
   });
 }
 

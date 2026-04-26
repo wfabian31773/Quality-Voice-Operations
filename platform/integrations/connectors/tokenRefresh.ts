@@ -318,6 +318,19 @@ export function isRefreshableProvider(provider: string): boolean {
   return Object.prototype.hasOwnProperty.call(REFRESHERS, provider);
 }
 
+/**
+ * Returns the list of provider keys that have a registered token refresher.
+ *
+ * This is the single source of truth for "which providers can have their
+ * OAuth tokens proactively refreshed". The overnight token refresh sweep
+ * (`OAuthTokenRefreshScheduler`) derives its provider list from here so
+ * adding a new entry to `REFRESHERS` above is sufficient — no separate
+ * hand-maintained list to keep in sync.
+ */
+export function getRefreshableProviders(): string[] {
+  return Object.keys(REFRESHERS);
+}
+
 export interface EnsureFreshOAuthTokenOptions {
   /** Refresh window in milliseconds — refresh if token expires within this lead time. */
   leadMs?: number;

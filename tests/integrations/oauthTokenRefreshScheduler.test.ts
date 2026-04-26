@@ -4,18 +4,20 @@ vi.mock('../../platform/integrations/connectors/db', () => ({
   listRefreshableConnectorConfigs: vi.fn(),
 }));
 
+const mockRefreshableProviders = new Set<string>([
+  'hubspot',
+  'pipedrive',
+  'quickbooks',
+  'salesforce',
+  'outlook-calendar',
+  'google-calendar',
+  'zoho',
+]);
+
 vi.mock('../../platform/integrations/connectors/tokenRefresh', () => ({
   ensureFreshOAuthToken: vi.fn(),
-  isRefreshableProvider: (p: string) =>
-    [
-      'hubspot',
-      'pipedrive',
-      'quickbooks',
-      'salesforce',
-      'outlook-calendar',
-      'google-calendar',
-      'zoho',
-    ].includes(p),
+  isRefreshableProvider: (p: string) => mockRefreshableProviders.has(p),
+  getRefreshableProviders: () => Array.from(mockRefreshableProviders),
 }));
 
 import { runOAuthTokenRefreshCycle } from '../../platform/integrations/connectors/OAuthTokenRefreshScheduler';
@@ -43,6 +45,18 @@ function makeConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig {
 describe('runOAuthTokenRefreshCycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRefreshableProviders.clear();
+    for (const p of [
+      'hubspot',
+      'pipedrive',
+      'quickbooks',
+      'salesforce',
+      'outlook-calendar',
+      'google-calendar',
+      'zoho',
+    ]) {
+      mockRefreshableProviders.add(p);
+    }
   });
 
   afterEach(() => {
@@ -139,6 +153,38 @@ describe('runOAuthTokenRefreshCycle', () => {
         'zoho',
       ]),
     );
+  });
+
+  it('derives the swept provider list from the registered refreshers', async () => {
+    // Simulate someone wiring up a brand-new refresher in tokenRefresh.ts
+    // without touching the scheduler. The cycle should pick it up
+    // automatically — that's the whole point of this task.
+    mockRefreshableProviders.add('made-up-new-provider');
+    vi.mocked(listRefreshableConnectorConfigs).mockResolvedValue([]);
+
+    await runOAuthTokenRefreshCycle(30 * 60 * 1000);
+
+    expect(listRefreshableConnectorConfigs).toHaveBeenCalledTimes(1);
+    const providers = vi.mocked(listRefreshableConnectorConfigs).mock.calls[0][0];
+    expect(providers).toContain('made-up-new-provider');
+  });
+
+  it('refreshes a config for a newly registered provider without scheduler edits', async () => {
+    // The scheduler should not have any hardcoded provider list — adding
+    // a refresher anywhere downstream is enough for the sweep to fire.
+    mockRefreshableProviders.add('made-up-new-provider');
+    const newCfg = makeConfig({
+      integrationId: 'integ-new',
+      provider: 'made-up-new-provider',
+    });
+    vi.mocked(listRefreshableConnectorConfigs).mockResolvedValue([newCfg]);
+    vi.mocked(ensureFreshOAuthToken).mockResolvedValue(newCfg);
+
+    const result = await runOAuthTokenRefreshCycle(30 * 60 * 1000);
+
+    expect(result.expiringSoon).toBe(1);
+    expect(result.refreshed).toBe(1);
+    expect(ensureFreshOAuthToken).toHaveBeenCalledWith(newCfg, { leadMs: 30 * 60 * 1000 });
   });
 
   it('refreshes an expiring zoho token without a user interaction', async () => {
