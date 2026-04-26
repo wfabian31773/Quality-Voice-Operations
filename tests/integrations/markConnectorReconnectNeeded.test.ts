@@ -80,7 +80,7 @@ describe('markConnectorReconnectNeeded', () => {
       String(c[0]).includes(`SET last_sync_status = 'needs_reconnect'`),
     );
     expect(updateCall).toBeDefined();
-    expect(updateCall![1]).toEqual(['tenant-1', 'int-1']);
+    expect(updateCall![1]).toEqual(['tenant-1', 'int-1', 'invalid_grant']);
   });
 
   it('does not dispatch when notify=false', async () => {
