@@ -345,3 +345,141 @@ describe('refreshOutlookCalendar', () => {
     );
   });
 });
+
+function makeGoogleConfig(
+  overrides: Partial<ConnectorConfig['credentials']> = {},
+): ConnectorConfig {
+  return {
+    tenantId: 'tenant-gcal',
+    integrationId: 'integration-gcal',
+    type: 'scheduling',
+    provider: 'google-calendar',
+    enabled: true,
+    config: {},
+    credentials: {
+      access_token: 'gcal-old',
+      refresh_token: 'gcal-refresh',
+      client_id: 'gcal-client-from-creds',
+      client_secret: 'gcal-secret-from-creds',
+      token_expires_at: String(Date.now() - 60_000),
+      ...overrides,
+    },
+  } as unknown as ConnectorConfig;
+}
+
+describe('refreshGoogleCalendar', () => {
+  beforeEach(() => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+  });
+
+  afterEach(() => {
+    global.fetch = ORIG_FETCH;
+    vi.clearAllMocks();
+  });
+
+  it('refreshes against oauth2.googleapis.com and persists the rotated access_token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: 'gcal-new',
+          expires_in: 3600,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const refreshed = await ensureFreshOAuthToken(makeGoogleConfig());
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://oauth2.googleapis.com/token');
+    const body = (fetchMock.mock.calls[0][1] as { body: string }).body;
+    // Should have used per-connector client_id/secret instead of env vars.
+    expect(body).toContain('client_id=gcal-client-from-creds');
+    expect(body).toContain('client_secret=gcal-secret-from-creds');
+    expect(body).toContain('grant_type=refresh_token');
+    expect(body).toContain('refresh_token=gcal-refresh');
+    expect(refreshed.credentials.access_token).toBe('gcal-new');
+    expect(updateConnectorCredentials).toHaveBeenCalledWith(
+      'tenant-gcal',
+      'integration-gcal',
+      expect.objectContaining({ access_token: 'gcal-new' }),
+    );
+  });
+
+  it('falls back to GOOGLE_CLIENT_ID/SECRET env vars when not stored on connector', async () => {
+    process.env.GOOGLE_CLIENT_ID = 'env-google-client';
+    process.env.GOOGLE_CLIENT_SECRET = 'env-google-secret';
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ access_token: 'gcal-new', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const cfg = makeGoogleConfig({ client_id: undefined, client_secret: undefined });
+    await ensureFreshOAuthToken(cfg);
+
+    const body = (fetchMock.mock.calls[0][1] as { body: string }).body;
+    expect(body).toContain('client_id=env-google-client');
+    expect(body).toContain('client_secret=env-google-secret');
+  });
+
+  it('marks connector for reconnect when credentials are missing entirely', async () => {
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const cfg = makeGoogleConfig({ client_id: undefined, client_secret: undefined });
+    await expect(ensureFreshOAuthToken(cfg)).rejects.toThrow(
+      /Google Calendar OAuth credentials missing/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(markConnectorReconnectNeeded).toHaveBeenCalledWith(
+      'tenant-gcal',
+      'integration-gcal',
+      expect.objectContaining({ provider: 'google-calendar' }),
+    );
+  });
+
+  it('marks connector for reconnect on HTTP failure (invalid_grant)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('invalid_grant', { status: 400 }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(ensureFreshOAuthToken(makeGoogleConfig())).rejects.toThrow(/HTTP 400/);
+    expect(markConnectorReconnectNeeded).toHaveBeenCalledWith(
+      'tenant-gcal',
+      'integration-gcal',
+      expect.objectContaining({ provider: 'google-calendar' }),
+    );
+  });
+
+  it('persists rotated refresh_token when Google returns one', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: 'gcal-new',
+          refresh_token: 'gcal-refresh-rotated',
+          expires_in: 3600,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const refreshed = await ensureFreshOAuthToken(makeGoogleConfig());
+
+    expect(refreshed.credentials.refresh_token).toBe('gcal-refresh-rotated');
+    expect(updateConnectorCredentials).toHaveBeenCalledWith(
+      'tenant-gcal',
+      'integration-gcal',
+      expect.objectContaining({
+        access_token: 'gcal-new',
+        refresh_token: 'gcal-refresh-rotated',
+      }),
+    );
+  });
+});

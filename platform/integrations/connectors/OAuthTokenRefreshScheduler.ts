@@ -14,6 +14,7 @@ const REFRESHABLE_PROVIDERS = [
   'quickbooks',
   'salesforce',
   'outlook-calendar',
+  'google-calendar',
 ];
 
 let timer: ReturnType<typeof setInterval> | null = null;

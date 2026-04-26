@@ -1,42 +1,11 @@
 import { createLogger } from '../../../core/logger';
+import { ensureFreshOAuthToken } from '../tokenRefresh';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('GCAL_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const GCAL_API = 'https://www.googleapis.com/calendar/v3';
-
-async function getGoogleCalendarAccessToken(config: ConnectorConfig): Promise<string | null> {
-  if (config.credentials.access_token) {
-    return config.credentials.access_token;
-  }
-
-  const refreshToken = config.credentials.refresh_token;
-  const clientId = config.credentials.client_id;
-  const clientSecret = config.credentials.client_secret;
-
-  if (!refreshToken || !clientId || !clientSecret) {
-    return null;
-  }
-
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }).toString(),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`refresh_token rejected (${res.status}): ${text.slice(0, 200)}`);
-  }
-  const data = await res.json() as { access_token: string };
-  return data.access_token;
-}
 
 export interface GoogleCalendarSummary {
   id: string;
@@ -48,7 +17,8 @@ export async function fetchGoogleCalendarList(
   tenantId: TenantId,
   config: ConnectorConfig,
 ): Promise<GoogleCalendarSummary[]> {
-  const accessToken = await getGoogleCalendarAccessToken(config);
+  const fresh = await ensureFreshOAuthToken(config);
+  const accessToken = fresh.credentials.access_token ?? '';
   if (!accessToken) {
     throw new Error('Missing Google Calendar access token — please reconnect.');
   }
@@ -89,14 +59,15 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    let accessToken: string | null;
+    let activeConfig = config;
     try {
-      accessToken = await getGoogleCalendarAccessToken(config);
+      activeConfig = await ensureFreshOAuthToken(config);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Google Calendar token refresh failed', { tenantId, error });
-      return { success: false, error: `Google Calendar token refresh failed (invalid_grant): ${error}` };
+      return { success: false, error: `Google Calendar token refresh failed: ${error}` };
     }
+    const accessToken = activeConfig.credentials.access_token ?? '';
     if (!accessToken) {
       logger.error('Missing Google Calendar credentials', { tenantId });
       return {
@@ -107,9 +78,9 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'appointment.booked':
-        return this.createEvent(tenantId, accessToken, config, payload);
+        return this.createEvent(tenantId, accessToken, activeConfig, payload);
       case 'check_availability':
-        return this.checkAvailability(tenantId, accessToken, config, payload);
+        return this.checkAvailability(tenantId, accessToken, activeConfig, payload);
       default:
         return { success: false, error: `Google Calendar adapter does not handle event: ${payload.type}` };
     }

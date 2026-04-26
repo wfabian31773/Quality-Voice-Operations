@@ -226,6 +226,39 @@ async function refreshOutlookCalendar(
   };
 }
 
+async function refreshGoogleCalendar(
+  refreshToken: string,
+  credentials?: Record<string, string>,
+): Promise<ProviderRefreshResult> {
+  const clientId = credentials?.client_id ?? process.env.GOOGLE_CLIENT_ID ?? '';
+  const clientSecret = credentials?.client_secret ?? process.env.GOOGLE_CLIENT_SECRET ?? '';
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'Google Calendar OAuth credentials missing (client_id/client_secret on connector or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET env)',
+    );
+  }
+  const res = await timedFetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString(),
+  });
+  const json = await res.json() as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+  };
+  return {
+    access_token: json.access_token,
+    refresh_token: json.refresh_token,
+    expires_in: json.expires_in,
+  };
+}
+
 async function refreshQuickBooks(refreshToken: string): Promise<ProviderRefreshResult> {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID ?? '';
   const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET ?? '';
@@ -278,6 +311,7 @@ const REFRESHERS: Record<string, ProviderRefresher> = {
   zoho: refreshZoho,
   salesforce: refreshSalesforce,
   'outlook-calendar': refreshOutlookCalendar,
+  'google-calendar': refreshGoogleCalendar,
 };
 
 export function isRefreshableProvider(provider: string): boolean {
