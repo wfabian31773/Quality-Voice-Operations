@@ -218,7 +218,7 @@ function paginate(req: { query: Record<string, unknown> }): { limit: number; off
   return { limit, offset: (page - 1) * limit };
 }
 
-const listTicketsHandler: RequestHandler = async (req, res) => {
+export const listTicketsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
   const { status, assignee, priority, category_id, department, search, queue, sla_risk, sort_by, sort_order } = req.query as Record<string, string>;
@@ -253,23 +253,38 @@ const listTicketsHandler: RequestHandler = async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT t.*, u.email AS assignee_email, c.name AS category_name,
-        (SELECT row_to_json(si.*) FROM ticket_sla_instances si WHERE si.ticket_id = t.id ORDER BY si.created_at DESC LIMIT 1) AS sla_instance
+              sla.sla_instance,
+              COUNT(*) OVER() AS _total_count
        FROM tickets t
        LEFT JOIN users u ON u.id = t.assignee_user_id
        LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = t.tenant_id
        LEFT JOIN ticket_categories c ON c.id = t.category_id
+       LEFT JOIN LATERAL (
+         SELECT row_to_json(si.*) AS sla_instance
+         FROM ticket_sla_instances si
+         WHERE si.ticket_id = t.id
+         ORDER BY si.created_at DESC
+         LIMIT 1
+       ) sla ON true
        WHERE ${where}
        ORDER BY t.${orderCol} ${orderDir}
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, limit, offset],
     );
 
-    const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*) AS total FROM tickets t WHERE ${where}`,
-      values,
-    );
+    let total = 0;
+    if (rows.length > 0) {
+      total = parseInt(rows[0]._total_count as string, 10) || 0;
+      for (const r of rows) delete (r as Record<string, unknown>)._total_count;
+    } else if (offset > 0) {
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM tickets t WHERE ${where}`,
+        values,
+      );
+      total = (countRows[0]?.total as number) ?? 0;
+    }
 
-    return res.json({ tickets: rows, total: parseInt(countRows[0].total as string), limit, offset });
+    return res.json({ tickets: rows, total, limit, offset });
   } catch (err) {
     logger.error('Failed to list tickets', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list tickets' });

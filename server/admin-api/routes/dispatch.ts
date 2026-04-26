@@ -157,7 +157,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 // ============ JOBS ============
 
-const listJobsHandler: RequestHandler = async (req, res) => {
+export const listJobsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
   const { status, assignee, priority, territory_id, resource_id, date_from, date_to, search, job_type } = req.query as Record<string, string>;
@@ -182,7 +182,8 @@ const listJobsHandler: RequestHandler = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.*, u.email AS assignee_email,
               r.name AS resource_name,
-              t.name AS territory_name
+              t.name AS territory_name,
+              COUNT(*) OVER() AS _total_count
        FROM dispatch_jobs d
        LEFT JOIN users u ON u.id = d.assignee_user_id
        LEFT JOIN dispatch_resources r ON r.id = d.resource_id AND r.tenant_id = d.tenant_id
@@ -195,12 +196,19 @@ const listJobsHandler: RequestHandler = async (req, res) => {
       [...values, limit, offset],
     );
 
-    const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*) AS total FROM dispatch_jobs d WHERE ${where}`,
-      values,
-    );
+    let total = 0;
+    if (rows.length > 0) {
+      total = parseInt(rows[0]._total_count as string, 10) || 0;
+      for (const r of rows) delete (r as Record<string, unknown>)._total_count;
+    } else if (offset > 0) {
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM dispatch_jobs d WHERE ${where}`,
+        values,
+      );
+      total = (countRows[0]?.total as number) ?? 0;
+    }
 
-    return res.json({ jobs: rows, total: parseInt(countRows[0].total as string), limit, offset });
+    return res.json({ jobs: rows, total, limit, offset });
   } catch (err) {
     logger.error('Failed to list dispatch jobs', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list dispatch jobs' });

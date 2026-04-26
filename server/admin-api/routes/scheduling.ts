@@ -28,7 +28,7 @@ async function auditLog(
 
 // ─── BOOKINGS CRUD ───
 
-const listBookingsHandler: RequestHandler = async (req, res) => {
+export const listBookingsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { start, end, status, provider_id, appointment_type_id, resource_id, search, limit, offset } = req.query as Record<string, string>;
   const pool = getPlatformPool();
@@ -57,7 +57,8 @@ const listBookingsHandler: RequestHandler = async (req, res) => {
               sp.name AS provider_name,
               sat.name AS appointment_type_name,
               sat.color AS appointment_type_color,
-              sr.name AS resource_name
+              sr.name AS resource_name,
+              COUNT(*) OVER() AS _total_count
        FROM bookings b
        LEFT JOIN agents a ON a.id = b.agent_id
        LEFT JOIN scheduling_providers sp ON sp.id = b.provider_id
@@ -69,12 +70,19 @@ const listBookingsHandler: RequestHandler = async (req, res) => {
       [...values, lim, off],
     );
 
-    const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM bookings b WHERE ${where}`,
-      values,
-    );
+    let total = 0;
+    if (rows.length > 0) {
+      total = parseInt(rows[0]._total_count as string, 10) || 0;
+      for (const r of rows) delete (r as Record<string, unknown>)._total_count;
+    } else if (off > 0) {
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM bookings b WHERE ${where}`,
+        values,
+      );
+      total = (countRows[0]?.total as number) ?? 0;
+    }
 
-    return res.json({ bookings: rows, total: countRows[0]?.total || 0 });
+    return res.json({ bookings: rows, total });
   } catch (err) {
     logger.error('Failed to list bookings', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list bookings' });
