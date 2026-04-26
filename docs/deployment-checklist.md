@@ -117,6 +117,29 @@ APP_ENV=production PLATFORM_DB_POOL_URL="your-url" \
   npx tsx scripts/seed-admin.ts
 ```
 
+### One-off Backfill: `retry_skipped_reason`
+
+After `migrations/072_retry_skipped_reason.sql` is applied, run the one-off
+backfill script once per environment to stamp historical hard-bounce rows in
+`support_ticket_replies`, `support_tickets`, and `docs_feedback_replies`. The
+script uses the same server-side `isPermanentSmtpError` classifier the live
+write paths use, so older rows get the same authoritative `retry_skipped_reason`
+value the admin "Hard bounce — won't auto-retry" badge now reads from.
+
+```bash
+# Optional dry-run first to see how many rows would be touched.
+APP_ENV=production PLATFORM_DB_POOL_URL="your-url" \
+  npx tsx scripts/backfill-retry-skipped-reason.ts --dry-run
+
+# Real run.
+APP_ENV=production PLATFORM_DB_POOL_URL="your-url" \
+  npx tsx scripts/backfill-retry-skipped-reason.ts
+```
+
+The script is idempotent — it only touches rows where `retry_skipped_reason IS
+NULL AND email_error IS NOT NULL`, so re-runs are no-ops once the historical
+set has been stamped.
+
 ## 4. Deployment Configuration
 
 ### Build Step
