@@ -323,35 +323,6 @@ export const docArticles: DocArticle[] = [
     ],
   },
   {
-    slug: 'connecting-hubspot',
-    category: 'integrations',
-    title: 'Connecting HubSpot',
-    description: 'Look up contacts, log calls, and create deals during a conversation.',
-    readTime: '6 min',
-    updated: '2026-04-21',
-    body: [
-      ol([
-        'Integrations → HubSpot → Connect.',
-        'Sign in to HubSpot and approve the requested scopes.',
-        'Choose which pipeline and contact owner new records should use.',
-        'Map QVO call fields to HubSpot custom properties (optional).',
-      ]),
-      { type: 'image', src: '/docs/screenshots/integrations-catalog.jpg', alt: 'Integrations catalog showing Google Calendar, Twilio, Stripe, CRM Systems (with HubSpot), Ticketing Systems, and Zapier / Webhooks', caption: 'HubSpot lives under CRM Systems in the integrations catalog.' },
-      { type: 'image', src: '/docs/hubspot-mapping.svg', alt: 'HubSpot field mapping screen', caption: 'Map QVO fields to HubSpot properties.' },
-      h2('What gets synced'),
-      ul([
-        'Inbound caller phone → contact lookup.',
-        'Call summary → contact timeline activity.',
-        'Disposition (interested, not interested, callback) → deal stage or contact property.',
-      ]),
-      h3('Common issues'),
-      issues([
-        { problem: 'Contact not found for known caller.', fix: 'Verify the contact has a phone field set, in E.164 format. HubSpot lookups require an exact-format match.' },
-        { problem: 'Activity does not appear on timeline.', fix: 'Reconnect the integration to refresh the access token.' },
-      ]),
-    ],
-  },
-  {
     slug: 'connecting-salesforce',
     category: 'integrations',
     title: 'Connecting Salesforce',
