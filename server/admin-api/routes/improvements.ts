@@ -2,41 +2,15 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import {
-  analyzeCallAndGenerateSuggestions,
   getSuggestions,
   getSuggestionById,
   acceptSuggestion,
   dismissSuggestion,
-  getImprovementVelocity,
-  getCategoryBreakdown,
-  getCallQualityScore,
 } from '../../../platform/analytics';
 import { createLogger } from '../../../platform/core/logger';
 
 const router = Router();
 const logger = createLogger('ADMIN_IMPROVEMENTS');
-
-router.post('/improvements/analyze', requireAuth, requireRole('manager'), async (req, res) => {
-  const { tenantId } = req.user!;
-  const { agentId, callSessionId } = req.body as { agentId?: string; callSessionId?: string };
-
-  if (!agentId || !callSessionId) {
-    return res.status(400).json({ error: 'agentId and callSessionId are required' });
-  }
-
-  try {
-    const qualityScore = await getCallQualityScore(tenantId, callSessionId);
-    if (qualityScore && qualityScore.score >= 8.0) {
-      return res.json({ suggestions: [], message: 'Call quality score is already high (>= 8.0). No improvements needed.' });
-    }
-
-    const suggestions = await analyzeCallAndGenerateSuggestions(tenantId, agentId, callSessionId);
-    return res.json({ suggestions });
-  } catch (err) {
-    logger.error('Failed to analyze call for improvements', { tenantId, agentId, callSessionId, error: String(err) });
-    return res.status(500).json({ error: 'Failed to analyze call' });
-  }
-});
 
 router.get('/improvements/suggestions', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
@@ -101,36 +75,6 @@ router.post('/improvements/suggestions/:id/dismiss', requireAuth, requireRole('m
   } catch (err) {
     logger.error('Failed to dismiss suggestion', { tenantId, id, error: String(err) });
     return res.status(500).json({ error: 'Failed to dismiss suggestion' });
-  }
-});
-
-router.get('/improvements/velocity', requireAuth, requireRole('manager'), async (req, res) => {
-  const { tenantId } = req.user!;
-  const agentId = req.query.agentId as string | undefined;
-  const daysRaw = parseInt(String(req.query.days ?? '90'), 10);
-  const days = Number.isNaN(daysRaw) ? 90 : Math.min(Math.max(daysRaw, 1), 365);
-
-  try {
-    const velocity = await getImprovementVelocity(tenantId, agentId, days);
-    return res.json({ velocity });
-  } catch (err) {
-    logger.error('Failed to get improvement velocity', { tenantId, error: String(err) });
-    return res.status(500).json({ error: 'Failed to get improvement velocity' });
-  }
-});
-
-router.get('/improvements/categories', requireAuth, requireRole('manager'), async (req, res) => {
-  const { tenantId } = req.user!;
-  const agentId = req.query.agentId as string | undefined;
-  const daysRaw = parseInt(String(req.query.days ?? '90'), 10);
-  const days = Number.isNaN(daysRaw) ? 90 : Math.min(Math.max(daysRaw, 1), 365);
-
-  try {
-    const categories = await getCategoryBreakdown(tenantId, agentId, days);
-    return res.json({ categories });
-  } catch (err) {
-    logger.error('Failed to get category breakdown', { tenantId, error: String(err) });
-    return res.status(500).json({ error: 'Failed to get category breakdown' });
   }
 });
 
