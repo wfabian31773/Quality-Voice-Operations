@@ -758,6 +758,129 @@ interface DispatchResult {
   attempted: boolean;
 }
 
+export type AlertChannelStatus = 'sent' | 'skipped' | 'failed';
+
+export interface AlertSendResult {
+  email: AlertChannelStatus;
+  slack: AlertChannelStatus;
+  emailError?: string;
+  slackError?: string;
+}
+
+export interface AlertMessageOptions {
+  subject: string;
+  slackText: string;
+  html: string;
+  plainText: string;
+  replyTo?: string;
+  leadId?: number | null;
+}
+
+/**
+ * Core sales-alert delivery primitive. Reads enabled channels and recipient
+ * config from `settings`, then attempts to send the supplied message and
+ * reports per-channel status so callers can surface results in the UI (test
+ * alerts) or in dispatch logs (real alerts).
+ *
+ *   - 'sent'    → channel attempted and at least one recipient/webhook accepted
+ *   - 'skipped' → channel disabled OR no recipient/webhook configured
+ *   - 'failed'  → channel attempted but every recipient/webhook rejected it
+ */
+export async function sendAlertMessage(
+  settings: SalesAlertSettings,
+  opts: AlertMessageOptions,
+): Promise<AlertSendResult> {
+  const result: AlertSendResult = { email: 'skipped', slack: 'skipped' };
+
+  if (settings.channels.slack) {
+    const slackUrl = resolveSlackUrl(settings);
+    if (!slackUrl) {
+      logger.debug('Sales-alert Slack skipped — no webhook configured', { leadId: opts.leadId });
+    } else if (settings.slackWebhookUrl) {
+      // Custom override URL — POST directly so admins can verify their own webhook.
+      try {
+        const res = await fetch(settings.slackWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: opts.slackText }),
+        });
+        if (res.ok) {
+          result.slack = 'sent';
+        } else {
+          result.slack = 'failed';
+          result.slackError = `Slack webhook returned HTTP ${res.status}`;
+          logger.warn('Sales-alert Slack webhook returned non-2xx', {
+            leadId: opts.leadId,
+            status: res.status,
+          });
+        }
+      } catch (err) {
+        result.slack = 'failed';
+        result.slackError = err instanceof Error ? err.message : String(err);
+        logger.warn('Sales-alert Slack webhook request failed', {
+          leadId: opts.leadId,
+          error: result.slackError,
+        });
+      }
+    } else {
+      const r = await postToOpsSlackWebhook({ text: opts.slackText });
+      if (r.success) {
+        result.slack = 'sent';
+      } else if (r.skipped) {
+        // Env-driven webhook not configured — treat as skipped, not failure.
+        result.slack = 'skipped';
+      } else {
+        result.slack = 'failed';
+        result.slackError = r.error;
+        logger.warn('Sales-alert Slack notification failed', {
+          leadId: opts.leadId,
+          error: r.error,
+        });
+      }
+    }
+  }
+
+  if (settings.channels.email) {
+    const recipients = resolveEmailRecipients(settings);
+    if (recipients.length === 0) {
+      logger.debug('Sales-alert email skipped — no recipients configured', { leadId: opts.leadId });
+    } else {
+      const errors: string[] = [];
+      let anySent = false;
+      // Send each recipient individually so a single bad address does not poison
+      // the whole alert. Mark the alert "sent" if any recipient succeeds.
+      for (const to of recipients) {
+        const r = await sendEmail({
+          to,
+          subject: opts.subject,
+          html: opts.html,
+          text: opts.plainText,
+          replyTo: opts.replyTo,
+        });
+        if (r.success) {
+          anySent = true;
+        } else {
+          errors.push(`${to}: ${r.error ?? 'unknown error'}`);
+          logger.warn('Sales-alert email failed for recipient', {
+            leadId: opts.leadId,
+            recipient: to,
+            error: r.error,
+          });
+        }
+      }
+      if (anySent) {
+        result.email = 'sent';
+        if (errors.length) result.emailError = errors.join('; ');
+      } else {
+        result.email = 'failed';
+        result.emailError = errors.join('; ') || 'No recipients accepted the message';
+      }
+    }
+  }
+
+  return result;
+}
+
 async function dispatchAlert(
   settings: SalesAlertSettings,
   opts: {
@@ -769,80 +892,12 @@ async function dispatchAlert(
     leadId: number | null;
   },
 ): Promise<DispatchResult> {
-  let emailSent = false;
-  let slackSent = false;
-  let attempted = false;
-
-  if (settings.channels.slack) {
-    const slackUrl = resolveSlackUrl(settings);
-    if (slackUrl) {
-      attempted = true;
-      // Prefer the override URL when set, otherwise reuse the env-driven helper.
-      if (settings.slackWebhookUrl) {
-        try {
-          const res = await fetch(settings.slackWebhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: opts.slackText }),
-          });
-          if (res.ok) {
-            slackSent = true;
-          } else {
-            logger.warn('Sales-alert Slack webhook returned non-2xx', {
-              leadId: opts.leadId,
-              status: res.status,
-            });
-          }
-        } catch (err) {
-          logger.warn('Sales-alert Slack webhook request failed', {
-            leadId: opts.leadId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      } else {
-        const r = await postToOpsSlackWebhook({ text: opts.slackText });
-        if (r.success) {
-          slackSent = true;
-        } else if (!r.skipped) {
-          logger.warn('Sales-alert Slack notification failed', {
-            leadId: opts.leadId,
-            error: r.error,
-          });
-        }
-      }
-    }
-  }
-
-  if (settings.channels.email) {
-    const recipients = resolveEmailRecipients(settings);
-    if (recipients.length > 0) {
-      attempted = true;
-      // Send each recipient individually so a single bad address does not poison
-      // the whole alert. Mark the alert "delivered" if any recipient succeeds.
-      for (const to of recipients) {
-        const r = await sendEmail({
-          to,
-          subject: opts.subject,
-          html: opts.html,
-          text: opts.plainText,
-          replyTo: opts.replyTo,
-        });
-        if (r.success) {
-          emailSent = true;
-        } else {
-          logger.warn('Sales-alert email failed for recipient', {
-            leadId: opts.leadId,
-            recipient: to,
-            error: r.error,
-          });
-        }
-      }
-    } else {
-      logger.debug('Sales-alert email skipped — no recipients configured', { leadId: opts.leadId });
-    }
-  }
-
-  return { emailSent, slackSent, attempted };
+  const r = await sendAlertMessage(settings, opts);
+  return {
+    emailSent: r.email === 'sent',
+    slackSent: r.slack === 'sent',
+    attempted: r.email !== 'skipped' || r.slack !== 'skipped',
+  };
 }
 
 async function notifyAdmins(lead: LeadRecord, leadId: number): Promise<void> {

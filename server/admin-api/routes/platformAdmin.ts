@@ -18,6 +18,7 @@ import {
   listLeads,
   listLeadEvents,
   updateLeadStatus,
+  sendAlertMessage,
   type BookingStatusFilter,
   type LeadListItem,
   type LeadSource,
@@ -994,6 +995,103 @@ router.put('/platform/sales-alert-settings', requireAuth, requirePlatformAdmin, 
   } catch (err) {
     logger.error('Failed to save sales alert settings', { error: String(err) });
     return res.status(500).json({ error: 'Failed to save sales alert settings' });
+  }
+});
+
+// Send a clearly-marked test alert through the currently-saved channels and
+// recipients so admins can verify their email addresses and Slack webhook
+// before relying on real lead traffic. Does NOT touch marketing_leads or the
+// `notified` flag — purely a one-shot delivery probe.
+router.post('/platform/sales-alert-settings/test', requireAuth, requirePlatformAdmin, async (req, res) => {
+  try {
+    const settings = await getSalesAlertSettings();
+    const adminEmail = req.user?.email ?? null;
+    const triggeredBy = adminEmail ?? req.user?.userId ?? 'platform admin';
+    const timestamp = new Date().toISOString();
+
+    // Defensive escape — `triggeredBy` is sourced from the JWT payload and
+    // should be safe, but rendering it as raw HTML in an email is exactly the
+    // kind of place where a stray angle bracket would cause weird breakage.
+    const escapeHtml = (v: string): string =>
+      v
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const subject = '[TEST] Sales-alert settings test from QVO';
+    const slackText = [
+      ':white_check_mark: *This is a test alert from QVO*',
+      `Triggered by: ${triggeredBy}`,
+      `Time: ${timestamp}`,
+      '',
+      'If you received this message, your Sales Inbox alert channel is working.',
+      'No marketing lead was created and no notification flag was changed.',
+    ].join('\n');
+    const plainText = [
+      'This is a test alert from QVO.',
+      `Triggered by: ${triggeredBy}`,
+      `Time: ${timestamp}`,
+      '',
+      'If you received this message, your Sales Inbox alert channel is working.',
+      'No marketing lead was created and no notification flag was changed.',
+    ].join('\n');
+    const html = `
+      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;">
+        <h2 style="color:#0f172a;margin:0 0 12px;">This is a test alert from QVO</h2>
+        <p style="color:#475569;margin:0 0 12px;">
+          A platform admin triggered this from <strong>Admin → Sales Inbox → Alert settings</strong>
+          to verify delivery. <strong>No marketing lead was created</strong> and the
+          <code>notified</code> flag was not changed for any existing lead.
+        </p>
+        <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+          <tr><td style="padding:6px 12px;font-weight:600;color:#475569;">Triggered by</td>
+              <td style="padding:6px 12px;color:#0f172a;">${escapeHtml(triggeredBy)}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:600;color:#475569;">Time</td>
+              <td style="padding:6px 12px;color:#0f172a;">${escapeHtml(timestamp)}</td></tr>
+        </table>
+        <p style="color:#475569;margin:16px 0 0;">
+          If you received this message, the channel is configured correctly.
+        </p>
+      </div>
+    `;
+
+    const result = await sendAlertMessage(settings, {
+      subject,
+      slackText,
+      html,
+      plainText,
+      replyTo: adminEmail ?? undefined,
+      leadId: null,
+    });
+
+    logger.info('Test sales alert dispatched', {
+      adminUserId: req.user?.userId,
+      email: result.email,
+      slack: result.slack,
+    });
+
+    // Surface a single top-level `error` for failed channels so the modal can
+    // show one inline summary, while still returning per-channel detail.
+    const errorParts: string[] = [];
+    if (result.email === 'failed' && result.emailError) errorParts.push(`Email: ${result.emailError}`);
+    if (result.slack === 'failed' && result.slackError) errorParts.push(`Slack: ${result.slackError}`);
+
+    return res.json({
+      email: result.email,
+      slack: result.slack,
+      ...(result.emailError ? { emailError: result.emailError } : {}),
+      ...(result.slackError ? { slackError: result.slackError } : {}),
+      ...(errorParts.length ? { error: errorParts.join(' | ') } : {}),
+    });
+  } catch (err) {
+    logger.error('Failed to send test sales alert', { error: String(err) });
+    return res.status(500).json({
+      email: 'failed',
+      slack: 'failed',
+      error: err instanceof Error ? err.message : 'Failed to send test alert',
+    });
   }
 });
 

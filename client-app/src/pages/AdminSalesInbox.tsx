@@ -6,7 +6,7 @@ import {
   CheckCircle, X as XIcon, Search, Filter, ChevronDown, ChevronRight,
   CalendarCheck, CalendarX, CalendarClock, MailCheck, UserCheck, FileText,
   Download, Bell, Settings, Plus, Trash2,
-  History, Sparkles, MessageSquare,
+  History, Sparkles, MessageSquare, Send, AlertTriangle,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -95,6 +95,16 @@ interface SalesAlertSettings {
 interface SalesAlertSettingsResponse {
   settings: SalesAlertSettings;
   fallbacks: { envEmail: string | null; envSlackConfigured: boolean };
+}
+
+type AlertChannelStatus = 'sent' | 'skipped' | 'failed';
+
+interface TestAlertResponse {
+  email: AlertChannelStatus;
+  slack: AlertChannelStatus;
+  emailError?: string;
+  slackError?: string;
+  error?: string;
 }
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
@@ -953,6 +963,8 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
   const [draft, setDraft] = useState<SalesAlertSettings | null>(null);
   const [newRecipient, setNewRecipient] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestAlertResponse | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data?.settings && !draft) setDraft(data.settings);
@@ -968,6 +980,24 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
     },
     onError: (err) => {
       setSaveError(err instanceof Error ? err.message : 'Failed to save settings');
+    },
+  });
+
+  // Probe the currently-saved settings (NOT the unsaved draft) so admins know
+  // exactly what production traffic would do. The endpoint never writes to
+  // marketing_leads.
+  const testMutation = useMutation({
+    mutationFn: () =>
+      api.post<TestAlertResponse>('/platform/sales-alert-settings/test', {}),
+    onMutate: () => {
+      setTestResult(null);
+      setTestError(null);
+    },
+    onSuccess: (resp) => {
+      setTestResult(resp);
+    },
+    onError: (err) => {
+      setTestError(err instanceof Error ? err.message : 'Failed to send test alert');
     },
   });
 
@@ -1145,26 +1175,121 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
                   {saveError}
                 </div>
               )}
+
+              {(testResult || testError) && (
+                <TestAlertBanner result={testResult} error={testError} />
+              )}
             </>
           )}
         </div>
 
-        <div className="border-t border-slate-700 px-5 py-3 flex items-center justify-end gap-2">
+        <div className="border-t border-slate-700 px-5 py-3 flex flex-wrap items-center justify-between gap-2">
           <button
-            onClick={onClose}
-            className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"
+            onClick={() => testMutation.mutate()}
+            disabled={!data || testMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sm text-white disabled:opacity-50"
+            title="Send a test alert through the currently-saved channels (no lead is created)"
           >
-            Cancel
+            <Send className="h-4 w-4" />
+            {testMutation.isPending ? 'Sending test…' : 'Send test alert'}
           </button>
-          <button
-            onClick={() => draft && saveMutation.mutate(draft)}
-            disabled={!draft || saveMutation.isPending}
-            className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {saveMutation.isPending ? 'Saving…' : 'Save settings'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => draft && saveMutation.mutate(draft)}
+              disabled={!draft || saveMutation.isPending}
+              className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {saveMutation.isPending ? 'Saving…' : 'Save settings'}
+            </button>
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TestAlertBanner({ result, error }: { result: TestAlertResponse | null; error: string | null }) {
+  if (error) {
+    return (
+      <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm flex items-start gap-2">
+        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <div>
+          <div className="font-medium">Test alert request failed</div>
+          <div className="text-rose-300/90 mt-0.5 break-words">{error}</div>
+        </div>
+      </div>
+    );
+  }
+  if (!result) return null;
+
+  const anyFailed = result.email === 'failed' || result.slack === 'failed';
+  const anySent = result.email === 'sent' || result.slack === 'sent';
+
+  // "All-skipped" usually means the admin disabled both channels or has no
+  // recipients/webhook configured — flag it gently rather than as success.
+  const allSkipped = result.email === 'skipped' && result.slack === 'skipped';
+
+  const tone = anyFailed
+    ? 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+    : anySent
+      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+      : 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+
+  const Icon = anyFailed ? AlertTriangle : anySent ? CheckCircle : AlertTriangle;
+  const headline = anyFailed
+    ? 'Test alert finished with errors'
+    : anySent
+      ? 'Test alert sent'
+      : allSkipped
+        ? 'Nothing was sent'
+        : 'Test alert finished';
+
+  return (
+    <div className={clsx('rounded-lg border p-3 text-sm flex items-start gap-2', tone)}>
+      <Icon className="h-4 w-4 mt-0.5 flex-shrink-0" />
+      <div className="min-w-0 space-y-1">
+        <div className="font-medium">{headline}</div>
+        <ChannelStatusLine label="Email" status={result.email} detail={result.emailError} />
+        <ChannelStatusLine label="Slack" status={result.slack} detail={result.slackError} />
+        {allSkipped && (
+          <div className="text-xs opacity-80">
+            Both channels are disabled or have no recipients/webhook configured.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChannelStatusLine({
+  label,
+  status,
+  detail,
+}: {
+  label: string;
+  status: AlertChannelStatus;
+  detail?: string;
+}) {
+  const dot =
+    status === 'sent'
+      ? 'bg-emerald-400'
+      : status === 'failed'
+        ? 'bg-rose-400'
+        : 'bg-slate-400';
+  return (
+    <div className="text-xs flex items-start gap-2">
+      <span className={clsx('mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0', dot)} />
+      <span className="min-w-0 break-words">
+        <span className="font-medium">{label}:</span>{' '}
+        <span className="capitalize">{status}</span>
+        {detail && <span className="opacity-80"> — {detail}</span>}
+      </span>
     </div>
   );
 }
