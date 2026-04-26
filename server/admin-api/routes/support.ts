@@ -438,10 +438,21 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
     ? null
     : (VALID_FEEDBACK_STATUSES.has(statusParam) ? statusParam : 'new');
   const replyStateParam = req.query.reply_state ? String(req.query.reply_state) : null;
-  const replyFailedOnly = replyStateParam === 'failed';
+  const replyFailedOnly = replyStateParam === 'failed' || replyStateParam === 'hard_bounce';
+  const hardBounceOnly = replyStateParam === 'hard_bounce';
+  // Hard-bounce classification happens in JS (the shared classifier has too
+  // many keyword/regex rules to inline cleanly in SQL), so when the caller
+  // is filtering on `hard_bounce` we must classify BEFORE applying the
+  // user's display limit. Otherwise a tenant with hundreds of recent
+  // transient failures would push the older permanent failures out of the
+  // top-N and the inbox would silently lose them. Pull a much wider window
+  // of failed rows in that case (capped to keep memory bounded), classify,
+  // then slice down to the requested limit.
+  const HARD_BOUNCE_CLASSIFY_CAP = 2000;
+  const sqlLimit = hardBounceOnly ? HARD_BOUNCE_CLASSIFY_CAP : limit;
   try {
     const pool = getPlatformPool();
-    const params: unknown[] = [limit];
+    const params: unknown[] = [sqlLimit];
     let where = `WHERE f.comment IS NOT NULL AND length(trim(f.comment)) > 0`;
     if (slug) {
       params.push(slug);
@@ -457,7 +468,22 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
     if (pendingReply) {
       where += ` AND reply_email IS NOT NULL AND reply_count = 0 AND status <> 'hidden'`;
     }
-    const r = await pool.query(
+    const r = await pool.query<{
+      id: number;
+      article_slug: string;
+      vote: string;
+      comment: string | null;
+      page_path: string | null;
+      created_at: Date;
+      status: string;
+      status_updated_at: Date | null;
+      status_updated_by: string | null;
+      reply_email: string | null;
+      reply_count: number;
+      last_reply_at: Date | null;
+      last_reply_error: string | null;
+      last_reply_failed: boolean;
+    }>(
       `SELECT f.id, f.article_slug, f.vote, f.comment, f.page_path, f.created_at,
               f.status, f.status_updated_at, f.status_updated_by,
               f.reply_email, f.reply_count,
@@ -477,7 +503,21 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
        LIMIT $1`,
       params,
     );
-    res.json({ comments: r.rows });
+    // Compute `last_reply_permanent` server-side using the shared classifier
+    // so the inbox UI can render a distinct "Hard bounce" badge and disable
+    // the one-click Retry button without round-tripping through the client
+    // mirror. The `hard_bounce` filter further narrows the result set: we
+    // pulled the wider HARD_BOUNCE_CLASSIFY_CAP window above precisely so
+    // that this in-memory filter can't silently drop older permanent rows
+    // behind a wall of newer transient ones.
+    const enriched = r.rows.map((row) => ({
+      ...row,
+      last_reply_permanent: isPermanentSmtpError(row.last_reply_error),
+    }));
+    const filtered = hardBounceOnly
+      ? enriched.filter((row) => row.last_reply_permanent === true).slice(0, limit)
+      : enriched;
+    res.json({ comments: filtered });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load feedback comments', detail: String(err) });
   }
@@ -805,6 +845,21 @@ router.post(
     if (!lastReply.email_error) {
       res.status(409).json({
         error: 'Latest reply already delivered; nothing to retry',
+      });
+      return;
+    }
+
+    // Refuse retries on permanent (hard-bounce) failures. The recipient is
+    // unreachable, so re-sending the same body to the same address only
+    // burns sender reputation. The inbox UI hides/disables the Retry button
+    // for these rows but we still gate server-side in case a stale client
+    // or scripted retry slips through.
+    if (isPermanentSmtpError(lastReply.email_error)) {
+      res.status(409).json({
+        error:
+          'Last reply hard-bounced (permanent SMTP failure). Contact the recipient another way instead of retrying.',
+        permanent: true,
+        last_reply_error: lastReply.email_error,
       });
       return;
     }

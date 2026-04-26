@@ -42,6 +42,7 @@ interface DocsFeedbackComment {
   last_reply_at?: string | null;
   last_reply_error?: string | null;
   last_reply_failed?: boolean | null;
+  last_reply_permanent?: boolean | null;
 }
 
 interface DocsFeedbackReply {
@@ -1542,12 +1543,16 @@ export default function PlatformAdmin() {
   );
 }
 
+type DocsFeedbackReplyStateFilter = 'any' | 'failed' | 'hard_bounce';
+
 function DocsFeedbackTab() {
   const [sort, setSort] = useState<DocsFeedbackSort>('lowest_ratio');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<DocsFeedbackStatusFilter>('new');
-  const [replyFailedOnly, setReplyFailedOnly] = useState(false);
+  const [replyStateFilter, setReplyStateFilter] = useState<DocsFeedbackReplyStateFilter>('any');
   const queryClient = useQueryClient();
+
+  const replyFilterActive = replyStateFilter !== 'any';
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['docs-feedback-summary', sort],
@@ -1556,12 +1561,12 @@ function DocsFeedbackTab() {
   });
 
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
-    queryKey: ['docs-feedback-comments', selectedSlug, statusFilter, replyFailedOnly],
+    queryKey: ['docs-feedback-comments', selectedSlug, statusFilter, replyStateFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('limit', selectedSlug ? '100' : '50');
-      params.set('status', replyFailedOnly ? 'all' : statusFilter);
-      if (replyFailedOnly) params.set('reply_state', 'failed');
+      params.set('status', replyFilterActive ? 'all' : statusFilter);
+      if (replyFilterActive) params.set('reply_state', replyStateFilter);
       if (selectedSlug) params.set('article_slug', selectedSlug);
       return api.get<{ comments: DocsFeedbackComment[] }>(`/docs/feedback/comments?${params.toString()}`);
     },
@@ -1703,21 +1708,28 @@ function DocsFeedbackTab() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={replyFailedOnly}
-                onChange={(e) => setReplyFailedOnly(e.target.checked)}
-              />
-              <span className={replyFailedOnly ? 'text-red-700 font-medium' : ''}>
-                Failed replies only
-              </span>
-            </label>
+            <label className="text-xs text-muted">Reply state</label>
+            <select
+              value={replyStateFilter}
+              onChange={(e) => setReplyStateFilter(e.target.value as DocsFeedbackReplyStateFilter)}
+              className={`text-sm px-2 py-1.5 rounded border border-border bg-surface ${
+                replyStateFilter === 'hard_bounce'
+                  ? 'text-amber-800 font-medium'
+                  : replyStateFilter === 'failed'
+                    ? 'text-red-700 font-medium'
+                    : ''
+              }`}
+              title="Narrow the inbox to rows where the outbound reply failed (or specifically hard-bounced and won't auto-retry)."
+            >
+              <option value="any">Any reply state</option>
+              <option value="failed">Failed replies only</option>
+              <option value="hard_bounce">Hard-bounced only</option>
+            </select>
             <label className="text-xs text-muted">Status</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as DocsFeedbackStatusFilter)}
-              disabled={replyFailedOnly}
+              disabled={replyFilterActive}
               className="text-sm px-2 py-1.5 rounded border border-border bg-surface disabled:opacity-50"
             >
               <option value="new">New</option>
@@ -1858,55 +1870,109 @@ function DocsFeedbackCommentRow({
 
   const replies = repliesData?.replies ?? [];
   const lastReplyFailed = c.last_reply_failed === true;
+  // Prefer the server-computed `last_reply_permanent` field (which uses the
+  // same isPermanentSmtpError classifier that gates the auto-retry digest)
+  // and fall back to the client mirror only if the field is missing — e.g.
+  // an old API response cached before this rolled out. Either way, the
+  // background scheduler will refuse to retry, so the inbox UI must too.
+  const lastReplyPermanent =
+    c.last_reply_permanent === true ||
+    (c.last_reply_permanent == null && isPermanentSmtpError(c.last_reply_error));
 
   return (
     <div
-      className={`px-4 py-3 ${lastReplyFailed ? 'border-l-4 border-l-red-500 bg-red-50/40' : ''}`}
+      className={`px-4 py-3 ${
+        lastReplyPermanent
+          ? 'border-l-4 border-l-amber-500 bg-amber-50/40'
+          : lastReplyFailed
+            ? 'border-l-4 border-l-red-500 bg-red-50/40'
+            : ''
+      }`}
     >
       {lastReplyFailed && (
-        <div className="mb-2 flex items-start gap-2 text-xs text-red-700 bg-red-100/60 border border-red-200 rounded px-2 py-1.5">
+        <div
+          className={`mb-2 flex items-start gap-2 text-xs rounded px-2 py-1.5 border ${
+            lastReplyPermanent
+              ? 'text-amber-800 bg-amber-100/60 border-amber-300'
+              : 'text-red-700 bg-red-100/60 border-red-200'
+          }`}
+        >
           <Mail className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <div className="font-semibold flex items-center gap-2 flex-wrap">
-              Last reply failed to send
-              {isPermanentSmtpError(c.last_reply_error) && (
+              {lastReplyPermanent ? 'Hard bounce — reply will not be retried' : 'Last reply failed to send'}
+              {lastReplyPermanent ? (
                 <span
-                  className="px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium"
-                  title="Permanent SMTP failure — auto-retry skipped"
+                  className="px-1.5 py-0.5 rounded border border-amber-400 bg-amber-100 text-amber-900 text-[10px] uppercase tracking-wide font-semibold"
+                  title="Permanent SMTP failure — auto-retry skipped, manual retry disabled"
                 >
-                  Hard bounce — won&rsquo;t auto-retry
+                  Hard bounce
+                </span>
+              ) : (
+                <span
+                  className="px-1.5 py-0.5 rounded border border-red-300 bg-red-100 text-red-800 text-[10px] uppercase tracking-wide font-medium"
+                  title="Transient delivery failure — safe to retry"
+                >
+                  Failed
                 </span>
               )}
             </div>
             {c.last_reply_error && (
-              <div className="text-red-600">{c.last_reply_error}</div>
+              <div className={lastReplyPermanent ? 'text-amber-700' : 'text-red-600'}>
+                {c.last_reply_error}
+              </div>
             )}
-            <div className="text-red-600/80">
-              {isPermanentSmtpError(c.last_reply_error)
-                ? 'The recipient address looks permanently unreachable, so the background scheduler will not auto-retry. Fix the address before pressing Retry below.'
-                : 'Retry below to re-send the same body, or open the reply form to edit before sending.'}
+            <div className={lastReplyPermanent ? 'text-amber-700/90' : 'text-red-600/80'}>
+              {lastReplyPermanent ? (
+                <>
+                  The recipient address is permanently unreachable, so re-sending the same body
+                  would only burn sender reputation. Reach out another way:{' '}
+                  {c.reply_email ? (
+                    <a
+                      href={`mailto:${c.reply_email}`}
+                      title={`Open a fresh email to ${c.reply_email} from your own client to verify the address out-of-band.`}
+                      className="underline font-medium text-amber-900 hover:text-amber-950"
+                    >
+                      contact {c.reply_email}
+                    </a>
+                  ) : (
+                    'no reply email was captured for this comment.'
+                  )}
+                </>
+              ) : (
+                'Retry below to re-send the same body, or open the reply form to edit before sending.'
+              )}
               {c.last_reply_at && (
                 <> Attempted {new Date(c.last_reply_at).toLocaleString()}.</>
               )}
             </div>
           </div>
-          <button
-            type="button"
-            disabled={retryDisabled}
-            onClick={() => {
-              setError(null);
-              setSuccess(null);
-              retryReply.mutate();
-            }}
-            title={
-              retrySecondsLeft > 0
-                ? `Server-side cooldown active. Re-enables in ${retrySecondsLeft}s.`
-                : undefined
-            }
-            className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-          >
-            {retryLabel}
-          </button>
+          {lastReplyPermanent ? (
+            <span
+              className="ml-2 self-start px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[11px] whitespace-nowrap cursor-not-allowed"
+              title="Retry is disabled because this address hard-bounced. Contact the recipient out-of-band instead."
+            >
+              Retry disabled
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={retryDisabled}
+              onClick={() => {
+                setError(null);
+                setSuccess(null);
+                retryReply.mutate();
+              }}
+              title={
+                retrySecondsLeft > 0
+                  ? `Server-side cooldown active. Re-enables in ${retrySecondsLeft}s.`
+                  : undefined
+              }
+              className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {retryLabel}
+            </button>
+          )}
         </div>
       )}
       <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">

@@ -24,6 +24,10 @@ const migration = readFileSync(
   join(process.cwd(), 'migrations/058_docs_feedback_reply_digest.sql'),
   'utf8',
 );
+const platformAdminFile = readFileSync(
+  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
+  'utf8',
+);
 
 describe('docs feedback failed-reply surfacing', () => {
   it('GET /docs/feedback/comments joins the latest reply and exposes last_reply_failed', () => {
@@ -35,6 +39,57 @@ describe('docs feedback failed-reply surfacing', () => {
   it('supports a reply_state=failed filter on the comments list', () => {
     expect(supportFile).toMatch(/reply_state/);
     expect(supportFile).toMatch(/replyFailedOnly/);
+  });
+
+  it('supports a reply_state=hard_bounce filter that narrows to permanent failures', () => {
+    expect(supportFile).toMatch(/replyStateParam === 'hard_bounce'/);
+    expect(supportFile).toMatch(/hardBounceOnly/);
+    // The narrower filter must also include the broader failed predicate so
+    // the SQL still uses the failed-replies index — only permanent rows are
+    // kept after classification, but they are a strict subset of failed rows.
+    expect(supportFile).toMatch(/replyFailedOnly = replyStateParam === 'failed' \|\| replyStateParam === 'hard_bounce'/);
+  });
+
+  it('classifies hard bounces BEFORE applying the user-facing limit', () => {
+    // Regression guard: previously the user's `limit` was passed straight to
+    // SQL and the in-memory filter ran on that already-truncated result set,
+    // which silently dropped older permanent failures whenever recent
+    // transient ones filled the top-N. The fix widens the SQL pull to a
+    // safety cap and slices to `limit` *after* classification.
+    expect(supportFile).toMatch(/HARD_BOUNCE_CLASSIFY_CAP/);
+    expect(supportFile).toMatch(/sqlLimit = hardBounceOnly \? HARD_BOUNCE_CLASSIFY_CAP : limit/);
+    expect(supportFile).toMatch(/last_reply_permanent === true\)\.slice\(0, limit\)/);
+  });
+
+  it('exposes last_reply_permanent on each comment using the shared classifier', () => {
+    expect(supportFile).toMatch(/last_reply_permanent: isPermanentSmtpError\(row\.last_reply_error\)/);
+    expect(supportFile).toMatch(
+      /from '\.\.\/\.\.\/\.\.\/platform\/email\/smtpErrorClass'/,
+    );
+  });
+
+  it('refuses /reply/retry on permanent (hard-bounce) failures', () => {
+    expect(supportFile).toMatch(/isPermanentSmtpError\(lastReply\.email_error\)/);
+    expect(supportFile).toMatch(
+      /Last reply hard-bounced \(permanent SMTP failure\)\. Contact the recipient another way instead of retrying\./,
+    );
+    expect(supportFile).toMatch(/permanent: true/);
+  });
+
+  it('inbox UI distinguishes hard bounces from generic failures and disables retry', () => {
+    // The inbox surfaces the server-computed last_reply_permanent flag.
+    expect(platformAdminFile).toMatch(/last_reply_permanent\??: boolean \| null/);
+    expect(platformAdminFile).toMatch(/c\.last_reply_permanent === true/);
+    // Distinct "Hard bounce" badge separate from the generic "Failed" badge.
+    expect(platformAdminFile).toMatch(/Hard bounce — reply will not be retried/);
+    expect(platformAdminFile).toMatch(/Retry disabled/);
+    // Mailto link guides ops to contact the customer out-of-band.
+    expect(platformAdminFile).toMatch(
+      /href=\{`mailto:\$\{c\.reply_email\}`\}/,
+    );
+    // The reply_state filter exposes a hard_bounce option in the dropdown.
+    expect(platformAdminFile).toMatch(/value="hard_bounce"/);
+    expect(platformAdminFile).toMatch(/Hard-bounced only/);
   });
 
   it('orders failed replies to the top of the inbox', () => {
