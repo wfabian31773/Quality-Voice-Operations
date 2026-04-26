@@ -2,6 +2,11 @@ import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { postToOpsSlackWebhook, getOpsSlackWebhookUrl } from '../../../platform/messaging/SlackWebhookNotifier';
 import { sendEmail } from '../../../platform/email/EmailService';
+import {
+  getSalesAlertSettings,
+  getSalesInboxDeepLink,
+  type SalesAlertSettings,
+} from './sales-alert-settings';
 
 const logger = createLogger('MARKETING_LEADS');
 
@@ -451,7 +456,7 @@ export async function recordLead(lead: LeadRecord): Promise<{ id: number | null 
 
 export async function findLeadById(
   leadId: number,
-): Promise<{ id: number; email: string; payload: Record<string, unknown>; name: string | null; company: string | null } | null> {
+): Promise<{ id: number; email: string; payload: Record<string, unknown>; name: string | null; company: string | null; notified: boolean } | null> {
   try {
     await ensureTable();
     const pool = getPlatformPool();
@@ -461,8 +466,9 @@ export async function findLeadById(
       payload: Record<string, unknown>;
       name: string | null;
       company: string | null;
+      notified: boolean;
     }>(
-      `SELECT id, email, payload, name, company FROM marketing_leads WHERE id = $1 LIMIT 1`,
+      `SELECT id, email, payload, name, company, notified FROM marketing_leads WHERE id = $1 LIMIT 1`,
       [leadId],
     );
     const row = result.rows[0];
@@ -473,6 +479,7 @@ export async function findLeadById(
       payload: row.payload ?? {},
       name: row.name,
       company: row.company,
+      notified: Boolean(row.notified),
     };
   } catch (err) {
     logger.warn('findLeadById failed', { error: err instanceof Error ? err.message : String(err), leadId });
@@ -660,7 +667,7 @@ export async function attachBookingToLead(
   }
 }
 
-function formatLeadHtml(lead: LeadRecord, leadId: number): string {
+function formatLeadHtml(lead: LeadRecord, leadId: number, deepLink: string): string {
   const payload = lead.payload as Record<string, unknown>;
   const rows: Array<[string, string]> = [
     ['Source', lead.source],
@@ -687,6 +694,7 @@ function formatLeadHtml(lead: LeadRecord, leadId: number): string {
       <h2 style="color:#0f172a;margin:0 0 12px;">New ${lead.source.replace('_', ' ')} lead</h2>
       <p style="color:#475569;margin:0 0 16px;">A new prospect just submitted the ${lead.source === 'book_demo' ? 'Book a Demo' : lead.source === 'roi_calculator' ? 'ROI Calculator' : 'Contact'} form.</p>
       <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">${tableRows}</table>
+      <p style="margin:16px 0 0;"><a href="${escapeHtml(deepLink)}" style="display:inline-block;background:#7c3aed;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:600;">Open in Sales Inbox →</a></p>
     </div>
   `;
 }
@@ -700,27 +708,165 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function getSalesEmail(): string | null {
-  const value = (process.env.SALES_NOTIFICATION_EMAIL ?? process.env.SALES_EMAIL ?? '').trim();
-  return value || null;
+/**
+ * Resolve the email recipient list. Settings.emailRecipients (when populated by
+ * an admin in the Sales Inbox UI) wins; otherwise we fall back to the legacy
+ * env var so existing deployments keep working without touching the DB.
+ */
+function resolveEmailRecipients(settings: SalesAlertSettings): string[] {
+  if (settings.emailRecipients.length > 0) return settings.emailRecipients;
+  const fallback = (process.env.SALES_NOTIFICATION_EMAIL ?? process.env.SALES_EMAIL ?? '').trim();
+  if (!fallback) return [];
+  return fallback
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function resolveSlackUrl(settings: SalesAlertSettings): string | null {
+  return settings.slackWebhookUrl || getOpsSlackWebhookUrl();
+}
+
+async function markLeadNotified(leadId: number): Promise<void> {
+  try {
+    const pool = getPlatformPool();
+    await pool.query(`UPDATE marketing_leads SET notified = TRUE WHERE id = $1`, [leadId]);
+  } catch (err) {
+    logger.warn('Failed to mark lead as notified', {
+      leadId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function isLeadAlreadyNotified(leadId: number): Promise<boolean> {
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query<{ notified: boolean }>(
+      `SELECT notified FROM marketing_leads WHERE id = $1 LIMIT 1`,
+      [leadId],
+    );
+    return Boolean(rows[0]?.notified);
+  } catch {
+    return false;
+  }
+}
+
+interface DispatchResult {
+  emailSent: boolean;
+  slackSent: boolean;
+  attempted: boolean;
+}
+
+async function dispatchAlert(
+  settings: SalesAlertSettings,
+  opts: {
+    subject: string;
+    slackText: string;
+    html: string;
+    plainText: string;
+    replyTo?: string;
+    leadId: number | null;
+  },
+): Promise<DispatchResult> {
+  let emailSent = false;
+  let slackSent = false;
+  let attempted = false;
+
+  if (settings.channels.slack) {
+    const slackUrl = resolveSlackUrl(settings);
+    if (slackUrl) {
+      attempted = true;
+      // Prefer the override URL when set, otherwise reuse the env-driven helper.
+      if (settings.slackWebhookUrl) {
+        try {
+          const res = await fetch(settings.slackWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: opts.slackText }),
+          });
+          if (res.ok) {
+            slackSent = true;
+          } else {
+            logger.warn('Sales-alert Slack webhook returned non-2xx', {
+              leadId: opts.leadId,
+              status: res.status,
+            });
+          }
+        } catch (err) {
+          logger.warn('Sales-alert Slack webhook request failed', {
+            leadId: opts.leadId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } else {
+        const r = await postToOpsSlackWebhook({ text: opts.slackText });
+        if (r.success) {
+          slackSent = true;
+        } else if (!r.skipped) {
+          logger.warn('Sales-alert Slack notification failed', {
+            leadId: opts.leadId,
+            error: r.error,
+          });
+        }
+      }
+    }
+  }
+
+  if (settings.channels.email) {
+    const recipients = resolveEmailRecipients(settings);
+    if (recipients.length > 0) {
+      attempted = true;
+      // Send each recipient individually so a single bad address does not poison
+      // the whole alert. Mark the alert "delivered" if any recipient succeeds.
+      for (const to of recipients) {
+        const r = await sendEmail({
+          to,
+          subject: opts.subject,
+          html: opts.html,
+          text: opts.plainText,
+          replyTo: opts.replyTo,
+        });
+        if (r.success) {
+          emailSent = true;
+        } else {
+          logger.warn('Sales-alert email failed for recipient', {
+            leadId: opts.leadId,
+            recipient: to,
+            error: r.error,
+          });
+        }
+      }
+    } else {
+      logger.debug('Sales-alert email skipped — no recipients configured', { leadId: opts.leadId });
+    }
+  }
+
+  return { emailSent, slackSent, attempted };
 }
 
 async function notifyAdmins(lead: LeadRecord, leadId: number): Promise<void> {
+  const settings = await getSalesAlertSettings();
+  if (!settings.notifyOnNewLead) {
+    logger.debug('New-lead alerts disabled by admin settings — skipping', { leadId });
+    return;
+  }
+
+  // Idempotency: each lead row is alerted at most once. If the booking webhook
+  // arrived first and already flagged it, we will not double-send here.
+  const alreadyNotified = await isLeadAlreadyNotified(leadId);
+  if (alreadyNotified) {
+    logger.debug('Lead already marked notified — skipping new-lead alert', { leadId });
+    return;
+  }
+
   const headline = lead.source === 'book_demo'
     ? `New demo request from ${lead.company || lead.name || lead.email}`
     : lead.source === 'roi_calculator'
       ? `New ROI report request from ${lead.email}`
       : `New marketing lead from ${lead.email}`;
 
-  logger.info('Admin notification dispatched', {
-    leadId,
-    subject: headline,
-    source: lead.source,
-    email: lead.email,
-    company: lead.company,
-    name: lead.name,
-  });
-
+  const deepLink = getSalesInboxDeepLink(leadId);
   const payload = lead.payload as Record<string, unknown>;
   const detailLines = [
     `*${headline}*`,
@@ -732,42 +878,33 @@ async function notifyAdmins(lead: LeadRecord, leadId: number): Promise<void> {
     typeof payload.preferredTime === 'string' ? `• Preferred time: ${payload.preferredTime}` : null,
     typeof payload.useCase === 'string' && payload.useCase ? `• Use case: ${payload.useCase}` : null,
     typeof payload.message === 'string' && payload.message ? `• Message: ${payload.message}` : null,
+    `• Source: ${lead.source}`,
     `• Lead ID: ${leadId}`,
+    `• Open in Sales Inbox: ${deepLink}`,
   ].filter(Boolean) as string[];
 
-  // Best-effort Slack notification
-  if (getOpsSlackWebhookUrl()) {
-    const slackResult = await postToOpsSlackWebhook({ text: detailLines.join('\n') });
-    if (!slackResult.success && !slackResult.skipped) {
-      logger.warn('Slack notification for new lead failed', { error: slackResult.error, leadId });
-    }
-  }
+  const dispatched = await dispatchAlert(settings, {
+    subject: headline,
+    slackText: detailLines.join('\n'),
+    html: formatLeadHtml(lead, leadId, deepLink),
+    plainText: detailLines.join('\n').replace(/\*/g, ''),
+    replyTo: lead.email,
+    leadId,
+  });
 
-  // Best-effort email notification
-  const salesEmail = getSalesEmail();
-  if (salesEmail) {
-    const emailResult = await sendEmail({
-      to: salesEmail,
-      subject: headline,
-      html: formatLeadHtml(lead, leadId),
-      text: detailLines.join('\n').replace(/\*/g, ''),
-      replyTo: lead.email,
-    });
-    if (!emailResult.success) {
-      logger.warn('Email notification for new lead failed', { error: emailResult.error, leadId });
-    }
-  } else {
-    logger.debug('SALES_NOTIFICATION_EMAIL not configured — skipping email notification');
-  }
+  logger.info('Sales-alert dispatch result for new lead', {
+    leadId,
+    source: lead.source,
+    email: lead.email,
+    emailSent: dispatched.emailSent,
+    slackSent: dispatched.slackSent,
+    attempted: dispatched.attempted,
+  });
 
-  try {
-    const pool = getPlatformPool();
-    await pool.query(
-      `UPDATE marketing_leads SET notified = TRUE WHERE id = $1`,
-      [leadId],
-    );
-  } catch {
-    /* best-effort */
+  // Only mark the lead as notified after at least one channel succeeded so a
+  // transient SMTP/Slack outage does not silently drop the alert forever.
+  if (dispatched.emailSent || dispatched.slackSent) {
+    await markLeadNotified(leadId);
   }
 }
 
@@ -776,11 +913,44 @@ export async function notifyBookingConfirmed(
   booking: BookingDetails,
   leadInfo: { leadId: number | null; name: string | null; company: string | null },
 ): Promise<void> {
-  const eventLabel = booking.eventType === 'cancelled'
-    ? 'Demo cancelled'
-    : booking.eventType === 'rescheduled'
-      ? 'Demo rescheduled'
-      : 'Demo booked';
+  const settings = await getSalesAlertSettings();
+  const eventType = booking.eventType ?? 'created';
+
+  // Per-event admin toggles. The "created" event is the high-intent moment we
+  // want to alert on by default; reschedule/cancel events are status updates.
+  const eventEnabled =
+    eventType === 'cancelled'
+      ? settings.notifyOnBookingCancelled
+      : eventType === 'rescheduled'
+        ? settings.notifyOnBookingRescheduled
+        : settings.notifyOnBookingCreated;
+  if (!eventEnabled) {
+    logger.debug('Booking alert suppressed by admin settings', {
+      leadId: leadInfo.leadId,
+      eventType,
+    });
+    return;
+  }
+
+  // The `notified` column tracks "was this lead alerted at least once" — only
+  // applied to the first-touch (booking created) signal. Reschedule/cancel
+  // events still go through so sales sees the lifecycle update.
+  if (eventType === 'created' && leadInfo.leadId) {
+    const already = await isLeadAlreadyNotified(leadInfo.leadId);
+    if (already) {
+      logger.debug('Lead already marked notified — skipping booking-created alert', {
+        leadId: leadInfo.leadId,
+      });
+      return;
+    }
+  }
+
+  const eventLabel =
+    eventType === 'cancelled'
+      ? 'Demo cancelled'
+      : eventType === 'rescheduled'
+        ? 'Demo rescheduled'
+        : 'Demo booked';
 
   const who = leadInfo.company || leadInfo.name || booking.attendeeName || email;
   const subject = `${eventLabel}: ${who}`;
@@ -789,10 +959,13 @@ export async function notifyBookingConfirmed(
     ? `${booking.startTime}${booking.timezone ? ` (${booking.timezone})` : ''}`
     : '(time not provided)';
 
+  const deepLink = getSalesInboxDeepLink(leadInfo.leadId);
+
   const lines = [
     `*${subject}*`,
     `• Attendee: ${booking.attendeeName ?? leadInfo.name ?? '(unknown)'} <${email}>`,
     leadInfo.company ? `• Company: ${leadInfo.company}` : null,
+    `• Source: book_demo`,
     `• When: ${startLabel}`,
     booking.endTime ? `• Until: ${booking.endTime}` : null,
     booking.meetingUrl ? `• Meeting link: ${booking.meetingUrl}` : null,
@@ -800,48 +973,54 @@ export async function notifyBookingConfirmed(
     booking.cancelUrl ? `• Cancel: ${booking.cancelUrl}` : null,
     leadInfo.leadId ? `• Lead ID: ${leadInfo.leadId}` : null,
     `• Provider: ${booking.provider}`,
+    `• Open in Sales Inbox: ${deepLink}`,
   ].filter(Boolean) as string[];
 
-  logger.info('Booking notification dispatched', {
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;">
+      <h2 style="color:#0f172a;margin:0 0 12px;">${escapeHtml(subject)}</h2>
+      <p style="color:#475569;margin:0 0 16px;">A prospect just self-scheduled through the Book a Demo flow.</p>
+      <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+        ${lines
+          .slice(1)
+          .filter((l) => !l.startsWith('• Open in Sales Inbox:'))
+          .map(
+            (l) =>
+              `<tr><td style="padding:6px 12px;color:#0f172a;">${escapeHtml(l.replace(/^•\s*/, ''))}</td></tr>`,
+          )
+          .join('')}
+      </table>
+      <p style="margin:16px 0 0;"><a href="${escapeHtml(deepLink)}" style="display:inline-block;background:#7c3aed;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:600;">Open in Sales Inbox →</a></p>
+    </div>
+  `;
+
+  const dispatched = await dispatchAlert(settings, {
+    subject,
+    slackText: lines.join('\n'),
+    html,
+    plainText: lines.join('\n').replace(/\*/g, ''),
+    replyTo: email,
     leadId: leadInfo.leadId,
-    email,
-    eventType: booking.eventType,
-    startTime: booking.startTime,
   });
 
-  if (getOpsSlackWebhookUrl()) {
-    const slackResult = await postToOpsSlackWebhook({ text: lines.join('\n') });
-    if (!slackResult.success && !slackResult.skipped) {
-      logger.warn('Slack notification for booking failed', { error: slackResult.error });
-    }
-  }
+  logger.info('Sales-alert dispatch result for booking', {
+    leadId: leadInfo.leadId,
+    email,
+    eventType,
+    startTime: booking.startTime,
+    emailSent: dispatched.emailSent,
+    slackSent: dispatched.slackSent,
+    attempted: dispatched.attempted,
+  });
 
-  const salesEmail = getSalesEmail();
-  if (salesEmail) {
-    const html = `
-      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;">
-        <h2 style="color:#0f172a;margin:0 0 12px;">${escapeHtml(subject)}</h2>
-        <p style="color:#475569;margin:0 0 16px;">A prospect just self-scheduled through the Book a Demo flow.</p>
-        <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-          ${lines
-            .slice(1)
-            .map(
-              (l) =>
-                `<tr><td style="padding:6px 12px;color:#0f172a;">${escapeHtml(l.replace(/^•\s*/, ''))}</td></tr>`,
-            )
-            .join('')}
-        </table>
-      </div>
-    `;
-    const emailResult = await sendEmail({
-      to: salesEmail,
-      subject,
-      html,
-      text: lines.join('\n').replace(/\*/g, ''),
-      replyTo: email,
-    });
-    if (!emailResult.success) {
-      logger.warn('Email notification for booking failed', { error: emailResult.error });
-    }
+  // Only flip `notified` for the booking-created event; reschedule/cancel are
+  // status updates and shouldn't permanently lock out future booking-created
+  // alerts (e.g. if the lead booked, cancelled, then booked again).
+  if (
+    eventType === 'created' &&
+    leadInfo.leadId &&
+    (dispatched.emailSent || dispatched.slackSent)
+  ) {
+    await markLeadNotified(leadInfo.leadId);
   }
 }

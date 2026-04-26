@@ -23,6 +23,11 @@ import {
   type LeadSource,
   type LeadStatus,
 } from '../services/marketing-leads';
+import {
+  getSalesAlertSettings,
+  setSalesAlertSettings,
+  type SalesAlertSettingsPatch,
+} from '../services/sales-alert-settings';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -920,6 +925,75 @@ router.patch('/platform/marketing-leads/:id', requireAuth, requirePlatformAdmin,
   } catch (err) {
     logger.error('Failed to update marketing lead status', { leadId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update marketing lead' });
+  }
+});
+
+// ---------- Sales-alert settings ----------
+//
+// Sits next to the Sales Inbox in /admin/sales-inbox so platform admins can
+// pick the recipient list and channels (email / Slack) used by lead-capture
+// and Cal.com booking notifications. Stored under platform_settings, falls
+// back to SALES_NOTIFICATION_EMAIL / OPS_SLACK_WEBHOOK_URL env vars when no
+// override is set.
+
+router.get('/platform/sales-alert-settings', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const settings = await getSalesAlertSettings();
+    return res.json({
+      settings,
+      fallbacks: {
+        envEmail: (process.env.SALES_NOTIFICATION_EMAIL ?? process.env.SALES_EMAIL ?? '').trim() || null,
+        envSlackConfigured: Boolean(
+          (process.env.OPS_SLACK_WEBHOOK_URL ?? process.env.SLACK_WEBHOOK_URL ?? process.env.SLACK_WEBHOOK ?? '').trim(),
+        ),
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to load sales alert settings', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to load sales alert settings' });
+  }
+});
+
+router.put('/platform/sales-alert-settings', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const patch: SalesAlertSettingsPatch = {};
+
+  if (body.channels && typeof body.channels === 'object') {
+    const ch = body.channels as Record<string, unknown>;
+    const channelsPatch: { email?: boolean; slack?: boolean } = {};
+    if (typeof ch.email === 'boolean') channelsPatch.email = ch.email;
+    if (typeof ch.slack === 'boolean') channelsPatch.slack = ch.slack;
+    if (Object.keys(channelsPatch).length > 0) patch.channels = channelsPatch;
+  }
+  if (body.emailRecipients !== undefined) {
+    if (!Array.isArray(body.emailRecipients)) {
+      return res.status(400).json({ error: 'emailRecipients must be an array of strings' });
+    }
+    patch.emailRecipients = body.emailRecipients.filter((v): v is string => typeof v === 'string');
+  }
+  if (body.slackWebhookUrl !== undefined) {
+    if (body.slackWebhookUrl !== null && typeof body.slackWebhookUrl !== 'string') {
+      return res.status(400).json({ error: 'slackWebhookUrl must be a string or null' });
+    }
+    patch.slackWebhookUrl = body.slackWebhookUrl as string | null;
+  }
+  if (typeof body.notifyOnNewLead === 'boolean') patch.notifyOnNewLead = body.notifyOnNewLead;
+  if (typeof body.notifyOnBookingCreated === 'boolean') patch.notifyOnBookingCreated = body.notifyOnBookingCreated;
+  if (typeof body.notifyOnBookingRescheduled === 'boolean') patch.notifyOnBookingRescheduled = body.notifyOnBookingRescheduled;
+  if (typeof body.notifyOnBookingCancelled === 'boolean') patch.notifyOnBookingCancelled = body.notifyOnBookingCancelled;
+
+  try {
+    const settings = await setSalesAlertSettings(patch, req.user!.userId);
+    logger.info('Sales alert settings updated', {
+      adminUserId: req.user!.userId,
+      recipientCount: settings.emailRecipients.length,
+      slackOverride: Boolean(settings.slackWebhookUrl),
+      channels: settings.channels,
+    });
+    return res.json({ settings });
+  } catch (err) {
+    logger.error('Failed to save sales alert settings', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to save sales alert settings' });
   }
 });
 

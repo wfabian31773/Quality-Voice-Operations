@@ -1,11 +1,11 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
   Inbox, Mail, Building2, Phone, ExternalLink, Calendar, RefreshCw,
   CheckCircle, X as XIcon, Search, Filter, ChevronDown, ChevronRight,
   CalendarCheck, CalendarX, CalendarClock, MailCheck, UserCheck, FileText,
-  Download,
+  Download, Bell, Settings, Plus, Trash2,
   History, Sparkles, MessageSquare,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
@@ -82,6 +82,21 @@ interface LeadListResponse {
   };
 }
 
+interface SalesAlertSettings {
+  channels: { email: boolean; slack: boolean };
+  emailRecipients: string[];
+  slackWebhookUrl: string | null;
+  notifyOnNewLead: boolean;
+  notifyOnBookingCreated: boolean;
+  notifyOnBookingRescheduled: boolean;
+  notifyOnBookingCancelled: boolean;
+}
+
+interface SalesAlertSettingsResponse {
+  settings: SalesAlertSettings;
+  fallbacks: { envEmail: string | null; envSlackConfigured: boolean };
+}
+
 const SOURCE_LABELS: Record<LeadSource, string> = {
   book_demo: 'Book a Demo',
   roi_calculator: 'ROI Calculator',
@@ -153,11 +168,21 @@ export default function AdminSalesInbox() {
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const limit = 25;
+
+  // Auto-expand a lead when arriving via the deep link in alert emails / Slack
+  // messages (e.g. /admin/sales-inbox#lead-42).
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#lead-')) return;
+    const id = parseInt(hash.slice('#lead-'.length), 10);
+    if (Number.isFinite(id) && id > 0) setExpandedId(id);
+  }, []);
 
   const queryKey = ['marketing-leads', { source, booking, status, search, page }];
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<LeadListResponse>({
@@ -273,6 +298,14 @@ export default function AdminSalesInbox() {
             {exporting ? 'Preparing CSV…' : 'Download CSV'}
           </button>
           <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700"
+            title="Configure where new-lead alerts are sent"
+          >
+            <Bell className="h-4 w-4" />
+            Alert settings
+          </button>
+          <button
             onClick={() => refetch()}
             disabled={isFetching}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
@@ -287,6 +320,10 @@ export default function AdminSalesInbox() {
         <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
           Export failed: {exportError}
         </div>
+      )}
+
+      {settingsOpen && (
+        <SalesAlertSettingsModal onClose={() => setSettingsOpen(false)} />
       )}
 
       {counts && (
@@ -510,7 +547,7 @@ function LeadRow({
   const booking = lead.payload?.booking;
   const bookingState = getBookingState(lead);
   return (
-    <tr className="hover:bg-slate-800/30">
+    <tr id={`lead-${lead.id}`} className="hover:bg-slate-800/30 scroll-mt-24">
       <td className="px-3 py-3 align-top">
         <button
           onClick={onToggle}
@@ -903,5 +940,258 @@ function Detail({ label, value, icon: Icon }: { label: string; value: string; ic
         <div className="text-slate-200 break-words">{value}</div>
       </div>
     </div>
+  );
+}
+
+function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, error } = useQuery<SalesAlertSettingsResponse>({
+    queryKey: ['sales-alert-settings'],
+    queryFn: () => api.get<SalesAlertSettingsResponse>('/platform/sales-alert-settings'),
+  });
+
+  const [draft, setDraft] = useState<SalesAlertSettings | null>(null);
+  const [newRecipient, setNewRecipient] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data?.settings && !draft) setDraft(data.settings);
+  }, [data, draft]);
+
+  const saveMutation = useMutation({
+    mutationFn: (settings: SalesAlertSettings) =>
+      api.put<{ settings: SalesAlertSettings }>('/platform/sales-alert-settings', settings),
+    onSuccess: (resp) => {
+      setDraft(resp.settings);
+      setSaveError(null);
+      queryClient.invalidateQueries({ queryKey: ['sales-alert-settings'] });
+    },
+    onError: (err) => {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save settings');
+    },
+  });
+
+  const addRecipient = () => {
+    const trimmed = newRecipient.trim();
+    if (!trimmed || !draft) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setSaveError(`"${trimmed}" doesn't look like a valid email address`);
+      return;
+    }
+    if (draft.emailRecipients.includes(trimmed)) {
+      setNewRecipient('');
+      return;
+    }
+    setDraft({ ...draft, emailRecipients: [...draft.emailRecipients, trimmed] });
+    setNewRecipient('');
+    setSaveError(null);
+  };
+
+  const removeRecipient = (addr: string) => {
+    if (!draft) return;
+    setDraft({ ...draft, emailRecipients: draft.emailRecipients.filter((r) => r !== addr) });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Settings className="h-5 w-5 text-purple-400" />
+            <h3 className="text-lg font-semibold text-white">Sales-alert settings</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+            aria-label="Close"
+          >
+            <XIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {isLoading && <p className="text-sm text-slate-400">Loading settings…</p>}
+          {isError && (
+            <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+              Failed to load settings: {error instanceof Error ? error.message : 'Unknown error'}
+            </div>
+          )}
+          {draft && data && (
+            <>
+              <p className="text-xs text-slate-400">
+                Pushed every time a new lead lands or a confirmed Cal.com booking arrives.
+                Each lead row is alerted at most once (tracked by <code className="text-slate-300">marketing_leads.notified</code>).
+              </p>
+
+              <section className="space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Channels</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Toggle
+                    label="Email"
+                    description="Send to the recipients below"
+                    checked={draft.channels.email}
+                    onChange={(v) => setDraft({ ...draft, channels: { ...draft.channels, email: v } })}
+                  />
+                  <Toggle
+                    label="Slack"
+                    description="Post to the configured webhook"
+                    checked={draft.channels.slack}
+                    onChange={(v) => setDraft({ ...draft, channels: { ...draft.channels, slack: v } })}
+                  />
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">When to alert</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Toggle
+                    label="New lead submitted"
+                    description="Book a Demo, ROI Calculator, Contact"
+                    checked={draft.notifyOnNewLead}
+                    onChange={(v) => setDraft({ ...draft, notifyOnNewLead: v })}
+                  />
+                  <Toggle
+                    label="Booking confirmed"
+                    description="Cal.com BOOKING_CREATED"
+                    checked={draft.notifyOnBookingCreated}
+                    onChange={(v) => setDraft({ ...draft, notifyOnBookingCreated: v })}
+                  />
+                  <Toggle
+                    label="Booking rescheduled"
+                    description="Cal.com BOOKING_RESCHEDULED"
+                    checked={draft.notifyOnBookingRescheduled}
+                    onChange={(v) => setDraft({ ...draft, notifyOnBookingRescheduled: v })}
+                  />
+                  <Toggle
+                    label="Booking cancelled"
+                    description="Cal.com BOOKING_CANCELLED"
+                    checked={draft.notifyOnBookingCancelled}
+                    onChange={(v) => setDraft({ ...draft, notifyOnBookingCancelled: v })}
+                  />
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Email recipients</h4>
+                  {data.fallbacks.envEmail && draft.emailRecipients.length === 0 && (
+                    <span className="text-[11px] text-slate-500">
+                      Falls back to <code className="text-slate-400">{data.fallbacks.envEmail}</code> (env)
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  {draft.emailRecipients.length === 0 && (
+                    <p className="text-xs text-slate-500">
+                      No overrides — alerts go to the address from <code>SALES_NOTIFICATION_EMAIL</code>.
+                    </p>
+                  )}
+                  {draft.emailRecipients.map((addr) => (
+                    <div key={addr} className="flex items-center justify-between bg-slate-800/60 border border-slate-700 rounded px-3 py-1.5">
+                      <span className="text-sm text-slate-200 truncate">{addr}</span>
+                      <button
+                        onClick={() => removeRecipient(addr)}
+                        className="p-1 text-slate-400 hover:text-rose-300"
+                        aria-label={`Remove ${addr}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={newRecipient}
+                    onChange={(e) => setNewRecipient(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipient(); } }}
+                    placeholder="sales@example.com"
+                    className="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <button
+                    onClick={addRecipient}
+                    type="button"
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium"
+                  >
+                    <Plus className="h-4 w-4" /> Add
+                  </button>
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Slack webhook (optional)</h4>
+                <input
+                  type="url"
+                  value={draft.slackWebhookUrl ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, slackWebhookUrl: e.target.value.trim() ? e.target.value.trim() : null })
+                  }
+                  placeholder={
+                    data.fallbacks.envSlackConfigured
+                      ? 'Override the env-configured webhook (optional)'
+                      : 'https://hooks.slack.com/services/…'
+                  }
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <p className="text-[11px] text-slate-500">
+                  When empty, falls back to <code>OPS_SLACK_WEBHOOK_URL</code> (env).
+                  {' '}
+                  {data.fallbacks.envSlackConfigured ? 'Env webhook is currently set.' : 'Env webhook is not set.'}
+                </p>
+              </section>
+
+              {saveError && (
+                <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+                  {saveError}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-slate-700 px-5 py-3 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => draft && saveMutation.mutate(draft)}
+            disabled={!draft || saveMutation.isPending}
+            className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save settings'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-700 bg-slate-800/40 cursor-pointer hover:bg-slate-800/70">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 accent-purple-500"
+      />
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-slate-100">{label}</div>
+        {description && <div className="text-xs text-slate-400">{description}</div>}
+      </div>
+    </label>
   );
 }

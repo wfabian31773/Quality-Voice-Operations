@@ -33,7 +33,7 @@
 | `ADMIN_API_BASE_URL` | Public URL of the admin API | Your deployment domain | `https://your-domain.replit.app:3002` |
 | `VITE_BOOK_DEMO_SCHEDULER_URL` | Embedded scheduler URL used by the public `/book-demo` page. Must be set at **build time** (Vite inlines `VITE_*` vars). Enforced by `scripts/validate-env.ts` and Admin API startup — missing in production = hard fail. | Cal.com event link or Calendly link | `https://cal.com/qvo/30min` |
 | `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used to verify the `X-Cal-Signature-256` header on `/book-demo/calendar-webhook`. The endpoint **rejects all unsigned requests in production** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). Enforced by `scripts/validate-env.ts` and Admin API startup. | Cal.com Webhook config (see §5) | Random 32+ char secret |
-| `SALES_NOTIFICATION_EMAIL` | Inbox that receives "new demo lead" and "booking created/rescheduled/cancelled" notifications from `marketing-leads.ts`. Enforced by `scripts/validate-env.ts` and Admin API startup so demo leads are never silently dropped. | Your sales / SDR distribution list | `sales@yourdomain.com` |
+| `SALES_NOTIFICATION_EMAIL` | Default inbox that receives "new demo lead" and "booking created/rescheduled/cancelled" notifications from `marketing-leads.ts`. Platform admins can override this list and the channels (email/Slack) at runtime via **Admin → Sales Inbox → Alert settings** (persisted in `platform_settings.sales_alert_settings`). The in-app `marketing_leads.notified` flag ensures each lead is alerted at most once. Enforced by `scripts/validate-env.ts` and Admin API startup so demo leads are never silently dropped. | Your sales / SDR distribution list | `sales@yourdomain.com` |
 
 ### Required (development only)
 
@@ -60,6 +60,8 @@
 | `VITE_BOOK_DEMO_SCHEDULER_PROVIDER` | `cal.com` | Set to `calendly` to switch the `/book-demo` embed and prefill semantics. Must be set at build time. |
 | `CALCOM_WEBHOOK_ALLOW_UNSIGNED` | unset | **Dev/staging only.** Set to `1` to accept unsigned `/book-demo/calendar-webhook` requests when `CALCOM_WEBHOOK_SECRET` is not configured. Has no effect when `NODE_ENV=production` or `APP_ENV=production` — production always fails closed. |
 | `SALES_EMAIL` | none | Legacy fallback for `SALES_NOTIFICATION_EMAIL`. Prefer the latter. |
+| `OPS_SLACK_WEBHOOK_URL` | none | Default Slack incoming-webhook URL used for sales-alert messages when the in-app Slack channel is enabled and no per-instance webhook override has been configured in **Admin → Sales Inbox → Alert settings**. |
+| `PLATFORM_ADMIN_BASE_URL` | falls back to `ADMIN_PUBLIC_URL` → `APP_PUBLIC_URL` → `ADMIN_API_BASE_URL` | Public origin used to build deep links inside sales-alert emails / Slack messages (e.g. `https://app.example.com/admin/sales-inbox#lead-42`). Set this to the URL admins use to reach the SPA, not the raw API origin, when those differ. |
 
 ## 2. Pre-deployment Validation
 
