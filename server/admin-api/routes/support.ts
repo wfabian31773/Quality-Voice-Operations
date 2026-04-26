@@ -16,7 +16,9 @@ import {
   escapeHtml,
 } from '../../../platform/help/supportReplyEmail';
 import { tryReserveRetrySlot } from '../../../platform/help/docsFeedbackRetryLimiter';
+import { getRetryCooldownSeconds } from '../../../platform/help/docsFeedbackRetryLimiter';
 import { tryReserveSupportReplyRetrySlot } from '../../../platform/help/supportReplyRetryLimiter';
+import { getSupportReplyRetryCooldownSeconds } from '../../../platform/help/supportReplyRetryLimiter';
 import { logError } from '../../../platform/core/observability';
 import {
   REPLY_DELIVERY_ALERT_THRESHOLD,
@@ -850,6 +852,7 @@ router.post(
       to: comment.reply_email,
       subject: finalSubject,
       retried: true,
+      retry_cooldown_seconds: getRetryCooldownSeconds(),
     });
   },
 );
@@ -1429,7 +1432,12 @@ router.post(
       retry_count: newRetryCount,
     });
 
-    res.json({ success: true, email_delivered: result.success, reply: updatedRow });
+    res.json({
+      success: true,
+      email_delivered: result.success,
+      reply: updatedRow,
+      retry_cooldown_seconds: getSupportReplyRetryCooldownSeconds(),
+    });
   },
 );
 

@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { isPermanentSmtpError } from '../lib/smtpErrorClass';
@@ -251,6 +251,35 @@ interface ValidationResult {
 
 function formatCents(cents: string | number): string {
   return `$${(Number(cents) / 100).toFixed(2)}`;
+}
+
+/**
+ * Re-render every second while at least one of the supplied "available at"
+ * timestamps is still in the future, so a countdown UI can show its
+ * remaining seconds without each consumer wiring up its own setInterval.
+ * Returns Date.now() at the latest tick.
+ */
+function useCountdownTick(targetsMs: number[]): number {
+  const [now, setNow] = useState(() => Date.now());
+  const active = targetsMs.some((t) => t > now);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+/**
+ * Pull a positive integer out of an arbitrary error/response body. Used to
+ * read `retry_after_seconds` (from a 429) or `retry_cooldown_seconds` (from
+ * a successful retry) without leaking `any` everywhere.
+ */
+function readPositiveSeconds(body: unknown, key: string): number | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = (body as Record<string, unknown>)[key];
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
+  return Math.ceil(raw);
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -1771,24 +1800,56 @@ function DocsFeedbackCommentRow({
     },
   });
 
+  // Cooldown timestamp (ms) until the Retry button is allowed to fire again.
+  // Set from `retry_after_seconds` on a 429 (so admins don't have to click
+  // to discover they're locked out) and from `retry_cooldown_seconds` on a
+  // successful retry (to mirror the server-side per-feedback debounce).
+  const [retryCooldownUntil, setRetryCooldownUntil] = useState(0);
+
   const retryReply = useMutation({
     mutationFn: () =>
-      api.post<{ success: boolean; message_id?: string; subject?: string }>(
+      api.post<{
+        success: boolean;
+        message_id?: string;
+        subject?: string;
+        retry_cooldown_seconds?: number;
+      }>(
         `/docs/feedback/comments/${c.id}/reply/retry`,
         {},
       ),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setSuccess('Reply re-sent.');
       setError(null);
+      const cooldown = readPositiveSeconds(data, 'retry_cooldown_seconds');
+      if (cooldown !== null) {
+        setRetryCooldownUntil(Date.now() + cooldown * 1000);
+      }
       queryClient.invalidateQueries({ queryKey: ['docs-feedback-comments'] });
       queryClient.invalidateQueries({ queryKey: ['docs-feedback-replies', c.id] });
     },
     onError: (err: unknown) => {
+      const status = (err as { status?: number } | null)?.status;
+      const body = (err as { body?: unknown } | null)?.body;
+      if (status === 429) {
+        const wait = readPositiveSeconds(body, 'retry_after_seconds');
+        if (wait !== null) {
+          setRetryCooldownUntil(Date.now() + wait * 1000);
+        }
+      }
       const detail = err instanceof Error ? err.message : String(err);
       setError(detail || 'Failed to re-send reply');
       setSuccess(null);
     },
   });
+
+  const now = useCountdownTick([retryCooldownUntil]);
+  const retrySecondsLeft = Math.max(0, Math.ceil((retryCooldownUntil - now) / 1000));
+  const retryDisabled = retryReply.isPending || retrySecondsLeft > 0;
+  const retryLabel = retryReply.isPending
+    ? 'Retrying…'
+    : retrySecondsLeft > 0
+      ? `Retry available in ${retrySecondsLeft}s`
+      : 'Retry send';
 
   const statusBadge =
     c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
@@ -1831,15 +1892,20 @@ function DocsFeedbackCommentRow({
           </div>
           <button
             type="button"
-            disabled={retryReply.isPending}
+            disabled={retryDisabled}
             onClick={() => {
               setError(null);
               setSuccess(null);
               retryReply.mutate();
             }}
-            className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+            title={
+              retrySecondsLeft > 0
+                ? `Server-side cooldown active. Re-enables in ${retrySecondsLeft}s.`
+                : undefined
+            }
+            className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
           >
-            {retryReply.isPending ? 'Retrying…' : 'Retry send'}
+            {retryLabel}
           </button>
         </div>
       )}
@@ -2340,10 +2406,21 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
   // failed replies in the same thread can each have their own retry button.
   const [retryingReplyId, setRetryingReplyId] = useState<number | null>(null);
   const [retryErrors, setRetryErrors] = useState<Record<number, string>>({});
+  // Per-reply cooldown timestamps (ms) until the corresponding Retry button
+  // is allowed to fire again. Populated from `retry_after_seconds` on a 429
+  // and from `retry_cooldown_seconds` on a successful retry, so admins see
+  // the same per-reply cooldown the server enforces without round-tripping a
+  // click first.
+  const [retryCooldownByReply, setRetryCooldownByReply] = useState<Record<number, number>>({});
 
   const retryReply = useMutation({
     mutationFn: (replyId: number) =>
-      api.post<{ success: boolean; email_delivered: boolean; reply: SupportReply }>(
+      api.post<{
+        success: boolean;
+        email_delivered: boolean;
+        reply: SupportReply;
+        retry_cooldown_seconds?: number;
+      }>(
         `/support/tickets/${ticket.id}/replies/${replyId}/retry`,
         {},
       ),
@@ -2356,7 +2433,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         return next;
       });
     },
-    onSuccess: (_data, replyId) => {
+    onSuccess: (data, replyId) => {
       // Whether the retry delivered or not, the server has already updated the
       // existing reply row with the latest email_message_id / email_error and
       // we'll re-render it via the invalidated query — no extra inline error
@@ -2368,11 +2445,25 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         delete next[replyId];
         return next;
       });
+      const cooldown = readPositiveSeconds(data, 'retry_cooldown_seconds');
+      if (cooldown !== null) {
+        const until = Date.now() + cooldown * 1000;
+        setRetryCooldownByReply((prev) => ({ ...prev, [replyId]: until }));
+      }
       queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
       queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
       queryClient.invalidateQueries({ queryKey: ['support-ticket-stats'] });
     },
     onError: (err, replyId) => {
+      const status = (err as { status?: number } | null)?.status;
+      const body = (err as { body?: unknown } | null)?.body;
+      if (status === 429) {
+        const wait = readPositiveSeconds(body, 'retry_after_seconds');
+        if (wait !== null) {
+          const until = Date.now() + wait * 1000;
+          setRetryCooldownByReply((prev) => ({ ...prev, [replyId]: until }));
+        }
+      }
       // The HTTP call itself failed (network error, 5xx, etc.) so the row
       // state on the server didn't change — surface the transport error
       // inline so the admin knows the retry never actually ran.
@@ -2385,6 +2476,10 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
       setRetryingReplyId(null);
     },
   });
+
+  // Drive the per-row "Retry available in Xs" countdown by ticking once a
+  // second while at least one reply still has time left on its cooldown.
+  const nowMs = useCountdownTick(Object.values(retryCooldownByReply));
 
   const isResolved = ticket.status === 'resolved' || ticket.status === 'closed';
 
@@ -2482,6 +2577,14 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
               const canRetry = isOutbound && !!r.email_error && !!ticket.user_email;
               const isRetrying = retryingReplyId === r.id && retryReply.isPending;
               const retryError = retryErrors[r.id];
+              const cooldownUntil = retryCooldownByReply[r.id] ?? 0;
+              const retrySecondsLeft = Math.max(0, Math.ceil((cooldownUntil - nowMs) / 1000));
+              const retryDisabled = isRetrying || retrySecondsLeft > 0;
+              const retryLabel = isRetrying
+                ? 'Retrying…'
+                : retrySecondsLeft > 0
+                  ? `Retry available in ${retrySecondsLeft}s`
+                  : 'Retry send';
               return (
                 <div
                   key={r.id}
@@ -2511,12 +2614,16 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                         <button
                           type="button"
                           onClick={() => retryReply.mutate(r.id)}
-                          disabled={isRetrying}
-                          title={`Re-send to ${ticket.user_email}`}
+                          disabled={retryDisabled}
+                          title={
+                            retrySecondsLeft > 0
+                              ? `Server-side cooldown active. Re-enables in ${retrySecondsLeft}s.`
+                              : `Re-send to ${ticket.user_email}`
+                          }
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-red-300 dark:border-red-900 bg-white dark:bg-red-950/20 text-red-700 dark:text-red-300 text-[11px] font-medium hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <RotateCw className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`} />
-                          {isRetrying ? 'Retrying…' : 'Retry send'}
+                          {retryLabel}
                         </button>
                       )}
                     </span>
