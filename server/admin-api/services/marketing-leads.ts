@@ -61,8 +61,89 @@ async function ensureTable(): Promise<void> {
       ADD COLUMN IF NOT EXISTS status_updated_by TEXT;
     CREATE INDEX IF NOT EXISTS marketing_leads_status_idx
       ON marketing_leads (status, created_at DESC);
+    CREATE TABLE IF NOT EXISTS marketing_lead_events (
+      id BIGSERIAL PRIMARY KEY,
+      lead_id BIGINT NOT NULL REFERENCES marketing_leads(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL CHECK (event_type IN ('created', 'status_change', 'note')),
+      previous_status TEXT,
+      new_status TEXT,
+      notes TEXT,
+      author TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS marketing_lead_events_lead_id_created_at_idx
+      ON marketing_lead_events (lead_id, created_at DESC);
   `);
   tableEnsured = true;
+}
+
+export type LeadEventType = 'created' | 'status_change' | 'note';
+
+export interface LeadEvent {
+  id: number;
+  lead_id: number;
+  event_type: LeadEventType;
+  previous_status: LeadStatus | null;
+  new_status: LeadStatus | null;
+  notes: string | null;
+  author: string | null;
+  created_at: string;
+}
+
+async function recordLeadEvent(
+  leadId: number,
+  event: {
+    eventType: LeadEventType;
+    previousStatus?: LeadStatus | null;
+    newStatus?: LeadStatus | null;
+    notes?: string | null;
+    author?: string | null;
+  },
+): Promise<void> {
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO marketing_lead_events
+         (lead_id, event_type, previous_status, new_status, notes, author)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        leadId,
+        event.eventType,
+        event.previousStatus ?? null,
+        event.newStatus ?? null,
+        event.notes ?? null,
+        event.author ?? null,
+      ],
+    );
+  } catch (err) {
+    logger.warn('Failed to record lead event', {
+      leadId,
+      eventType: event.eventType,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function listLeadEvents(leadId: number): Promise<LeadEvent[]> {
+  await ensureTable();
+  const pool = getPlatformPool();
+  const result = await pool.query(
+    `SELECT id, lead_id, event_type, previous_status, new_status, notes, author, created_at
+       FROM marketing_lead_events
+      WHERE lead_id = $1
+      ORDER BY created_at ASC, id ASC`,
+    [leadId],
+  );
+  return result.rows.map((r): LeadEvent => ({
+    id: Number(r.id),
+    lead_id: Number(r.lead_id),
+    event_type: r.event_type as LeadEventType,
+    previous_status: (r.previous_status as LeadStatus | null) ?? null,
+    new_status: (r.new_status as LeadStatus | null) ?? null,
+    notes: r.notes ?? null,
+    author: r.author ?? null,
+    created_at: new Date(r.created_at).toISOString(),
+  }));
 }
 
 export type LeadStatus = 'new' | 'contacted' | 'closed';
@@ -272,6 +353,17 @@ export async function updateLeadStatus(
 ): Promise<LeadListItem | null> {
   await ensureTable();
   const pool = getPlatformPool();
+
+  // Capture the previous status so we can record an event row that reflects
+  // exactly what changed (status flip vs. note-only update).
+  const beforeRes = await pool.query<{ status: string; status_notes: string | null }>(
+    `SELECT status, status_notes FROM marketing_leads WHERE id = $1`,
+    [leadId],
+  );
+  if (beforeRes.rowCount === 0) return null;
+  const previousStatus = (beforeRes.rows[0].status as LeadStatus) ?? 'new';
+  const previousNotes = beforeRes.rows[0].status_notes ?? null;
+
   const result = await pool.query(
     `UPDATE marketing_leads
         SET status = $1,
@@ -285,6 +377,28 @@ export async function updateLeadStatus(
   );
   const row = result.rows[0];
   if (!row) return null;
+
+  const newNotes = (row.status_notes as string | null) ?? null;
+  const noteChanged = (options.notes ?? null) !== null && newNotes !== previousNotes;
+  const statusChanged = previousStatus !== (row.status as LeadStatus);
+
+  if (statusChanged) {
+    await recordLeadEvent(leadId, {
+      eventType: 'status_change',
+      previousStatus,
+      newStatus: row.status as LeadStatus,
+      notes: noteChanged ? newNotes : null,
+      author: options.updatedBy ?? null,
+    });
+  } else if (noteChanged) {
+    await recordLeadEvent(leadId, {
+      eventType: 'note',
+      previousStatus,
+      newStatus: row.status as LeadStatus,
+      notes: newNotes,
+      author: options.updatedBy ?? null,
+    });
+  }
   return {
     id: Number(row.id),
     source: row.source as LeadSource,
@@ -314,6 +428,13 @@ export async function recordLead(lead: LeadRecord): Promise<{ id: number | null 
     );
     const id = Number(result.rows[0]?.id ?? 0);
     logger.info('Marketing lead persisted', { source: lead.source, leadId: id, email: lead.email });
+    if (id) {
+      await recordLeadEvent(id, {
+        eventType: 'created',
+        newStatus: 'new',
+        author: lead.email,
+      });
+    }
     notifyAdmins(lead, id).catch((err) => {
       logger.warn('Admin notification dispatch failed', { error: err instanceof Error ? err.message : String(err) });
     });
@@ -521,6 +642,14 @@ export async function attachBookingToLead(
     );
     const newId = Number(insertResult.rows[0]?.id ?? 0);
     logger.info('Booking created new lead row (no prior submission found)', { leadId: newId, email });
+    if (newId) {
+      await recordLeadEvent(newId, {
+        eventType: 'created',
+        newStatus: 'new',
+        author: email,
+        notes: 'Lead auto-created from Cal.com booking webhook',
+      });
+    }
     return { leadId: newId, duplicate: false };
   } catch (err) {
     logger.error('Failed to attach booking to lead', {

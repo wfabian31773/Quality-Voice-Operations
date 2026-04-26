@@ -6,6 +6,7 @@ import {
   CheckCircle, X as XIcon, Search, Filter, ChevronDown, ChevronRight,
   CalendarCheck, CalendarX, CalendarClock, MailCheck, UserCheck, FileText,
   Download,
+  History, Sparkles, MessageSquare,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -53,6 +54,17 @@ interface MarketingLead {
   status_notes: string | null;
   status_updated_at: string | null;
   status_updated_by: string | null;
+  created_at: string;
+}
+
+interface LeadEvent {
+  id: number;
+  lead_id: number;
+  event_type: 'created' | 'status_change' | 'note';
+  previous_status: LeadStatus | null;
+  new_status: LeadStatus | null;
+  notes: string | null;
+  author: string | null;
   created_at: string;
 }
 
@@ -169,8 +181,9 @@ export default function AdminSalesInbox() {
         status: vars.status,
         notes: vars.notes,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['marketing-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['marketing-lead-events', vars.id] });
     },
   });
 
@@ -390,6 +403,7 @@ export default function AdminSalesInbox() {
                       notes: notesDraft[lead.id] ?? lead.status_notes ?? '',
                     })}
                     saving={updateMutation.isPending && updateMutation.variables?.id === lead.id}
+                    expanded={expandedId === lead.id}
                   />
                 )}
               </Fragment>
@@ -630,23 +644,30 @@ function LeadDetail({
   onNotesChange,
   onSaveNotes,
   saving,
+  expanded,
 }: {
   lead: MarketingLead;
   notesDraft: string;
   onNotesChange: (v: string) => void;
   onSaveNotes: () => void;
   saving: boolean;
+  expanded: boolean;
 }) {
   const booking = lead.payload?.booking;
   const history = Array.isArray(lead.payload?.bookingHistory) ? lead.payload!.bookingHistory! : [];
   const teamSize = typeof lead.payload?.teamSize === 'string' ? lead.payload.teamSize : null;
   const preferredTime = typeof lead.payload?.preferredTime === 'string' ? lead.payload.preferredTime : null;
+  const eventsQuery = useQuery<{ events: LeadEvent[] }>({
+    queryKey: ['marketing-lead-events', lead.id],
+    queryFn: () => api.get<{ events: LeadEvent[] }>(`/platform/marketing-leads/${lead.id}/events`),
+    enabled: expanded,
+  });
   const useCase = typeof lead.payload?.useCase === 'string' ? lead.payload.useCase : null;
   const message = typeof lead.payload?.message === 'string' ? lead.payload.message : null;
 
   return (
     <tr className="bg-slate-900/40">
-      <td colSpan={7} className="px-6 py-4">
+      <td colSpan={7} className="px-6 py-4 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section className="space-y-2">
             <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Submission</h4>
@@ -741,9 +762,136 @@ function LeadDetail({
             </div>
           </section>
         </div>
+
+        <ActivityHistory
+          events={eventsQuery.data?.events ?? []}
+          loading={eventsQuery.isLoading}
+          error={eventsQuery.isError ? (eventsQuery.error instanceof Error ? eventsQuery.error.message : 'Unknown error') : null}
+          createdAt={lead.created_at}
+        />
       </td>
     </tr>
   );
+}
+
+function ActivityHistory({
+  events,
+  loading,
+  error,
+  createdAt,
+}: {
+  events: LeadEvent[];
+  loading: boolean;
+  error: string | null;
+  createdAt: string;
+}) {
+  // Show newest at the top so the most recent action is the first thing reps see.
+  const ordered = [...events].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+  const hasCreated = ordered.some((e) => e.event_type === 'created');
+  // Always anchor the timeline with at least a synthetic "submitted" event for
+  // legacy leads (or webhook-created leads) that never got a 'created' row.
+  const syntheticCreated: LeadEvent | null = hasCreated
+    ? null
+    : {
+        id: -1,
+        lead_id: -1,
+        event_type: 'created',
+        previous_status: null,
+        new_status: 'new',
+        notes: null,
+        author: null,
+        created_at: createdAt,
+      };
+  const totalEvents = ordered.length + (syntheticCreated ? 1 : 0);
+
+  return (
+    <section className="rounded-lg border border-slate-700/40 bg-slate-900/40 p-4">
+      <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-2 mb-3">
+        <History className="h-3.5 w-3.5" />
+        Activity history
+        {totalEvents > 0 && (
+          <span className="text-[10px] font-normal text-slate-500 normal-case tracking-normal">
+            ({totalEvents} {totalEvents === 1 ? 'event' : 'events'})
+          </span>
+        )}
+      </h4>
+
+      {loading && (
+        <div className="text-sm text-slate-500">Loading history…</div>
+      )}
+      {error && !loading && (
+        <div className="text-sm text-rose-300">Failed to load history: {error}</div>
+      )}
+
+      {!loading && !error && (
+        <ol className="space-y-2">
+          {ordered.map((event) => (
+            <LeadEventRow key={event.id} event={event} />
+          ))}
+          {syntheticCreated && (
+            <LeadEventRow event={syntheticCreated} />
+          )}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function LeadEventRow({ event }: { event: LeadEvent }) {
+  const accent =
+    event.event_type === 'created'
+      ? 'text-purple-300 bg-purple-500/10 border-purple-500/30'
+      : event.event_type === 'note'
+        ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+        : 'text-blue-300 bg-blue-500/10 border-blue-500/30';
+  const Icon =
+    event.event_type === 'created' ? Sparkles
+    : event.event_type === 'note' ? MessageSquare
+    : UserCheck;
+  const summary = describeEvent(event);
+  const author = event.author ? event.author : 'System';
+
+  return (
+    <li className="rounded-md border border-slate-700/50 bg-slate-800/40 p-3 flex items-start gap-3">
+      <span className={clsx('inline-flex items-center justify-center h-7 w-7 rounded-full border shrink-0', accent)}>
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-sm text-slate-100">
+            <span className="font-medium">{author}</span>{' '}
+            <span className="text-slate-300">{summary}</span>
+          </span>
+          <span className="text-xs text-slate-500" title={formatDateTime(event.created_at)}>
+            {formatRelative(event.created_at)}
+          </span>
+        </div>
+        {event.notes && (
+          <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap bg-slate-900/60 rounded px-2 py-1.5 border border-slate-700/40">
+            “{event.notes}”
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function describeEvent(event: LeadEvent): string {
+  if (event.event_type === 'created') {
+    return 'submitted this lead';
+  }
+  if (event.event_type === 'note') {
+    return 'added a note';
+  }
+  // status_change
+  const to = event.new_status ? STATUS_LABELS[event.new_status] : 'a new status';
+  const from = event.previous_status ? STATUS_LABELS[event.previous_status] : null;
+  if (from && from !== to) {
+    return `marked as ${to} (was ${from})`;
+  }
+  return `marked as ${to}`;
 }
 
 function Detail({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof Inbox }) {

@@ -16,6 +16,7 @@ import { listToolExecutions } from '../../../platform/tools/ToolExecutionService
 import {
   iterateLeadsForExport,
   listLeads,
+  listLeadEvents,
   updateLeadStatus,
   type BookingStatusFilter,
   type LeadListItem,
@@ -872,6 +873,22 @@ router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async
   } catch (err) {
     logger.error('Failed to list marketing leads', { error: String(err) });
     return res.status(500).json({ error: 'Failed to list marketing leads' });
+  }
+});
+
+router.get('/platform/marketing-leads/:id/events', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const leadId = parseInt(id, 10);
+  if (!Number.isFinite(leadId) || leadId <= 0) {
+    return res.status(400).json({ error: 'Invalid lead id' });
+  }
+
+  try {
+    const events = await listLeadEvents(leadId);
+    return res.json({ events });
+  } catch (err) {
+    logger.error('Failed to list marketing lead events', { leadId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list marketing lead events' });
   }
 });
 
