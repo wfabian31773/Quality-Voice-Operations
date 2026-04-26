@@ -66,6 +66,11 @@ app.use(
   express.raw({ type: 'application/json' }),
 );
 
+app.use(
+  '/book-demo/calendar-webhook',
+  express.raw({ type: 'application/json' }),
+);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 

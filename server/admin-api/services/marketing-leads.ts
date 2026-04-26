@@ -1,5 +1,7 @@
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { postToOpsSlackWebhook, getOpsSlackWebhookUrl } from '../../../platform/messaging/SlackWebhookNotifier';
+import { sendEmail } from '../../../platform/email/EmailService';
 
 const logger = createLogger('MARKETING_LEADS');
 
@@ -12,6 +14,23 @@ export interface LeadRecord {
   company: string | null;
   phone?: string | null;
   payload: Record<string, unknown>;
+}
+
+export interface BookingDetails {
+  provider: 'cal.com' | 'calendly' | 'other';
+  eventType?: 'created' | 'rescheduled' | 'cancelled';
+  bookingId?: string | number | null;
+  bookingUid?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  timezone?: string | null;
+  attendeeEmail?: string | null;
+  attendeeName?: string | null;
+  meetingUrl?: string | null;
+  rescheduleUrl?: string | null;
+  cancelUrl?: string | null;
+  title?: string | null;
+  raw?: Record<string, unknown>;
 }
 
 let tableEnsured = false;
@@ -33,6 +52,8 @@ async function ensureTable(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS marketing_leads_source_created_at_idx
       ON marketing_leads (source, created_at DESC);
+    CREATE INDEX IF NOT EXISTS marketing_leads_email_lower_idx
+      ON marketing_leads (LOWER(email));
   `);
   tableEnsured = true;
 }
@@ -63,8 +84,256 @@ export async function recordLead(lead: LeadRecord): Promise<{ id: number | null 
   }
 }
 
+export async function findLeadById(
+  leadId: number,
+): Promise<{ id: number; email: string; payload: Record<string, unknown>; name: string | null; company: string | null } | null> {
+  try {
+    await ensureTable();
+    const pool = getPlatformPool();
+    const result = await pool.query<{
+      id: string;
+      email: string;
+      payload: Record<string, unknown>;
+      name: string | null;
+      company: string | null;
+    }>(
+      `SELECT id, email, payload, name, company FROM marketing_leads WHERE id = $1 LIMIT 1`,
+      [leadId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      email: row.email,
+      payload: row.payload ?? {},
+      name: row.name,
+      company: row.company,
+    };
+  } catch (err) {
+    logger.warn('findLeadById failed', { error: err instanceof Error ? err.message : String(err), leadId });
+    return null;
+  }
+}
+
+function isDuplicateBooking(history: unknown[], booking: BookingDetails): boolean {
+  if (!booking.bookingUid && !booking.bookingId) return false;
+  for (const entry of history) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    if (e.eventType !== booking.eventType) continue;
+    const sameUid = booking.bookingUid && e.bookingUid && e.bookingUid === booking.bookingUid;
+    const sameId =
+      booking.bookingId != null &&
+      e.bookingId != null &&
+      String(e.bookingId) === String(booking.bookingId);
+    if (sameUid || sameId) return true;
+  }
+  return false;
+}
+
+export async function attachBookingToLeadById(
+  leadId: number,
+  booking: BookingDetails,
+): Promise<{ leadId: number | null; duplicate: boolean }> {
+  try {
+    await ensureTable();
+    const existing = await findLeadById(leadId);
+    if (!existing) {
+      logger.warn('attachBookingToLeadById: lead not found', { leadId });
+      return { leadId: null, duplicate: false };
+    }
+    const pool = getPlatformPool();
+    const bookingPayload = { ...booking, recordedAt: new Date().toISOString() };
+    const history = Array.isArray((existing.payload as { bookingHistory?: unknown[] }).bookingHistory)
+      ? ((existing.payload as { bookingHistory?: unknown[] }).bookingHistory as unknown[])
+      : [];
+
+    if (isDuplicateBooking(history, booking)) {
+      logger.info('Duplicate Cal.com webhook ignored (already recorded)', {
+        leadId: existing.id,
+        eventType: booking.eventType,
+        bookingUid: booking.bookingUid,
+        bookingId: booking.bookingId,
+      });
+      return { leadId: existing.id, duplicate: true };
+    }
+
+    const nextPayload = {
+      ...existing.payload,
+      booking: bookingPayload,
+      bookingHistory: [...history, bookingPayload].slice(-10),
+    };
+    await pool.query(
+      `UPDATE marketing_leads SET payload = $1::jsonb WHERE id = $2`,
+      [JSON.stringify(nextPayload), existing.id],
+    );
+    logger.info('Booking attached to lead by id', {
+      leadId: existing.id,
+      eventType: booking.eventType,
+      bookingId: booking.bookingId,
+    });
+    return { leadId: existing.id, duplicate: false };
+  } catch (err) {
+    logger.error('attachBookingToLeadById failed', {
+      error: err instanceof Error ? err.message : String(err),
+      leadId,
+    });
+    return { leadId: null, duplicate: false };
+  }
+}
+
+export async function findLatestLeadByEmail(
+  email: string,
+  source?: LeadSource,
+): Promise<{ id: number; payload: Record<string, unknown>; name: string | null; company: string | null } | null> {
+  try {
+    await ensureTable();
+    const pool = getPlatformPool();
+    const result = source
+      ? await pool.query<{ id: string; payload: Record<string, unknown>; name: string | null; company: string | null }>(
+          `SELECT id, payload, name, company FROM marketing_leads
+           WHERE LOWER(email) = LOWER($1) AND source = $2
+           ORDER BY created_at DESC LIMIT 1`,
+          [email, source],
+        )
+      : await pool.query<{ id: string; payload: Record<string, unknown>; name: string | null; company: string | null }>(
+          `SELECT id, payload, name, company FROM marketing_leads
+           WHERE LOWER(email) = LOWER($1)
+           ORDER BY created_at DESC LIMIT 1`,
+          [email],
+        );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      payload: row.payload ?? {},
+      name: row.name,
+      company: row.company,
+    };
+  } catch (err) {
+    logger.warn('findLatestLeadByEmail failed', { error: err instanceof Error ? err.message : String(err), email });
+    return null;
+  }
+}
+
+export async function attachBookingToLead(
+  email: string,
+  booking: BookingDetails,
+): Promise<{ leadId: number | null; duplicate: boolean }> {
+  try {
+    await ensureTable();
+    const existing = await findLatestLeadByEmail(email, 'book_demo');
+    const pool = getPlatformPool();
+
+    const bookingPayload = {
+      ...booking,
+      recordedAt: new Date().toISOString(),
+    };
+
+    if (existing) {
+      const history = Array.isArray((existing.payload as { bookingHistory?: unknown[] }).bookingHistory)
+        ? ((existing.payload as { bookingHistory?: unknown[] }).bookingHistory as unknown[])
+        : [];
+
+      if (isDuplicateBooking(history, booking)) {
+        logger.info('Duplicate Cal.com webhook ignored (already recorded)', {
+          leadId: existing.id,
+          email,
+          eventType: booking.eventType,
+          bookingUid: booking.bookingUid,
+          bookingId: booking.bookingId,
+        });
+        return { leadId: existing.id, duplicate: true };
+      }
+
+      const nextPayload = {
+        ...existing.payload,
+        booking: bookingPayload,
+        bookingHistory: [...history, bookingPayload].slice(-10),
+      };
+      await pool.query(
+        `UPDATE marketing_leads SET payload = $1::jsonb WHERE id = $2`,
+        [JSON.stringify(nextPayload), existing.id],
+      );
+      logger.info('Booking attached to existing lead', {
+        leadId: existing.id,
+        email,
+        eventType: booking.eventType,
+        bookingId: booking.bookingId,
+      });
+      return { leadId: existing.id, duplicate: false };
+    }
+
+    // No prior lead row — create one so the booking is not orphaned
+    const insertResult = await pool.query<{ id: string }>(
+      `INSERT INTO marketing_leads (source, name, email, company, payload)
+       VALUES ('book_demo', $1, $2, NULL, $3::jsonb)
+       RETURNING id`,
+      [
+        booking.attendeeName ?? null,
+        email,
+        JSON.stringify({ booking: bookingPayload, bookingHistory: [bookingPayload], origin: 'webhook_only' }),
+      ],
+    );
+    const newId = Number(insertResult.rows[0]?.id ?? 0);
+    logger.info('Booking created new lead row (no prior submission found)', { leadId: newId, email });
+    return { leadId: newId, duplicate: false };
+  } catch (err) {
+    logger.error('Failed to attach booking to lead', {
+      error: err instanceof Error ? err.message : String(err),
+      email,
+    });
+    return { leadId: null, duplicate: false };
+  }
+}
+
+function formatLeadHtml(lead: LeadRecord, leadId: number): string {
+  const payload = lead.payload as Record<string, unknown>;
+  const rows: Array<[string, string]> = [
+    ['Source', lead.source],
+    ['Lead ID', String(leadId)],
+    ['Name', lead.name ?? '(not provided)'],
+    ['Email', lead.email],
+    ['Company', lead.company ?? '(not provided)'],
+    ['Phone', lead.phone ?? '(not provided)'],
+  ];
+  if (typeof payload.teamSize === 'string') rows.push(['Team size', payload.teamSize]);
+  if (typeof payload.preferredTime === 'string') rows.push(['Preferred time', payload.preferredTime]);
+  if (typeof payload.useCase === 'string' && payload.useCase) rows.push(['Use case', payload.useCase]);
+  if (typeof payload.message === 'string' && payload.message) rows.push(['Message', payload.message]);
+
+  const tableRows = rows
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:6px 12px;font-weight:600;color:#475569;">${k}</td><td style="padding:6px 12px;color:#0f172a;">${escapeHtml(v)}</td></tr>`,
+    )
+    .join('');
+
+  return `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;">
+      <h2 style="color:#0f172a;margin:0 0 12px;">New ${lead.source.replace('_', ' ')} lead</h2>
+      <p style="color:#475569;margin:0 0 16px;">A new prospect just submitted the ${lead.source === 'book_demo' ? 'Book a Demo' : lead.source === 'roi_calculator' ? 'ROI Calculator' : 'Contact'} form.</p>
+      <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">${tableRows}</table>
+    </div>
+  `;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getSalesEmail(): string | null {
+  const value = (process.env.SALES_NOTIFICATION_EMAIL ?? process.env.SALES_EMAIL ?? '').trim();
+  return value || null;
+}
+
 async function notifyAdmins(lead: LeadRecord, leadId: number): Promise<void> {
-  const subject = lead.source === 'book_demo'
+  const headline = lead.source === 'book_demo'
     ? `New demo request from ${lead.company || lead.name || lead.email}`
     : lead.source === 'roi_calculator'
       ? `New ROI report request from ${lead.email}`
@@ -72,13 +341,51 @@ async function notifyAdmins(lead: LeadRecord, leadId: number): Promise<void> {
 
   logger.info('Admin notification dispatched', {
     leadId,
-    subject,
+    subject: headline,
     source: lead.source,
     email: lead.email,
     company: lead.company,
     name: lead.name,
-    payload: lead.payload,
   });
+
+  const payload = lead.payload as Record<string, unknown>;
+  const detailLines = [
+    `*${headline}*`,
+    `• Email: ${lead.email}`,
+    lead.name ? `• Name: ${lead.name}` : null,
+    lead.company ? `• Company: ${lead.company}` : null,
+    lead.phone ? `• Phone: ${lead.phone}` : null,
+    typeof payload.teamSize === 'string' ? `• Team size: ${payload.teamSize}` : null,
+    typeof payload.preferredTime === 'string' ? `• Preferred time: ${payload.preferredTime}` : null,
+    typeof payload.useCase === 'string' && payload.useCase ? `• Use case: ${payload.useCase}` : null,
+    typeof payload.message === 'string' && payload.message ? `• Message: ${payload.message}` : null,
+    `• Lead ID: ${leadId}`,
+  ].filter(Boolean) as string[];
+
+  // Best-effort Slack notification
+  if (getOpsSlackWebhookUrl()) {
+    const slackResult = await postToOpsSlackWebhook({ text: detailLines.join('\n') });
+    if (!slackResult.success && !slackResult.skipped) {
+      logger.warn('Slack notification for new lead failed', { error: slackResult.error, leadId });
+    }
+  }
+
+  // Best-effort email notification
+  const salesEmail = getSalesEmail();
+  if (salesEmail) {
+    const emailResult = await sendEmail({
+      to: salesEmail,
+      subject: headline,
+      html: formatLeadHtml(lead, leadId),
+      text: detailLines.join('\n').replace(/\*/g, ''),
+      replyTo: lead.email,
+    });
+    if (!emailResult.success) {
+      logger.warn('Email notification for new lead failed', { error: emailResult.error, leadId });
+    }
+  } else {
+    logger.debug('SALES_NOTIFICATION_EMAIL not configured — skipping email notification');
+  }
 
   try {
     const pool = getPlatformPool();
@@ -88,5 +395,80 @@ async function notifyAdmins(lead: LeadRecord, leadId: number): Promise<void> {
     );
   } catch {
     /* best-effort */
+  }
+}
+
+export async function notifyBookingConfirmed(
+  email: string,
+  booking: BookingDetails,
+  leadInfo: { leadId: number | null; name: string | null; company: string | null },
+): Promise<void> {
+  const eventLabel = booking.eventType === 'cancelled'
+    ? 'Demo cancelled'
+    : booking.eventType === 'rescheduled'
+      ? 'Demo rescheduled'
+      : 'Demo booked';
+
+  const who = leadInfo.company || leadInfo.name || booking.attendeeName || email;
+  const subject = `${eventLabel}: ${who}`;
+
+  const startLabel = booking.startTime
+    ? `${booking.startTime}${booking.timezone ? ` (${booking.timezone})` : ''}`
+    : '(time not provided)';
+
+  const lines = [
+    `*${subject}*`,
+    `• Attendee: ${booking.attendeeName ?? leadInfo.name ?? '(unknown)'} <${email}>`,
+    leadInfo.company ? `• Company: ${leadInfo.company}` : null,
+    `• When: ${startLabel}`,
+    booking.endTime ? `• Until: ${booking.endTime}` : null,
+    booking.meetingUrl ? `• Meeting link: ${booking.meetingUrl}` : null,
+    booking.rescheduleUrl ? `• Reschedule: ${booking.rescheduleUrl}` : null,
+    booking.cancelUrl ? `• Cancel: ${booking.cancelUrl}` : null,
+    leadInfo.leadId ? `• Lead ID: ${leadInfo.leadId}` : null,
+    `• Provider: ${booking.provider}`,
+  ].filter(Boolean) as string[];
+
+  logger.info('Booking notification dispatched', {
+    leadId: leadInfo.leadId,
+    email,
+    eventType: booking.eventType,
+    startTime: booking.startTime,
+  });
+
+  if (getOpsSlackWebhookUrl()) {
+    const slackResult = await postToOpsSlackWebhook({ text: lines.join('\n') });
+    if (!slackResult.success && !slackResult.skipped) {
+      logger.warn('Slack notification for booking failed', { error: slackResult.error });
+    }
+  }
+
+  const salesEmail = getSalesEmail();
+  if (salesEmail) {
+    const html = `
+      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;">
+        <h2 style="color:#0f172a;margin:0 0 12px;">${escapeHtml(subject)}</h2>
+        <p style="color:#475569;margin:0 0 16px;">A prospect just self-scheduled through the Book a Demo flow.</p>
+        <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+          ${lines
+            .slice(1)
+            .map(
+              (l) =>
+                `<tr><td style="padding:6px 12px;color:#0f172a;">${escapeHtml(l.replace(/^•\s*/, ''))}</td></tr>`,
+            )
+            .join('')}
+        </table>
+      </div>
+    `;
+    const emailResult = await sendEmail({
+      to: salesEmail,
+      subject,
+      html,
+      text: lines.join('\n').replace(/\*/g, ''),
+      replyTo: email,
+    });
+    if (!emailResult.success) {
+      logger.warn('Email notification for booking failed', { error: emailResult.error });
+    }
   }
 }

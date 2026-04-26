@@ -18,10 +18,48 @@ const timeWindows = [
   'Flexible',
 ];
 
+const VITE_ENV = (import.meta as Record<string, Record<string, string>>).env ?? {};
+const SCHEDULER_URL = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_URL || 'https://cal.com/qvo/30min').trim();
+const SCHEDULER_PROVIDER = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_PROVIDER || 'cal.com').trim().toLowerCase();
+
+function buildSchedulerUrl(form: {
+  name: string;
+  email: string;
+  company: string;
+  teamSize: string;
+  useCase: string;
+}, leadId: number | null): string {
+  try {
+    const url = new URL(SCHEDULER_URL);
+    const notes = `Company: ${form.company}\nTeam size: ${form.teamSize}${form.useCase ? `\nUse case: ${form.useCase}` : ''}${leadId ? `\nLead ID: ${leadId}` : ''}`;
+
+    if (SCHEDULER_PROVIDER === 'calendly') {
+      url.searchParams.set('name', form.name);
+      url.searchParams.set('email', form.email);
+      url.searchParams.set('a1', form.company);
+      if (leadId) url.searchParams.set('utm_content', `lead-${leadId}`);
+    } else {
+      // Cal.com (default)
+      if (!url.searchParams.has('embed')) url.searchParams.set('embed', 'true');
+      if (!url.searchParams.has('theme')) url.searchParams.set('theme', 'light');
+      url.searchParams.set('name', form.name);
+      url.searchParams.set('email', form.email);
+      url.searchParams.set('notes', notes);
+      if (leadId) url.searchParams.set('metadata[leadId]', String(leadId));
+      url.searchParams.set('metadata[company]', form.company);
+      url.searchParams.set('metadata[teamSize]', form.teamSize);
+    }
+    return url.toString();
+  } catch {
+    return SCHEDULER_URL;
+  }
+}
+
 export default function BookDemo() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leadId, setLeadId] = useState<number | null>(null);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -48,9 +86,12 @@ export default function BookDemo() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Unable to submit. Please try again.');
+      }
+      if (typeof data?.leadId === 'number') {
+        setLeadId(data.leadId);
       }
       trackCTAClick('book_demo_submit', '/book-demo', 'form');
       trackConversionEvent('demo_requested', '/book-demo', { teamSize: form.teamSize });
@@ -136,7 +177,7 @@ export default function BookDemo() {
                   </div>
                   <iframe
                     title="Schedule a QVO demo"
-                    src={`https://cal.com/qvo/30min?embed=true&theme=light&name=${encodeURIComponent(form.name)}&email=${encodeURIComponent(form.email)}&notes=${encodeURIComponent(`Company: ${form.company}\nTeam size: ${form.teamSize}\nUse case: ${form.useCase}`)}`}
+                    src={buildSchedulerUrl(form, leadId)}
                     className="w-full"
                     style={{ height: '720px', border: 0 }}
                     loading="lazy"
