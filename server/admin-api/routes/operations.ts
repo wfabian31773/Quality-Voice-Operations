@@ -3,9 +3,18 @@ import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
 import { requireOpsRole } from '../middleware/rbac';
+import {
+  createSseConnectionLimiter,
+  attachSseHeartbeat,
+} from '../../../platform/infra/rate-limit/sseConnectionLimiter';
 
 const logger = createLogger('OPERATIONS_API');
 const router = Router();
+
+const TENANT_LIVE_STREAM_CAP = Number(process.env.TENANT_LIVE_STREAM_CAP ?? '20');
+export const operationsCallLiveSseLimiter = createSseConnectionLimiter({
+  maxConcurrent: TENANT_LIVE_STREAM_CAP,
+});
 
 router.get('/operations/realtime', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
@@ -221,6 +230,15 @@ router.get('/operations/calls/:callId/live', requireAuth, async (req, res) => {
     return;
   }
 
+  if (!operationsCallLiveSseLimiter.acquire(req, res)) {
+    logger.warn('Rejected ops live-stream connection — tenant cap reached', {
+      tenantId,
+      callId,
+      cap: TENANT_LIVE_STREAM_CAP,
+    });
+    return;
+  }
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -345,14 +363,15 @@ router.get('/operations/calls/:callId/live', requireAuth, async (req, res) => {
 
   await poll();
   const interval = setInterval(poll, 2000);
-  const heartbeat = setInterval(() => {
-    if (alive) res.write(':\n\n');
-  }, 15000);
+  const detachHeartbeat = attachSseHeartbeat(req, res, {
+    intervalMs: 15_000,
+    idleTimeoutMs: 60_000,
+  });
 
   req.on('close', () => {
     alive = false;
     clearInterval(interval);
-    clearInterval(heartbeat);
+    detachHeartbeat();
   });
 });
 

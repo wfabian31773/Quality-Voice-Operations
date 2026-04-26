@@ -2,9 +2,18 @@ import { Router } from 'express';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
+import {
+  createSseConnectionLimiter,
+  attachSseHeartbeat,
+} from '../../../platform/infra/rate-limit/sseConnectionLimiter';
 
 const logger = createLogger('CALLS_LIVE');
 const router = Router();
+
+const TENANT_LIVE_STREAM_CAP = Number(process.env.TENANT_LIVE_STREAM_CAP ?? '20');
+export const callsLiveSseLimiter = createSseConnectionLimiter({
+  maxConcurrent: TENANT_LIVE_STREAM_CAP,
+});
 
 interface CallRow {
   id: string;
@@ -21,6 +30,14 @@ interface CallRow {
 
 router.get('/calls/live', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
+
+  if (!callsLiveSseLimiter.acquire(req, res)) {
+    logger.warn('Rejected live-stream connection — tenant cap reached', {
+      tenantId,
+      cap: TENANT_LIVE_STREAM_CAP,
+    });
+    return;
+  }
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -115,14 +132,15 @@ router.get('/calls/live', requireAuth, async (req, res) => {
 
   const interval = setInterval(poll, 3000);
 
-  const heartbeat = setInterval(() => {
-    if (alive) res.write(':\n\n');
-  }, 15000);
+  const detachHeartbeat = attachSseHeartbeat(req, res, {
+    intervalMs: 15_000,
+    idleTimeoutMs: 60_000,
+  });
 
   req.on('close', () => {
     alive = false;
     clearInterval(interval);
-    clearInterval(heartbeat);
+    detachHeartbeat();
   });
 });
 
