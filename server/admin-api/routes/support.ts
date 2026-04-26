@@ -3036,4 +3036,211 @@ router.post('/support/inbound', async (req, res) => {
   res.json({ matched: true, ticket_id: ticketId });
 });
 
+// ----- Email-provider bounce webhook -----
+//
+// Async hard-bounce webhook for SES / Postmark / SendGrid / Mailgun.
+// Auth: SUPPORT_BOUNCE_WEBHOOK_SECRET via `X-Webhook-Secret` header or
+// `?secret=` query (mirrors /support/inbound). For each parsed permanent
+// bounce: stamps `email_error` + `retry_skipped_reason` on the matching
+// outbound reply, adds the address to `support_email_suppressions`, and
+// calls `raiseRecipientFirstBounceAlert` to page ops. Dedup with the
+// in-process retry loop is provided by the helper's atomic insert.
+//
+// SNS posts notifications with `Content-Type: text/plain; charset=UTF-8`,
+// which the admin app's global `express.json()` doesn't parse. The local
+// `express.text()` middleware below captures those bodies as strings and
+// the handler JSON-parses them itself.
+const BOUNCE_WEBHOOK_SECRET = process.env.SUPPORT_BOUNCE_WEBHOOK_SECRET ?? '';
+
+router.post('/support/email-bounce', express.text({ type: 'text/*', limit: '2mb' }), async (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && !BOUNCE_WEBHOOK_SECRET) {
+    logger.error('SUPPORT_BOUNCE_WEBHOOK_SECRET is not configured in production — rejecting bounce webhook');
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  if (BOUNCE_WEBHOOK_SECRET) {
+    const provided = (req.headers['x-webhook-secret'] as string | undefined)
+      ?? (typeof req.query.secret === 'string' ? req.query.secret : undefined);
+    if (provided !== BOUNCE_WEBHOOK_SECRET) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+  }
+
+  // Normalize the body. With the local express.text() middleware, SNS
+  // (text/plain) bodies arrive as strings; express.json() at the app level
+  // already turned application/json bodies into objects. Buffers can show
+  // up if a future middleware change leaves the body un-parsed.
+  let payload: unknown = req.body;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { payload = null; }
+  } else if (Buffer.isBuffer(payload)) {
+    try { payload = JSON.parse(payload.toString('utf8')); } catch { payload = null; }
+  }
+
+  // SNS subscription handshake. AWS will not deliver any Notifications
+  // until the SubscribeURL is fetched, so we GET it server-side. The
+  // host check prevents this from being abused as an SSRF primitive
+  // (only AWS-issued URLs are followed).
+  if (payload && typeof payload === 'object' && (payload as { Type?: unknown }).Type === 'SubscriptionConfirmation') {
+    const subscribeUrl = (payload as { SubscribeURL?: unknown }).SubscribeURL;
+    if (typeof subscribeUrl === 'string') {
+      try {
+        const u = new URL(subscribeUrl);
+        if (u.protocol === 'https:' && /(^|\.)amazonaws\.com$/i.test(u.hostname)) {
+          const https = await import('node:https');
+          await new Promise<void>((resolve) => {
+            const sub = https.get(subscribeUrl, (resp) => {
+              resp.resume();
+              resp.on('end', () => resolve());
+              resp.on('error', () => resolve());
+            });
+            sub.on('error', () => resolve());
+            sub.setTimeout(5000, () => { sub.destroy(); resolve(); });
+          });
+          logger.info('Confirmed SNS subscription for bounce webhook', {
+            topic_arn: (payload as { TopicArn?: unknown }).TopicArn,
+          });
+        } else {
+          logger.warn('Refusing SNS confirmation for non-AWS host', { host: u.hostname });
+        }
+      } catch (err) {
+        logger.warn('SNS subscription confirmation failed', { error: String(err) });
+      }
+    }
+    res.status(200).json({ confirmed: true });
+    return;
+  }
+
+  // Lazy-load so rejected (unauthenticated) requests skip the parser cost.
+  const { parseBounceWebhookPayload } = await import(
+    '../../../platform/email/bounceWebhookParser'
+  );
+
+  const events = parseBounceWebhookPayload(payload);
+  if (events.length === 0) {
+    // Soft bounce, complaint, delivery, or unknown shape — return 202 so
+    // the provider doesn't retry against bodies we have nothing to do with.
+    res.status(202).json({ processed: 0 });
+    return;
+  }
+
+  const pool = getPlatformPool();
+  let processed = 0;
+  let alerted = 0;
+  for (const ev of events) {
+    // Best-effort lookup of the originating reply by message id. Providers
+    // sometimes rewrite ids (SES `@email.amazonses.com` suffix, SendGrid
+    // sg_message_id) so a miss is expected; the recipient fallback below
+    // still drives suppression + alerting.
+    let replyRow:
+      | { id: number; ticket_id: string; tenant_id: string | null; retry_skipped_reason: string | null }
+      | null = null;
+    if (ev.messageId) {
+      try {
+        const r = await pool.query<{
+          id: number;
+          ticket_id: string;
+          tenant_id: string | null;
+          retry_skipped_reason: string | null;
+        }>(
+          `SELECT r.id, r.ticket_id, t.tenant_id, r.retry_skipped_reason
+           FROM support_ticket_replies r
+           JOIN support_tickets t ON t.id = r.ticket_id
+           WHERE r.email_message_id = $1
+             AND r.direction = 'outbound'
+           ORDER BY r.created_at DESC
+           LIMIT 1`,
+          [ev.messageId],
+        );
+        replyRow = r.rows[0] ?? null;
+      } catch (err) {
+        logger.warn('Bounce webhook: reply lookup by message_id failed', {
+          message_id: ev.messageId,
+          error: String(err),
+        });
+      }
+    }
+    // Recipient fallback when no message id matched.
+    if (!replyRow) {
+      try {
+        const r = await pool.query<{
+          id: number;
+          ticket_id: string;
+          tenant_id: string | null;
+          retry_skipped_reason: string | null;
+        }>(
+          `SELECT r.id, r.ticket_id, t.tenant_id, r.retry_skipped_reason
+           FROM support_ticket_replies r
+           JOIN support_tickets t ON t.id = r.ticket_id
+           WHERE LOWER(t.user_email) = $1
+             AND r.direction = 'outbound'
+             AND r.email_error IS NULL
+           ORDER BY r.created_at DESC
+           LIMIT 1`,
+          [ev.recipientEmail],
+        );
+        replyRow = r.rows[0] ?? null;
+      } catch (err) {
+        logger.warn('Bounce webhook: reply lookup by recipient failed', {
+          recipient: ev.recipientEmail,
+          error: String(err),
+        });
+      }
+    }
+
+    // Stamp the bounce on the matched reply. COALESCE preserves any more
+    // specific skip reason (e.g. retry-cancel, unsubscribe) already set.
+    if (replyRow) {
+      try {
+        await pool.query(
+          `UPDATE support_ticket_replies
+           SET email_error = COALESCE(email_error, $2),
+               retry_skipped_reason = COALESCE(retry_skipped_reason, 'permanent_smtp_failure')
+           WHERE id = $1`,
+          [replyRow.id, ev.error],
+        );
+      } catch (err) {
+        logger.warn('Bounce webhook: failed to stamp reply with bounce error', {
+          reply_id: replyRow.id,
+          error: String(err),
+        });
+      }
+    }
+
+    // Suppress (idempotent) and page ops. The alert helper dedups against
+    // the in-process retry loop via its own atomic insert.
+    await addSupportEmailSuppression(ev.recipientEmail, {
+      reason: 'permanent_smtp_failure',
+      source: `bounce_webhook_${ev.provider}`,
+      lastError: ev.error,
+    }).catch(() => { /* logged inside helper */ });
+
+    try {
+      const result = await raiseRecipientFirstBounceAlert({
+        recipientEmail: ev.recipientEmail,
+        replyId: replyRow?.id ?? 0,
+        ticketId: replyRow?.ticket_id ?? 'webhook',
+        tenantId: replyRow?.tenant_id ?? null,
+        error: ev.error,
+      });
+      if (result.alerted) alerted += 1;
+    } catch (err) {
+      logger.warn('Bounce webhook: raiseRecipientFirstBounceAlert threw', {
+        recipient: ev.recipientEmail,
+        error: String(err),
+      });
+    }
+    processed += 1;
+  }
+
+  logger.info('Email bounce webhook processed', {
+    provider: events[0]?.provider,
+    processed,
+    alerted,
+  });
+  res.status(200).json({ processed, alerted });
+});
+
 export default router;
