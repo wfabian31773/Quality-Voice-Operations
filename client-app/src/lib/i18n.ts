@@ -6,10 +6,19 @@ import enCommon from '../locales/en/common.json';
 import enDocs from '../locales/en/docs.json';
 import esCommon from '../locales/es/common.json';
 import esDocs from '../locales/es/docs.json';
+import ptBRCommon from '../locales/pt-BR/common.json';
+import ptBRDocs from '../locales/pt-BR/docs.json';
+import frCommon from '../locales/fr/common.json';
+import frDocs from '../locales/fr/docs.json';
+import deCommon from '../locales/de/common.json';
+import deDocs from '../locales/de/docs.json';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English', nativeLabel: 'English' },
   { code: 'es', label: 'Spanish', nativeLabel: 'Español' },
+  { code: 'pt-BR', label: 'Portuguese (Brazil)', nativeLabel: 'Português (Brasil)' },
+  { code: 'fr', label: 'French', nativeLabel: 'Français' },
+  { code: 'de', label: 'German', nativeLabel: 'Deutsch' },
 ] as const;
 
 export type SupportedLanguageCode = (typeof SUPPORTED_LANGUAGES)[number]['code'];
@@ -21,6 +30,9 @@ export const I18N_STORAGE_KEY = 'qvo_lang';
 const resources = {
   en: { common: enCommon, docs: enDocs },
   es: { common: esCommon, docs: esDocs },
+  'pt-BR': { common: ptBRCommon, docs: ptBRDocs },
+  fr: { common: frCommon, docs: frDocs },
+  de: { common: deCommon, docs: deDocs },
 } as const;
 
 if (!i18n.isInitialized) {
@@ -45,7 +57,13 @@ if (!i18n.isInitialized) {
 
 function syncHtmlLang(lng: string) {
   if (typeof document !== 'undefined') {
-    document.documentElement.lang = lng.split('-')[0] || DEFAULT_LANGUAGE;
+    const supportedCodes = SUPPORTED_LANGUAGES.map((l) => l.code) as readonly string[];
+    const exact = supportedCodes.includes(lng) ? lng : null;
+    const matched =
+      exact ||
+      supportedCodes.find((code) => code.split('-')[0] === (lng || '').split('-')[0]) ||
+      DEFAULT_LANGUAGE;
+    document.documentElement.lang = matched;
   }
 }
 

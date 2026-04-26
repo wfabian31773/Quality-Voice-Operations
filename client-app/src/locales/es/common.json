@@ -7,7 +7,10 @@
     "switcher_label": "Idioma",
     "current": "Idioma actual",
     "english": "Inglés",
-    "spanish": "Español"
+    "spanish": "Español",
+    "portuguese": "Portugués (Brasil)",
+    "french": "Francés",
+    "german": "Alemán"
   },
   "actions": {
     "sign_in": "Iniciar sesión",

@@ -1,0 +1,96 @@
+{
+  "brand": {
+    "name": "QVO",
+    "tagline": "Quality Voice Operations. Der Sprach-Operations-Hub für kleine Unternehmen."
+  },
+  "language": {
+    "switcher_label": "Sprache",
+    "current": "Aktuelle Sprache",
+    "english": "Englisch",
+    "spanish": "Spanisch",
+    "portuguese": "Portugiesisch (Brasilien)",
+    "french": "Französisch",
+    "german": "Deutsch"
+  },
+  "actions": {
+    "sign_in": "Anmelden",
+    "sign_out": "Abmelden",
+    "book_demo": "Demo buchen",
+    "start_trial": "Kostenlose Testversion starten",
+    "open_menu": "Menü öffnen",
+    "close": "Schließen"
+  },
+  "theme": {
+    "light": "Hellmodus",
+    "dark": "Dunkelmodus"
+  },
+  "public_nav": {
+    "product": "Produkt",
+    "features": "Funktionen",
+    "agents": "Agenten",
+    "pricing": "Preise",
+    "use_cases": "Anwendungsfälle",
+    "integrations": "Integrationen",
+    "demo": "Demo",
+    "resources": "Ressourcen",
+    "contact": "Kontakt"
+  },
+  "footer": {
+    "section_product": "Produkt",
+    "section_solutions": "Lösungen",
+    "section_company": "Unternehmen",
+    "platform": "Plattform",
+    "live_demo": "Live-Demo",
+    "healthcare": "Gesundheitswesen",
+    "dental": "Zahnmedizin",
+    "legal": "Recht",
+    "real_estate": "Immobilien",
+    "home_services": "Haushaltsdienstleistungen",
+    "case_studies": "Fallstudien",
+    "blog": "Blog",
+    "documentation": "Dokumentation",
+    "api_reference": "API-Referenz",
+    "rights": "© {{year}} Quality Voice Operations. Alle Rechte vorbehalten.",
+    "privacy": "Datenschutzerklärung",
+    "terms": "Nutzungsbedingungen",
+    "security": "Sicherheit",
+    "subprocessors": "Unterauftragsverarbeiter",
+    "dpa": "DPA",
+    "your_data": "Ihre Daten",
+    "compact_copyright": "© {{year}} Quality Voice Operations",
+    "compact_privacy": "Datenschutz",
+    "compact_terms": "Bedingungen"
+  },
+  "tenant_nav": {
+    "tenant_badge": "Kunde",
+    "dashboard": "Dashboard",
+    "agents": "Agenten",
+    "conversations": "Konversationen",
+    "campaigns": "Kampagnen",
+    "analytics": "Analytik",
+    "operations": "Operationen",
+    "autopilot": "Autopilot",
+    "sms_inbox": "SMS-Posteingang",
+    "scheduling": "Terminplanung",
+    "tickets": "Tickets",
+    "dispatch": "Disposition",
+    "configure": "Konfigurieren",
+    "workflows": "Workflows",
+    "integrations": "Integrationen",
+    "knowledge": "Wissen",
+    "marketplace": "Marketplace",
+    "settings": "Einstellungen",
+    "whats_new": "Neuigkeiten"
+  },
+  "admin_nav": {
+    "console": "Plattform-Admin-Konsole",
+    "badge": "Plattform-Admin",
+    "tenants": "Kunden",
+    "analytics": "Analytik",
+    "sales_inbox": "Vertriebs-Posteingang",
+    "marketplace": "Marketplace",
+    "billing": "Abrechnung",
+    "security": "Sicherheit",
+    "governance": "Governance"
+  }
+}

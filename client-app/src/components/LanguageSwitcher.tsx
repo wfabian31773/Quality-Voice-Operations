@@ -9,7 +9,11 @@ interface LanguageSwitcherProps {
 
 export default function LanguageSwitcher({ variant = 'header', className = '' }: LanguageSwitcherProps) {
   const { t, i18n } = useTranslation();
-  const current = (i18n.language || 'en').split('-')[0];
+  const supportedCodes = SUPPORTED_LANGUAGES.map((l) => l.code) as readonly string[];
+  const resolved = i18n.resolvedLanguage || i18n.language || 'en';
+  const current = supportedCodes.includes(resolved)
+    ? resolved
+    : supportedCodes.find((code) => code.split('-')[0] === resolved.split('-')[0]) || 'en';
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     void i18n.changeLanguage(e.target.value);

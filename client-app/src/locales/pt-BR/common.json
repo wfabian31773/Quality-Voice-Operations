@@ -1,0 +1,96 @@
+{
+  "brand": {
+    "name": "QVO",
+    "tagline": "Quality Voice Operations. O hub de operações de voz para pequenas empresas."
+  },
+  "language": {
+    "switcher_label": "Idioma",
+    "current": "Idioma atual",
+    "english": "Inglês",
+    "spanish": "Espanhol",
+    "portuguese": "Português (Brasil)",
+    "french": "Francês",
+    "german": "Alemão"
+  },
+  "actions": {
+    "sign_in": "Entrar",
+    "sign_out": "Sair",
+    "book_demo": "Agendar demonstração",
+    "start_trial": "Iniciar teste grátis",
+    "open_menu": "Abrir menu",
+    "close": "Fechar"
+  },
+  "theme": {
+    "light": "Modo claro",
+    "dark": "Modo escuro"
+  },
+  "public_nav": {
+    "product": "Produto",
+    "features": "Funcionalidades",
+    "agents": "Agentes",
+    "pricing": "Preços",
+    "use_cases": "Casos de uso",
+    "integrations": "Integrações",
+    "demo": "Demonstração",
+    "resources": "Recursos",
+    "contact": "Contato"
+  },
+  "footer": {
+    "section_product": "Produto",
+    "section_solutions": "Soluções",
+    "section_company": "Empresa",
+    "platform": "Plataforma",
+    "live_demo": "Demonstração ao vivo",
+    "healthcare": "Saúde",
+    "dental": "Odontologia",
+    "legal": "Jurídico",
+    "real_estate": "Imobiliário",
+    "home_services": "Serviços para o lar",
+    "case_studies": "Casos de sucesso",
+    "blog": "Blog",
+    "documentation": "Documentação",
+    "api_reference": "Referência da API",
+    "rights": "© {{year}} Quality Voice Operations. Todos os direitos reservados.",
+    "privacy": "Política de privacidade",
+    "terms": "Termos de serviço",
+    "security": "Segurança",
+    "subprocessors": "Subprocessadores",
+    "dpa": "DPA",
+    "your_data": "Seus dados",
+    "compact_copyright": "© {{year}} Quality Voice Operations",
+    "compact_privacy": "Privacidade",
+    "compact_terms": "Termos"
+  },
+  "tenant_nav": {
+    "tenant_badge": "Cliente",
+    "dashboard": "Painel",
+    "agents": "Agentes",
+    "conversations": "Conversas",
+    "campaigns": "Campanhas",
+    "analytics": "Análises",
+    "operations": "Operações",
+    "autopilot": "Autopilot",
+    "sms_inbox": "Caixa de SMS",
+    "scheduling": "Agendamento",
+    "tickets": "Tickets",
+    "dispatch": "Despacho",
+    "configure": "Configurar",
+    "workflows": "Fluxos de trabalho",
+    "integrations": "Integrações",
+    "knowledge": "Conhecimento",
+    "marketplace": "Marketplace",
+    "settings": "Configurações",
+    "whats_new": "Novidades"
+  },
+  "admin_nav": {
+    "console": "Console de administração da plataforma",
+    "badge": "Admin da plataforma",
+    "tenants": "Clientes",
+    "analytics": "Análises",
+    "sales_inbox": "Caixa de vendas",
+    "marketplace": "Marketplace",
+    "billing": "Faturamento",
+    "security": "Segurança",
+    "governance": "Governança"
+  }
+}

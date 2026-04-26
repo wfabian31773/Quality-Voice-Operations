@@ -1,0 +1,150 @@
+{
+  "images": {
+    "salesforce-app-manager": {
+      "alt": "Page App Manager de Salesforce Setup avec un bouton New Connected App mis en évidence dans le coin supérieur droit",
+      "caption": "Setup → App Manager → New Connected App."
+    },
+    "salesforce-oauth-settings": {
+      "alt": "Paramètres OAuth de la nouvelle Connected App Salesforce avec Enable OAuth Settings coché, l'URL de callback QVO renseignée et les scopes api et refresh_token/offline_access sélectionnés",
+      "caption": "Activez OAuth, collez l'URL de callback et ajoutez les scopes api + refresh_token/offline_access."
+    },
+    "salesforce-consumer-details": {
+      "alt": "Page Consumer Details de Salesforce affichant les valeurs Consumer Key et Consumer Secret avec des boutons de copie",
+      "caption": "Manage Consumer Details — copiez la Consumer Key (Client ID) et le Consumer Secret."
+    },
+    "salesforce-sandbox-toggle": {
+      "alt": "Carte du connecteur Salesforce dans QVO avec un sélecteur de Login host proposant Production et Sandbox et un bouton Sign in with Salesforce",
+      "caption": "Choisissez Production ou Sandbox selon le type de votre organisation avant de vous connecter."
+    },
+    "salesforce-task-on-contact": {
+      "alt": "Enregistrement Contact Salesforce avec une activité QVO Voice Agent Call enregistrée dans l'Activity timeline incluant un extrait de transcription et un lien",
+      "caption": "Une Task contenant le résumé de l'IA apparaît dans l'Activity timeline du Contact ou Lead correspondant."
+    },
+
+    "outlook-app-registration": {
+      "alt": "Page Register an application de Microsoft Entra avec le champ Name défini sur QVO Voice Agent, Single tenant sélectionné et une Web Redirect URI contenant le callback QVO",
+      "caption": "Choisissez Single tenant (ou Multi-tenant), puis collez le callback QVO dans Web Redirect URI."
+    },
+    "outlook-overview-ids": {
+      "alt": "Page Overview de l'app dans Microsoft Entra avec Application (client) ID et Directory (tenant) ID mis en évidence à côté de boutons de copie",
+      "caption": "Copiez Application (client) ID et Directory (tenant) ID depuis la page Overview."
+    },
+    "outlook-client-secret": {
+      "alt": "Onglet Certificates & secrets de Microsoft Entra avec un client secret nouvellement généré et la colonne Value mise en évidence à côté du bouton Copy",
+      "caption": "Copiez la colonne Value MAINTENANT — elle est masquée dès que vous quittez la page."
+    },
+    "outlook-api-permissions": {
+      "alt": "Panneau API permissions de Microsoft Entra affichant les cinq permissions déléguées Microsoft Graph requises cochées ainsi qu'un bouton Grant admin consent",
+      "caption": "Ajoutez les cinq permissions Graph, puis cliquez sur Grant admin consent."
+    },
+    "outlook-qvo-calendar-pick": {
+      "alt": "Carte du connecteur Outlook Calendar de QVO en statut Connected avec un menu déroulant pour choisir le calendrier sur lequel QVO peut planifier",
+      "caption": "Une fois le retour OAuth reçu, choisissez le calendrier sur lequel QVO doit écrire les événements."
+    },
+
+    "hubspot-create-app": {
+      "alt": "Page Manage apps de HubSpot Developers avec un bouton Create app mis en évidence en haut à droite",
+      "caption": "Developer hub → Manage apps → Create app."
+    },
+    "hubspot-oauth-redirect": {
+      "alt": "Onglet Auth de l'app HubSpot affichant Client ID, Client secret et le champ Redirect URLs mis en évidence avec l'URL de callback QVO",
+      "caption": "Collez l'URL de callback QVO dans le champ Redirect URLs de l'onglet Auth."
+    },
+    "hubspot-scopes": {
+      "alt": "Panneau scopes de HubSpot avec les cinq scopes requis cochés : contacts read/write, deals read/write et timeline",
+      "caption": "Cochez exactement les cinq scopes dont QVO a besoin."
+    },
+    "hubspot-qvo-connect": {
+      "alt": "Carte du connecteur HubSpot de QVO avec deux options : Sign in with HubSpot (OAuth) à gauche et un formulaire pour coller un access token à droite",
+      "caption": "QVO → Intégrations → HubSpot propose OAuth (recommandé) ou un access token."
+    },
+    "hubspot-private-app": {
+      "alt": "Onglet Auth d'une private app HubSpot affichant l'access token commençant par pat- mis en évidence à côté d'un bouton Copy",
+      "caption": "Les access tokens des private apps commencent par pat- et n'expirent jamais — faites-les tourner manuellement."
+    },
+
+    "google-enable-api": {
+      "alt": "Page API library de Google Cloud Console pour la Google Calendar API avec le bouton ENABLE mis en évidence",
+      "caption": "Library → Google Calendar API → Enable."
+    },
+    "google-oauth-consent": {
+      "alt": "Écran OAuth consent screen de Google avec le user-type Internal sélectionné et les deux scopes calendrier cochés",
+      "caption": "Choisissez Internal lorsque c'est possible, puis ajoutez les deux scopes calendrier."
+    },
+    "google-credentials": {
+      "alt": "Formulaire Create OAuth client ID de Google Cloud avec Application type défini sur Web application et l'URI de redirection QVO dans Authorized redirect URIs",
+      "caption": "Utilisez Web application + l'URL de callback QVO — sans barre oblique finale."
+    },
+    "google-client-secret": {
+      "alt": "Modale OAuth client created de Google Cloud affichant les valeurs Client ID et Client secret avec des boutons de copie",
+      "caption": "Copiez immédiatement Client ID et Client secret — le secret n'est affiché qu'une seule fois."
+    },
+    "google-qvo-calendar-picker": {
+      "alt": "Carte du connecteur Google Calendar de QVO affichant le compte connecté, le sélecteur de calendrier, le fuseau horaire et les paramètres de buffer",
+      "caption": "Choisissez le calendrier, le fuseau horaire et les buffers dans la carte du connecteur QVO."
+    },
+
+    "slack-create-app": {
+      "alt": "Boîte de dialogue Create an app de Slack avec l'option From scratch sélectionnée et un champ de nom d'app indiquant QVO",
+      "caption": "Choisissez « From scratch » et nommez l'app QVO."
+    },
+    "slack-bot-scopes": {
+      "alt": "Page OAuth & Permissions de Slack avec les Bot Token Scopes chat:write, channels:read et groups:read cochés",
+      "caption": "Ajoutez les trois Bot Token Scopes — chat:write, channels:read, groups:read."
+    },
+    "slack-redirect-urls": {
+      "alt": "Section Redirect URLs de Slack avec l'URL de callback QVO ajoutée et un bouton Save URLs mis en évidence",
+      "caption": "Cliquez sur Save URLs — l'URL n'est active qu'une fois enregistrée."
+    },
+    "slack-app-credentials": {
+      "alt": "Panneau App Credentials de la page Basic Information de Slack avec les champs Client ID et Client Secret mis en évidence",
+      "caption": "Copiez Client ID et Client Secret depuis la page Basic Information."
+    },
+    "slack-channel-id": {
+      "alt": "Panneau About d'un canal Slack affichant le Channel ID C091ABCD234 avec un bouton Copy à côté",
+      "caption": "Le Channel ID se trouve en bas du panneau About du canal — cliquez sur Copy."
+    },
+
+    "pipedrive-create-app": {
+      "alt": "Boîte de dialogue Create a new app du Developer Hub de Pipedrive avec Public app sélectionné et un champ de nom d'app indiquant QVO Voice Agent",
+      "caption": "Choisissez Public app pour le multi-tenant ou Private app pour une seule entreprise."
+    },
+    "pipedrive-callback-url": {
+      "alt": "Page OAuth & access de Pipedrive avec le champ Callback URL mis en évidence contenant le callback QVO",
+      "caption": "Collez l'URL de callback QVO dans le champ Callback URL."
+    },
+    "pipedrive-scopes": {
+      "alt": "Panneau Scopes & permissions de Pipedrive avec contacts:full, deals:full, activities:full et users:read cochés",
+      "caption": "Cochez exactement ces quatre scopes — QVO n'a besoin de rien d'autre."
+    },
+    "pipedrive-qvo-connect": {
+      "alt": "Carte du connecteur Pipedrive de QVO avec deux options : Sign in with Pipedrive à gauche et un formulaire de personal API token à droite",
+      "caption": "OAuth à gauche, personal API token à droite."
+    },
+    "pipedrive-personal-token": {
+      "alt": "Page Personal preferences API de Pipedrive Settings avec le personal API token mis en évidence à côté d'un bouton Copy et un champ de domaine d'entreprise",
+      "caption": "Copiez le personal API token et votre domaine d'entreprise (votreentreprise)."
+    },
+
+    "quickbooks-create-app": {
+      "alt": "Boîte de dialogue Create an app d'Intuit Developer avec QuickBooks Online + Payments sélectionné et un champ de nom d'app indiquant QVO Voice Agent",
+      "caption": "My Apps → Create an app → QuickBooks Online + Payments."
+    },
+    "quickbooks-keys-environment": {
+      "alt": "Onglet Keys & OAuth d'Intuit Developer avec l'environnement Development sélectionné, Client ID et Client Secret affichés, et l'URI de redirection QVO ajoutée",
+      "caption": "Choisissez d'abord l'environnement — les clés diffèrent entre Development et Production."
+    },
+    "quickbooks-scopes": {
+      "alt": "Page des scopes Intuit Developer avec com.intuit.quickbooks.accounting coché et les autres scopes décochés",
+      "caption": "com.intuit.quickbooks.accounting est le seul scope dont QVO a besoin."
+    },
+    "quickbooks-realm-pick": {
+      "alt": "Modale Authorize QVO d'Intuit avec une liste Choose a company affichant deux realms QuickBooks et la société de production sélectionnée",
+      "caption": "Choisissez le realm (société) — QVO récupère le Realm ID depuis le callback."
+    },
+    "quickbooks-qvo-invoice-config": {
+      "alt": "Carte du connecteur QuickBooks de QVO affichant le realm connecté, Invoice Item ID, la description de l'élément, le montant par défaut de la facture et un bouton Sync now",
+      "caption": "Définissez Invoice Item ID et le montant par défaut, puis cliquez sur Sync now."
+    }
+  }
+}
