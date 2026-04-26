@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
@@ -6,8 +6,14 @@ import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
 import {
   addSupportEmailSuppression,
+  addSupportEmailUnsubscribe,
   checkSupportEmailSkip,
 } from '../../../platform/email/SupportEmailSuppression';
+import {
+  buildSupportUnsubscribeEmailHeaders,
+  buildSupportUnsubscribeFooter,
+  verifySupportUnsubscribeToken,
+} from '../../../platform/email/supportUnsubscribeToken';
 import {
   isPermanentSmtpError,
   isReplyPermanentFailure,
@@ -315,10 +321,20 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
     }));
   }
 
-  // Auto-acknowledge the user (best-effort)
+  // Auto-acknowledge the user (best-effort). Carries the same
+  // List-Unsubscribe header + visible footer link as full replies so a
+  // recipient who never wanted to receive support mail in the first place
+  // can opt out of the auto-ack itself.
   if (user.email) {
     const tplAck = renderAckEmail(ticketId);
-    sendEmail({ to: user.email, subject: tplAck.subject, html: tplAck.html, text: tplAck.text })
+    const ackUnsub = buildSupportUnsubscribeFooter(user.email);
+    sendEmail({
+      to: user.email,
+      subject: tplAck.subject,
+      html: `${tplAck.html}${ackUnsub.html}`,
+      text: `${tplAck.text}${ackUnsub.text}`,
+      headers: buildSupportUnsubscribeEmailHeaders(user.email),
+    })
       .catch((e) => logger.warn('Ack email failed', { ticketId, error: String(e) }));
   }
 
@@ -635,6 +651,11 @@ async function deliverDocsFeedbackReply(input: {
     throw new Error('comment has no reply_email');
   }
   const pool = getPlatformPool();
+  // Visible unsubscribe footer derived from the recipient address. The
+  // shared renderer accepts an optional footer so the background
+  // DocsFeedbackReplyRetryScheduler can produce a byte-identical email
+  // when it auto-retries this row later.
+  const docsUnsubFooter = buildSupportUnsubscribeFooter(comment.reply_email);
   // Render via the shared helper so the background
   // DocsFeedbackReplyRetryScheduler re-sends the exact same body when it
   // auto-retries this reply later — no template drift between the manual
@@ -643,6 +664,7 @@ async function deliverDocsFeedbackReply(input: {
     articleSlug: comment.article_slug,
     originalComment: comment.comment,
     body,
+    unsubscribeFooter: docsUnsubFooter,
   });
 
   // Suppression / unsubscribe pre-check. If the recipient is on either list
@@ -676,6 +698,7 @@ async function deliverDocsFeedbackReply(input: {
       subject,
       html,
       text,
+      headers: buildSupportUnsubscribeEmailHeaders(comment.reply_email),
     });
   }
 
@@ -1598,10 +1621,15 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
     } catch { /* non-fatal */ }
   }
 
+  // Visible unsubscribe footer + List-Unsubscribe header pair so the link
+  // in the email body and the MUA-driven one-click action both terminate
+  // in the same support_email_unsubscribes write.
+  const replyUnsubFooter = buildSupportUnsubscribeFooter(ticket.user_email);
   const { subject, html, text } = renderOutboundTicketReplyEmail({
     ticketId: ticket.id,
     topic: ticket.topic,
     body,
+    unsubscribeFooter: replyUnsubFooter,
   });
 
   // Suppression / unsubscribe pre-check — see deliverDocsFeedbackReply for
@@ -1632,7 +1660,10 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
       html,
       text,
       replyTo: buildReplyToAddress(token),
-      headers: { 'X-QVO-Ticket-Id': ticket.id },
+      headers: {
+        'X-QVO-Ticket-Id': ticket.id,
+        ...buildSupportUnsubscribeEmailHeaders(ticket.user_email),
+      },
     });
   }
 
@@ -1899,10 +1930,15 @@ router.post(
       } catch { /* non-fatal */ }
     }
 
+    // Visible unsubscribe footer + List-Unsubscribe header pair (see manual
+    // /reply path) so the retry email carries the same opt-out affordances
+    // as the original send.
+    const retryUnsubFooter = buildSupportUnsubscribeFooter(ticket.user_email);
     const { subject, html, text } = renderOutboundTicketReplyEmail({
       ticketId: ticket.id,
       topic: ticket.topic,
       body: reply.body,
+      unsubscribeFooter: retryUnsubFooter,
     });
 
     // Suppression / unsubscribe pre-check. If the address has landed on
@@ -1934,7 +1970,10 @@ router.post(
         html,
         text,
         replyTo: buildReplyToAddress(token),
-        headers: { 'X-QVO-Ticket-Id': ticket.id },
+        headers: {
+          'X-QVO-Ticket-Id': ticket.id,
+          ...buildSupportUnsubscribeEmailHeaders(ticket.user_email),
+        },
       });
     }
 
@@ -2180,6 +2219,126 @@ router.post(
 // (Postmark/Mailgun also work — they can send the secret as the
 // `X-Webhook-Secret` header.) See replit.md "Inbound support email webhook"
 // for the full integration recipe and curl test.
+// ----------------------------------------------------------------------------
+// Public unsubscribe sink for support emails.
+//
+// Two surfaces, one write:
+//   * GET  /support/unsubscribe?e=<email>&t=<token>
+//       Friendly landing page for recipients who click the visible
+//       "Unsubscribe" link in the email body. Renders a minimal
+//       confirmation HTML page (no JS, no third-party assets).
+//   * POST /support/unsubscribe?e=<email>&t=<token>
+//       RFC 8058 one-click endpoint. The body is `List-Unsubscribe=One-Click`
+//       (or empty — providers vary). Returns 200 with an empty body on
+//       success so the receiving MUA can mark the action complete without
+//       parsing.
+//
+// Token = HMAC-SHA256(secret, lowercased email) truncated to 32 hex chars.
+// We compare in constant time and reject any (email, token) pair that
+// doesn't match — protects against an attacker iterating addresses.
+//
+// Both surfaces are idempotent: addSupportEmailUnsubscribe upserts on
+// (email_lower) so repeat hits don't error. We deliberately don't gate
+// access by IP or session — recipients may not have a QVO account, and the
+// HMAC token IS the authentication.
+//
+// Why no CSRF on the POST? Per RFC 8058, the receiving MUA submits this
+// POST programmatically without a browser session — the HMAC token in the
+// URL plus the absence of any cross-site cookie context (we read no
+// cookies on this path) means the standard CSRF threat model doesn't
+// apply. The worst an attacker could do with a forged POST is unsubscribe
+// an address they already know the token for, which they can't get
+// without the secret.
+// ----------------------------------------------------------------------------
+async function handleSupportUnsubscribe(
+  req: Request,
+  res: Response,
+  isOneClickPost: boolean,
+): Promise<void> {
+  const email =
+    typeof req.query.e === 'string' ? req.query.e :
+    typeof req.body?.e === 'string' ? req.body.e : null;
+  const token =
+    typeof req.query.t === 'string' ? req.query.t :
+    typeof req.body?.t === 'string' ? req.body.t : null;
+
+  if (!email || !token || !verifySupportUnsubscribeToken(email, token)) {
+    if (isOneClickPost) {
+      // Minimal opaque body — MUAs only check status code on the One-Click
+      // POST and we don't want to leak whether the address is known.
+      res.status(400).send('invalid token');
+      return;
+    }
+    res.status(400).type('html').send(
+      `<!doctype html><html><head><meta charset="utf-8"/><title>Invalid unsubscribe link</title></head>` +
+      `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#0f172a">` +
+      `<h1 style="font-size:20px">Invalid unsubscribe link</h1>` +
+      `<p style="color:#475569">This link is missing or has been tampered with. ` +
+      `Please reply to your most recent QVO support email with the word <strong>unsubscribe</strong> ` +
+      `and we'll remove you manually.</p>` +
+      `</body></html>`,
+    );
+    return;
+  }
+
+  try {
+    await addSupportEmailUnsubscribe(
+      email,
+      isOneClickPost ? 'one_click_post' : 'landing_page',
+    );
+  } catch (err) {
+    logger.error('Failed to record support email unsubscribe', {
+      error: String(err),
+      email_lower: email.trim().toLowerCase(),
+    });
+    if (isOneClickPost) {
+      // Tell the MUA we couldn't honor the click so it can surface a
+      // retry/error to the user. Don't 500 the landing page user — show a
+      // best-effort confirmation since the row may yet land via webhook.
+      res.status(500).send('temporary error');
+      return;
+    }
+  }
+
+  if (isOneClickPost) {
+    // RFC 8058: 200 OK with no required body. Keep response minimal.
+    res.status(200).type('text/plain').send('');
+    return;
+  }
+
+  res.status(200).type('html').send(
+    `<!doctype html><html><head><meta charset="utf-8"/><title>You're unsubscribed</title></head>` +
+    `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#0f172a">` +
+    `<h1 style="font-size:20px">You're unsubscribed</h1>` +
+    `<p style="color:#475569">We won't send any more support replies to ` +
+    `<strong>${email
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')}</strong>. ` +
+    `Existing tickets stay open in our system; if you change your mind, just reply to your most recent ticket and we'll re-enable mail.</p>` +
+    `</body></html>`,
+  );
+}
+
+router.get('/support/unsubscribe', (req, res) => {
+  void handleSupportUnsubscribe(req, res, false);
+});
+
+// Accept both JSON-shaped and form-encoded one-click posts. The route mounts
+// under the same admin app whose top-level `express.json()` already parses
+// JSON; the urlencoded parser below covers RFC 8058 providers (Gmail,
+// Outlook) that send `application/x-www-form-urlencoded` bodies of
+// `List-Unsubscribe=One-Click`.
+router.post(
+  '/support/unsubscribe',
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    void handleSupportUnsubscribe(req, res, true);
+  },
+);
+
 router.post('/support/inbound', async (req, res) => {
   const isProduction = process.env.NODE_ENV === 'production';
   if (isProduction && !INBOUND_SECRET) {

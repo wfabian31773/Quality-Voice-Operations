@@ -14,6 +14,10 @@ import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { isPermanentSmtpError, isReplyPermanentFailure } from '../email/smtpErrorClass';
 import {
+  buildSupportUnsubscribeEmailHeaders,
+  buildSupportUnsubscribeFooter,
+} from '../email/supportUnsubscribeToken';
+import {
   addSupportEmailSuppression,
   checkSupportEmailSkip,
   type SupportEmailSkipReason,
@@ -208,10 +212,15 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
   }
 
   const token = await ensureInboundToken(reply.ticket_id, reply.inbound_token);
+  // Visible footer + List-Unsubscribe headers — same pair the manual
+  // /reply and /retry routes attach. Recipients who want to opt out
+  // shouldn't have to wait for the next manual ops touch to see the link.
+  const unsubscribeFooter = buildSupportUnsubscribeFooter(reply.user_email);
   const { subject, html, text } = renderOutboundTicketReplyEmail({
     ticketId: reply.ticket_id,
     topic: reply.topic,
     body: reply.body,
+    unsubscribeFooter,
   });
 
   const result = await sendEmail({
@@ -220,7 +229,10 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
     html,
     text,
     replyTo: buildReplyToAddress(token),
-    headers: { 'X-QVO-Ticket-Id': reply.ticket_id },
+    headers: {
+      'X-QVO-Ticket-Id': reply.ticket_id,
+      ...buildSupportUnsubscribeEmailHeaders(reply.user_email),
+    },
   });
 
   const attempt = (reply.retry_count ?? 0) + 1;

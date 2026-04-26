@@ -24,6 +24,14 @@ export interface DocsFeedbackReplyEmailInput {
   originalComment: string | null;
   /** Plain-text body the admin entered. */
   body: string;
+  /**
+   * Optional unsubscribe footer (html/text) appended to the rendered body.
+   * Callers derive this from the recipient address via
+   * `buildSupportUnsubscribeFooter` so the visible link matches the URL in
+   * the `List-Unsubscribe` header — both routes terminate in the same
+   * support_email_unsubscribes write.
+   */
+  unsubscribeFooter?: { html: string; text: string } | null;
 }
 
 export interface DocsFeedbackReplyEmailOutput {
@@ -34,7 +42,7 @@ export interface DocsFeedbackReplyEmailOutput {
 export function renderDocsFeedbackReplyEmail(
   input: DocsFeedbackReplyEmailInput,
 ): DocsFeedbackReplyEmailOutput {
-  const { articleSlug, originalComment, body } = input;
+  const { articleSlug, originalComment, body, unsubscribeFooter } = input;
   const escapedBody = escape(body).replace(/\n/g, '<br/>');
   const originalBlock = originalComment
     ? `<hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb"/>
@@ -46,10 +54,11 @@ export function renderDocsFeedbackReplyEmail(
       <p style="white-space:pre-wrap">${escapedBody}</p>
       ${originalBlock}
       <p style="color:#64748b;font-size:12px;margin-top:16px">— The QVO docs team</p>
+      ${unsubscribeFooter?.html ?? ''}
     </div>`;
   const textOriginal = originalComment
     ? `\n\n----- Your original feedback (${articleSlug}) -----\n${originalComment}`
     : '';
-  const text = `${body}\n${textOriginal}\n\n— The QVO docs team`;
+  const text = `${body}\n${textOriginal}\n\n— The QVO docs team${unsubscribeFooter?.text ?? ''}`;
   return { html, text };
 }

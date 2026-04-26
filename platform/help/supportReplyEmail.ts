@@ -30,15 +30,24 @@ export function renderOutboundTicketReplyEmail(input: {
   ticketId: string;
   topic: string;
   body: string;
+  /**
+   * Optional unsubscribe footer (html/text) appended to the rendered email
+   * body. The caller derives this from the recipient address via
+   * `buildSupportUnsubscribeFooter` so the link in the visible body matches
+   * the URL in the `List-Unsubscribe` header — keeps the manual click and
+   * the one-click MUA flow honoring the same opt-out target.
+   */
+  unsubscribeFooter?: { html: string; text: string } | null;
 }): { subject: string; html: string; text: string } {
-  const { ticketId, topic, body } = input;
+  const { ticketId, topic, body, unsubscribeFooter } = input;
   const subject = `Re: [QVO Support] ${topic.toUpperCase()} (${ticketId})`;
   const escaped = escapeHtml(body).replace(/\n/g, '<br/>');
   const html = `<div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
     <div>${escaped}</div>
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
     <p style="color:#64748b;font-size:12px">Ticket reference: <strong>${escapeHtml(ticketId)}</strong> — please keep this in the subject when replying.</p>
+    ${unsubscribeFooter?.html ?? ''}
   </div>`;
-  const text = `${body}\n\n---\nTicket reference: ${ticketId} — please keep this in the subject when replying.`;
+  const text = `${body}\n\n---\nTicket reference: ${ticketId} — please keep this in the subject when replying.${unsubscribeFooter?.text ?? ''}`;
   return { subject, html, text };
 }

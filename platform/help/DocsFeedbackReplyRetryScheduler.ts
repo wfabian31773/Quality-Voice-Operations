@@ -27,6 +27,10 @@ import { sendEmail } from '../email/EmailService';
 import { isPermanentSmtpError, isDocsFeedbackReplyPermanentFailure } from '../email/smtpErrorClass';
 import { renderDocsFeedbackReplyEmail } from './docsFeedbackReplyEmail';
 import {
+  buildSupportUnsubscribeEmailHeaders,
+  buildSupportUnsubscribeFooter,
+} from '../email/supportUnsubscribeToken';
+import {
   DOCS_FEEDBACK_REPLY_DELIVERY_ALERT_THRESHOLD,
   raiseDocsFeedbackReplyDeliveryFailureAlert,
 } from './docsFeedbackReplyDeliveryAlert';
@@ -163,10 +167,15 @@ async function retrySingleReply(
     return null;
   }
 
+  // Visible footer + List-Unsubscribe headers — same pair the manual
+  // deliverDocsFeedbackReply path attaches, so retry mail keeps the same
+  // opt-out affordance the recipient saw on the original send.
+  const unsubscribeFooter = buildSupportUnsubscribeFooter(reply.to_email);
   const { html, text } = renderDocsFeedbackReplyEmail({
     articleSlug: reply.article_slug,
     originalComment: reply.original_comment,
     body: reply.body,
+    unsubscribeFooter,
   });
 
   const result = await sendEmail({
@@ -174,6 +183,7 @@ async function retrySingleReply(
     subject: reply.subject,
     html,
     text,
+    headers: buildSupportUnsubscribeEmailHeaders(reply.to_email),
   });
 
   const attempt = (reply.retry_count ?? 0) + 1;
