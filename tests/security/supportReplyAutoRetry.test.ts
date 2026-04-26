@@ -79,9 +79,22 @@ describe('SupportReplyRetryScheduler — wiring & contract', () => {
 
 vi.mock('../../platform/db', () => {
   const queryMock = vi.fn();
+  // Wrapper transparently swallows the new suppression / unsubscribe pre-
+  // checks and the auto-add INSERT so they never enter `queryMock.mock.calls`
+  // — that keeps the existing index/count assertions in this file (e.g.
+  // `mock.calls[3][0]`, `toHaveBeenCalledTimes(2)`) accurate to the
+  // scheduler queries the tests actually care about.
+  const SUPPRESSION_TABLE_RE = /support_email_(unsubscribes|suppressions)/i;
+  const wrappedQuery = (sql: unknown, ...rest: unknown[]) => {
+    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    if (SUPPRESSION_TABLE_RE.test(sqlText)) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    return (queryMock as (...a: unknown[]) => unknown)(sql, ...rest);
+  };
   return {
     __queryMock: queryMock,
-    getPlatformPool: () => ({ query: queryMock }),
+    getPlatformPool: () => ({ query: wrappedQuery }),
   };
 });
 
@@ -122,14 +135,45 @@ const FAILED_REPLY = {
   inbound_token: 'b'.repeat(24),
 };
 
+// Tests in this file enqueue per-call DB responses in execution order. The
+// scheduler now also runs a suppression / unsubscribe pre-check on every
+// reply (and may auto-add an entry on a hard bounce) — those queries are
+// orthogonal to the runtime contract being tested here, so we intercept
+// them transparently below and let the per-test queue cover the original
+// scheduler queries unchanged.
+type MockResult = { rowCount: number; rows: unknown[] };
+const pendingResults: MockResult[] = [];
+
+function enqueue(...results: MockResult[]): void {
+  pendingResults.push(...results);
+}
+
+const SUPPRESSION_TABLE_RE =
+  /support_email_(unsubscribes|suppressions)/i;
+
 beforeEach(() => {
   queryMock.mockReset();
   sendEmailMock.mockReset();
+  pendingResults.length = 0;
+  queryMock.mockImplementation(async (sql: unknown) => {
+    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    // Suppression / unsubscribe pre-check + auto-add: never on the test's
+    // intended timeline, always return a "no match / no-op" answer.
+    if (SUPPRESSION_TABLE_RE.test(sqlText)) {
+      return { rowCount: 0, rows: [] };
+    }
+    if (pendingResults.length === 0) {
+      throw new Error(
+        `Unmocked DB query in test (no enqueue() result available): ${sqlText.slice(0, 120)}`,
+      );
+    }
+    return pendingResults.shift()!;
+  });
 });
 
 describe('runSupportReplyRetryCycle — runtime behavior', () => {
   it('returns early when no failed replies are eligible for retry', async () => {
-    queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    enqueue({ rowCount: 0, rows: [] });
 
     const r = await runSupportReplyRetryCycle();
 
@@ -138,15 +182,14 @@ describe('runSupportReplyRetryCycle — runtime behavior', () => {
   });
 
   it('re-sends a failed reply, marks it delivered, and increments retry_count in place', async () => {
-    queryMock
       // 1. SELECT failed outbound replies
-      .mockResolvedValueOnce({ rowCount: 1, rows: [FAILED_REPLY] })
+    enqueue({ rowCount: 1, rows: [FAILED_REPLY] });
       // 2. Atomic claim: conditional UPDATE that bumps retry_count + last_retry_at
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
       // 3. UPDATE support_ticket_replies recording the result (msg id / error)
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [] });
       // 4. UPDATE support_tickets bumping updated_at
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
     sendEmailMock.mockResolvedValueOnce({ success: true, messageId: 'msg_auto_ok' });
 
@@ -191,14 +234,13 @@ describe('runSupportReplyRetryCycle — runtime behavior', () => {
   });
 
   it('records the new error and counts the attempt when the retry also fails', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...FAILED_REPLY, retry_count: 1 }] })
+    enqueue({ rowCount: 1, rows: [{ ...FAILED_REPLY, retry_count: 1 }] });
       // claim
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
       // result UPDATE
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [] });
       // ticket bump
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
     sendEmailMock.mockResolvedValueOnce({ success: false, error: 'still down' });
 
@@ -219,10 +261,9 @@ describe('runSupportReplyRetryCycle — runtime behavior', () => {
   });
 
   it('skips a row (no send, no result update) when the atomic claim is lost to a concurrent worker', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rowCount: 1, rows: [FAILED_REPLY] })
+    enqueue({ rowCount: 1, rows: [FAILED_REPLY] });
       // Lost claim — another worker bumped retry_count first, so 0 rows match.
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    enqueue({ rowCount: 0, rows: [] });
 
     const r = await runSupportReplyRetryCycle();
 
@@ -236,19 +277,18 @@ describe('runSupportReplyRetryCycle — runtime behavior', () => {
   });
 
   it('generates and persists an inbound token when the ticket is missing one', async () => {
-    queryMock
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 1,
         rows: [{ ...FAILED_REPLY, inbound_token: null }],
-      })
+      });
       // claim
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
       // UPDATE support_tickets SET inbound_token = ...
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [] });
       // result UPDATE
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [] });
       // ticket updated_at bump
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
     sendEmailMock.mockResolvedValueOnce({ success: true, messageId: 'msg' });
 
@@ -264,20 +304,18 @@ describe('runSupportReplyRetryCycle — runtime behavior', () => {
 
   it('processes multiple eligible replies in a single cycle', async () => {
     const second = { ...FAILED_REPLY, reply_id: 8, ticket_id: 'tkt_def', user_email: 'other@example.com' };
-    queryMock
-      .mockResolvedValueOnce({ rowCount: 2, rows: [FAILED_REPLY, second] })
+    enqueue({ rowCount: 2, rows: [FAILED_REPLY, second] });
       // reply 1: claim + result UPDATE + ticket bump
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
+    enqueue({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
       // reply 2: claim + result UPDATE + ticket bump
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 8 }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [{ id: 8 }] });
+    enqueue({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
-    sendEmailMock
-      .mockResolvedValueOnce({ success: true, messageId: 'm1' })
-      .mockResolvedValueOnce({ success: false, error: 'soft bounce' });
+    sendEmailMock.mockResolvedValueOnce({ success: true, messageId: 'm1' });
+    sendEmailMock.mockResolvedValueOnce({ success: false, error: 'soft bounce' });
 
     const r = await runSupportReplyRetryCycle();
     expect(r.considered).toBe(2);
@@ -342,14 +380,13 @@ describe('isPermanentSmtpError — classifier', () => {
 
 describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => {
   it('skips the send and bumps retry_count straight to MAX when the prior error is a 5xx', async () => {
-    queryMock
       // 1. SELECT failed outbound replies
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 1,
         rows: [{ ...FAILED_REPLY, email_error: '550 5.1.1 user unknown', tenant_id: null }],
-      })
+      });
       // 2. markReplyPermanentlyFailed: conditional UPDATE bumps retry_count to MAX
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
 
     const r = await runSupportReplyRetryCycle();
 
@@ -375,18 +412,17 @@ describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => 
   });
 
   it('skips the send for "mailbox not found" / "address rejected" prior failures too', async () => {
-    queryMock
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 2,
         rows: [
           { ...FAILED_REPLY, reply_id: 9, email_error: 'Mailbox not found', tenant_id: null },
           { ...FAILED_REPLY, reply_id: 10, email_error: 'Recipient address rejected', tenant_id: null },
         ],
-      })
+      });
       // exhaust UPDATE for reply 9
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 9 }] })
+    enqueue({ rowCount: 1, rows: [{ id: 9 }] });
       // exhaust UPDATE for reply 10
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 10 }] });
+    enqueue({ rowCount: 1, rows: [{ id: 10 }] });
 
     const r = await runSupportReplyRetryCycle();
 
@@ -399,17 +435,16 @@ describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => 
   });
 
   it('still retries when the prior error looks transient (connection refused, 4xx, timeout)', async () => {
-    queryMock
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 1,
         rows: [{ ...FAILED_REPLY, email_error: '451 4.7.1 greylisted, try again' }],
-      })
+      });
       // claim
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
       // result UPDATE
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [] });
       // ticket bump
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
     sendEmailMock.mockResolvedValueOnce({ success: true, messageId: 'm-after-greylist' });
 
@@ -420,17 +455,16 @@ describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => 
   });
 
   it('on a transient retry that hard-bounces, jumps retry_count to MAX in the result UPDATE', async () => {
-    queryMock
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 1,
         rows: [{ ...FAILED_REPLY, retry_count: 0, email_error: 'connection refused' }],
-      })
+      });
       // claim
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
       // result UPDATE (with retry_count = MAX)
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    enqueue({ rowCount: 1, rows: [] });
       // ticket bump
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
     // The send fails permanently this time (rcpt rejected by destination).
     sendEmailMock.mockResolvedValueOnce({
@@ -454,14 +488,13 @@ describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => 
   it('respects EmailService.permanent=true even when the error string alone looks transient', async () => {
     // Belt-and-suspenders: structured permanent flag from EmailService wins
     // even if the human-readable message doesn't match a known keyword.
-    queryMock
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 1,
         rows: [{ ...FAILED_REPLY, retry_count: 0, email_error: 'connection refused' }],
-      })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+      });
+    enqueue({ rowCount: 1, rows: [{ id: 7 }] });
+    enqueue({ rowCount: 1, rows: [] });
+    enqueue({ rowCount: 1, rows: [] });
 
     sendEmailMock.mockResolvedValueOnce({
       success: false,
@@ -476,13 +509,12 @@ describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => 
   });
 
   it('does not exhaust the row when the atomic permanent-mark loses the race', async () => {
-    queryMock
-      .mockResolvedValueOnce({
+      enqueue({
         rowCount: 1,
         rows: [{ ...FAILED_REPLY, email_error: '550 mailbox unavailable', tenant_id: null }],
-      })
+      });
       // permanent-mark UPDATE finds 0 matching rows (concurrent worker won)
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    enqueue({ rowCount: 0, rows: [] });
 
     const r = await runSupportReplyRetryCycle();
 
@@ -497,7 +529,7 @@ describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => 
 
 describe('findFailedOutboundReplies — query shape', () => {
   it('joins support_tickets, filters by direction/error/window, and respects the batch limit', async () => {
-    queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    enqueue({ rowCount: 0, rows: [] });
 
     await findFailedOutboundReplies(3, 60, 25);
 

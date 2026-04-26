@@ -24,8 +24,12 @@ describe('PlatformAdmin support inbox — hard-bounce badge', () => {
     // The badge is driven by `retry_skipped_reason` (server-authoritative)
     // with a fallback to the legacy SMTP classifier for old rows. Both live
     // in the same module so the parity test still guards the keyword list.
+    // We allow other named imports from the same module (e.g. the wider
+    // `describeRetrySkippedReason` family used by the new skip-reason
+    // badges) — the spec is "isHardBounce comes from this exact module",
+    // not "isHardBounce is the only thing imported from it".
     expect(adminUiFile).toMatch(
-      /import\s*\{\s*isHardBounce\s*\}\s*from\s*'\.\.\/lib\/smtpErrorClass'/,
+      /import\s*\{[^}]*\bisHardBounce\b[^}]*\}\s*from\s*'\.\.\/lib\/smtpErrorClass'/,
     );
   });
 
@@ -114,5 +118,138 @@ describe('retry_skipped_reason — server writes the persisted column', () => {
     expect(supportRoutes).toMatch(
       /lr\.retry_skipped_reason\s+AS\s+last_reply_retry_skipped_reason/,
     );
+  });
+});
+
+describe('retry_skipped_reason — distinct badge per known reason', () => {
+  // The four reasons the server can stamp today. The describeRetrySkippedReason
+  // helper must return a distinct shortLabel + tone for each so the admin UI
+  // doesn't collapse them into one indistinguishable pill, and an unknown
+  // value must fall through to a generic badge so a server upgrade can't
+  // crash the UI.
+  const reasonMatrix: Array<{ reason: string; shortLabel: RegExp; tone: string }> = [
+    { reason: 'permanent_smtp_failure',  shortLabel: /Hard bounce/,             tone: 'hard_bounce' },
+    { reason: 'suppression_list',        shortLabel: /Suppressed by ops/,       tone: 'suppression' },
+    { reason: 'manual_cancel',           shortLabel: /Manually cancelled/,      tone: 'manual_cancel' },
+    { reason: 'recipient_unsubscribed',  shortLabel: /Recipient unsubscribed/,  tone: 'unsubscribed' },
+  ];
+
+  for (const { reason, shortLabel, tone } of reasonMatrix) {
+    it(`describeRetrySkippedReason returns a distinct badge for '${reason}'`, () => {
+      // Source-level assertions: the case arm exists, points at the right
+      // tone, and the shortLabel string is in the file. Done as a source
+      // scan (instead of importing the module) to stay consistent with the
+      // rest of this suite — it intentionally has no jsdom / TS-loader
+      // dependency so it runs in any environment.
+      const arm = new RegExp(
+        `case\\s+RETRY_SKIPPED_REASON_[A-Z_]+:\\s*[\\s\\S]{0,400}?shortLabel:\\s*['"]${shortLabel.source.replace(/\//g, '')}.*?['"][\\s\\S]{0,400}?tone:\\s*'${tone}'`,
+      );
+      expect(clientClassifier).toMatch(arm);
+      expect(clientClassifier).toContain(`'${reason}'`);
+    });
+  }
+
+  it('falls through to a generic "Auto-retry skipped" badge with tone "unknown" for an unrecognised reason', () => {
+    // Critical for forward compatibility: a server that starts writing a new
+    // reason before the client knows about it must still render *something*.
+    expect(clientClassifier).toMatch(
+      /default:[\s\S]{0,300}?shortLabel:\s*'Auto-retry skipped'[\s\S]{0,300}?tone:\s*'unknown'/,
+    );
+  });
+
+  it('returns null when the column is unset (no badge for in-flight rows)', () => {
+    // Guards against accidentally rendering a "skipped" badge on rows that
+    // are still in the auto-retry pool.
+    expect(clientClassifier).toMatch(/if\s*\(!reason\)\s*return\s+null/);
+  });
+});
+
+describe('retry_skipped_reason — server writes the new non-bounce reasons', () => {
+  it('manual cancel endpoint stamps `manual_cancel` and refuses to downgrade an existing reason', () => {
+    // The /cancel-retries route is the source of truth for the manual_cancel
+    // reason. It must be idempotent (won't re-stamp once cancelled) and must
+    // preserve a more-specific permanent_smtp_failure reason if one already
+    // landed (a hard bounce must not be silently rebadged as a manual cancel).
+    expect(supportRoutes).toMatch(
+      /retry_skipped_reason\s*=\s*'manual_cancel'/,
+    );
+    expect(supportRoutes).toMatch(
+      /retry_skipped_reason\s+IS\s+NULL/i,
+    );
+  });
+
+  it('every customer-facing send site pre-checks the suppression / unsubscribe list', () => {
+    // Three send sites — initial docs-feedback reply, manual /reply, and
+    // manual /retry — must short-circuit before sendEmail() if the recipient
+    // is on either list, and stamp the matching reason on the row instead.
+    const skipChecks = supportRoutes.match(/checkSupportEmailSkip\(/g);
+    expect(skipChecks?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it('every customer-facing send site auto-adds permanently-failed addresses to the suppression list', () => {
+    // Mirror of the pre-check: a real hard bounce at any of the three send
+    // sites must seed the suppression list so the next send to that address
+    // hits the cheap pre-check path above.
+    const suppressionWrites = supportRoutes.match(/addSupportEmailSuppression\(/g);
+    expect(suppressionWrites?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it('scheduler stamps the list-based reasons (suppression_list / recipient_unsubscribed) before retrying', () => {
+    // The auto-retry worker must consult the same lists so a recipient who
+    // bounced on one ticket doesn't keep getting retried on others.
+    expect(schedulerFile).toMatch(/checkSupportEmailSkip\(/);
+    expect(schedulerFile).toMatch(/markReplySkippedByList\(/);
+    // And the helper must accept BOTH reasons (the SupportEmailSkipReason
+    // union covers suppression_list + recipient_unsubscribed).
+    expect(schedulerFile).toMatch(/SupportEmailSkipReason/);
+  });
+
+  it('scheduler hard-bounce arm seeds the suppression list so OTHER tickets short-circuit', () => {
+    // Without this, a recipient who bounces on one ticket would keep getting
+    // the full SMTP round-trip on every other ticket until each one
+    // independently classified as permanent.
+    expect(schedulerFile).toMatch(/addSupportEmailSuppression\(/);
+  });
+});
+
+describe('SupportEmailSuppression module — list semantics', () => {
+  const suppressionFile = readFileSync(
+    join(process.cwd(), 'platform/email/SupportEmailSuppression.ts'),
+    'utf8',
+  );
+
+  it('keys both lists on the lowercased address so mixed-case retries cannot bypass entries', () => {
+    expect(suppressionFile).toMatch(/email\.trim\(\)\.toLowerCase\(\)/);
+    expect(suppressionFile).toMatch(/WHERE\s+email_lower\s*=\s*\$1/);
+  });
+
+  it('unsubscribe wins over suppression so an admin clearing a suppression cannot re-enable mail to an opted-out address', () => {
+    // Precedence rule: inside checkSupportEmailSkip, the unsubscribe SELECT
+    // must run first and an early-return `recipient_unsubscribed` decision
+    // must happen before the suppression SELECT is even issued. We assert
+    // that ordering on the actual SQL/decision lines (anchored on the
+    // FROM clause) so the header doc comment doesn't influence the result.
+    const unsubSelectIdx = suppressionFile.indexOf('FROM support_email_unsubscribes');
+    const suppSelectIdx  = suppressionFile.indexOf('FROM support_email_suppressions');
+    expect(unsubSelectIdx).toBeGreaterThan(0);
+    expect(suppSelectIdx).toBeGreaterThan(unsubSelectIdx);
+
+    // And the unsubscribe arm must produce the recipient_unsubscribed
+    // decision before any suppression branch runs.
+    const unsubReturnIdx = suppressionFile.indexOf("reason: 'recipient_unsubscribed'");
+    const suppReturnIdx  = suppressionFile.indexOf("reason: 'suppression_list'");
+    expect(unsubReturnIdx).toBeGreaterThan(0);
+    expect(suppReturnIdx).toBeGreaterThan(unsubReturnIdx);
+  });
+
+  it('suppression insert is idempotent via ON CONFLICT so repeated bounces just refresh the row', () => {
+    expect(suppressionFile).toMatch(/ON\s+CONFLICT\s*\(\s*email_lower\s*\)\s*DO\s+UPDATE/i);
+  });
+
+  it('returns NO_SKIP on a transient DB error so a lookup failure cannot block legitimate sends', () => {
+    // Documented fail-open posture (see follow-up note about a future fail-
+    // closed compliance toggle for unsubscribed recipients).
+    expect(suppressionFile).toMatch(/return\s+NO_SKIP/);
+    expect(suppressionFile).toMatch(/proceeding without skip/i);
   });
 });

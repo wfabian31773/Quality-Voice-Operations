@@ -1,7 +1,13 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { isHardBounce } from '../lib/smtpErrorClass';
+import {
+  isHardBounce,
+  isPermanentSmtpError,
+  describeRetrySkippedReason,
+  type RetrySkippedReasonBadge,
+  type RetrySkippedTone,
+} from '../lib/smtpErrorClass';
 import {
   Building2, Users, PhoneCall, DollarSign, ChevronDown, ChevronRight,
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
@@ -294,6 +300,54 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
       {status}
+    </span>
+  );
+}
+
+// Color/border palette for the retry-skipped reason badges. Each tone is
+// distinct enough that ops can tell them apart at a glance in a long inbox
+// list without needing to mouse over the tooltip.
+const RETRY_SKIPPED_TONE_CLASSES: Record<RetrySkippedTone, string> = {
+  hard_bounce:
+    'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+  suppression:
+    'bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900',
+  manual_cancel:
+    'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700',
+  unsubscribed:
+    'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900',
+  unknown:
+    'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800/60 dark:text-gray-200 dark:border-gray-700',
+};
+
+/**
+ * Compact pill rendered alongside a failed-delivery row when the auto-retry
+ * pipeline has decided not to attempt the row again. Reads the descriptor
+ * from `describeRetrySkippedReason` so a new server-side reason becomes a
+ * distinct badge automatically (and an unrecognised reason falls through to
+ * a generic "Auto-retry skipped" label instead of breaking the layout).
+ */
+function RetrySkippedBadge({
+  reason,
+  size = 'sm',
+  variant = 'short',
+}: {
+  reason: string | null | undefined;
+  size?: 'xs' | 'sm';
+  variant?: 'short' | 'long';
+}) {
+  const descriptor: RetrySkippedReasonBadge | null = describeRetrySkippedReason(reason);
+  if (!descriptor) return null;
+  const sizeClass =
+    size === 'xs'
+      ? 'px-1 py-0.5 text-[9px]'
+      : 'px-1.5 py-0.5 text-[10px]';
+  return (
+    <span
+      title={descriptor.description}
+      className={`inline-flex items-center rounded border font-medium uppercase tracking-wide cursor-help ${sizeClass} ${RETRY_SKIPPED_TONE_CLASSES[descriptor.tone]}`}
+    >
+      {variant === 'long' ? descriptor.longLabel : descriptor.shortLabel}
     </span>
   );
 }
@@ -1922,6 +1976,20 @@ function DocsFeedbackCommentRow({
                   Failed
                 </span>
               )}
+              {/* If the reply was skipped for a non-hard-bounce reason
+                  (suppression, manual cancel, unsubscribe, …) show that
+                  alongside the Failed pill so ops sees *why* further auto-
+                  retries won't happen, even when the SMTP error itself wasn't
+                  a 5xx hard bounce. Hidden on hard bounces because the badge
+                  above already explains it. */}
+              {!lastReplyPermanent &&
+                c.last_reply_retry_skipped_reason &&
+                !isHardBounce({
+                  retry_skipped_reason: c.last_reply_retry_skipped_reason,
+                  email_error: c.last_reply_error,
+                }) && (
+                  <RetrySkippedBadge reason={c.last_reply_retry_skipped_reason} />
+                )}
             </div>
             {c.last_reply_error && (
               <div className={lastReplyPermanent ? 'text-amber-700' : 'text-red-600'}>
@@ -2157,6 +2225,16 @@ function DocsFeedbackCommentRow({
                               Hard bounce
                             </span>
                           )}
+                          {/* Render a distinct badge for any *non-hard-bounce*
+                              skip reason (suppression, manual cancel, recipient
+                              unsubscribed, …). Unknown future reasons fall
+                              through to the generic "Auto-retry skipped" pill
+                              from describeRetrySkippedReason so the row never
+                              breaks if the server starts writing a new value
+                              before the client knows about it. */}
+                          {!isHardBounce(r) && r.retry_skipped_reason && (
+                            <RetrySkippedBadge reason={r.retry_skipped_reason} size="xs" />
+                          )}
                         </span>
                       )
                       : <span className="text-green-700">· delivered</span>}
@@ -2200,6 +2278,9 @@ function DocsFeedbackCommentRow({
                                   >
                                     Hard bounce
                                   </span>
+                                )}
+                                {!isHardBounce(retry) && retry.retry_skipped_reason && (
+                                  <RetrySkippedBadge reason={retry.retry_skipped_reason} size="xs" />
                                 )}
                               </span>
                             )
@@ -2460,13 +2541,21 @@ function SupportInboxTab() {
                       <div className="font-mono text-xs">{t.id}</div>
                       {t.email_error && (
                         <div
-                          className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                          className="text-xs text-red-600 mt-1 flex items-center gap-1 flex-wrap"
                           title={t.email_error}
                         >
                           <AlertCircle className="h-3 w-3" />
                           {isHardBounce(t)
                             ? 'email failed (hard bounce)'
                             : 'email failed'}
+                          {/* Surface non-hard-bounce skip reasons (suppression,
+                              manual cancel, unsubscribe, …) as a distinct pill
+                              so ops can triage from the row without expanding
+                              the ticket. Unknown reasons fall through to the
+                              generic "Auto-retry skipped" badge. */}
+                          {!isHardBounce(t) && t.retry_skipped_reason && (
+                            <RetrySkippedBadge reason={t.retry_skipped_reason} size="xs" />
+                          )}
                         </div>
                       )}
                     </td>
@@ -2751,6 +2840,11 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
   // failed replies in the same thread can each have their own retry button.
   const [retryingReplyId, setRetryingReplyId] = useState<number | null>(null);
   const [retryErrors, setRetryErrors] = useState<Record<number, string>>({});
+  // Tracks which reply (if any) is currently being marked as "stop auto-
+  // retrying" so we can disable the button + show a spinning indicator.
+  // Errors from that endpoint are surfaced inline next to the row.
+  const [cancellingReplyId, setCancellingReplyId] = useState<number | null>(null);
+  const [cancelErrors, setCancelErrors] = useState<Record<number, string>>({});
   // Per-reply cooldown timestamps (ms) until the corresponding Retry button
   // is allowed to fire again. Populated from `retry_after_seconds` on a 429
   // and from `retry_cooldown_seconds` on a successful retry, so admins see
@@ -2822,6 +2916,43 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
     },
   });
 
+  // Manual "Stop auto-retries" — flips `retry_skipped_reason` to
+  // `'manual_cancel'` on the server so the SupportReplyRetryScheduler will
+  // skip this reply on its next sweep. Useful when ops has already replied
+  // through another channel and doesn't want the customer to receive another
+  // automated retry. The server returns the updated row so we can
+  // invalidate the same caches as a successful retry.
+  const cancelRetries = useMutation({
+    mutationFn: (replyId: number) =>
+      api.post<{ success: boolean; reply: SupportReply }>(
+        `/support/tickets/${ticket.id}/replies/${replyId}/cancel-retries`,
+        {},
+      ),
+    onMutate: (replyId) => {
+      setCancellingReplyId(replyId);
+      setCancelErrors((prev) => {
+        if (!(replyId in prev)) return prev;
+        const next = { ...prev };
+        delete next[replyId];
+        return next;
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-stats'] });
+    },
+    onError: (err, replyId) => {
+      setCancelErrors((prev) => ({
+        ...prev,
+        [replyId]: err instanceof Error ? err.message : 'Cancel failed',
+      }));
+    },
+    onSettled: () => {
+      setCancellingReplyId(null);
+    },
+  });
+
   // Drive the per-row "Retry available in Xs" countdown by ticking once a
   // second while at least one reply still has time left on its cooldown.
   const nowMs = useCountdownTick(Object.values(retryCooldownByReply));
@@ -2856,8 +2987,8 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
           </div>
         )}
         {ticket.email_error && (
-          <div className="text-xs text-red-600">
-            Initial email delivery error: {ticket.email_error}
+          <div className="text-xs text-red-600 flex items-center gap-1 flex-wrap">
+            <span>Initial email delivery error: {ticket.email_error}</span>
             {isHardBounce(ticket) && (
               <span
                 className="ml-1 px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
@@ -2865,6 +2996,12 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
               >
                 Hard bounce — won&rsquo;t auto-retry
               </span>
+            )}
+            {/* Non-hard-bounce skip reasons (suppression, manual cancel,
+                unsubscribed, future) get the descriptive badge so the detail
+                view explains why the initial routed-send won't be re-attempted. */}
+            {!isHardBounce(ticket) && ticket.retry_skipped_reason && (
+              <RetrySkippedBadge reason={ticket.retry_skipped_reason} variant="long" />
             )}
           </div>
         )}
@@ -2903,6 +3040,17 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 isOutbound &&
                 !!r.email_error &&
                 (r.permanent_failure === true || isHardBounce(r));
+              // Any non-hard-bounce skip reason (manual cancel, suppression,
+              // unsubscribed, …) — surface it as its own pill alongside the
+              // generic Failed badge so ops sees *why* further auto-retries
+              // were turned off without having to read the SMTP error string.
+              const otherSkipDescriptor =
+                isOutbound &&
+                !!r.email_error &&
+                !isPermanentFailure &&
+                r.retry_skipped_reason
+                  ? describeRetrySkippedReason(r.retry_skipped_reason)
+                  : null;
               let badge: { label: string; className: string; title: string } | null = null;
               if (isOutbound) {
                 if (r.email_error) {
@@ -2940,8 +3088,23 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
               // Suppress the retry button for hard bounces: re-sending to a
               // recipient the server has explicitly rejected only burns
               // sender reputation (server enforces the same gate via 409).
+              // We allow manual retry for the other skip reasons (suppression
+              // / manual cancel / unsubscribe) on purpose — admins still need
+              // an escape hatch in case the suppression entry was wrong, the
+              // cancel was a mistake, or the unsubscribe was for a different
+              // address. The server returns 409 if it disagrees, so even a
+              // mis-click can't actually re-send to a hard-bounced recipient.
               const canRetry =
                 isOutbound && !!r.email_error && !isPermanentFailure && !!ticket.user_email;
+              // Show the "Stop auto-retries" button only when the row is
+              // currently failing AND hasn't already been skipped by some
+              // other path (hard bounce / manual cancel / etc.). Hard bounces
+              // already leave the auto-retry pool on their own.
+              const canCancelRetries =
+                isOutbound &&
+                !!r.email_error &&
+                !isPermanentFailure &&
+                !r.retry_skipped_reason;
               const isRetrying = retryingReplyId === r.id && retryReply.isPending;
               const retryError = retryErrors[r.id];
               const cooldownUntil = retryCooldownByReply[r.id] ?? 0;
@@ -2977,6 +3140,15 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           {badge.label}
                         </span>
                       )}
+                      {/* Distinct skip-reason pill (manual cancel, suppression,
+                          unsubscribed, …) — keeps the existing "Failed" / "Permanent
+                          failure" semantics intact while explaining *why* further
+                          auto-retries are off. Hard bounces are intentionally
+                          excluded because the "Permanent failure" badge above
+                          already conveys that. */}
+                      {otherSkipDescriptor && (
+                        <RetrySkippedBadge reason={r.retry_skipped_reason!} />
+                      )}
                       {canRetry && (
                         <button
                           type="button"
@@ -2991,6 +3163,17 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                         >
                           <RotateCw className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`} />
                           {retryLabel}
+                        </button>
+                      )}
+                      {canCancelRetries && (
+                        <button
+                          type="button"
+                          onClick={() => cancelRetries.mutate(r.id)}
+                          disabled={cancellingReplyId === r.id && cancelRetries.isPending}
+                          title="Stop the background scheduler from auto-retrying this reply. Use after you've already replied to the customer through another channel."
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-surface text-muted text-[11px] font-medium hover:bg-surface-secondary disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          Stop auto-retries
                         </button>
                       )}
                     </span>
@@ -3018,6 +3201,11 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   )}
                   {retryError && (
                     <div className="text-xs text-red-600 mt-1">Retry failed: {retryError}</div>
+                  )}
+                  {cancelErrors[r.id] && (
+                    <div className="text-xs text-red-600 mt-1">
+                      Couldn&rsquo;t stop auto-retries: {cancelErrors[r.id]}
+                    </div>
                   )}
                 </div>
               );

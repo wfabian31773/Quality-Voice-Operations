@@ -4,9 +4,23 @@ import request from 'supertest';
 
 vi.mock('../../platform/db', () => {
   const queryMock = vi.fn();
+  // The manual /retry endpoint now runs a suppression / unsubscribe pre-
+  // check before sendEmail and may auto-add a hard-bounced address to the
+  // suppression list afterwards. Both are orthogonal to the contract this
+  // file tests, so the wrapper short-circuits them with a "no match"
+  // answer that never reaches `queryMock.mock.calls` — preserving every
+  // index/count assertion below.
+  const SUPPRESSION_TABLE_RE = /support_email_(unsubscribes|suppressions)/i;
+  const wrappedQuery = (sql: unknown, ...rest: unknown[]) => {
+    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    if (SUPPRESSION_TABLE_RE.test(sqlText)) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    return (queryMock as (...a: unknown[]) => unknown)(sql, ...rest);
+  };
   return {
     __queryMock: queryMock,
-    getPlatformPool: () => ({ query: queryMock }),
+    getPlatformPool: () => ({ query: wrappedQuery }),
   };
 });
 

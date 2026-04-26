@@ -5,6 +5,10 @@ import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
 import {
+  addSupportEmailSuppression,
+  checkSupportEmailSkip,
+} from '../../../platform/email/SupportEmailSuppression';
+import {
   isPermanentSmtpError,
   isReplyPermanentFailure,
 } from '../../../platform/email/smtpErrorClass';
@@ -641,20 +645,61 @@ async function deliverDocsFeedbackReply(input: {
     body,
   });
 
-  const result = await sendEmail({
-    to: comment.reply_email,
-    subject,
-    html,
-    text,
-  });
+  // Suppression / unsubscribe pre-check. If the recipient is on either list
+  // (driven by prior hard bounces or an explicit opt-out) skip the actual
+  // sendEmail call and persist the reply with the matching skip reason
+  // instead. The "result" we synthesise below carries the same shape as a
+  // real EmailResult so the rest of the function can stay unchanged. This
+  // means the row still gets logged (so ops sees the attempt), but the
+  // network call never happens and the suppression list isn't undermined
+  // by re-bouncing the same address.
+  const skipDecision = await checkSupportEmailSkip(comment.reply_email);
+  let result: EmailResult;
+  let synthesisedSkipReason: string | null = null;
+  if (skipDecision.skip && skipDecision.reason) {
+    result = {
+      success: false,
+      error: skipDecision.reason === 'recipient_unsubscribed'
+        ? 'recipient unsubscribed — send skipped'
+        : 'recipient on suppression list — send skipped',
+      permanent: true,
+    };
+    synthesisedSkipReason = skipDecision.reason;
+    logger.info('Docs feedback reply send skipped — recipient on suppression / unsubscribe list', {
+      feedback_id: comment.id,
+      reason: skipDecision.reason,
+      email_lower: skipDecision.emailLower,
+    });
+  } else {
+    result = await sendEmail({
+      to: comment.reply_email,
+      subject,
+      html,
+      text,
+    });
+  }
 
   // Classify hard bounces at write time so the admin UI can drive the
   // "Hard bounce — won't auto-retry" badge from the persisted column rather
-  // than re-running the SMTP classifier on every render.
+  // than re-running the SMTP classifier on every render. Suppression /
+  // unsubscribe skips win over the SMTP classifier — they're already a
+  // precise reason; we shouldn't downgrade them to permanent_smtp_failure.
   const replyErr = result.success ? null : (result.error ?? 'unknown');
   const replyPermanent =
     !result.success && (result.permanent === true || isPermanentSmtpError(replyErr));
-  const replySkipReason = replyPermanent ? 'permanent_smtp_failure' : null;
+  const replySkipReason = synthesisedSkipReason
+    ?? (replyPermanent ? 'permanent_smtp_failure' : null);
+
+  // If the live send hard-bounced, add the address to the suppression list
+  // so future replies to other comments from the same recipient short-
+  // circuit on the cheap pre-check above instead of re-bouncing.
+  if (!synthesisedSkipReason && replyPermanent && comment.reply_email) {
+    addSupportEmailSuppression(comment.reply_email, {
+      reason: 'permanent_smtp_failure',
+      source: 'docs_feedback_reply',
+      lastError: replyErr,
+    }).catch(() => { /* logged inside helper */ });
+  }
   try {
     await pool.query(
       `INSERT INTO docs_feedback_replies
@@ -1559,21 +1604,58 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
     body,
   });
 
-  const result = await sendEmail({
-    to: ticket.user_email,
-    subject,
-    html,
-    text,
-    replyTo: buildReplyToAddress(token),
-    headers: { 'X-QVO-Ticket-Id': ticket.id },
-  });
+  // Suppression / unsubscribe pre-check — see deliverDocsFeedbackReply for
+  // the full rationale. We synthesise a permanent EmailResult on a hit so
+  // the rest of this handler stays the same shape; the row is still logged
+  // (so the admin sees the attempt) but no SMTP packet leaves the box.
+  const sendSkipDecision = await checkSupportEmailSkip(ticket.user_email);
+  let result: EmailResult;
+  let synthesisedSendSkipReason: string | null = null;
+  if (sendSkipDecision.skip && sendSkipDecision.reason) {
+    result = {
+      success: false,
+      error: sendSkipDecision.reason === 'recipient_unsubscribed'
+        ? 'recipient unsubscribed — send skipped'
+        : 'recipient on suppression list — send skipped',
+      permanent: true,
+    };
+    synthesisedSendSkipReason = sendSkipDecision.reason;
+    logger.info('Support reply send skipped — recipient on suppression / unsubscribe list', {
+      ticket_id: id,
+      reason: sendSkipDecision.reason,
+      email_lower: sendSkipDecision.emailLower,
+    });
+  } else {
+    result = await sendEmail({
+      to: ticket.user_email,
+      subject,
+      html,
+      text,
+      replyTo: buildReplyToAddress(token),
+      headers: { 'X-QVO-Ticket-Id': ticket.id },
+    });
+  }
 
   // Classify hard bounces at write time so the admin UI's badge is driven
   // by the persisted column, not by re-classifying email_error client-side.
+  // Suppression / unsubscribe wins over the classifier so we keep the more
+  // specific reason that drove the skip in the first place.
   const sendErr = result.success ? null : (result.error ?? 'unknown');
   const sendPermanent =
     !result.success && (result.permanent === true || isPermanentSmtpError(sendErr));
-  const sendSkipReason = sendPermanent ? 'permanent_smtp_failure' : null;
+  const sendSkipReason = synthesisedSendSkipReason
+    ?? (sendPermanent ? 'permanent_smtp_failure' : null);
+
+  // Auto-suppress on a real hard bounce so the next ticket reply to the same
+  // address short-circuits on the cheap pre-check above. Skipped sends
+  // already came from the list, so they don't re-add themselves.
+  if (!synthesisedSendSkipReason && sendPermanent && ticket.user_email) {
+    addSupportEmailSuppression(ticket.user_email, {
+      reason: 'permanent_smtp_failure',
+      source: 'support_ticket_reply',
+      lastError: sendErr,
+    }).catch(() => { /* logged inside helper */ });
+  }
 
   let replyRow: unknown = null;
   try {
@@ -1823,14 +1905,38 @@ router.post(
       body: reply.body,
     });
 
-    const result = await sendEmail({
-      to: ticket.user_email,
-      subject,
-      html,
-      text,
-      replyTo: buildReplyToAddress(token),
-      headers: { 'X-QVO-Ticket-Id': ticket.id },
-    });
+    // Suppression / unsubscribe pre-check. If the address has landed on
+    // either list since the original send, skip the SMTP call and persist
+    // the matching skip reason. Same EmailResult-shape trick as the other
+    // send sites so the rest of this handler doesn't change.
+    const retrySkipDecision = await checkSupportEmailSkip(ticket.user_email);
+    let result: EmailResult;
+    let synthesisedRetrySkipReason: string | null = null;
+    if (retrySkipDecision.skip && retrySkipDecision.reason) {
+      result = {
+        success: false,
+        error: retrySkipDecision.reason === 'recipient_unsubscribed'
+          ? 'recipient unsubscribed — retry skipped'
+          : 'recipient on suppression list — retry skipped',
+        permanent: true,
+      };
+      synthesisedRetrySkipReason = retrySkipDecision.reason;
+      logger.info('Manual support reply retry skipped — recipient on suppression / unsubscribe list', {
+        ticket_id: id,
+        reply_id: replyIdNum,
+        reason: retrySkipDecision.reason,
+        email_lower: retrySkipDecision.emailLower,
+      });
+    } else {
+      result = await sendEmail({
+        to: ticket.user_email,
+        subject,
+        html,
+        text,
+        replyTo: buildReplyToAddress(token),
+        headers: { 'X-QVO-Ticket-Id': ticket.id },
+      });
+    }
 
     // The UPDATE bumps retry_count/last_retry_at in the same statement that
     // records the new delivery state. Both the manual /retry path and the
@@ -1839,12 +1945,25 @@ router.post(
     // Classify hard bounces here so the persisted column drives the badge in
     // the admin UI without needing to re-run the SMTP classifier client-side.
     // On a successful retry we clear any prior reason so the badge disappears.
+    // Suppression / unsubscribe wins over the classifier so we don't downgrade
+    // a precise list-driven reason to the generic permanent-failure label.
     const retryErr = result.success ? null : (result.error ?? 'unknown');
     const retryPermanent =
       !result.success && (result.permanent === true || isPermanentSmtpError(retryErr));
     const retrySkipReason = result.success
       ? null
-      : (retryPermanent ? 'permanent_smtp_failure' : reply.retry_skipped_reason);
+      : (synthesisedRetrySkipReason
+        ?? (retryPermanent ? 'permanent_smtp_failure' : reply.retry_skipped_reason));
+
+    // Real hard bounce ⇒ add to the suppression list so future replies short-
+    // circuit. Skipped sends already came from the list and don't re-add.
+    if (!synthesisedRetrySkipReason && retryPermanent && ticket.user_email) {
+      addSupportEmailSuppression(ticket.user_email, {
+        reason: 'permanent_smtp_failure',
+        source: 'support_ticket_reply_retry',
+        lastError: retryErr,
+      }).catch(() => { /* logged inside helper */ });
+    }
 
     let updatedRow: { retry_count?: number | null } & Record<string, unknown> = {};
     let newRetryCount = 0;
@@ -1911,6 +2030,133 @@ router.post(
       reply: updatedRow,
       retry_cooldown_seconds: getSupportReplyRetryCooldownSeconds(),
     });
+  },
+);
+
+// ----- Manual "stop auto-retries" for a failed outbound reply -----
+//
+// Flips `retry_skipped_reason` to `'manual_cancel'` and parks `retry_count`
+// at REPLY_DELIVERY_ALERT_THRESHOLD so the SupportReplyRetryScheduler skips
+// the row on its next sweep. Use case: ops has already replied to the
+// customer through another channel (in-app, phone, …) and doesn't want the
+// background job to keep firing the original SMTP send.
+//
+// Differences vs. the hard-bounce skip path:
+//   - This is opt-in by an admin click, never inferred from an SMTP code.
+//   - It does NOT raise a delivery-failure ops alert (the admin already
+//     knows; the alert would just spam the on-call channel).
+//   - It is reversible in the strict sense that calling /retry afterwards
+//     will re-attempt the send and (on success) clear the skip reason via
+//     the same RETURNING-driven update the retry path uses.
+//
+// Idempotent: if the row already has any non-null retry_skipped_reason we
+// short-circuit with the current state instead of clobbering a more
+// specific reason (e.g. permanent_smtp_failure stays put).
+router.post(
+  '/support/tickets/:id/replies/:replyId/cancel-retries',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { id, replyId } = req.params;
+    if (!/^\d+$/.test(replyId)) {
+      res.status(400).json({ error: 'Invalid replyId' });
+      return;
+    }
+    const replyIdNum = parseInt(replyId, 10);
+    if (!Number.isFinite(replyIdNum) || replyIdNum <= 0) {
+      res.status(400).json({ error: 'Invalid replyId' });
+      return;
+    }
+
+    const pool = getPlatformPool();
+
+    let reply: {
+      id: number;
+      ticket_id: string;
+      direction: string;
+      email_error: string | null;
+      retry_skipped_reason: string | null;
+      retry_count: number | null;
+    };
+    try {
+      const r = await pool.query<typeof reply>(
+        `SELECT id, ticket_id, direction, email_error, retry_skipped_reason, retry_count
+         FROM support_ticket_replies
+         WHERE id = $1 AND ticket_id = $2
+         LIMIT 1`,
+        [replyIdNum, id],
+      );
+      if (r.rowCount === 0) {
+        res.status(404).json({ error: 'Reply not found' });
+        return;
+      }
+      reply = r.rows[0];
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load reply', detail: String(err) });
+      return;
+    }
+
+    if (reply.direction !== 'outbound') {
+      res.status(400).json({ error: 'Only outbound replies can be cancelled' });
+      return;
+    }
+    if (!reply.email_error) {
+      res.status(409).json({ error: 'Reply did not fail to send — nothing to cancel' });
+      return;
+    }
+    if (reply.retry_skipped_reason) {
+      // Already skipped — surface the existing state without overwriting it
+      // (a hard-bounce row should keep its `permanent_smtp_failure` reason,
+      // not get downgraded to `manual_cancel`).
+      res.json({ success: true, reply, already_skipped: true });
+      return;
+    }
+
+    const targetRetryCount = REPLY_DELIVERY_ALERT_THRESHOLD;
+    let updatedRow: Record<string, unknown> = {};
+    try {
+      const upd = await pool.query<Record<string, unknown>>(
+        `UPDATE support_ticket_replies
+         SET retry_skipped_reason = 'manual_cancel',
+             retry_count = GREATEST(retry_count, $2),
+             last_retry_at = NOW()
+         WHERE id = $1 AND retry_skipped_reason IS NULL
+         RETURNING id, ticket_id, direction, author_user_id, author_email, body,
+                   email_message_id, email_error, retry_skipped_reason,
+                   retry_count, last_retry_at, source, created_at`,
+        [replyIdNum, targetRetryCount],
+      );
+      if (upd.rowCount === 0) {
+        // Lost a race with another admin (or the scheduler) — re-read and
+        // return the now-current row instead of pretending we wrote it.
+        const r2 = await pool.query<Record<string, unknown>>(
+          `SELECT id, ticket_id, direction, author_user_id, author_email, body,
+                  email_message_id, email_error, retry_skipped_reason,
+                  retry_count, last_retry_at, source, created_at
+           FROM support_ticket_replies WHERE id = $1 LIMIT 1`,
+          [replyIdNum],
+        );
+        updatedRow = r2.rows[0] ?? {};
+        res.json({ success: true, reply: updatedRow, already_skipped: true });
+        return;
+      }
+      updatedRow = upd.rows[0];
+      await pool.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [id]);
+    } catch (err) {
+      logger.error('Failed to cancel auto-retries for support reply', {
+        ticketId: id, replyId: replyIdNum, error: String(err),
+      });
+      res.status(500).json({ error: 'Failed to cancel auto-retries', detail: String(err) });
+      return;
+    }
+
+    logger.info('Support reply auto-retries manually cancelled', {
+      ticket_id: id,
+      reply_id: replyIdNum,
+      by: req.user?.email,
+    });
+
+    res.json({ success: true, reply: updatedRow });
   },
 );
 

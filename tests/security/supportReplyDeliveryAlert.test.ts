@@ -118,9 +118,23 @@ describe('PlatformAdmin SupportInboxTab — calls out reply-level failures', () 
 
 vi.mock('../../platform/db', () => {
   const queryMock = vi.fn();
+  // Suppression / unsubscribe pre-checks added to the scheduler + send paths
+  // run on every reply but are orthogonal to the contract this file tests.
+  // Wrap the mock so those queries are answered with a "no match" directly
+  // and never enter `queryMock.mock.calls` — that keeps the existing
+  // index/count assertions in this file accurate to the scheduler queries
+  // the tests actually care about.
+  const SUPPRESSION_TABLE_RE = /support_email_(unsubscribes|suppressions)/i;
+  const wrappedQuery = (sql: unknown, ...rest: unknown[]) => {
+    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    if (SUPPRESSION_TABLE_RE.test(sqlText)) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    return (queryMock as (...a: unknown[]) => unknown)(sql, ...rest);
+  };
   return {
     __queryMock: queryMock,
-    getPlatformPool: () => ({ query: queryMock }),
+    getPlatformPool: () => ({ query: wrappedQuery }),
   };
 });
 

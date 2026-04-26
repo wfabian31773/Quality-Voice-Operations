@@ -14,6 +14,11 @@ import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { isPermanentSmtpError, isReplyPermanentFailure } from '../email/smtpErrorClass';
 import {
+  addSupportEmailSuppression,
+  checkSupportEmailSkip,
+  type SupportEmailSkipReason,
+} from '../email/SupportEmailSuppression';
+import {
   buildReplyToAddress,
   generateInboundToken,
   renderOutboundTicketReplyEmail,
@@ -132,10 +137,44 @@ async function claimReplyForRetry(reply: FailedOutboundReply): Promise<boolean> 
 }
 
 /**
+ * Atomically jump retry_count to MAX and stamp `retry_skipped_reason` for a
+ * non-hard-bounce skip — currently `'suppression_list'` (the recipient is on
+ * the address-scoped suppression table, usually because of a previous hard
+ * bounce) or `'recipient_unsubscribed'` (the recipient explicitly opted out).
+ *
+ * Mirrors the conditional-UPDATE shape of `markReplyPermanentlyFailed` so we
+ * can't race a concurrent worker. Returns true when this worker actually
+ * made the transition. We deliberately do NOT raise the delivery-failure
+ * ops alert: the address is already known-bad / opted-out, the human ops
+ * team doesn't need a page about it. The badge in PlatformAdmin is enough.
+ */
+async function markReplySkippedByList(
+  reply: FailedOutboundReply,
+  reason: SupportEmailSkipReason,
+): Promise<boolean> {
+  const pool = getPlatformPool();
+  const r = await pool.query<{ id: number }>(
+    `UPDATE support_ticket_replies
+     SET retry_count = $3,
+         last_retry_at = NOW(),
+         retry_skipped_reason = $4
+     WHERE id = $1
+       AND direction = 'outbound'
+       AND email_error IS NOT NULL
+       AND retry_count = $2
+       AND retry_skipped_reason IS NULL
+     RETURNING id`,
+    [reply.reply_id, reply.retry_count ?? 0, MAX_RETRY_ATTEMPTS, reason],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+/**
  * Atomically jump retry_count straight to MAX_RETRY_ATTEMPTS for a reply we've
- * decided is permanently undeliverable. Same conditional-UPDATE shape as the
- * regular claim so we don't race a concurrent worker. Returns true when this
- * worker actually made the transition (so we know whether to fire the alert).
+ * decided is permanently undeliverable (hard SMTP bounce). Same conditional-
+ * UPDATE shape as the regular claim so we don't race a concurrent worker.
+ * Returns true when this worker actually made the transition (so the caller
+ * knows whether to fire the persistent-failure ops alert).
  */
 async function markReplyPermanentlyFailed(reply: FailedOutboundReply): Promise<boolean> {
   const pool = getPlatformPool();
@@ -323,13 +362,53 @@ export async function runSupportReplyRetryCycle(): Promise<RetryCycleResult> {
   let permanentSkipped = 0;
   for (const reply of candidates) {
     try {
-      // Pre-check: if the prior failure was a hard SMTP error (5xx, address
+      // Pre-check #1: address-scoped suppression / unsubscribe lists. These
+      // cover the long tail beyond a single hard bounce — a recipient who
+      // bounced on one ticket should not have OTHER tickets to the same
+      // address keep retrying, and a recipient who unsubscribed must never
+      // be retried regardless of which ticket the row lives on. Stamp the
+      // matching `retry_skipped_reason` so the admin UI badge explains the
+      // skip and the row leaves the auto-retry pool. Done BEFORE the
+      // hard-bounce check so an unsubscribed recipient gets the precise
+      // reason instead of the generic permanent-failure label.
+      const skipDecision = await checkSupportEmailSkip(reply.user_email);
+      if (skipDecision.skip && skipDecision.reason) {
+        const markedByList = await markReplySkippedByList(reply, skipDecision.reason);
+        if (!markedByList) {
+          logger.debug('Support reply skip-by-list lost claim', {
+            reply_id: reply.reply_id,
+            ticket_id: reply.ticket_id,
+            reason: skipDecision.reason,
+          });
+          skipped += 1;
+          continue;
+        }
+        logger.info('Skipped auto-retry — recipient on suppression / unsubscribe list', {
+          reply_id: reply.reply_id,
+          ticket_id: reply.ticket_id,
+          reason: skipDecision.reason,
+          email_lower: skipDecision.emailLower,
+        });
+        permanentSkipped += 1;
+        continue;
+      }
+
+      // Pre-check #2: if the prior failure was a hard SMTP error (5xx, address
       // rejected, mailbox full, …) sending again will only burn sender
       // reputation and likely get throttled by the receiving server. Mark
       // the row as exhausted and move on so a human picks it up. We still
       // raise the ops alert because this is the threshold-cross event for
       // this reply.
       if (isReplyPermanentFailure(reply)) {
+        // Add the address to the suppression list so OTHER tickets / replies
+        // to the same recipient short-circuit on the cheap pre-check above
+        // before going through the full classifier path. Best-effort — a
+        // failed insert just means the next bounce will re-add it.
+        addSupportEmailSuppression(reply.user_email, {
+          reason: 'permanent_smtp_failure',
+          source: 'support_reply_retry_scheduler',
+          lastError: reply.email_error,
+        }).catch(() => { /* logged inside helper */ });
         const marked = await markReplyPermanentlyFailed(reply);
         if (!marked) {
           // Concurrent worker already advanced this row — nothing to do.
