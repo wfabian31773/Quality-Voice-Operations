@@ -33,13 +33,13 @@ describe('docs feedback reply retry-chain migration', () => {
 describe('docs feedback reply retry-chain backend', () => {
   it('persists retry_of when inserting a reply row', () => {
     expect(supportFile).toMatch(
-      /INSERT INTO docs_feedback_replies\s*\n\s*\(feedback_id, sent_by, to_email, subject, body, email_message_id, email_error, retry_of\)/,
+      /INSERT INTO docs_feedback_replies\s*\n\s*\(feedback_id, sent_by, to_email, subject, body,\s*\n\s*email_message_id, email_error, retry_skipped_reason, retry_of\)/,
     );
   });
 
   it('returns retry_of from the replies list endpoint', () => {
     expect(supportFile).toMatch(
-      /SELECT id, feedback_id, sent_by, to_email, subject, body,\s*\n\s*email_message_id, email_error, retry_of, created_at\s*\n\s*FROM docs_feedback_replies/,
+      /SELECT id, feedback_id, sent_by, to_email, subject, body,\s*\n\s*email_message_id, email_error, retry_skipped_reason,\s*\n\s*retry_of, created_at\s*\n\s*FROM docs_feedback_replies/,
     );
   });
 

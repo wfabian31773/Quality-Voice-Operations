@@ -218,6 +218,7 @@ const FAILED_REPLY_ROW = {
   body: 'Sorry — still investigating.',
   email_message_id: null,
   email_error: 'connection refused',
+  retry_skipped_reason: null,
   retry_count: 2, // next failed attempt will land on retry_count = 3 (threshold)
 };
 

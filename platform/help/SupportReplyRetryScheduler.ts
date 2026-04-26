@@ -139,10 +139,15 @@ async function claimReplyForRetry(reply: FailedOutboundReply): Promise<boolean> 
  */
 async function markReplyPermanentlyFailed(reply: FailedOutboundReply): Promise<boolean> {
   const pool = getPlatformPool();
+  // Record `retry_skipped_reason = 'permanent_smtp_failure'` alongside the
+  // retry-count bump so the admin UI can render the "Hard bounce — won't
+  // auto-retry" badge straight from authoritative server state without
+  // re-running the SMTP classifier on the client.
   const r = await pool.query<{ id: number }>(
     `UPDATE support_ticket_replies
      SET retry_count = $3,
-         last_retry_at = NOW()
+         last_retry_at = NOW(),
+         retry_skipped_reason = 'permanent_smtp_failure'
      WHERE id = $1
        AND direction = 'outbound'
        AND email_error IS NOT NULL
@@ -195,11 +200,15 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
       // Hard failure: record the outcome AND bump retry_count to MAX so the
       // next cycle leaves the row alone for a human to look at. Folded into
       // a single UPDATE so the row is consistent if either statement fails.
+      // We also stamp `retry_skipped_reason = 'permanent_smtp_failure'` here
+      // so the admin UI's hard-bounce badge is driven by authoritative
+      // server state instead of re-running the SMTP classifier client-side.
       await pool.query(
         `UPDATE support_ticket_replies
          SET email_message_id = $2,
              email_error = $3,
-             retry_count = $4
+             retry_count = $4,
+             retry_skipped_reason = 'permanent_smtp_failure'
          WHERE id = $1`,
         [reply.reply_id, result.messageId ?? null, newError, MAX_RETRY_ATTEMPTS],
       );

@@ -62,3 +62,24 @@ export function isPermanentSmtpError(error: string | null | undefined): boolean 
 
   return PERMANENT_KEYWORDS.some((kw) => e.includes(kw));
 }
+
+/**
+ * Source-of-truth check for whether a delivery row represents a hard bounce
+ * that the auto-retry scheduler has decided not to attempt again.
+ *
+ * Prefers the persisted `retry_skipped_reason` written by the server (set to
+ * `'permanent_smtp_failure'` for 5xx / unambiguous bounce keywords) so a row
+ * keeps its "Hard bounce — won't auto-retry" badge even if the SMTP error
+ * text is later cleared, edited, or the client classifier diverges.
+ *
+ * Falls back to running `isPermanentSmtpError` against `email_error` for
+ * legacy rows written before the column existed (where it will still be NULL).
+ */
+export function isHardBounce(row: {
+  retry_skipped_reason?: string | null;
+  email_error?: string | null;
+}): boolean {
+  if (row.retry_skipped_reason === 'permanent_smtp_failure') return true;
+  if (row.retry_skipped_reason) return false;
+  return isPermanentSmtpError(row.email_error);
+}

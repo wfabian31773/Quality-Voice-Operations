@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { isPermanentSmtpError } from '../lib/smtpErrorClass';
+import { isHardBounce } from '../lib/smtpErrorClass';
 import {
   Building2, Users, PhoneCall, DollarSign, ChevronDown, ChevronRight,
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
@@ -41,6 +41,7 @@ interface DocsFeedbackComment {
   reply_count: number;
   last_reply_at?: string | null;
   last_reply_error?: string | null;
+  last_reply_retry_skipped_reason?: string | null;
   last_reply_failed?: boolean | null;
   last_reply_permanent?: boolean | null;
 }
@@ -54,6 +55,7 @@ interface DocsFeedbackReply {
   body: string;
   email_message_id: string | null;
   email_error: string | null;
+  retry_skipped_reason: string | null;
   retry_of: number | null;
   created_at: string;
 }
@@ -1877,6 +1879,10 @@ function DocsFeedbackCommentRow({
   // background scheduler will refuse to retry, so the inbox UI must too.
   const lastReplyPermanent =
     c.last_reply_permanent === true ||
+    isHardBounce({
+      retry_skipped_reason: c.last_reply_retry_skipped_reason,
+      email_error: c.last_reply_error,
+    }) ||
     (c.last_reply_permanent == null && isPermanentSmtpError(c.last_reply_error));
 
   return (
@@ -2143,7 +2149,7 @@ function DocsFeedbackCommentRow({
                       ? (
                         <span className="text-red-600 inline-flex items-center gap-1">
                           · failed: {r.email_error}
-                          {isPermanentSmtpError(r.email_error) && (
+                          {isHardBounce(r) && (
                             <span
                               className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
                               title="Permanent SMTP failure — auto-retry skipped"
@@ -2187,7 +2193,7 @@ function DocsFeedbackCommentRow({
                             ? (
                               <span className="text-red-600 inline-flex items-center gap-1">
                                 · failed: {retry.email_error}
-                                {isPermanentSmtpError(retry.email_error) && (
+                                {isHardBounce(retry) && (
                                   <span
                                     className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
                                     title="Permanent SMTP failure — auto-retry skipped"
@@ -2227,6 +2233,7 @@ interface SupportTicket {
   status: string;
   email_message_id: string | null;
   email_error: string | null;
+  retry_skipped_reason: string | null;
   created_at: string;
   updated_at: string;
   // Server-side LATERAL join: surfaces the most recent outbound admin reply's
@@ -2253,6 +2260,13 @@ interface SupportReply {
    * refuses to re-send and the row also leaves the auto-retry pool.
    */
   permanent_failure?: boolean;
+  /**
+   * Persisted skip reason written by the scheduler / write-paths when they
+   * decide not to auto-retry (currently only `'permanent_smtp_failure'`).
+   * Drives the "Hard bounce — won't auto-retry" badge directly so the UI
+   * does not depend on the client-side classifier for new rows.
+   */
+  retry_skipped_reason: string | null;
   source: string | null;
   created_at: string;
 }
@@ -2442,7 +2456,7 @@ function SupportInboxTab() {
                           title={t.email_error}
                         >
                           <AlertCircle className="h-3 w-3" />
-                          {isPermanentSmtpError(t.email_error)
+                          {isHardBounce(t)
                             ? 'email failed (hard bounce)'
                             : 'email failed'}
                         </div>
@@ -2640,7 +2654,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         {ticket.email_error && (
           <div className="text-xs text-red-600">
             Initial email delivery error: {ticket.email_error}
-            {isPermanentSmtpError(ticket.email_error) && (
+            {isHardBounce(ticket) && (
               <span
                 className="ml-1 px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
                 title="Permanent SMTP failure — auto-retry skipped"
@@ -2672,14 +2686,19 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 );
               }
               const isOutbound = r.direction === 'outbound';
-              // Server-supplied flag is the authoritative signal here — it's
-              // the same classifier the retry handler and auto-retry
-              // scheduler use to decide whether to skip the row, so the UI
-              // never disagrees with the backend. (Other places in this file
-              // still call isPermanentSmtpError() directly on
-              // last_reply_error fields where no server-computed flag is
-              // available.)
-              const isPermanentFailure = isOutbound && !!r.email_error && r.permanent_failure === true;
+              // Drive the hard-bounce signal from the authoritative server
+              // state. `permanent_failure` is the live flag the server
+              // computes per request from email_error; `retry_skipped_reason`
+              // is the persisted column the scheduler / write-paths stamp
+              // (currently `'permanent_smtp_failure'`). Either one is enough
+              // — they match for new rows and `retry_skipped_reason` keeps
+              // the badge stable across renders for older rows whose server
+              // flag may not be populated. `isHardBounce` falls back to the
+              // legacy SMTP classifier on email_error for pre-migration rows.
+              const isPermanentFailure =
+                isOutbound &&
+                !!r.email_error &&
+                (r.permanent_failure === true || isHardBounce(r));
               let badge: { label: string; className: string; title: string } | null = null;
               if (isOutbound) {
                 if (r.email_error) {
@@ -2777,7 +2796,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   {r.email_error && (
                     <div className="text-xs text-red-600 mt-1">
                       Email delivery error: {r.email_error}
-                      {replyHardBounce && (
+                      {isPermanentFailure && (
                         <div className="text-amber-700 dark:text-amber-400 mt-0.5">
                           Classified as a permanent SMTP failure — the
                           background scheduler will not auto-retry this reply.

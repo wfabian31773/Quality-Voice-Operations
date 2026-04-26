@@ -101,6 +101,10 @@ const FAILED_REPLY_ROW = {
   email_message_id: null,
   email_error: 'connection refused',
   retry_count: 0,
+  // Retry-skip reason starts null; permanent-failure paths stamp
+  // 'permanent_smtp_failure' onto it. The result UPDATE on a successful
+  // retry clears it back to null.
+  retry_skipped_reason: null,
 };
 
 const TICKET_ROW = {
@@ -162,7 +166,9 @@ describe('POST /support/tickets/:id/replies/:replyId/retry — runtime behavior'
     const updateCall = queryMock.mock.calls[2];
     expect(updateCall[0]).toMatch(/UPDATE support_ticket_replies/);
     expect(updateCall[0]).toMatch(/SET email_message_id = \$2, email_error = \$3/);
-    expect(updateCall[1]).toEqual([42, 'msg_retry_ok', null]);
+    // retry_skipped_reason is cleared on a successful retry so the badge goes away.
+    expect(updateCall[0]).toMatch(/retry_skipped_reason = \$4/);
+    expect(updateCall[1]).toEqual([42, 'msg_retry_ok', null, null]);
   });
 
   it('records the new delivery error when the retry also fails', async () => {
@@ -189,7 +195,9 @@ describe('POST /support/tickets/:id/replies/:replyId/retry — runtime behavior'
     expect(r.body.reply.email_message_id).toBe(null);
 
     const updateCall = queryMock.mock.calls[2];
-    expect(updateCall[1]).toEqual([42, null, 'still down']);
+    // Transient failure: retry_skipped_reason carries the prior row's value
+    // (null here) since we only stamp the column on permanent failures.
+    expect(updateCall[1]).toEqual([42, null, 'still down', null]);
   });
 
   it('refuses to retry an inbound reply', async () => {

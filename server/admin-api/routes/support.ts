@@ -272,13 +272,24 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
     },
   );
 
-  // Update ticket with delivery state
+  // Update ticket with delivery state. We classify hard bounces here so the
+  // admin UI can render the "Hard bounce — won't auto-retry" badge straight
+  // from the persisted `retry_skipped_reason` column instead of re-running
+  // the SMTP classifier client-side.
   if (persisted) {
+    const opsErr = opsResult.success ? null : (opsResult.error ?? 'unknown');
+    const opsPermanent = !opsResult.success && (opsResult.permanent === true || isPermanentSmtpError(opsErr));
+    const opsSkipReason = opsPermanent ? 'permanent_smtp_failure' : null;
     try {
       const pool = getPlatformPool();
       await pool.query(
-        `UPDATE support_tickets SET email_message_id = $2, email_error = $3, updated_at = NOW() WHERE id = $1`,
-        [ticketId, opsResult.messageId ?? null, opsResult.success ? null : (opsResult.error ?? 'unknown')],
+        `UPDATE support_tickets
+         SET email_message_id = $2,
+             email_error = $3,
+             retry_skipped_reason = $4,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [ticketId, opsResult.messageId ?? null, opsErr, opsSkipReason],
       );
     } catch { /* non-fatal */ }
   }
@@ -489,10 +500,11 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
               f.reply_email, f.reply_count,
               lr.created_at AS last_reply_at,
               lr.email_error AS last_reply_error,
+              lr.retry_skipped_reason AS last_reply_retry_skipped_reason,
               (lr.email_error IS NOT NULL) AS last_reply_failed
        FROM docs_feedback f
        LEFT JOIN LATERAL (
-         SELECT created_at, email_error
+         SELECT created_at, email_error, retry_skipped_reason
          FROM docs_feedback_replies
          WHERE feedback_id = f.id
          ORDER BY created_at DESC
@@ -566,7 +578,8 @@ router.get('/docs/feedback/comments/:id/replies', requireAuth, requirePlatformAd
     const pool = getPlatformPool();
     const r = await pool.query(
       `SELECT id, feedback_id, sent_by, to_email, subject, body,
-              email_message_id, email_error, retry_of, created_at
+              email_message_id, email_error, retry_skipped_reason,
+              retry_of, created_at
        FROM docs_feedback_replies
        WHERE feedback_id = $1
        ORDER BY created_at DESC`,
@@ -633,11 +646,19 @@ async function deliverDocsFeedbackReply(input: {
     text,
   });
 
+  // Classify hard bounces at write time so the admin UI can drive the
+  // "Hard bounce — won't auto-retry" badge from the persisted column rather
+  // than re-running the SMTP classifier on every render.
+  const replyErr = result.success ? null : (result.error ?? 'unknown');
+  const replyPermanent =
+    !result.success && (result.permanent === true || isPermanentSmtpError(replyErr));
+  const replySkipReason = replyPermanent ? 'permanent_smtp_failure' : null;
   try {
     await pool.query(
       `INSERT INTO docs_feedback_replies
-         (feedback_id, sent_by, to_email, subject, body, email_message_id, email_error, retry_of)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (feedback_id, sent_by, to_email, subject, body,
+          email_message_id, email_error, retry_skipped_reason, retry_of)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         comment.id,
         actor,
@@ -645,7 +666,8 @@ async function deliverDocsFeedbackReply(input: {
         subject,
         body,
         result.messageId ?? null,
-        result.success ? null : (result.error ?? 'unknown'),
+        replyErr,
+        replySkipReason,
         retryOf,
       ],
     );
@@ -986,12 +1008,13 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
       created_at: string;
       updated_at: string;
       tenant_name: string | null;
+      retry_skipped_reason: string | null;
       last_outbound_reply_error: string | null;
       last_outbound_reply_at: string | null;
     }>(
       `SELECT t.id, t.tenant_id, t.user_id, t.user_email, t.plan, t.topic, t.message,
               t.recent_errors, t.context, t.routed_to, t.status, t.email_message_id,
-              t.email_error, t.created_at, t.updated_at,
+              t.email_error, t.retry_skipped_reason, t.created_at, t.updated_at,
               tn.name AS tenant_name,
               lr.email_error AS last_outbound_reply_error,
               lr.created_at  AS last_outbound_reply_at
@@ -1304,7 +1327,8 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
       created_at: string;
     }>(
       `SELECT id, ticket_id, direction, author_user_id, author_email, body,
-              email_message_id, email_error, source, created_at
+              email_message_id, email_error, retry_skipped_reason,
+              source, created_at
        FROM support_ticket_replies
        WHERE ticket_id = $1
        ORDER BY created_at ASC`,
@@ -1391,22 +1415,32 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
     headers: { 'X-QVO-Ticket-Id': ticket.id },
   });
 
+  // Classify hard bounces at write time so the admin UI's badge is driven
+  // by the persisted column, not by re-classifying email_error client-side.
+  const sendErr = result.success ? null : (result.error ?? 'unknown');
+  const sendPermanent =
+    !result.success && (result.permanent === true || isPermanentSmtpError(sendErr));
+  const sendSkipReason = sendPermanent ? 'permanent_smtp_failure' : null;
+
   let replyRow: unknown = null;
   try {
     const pool = getPlatformPool();
     const ins = await pool.query(
       `INSERT INTO support_ticket_replies
-         (ticket_id, direction, author_user_id, author_email, body, email_message_id, email_error, source)
-       VALUES ($1, 'outbound', $2, $3, $4, $5, $6, 'admin_console')
+         (ticket_id, direction, author_user_id, author_email, body,
+          email_message_id, email_error, retry_skipped_reason, source)
+       VALUES ($1, 'outbound', $2, $3, $4, $5, $6, $7, 'admin_console')
        RETURNING id, ticket_id, direction, author_user_id, author_email, body,
-                 email_message_id, email_error, source, created_at`,
+                 email_message_id, email_error, retry_skipped_reason,
+                 source, created_at`,
       [
         id,
         user.userId,
         user.email,
         body,
         result.messageId ?? null,
-        result.success ? null : (result.error ?? 'unknown'),
+        sendErr,
+        sendSkipReason,
       ],
     );
     replyRow = ins.rows[0];
@@ -1489,11 +1523,13 @@ router.post(
       body: string;
       email_message_id: string | null;
       email_error: string | null;
+      retry_skipped_reason: string | null;
       retry_count: number | null;
     };
     try {
       const r = await pool.query<typeof reply>(
-        `SELECT id, ticket_id, direction, body, email_message_id, email_error, retry_count
+        `SELECT id, ticket_id, direction, body, email_message_id, email_error,
+                retry_skipped_reason, retry_count
          FROM support_ticket_replies
          WHERE id = $1 AND ticket_id = $2
          LIMIT 1`,
@@ -1566,7 +1602,9 @@ router.post(
           // sees retry_count already at MAX and the WHERE matches no rows.
           await pool.query(
             `UPDATE support_ticket_replies
-             SET retry_count = $2, last_retry_at = NOW()
+             SET retry_count = $2,
+                 retry_skipped_reason = 'permanent_smtp_failure',
+                 last_retry_at = NOW()
              WHERE id = $1 AND retry_count < $2`,
             [replyIdNum, targetRetryCount],
           );
@@ -1644,20 +1682,33 @@ router.post(
     // records the new delivery state. Both the manual /retry path and the
     // background SupportReplyRetryScheduler share this counter so persistent-
     // failure alerts can fire correctly regardless of who triggered the send.
+    // Classify hard bounces here so the persisted column drives the badge in
+    // the admin UI without needing to re-run the SMTP classifier client-side.
+    // On a successful retry we clear any prior reason so the badge disappears.
+    const retryErr = result.success ? null : (result.error ?? 'unknown');
+    const retryPermanent =
+      !result.success && (result.permanent === true || isPermanentSmtpError(retryErr));
+    const retrySkipReason = result.success
+      ? null
+      : (retryPermanent ? 'permanent_smtp_failure' : reply.retry_skipped_reason);
+
     let updatedRow: { retry_count?: number | null } & Record<string, unknown> = {};
     let newRetryCount = 0;
     try {
       const upd = await pool.query<{ retry_count: number } & Record<string, unknown>>(
         `UPDATE support_ticket_replies
-         SET email_message_id = $2, email_error = $3, retry_count = retry_count + 1, last_retry_at = NOW()
+         SET email_message_id = $2, email_error = $3, retry_skipped_reason = $4,
+             retry_count = retry_count + 1, last_retry_at = NOW()
          WHERE id = $1
          RETURNING id, ticket_id, direction, author_user_id, author_email, body,
-                   email_message_id, email_error, retry_count, last_retry_at,
+                   email_message_id, email_error, retry_skipped_reason,
+                   retry_count, last_retry_at,
                    source, created_at`,
         [
           replyIdNum,
           result.messageId ?? null,
-          result.success ? null : (result.error ?? 'unknown'),
+          retryErr,
+          retrySkipReason,
         ],
       );
       updatedRow = upd.rows[0] ?? {};

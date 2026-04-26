@@ -56,7 +56,9 @@ describe('support ticket reply retry — server', () => {
   it('re-sends to the original recipient via the existing SMTP path with the inbound reply-to', () => {
     const retryRouteIdx = supportFile.indexOf("'/support/tickets/:id/replies/:replyId/retry'");
     // Slice generously — the handler grew a hard-bounce skip block before
-    // the actual sendEmail() call, so 4 KB is no longer enough to reach it.
+    // the actual sendEmail() call, and the result UPDATE now also writes
+    // retry_skipped_reason, so 4 KB is no longer enough to reach the
+    // sendEmail() invocation.
     const retryRouteSlice = supportFile.slice(retryRouteIdx, retryRouteIdx + 8000);
     // sendEmail call uses ticket.user_email and buildReplyToAddress(token).
     expect(retryRouteSlice).toMatch(/sendEmail\(/);
