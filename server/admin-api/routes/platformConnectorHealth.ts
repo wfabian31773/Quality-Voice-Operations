@@ -3,6 +3,14 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { withPrivilegedClient } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import {
+  ensureFreshOAuthToken,
+  isRefreshableProvider,
+  getConnectorConfig,
+} from '../../../platform/integrations/connectors';
+import { dispatchConnectorAuthAlert } from '../../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
+import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import type { ConnectorType } from '../../../platform/integrations/connectors/types';
 
 const router = Router();
 const logger = createLogger('PLATFORM_CONNECTOR_HEALTH');
@@ -25,6 +33,7 @@ interface ConnectorHealthRow {
   authAlertSentAt: string | null;
   recoveryAlertSentAt: string | null;
   updatedAt: string | null;
+  refreshable: boolean;
 }
 
 interface RefreshFailureRow {
@@ -124,6 +133,11 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
         ? new Date(r.recovery_alert_sent_at as string).toISOString()
         : null,
       updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
+      // Single source of truth for "can the admin retry refresh?": the same
+      // helper the refresh endpoint uses to gate the request. Embedding the
+      // flag in the GET response keeps the UI from re-encoding the provider
+      // list and avoids drift when a new OAuth provider is added.
+      refreshable: isRefreshableProvider((r.provider as string) ?? ''),
     }));
 
     const summaryRow = result.summaryRows[0] ?? {};
@@ -162,5 +176,247 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
     return res.status(500).json({ error: 'Failed to query connector health' });
   }
 });
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface IntegrationLookupRow {
+  id: string;
+  tenant_id: string;
+  integration_type: string;
+  provider: string;
+  name: string | null;
+  is_enabled: boolean;
+  last_sync_status: string | null;
+  last_sync_error: string | null;
+  last_sync_error_at: Date | string | null;
+  auth_alert_sent_at: Date | string | null;
+}
+
+async function loadIntegrationForAdminAction(
+  tenantId: string,
+  integrationId: string,
+): Promise<IntegrationLookupRow | null> {
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, tenant_id, integration_type::text AS integration_type, provider, name,
+              is_enabled, last_sync_status, last_sync_error, last_sync_error_at,
+              auth_alert_sent_at
+         FROM integrations
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [integrationId, tenantId],
+    );
+    return (rows[0] as unknown as IntegrationLookupRow | undefined) ?? null;
+  });
+}
+
+/**
+ * Operator-triggered token refresh from the Platform Admin Connector Health
+ * panel. Loads the connector config (decrypts credentials) and forces a
+ * refresh exchange even when the cached `token_expires_at` says the token is
+ * still valid — the underlying provider may have already revoked it. On
+ * refresh failure the connector is marked `needs_reconnect` (via
+ * ensureFreshOAuthToken's existing failure path) and the admin sees the
+ * provider's error message in the response so they can copy it into a
+ * support thread.
+ */
+router.post(
+  '/platform/connector-health/integrations/:tenantId/:integrationId/refresh',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId, integrationId } = req.params;
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(integrationId)) {
+      return res.status(400).json({ error: 'Invalid tenantId or integrationId' });
+    }
+
+    const row = await loadIntegrationForAdminAction(tenantId, integrationId);
+    if (!row) {
+      return res.status(404).json({ error: 'Integration not found' });
+    }
+    if (!isRefreshableProvider(row.provider)) {
+      return res.status(400).json({
+        error: `Provider "${row.provider}" does not support OAuth token refresh from this panel.`,
+      });
+    }
+
+    const config = await getConnectorConfig(
+      tenantId,
+      row.integration_type as ConnectorType,
+      row.provider,
+    );
+    if (!config) {
+      return res.status(404).json({
+        error:
+          'Connector config not found or disabled. The tenant may have removed or disabled this integration.',
+      });
+    }
+
+    try {
+      await ensureFreshOAuthToken(config, { force: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('Admin-triggered token refresh failed', {
+        tenantId,
+        integrationId,
+        provider: row.provider,
+        adminUserId: req.user!.userId,
+        error: message,
+      });
+      try {
+        await writeAuditLog({
+          tenantId,
+          actorUserId: req.user!.userId,
+          actorRole: 'platform_admin',
+          action: 'connector.admin_refresh_failed',
+          resourceType: 'connector',
+          resourceId: integrationId,
+          severity: 'warning',
+          changes: { provider: row.provider, error: message.slice(0, 500) },
+          ipAddress: extractIp(req),
+        });
+      } catch {
+        // best-effort
+      }
+      return res.status(502).json({
+        ok: false,
+        error: message,
+        message: `Refresh failed: ${message.slice(0, 200)}`,
+      });
+    }
+
+    logger.info('Admin-triggered token refresh succeeded', {
+      tenantId,
+      integrationId,
+      provider: row.provider,
+      adminUserId: req.user!.userId,
+    });
+    try {
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: 'platform_admin',
+        action: 'connector.admin_refresh_succeeded',
+        resourceType: 'connector',
+        resourceId: integrationId,
+        severity: 'info',
+        changes: { provider: row.provider },
+        ipAddress: extractIp(req),
+      });
+    } catch {
+      // best-effort
+    }
+
+    return res.json({
+      ok: true,
+      provider: row.provider,
+      message: 'Token refresh succeeded.',
+    });
+  },
+);
+
+/**
+ * Operator-triggered re-issue of the connector reconnect email. Bypasses
+ * the 24h throttle so a busy customer can be nudged again, but still
+ * stamps `auth_alert_sent_at` so the next automated cycle respects the
+ * fresh window. The dispatcher returns delivery counts which we surface
+ * back to the admin so they know whether the email actually went out.
+ */
+router.post(
+  '/platform/connector-health/integrations/:tenantId/:integrationId/alert',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId, integrationId } = req.params;
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(integrationId)) {
+      return res.status(400).json({ error: 'Invalid tenantId or integrationId' });
+    }
+
+    const row = await loadIntegrationForAdminAction(tenantId, integrationId);
+    if (!row) {
+      return res.status(404).json({ error: 'Integration not found' });
+    }
+
+    const reason: 'needs_reconnect' | 'auth_error' =
+      row.last_sync_status === 'needs_reconnect' ? 'needs_reconnect' : 'auth_error';
+
+    let result;
+    try {
+      result = await dispatchConnectorAuthAlert({
+        tenantId,
+        integrationId,
+        provider: row.provider,
+        connectorType: row.integration_type,
+        errorMessage: row.last_sync_error,
+        detectedAt: row.last_sync_error_at
+          ? new Date(row.last_sync_error_at).toISOString()
+          : null,
+        reason,
+        force: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Admin-triggered reconnect alert dispatch threw', {
+        tenantId,
+        integrationId,
+        provider: row.provider,
+        adminUserId: req.user!.userId,
+        error: message,
+      });
+      return res.status(500).json({ ok: false, error: message });
+    }
+
+    try {
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: 'platform_admin',
+        action: 'connector.admin_alert_reissued',
+        resourceType: 'connector',
+        resourceId: integrationId,
+        severity: 'info',
+        changes: {
+          provider: row.provider,
+          status: result.status,
+          emailedRecipients: result.emailedRecipients,
+          reason,
+        },
+        ipAddress: extractIp(req),
+      });
+    } catch {
+      // best-effort
+    }
+
+    logger.info('Admin-triggered reconnect alert dispatched', {
+      tenantId,
+      integrationId,
+      provider: row.provider,
+      adminUserId: req.user!.userId,
+      status: result.status,
+      emailedRecipients: result.emailedRecipients,
+    });
+
+    let message: string;
+    if (result.status === 'sent' && result.emailedRecipients > 0) {
+      message = `Reconnect email sent to ${result.emailedRecipients} admin${result.emailedRecipients === 1 ? '' : 's'}.`;
+    } else if (result.status === 'sent') {
+      message = 'Reconnect alert delivered (in-app only — no admin recipients eligible for email).';
+    } else if (result.status === 'no_recipients') {
+      message = 'No tenant admin recipients are eligible for connector emails. In-app notification was still fanned out.';
+    } else if (result.status === 'skipped') {
+      message = 'Could not load integration row for dispatch (it may have been removed).';
+    } else {
+      message = `Reconnect email status: ${result.status}.`;
+    }
+
+    return res.json({
+      ok: true,
+      status: result.status,
+      emailedRecipients: result.emailedRecipients,
+      reason,
+      message,
+    });
+  },
+);
 
 export default router;

@@ -7,7 +7,7 @@ import {
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
-  AlertTriangle, ShieldAlert,
+  AlertTriangle, ShieldAlert, ExternalLink, Send,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -573,6 +573,7 @@ interface ConnectorHealthRow {
   authAlertSentAt: string | null;
   recoveryAlertSentAt: string | null;
   updatedAt: string | null;
+  refreshable?: boolean;
 }
 
 interface ConnectorRefreshFailure {
@@ -794,68 +795,183 @@ function ConnectorAttentionTable({
                 <th className="text-left px-4 py-2 font-medium text-muted">First failed</th>
                 <th className="text-left px-4 py-2 font-medium text-muted">Last error</th>
                 <th className="text-left px-4 py-2 font-medium text-muted">Alerts</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((c) => {
-                const truncated = c.lastSyncError && c.lastSyncError.length > 140
-                  ? `${c.lastSyncError.slice(0, 140)}…`
-                  : c.lastSyncError;
-                return (
-                  <tr key={c.integrationId} className="border-b border-border last:border-0 align-top">
-                    <td className="px-4 py-2 text-xs">
-                      <div className="font-medium">{c.tenantName ?? '—'}</div>
-                      {c.tenantSlug && (
-                        <div className="text-muted font-mono">{c.tenantSlug}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <div className="font-medium capitalize">{c.name ?? c.provider}</div>
-                      <div className="text-muted">
-                        <span className="capitalize">{c.connectorType}</span>
-                        {c.provider && c.provider !== c.name && (
-                          <span className="font-mono"> · {c.provider}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
-                      <span title={c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : 'never'}>
-                        {formatRelativeTime(c.lastSyncAt)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
-                      <span title={c.lastSyncErrorAt ? new Date(c.lastSyncErrorAt).toLocaleString() : 'never'}>
-                        {formatRelativeTime(c.lastSyncErrorAt)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <div
-                        className="font-mono text-red-600 dark:text-red-400 break-all max-w-[360px]"
-                        title={c.lastSyncError ?? ''}
-                      >
-                        {truncated ?? '—'}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-xs whitespace-nowrap">
-                      {c.authAlertSentAt ? (
-                        <span
-                          className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
-                          title={`Reconnect email sent ${new Date(c.authAlertSentAt).toLocaleString()}`}
-                        >
-                          <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt)}
-                        </span>
-                      ) : (
-                        <span className="text-muted">No email yet</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {rows.map((c) => (
+                <ConnectorAttentionRow key={c.integrationId} row={c} />
+              ))}
             </tbody>
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
+  const queryClient = useQueryClient();
+  const [feedback, setFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+
+  const refreshMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ ok: boolean; message?: string; error?: string }>(
+        `/platform/connector-health/integrations/${c.tenantId}/${c.integrationId}/refresh`,
+        {},
+      ),
+    onSuccess: (data) => {
+      setFeedback({ kind: 'success', message: data.message ?? 'Token refresh succeeded.' });
+      queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
+    },
+    onError: (err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      setFeedback({ kind: 'error', message: detail || 'Refresh failed.' });
+    },
+  });
+
+  const alertMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ ok: boolean; message?: string; emailedRecipients?: number; status?: string; error?: string }>(
+        `/platform/connector-health/integrations/${c.tenantId}/${c.integrationId}/alert`,
+        {},
+      ),
+    onSuccess: (data) => {
+      setFeedback({ kind: 'success', message: data.message ?? 'Reconnect email re-issued.' });
+      queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
+    },
+    onError: (err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      setFeedback({ kind: 'error', message: detail || 'Failed to re-issue reconnect email.' });
+    },
+  });
+
+  const truncated = c.lastSyncError && c.lastSyncError.length > 140
+    ? `${c.lastSyncError.slice(0, 140)}…`
+    : c.lastSyncError;
+  // Backend supplies `refreshable` (computed from the same isRefreshableProvider
+  // helper the POST /refresh endpoint uses), so the UI doesn't need its own
+  // provider list. Default to true on older payloads — the server-side
+  // endpoint will return a clean 400 for non-refreshable providers anyway.
+  const refreshable = c.refreshable ?? true;
+  const refreshing = refreshMutation.isPending;
+  const alerting = alertMutation.isPending;
+  // Tenant-scoped admin deep link: drop the platform admin straight into the
+  // affected tenant's admin view (carrying the integration id as a focus
+  // hint). We use the existing admin tenant-scoped route family
+  // (`/admin/analytics/tenants/:tenantId`) so the URL is genuinely
+  // tenant-scoped — `tenantId` and `integration` are both encoded so the
+  // landing page can highlight the failing connector. Falls back to the
+  // tenant slug as a query hint when present, useful for support breadcrumbs
+  // and link previews in chat tools.
+  const openTenantConnectorsHref =
+    `/admin/analytics/tenants/${encodeURIComponent(c.tenantId)}` +
+    `?focus=connectors&integration=${encodeURIComponent(c.integrationId)}` +
+    (c.tenantSlug ? `&slug=${encodeURIComponent(c.tenantSlug)}` : '');
+
+  return (
+    <tr className="border-b border-border last:border-0 align-top">
+      <td className="px-4 py-2 text-xs">
+        <div className="font-medium">{c.tenantName ?? '—'}</div>
+        {c.tenantSlug && (
+          <div className="text-muted font-mono">{c.tenantSlug}</div>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs">
+        <div className="font-medium capitalize">{c.name ?? c.provider}</div>
+        <div className="text-muted">
+          <span className="capitalize">{c.connectorType}</span>
+          {c.provider && c.provider !== c.name && (
+            <span className="font-mono"> · {c.provider}</span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+        <span title={c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : 'never'}>
+          {formatRelativeTime(c.lastSyncAt)}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+        <span title={c.lastSyncErrorAt ? new Date(c.lastSyncErrorAt).toLocaleString() : 'never'}>
+          {formatRelativeTime(c.lastSyncErrorAt)}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-xs">
+        <div
+          className="font-mono text-red-600 dark:text-red-400 break-all max-w-[360px]"
+          title={c.lastSyncError ?? ''}
+        >
+          {truncated ?? '—'}
+        </div>
+      </td>
+      <td className="px-4 py-2 text-xs whitespace-nowrap">
+        {c.authAlertSentAt ? (
+          <span
+            className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
+            title={`Reconnect email sent ${new Date(c.authAlertSentAt).toLocaleString()}`}
+          >
+            <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt)}
+          </span>
+        ) : (
+          <span className="text-muted">No email yet</span>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs">
+        <div className="flex flex-col gap-1.5 min-w-[220px]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <a
+              href={openTenantConnectorsHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-foreground text-xs"
+              title="Open the tenant's Connectors page in a new tab"
+            >
+              <ExternalLink className="h-3 w-3" /> Open tenant connectors
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
+                refreshMutation.mutate();
+              }}
+              disabled={refreshing || alerting || !refreshable}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-foreground text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              title={refreshable
+                ? 'Force an OAuth token refresh now'
+                : `${c.provider} does not support OAuth refresh from this panel`}
+            >
+              <RotateCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Retrying…' : 'Retry refresh'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
+                alertMutation.mutate();
+              }}
+              disabled={refreshing || alerting}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-foreground text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Re-issue the reconnect email to tenant admins (bypasses the 24h throttle)"
+            >
+              <Send className={`h-3 w-3 ${alerting ? 'animate-pulse' : ''}`} />
+              {alerting ? 'Sending…' : 'Send email'}
+            </button>
+          </div>
+          {feedback && (
+            <div
+              className={`text-xs px-2 py-1 rounded border max-w-[320px] break-words ${
+                feedback.kind === 'success'
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700/50 text-green-800 dark:text-green-200'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700/50 text-red-800 dark:text-red-200'
+              }`}
+              role="status"
+            >
+              {feedback.message}
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 

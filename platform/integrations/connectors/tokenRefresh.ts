@@ -287,6 +287,16 @@ export function isRefreshableProvider(provider: string): boolean {
 export interface EnsureFreshOAuthTokenOptions {
   /** Refresh window in milliseconds — refresh if token expires within this lead time. */
   leadMs?: number;
+  /**
+   * When true, perform the refresh exchange unconditionally — bypass the
+   * `shouldRefresh` check so callers (e.g. ops triggering "Retry refresh
+   * now" from the admin Connector Health panel) can force a token rotation
+   * even when the cached `token_expires_at` says the token is still valid.
+   * The integration must still have a refreshable provider and a stored
+   * `refresh_token`; otherwise this still throws after marking
+   * needs_reconnect.
+   */
+  force?: boolean;
 }
 
 /**
@@ -295,7 +305,8 @@ export interface EnsureFreshOAuthTokenOptions {
  * integration as `needs_reconnect` and emits an audit event, then throws.
  *
  * Pass a larger `leadMs` to proactively refresh tokens earlier (e.g. from a
- * scheduled background job).
+ * scheduled background job). Pass `force: true` to skip the expiry check
+ * entirely (e.g. operator-triggered manual retry).
  */
 export async function ensureFreshOAuthToken(
   config: ConnectorConfig,
@@ -303,7 +314,7 @@ export async function ensureFreshOAuthToken(
 ): Promise<ConnectorConfig> {
   const refresher = REFRESHERS[config.provider];
   if (!refresher) return config;
-  if (!shouldRefresh(config, options.leadMs)) return config;
+  if (!options.force && !shouldRefresh(config, options.leadMs)) return config;
 
   const refreshToken = config.credentials.refresh_token ?? '';
   if (!refreshToken) {

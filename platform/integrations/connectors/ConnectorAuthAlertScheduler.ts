@@ -167,6 +167,31 @@ async function getTenantAdmins(tenantId: string): Promise<{
   return { name, emails, userIds };
 }
 
+/**
+ * Unconditional throttle stamp used by force-issue paths (operator-triggered
+ * re-issue from the admin Connector Health panel). Skips the conditional
+ * throttle predicate so the slot is reset to NOW() even when an alert was
+ * sent inside the last 24h. Subsequent automated cycles will still respect
+ * the freshly-stamped 24h window.
+ */
+async function stampAuthAlertSlot(integrationId: string, tenantId: string): Promise<void> {
+  const pool = getPlatformPool();
+  try {
+    await pool.query(
+      `UPDATE integrations
+          SET auth_alert_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2`,
+      [integrationId, tenantId],
+    );
+  } catch (err) {
+    logger.warn('Failed to stamp auth alert slot for force re-issue', {
+      tenantId,
+      integrationId,
+      error: String(err),
+    });
+  }
+}
+
 /** Atomic 24h slot claim; true on win, false on race loss or DB error (fail-closed). */
 async function claimAuthAlertSlot(integrationId: string, tenantId: string): Promise<boolean> {
   const pool = getPlatformPool();
@@ -276,6 +301,14 @@ export interface DispatchAuthAlertParams {
    * for a once-per-24h tenant digest instead of fanning out N emails.
    */
   suppressEmail?: boolean;
+  /**
+   * When true, bypass the 24h throttle window (both the fast-path check
+   * and `claimAuthAlertSlot`). Used by operator-triggered manual re-issue
+   * from the Platform Admin Connector Health panel — busy customers
+   * sometimes miss the first nudge. The dispatcher still stamps
+   * `auth_alert_sent_at` so subsequent automated cycles remain throttled.
+   */
+  force?: boolean;
 }
 
 export interface DispatchAuthAlertResult {
@@ -329,7 +362,10 @@ export async function dispatchConnectorAuthAlert(
   }
 
   // Fast-path throttle check; atomic claim below is the race-safe source of truth.
-  if (row.auth_alert_sent_at) {
+  // Operator-triggered re-issue (params.force === true) skips both the
+  // fast-path check and the conditional UPDATE so a busy customer can be
+  // nudged again inside the 24h window.
+  if (!params.force && row.auth_alert_sent_at) {
     const sentMs = new Date(row.auth_alert_sent_at as string | Date).getTime();
     if (Number.isFinite(sentMs) && Date.now() - sentMs < ALERT_THROTTLE_MS) {
       logger.debug('Connector auth alert suppressed by 24h throttle', {
@@ -348,14 +384,20 @@ export async function dispatchConnectorAuthAlert(
   // (findPendingAuthFailures filters on auth_alert_sent_at IS NULL). The
   // in-app fanout below stays deduped by recentInAppNotificationExists.
   if (!params.suppressEmail) {
-    const claimed = await claimAuthAlertSlot(params.integrationId, params.tenantId);
-    if (!claimed) {
-      logger.debug('Connector auth alert claim lost (race or throttle)', {
-        tenantId: params.tenantId,
-        integrationId: params.integrationId,
-        provider: params.provider,
-      });
-      return { status: 'throttled', emailedRecipients: 0 };
+    if (params.force) {
+      // Force-stamp so subsequent automated cycles still respect the 24h
+      // throttle from this manual re-issue.
+      await stampAuthAlertSlot(params.integrationId, params.tenantId);
+    } else {
+      const claimed = await claimAuthAlertSlot(params.integrationId, params.tenantId);
+      if (!claimed) {
+        logger.debug('Connector auth alert claim lost (race or throttle)', {
+          tenantId: params.tenantId,
+          integrationId: params.integrationId,
+          provider: params.provider,
+        });
+        return { status: 'throttled', emailedRecipients: 0 };
+      }
     }
   }
 
