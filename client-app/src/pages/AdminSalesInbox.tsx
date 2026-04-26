@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
@@ -169,18 +170,68 @@ function formatRelative(value: string | null | undefined): string {
   }
 }
 
+const SOURCE_VALUES: readonly SourceFilter[] = ['all', 'book_demo', 'roi_calculator', 'contact'];
+const BOOKING_VALUES: readonly BookingStatusFilter[] = ['all', 'booked', 'no_booking', 'cancelled'];
+const STATUS_VALUES: readonly StatusFilter[] = ['all', 'new', 'contacted', 'closed'];
+
+function parseEnumParam<T extends string>(
+  raw: string | null,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  if (!raw) return fallback;
+  return (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback;
+}
+
+function parsePositiveIntParam(raw: string | null): string {
+  if (!raw) return '';
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? String(n) : '';
+}
+
 export default function AdminSalesInbox() {
   const queryClient = useQueryClient();
-  const [source, setSource] = useState<SourceFilter>('all');
-  const [booking, setBooking] = useState<BookingStatusFilter>('all');
-  const [status, setStatus] = useState<StatusFilter>('all');
-  const [search, setSearch] = useState('');
-  const [actedOnBy, setActedOnBy] = useState('');
-  const [inactiveDays, setInactiveDays] = useState('');
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [source, setSource] = useState<SourceFilter>(() =>
+    parseEnumParam<SourceFilter>(searchParams.get('source'), SOURCE_VALUES, 'all'),
+  );
+  const [booking, setBooking] = useState<BookingStatusFilter>(() =>
+    parseEnumParam<BookingStatusFilter>(searchParams.get('booking'), BOOKING_VALUES, 'all'),
+  );
+  const [status, setStatus] = useState<StatusFilter>(() =>
+    parseEnumParam<StatusFilter>(searchParams.get('status'), STATUS_VALUES, 'all'),
+  );
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
+  const [actedOnBy, setActedOnBy] = useState(() => searchParams.get('actedOnBy') ?? '');
+  const [inactiveDays, setInactiveDays] = useState(() =>
+    parsePositiveIntParam(searchParams.get('inactiveDays')),
+  );
+  const [page, setPage] = useState(() => {
+    const n = parseInt(searchParams.get('page') ?? '1', 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  });
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Persist the active filter set in the URL so reloads, back/forward
+  // navigation, and shared links all restore the same view. We use { replace:
+  // true } to avoid pushing a new history entry every keystroke.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (source !== 'all') next.set('source', source);
+    if (booking !== 'all') next.set('booking', booking);
+    if (status !== 'all') next.set('status', status);
+    const trimmedSearch = search.trim();
+    if (trimmedSearch) next.set('q', trimmedSearch);
+    const trimmedActedOnBy = actedOnBy.trim();
+    if (trimmedActedOnBy) next.set('actedOnBy', trimmedActedOnBy);
+    const trimmedInactive = inactiveDays.trim();
+    if (trimmedInactive) next.set('inactiveDays', trimmedInactive);
+    if (page > 1) next.set('page', String(page));
+    setSearchParams(next, { replace: true });
+  }, [source, booking, status, search, actedOnBy, inactiveDays, page, setSearchParams]);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
