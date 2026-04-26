@@ -786,6 +786,9 @@ const CSV_COLUMNS = [
  * malformed values are coerced to safe defaults rather than rejected so the
  * UI can remain a thin pass-through over the query string.
  */
+const VALID_LEAD_SORT_FIELDS = ['created_at', 'last_activity'] as const;
+const VALID_LEAD_SORT_ORDERS = ['asc', 'desc'] as const;
+
 export function parseLeadFilters(query: Record<string, unknown>): {
   source: LeadSource | 'all';
   booking: BookingStatusFilter;
@@ -793,6 +796,8 @@ export function parseLeadFilters(query: Record<string, unknown>): {
   q: string | undefined;
   actedOnBy: string | undefined;
   inactiveForDays: number | undefined;
+  sort: 'created_at' | 'last_activity';
+  order: 'asc' | 'desc';
 } {
   const sourceParam = String(query.source ?? 'all');
   const bookingParam = String(query.booking ?? 'all');
@@ -812,6 +817,15 @@ export function parseLeadFilters(query: Record<string, unknown>): {
     }
   }
 
+  const sortParam = typeof query.sort === 'string' ? query.sort.trim() : '';
+  const orderParam = typeof query.order === 'string' ? query.order.trim().toLowerCase() : '';
+  const sort = (VALID_LEAD_SORT_FIELDS as readonly string[]).includes(sortParam)
+    ? (sortParam as 'created_at' | 'last_activity')
+    : 'created_at';
+  const order = (VALID_LEAD_SORT_ORDERS as readonly string[]).includes(orderParam)
+    ? (orderParam as 'asc' | 'desc')
+    : 'desc';
+
   const source = (VALID_LEAD_SOURCES as readonly string[]).includes(sourceParam)
     ? (sourceParam as LeadSource | 'all')
     : 'all';
@@ -822,7 +836,7 @@ export function parseLeadFilters(query: Record<string, unknown>): {
     ? (statusParam as LeadStatus | 'all')
     : 'all';
 
-  return { source, booking, status, q, actedOnBy, inactiveForDays };
+  return { source, booking, status, q, actedOnBy, inactiveForDays, sort, order };
 }
 
 router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, async (req, res) => {
@@ -900,7 +914,7 @@ router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async
   const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
   const offset = (page - 1) * limit;
 
-  const { source, booking, status, q, actedOnBy, inactiveForDays } = parseLeadFilters(
+  const { source, booking, status, q, actedOnBy, inactiveForDays, sort, order } = parseLeadFilters(
     req.query as Record<string, unknown>,
   );
 
@@ -912,6 +926,8 @@ router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async
       q,
       actedOnBy,
       inactiveForDays,
+      sort,
+      order,
       limit,
       offset,
     });

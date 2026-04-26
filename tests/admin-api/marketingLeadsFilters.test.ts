@@ -68,15 +68,20 @@ describe('marketing-leads listLeads filters', () => {
   it('omits actedOnBy/inactiveForDays clauses when filters are not set', async () => {
     queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
     await listLeads({});
-    // Only inspect the runtime list / count queries (skip the DDL-only
-    // ensureTable() statement, which legitimately mentions the events table).
+    // The list query itself unconditionally LEFT JOINs marketing_lead_events
+    // (via a LATERAL) to populate the per-lead "Owners" column, so we
+    // intentionally don't blanket-ban that table name here. Instead, assert
+    // that the *filter* clauses (EXISTS over author, NOT EXISTS with
+    // make_interval) are absent when no per-author / inactivity filters were
+    // supplied.
     const runtimeSql = captureSql().filter(
       (s) => s.includes('FROM marketing_leads') && !s.includes('CREATE TABLE'),
     );
     expect(runtimeSql.length).toBeGreaterThan(0);
     for (const s of runtimeSql) {
-      expect(s).not.toMatch(/marketing_lead_events/);
+      expect(s).not.toMatch(/LOWER\(e\.author\)/);
       expect(s).not.toMatch(/make_interval/);
+      expect(s).not.toMatch(/NOT\s+EXISTS/i);
     }
   });
 
@@ -113,7 +118,10 @@ describe('marketing-leads listLeads filters', () => {
     queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
     await listLeads({ actedOnBy: '   ', inactiveForDays: 0 });
     const sql = captureSql().join('\n');
-    expect(sql).not.toMatch(/marketing_lead_events/);
+    // The list query still references marketing_lead_events for the LATERAL
+    // aggregate, so we instead assert the *filter* fragments are absent.
+    expect(sql).not.toMatch(/LOWER\(e\.author\)/);
+    expect(sql).not.toMatch(/make_interval/);
   });
 
   it('combines new filters with the existing source / status WHERE clause', async () => {
@@ -129,6 +137,86 @@ describe('marketing-leads listLeads filters', () => {
     expect(listSql).toMatch(/status = \$\d+/);
     expect(listSql).toMatch(/EXISTS/);
     expect(listSql).toMatch(/NOT EXISTS/);
+  });
+
+  it('aggregates per-lead authors and last-activity in a single LEFT JOIN LATERAL', async () => {
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+    await listLeads({});
+    const listSql =
+      captureSql().find((s) => s.includes('FROM marketing_leads') && s.includes('LATERAL')) ?? '';
+    // Single LEFT JOIN LATERAL covers authors + last activity — no N+1.
+    expect(listSql).toMatch(/LEFT\s+JOIN\s+LATERAL/i);
+    expect(listSql).toMatch(/event_authors/);
+    expect(listSql).toMatch(/last_event_at/);
+    expect(listSql).toMatch(/last_event_author/);
+    // The list query should only contain a single FROM marketing_leads in the
+    // outer query (the LATERAL's nested subqueries SELECT FROM
+    // marketing_lead_events, not marketing_leads, so they don't count).
+    const outerFromCount = (listSql.match(/FROM\s+marketing_leads\b/gi) ?? []).length;
+    expect(outerFromCount).toBe(1);
+  });
+
+  it('maps event_authors / last_event_at / last_event_author from the row', async () => {
+    queryMock.mockReset();
+    // The first listLeads() call in this suite already ran ensureTable() and
+    // flipped its module-level `tableEnsured` flag, so subsequent invocations
+    // skip the DDL query. We dispatch mocks based on the SQL each call sees
+    // rather than positionally to avoid coupling to that side-effect.
+    queryMock.mockImplementation((sql: string) => {
+      if (sql.includes('CREATE TABLE')) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
+      if (sql.includes('FROM marketing_leads') && sql.includes('LATERAL')) {
+        return Promise.resolve({
+          rows: [
+            {
+              id: 1,
+              source: 'book_demo',
+              name: 'Acme',
+              email: 'lead@acme.io',
+              company: 'Acme',
+              phone: null,
+              payload: {},
+              notified: false,
+              status: 'new',
+              status_notes: null,
+              status_updated_at: null,
+              status_updated_by: null,
+              created_at: '2024-01-01T00:00:00.000Z',
+              event_authors: ['alice@acme.io', 'bob@acme.io'],
+              last_event_at: '2024-02-03T04:05:06.000Z',
+              last_event_author: 'bob@acme.io',
+            },
+          ],
+          rowCount: 1,
+        });
+      }
+      if (sql.includes('COUNT(*)::int AS total') && !sql.includes('FILTER')) {
+        return Promise.resolve({ rows: [{ total: 1 }], rowCount: 1 });
+      }
+      // Summary aggregate.
+      return Promise.resolve({ rows: [{}], rowCount: 1 });
+    });
+
+    const out = await listLeads({});
+    expect(out.leads[0].event_authors).toEqual(['alice@acme.io', 'bob@acme.io']);
+    expect(out.leads[0].last_event_at).toBe('2024-02-03T04:05:06.000Z');
+    expect(out.leads[0].last_event_author).toBe('bob@acme.io');
+  });
+
+  it('defaults to ORDER BY created_at DESC and switches to last_activity when requested', async () => {
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+    await listLeads({});
+    const defaultSql = captureSql().find((s) => s.includes('ORDER BY')) ?? '';
+    expect(defaultSql).toMatch(/ORDER BY marketing_leads\.created_at DESC/i);
+
+    queryMock.mockReset();
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+    await listLeads({ sort: 'last_activity', order: 'asc' });
+    const lastActivitySql = captureSql().find((s) => s.includes('ORDER BY')) ?? '';
+    expect(lastActivitySql).toMatch(
+      /ORDER BY COALESCE\(agg\.last_event_at, marketing_leads\.created_at\) ASC/i,
+    );
   });
 });
 
@@ -169,7 +257,22 @@ describe('parseLeadFilters', () => {
       q: undefined,
       actedOnBy: undefined,
       inactiveForDays: undefined,
+      sort: 'created_at',
+      order: 'desc',
     });
+  });
+
+  it('accepts the supported sort fields and order directions', () => {
+    expect(parseLeadFilters({ sort: 'last_activity' }).sort).toBe('last_activity');
+    expect(parseLeadFilters({ sort: 'created_at' }).sort).toBe('created_at');
+    expect(parseLeadFilters({ order: 'asc' }).order).toBe('asc');
+    expect(parseLeadFilters({ order: 'DESC' }).order).toBe('desc');
+  });
+
+  it('falls back to the default sort/order for unknown values', () => {
+    expect(parseLeadFilters({ sort: 'haxxor' }).sort).toBe('created_at');
+    expect(parseLeadFilters({ order: 'sideways' }).order).toBe('desc');
+    expect(parseLeadFilters({ sort: '', order: '' }).sort).toBe('created_at');
   });
 
   it('trims actedOnBy and treats whitespace-only as missing', () => {

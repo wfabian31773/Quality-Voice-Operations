@@ -175,6 +175,9 @@ export async function listLeadEvents(leadId: number): Promise<LeadEvent[]> {
 export type LeadStatus = 'new' | 'contacted' | 'closed';
 export type BookingStatusFilter = 'all' | 'booked' | 'no_booking' | 'cancelled';
 
+export type LeadSortField = 'created_at' | 'last_activity';
+export type LeadSortOrder = 'asc' | 'desc';
+
 export interface LeadListFilters {
   source?: LeadSource | 'all';
   status?: LeadStatus | 'all';
@@ -191,6 +194,15 @@ export interface LeadListFilters {
    * surfacing stale leads that need a follow-up.
    */
   inactiveForDays?: number;
+  /**
+   * Column to sort the inbox by. `created_at` (default) preserves the
+   * original "newest submission first" ordering. `last_activity` sorts by
+   * the most recent event timestamp (falling back to `created_at` for
+   * leads with no events) so reps can pair the inactivity filter with a
+   * sort and see stale-but-touched leads first.
+   */
+  sort?: LeadSortField;
+  order?: LeadSortOrder;
   limit?: number;
   offset?: number;
 }
@@ -209,6 +221,24 @@ export interface LeadListItem {
   status_updated_at: string | null;
   status_updated_by: string | null;
   created_at: string;
+  /**
+   * Distinct, non-empty authors of `marketing_lead_events` rows for this lead,
+   * excluding auto-generated `created` events (whose author is the lead's own
+   * email). Sorted alphabetically. Empty when no teammate has touched the
+   * lead yet. Powers the "Owners" column in the Sales Inbox.
+   */
+  event_authors: string[];
+  /**
+   * Timestamp of the most recent event of any kind on this lead, or `null`
+   * when no events exist. Used to drive the "last activity" sort.
+   */
+  last_event_at: string | null;
+  /**
+   * Author of the most recent non-`created` event on this lead — the
+   * teammate who most recently touched it. `null` when only the synthetic
+   * `created` event exists.
+   */
+  last_event_author: string | null;
 }
 
 export interface LeadListResult {
@@ -292,6 +322,15 @@ function buildLeadWhereClause(filters: LeadListFilters): { where: string; values
 }
 
 function mapLeadRow(r: Record<string, unknown>): LeadListItem {
+  // `event_authors` is only present on rows produced by the inbox list query
+  // (which JOINs to `marketing_lead_events`). The CSV export uses a slimmer
+  // query and won't have this column — default to empty so both paths work.
+  const rawAuthors = r.event_authors;
+  const eventAuthors = Array.isArray(rawAuthors)
+    ? (rawAuthors as unknown[]).filter(
+        (s): s is string => typeof s === 'string' && s.trim().length > 0,
+      )
+    : [];
   return {
     id: Number(r.id),
     source: r.source as LeadSource,
@@ -306,6 +345,11 @@ function mapLeadRow(r: Record<string, unknown>): LeadListItem {
     status_updated_at: r.status_updated_at ? new Date(r.status_updated_at as string).toISOString() : null,
     status_updated_by: (r.status_updated_by as string | null) ?? null,
     created_at: new Date(r.created_at as string).toISOString(),
+    event_authors: eventAuthors,
+    last_event_at: r.last_event_at
+      ? new Date(r.last_event_at as string).toISOString()
+      : null,
+    last_event_author: (r.last_event_author as string | null) ?? null,
   };
 }
 
@@ -318,12 +362,59 @@ export async function listLeads(filters: LeadListFilters = {}): Promise<LeadList
 
   const { where, values } = buildLeadWhereClause(filters);
 
+  const sortField: LeadSortField = filters.sort === 'last_activity' ? 'last_activity' : 'created_at';
+  const sortOrder: LeadSortOrder = filters.order === 'asc' ? 'asc' : 'desc';
+  const directionSql = sortOrder === 'asc' ? 'ASC' : 'DESC';
+  // For "last activity" we coalesce to the lead's own created_at so leads
+  // with no events still slot into the timeline (treated as last touched at
+  // submission time). The id tiebreaker keeps pagination stable when several
+  // rows share the same timestamp.
+  const orderBySql =
+    sortField === 'last_activity'
+      ? `ORDER BY COALESCE(agg.last_event_at, marketing_leads.created_at) ${directionSql}, marketing_leads.id ${directionSql}`
+      : `ORDER BY marketing_leads.created_at ${directionSql}, marketing_leads.id ${directionSql}`;
+
+  // Single LEFT JOIN LATERAL aggregates the per-lead author/last-activity
+  // metadata in one round trip — no N+1. The correlated subqueries inside
+  // the lateral hit the (lead_id, created_at DESC) index on
+  // `marketing_lead_events`, so each lead is one indexed lookup.
   const listQuery = `
-    SELECT id, source, name, email, company, phone, payload, notified,
-           status, status_notes, status_updated_at, status_updated_by, created_at
+    SELECT marketing_leads.id, marketing_leads.source, marketing_leads.name,
+           marketing_leads.email, marketing_leads.company, marketing_leads.phone,
+           marketing_leads.payload, marketing_leads.notified,
+           marketing_leads.status, marketing_leads.status_notes,
+           marketing_leads.status_updated_at, marketing_leads.status_updated_by,
+           marketing_leads.created_at,
+           COALESCE(agg.event_authors, ARRAY[]::text[]) AS event_authors,
+           agg.last_event_at,
+           agg.last_event_author
     FROM marketing_leads
+    LEFT JOIN LATERAL (
+      SELECT
+        ARRAY(
+          SELECT DISTINCT author
+            FROM marketing_lead_events
+            WHERE lead_id = marketing_leads.id
+              AND author IS NOT NULL
+              AND TRIM(author) <> ''
+              AND event_type <> 'created'
+            ORDER BY author
+        ) AS event_authors,
+        last_activity.created_at AS last_event_at,
+        last_activity.author AS last_event_author
+      FROM (
+        SELECT created_at, author
+          FROM marketing_lead_events
+          WHERE lead_id = marketing_leads.id
+            AND author IS NOT NULL
+            AND TRIM(author) <> ''
+            AND event_type <> 'created'
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+      ) AS last_activity
+    ) agg ON TRUE
     ${where}
-    ORDER BY created_at DESC
+    ${orderBySql}
     LIMIT $${values.length + 1} OFFSET $${values.length + 2}
   `;
   const countQuery = `SELECT COUNT(*)::int AS total FROM marketing_leads ${where}`;
@@ -470,6 +561,10 @@ export async function updateLeadStatus(
       author: options.updatedBy ?? null,
     });
   }
+  // The UPDATE … RETURNING above doesn't include the per-lead event aggregate
+  // columns, so we fall back to default-empty values. Callers that need the
+  // owners/last-activity metadata should re-fetch via `listLeads` (which the
+  // inbox UI already does on every status mutation).
   return {
     id: Number(row.id),
     source: row.source as LeadSource,
@@ -484,6 +579,9 @@ export async function updateLeadStatus(
     status_updated_at: row.status_updated_at ? new Date(row.status_updated_at).toISOString() : null,
     status_updated_by: row.status_updated_by,
     created_at: new Date(row.created_at).toISOString(),
+    event_authors: [],
+    last_event_at: null,
+    last_event_author: null,
   };
 }
 

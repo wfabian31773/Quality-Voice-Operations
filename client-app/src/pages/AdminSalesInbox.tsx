@@ -8,6 +8,7 @@ import {
   CalendarCheck, CalendarX, CalendarClock, MailCheck, UserCheck, FileText,
   Download, Bell, Settings, Plus, Trash2,
   History, Sparkles, MessageSquare, Send, AlertTriangle,
+  Users, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -56,7 +57,16 @@ interface MarketingLead {
   status_updated_at: string | null;
   status_updated_by: string | null;
   created_at: string;
+  /** Distinct teammates (by author email/identifier) that have logged an
+   *  event on this lead. Populated by the server's LATERAL aggregate; safe
+   *  to default to an empty array on older responses. */
+  event_authors?: string[];
+  last_event_at?: string | null;
+  last_event_author?: string | null;
 }
+
+type LeadSortField = 'created_at' | 'last_activity';
+type LeadSortOrder = 'asc' | 'desc';
 
 interface LeadEvent {
   id: number;
@@ -173,6 +183,8 @@ function formatRelative(value: string | null | undefined): string {
 const SOURCE_VALUES: readonly SourceFilter[] = ['all', 'book_demo', 'roi_calculator', 'contact'];
 const BOOKING_VALUES: readonly BookingStatusFilter[] = ['all', 'booked', 'no_booking', 'cancelled'];
 const STATUS_VALUES: readonly StatusFilter[] = ['all', 'new', 'contacted', 'closed'];
+const SORT_VALUES: readonly LeadSortField[] = ['created_at', 'last_activity'];
+const ORDER_VALUES: readonly LeadSortOrder[] = ['asc', 'desc'];
 
 function parseEnumParam<T extends string>(
   raw: string | null,
@@ -207,6 +219,12 @@ export default function AdminSalesInbox() {
   const [inactiveDays, setInactiveDays] = useState(() =>
     parsePositiveIntParam(searchParams.get('inactiveDays')),
   );
+  const [sort, setSort] = useState<LeadSortField>(() =>
+    parseEnumParam<LeadSortField>(searchParams.get('sort'), SORT_VALUES, 'created_at'),
+  );
+  const [order, setOrder] = useState<LeadSortOrder>(() =>
+    parseEnumParam<LeadSortOrder>(searchParams.get('order'), ORDER_VALUES, 'desc'),
+  );
   const [page, setPage] = useState(() => {
     const n = parseInt(searchParams.get('page') ?? '1', 10);
     return Number.isFinite(n) && n > 0 ? n : 1;
@@ -217,7 +235,9 @@ export default function AdminSalesInbox() {
 
   // Persist the active filter set in the URL so reloads, back/forward
   // navigation, and shared links all restore the same view. We use { replace:
-  // true } to avoid pushing a new history entry every keystroke.
+  // true } to avoid pushing a new history entry every keystroke. Defaults
+  // (created_at / desc) are omitted so the URL stays clean for the common
+  // "newest first" view.
   useEffect(() => {
     const next = new URLSearchParams();
     if (source !== 'all') next.set('source', source);
@@ -229,9 +249,11 @@ export default function AdminSalesInbox() {
     if (trimmedActedOnBy) next.set('actedOnBy', trimmedActedOnBy);
     const trimmedInactive = inactiveDays.trim();
     if (trimmedInactive) next.set('inactiveDays', trimmedInactive);
+    if (sort !== 'created_at') next.set('sort', sort);
+    if (order !== 'desc') next.set('order', order);
     if (page > 1) next.set('page', String(page));
     setSearchParams(next, { replace: true });
-  }, [source, booking, status, search, actedOnBy, inactiveDays, page, setSearchParams]);
+  }, [source, booking, status, search, actedOnBy, inactiveDays, sort, order, page, setSearchParams]);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -261,7 +283,7 @@ export default function AdminSalesInbox() {
 
   const queryKey = [
     'marketing-leads',
-    { source, booking, status, search, actedOnBy, inactiveDays, page },
+    { source, booking, status, search, actedOnBy, inactiveDays, sort, order, page },
   ];
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<LeadListResponse>({
     queryKey,
@@ -276,12 +298,28 @@ export default function AdminSalesInbox() {
         const n = parseInt(inactiveDays.trim(), 10);
         if (Number.isFinite(n) && n > 0) params.set('inactiveDays', String(n));
       }
+      // Only include sort/order when they differ from the server defaults
+      // so the URL stays clean for the common case.
+      if (sort !== 'created_at') params.set('sort', sort);
+      if (order !== 'desc') params.set('order', order);
       params.set('page', String(page));
       params.set('limit', String(limit));
       return api.get<LeadListResponse>(`/platform/marketing-leads?${params.toString()}`);
     },
     refetchInterval: 30_000,
   });
+
+  // Click-to-sort: clicking the same column toggles asc/desc; clicking a new
+  // column resets to the column's natural default direction (most-recent first).
+  const handleSortClick = (field: LeadSortField) => {
+    if (sort === field) {
+      setOrder((o) => (o === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSort(field);
+      setOrder('desc');
+    }
+    setPage(1);
+  };
 
   const updateMutation = useMutation({
     mutationFn: (vars: { id: number; status: LeadStatus; notes?: string }) =>
@@ -554,17 +592,35 @@ export default function AdminSalesInbox() {
               <th className="px-3 py-3 text-left">Lead</th>
               <th className="px-3 py-3 text-left">Source</th>
               <th className="px-3 py-3 text-left">Booking</th>
-              <th className="px-3 py-3 text-left">Submitted</th>
+              <th className="px-3 py-3 text-left">
+                <SortableHeader
+                  label="Submitted"
+                  field="created_at"
+                  activeField={sort}
+                  activeOrder={order}
+                  onClick={handleSortClick}
+                />
+              </th>
+              <th className="px-3 py-3 text-left">
+                <SortableHeader
+                  label="Owners"
+                  field="last_activity"
+                  activeField={sort}
+                  activeOrder={order}
+                  onClick={handleSortClick}
+                  hint="Distinct teammates that have touched this lead. Click to sort by most recent activity."
+                />
+              </th>
               <th className="px-3 py-3 text-left">Status</th>
               <th className="px-3 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
             {isLoading && (
-              <tr><td colSpan={7} className="px-3 py-12 text-center text-slate-400">Loading leads…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">Loading leads…</td></tr>
             )}
             {!isLoading && data && data.leads.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-12 text-center text-slate-400">
+              <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">
                 No leads match the current filters.
               </td></tr>
             )}
@@ -660,6 +716,157 @@ interface FilterGroupProps<T extends string> {
   value: T;
   onChange: (v: T) => void;
   options: Array<{ value: T; label: string }>;
+}
+
+/**
+ * Clickable column header that drives the table sort. Renders an arrow when
+ * the column is the currently-active sort, and is purely a styling/UX wrapper
+ * around the parent's `onClick` handler — sort state lives upstream.
+ */
+function SortableHeader({
+  label,
+  field,
+  activeField,
+  activeOrder,
+  onClick,
+  hint,
+}: {
+  label: string;
+  field: LeadSortField;
+  activeField: LeadSortField;
+  activeOrder: LeadSortOrder;
+  onClick: (field: LeadSortField) => void;
+  hint?: string;
+}) {
+  const active = activeField === field;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(field)}
+      title={hint ?? `Sort by ${label.toLowerCase()}`}
+      aria-label={`Sort by ${label}`}
+      aria-sort={active ? (activeOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={clsx(
+        'inline-flex items-center gap-1 uppercase tracking-wider text-xs font-semibold hover:text-white transition-colors',
+        active ? 'text-white' : 'text-slate-300',
+      )}
+    >
+      {label}
+      {active ? (
+        activeOrder === 'asc'
+          ? <ArrowUp className="h-3 w-3" />
+          : <ArrowDown className="h-3 w-3" />
+      ) : (
+        <ArrowDown className="h-3 w-3 opacity-30" />
+      )}
+    </button>
+  );
+}
+
+/**
+ * Renders the per-lead "Owners" column: an avatar stack of distinct event
+ * authors plus a one-line "last touched by …" caption. When no teammate has
+ * acted on the lead yet (only the synthetic `created` event exists) we show
+ * a muted "Unworked" hint so reps can spot fresh leads at a glance.
+ */
+function OwnersCell({ lead }: { lead: MarketingLead }) {
+  const authors = lead.event_authors ?? [];
+  const lastAuthor = lead.last_event_author ?? null;
+  const lastAt = lead.last_event_at ?? null;
+
+  if (authors.length === 0 && !lastAuthor) {
+    return (
+      <div className="text-xs text-slate-500 inline-flex items-center gap-1.5">
+        <Users className="h-3 w-3" />
+        Unworked
+      </div>
+    );
+  }
+
+  // Show up to 3 avatars inline; collapse the rest into a "+N" pill so wide
+  // teams don't blow out the column width.
+  const MAX_AVATARS = 3;
+  const visible = authors.slice(0, MAX_AVATARS);
+  const overflow = Math.max(0, authors.length - MAX_AVATARS);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center -space-x-1.5">
+        {visible.map((author) => (
+          <AuthorAvatar key={author} author={author} highlighted={author === lastAuthor} />
+        ))}
+        {overflow > 0 && (
+          <span
+            className="inline-flex items-center justify-center h-6 min-w-[1.5rem] px-1.5 rounded-full bg-slate-700 text-slate-200 text-[10px] font-medium border border-slate-900 ring-1 ring-slate-700"
+            title={authors.slice(MAX_AVATARS).join(', ')}
+          >
+            +{overflow}
+          </span>
+        )}
+      </div>
+      {lastAuthor && (
+        <div className="text-[11px] text-slate-400 truncate" title={`Last touched by ${lastAuthor}${lastAt ? ` at ${formatDateTime(lastAt)}` : ''}`}>
+          <span className="text-slate-200">{lastAuthor}</span>
+          {lastAt && (
+            <span className="text-slate-500"> · {formatRelative(lastAt)}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Hashes the author string to a stable accent colour and renders their
+ * initials in a small avatar pill. The author identifier is usually an
+ * email — we extract the part before `@` for initials but keep the full
+ * string in the tooltip.
+ */
+function AuthorAvatar({ author, highlighted }: { author: string; highlighted: boolean }) {
+  const initials = getInitials(author);
+  const colour = pickAvatarColour(author);
+  return (
+    <span
+      title={author}
+      className={clsx(
+        'inline-flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-semibold uppercase border border-slate-900 ring-1',
+        colour,
+        highlighted ? 'ring-purple-400' : 'ring-slate-700',
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
+function getInitials(author: string): string {
+  const local = author.split('@')[0] ?? author;
+  // Split on common separators (".", "_", "-", " ") and take the first
+  // letter of up to two segments, e.g. "alice.jones" -> "AJ".
+  const parts = local.split(/[._\-\s]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return local.slice(0, 2).toUpperCase() || '??';
+}
+
+const AVATAR_PALETTE = [
+  'bg-purple-500/30 text-purple-100',
+  'bg-blue-500/30 text-blue-100',
+  'bg-emerald-500/30 text-emerald-100',
+  'bg-amber-500/30 text-amber-100',
+  'bg-rose-500/30 text-rose-100',
+  'bg-sky-500/30 text-sky-100',
+  'bg-fuchsia-500/30 text-fuchsia-100',
+  'bg-teal-500/30 text-teal-100',
+] as const;
+
+function pickAvatarColour(author: string): string {
+  let hash = 0;
+  for (let i = 0; i < author.length; i += 1) {
+    hash = (hash * 31 + author.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
 }
 
 function FilterGroup<T extends string>({ label, value, onChange, options }: FilterGroupProps<T>) {
@@ -775,6 +982,9 @@ function LeadRow({
         <div className="text-slate-500">{formatDateTime(lead.created_at)}</div>
       </td>
       <td className="px-3 py-3 align-top">
+        <OwnersCell lead={lead} />
+      </td>
+      <td className="px-3 py-3 align-top">
         <span className={clsx('inline-block px-2 py-0.5 rounded border text-xs font-medium', STATUS_COLORS[lead.status])}>
           {STATUS_LABELS[lead.status]}
         </span>
@@ -852,7 +1062,7 @@ function LeadDetail({
 
   return (
     <tr className="bg-slate-900/40">
-      <td colSpan={7} className="px-6 py-4 space-y-4">
+      <td colSpan={8} className="px-6 py-4 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section className="space-y-2">
             <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Submission</h4>
