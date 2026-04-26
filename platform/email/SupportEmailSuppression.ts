@@ -175,3 +175,37 @@ export async function addSupportEmailUnsubscribe(
     });
   }
 }
+
+/**
+ * Removes an entry from the unsubscribe list. Used by the landing page's
+ * "Resubscribe" affordance so a recipient who changed their mind can opt
+ * back in without round-tripping through ops. Returns `true` when a row
+ * was actually deleted (i.e. the address was previously opted out) and
+ * `false` when the address wasn't on the list — the latter case is still
+ * a successful no-op for the caller, since the desired end state (mail
+ * is allowed) holds either way.
+ *
+ * Throws on persistent DB errors so the caller can surface a retryable
+ * failure instead of falsely confirming the resubscribe.
+ */
+export async function removeSupportEmailUnsubscribe(
+  email: string | null | undefined,
+  source: string,
+): Promise<boolean> {
+  if (!email) return false;
+  const emailLower = email.trim().toLowerCase();
+  if (!emailLower) return false;
+
+  const pool = getPlatformPool();
+  const r = await pool.query(
+    `DELETE FROM support_email_unsubscribes WHERE email_lower = $1`,
+    [emailLower],
+  );
+  const removed = (r.rowCount ?? 0) > 0;
+  logger.info('Resubscribe processed', {
+    email_lower: emailLower,
+    source,
+    removed,
+  });
+  return removed;
+}

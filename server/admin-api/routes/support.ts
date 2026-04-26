@@ -8,10 +8,12 @@ import {
   addSupportEmailSuppression,
   addSupportEmailUnsubscribe,
   checkSupportEmailSkip,
+  removeSupportEmailUnsubscribe,
 } from '../../../platform/email/SupportEmailSuppression';
 import {
   buildSupportUnsubscribeEmailHeaders,
   buildSupportUnsubscribeFooter,
+  buildSupportUnsubscribeToken,
   isSupportUnsubscribeMailtoTarget,
   verifySupportUnsubscribeToken,
 } from '../../../platform/email/supportUnsubscribeToken';
@@ -2446,18 +2448,102 @@ async function handleSupportUnsubscribe(
     return;
   }
 
+  // Mint a fresh token derived from the same lowercased address so the
+  // resubscribe POST below can re-verify without trusting the
+  // (potentially mixed-case) value the recipient clicked. The token is
+  // already valid for the original case too — buildSupportUnsubscribeToken
+  // normalises before HMAC — but we re-mint defensively so the rendered
+  // form always carries a canonical (lowercased email, matching token)
+  // pair the verifier accepts byte-for-byte.
+  const escapedEmail = escapeHtml(email);
+  const resubscribeEmail = email.trim().toLowerCase();
+  const resubscribeToken = buildSupportUnsubscribeToken(resubscribeEmail);
   res.status(200).type('html').send(
     `<!doctype html><html><head><meta charset="utf-8"/><title>You're unsubscribed</title></head>` +
     `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#0f172a">` +
     `<h1 style="font-size:20px">You're unsubscribed</h1>` +
     `<p style="color:#475569">We won't send any more support replies to ` +
-    `<strong>${email
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')}</strong>. ` +
-    `Existing tickets stay open in our system; if you change your mind, just reply to your most recent ticket and we'll re-enable mail.</p>` +
+    `<strong>${escapedEmail}</strong>. ` +
+    `Existing tickets stay open in our system.</p>` +
+    `<p style="color:#475569;margin:20px 0 8px">Changed your mind? You can opt back in with one click — no need to email us.</p>` +
+    `<form method="POST" action="/api/admin/support/resubscribe" style="margin:0">` +
+    `<input type="hidden" name="e" value="${escapeHtml(resubscribeEmail)}"/>` +
+    `<input type="hidden" name="t" value="${escapeHtml(resubscribeToken)}"/>` +
+    `<button type="submit" style="background:#0f172a;color:#fff;border:0;border-radius:6px;padding:10px 18px;font-size:14px;cursor:pointer">Resubscribe</button>` +
+    `</form>` +
+    `</body></html>`,
+  );
+}
+
+// Resubscribe flow.
+//
+// Recipients who change their mind after clicking the unsubscribe link see
+// a "Resubscribe" button on the landing page. The button submits an HTML
+// form POST carrying the (lowercased) email and a freshly minted HMAC
+// token in the body. We re-verify the token against the supplied email
+// (constant-time) and DELETE the row from `support_email_unsubscribes`.
+//
+// Why a separate endpoint and not a query parameter on the existing
+// unsubscribe handler? Two reasons:
+//   1. RFC 8058 reserves the unsubscribe POST for one-click opt-out; a
+//      dual-purpose endpoint would risk an MUA that accidentally fires
+//      the One-Click POST against a logged-in browser session "undoing"
+//      the user's opt-out.
+//   2. Keeping the side effects in their own handler makes the audit
+//      trail (logger / `source` column) trivial to read.
+//
+// Authentication model mirrors the unsubscribe handler: the HMAC token IS
+// the credential. No CSRF check is needed — the token can't be forged
+// without the secret and the worst-case forged POST just resubscribes an
+// address whose token an attacker already had (which they can't get).
+async function handleSupportResubscribe(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const email =
+    typeof req.body?.e === 'string' ? req.body.e :
+    typeof req.query.e === 'string' ? req.query.e : null;
+  const token =
+    typeof req.body?.t === 'string' ? req.body.t :
+    typeof req.query.t === 'string' ? req.query.t : null;
+
+  if (!email || !token || !verifySupportUnsubscribeToken(email, token)) {
+    res.status(400).type('html').send(
+      `<!doctype html><html><head><meta charset="utf-8"/><title>Invalid resubscribe link</title></head>` +
+      `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#0f172a">` +
+      `<h1 style="font-size:20px">Invalid resubscribe link</h1>` +
+      `<p style="color:#475569">This link is missing or has been tampered with. ` +
+      `Please reply to your most recent QVO support email and we'll re-enable mail manually.</p>` +
+      `</body></html>`,
+    );
+    return;
+  }
+
+  try {
+    await removeSupportEmailUnsubscribe(email, 'landing_page_resubscribe');
+  } catch (err) {
+    logger.error('Failed to remove support email unsubscribe', {
+      error: String(err),
+      email_lower: email.trim().toLowerCase(),
+    });
+    res.status(500).type('html').send(
+      `<!doctype html><html><head><meta charset="utf-8"/><title>Try again in a moment</title></head>` +
+      `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#0f172a">` +
+      `<h1 style="font-size:20px">Try again in a moment</h1>` +
+      `<p style="color:#475569">We couldn't update your preferences right now. Please try again in a few minutes — if it keeps failing, reply to your most recent QVO support email and we'll fix it manually.</p>` +
+      `</body></html>`,
+    );
+    return;
+  }
+
+  const escapedEmail = escapeHtml(email);
+  res.status(200).type('html').send(
+    `<!doctype html><html><head><meta charset="utf-8"/><title>You're resubscribed</title></head>` +
+    `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#0f172a">` +
+    `<h1 style="font-size:20px">You're resubscribed</h1>` +
+    `<p style="color:#475569">We'll start sending support replies to ` +
+    `<strong>${escapedEmail}</strong> again. ` +
+    `Every email still includes an "Unsubscribe" link if you change your mind.</p>` +
     `</body></html>`,
   );
 }
@@ -2476,6 +2562,17 @@ router.post(
   express.urlencoded({ extended: false }),
   (req, res) => {
     void handleSupportUnsubscribe(req, res, true);
+  },
+);
+
+// The resubscribe button on the landing page submits a standard
+// application/x-www-form-urlencoded body, so we attach the urlencoded
+// parser locally just like the one-click POST above.
+router.post(
+  '/support/resubscribe',
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    void handleSupportResubscribe(req, res);
   },
 );
 

@@ -196,9 +196,12 @@ describe('supportUnsubscribeToken — verify semantics', () => {
 
 vi.mock('../../platform/email/SupportEmailSuppression', () => {
   const addSupportEmailUnsubscribeMock = vi.fn().mockResolvedValue(undefined);
+  const removeSupportEmailUnsubscribeMock = vi.fn().mockResolvedValue(true);
   return {
     __addSupportEmailUnsubscribeMock: addSupportEmailUnsubscribeMock,
+    __removeSupportEmailUnsubscribeMock: removeSupportEmailUnsubscribeMock,
     addSupportEmailUnsubscribe: addSupportEmailUnsubscribeMock,
+    removeSupportEmailUnsubscribe: removeSupportEmailUnsubscribeMock,
     // The router also pulls these in for the send-side gating that
     // already exists; tests don't exercise them, so noop stubs are fine.
     addSupportEmailSuppression: vi.fn().mockResolvedValue(undefined),
@@ -228,6 +231,7 @@ describe('POST/GET /support/unsubscribe — runtime behaviour', () => {
   // mint, so we don't need to reset its module.
   let app: express.Express;
   let addSupportEmailUnsubscribeMock: ReturnType<typeof vi.fn>;
+  let removeSupportEmailUnsubscribeMock: ReturnType<typeof vi.fn>;
   let mintToken: (email: string) => string;
 
   beforeEach(async () => {
@@ -239,10 +243,14 @@ describe('POST/GET /support/unsubscribe — runtime behaviour', () => {
     const tokenMod = await import('../../platform/email/supportUnsubscribeToken');
     mintToken = tokenMod.buildSupportUnsubscribeToken;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    addSupportEmailUnsubscribeMock = ((await import(
+    const suppMod = (await import(
       '../../platform/email/SupportEmailSuppression',
-    )) as any).__addSupportEmailUnsubscribeMock;
+    )) as any;
+    addSupportEmailUnsubscribeMock = suppMod.__addSupportEmailUnsubscribeMock;
+    removeSupportEmailUnsubscribeMock = suppMod.__removeSupportEmailUnsubscribeMock;
     addSupportEmailUnsubscribeMock.mockClear();
+    removeSupportEmailUnsubscribeMock.mockClear();
+    removeSupportEmailUnsubscribeMock.mockResolvedValue(true);
 
     app = express();
     app.use(express.json());
@@ -272,6 +280,17 @@ describe('POST/GET /support/unsubscribe — runtime behaviour', () => {
       email,
       'landing_page',
     );
+    // The landing page must surface the resubscribe affordance so a
+    // recipient who clicked Unsubscribe by mistake can opt back in
+    // without round-tripping through ops. The form must POST to the
+    // resubscribe endpoint and carry both the email and a valid token
+    // in hidden inputs (the verifier rejects either alone).
+    expect(r.text).toMatch(/Resubscribe/i);
+    expect(r.text).toMatch(
+      /<form\s+method="POST"\s+action="\/api\/admin\/support\/resubscribe"/i,
+    );
+    expect(r.text).toMatch(/<input\s+type="hidden"\s+name="e"\s+value="frank@example\.com"/);
+    expect(r.text).toMatch(/<input\s+type="hidden"\s+name="t"\s+value="[a-f0-9]{32}"/);
   });
 
   it('POST with valid token (one-click) returns 200 with empty body and tags source as one_click_post', async () => {
@@ -338,5 +357,180 @@ describe('POST/GET /support/unsubscribe — runtime behaviour', () => {
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
     expect(addSupportEmailUnsubscribeMock).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- Resubscribe flow ----------------------------------------------------
+  // The landing page above renders a "Resubscribe" form whose POST hits a
+  // separate endpoint that re-verifies the same HMAC token and DELETEs the
+  // suppression row. These tests guard the full round trip end-to-end.
+
+  it('POST /support/resubscribe with valid form body removes the suppression and renders confirmation', async () => {
+    const email = 'leo@example.com';
+    const t = mintToken(email);
+    const r = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent(email)}&t=${t}`);
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toMatch(/html/);
+    expect(r.text).toMatch(/resubscribed/i);
+    expect(r.text).toContain(email);
+    expect(removeSupportEmailUnsubscribeMock).toHaveBeenCalledTimes(1);
+    expect(removeSupportEmailUnsubscribeMock).toHaveBeenCalledWith(
+      email,
+      'landing_page_resubscribe',
+    );
+    // The resubscribe write must NOT also hit the unsubscribe sink — that
+    // would re-add the row we just deleted on the next click.
+    expect(addSupportEmailUnsubscribeMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /support/resubscribe rejects a tampered token without touching the DB', async () => {
+    const email = 'mia@example.com';
+    const t = mintToken(email);
+    const tampered = t.slice(0, -1) + (t.endsWith('a') ? 'b' : 'a');
+    const r = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent(email)}&t=${tampered}`);
+    expect(r.status).toBe(400);
+    expect(r.text).toMatch(/invalid/i);
+    expect(removeSupportEmailUnsubscribeMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /support/resubscribe rejects a token replayed against a different address', async () => {
+    const realEmail = 'nina@example.com';
+    const t = mintToken(realEmail);
+    const r = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent('attacker@example.com')}&t=${t}`);
+    expect(r.status).toBe(400);
+    expect(removeSupportEmailUnsubscribeMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /support/resubscribe rejects requests missing either field', async () => {
+    const t = mintToken('owen@example.com');
+    const r1 = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`t=${t}`);
+    const r2 = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent('owen@example.com')}`);
+    const r3 = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send('');
+    for (const r of [r1, r2, r3]) {
+      expect(r.status).toBe(400);
+    }
+    expect(removeSupportEmailUnsubscribeMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /support/resubscribe surfaces a 500 when the DB write throws (no false confirmation)', async () => {
+    // If the DELETE blew up, the address is still on the suppression list
+    // and future sends will keep being skipped — we must NOT render the
+    // success page or the user will believe mail is re-enabled when it
+    // isn't. The handler reports a friendly 500 instead.
+    removeSupportEmailUnsubscribeMock.mockRejectedValueOnce(new Error('db down'));
+    const email = 'paul@example.com';
+    const t = mintToken(email);
+    const r = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent(email)}&t=${t}`);
+    expect(r.status).toBe(500);
+    expect(r.text).not.toMatch(/you're resubscribed/i);
+  });
+
+  it('POST /support/resubscribe is idempotent — repeat hits keep returning 200', async () => {
+    // The DELETE is naturally idempotent: a second call deletes zero rows
+    // but still resolves cleanly. We assert the handler treats both
+    // outcomes (removed=true on first call, removed=false on second) as a
+    // success so a recipient who clicks twice doesn't see a confusing
+    // error after the second click.
+    removeSupportEmailUnsubscribeMock.mockResolvedValueOnce(true);
+    removeSupportEmailUnsubscribeMock.mockResolvedValueOnce(false);
+    const email = 'quinn@example.com';
+    const t = mintToken(email);
+    const r1 = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent(email)}&t=${t}`);
+    const r2 = await request(app)
+      .post('/support/resubscribe')
+      .set('content-type', 'application/x-www-form-urlencoded')
+      .send(`e=${encodeURIComponent(email)}&t=${t}`);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(removeSupportEmailUnsubscribeMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---- Resubscribe static wiring contract ------------------------------------
+//
+// Mirror of the unsubscribe contract above. These guard the invariants ops
+// depends on for the resubscribe flow:
+//   1. The endpoint exists and lives on the public side of the router (the
+//      HMAC token IS the credential, just like unsubscribe).
+//   2. The handler verifies the token before DELETEing.
+//   3. The DELETE hits the same `support_email_unsubscribes` table the
+//      send-side gate (`checkSupportEmailSkip`) reads, so a successful
+//      resubscribe immediately re-enables mail without any cache flush.
+//   4. The landing-page renderer surfaces the resubscribe form so the
+//      "one-click" affordance the task asks for is actually one click.
+
+describe('Support resubscribe — static wiring contract', () => {
+  it('exposes a POST /support/resubscribe endpoint with the urlencoded body parser', () => {
+    expect(supportFile).toMatch(/router\.post\(\s*\n?\s*'\/support\/resubscribe'/);
+    // The form is a standard HTML form POST, so we need the urlencoded
+    // parser. JSON-only would break the rendered button.
+    const handlerStart = supportFile.indexOf("'/support/resubscribe'");
+    expect(handlerStart).toBeGreaterThan(-1);
+    const slice = supportFile.slice(handlerStart, handlerStart + 400);
+    expect(slice).toMatch(/express\.urlencoded\(\s*\{\s*extended:\s*false/);
+  });
+
+  it('verifies the HMAC token before deleting from support_email_unsubscribes', () => {
+    const handlerStart = supportFile.indexOf('async function handleSupportResubscribe');
+    expect(handlerStart).toBeGreaterThan(-1);
+    const handlerSlice = supportFile.slice(handlerStart, handlerStart + 4000);
+    const verifyIdx = handlerSlice.indexOf('verifySupportUnsubscribeToken');
+    const writeIdx = handlerSlice.indexOf('removeSupportEmailUnsubscribe');
+    expect(verifyIdx).toBeGreaterThan(-1);
+    expect(writeIdx).toBeGreaterThan(-1);
+    expect(verifyIdx).toBeLessThan(writeIdx);
+  });
+
+  it('reuses the existing suppression table (no parallel allow-list)', () => {
+    // The send-side gate reads `support_email_unsubscribes`; the
+    // resubscribe path must DELETE from the same table so a successful
+    // resubscribe immediately stops triggering the
+    // 'recipient_unsubscribed' skip reason on subsequent sends.
+    expect(supportFile).toMatch(/removeSupportEmailUnsubscribe/);
+    // Helper exists in the suppression module and is keyed on the
+    // lowercased address (mirrors addSupportEmailUnsubscribe).
+    const supp = readFileSync(
+      join(process.cwd(), 'platform/email/SupportEmailSuppression.ts'),
+      'utf8',
+    );
+    expect(supp).toMatch(/export async function removeSupportEmailUnsubscribe/);
+    expect(supp).toMatch(/DELETE FROM support_email_unsubscribes WHERE email_lower = \$1/);
+  });
+
+  it('renders the resubscribe form on the unsubscribe landing page', () => {
+    // The form must point at the resubscribe POST and carry both the
+    // email and a freshly minted token in hidden inputs. Static text
+    // assertions guard the rendered payload against accidental drift.
+    const handlerStart = supportFile.indexOf('async function handleSupportUnsubscribe');
+    const handlerEnd = supportFile.indexOf('async function handleSupportResubscribe', handlerStart);
+    const handlerSlice = supportFile.slice(handlerStart, handlerEnd);
+    expect(handlerSlice).toMatch(/buildSupportUnsubscribeToken/);
+    expect(handlerSlice).toMatch(/\/api\/admin\/support\/resubscribe/);
+    expect(handlerSlice).toMatch(/name="e"/);
+    expect(handlerSlice).toMatch(/name="t"/);
+    expect(handlerSlice).toMatch(/Resubscribe/);
   });
 });
