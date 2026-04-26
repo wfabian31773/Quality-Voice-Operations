@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
 import { api, setToken } from '../lib/api';
 import { LogIn, UserPlus } from 'lucide-react';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function Login() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<'login' | 'signup'>(
     searchParams.get('mode') === 'signup' ? 'signup' : 'login'
@@ -13,7 +16,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [plan, setPlan] = useState(searchParams.get('plan') || 'starter');
-  const [error, setError] = useState(searchParams.get('cancelled') ? 'Checkout was cancelled. You can try again.' : '');
+  const [error, setError] = useState(searchParams.get('cancelled') ? t('auth.checkout_cancelled') : '');
   const [loading, setLoading] = useState(false);
   const { login, user } = useAuth();
   const navigate = useNavigate();
@@ -41,7 +44,7 @@ export default function Login() {
         navigate('/dashboard');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('auth.login_failed'));
     } finally {
       setLoading(false);
     }
@@ -59,124 +62,129 @@ export default function Login() {
       if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {
-        setError('Failed to initiate checkout');
+        setError(t('auth.checkout_init_failed'));
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Signup failed');
+      setError(err instanceof Error ? err.message : t('auth.signup_failed'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-secondary px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-white mb-4">
-            {mode === 'login' ? <LogIn className="h-6 w-6" /> : <UserPlus className="h-6 w-6" />}
-          </div>
-          <h1 className="text-2xl font-bold text-text-primary font-display">Quality Voice Operations</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            {mode === 'login' ? 'Sign in to your account' : 'Create your account'}
-          </p>
-        </div>
-
-        <form
-          onSubmit={mode === 'login' ? handleLogin : handleSignup}
-          className="bg-surface rounded-xl border border-border p-6 space-y-4 shadow-sm"
-        >
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-danger text-sm px-3 py-2 rounded-lg">
-              {error}
+    <div className="min-h-screen flex flex-col bg-surface-secondary px-4">
+      <div className="w-full flex justify-end pt-4">
+        <LanguageSwitcher variant="muted" />
+      </div>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-white mb-4">
+              {mode === 'login' ? <LogIn className="h-6 w-6" /> : <UserPlus className="h-6 w-6" />}
             </div>
-          )}
+            <h1 className="text-2xl font-bold text-text-primary font-display">{t('auth.brand_title')}</h1>
+            <p className="text-sm text-text-secondary mt-1">
+              {mode === 'login' ? t('auth.sign_in_subtitle') : t('auth.sign_up_subtitle')}
+            </p>
+          </div>
 
-          {mode === 'signup' && (
+          <form
+            onSubmit={mode === 'login' ? handleLogin : handleSignup}
+            className="bg-surface rounded-xl border border-border p-6 space-y-4 shadow-sm"
+          >
+            {error && (
+              <div className="bg-red-50 dark:bg-red-900/20 text-danger text-sm px-3 py-2 rounded-lg">
+                {error}
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.company_name')}</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                  placeholder={t('auth.company_name_placeholder')}
+                />
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1.5">Company Name</label>
+              <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.email')}</label>
               <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                placeholder="Acme Corp"
+                placeholder={t('auth.email_placeholder')}
               />
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1.5">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-              placeholder="you@company.com"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1.5">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={mode === 'signup' ? 8 : undefined}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-              placeholder={mode === 'signup' ? 'Min 8 characters' : 'Enter your password'}
-            />
-          </div>
-
-          {mode === 'signup' && (
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1.5">Plan</label>
-              <select
-                value={plan}
-                onChange={(e) => setPlan(e.target.value)}
+              <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={mode === 'signup' ? 8 : undefined}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-              >
-                <option value="starter">Starter</option>
-                <option value="pro">Pro</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
+                placeholder={mode === 'signup' ? t('auth.password_min_placeholder') : t('auth.password_placeholder')}
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
-          >
-            {loading
-              ? mode === 'login'
-                ? 'Signing in...'
-                : 'Creating account...'
-              : mode === 'login'
-                ? 'Sign In'
-                : 'Sign Up & Choose Plan'}
-          </button>
-
-          <div className="text-center text-sm text-text-secondary pt-1">
-            {mode === 'login' ? (
-              <>
-                Don't have an account?{' '}
-                <button type="button" onClick={() => { setMode('signup'); setError(''); }} className="text-primary hover:underline font-medium">
-                  Sign up
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{' '}
-                <button type="button" onClick={() => { setMode('login'); setError(''); }} className="text-primary hover:underline font-medium">
-                  Sign in
-                </button>
-              </>
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.plan')}</label>
+                <select
+                  value={plan}
+                  onChange={(e) => setPlan(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                >
+                  <option value="starter">{t('auth.plan_starter')}</option>
+                  <option value="pro">{t('auth.plan_pro')}</option>
+                  <option value="enterprise">{t('auth.plan_enterprise')}</option>
+                </select>
+              </div>
             )}
-          </div>
-        </form>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
+            >
+              {loading
+                ? mode === 'login'
+                  ? t('auth.signing_in')
+                  : t('auth.creating_account')
+                : mode === 'login'
+                  ? t('auth.sign_in_button')
+                  : t('auth.sign_up_button')}
+            </button>
+
+            <div className="text-center text-sm text-text-secondary pt-1">
+              {mode === 'login' ? (
+                <>
+                  {t('auth.no_account')}{' '}
+                  <button type="button" onClick={() => { setMode('signup'); setError(''); }} className="text-primary hover:underline font-medium">
+                    {t('auth.sign_up_link')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {t('auth.have_account')}{' '}
+                  <button type="button" onClick={() => { setMode('login'); setError(''); }} className="text-primary hover:underline font-medium">
+                    {t('auth.sign_in_link')}
+                  </button>
+                </>
+              )}
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

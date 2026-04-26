@@ -1,30 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 import { api, setToken } from '../../lib/api';
 import {
-  UserPlus, ArrowRight, Phone, CheckCircle2, Loader2,
+  UserPlus, ArrowRight, CheckCircle2, Loader2,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
 
-const plans = [
-  { key: 'starter', name: 'Starter', price: 99, desc: 'For small practices getting started.' },
-  { key: 'pro', name: 'Pro', price: 399, desc: 'For growing businesses.', popular: true },
-  { key: 'enterprise', name: 'Enterprise', price: 999, desc: 'For multi-location organizations.' },
-];
-
-const benefits = [
-  '7-day free trial on all plans',
-  'No credit card required to start',
-  'Pre-built industry agent templates',
-  'Full analytics and call transcripts',
-  'Cancel anytime, no contracts',
-];
-
 const TURNSTILE_SITE_KEY = (import.meta as Record<string, Record<string, string>>).env?.VITE_TURNSTILE_SITE_KEY || '';
 
 export default function Signup() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,6 +24,20 @@ export default function Signup() {
   const captchaRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const plans = [
+    { key: 'starter', name: t('auth.plan_starter'), price: 99 },
+    { key: 'pro', name: t('auth.plan_pro'), price: 399, popular: true },
+    { key: 'enterprise', name: t('auth.plan_enterprise'), price: 999 },
+  ];
+
+  const benefits = [
+    t('auth.benefit_trial'),
+    t('auth.benefit_no_card'),
+    t('auth.benefit_templates'),
+    t('auth.benefit_analytics'),
+    t('auth.benefit_cancel'),
+  ];
 
   useEffect(() => {
     trackPageView('/signup');
@@ -88,12 +90,12 @@ export default function Signup() {
     setError('');
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError(t('auth.password_too_short'));
       return;
     }
 
     if (TURNSTILE_SITE_KEY && !captchaToken) {
-      setError('Please complete the CAPTCHA verification.');
+      setError(t('auth.captcha_failed'));
       return;
     }
 
@@ -119,7 +121,7 @@ export default function Signup() {
         navigate('/onboarding');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Signup failed. Please try again.');
+      setError(err instanceof Error ? err.message : t('auth.signup_failed_retry'));
     } finally {
       setLoading(false);
     }
@@ -137,13 +139,13 @@ export default function Signup() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">
             <div>
               <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
-                Get Started
+                {t('auth.signup_eyebrow')}
               </p>
               <h1 className="font-display text-3xl lg:text-4xl font-bold leading-tight mb-6">
-                Start your free trial today.
+                {t('auth.signup_headline')}
               </h1>
               <p className="text-lg text-white/70 leading-relaxed mb-8 font-body">
-                Deploy AI voice agents in minutes. Handle calls, schedule appointments, and qualify leads — all on autopilot.
+                {t('auth.signup_subhead')}
               </p>
               <ul className="space-y-3 mb-8">
                 {benefits.map((b) => (
@@ -154,9 +156,9 @@ export default function Signup() {
                 ))}
               </ul>
               <p className="text-sm text-white/50 font-body">
-                Need help choosing a plan?{' '}
+                {t('auth.signup_help')}{' '}
                 <Link to="/pricing" className="text-teal hover:text-teal-hover underline underline-offset-2 transition-colors">
-                  Compare plans
+                  {t('auth.signup_compare')}
                 </Link>
               </p>
             </div>
@@ -167,8 +169,8 @@ export default function Signup() {
                   <UserPlus className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="font-display text-lg font-bold text-harbor">Create your account</h2>
-                  <p className="text-xs text-slate-ink/60">Free for 7 days, no commitment</p>
+                  <h2 className="font-display text-lg font-bold text-harbor">{t('auth.signup_card_title')}</h2>
+                  <p className="text-xs text-slate-ink/60">{t('auth.signup_card_subtitle')}</p>
                 </div>
               </div>
 
@@ -180,31 +182,31 @@ export default function Signup() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-1.5">Organization Name</label>
+                  <label className="block text-sm font-medium text-harbor mb-1.5">{t('auth.organization_name')}</label>
                   <input
                     type="text"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     required
                     className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-harbor text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition placeholder:text-soft-steel"
-                    placeholder="Acme Medical Group"
+                    placeholder={t('auth.organization_name_placeholder')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-1.5">Email</label>
+                  <label className="block text-sm font-medium text-harbor mb-1.5">{t('auth.email')}</label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-harbor text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition placeholder:text-soft-steel"
-                    placeholder="you@company.com"
+                    placeholder={t('auth.email_placeholder')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-1.5">Password</label>
+                  <label className="block text-sm font-medium text-harbor mb-1.5">{t('auth.password')}</label>
                   <input
                     type="password"
                     value={password}
@@ -212,12 +214,12 @@ export default function Signup() {
                     required
                     minLength={8}
                     className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-harbor text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition placeholder:text-soft-steel"
-                    placeholder="At least 8 characters"
+                    placeholder={t('auth.password_min_8_placeholder')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-2">Select Plan</label>
+                  <label className="block text-sm font-medium text-harbor mb-2">{t('auth.select_plan')}</label>
                   <div className="grid grid-cols-3 gap-2">
                     {plans.map((p) => (
                       <button
@@ -232,11 +234,11 @@ export default function Signup() {
                       >
                         {p.popular && (
                           <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-teal text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            Popular
+                            {t('auth.popular')}
                           </span>
                         )}
                         <span className="block text-sm font-semibold text-harbor">{p.name}</span>
-                        <span className="block text-xs text-slate-ink/60 mt-0.5">${p.price}/mo</span>
+                        <span className="block text-xs text-slate-ink/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
                       </button>
                     ))}
                   </div>
@@ -257,20 +259,20 @@ export default function Signup() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      Start Free Trial
+                      {t('auth.start_trial_button')}
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
                 </button>
 
                 <p className="text-center text-[10px] text-slate-ink/40 mt-1">
-                  Email verification required to activate your trial.
+                  {t('auth.verification_required')}
                 </p>
 
                 <p className="text-center text-xs text-slate-ink/50 mt-3">
-                  Already have an account?{' '}
+                  {t('auth.have_account')}{' '}
                   <Link to="/login" className="text-teal hover:text-teal-hover font-medium transition-colors">
-                    Sign in
+                    {t('auth.sign_in_link')}
                   </Link>
                 </p>
               </form>
