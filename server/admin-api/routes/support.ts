@@ -16,6 +16,7 @@ import {
   renderOutboundTicketReplyEmail,
   escapeHtml,
 } from '../../../platform/help/supportReplyEmail';
+import { renderDocsFeedbackReplyEmail } from '../../../platform/help/docsFeedbackReplyEmail';
 import { tryReserveRetrySlot } from '../../../platform/help/docsFeedbackRetryLimiter';
 import { getRetryCooldownSeconds } from '../../../platform/help/docsFeedbackRetryLimiter';
 import { tryReserveSupportReplyRetrySlot } from '../../../platform/help/supportReplyRetryLimiter';
@@ -575,22 +576,15 @@ async function deliverDocsFeedbackReply(input: {
     throw new Error('comment has no reply_email');
   }
   const pool = getPlatformPool();
-  const escapedBody = escapeHtml(body).replace(/\n/g, '<br/>');
-  const originalBlock = comment.comment
-    ? `<hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb"/>
-       <p style="color:#64748b;font-size:12px;margin:0 0 4px">You wrote about <code>${escapeHtml(comment.article_slug)}</code>:</p>
-       <blockquote style="margin:0;padding:8px 12px;border-left:3px solid #cbd5e1;color:#475569;background:#f8fafc;font-size:13px;white-space:pre-wrap">${escapeHtml(comment.comment)}</blockquote>`
-    : '';
-  const html = `
-    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:640px">
-      <p style="white-space:pre-wrap">${escapedBody}</p>
-      ${originalBlock}
-      <p style="color:#64748b;font-size:12px;margin-top:16px">— The QVO docs team</p>
-    </div>`;
-  const textOriginal = comment.comment
-    ? `\n\n----- Your original feedback (${comment.article_slug}) -----\n${comment.comment}`
-    : '';
-  const text = `${body}\n${textOriginal}\n\n— The QVO docs team`;
+  // Render via the shared helper so the background
+  // DocsFeedbackReplyRetryScheduler re-sends the exact same body when it
+  // auto-retries this reply later — no template drift between the manual
+  // path and the auto-retry path.
+  const { html, text } = renderDocsFeedbackReplyEmail({
+    articleSlug: comment.article_slug,
+    originalComment: comment.comment,
+    body,
+  });
 
   const result = await sendEmail({
     to: comment.reply_email,

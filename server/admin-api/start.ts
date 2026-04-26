@@ -19,6 +19,7 @@ import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityT
 import { startMilestoneScheduler, stopMilestoneScheduler } from '../../platform/analytics/MilestoneScheduler';
 import { startDocsFeedbackAlertScheduler, stopDocsFeedbackAlertScheduler } from '../../platform/help/DocsFeedbackAlertScheduler';
 import { startDocsFeedbackReplyDigestScheduler, stopDocsFeedbackReplyDigestScheduler } from '../../platform/help/DocsFeedbackReplyDigestScheduler';
+import { startDocsFeedbackReplyRetryScheduler, stopDocsFeedbackReplyRetryScheduler } from '../../platform/help/DocsFeedbackReplyRetryScheduler';
 import { startSupportReplyRetryScheduler, stopSupportReplyRetryScheduler } from '../../platform/help/SupportReplyRetryScheduler';
 import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } from '../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler } from '../../platform/integrations/connectors';
@@ -79,6 +80,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startMilestoneScheduler();
   startDocsFeedbackAlertScheduler();
   startDocsFeedbackReplyDigestScheduler();
+  startDocsFeedbackReplyRetryScheduler();
   startSupportReplyRetryScheduler();
   startConnectorAuthAlertScheduler();
   startOAuthTokenRefreshScheduler();
@@ -102,6 +104,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopMilestoneScheduler();
   stopDocsFeedbackAlertScheduler();
   stopDocsFeedbackReplyDigestScheduler();
+  stopDocsFeedbackReplyRetryScheduler();
   stopSupportReplyRetryScheduler();
   stopConnectorAuthAlertScheduler();
   stopOAuthTokenRefreshScheduler();
