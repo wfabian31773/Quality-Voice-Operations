@@ -1,8 +1,22 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import type { TenantId } from '../core/types';
+import {
+  fanoutInAppNotification,
+  filterEmailRecipientsByPreference,
+} from '../notifications/NotificationPreferences';
+import { sendEmail, escalationAlertEmail } from '../email';
 
 const logger = createLogger('HUMAN_ESCALATION');
+
+const ESCALATION_NOTIFICATION_TYPE = 'escalation';
+
+function appBaseUrl(): string {
+  return (
+    process.env.APP_URL ??
+    `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`
+  );
+}
 
 export interface EscalationTask {
   id: string;
@@ -73,7 +87,7 @@ function mapRow(row: Record<string, unknown>): EscalationTask {
 }
 
 export async function createEscalationTask(params: CreateEscalationTaskParams): Promise<EscalationTask> {
-  return withTenant(params.tenantId, async (client) => {
+  const task = await withTenant(params.tenantId, async (client) => {
     const { rows } = await client.query(
       `INSERT INTO escalation_tasks (
         tenant_id, call_session_id, agent_slug, caller_phone, reason, priority, status, tool_name, metadata, created_at, updated_at
@@ -97,6 +111,162 @@ export async function createEscalationTask(params: CreateEscalationTaskParams): 
       taskId: rows[0].id,
     });
     return mapRow(rows[0]);
+  });
+
+  // Best-effort notification fan-out. Never fail task creation because a
+  // notification couldn't be delivered — the escalation row is the source of
+  // truth and surfaces in the queue regardless of preferences.
+  notifyHumanEscalation(task).catch((err) => {
+    logger.warn('Failed to dispatch escalation notifications', {
+      tenantId: task.tenantId,
+      taskId: task.id,
+      error: String(err),
+    });
+  });
+
+  return task;
+}
+
+/**
+ * Fan out an in-app row per opted-in user and send an email to admin/owner
+ * recipients who have not opted out of the 'escalation' category. Routed
+ * through the standard preference helpers so on-call rotation members can
+ * silence escalation pings without losing other alerts.
+ *
+ * Exported for tests; production callers should rely on createEscalationTask
+ * triggering this automatically.
+ */
+export async function notifyHumanEscalation(task: EscalationTask): Promise<void> {
+  const escalationsPath = '/ops/reliability?tab=escalations';
+  const escalationsUrl = `${appBaseUrl().replace(/\/$/, '')}${escalationsPath}`;
+
+  const reasonSnippet = task.reason.slice(0, 200);
+  const title = `Human escalation: ${task.priority.toUpperCase()}`;
+  const message =
+    `A live call needs human attention: ${reasonSnippet}` +
+    (task.callerPhone ? ` (caller ${task.callerPhone})` : '');
+
+  const inAppMetadata = {
+    link: escalationsPath,
+    escalationTaskId: task.id,
+    callSessionId: task.callSessionId,
+    agentSlug: task.agentSlug,
+    callerPhone: task.callerPhone,
+    priority: task.priority,
+    toolName: task.toolName,
+  };
+
+  try {
+    await fanoutInAppNotification({
+      tenantId: task.tenantId,
+      type: ESCALATION_NOTIFICATION_TYPE,
+      title,
+      message,
+      metadata: inAppMetadata,
+      category: 'escalation',
+    });
+  } catch (err) {
+    logger.error('Failed to fan out escalation in-app notification', {
+      tenantId: task.tenantId,
+      taskId: task.id,
+      error: String(err),
+    });
+  }
+
+  const pool = getPlatformPool();
+  let tenantName: string | undefined;
+  let recipients: string[] = [];
+  try {
+    const { rows: tenantRows } = await pool.query(
+      `SELECT name FROM tenants WHERE id = $1`,
+      [task.tenantId],
+    );
+    if (tenantRows.length > 0) {
+      tenantName = (tenantRows[0].name as string | null) ?? undefined;
+    }
+
+    const { rows: userRows } = await pool.query(
+      `SELECT email FROM users
+       WHERE tenant_id = $1
+         AND role IN ('admin', 'owner')
+         AND email IS NOT NULL
+         AND COALESCE(is_active, TRUE) = TRUE
+       LIMIT 10`,
+      [task.tenantId],
+    );
+    recipients = userRows
+      .map((r) => (r.email as string | null) ?? '')
+      .filter((e): e is string => Boolean(e));
+  } catch (err) {
+    logger.warn('Failed to look up tenant admins for escalation email', {
+      tenantId: task.tenantId,
+      taskId: task.id,
+      error: String(err),
+    });
+    return;
+  }
+
+  if (recipients.length === 0) {
+    logger.info('No tenant admins found to email about human escalation', {
+      tenantId: task.tenantId,
+      taskId: task.id,
+    });
+    return;
+  }
+
+  const beforeFilter = recipients.length;
+  recipients = await filterEmailRecipientsByPreference(
+    task.tenantId,
+    recipients,
+    'escalation',
+  );
+  if (recipients.length === 0) {
+    logger.info('All admin recipients opted out of escalation email notifications', {
+      tenantId: task.tenantId,
+      taskId: task.id,
+      removed: beforeFilter,
+    });
+    return;
+  }
+
+  const { subject, html, text } = escalationAlertEmail({
+    tenantName,
+    reason: task.reason,
+    priority: task.priority,
+    agentSlug: task.agentSlug,
+    callerPhone: task.callerPhone,
+    toolName: task.toolName,
+    callSessionId: task.callSessionId,
+    escalationsUrl,
+    raisedAt: new Date(task.createdAt || Date.now()).toUTCString(),
+  });
+
+  for (const to of recipients) {
+    try {
+      const result = await sendEmail({ to, subject, html, text });
+      if (!result.success) {
+        logger.warn('Escalation alert email send failed', {
+          tenantId: task.tenantId,
+          taskId: task.id,
+          to,
+          error: result.error,
+        });
+      }
+    } catch (err) {
+      logger.warn('Escalation alert email threw', {
+        tenantId: task.tenantId,
+        taskId: task.id,
+        to,
+        error: String(err),
+      });
+    }
+  }
+
+  logger.info('Human escalation notifications dispatched', {
+    tenantId: task.tenantId,
+    taskId: task.id,
+    priority: task.priority,
+    emailRecipients: recipients.length,
   });
 }
 

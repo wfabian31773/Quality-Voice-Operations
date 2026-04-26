@@ -341,6 +341,66 @@ export function connectorSyncRecoveryEmail(params: {
   return { subject, html, text };
 }
 
+export function escalationAlertEmail(params: {
+  tenantName?: string;
+  reason: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  agentSlug?: string | null;
+  callerPhone?: string | null;
+  toolName?: string | null;
+  callSessionId: string;
+  escalationsUrl: string;
+  raisedAt: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const safeReason = (params.reason || 'A live call needs human attention').slice(0, 500);
+  const priorityLabel = params.priority.charAt(0).toUpperCase() + params.priority.slice(1);
+  const subject =
+    params.priority === 'critical' || params.priority === 'high'
+      ? `[${priorityLabel}] Human escalation needed for ${org}`
+      : `Human escalation queued for ${org}`;
+
+  const detailRows: string[] = [
+    `<li><strong>Priority:</strong> ${priorityLabel}</li>`,
+  ];
+  if (params.agentSlug) detailRows.push(`<li><strong>Agent:</strong> ${params.agentSlug}</li>`);
+  if (params.callerPhone) detailRows.push(`<li><strong>Caller:</strong> ${params.callerPhone}</li>`);
+  if (params.toolName) detailRows.push(`<li><strong>Triggering tool:</strong> ${params.toolName}</li>`);
+  detailRows.push(`<li><strong>Call session:</strong> ${params.callSessionId}</li>`);
+  detailRows.push(`<li><strong>Raised at:</strong> ${params.raisedAt}</li>`);
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>A live call for <strong>${org}</strong> needs a human to step in.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>Reason</strong></p>
+      <p style="margin:4px 0 0">${safeReason}</p>
+    </div>
+    <ul style="margin:0 0 16px; padding-left:20px; color:#374151; font-size:14px; line-height:1.6;">
+      ${detailRows.join('\n      ')}
+    </ul>
+    <p><a href="${params.escalationsUrl}" class="btn">Open Escalation Queue</a></p>
+    <p class="muted">You're receiving this because escalation alerts are enabled in your notification preferences. You can opt out from Settings &rarr; Notifications.</p>
+  `);
+
+  const detailLines: string[] = [`Priority: ${priorityLabel}`];
+  if (params.agentSlug) detailLines.push(`Agent: ${params.agentSlug}`);
+  if (params.callerPhone) detailLines.push(`Caller: ${params.callerPhone}`);
+  if (params.toolName) detailLines.push(`Triggering tool: ${params.toolName}`);
+  detailLines.push(`Call session: ${params.callSessionId}`);
+  detailLines.push(`Raised at: ${params.raisedAt}`);
+
+  const text =
+    `${subject}\n\n` +
+    `A live call for ${org} needs a human to step in.\n\n` +
+    `Reason: ${safeReason}\n\n` +
+    detailLines.join('\n') +
+    `\n\nOpen the escalation queue: ${params.escalationsUrl}\n\n` +
+    `Opt out anytime from Settings > Notifications.`;
+
+  return { subject, html, text };
+}
+
 export function dataExportEmail(params: {
   tenantName?: string;
   generatedAt: string;
