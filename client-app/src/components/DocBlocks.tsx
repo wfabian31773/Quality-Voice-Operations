@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Info, Lightbulb, AlertTriangle, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Info, Lightbulb, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { DocBlock } from '../data/docs';
 
 const calloutStyles = {
@@ -9,12 +9,31 @@ const calloutStyles = {
 };
 
 export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense?: boolean }) {
-  const [zoomed, setZoomed] = useState<{ src: string; alt: string; caption?: string } | null>(null);
+  const [zoomedIndex, setZoomedIndex] = useState<number | null>(null);
+
+  const images = useMemo(
+    () =>
+      blocks.flatMap((b) =>
+        b.type === 'image' ? [{ src: b.src, alt: b.alt, caption: b.caption }] : []
+      ),
+    [blocks]
+  );
+
+  const zoomed = zoomedIndex !== null ? images[zoomedIndex] ?? null : null;
+  const hasMultiple = images.length > 1;
 
   useEffect(() => {
-    if (!zoomed) return;
+    if (zoomedIndex === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setZoomed(null);
+      if (e.key === 'Escape') {
+        setZoomedIndex(null);
+      } else if (e.key === 'ArrowRight' && hasMultiple) {
+        e.preventDefault();
+        setZoomedIndex((i) => (i === null ? null : (i + 1) % images.length));
+      } else if (e.key === 'ArrowLeft' && hasMultiple) {
+        e.preventDefault();
+        setZoomedIndex((i) => (i === null ? null : (i - 1 + images.length) % images.length));
+      }
     };
     document.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
@@ -23,7 +42,7 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [zoomed]);
+  }, [zoomedIndex, hasMultiple, images.length]);
 
   return (
     <>
@@ -128,11 +147,12 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
           );
         }
         if (block.type === 'image') {
+          const imageIndex = images.findIndex((img) => img.src === block.src && img.alt === block.alt);
           return (
             <figure key={idx} className="my-4">
               <button
                 type="button"
-                onClick={() => setZoomed({ src: block.src, alt: block.alt, caption: block.caption })}
+                onClick={() => setZoomedIndex(imageIndex >= 0 ? imageIndex : 0)}
                 className="group block w-full rounded-xl border border-soft-steel/50 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal cursor-zoom-in"
                 aria-label={`Zoom image: ${block.alt}`}
               >
@@ -163,22 +183,51 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         return null;
       })}
     </div>
-    {zoomed && (
+    {zoomed && zoomedIndex !== null && (
       <div
         role="dialog"
         aria-modal="true"
         aria-label={zoomed.alt}
-        onClick={() => setZoomed(null)}
+        onClick={() => setZoomedIndex(null)}
         className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 cursor-zoom-out"
       >
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setZoomed(null); }}
+          onClick={(e) => { e.stopPropagation(); setZoomedIndex(null); }}
           aria-label="Close zoomed image"
           className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <X className="h-5 w-5" />
         </button>
+        {hasMultiple && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setZoomedIndex((i) => (i === null ? null : (i - 1 + images.length) % images.length));
+              }}
+              aria-label="Previous image"
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setZoomedIndex((i) => (i === null ? null : (i + 1) % images.length));
+              }}
+              aria-label="Next image"
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
+            </button>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-xs sm:text-sm text-white/80 bg-white/10 rounded-full px-3 py-1 font-body tabular-nums">
+              {zoomedIndex + 1} / {images.length}
+            </div>
+          </>
+        )}
         <figure
           className="max-w-full max-h-full flex flex-col items-center gap-3"
           onClick={(e) => e.stopPropagation()}
