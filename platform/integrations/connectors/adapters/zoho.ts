@@ -60,6 +60,150 @@ interface ZohoFetchResult<T> {
   error?: string;
 }
 
+/**
+ * Zoho error codes that mean the targeted record (Contact, Account, Deal)
+ * genuinely no longer exists in the upstream CRM.
+ *
+ * - `RESOURCE_NOT_FOUND` / `RECORD_NOT_FOUND` / `ID_NOT_FOUND`: returned
+ *   directly when a path-targeted resource is gone (commonly with HTTP 404).
+ * - `INVALID_DATA`: returned in per-record bulk-write responses when a
+ *   referenced related ID (e.g. a `Who_Id`/`What_Id`/`Parent_Id`/`Account_Name`
+ *   pointing at a deleted record) can't be resolved. Zoho's body wording is
+ *   "the id given seems to be invalid" / "the related id given seems to be
+ *   invalid" — we gate on that to avoid clearing the cache on unrelated
+ *   validation errors (bad field type, missing required field, etc.).
+ *
+ * Anything outside this set (rate limit, auth error, generic validation) is
+ * NOT a stale signal and must NOT clear the caller-identity cache.
+ */
+const ZOHO_STALE_DIRECT_ERROR_CODES = new Set([
+  'RESOURCE_NOT_FOUND',
+  'RECORD_NOT_FOUND',
+  'ID_NOT_FOUND',
+]);
+
+const ZOHO_STALE_INVALID_DATA_PATTERN =
+  /(?:related\s*id|id\s*given).*?(?:invalid|not\s*found|deleted)|does\s*not\s*exist|already\s*deleted/i;
+
+function isZohoStaleErrorCode(code: string | undefined, message: string | undefined): boolean {
+  if (!code) return false;
+  if (ZOHO_STALE_DIRECT_ERROR_CODES.has(code)) return true;
+  if (code === 'INVALID_DATA' && message && ZOHO_STALE_INVALID_DATA_PATTERN.test(message)) return true;
+  return false;
+}
+
+/**
+ * Inspect a Zoho HTTP-level error envelope (raw `error` string from
+ * `zohoFetch`, which is `Zoho {status}: {body}`) and decide whether it
+ * should be treated as a stale-record signal. Path-targeted 404s are the
+ * canonical "the URL-named record is gone" response, but if the body
+ * carries a recognised non-stale error code (e.g. `OAUTH_SCOPE_MISMATCH`
+ * on a misrouted call) we honour that instead so we don't over-clear the
+ * cache. Mirrors the HubSpot/Salesforce extractors.
+ */
+function extractZohoHttpStaleErrorCode(status: number, error: string | undefined): string | undefined {
+  let parsedCode: string | undefined;
+  let parsedMessage: string | undefined;
+  if (error) {
+    const codeMatch = error.match(/"code"\s*:\s*"([A-Z0-9_]+)"/);
+    if (codeMatch) parsedCode = codeMatch[1];
+    const msgMatch = error.match(/"message"\s*:\s*"([^"]*)"/);
+    if (msgMatch) parsedMessage = msgMatch[1];
+  }
+  if (parsedCode) {
+    if (isZohoStaleErrorCode(parsedCode, parsedMessage)) return parsedCode;
+    // Recognised non-stale code — let the failure surface but don't clear
+    // the cache, even if status is 404 (e.g. a typo'd module URL).
+    return undefined;
+  }
+  if (status === 404) return 'NOT_FOUND';
+  return undefined;
+}
+
+interface ZohoStaleIds {
+  contactId?: string;
+  accountId?: string;
+  dealId?: string;
+}
+
+/**
+ * Thrown by Zoho write/lookup helpers when the upstream returns a stale-
+ * record signal (HTTP 404, `RESOURCE_NOT_FOUND`, or `INVALID_DATA` with a
+ * "related id" message) for a request that referenced a cached/hinted
+ * record ID. Carries the IDs the failing call referenced (keyed by Zoho-
+ * native field names: `contactId`, `accountId`, `dealId`) so the handlers
+ * can surface them via `result.meta.staleIds`, and the dispatch layer can
+ * scrub them from the caller-identity cache. Mirrors `HubSpotStaleRecordError`
+ * and `PipedriveStaleRecordError`.
+ */
+class ZohoStaleRecordError extends Error {
+  staleIds: ZohoStaleIds;
+  errorCode?: string;
+  constructor(message: string, staleIds: ZohoStaleIds, errorCode?: string) {
+    super(message);
+    this.name = 'ZohoStaleRecordError';
+    this.staleIds = staleIds;
+    this.errorCode = errorCode;
+  }
+}
+
+/**
+ * Build a `ZohoStaleIds` object containing only the entries actually
+ * populated on `candidates`. Helpers pass in the IDs that the failing
+ * request body referenced; this keeps the surfaced `staleIds` narrow so
+ * the dispatch layer's value-match scrub doesn't accidentally clear an
+ * unrelated cached slot.
+ */
+function pruneStaleIds(candidates: ZohoStaleIds): ZohoStaleIds {
+  const out: ZohoStaleIds = {};
+  if (candidates.contactId) out.contactId = candidates.contactId;
+  if (candidates.accountId) out.accountId = candidates.accountId;
+  if (candidates.dealId) out.dealId = candidates.dealId;
+  return out;
+}
+
+/**
+ * Inspect a Zoho write/PUT response (body-level per-record entry OR
+ * HTTP-level error envelope) and throw `ZohoStaleRecordError` when the
+ * failure is unambiguously a stale-record signal. The bulk write API
+ * returns 200/207 with a per-record `{ status: 'error', code, message }`
+ * envelope — the per-record body check covers that path. Path-targeted
+ * 404s are covered by the HTTP-level check.
+ */
+function maybeThrowZohoStale(
+  res: ZohoFetchResult<ZohoWriteResponse>,
+  candidates: ZohoStaleIds,
+  context: string,
+): void {
+  const staleIds = pruneStaleIds(candidates);
+  if (Object.keys(staleIds).length === 0) return;
+
+  if (res.ok && res.data?.data?.length) {
+    const entry = res.data.data[0];
+    if (entry.status === 'error' && isZohoStaleErrorCode(entry.code, entry.message)) {
+      const code = entry.code ?? 'INVALID_DATA';
+      const message = entry.message ?? '';
+      throw new ZohoStaleRecordError(
+        `${context} (${code}): ${message}`.slice(0, 240),
+        staleIds,
+        code,
+      );
+    }
+    return;
+  }
+
+  if (!res.ok) {
+    const httpStaleCode = extractZohoHttpStaleErrorCode(res.status, res.error);
+    if (httpStaleCode) {
+      throw new ZohoStaleRecordError(
+        `${context} (${res.status}, ${httpStaleCode}): ${res.error ?? ''}`.slice(0, 240),
+        staleIds,
+        httpStaleCode,
+      );
+    }
+  }
+}
+
 async function zohoFetch<T = unknown>(
   auth: ZohoAuth,
   path: string,
@@ -210,6 +354,11 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
         method: 'POST',
         body: { data: [callBody] },
       });
+      // The Call POST body references contactId via Who_Id and either
+      // dealId (preferred) or accountId via What_Id. A stale signal here
+      // is ambiguous — flag every ID the body referenced and let the
+      // dispatch layer's value-match scrub clear only the truly stale one(s).
+      maybeThrowZohoStale(callRes, refs, 'Zoho Call create failed');
       const callId = extractWrittenId(callRes);
       if (!callId) {
         throw new Error(callRes.error ?? 'Zoho Call create failed');
@@ -236,10 +385,54 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof ZohoStaleRecordError) {
+        logger.warn('Zoho call logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Zoho call logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * Build a `ConnectorResult` for a stale-record failure. Only IDs that
+   * actually appeared on the inbound payload (matched against either the
+   * Zoho-native key OR the canonical Salesforce-style alias) are surfaced
+   * as `meta.staleIds` — the dispatch layer's value-match scrub then clears
+   * only those slots from `crm_caller_identities`. Mirrors the helpers on
+   * the HubSpot/Pipedrive/Salesforce adapters.
+   */
+  private staleRecordResult(
+    err: ZohoStaleRecordError,
+    payload: ConnectorPayload,
+  ): ConnectorResult {
+    const filtered: Record<string, string> = {};
+    const payloadContactId = payload.contactId as string | undefined;
+    const payloadAccountId = payload.accountId as string | undefined;
+    const payloadDealId = (payload.dealId as string | undefined)
+      ?? (payload.opportunityId as string | undefined);
+    if (err.staleIds.contactId && err.staleIds.contactId === payloadContactId) {
+      filtered.contactId = err.staleIds.contactId;
+    }
+    if (err.staleIds.accountId && err.staleIds.accountId === payloadAccountId) {
+      filtered.accountId = err.staleIds.accountId;
+    }
+    if (err.staleIds.dealId && err.staleIds.dealId === payloadDealId) {
+      filtered.dealId = err.staleIds.dealId;
+    }
+    return {
+      success: false,
+      error: err.message,
+      meta: {
+        provider: 'zoho',
+        staleRecord: true,
+        ...(err.errorCode ? { staleErrorCode: err.errorCode } : {}),
+        ...(Object.keys(filtered).length > 0 ? { staleIds: filtered } : {}),
+      },
+    };
   }
 
   private async handleAppointmentBooked(
@@ -341,6 +534,14 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
             }],
           },
         });
+        // The Note POST body's Parent_Id is unambiguously the noteParent ID
+        // — flag only that ID so a stale signal here clears the matching
+        // cache slot without touching unrelated ones.
+        const noteParentStale: ZohoStaleIds = {};
+        if (noteParent.module === 'Contacts') noteParentStale.contactId = noteParent.id;
+        else if (noteParent.module === 'Accounts') noteParentStale.accountId = noteParent.id;
+        else if (noteParent.module === 'Deals') noteParentStale.dealId = noteParent.id;
+        maybeThrowZohoStale(noteRes, noteParentStale, 'Zoho Note create failed');
         noteId = extractWrittenId(noteRes);
         if (!noteId) {
           throw new Error(noteRes.error ?? 'Zoho Note create failed');
@@ -392,6 +593,12 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof ZohoStaleRecordError) {
+        logger.warn('Zoho appointment logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Zoho appointment logging failed', { tenantId, error });
       return { success: false, error };
@@ -491,7 +698,20 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
     const res = await zohoFetch<{
       data?: Array<{ id: string; Stage?: string }>;
     }>(auth, `/Contacts/${encodeURIComponent(contactId)}/Deals?per_page=10`);
-    if (!res.ok || !res.data?.data?.length) return undefined;
+    if (!res.ok) {
+      // The contactId is in the URL path, so a stale signal here
+      // unambiguously identifies the contactId as the deleted record.
+      const httpStaleCode = extractZohoHttpStaleErrorCode(res.status, res.error);
+      if (httpStaleCode) {
+        throw new ZohoStaleRecordError(
+          `Zoho contact deals lookup failed (${res.status}, ${httpStaleCode}): ${res.error ?? ''}`.slice(0, 240),
+          { contactId },
+          httpStaleCode,
+        );
+      }
+      return undefined;
+    }
+    if (!res.data?.data?.length) return undefined;
     const open = res.data.data.find((d) => {
       const stage = (d.Stage ?? '').toLowerCase();
       return stage !== 'closed won' && stage !== 'closed lost';
@@ -529,6 +749,15 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
       method: 'POST',
       body: { data: [body] },
     });
+    // The Deal POST body references contactId via Contact_Name and (when
+    // present) accountId via Account_Name. A stale signal is ambiguous —
+    // flag both candidates so the dispatch layer's value-match scrub can
+    // clear the truly stale one without touching the still-valid one.
+    maybeThrowZohoStale(
+      create,
+      { contactId, ...(accountId ? { accountId } : {}) },
+      'Zoho deal create failed',
+    );
     const id = extractWrittenId(create);
     if (!id) {
       logger.warn('Zoho deal create failed', { contactId, error: create.error });
@@ -555,6 +784,15 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
       method: 'PUT',
       body: { data: [body] },
     });
+    // The PUT body references the dealId (always) and accountId (when set).
+    // A stale signal could implicate either — flag both and rely on the
+    // dispatch layer's value-match scrub. When accountId is absent, only
+    // dealId is flagged so the scrub can target it precisely.
+    maybeThrowZohoStale(
+      update,
+      { dealId, ...(accountId ? { accountId } : {}) },
+      'Zoho deal stage move failed',
+    );
     if (!update.ok || !update.data?.data?.length || update.data.data[0].status !== 'success') {
       logger.warn('Zoho deal stage move failed', { dealId, stageName, error: update.error });
       return false;
@@ -576,6 +814,9 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
         }],
       },
     });
+    // The PUT body references dealId and accountId — flag both as
+    // potential stale candidates, value-match scrub does the rest.
+    maybeThrowZohoStale(update, { dealId, accountId }, 'Zoho deal account link failed');
     if (!update.ok || !update.data?.data?.length || update.data.data[0].status !== 'success') {
       logger.warn('Zoho deal account link failed', { dealId, accountId, error: update.error });
     }

@@ -1346,4 +1346,118 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
       orgId: '555',
     });
   });
+
+  test('Zoho: stale cached dealId triggers targeted cache invalidation while preserving valid contactId', async () => {
+    const config: ConnectorConfig = {
+      integrationId: 'int-zoho-stale-deal',
+      tenantId: TENANT,
+      connectorType: 'crm',
+      provider: 'zoho',
+      isEnabled: true,
+      credentials: {
+        access_token: 'tok-zoho',
+        // Configured appointment stage forces handleAppointmentBooked into
+        // the moveDealStage path (PUT /Deals with body referencing the
+        // dealId), which is what we want to fail with Zoho's per-record
+        // "id given seems to be invalid" envelope.
+        appointment_stage_id: 'Qualification',
+      },
+    };
+    vi.mocked(connectorDb.listEnabledConnectorConfigs).mockResolvedValue([config]);
+
+    // Pre-seed a Zoho cache row with a deal that has since been deleted
+    // upstream. The contact is still valid and must NOT be scrubbed. We
+    // deliberately omit accountId so the moveDealStage PUT body contains
+    // only `{ id, Stage }` (no Account_Name) — the only Zoho path that
+    // unambiguously implicates the dealId, which lets the adapter flag
+    // *only* `dealId` as stale (and therefore only scrub `dealId`,
+    // leaving `contactId` untouched).
+    //
+    // Zoho's `contactId` field already matches the canonical Salesforce-
+    // style slot name, so it lands directly in `contactId`. `dealId` is
+    // stored under the canonical `opportunityId` slot per
+    // `extractIdentityFromMeta`'s field aliasing.
+    const store = (identityModule as unknown as { __store: Map<string, StoredIdentity> }).__store;
+    const normPhone = identityModule.normalizeCallerPhone(CALLER_PHONE)!;
+    store.set(`${TENANT}:zoho:${normPhone}`, {
+      contactId: 'zoho-contact-keep',
+      opportunityId: 'zoho-deal-zombie',
+    });
+
+    // No callerCompany on the inbound payload → handleAppointmentBooked
+    // skips findOrCreateAccount. The pre-existing contactId + dealId hints
+    // (via cache injection) skip findOrCreateContact, findOpenDealForContact,
+    // and createDealForContact. moveDealStage is invoked with orgId=undefined.
+    // Zoho's bulk write API returns 200 with a per-record error envelope
+    // when one record fails — INVALID_DATA + "id given seems to be invalid"
+    // is the canonical "the referenced record is gone" body shape.
+    const fetchScope = setupFetch([
+      {
+        match: (u, i) => /\/crm\/v2\/Deals(\?|$)/.test(u) && i?.method === 'PUT',
+        response: {
+          status: 200,
+          body: {
+            data: [{
+              code: 'INVALID_DATA',
+              details: { id: 'zoho-deal-zombie' },
+              message: 'the id given seems to be invalid',
+              status: 'error',
+            }],
+          },
+        },
+      },
+    ]);
+
+    const service = new ConnectorService();
+    const apptResult = await service.dispatchEvent(TENANT, 'appointment.booked', {
+      type: 'appointment.booked',
+      callerPhone: CALLER_PHONE,
+      callerFirstName: 'Jane',
+      callerLastName: 'Doe',
+      summary: 'Demo booked',
+      appointmentDate: '2026-05-01',
+      appointmentTime: '14:00',
+    });
+
+    expect(apptResult.dispatched).toBe(1);
+    expect(apptResult.results[0]).toMatchObject({ provider: 'zoho', success: false });
+
+    // Sanity: the deal stage move really did target the stale dealId, proving
+    // the cache hint flowed end-to-end into the HTTP layer.
+    const dealPut = fetchScope.calls.find(
+      (c) => c.method === 'PUT' && /\/crm\/v2\/Deals/.test(c.url),
+    );
+    expect(dealPut).toBeDefined();
+    // And the body's only data entry references the dealId without any
+    // Account_Name — proves our pure-dealId path so the stale signal is
+    // unambiguously the dealId.
+    const dealPutBody = dealPut!.body as {
+      data: Array<{ id: string; Stage: string; Account_Name?: unknown }>;
+    };
+    expect(dealPutBody.data[0].id).toBe('zoho-deal-zombie');
+    expect(dealPutBody.data[0]).not.toHaveProperty('Account_Name');
+
+    // The dispatch layer scrubbed the cache using the Zoho-native dealId
+    // key the adapter surfaced — and only that key (no contactId or
+    // accountId), so the value-match scrub can't accidentally clear the
+    // still-valid contact slot.
+    expect(identityModule.clearCrmCallerIdentity).toHaveBeenCalledWith(
+      TENANT,
+      'zoho',
+      CALLER_PHONE,
+      expect.objectContaining({ dealId: 'zoho-deal-zombie' }),
+    );
+    const lastCall = vi.mocked(identityModule.clearCrmCallerIdentity).mock.calls.at(-1)!;
+    const passedStale = lastCall[3] as Record<string, string> | undefined;
+    expect(passedStale?.contactId).toBeUndefined();
+    expect(passedStale?.accountId).toBeUndefined();
+
+    // Targeted scrub: the canonical opportunityId column (where Zoho's
+    // dealId lives) is cleared by value-match, while the still-valid
+    // contactId slot is preserved verbatim.
+    const after = store.get(`${TENANT}:zoho:${normPhone}`);
+    expect(after).toBeDefined();
+    expect(after!.opportunityId).toBeUndefined();
+    expect(after!.contactId).toBe('zoho-contact-keep');
+  });
 });
