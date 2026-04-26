@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   Plus, Trash2, Phone, X, Search, Sparkles, ArrowRight,
-  RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot, Calendar,
+  RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot, Calendar, AlertTriangle,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
@@ -39,6 +39,25 @@ const SCHEDULING_PROVIDER_LABELS: Record<string, string> = {
 
 function formatSchedulingProvider(provider: string, fallback?: string): string {
   return SCHEDULING_PROVIDER_LABELS[provider] ?? fallback ?? provider;
+}
+
+interface SchedulingConnectorOption {
+  provider: string;
+  name: string;
+}
+
+function fetchSchedulingConnectors(): Promise<SchedulingConnectorOption[]> {
+  return api
+    .get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100')
+    .then((res) => {
+      const enabled = (res.connectors ?? []).filter(
+        (c) => c.connectorType === 'scheduling' && c.isEnabled,
+      );
+      return enabled.map((c) => ({
+        provider: c.provider,
+        name: c.name && c.name !== c.provider ? c.name : formatSchedulingProvider(c.provider),
+      }));
+    });
 }
 
 interface Agent {
@@ -489,33 +508,17 @@ function ProvisionFlow({
 function ReassignModal({
   phone,
   agents,
+  schedulingOptions,
   onClose,
 }: {
   phone: PhoneNumber;
   agents: Agent[];
+  schedulingOptions: SchedulingConnectorOption[];
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const [agentId, setAgentId] = useState(phone.routed_agent_id ?? '');
   const [schedulingProvider, setSchedulingProvider] = useState(phone.scheduling_provider ?? '');
-  const [schedulingOptions, setSchedulingOptions] = useState<{ provider: string; name: string }[]>([]);
-
-  useEffect(() => {
-    api
-      .get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100')
-      .then((res) => {
-        const enabled = (res.connectors ?? []).filter(
-          (c) => c.connectorType === 'scheduling' && c.isEnabled,
-        );
-        setSchedulingOptions(
-          enabled.map((c) => ({
-            provider: c.provider,
-            name: c.name && c.name !== c.provider ? c.name : formatSchedulingProvider(c.provider),
-          })),
-        );
-      })
-      .catch(() => setSchedulingOptions([]));
-  }, []);
 
   const mutation = useMutation({
     mutationFn: (vars: { newAgentId: string; provider: string }) =>
@@ -636,6 +639,16 @@ export default function PhoneNumbers() {
     queryFn: () => api.get<{ agents: Agent[] }>('/agents?limit=100'),
   });
 
+  const {
+    data: schedulingOptions = [],
+    isSuccess: connectorsLoaded,
+  } = useQuery({
+    queryKey: ['scheduling-connectors'],
+    queryFn: fetchSchedulingConnectors,
+  });
+
+  const connectedProviders = new Set(schedulingOptions.map((o) => o.provider));
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.delete(`/phone-numbers/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['phone-numbers'] }),
@@ -747,19 +760,35 @@ export default function PhoneNumbers() {
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
-                        title={
-                          pn.scheduling_provider
-                            ? `Books appointments into ${formatSchedulingProvider(pn.scheduling_provider)}`
-                            : 'Uses the agent or tenant default scheduling calendar'
+                      {(() => {
+                        const provider = pn.scheduling_provider;
+                        const isDisconnected =
+                          !!provider && connectorsLoaded && !connectedProviders.has(provider);
+                        if (isDisconnected) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50"
+                              title={`${formatSchedulingProvider(provider)} is no longer connected. Reconnect this calendar in Settings → Integrations so this number can book appointments.`}
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              {formatSchedulingProvider(provider)} (not connected)
+                            </span>
+                          );
                         }
-                      >
-                        <Calendar className="h-3 w-3" />
-                        {pn.scheduling_provider
-                          ? formatSchedulingProvider(pn.scheduling_provider)
-                          : 'Default'}
-                      </span>
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
+                            title={
+                              provider
+                                ? `Books appointments into ${formatSchedulingProvider(provider)}`
+                                : 'Uses the agent or tenant default scheduling calendar'
+                            }
+                          >
+                            <Calendar className="h-3 w-3" />
+                            {provider ? formatSchedulingProvider(provider) : 'Default'}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-3">
                       {pn.is_free_number ? (
@@ -814,6 +843,7 @@ export default function PhoneNumbers() {
         <ReassignModal
           phone={reassigning}
           agents={agents}
+          schedulingOptions={schedulingOptions}
           onClose={() => setReassigning(null)}
         />
       )}

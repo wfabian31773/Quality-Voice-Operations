@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertTriangle } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 
@@ -89,6 +89,20 @@ const SCHEDULING_PROVIDER_LABELS: Record<string, string> = {
 
 function formatSchedulingProvider(provider: string, fallback?: string): string {
   return SCHEDULING_PROVIDER_LABELS[provider] ?? fallback ?? provider;
+}
+
+function fetchSchedulingConnectors(): Promise<SchedulingConnectorOption[]> {
+  return api
+    .get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100')
+    .then((res) => {
+      const enabled = (res.connectors ?? []).filter(
+        (c) => c.connectorType === 'scheduling' && c.isEnabled,
+      );
+      return enabled.map((c) => ({
+        provider: c.provider,
+        name: c.name && c.name !== c.provider ? c.name : formatSchedulingProvider(c.provider),
+      }));
+    });
 }
 
 function ToolsConfigSection({ agentId }: { agentId: string }) {
@@ -188,7 +202,17 @@ function ToolsConfigSection({ agentId }: { agentId: string }) {
   );
 }
 
-function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: () => void; onSaved: (newAgentId?: string) => void }) {
+function AgentModal({
+  agentId,
+  schedulingOptions,
+  onClose,
+  onSaved,
+}: {
+  agentId?: string;
+  schedulingOptions: SchedulingConnectorOption[];
+  onClose: () => void;
+  onSaved: (newAgentId?: string) => void;
+}) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<AgentFormData>({
     name: '',
@@ -202,23 +226,6 @@ function AgentModal({ agentId, onClose, onSaved }: { agentId?: string; onClose: 
   });
   const [loaded, setLoaded] = useState(!agentId);
   const [activeTab, setActiveTab] = useState<'general' | 'tools'>('general');
-  const [schedulingOptions, setSchedulingOptions] = useState<SchedulingConnectorOption[]>([]);
-
-  useEffect(() => {
-    api.get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100')
-      .then((res) => {
-        const enabled = (res.connectors ?? []).filter(
-          (c) => c.connectorType === 'scheduling' && c.isEnabled,
-        );
-        setSchedulingOptions(
-          enabled.map((c) => ({
-            provider: c.provider,
-            name: c.name && c.name !== c.provider ? c.name : formatSchedulingProvider(c.provider),
-          })),
-        );
-      })
-      .catch(() => setSchedulingOptions([]));
-  }, []);
 
   useEffect(() => {
     if (!agentId) return;
@@ -408,6 +415,16 @@ export default function Agents() {
     queryFn: () => api.get<{ agents: Agent[]; total: number }>('/agents?limit=100'),
   });
 
+  const {
+    data: schedulingOptions = [],
+    isSuccess: connectorsLoaded,
+  } = useQuery({
+    queryKey: ['scheduling-connectors'],
+    queryFn: fetchSchedulingConnectors,
+  });
+
+  const connectedProviders = new Set(schedulingOptions.map((o) => o.provider));
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.delete(`/agents/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
@@ -473,19 +490,35 @@ export default function Agents() {
                 </div>
               )}
               <div className="flex items-center gap-2 mb-3">
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
-                  title={
-                    agent.scheduling_provider
-                      ? `Books appointments into ${formatSchedulingProvider(agent.scheduling_provider)}`
-                      : 'Uses the tenant default scheduling calendar'
+                {(() => {
+                  const provider = agent.scheduling_provider;
+                  const isDisconnected =
+                    !!provider && connectorsLoaded && !connectedProviders.has(provider);
+                  if (isDisconnected) {
+                    return (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50"
+                        title={`${formatSchedulingProvider(provider)} is no longer connected. Reconnect this calendar in Settings → Integrations so this agent can book appointments.`}
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        {formatSchedulingProvider(provider)} (not connected)
+                      </span>
+                    );
                   }
-                >
-                  <Calendar className="h-3 w-3" />
-                  {agent.scheduling_provider
-                    ? formatSchedulingProvider(agent.scheduling_provider)
-                    : 'Default'}
-                </span>
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
+                      title={
+                        provider
+                          ? `Books appointments into ${formatSchedulingProvider(provider)}`
+                          : 'Uses the tenant default scheduling calendar'
+                      }
+                    >
+                      <Calendar className="h-3 w-3" />
+                      {provider ? formatSchedulingProvider(provider) : 'Default'}
+                    </span>
+                  );
+                })()}
               </div>
               {!isFederated && agent.system_prompt && (
                 <p className="text-xs text-text-secondary line-clamp-2 mb-4">{agent.system_prompt}</p>
@@ -518,6 +551,7 @@ export default function Agents() {
       {editingId && (
         <AgentModal
           agentId={editingId === 'new' ? undefined : editingId}
+          schedulingOptions={schedulingOptions}
           onClose={() => setEditingId(null)}
           onSaved={(newAgentId?: string) => {
             if (newAgentId) {
