@@ -257,6 +257,64 @@ describe('runConnectorAutoDisableCycle', () => {
     expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
   });
 
+  // Regression: locks in the auto-disable opt-out filter contract.
+  it('regression: routes auto-disable email recipients through the integration opt-out filter', async () => {
+    const failedAt = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    setupQueries({
+      pending: [
+        {
+          tenant_id: 'tenant-optout',
+          integration_id: 'integration-optout',
+          provider: 'hubspot',
+          integration_type: 'crm',
+          name: 'HubSpot',
+          last_sync_status: 'needs_reconnect',
+          last_sync_error: 'invalid_grant',
+          last_sync_error_at: failedAt,
+        },
+      ],
+      tenantName: 'Acme',
+      adminEmails: ['owner@acme.test', 'ops@acme.test', 'admin@acme.test'],
+    });
+    filterRecipientsMock.mockResolvedValueOnce([]);
+
+    const result = await runConnectorAutoDisableCycle(14);
+
+    expect(filterRecipientsMock).toHaveBeenCalledTimes(1);
+    expect(filterRecipientsMock).toHaveBeenCalledWith(
+      'tenant-optout',
+      ['owner@acme.test', 'ops@acme.test', 'admin@acme.test'],
+      'integration',
+    );
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(connectorAutoDisabledEmailMock).not.toHaveBeenCalled();
+
+    expect(result.inspected).toBe(1);
+    expect(result.disabled).toBe(1);
+    expect(result.emailedRecipients).toBe(0);
+    expect(result.skippedNoRecipients).toBe(1);
+    expect(fanoutMock).toHaveBeenCalledTimes(1);
+    expect(fanoutMock.mock.calls[0][0]).toMatchObject({
+      tenantId: 'tenant-optout',
+      type: 'integration_disabled',
+      category: 'integration',
+      metadata: expect.objectContaining({
+        reason: 'auto_disabled',
+        integrationId: 'integration-optout',
+      }),
+    });
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    expect(writeAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-optout',
+        action: 'connector.auto_disabled',
+        resourceType: 'connector',
+        resourceId: 'integration-optout',
+      }),
+    );
+  });
+
   it('disables a needs_reconnect row even when last_sync_error is null', async () => {
     // This is the regression case: a connector that flipped from healthy
     // straight into `needs_reconnect` (e.g. expired refresh token via
