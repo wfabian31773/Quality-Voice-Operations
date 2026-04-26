@@ -624,4 +624,109 @@ describe('runConnectorAuthAlertCycle digest opt-out', () => {
     expect(result.emailedRecipients).toBe(0);
     expect(result.digestEmailsSent).toBe(0);
   });
+
+  // Regression: locks in that each digest entry carries `provider` through
+  // to the email template so the template can render a per-row deep link to
+  // /connectors?provider=<provider>. If a refactor drops the field, the
+  // digest email regresses to a single bottom-of-email CTA and tenants lose
+  // the one-click reconnect flow on this surface.
+  it('passes provider per failure row when delivering the digest email', async () => {
+    getConnectorAlertSettingsMock.mockResolvedValue({
+      digestMode: true,
+      digestLastSentAt: null,
+      updatedAt: null,
+      updatedBy: null,
+    });
+
+    queryMock.mockReset();
+    // 1. findPendingAuthFailures SELECT
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [
+        {
+          tenant_id: 'tenant-digest',
+          integration_id: 'integration-hubspot',
+          provider: 'hubspot',
+          integration_type: 'crm',
+          name: 'HubSpot Prod',
+          last_sync_status: 'needs_reconnect',
+          last_sync_error: 'invalid_grant',
+          last_sync_error_at: new Date(Date.now() - 60 * 60 * 1000),
+        },
+        {
+          tenant_id: 'tenant-digest',
+          integration_id: 'integration-salesforce',
+          provider: 'salesforce',
+          integration_type: 'crm',
+          name: null,
+          last_sync_status: 'error',
+          last_sync_error: 'HTTP 401 unauthorized',
+          last_sync_error_at: new Date(Date.now() - 30 * 60 * 1000),
+        },
+      ],
+    }));
+    // dispatchConnectorAuthAlert(suppressEmail=true) per-row queries:
+    // Row 1: SELECT integration row, SELECT tenant name, SELECT users, in-app dedupe SELECT
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{
+        name: 'HubSpot Prod',
+        integration_type: 'crm',
+        auth_alert_sent_at: null,
+        last_sync_error: 'invalid_grant',
+        last_sync_error_at: new Date(Date.now() - 60 * 60 * 1000),
+      }],
+    }));
+    queryMock.mockImplementationOnce(async () => ({ rows: [{ name: 'Acme' }] }));
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{ id: 'u-1', email: 'admin@acme.test' }],
+    }));
+    queryMock.mockImplementationOnce(async () => ({ rows: [] }));
+    // Row 2
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{
+        name: null,
+        integration_type: 'crm',
+        auth_alert_sent_at: null,
+        last_sync_error: 'HTTP 401 unauthorized',
+        last_sync_error_at: new Date(Date.now() - 30 * 60 * 1000),
+      }],
+    }));
+    queryMock.mockImplementationOnce(async () => ({ rows: [{ name: 'Acme' }] }));
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{ id: 'u-1', email: 'admin@acme.test' }],
+    }));
+    queryMock.mockImplementationOnce(async () => ({ rows: [] }));
+    // Digest loop per-tenant: SELECT tenant name, SELECT users
+    queryMock.mockImplementationOnce(async () => ({ rows: [{ name: 'Acme' }] }));
+    queryMock.mockImplementationOnce(async () => ({
+      rows: [{ id: 'u-1', email: 'admin@acme.test' }],
+    }));
+    // Per-entry slot claims after digest delivers (UPDATE auth_alert_sent_at)
+    queryMock.mockImplementationOnce(async () => ({ rowCount: 1 }));
+    queryMock.mockImplementationOnce(async () => ({ rowCount: 1 }));
+
+    const result = await runConnectorAuthAlertCycle();
+
+    expect(connectorSyncDigestEmailMock).toHaveBeenCalledTimes(1);
+    const digestArgs = connectorSyncDigestEmailMock.mock.calls[0][0] as {
+      failures: Array<{ provider: string; providerLabel: string; name: string | null }>;
+      connectorsUrl: string;
+    };
+    expect(digestArgs.failures).toHaveLength(2);
+    expect(digestArgs.failures[0]).toMatchObject({
+      provider: 'hubspot',
+      providerLabel: 'HubSpot',
+      name: 'HubSpot Prod',
+    });
+    expect(digestArgs.failures[1]).toMatchObject({
+      provider: 'salesforce',
+      providerLabel: 'Salesforce',
+      name: null,
+    });
+    // Connectors base URL is still passed for the bottom-of-email fallback CTA.
+    expect(digestArgs.connectorsUrl).toMatch(/\/connectors$/);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(recordDigestSentMock).toHaveBeenCalledWith('tenant-digest');
+    expect(result.digestEmailsSent).toBe(1);
+  });
 });

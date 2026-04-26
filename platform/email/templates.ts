@@ -263,6 +263,7 @@ export function connectorSyncDigestEmail(params: {
   connectorsUrl: string;
   generatedAt: string;
   failures: Array<{
+    provider: string;
     providerLabel: string;
     name: string | null;
     errorMessage: string;
@@ -276,17 +277,29 @@ export function connectorSyncDigestEmail(params: {
       ? `Daily integration digest: 1 connector failing`
       : `Daily integration digest: ${count} connectors failing`;
 
+  // Per-row deep link mirrors the per-event reconnect surfaces (email, SMS,
+  // in-app) so a tenant can one-click straight to the failing connector card
+  // instead of landing on the index. Built from `connectorsUrl` (already
+  // `${baseUrl}/connectors`) so the host respects APP_URL/REPLIT_DEV_DOMAIN.
+  const baseConnectorsUrl = params.connectorsUrl.replace(/[?#].*$/, '');
+  const reconnectUrlFor = (provider: string): string =>
+    `${baseConnectorsUrl}?provider=${encodeURIComponent(provider)}`;
+
   const rowsHtml = params.failures
     .map((f) => {
       const safeError = (f.errorMessage || 'Sync failed').slice(0, 240);
       const detected = f.detectedAt ? `<p style="margin:4px 0 0" class="muted">Last error ${f.detectedAt}</p>` : '';
       const subtitle = f.name && f.name !== f.providerLabel ? ` — ${f.name}` : '';
+      const href = reconnectUrlFor(f.provider);
       return `
-        <div class="alert-error">
-          <p style="margin:0"><strong>${f.providerLabel}${subtitle}</strong></p>
-          <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
-          ${detected}
-        </div>`;
+        <a href="${href}" style="display:block; text-decoration:none; color:inherit;">
+          <div class="alert-error">
+            <p style="margin:0"><strong>${f.providerLabel}${subtitle}</strong></p>
+            <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
+            ${detected}
+            <p style="margin:8px 0 0; color:#2563eb; font-size:13px; font-weight:600;">Reconnect ${f.providerLabel} →</p>
+          </div>
+        </a>`;
     })
     .join('');
 
@@ -294,13 +307,13 @@ export function connectorSyncDigestEmail(params: {
     .map((f) => {
       const detected = f.detectedAt ? ` (last error ${f.detectedAt})` : '';
       const subtitle = f.name && f.name !== f.providerLabel ? ` — ${f.name}` : '';
-      return `• ${f.providerLabel}${subtitle}${detected}\n  ${(f.errorMessage || 'Sync failed').slice(0, 240)}`;
+      return `• ${f.providerLabel}${subtitle}${detected}\n  ${(f.errorMessage || 'Sync failed').slice(0, 240)}\n  Reconnect: ${reconnectUrlFor(f.provider)}`;
     })
     .join('\n\n');
 
   const html = baseLayout(`
     <p>Hi,</p>
-    <p>This is your daily digest of integration failures for <strong>${org}</strong>. ${count === 1 ? 'One connector is' : `${count} connectors are`} currently failing to sync. Reconnect them from the Connectors page to restore syncing.</p>
+    <p>This is your daily digest of integration failures for <strong>${org}</strong>. ${count === 1 ? 'One connector is' : `${count} connectors are`} currently failing to sync. Click any row below to jump straight to that connector and reconnect it.</p>
     ${rowsHtml}
     <p><a href="${params.connectorsUrl}" class="btn">Open Connectors</a></p>
     <p class="muted">Digest generated ${params.generatedAt}. You're receiving one email per day instead of one per failure because digest mode is enabled in Settings → Notifications.</p>

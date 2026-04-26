@@ -709,6 +709,11 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
     const connectorsUrl = `${appBaseUrl().replace(/\/$/, '')}/connectors`;
     const generatedAt = new Date().toUTCString();
     const failures = entries.map((e) => ({
+      // `provider` flows through to the digest template so each row renders
+      // a clickable deep link to /connectors?provider=<provider>, matching
+      // the per-event email + SMS + in-app surfaces. The entry already
+      // carries this from the cycle loop, so no extra DB lookup is needed.
+      provider: e.provider,
       providerLabel: e.providerLabel,
       name: e.name,
       errorMessage: e.errorMessage,
