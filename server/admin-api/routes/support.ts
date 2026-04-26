@@ -1415,6 +1415,13 @@ router.get(
 // Returns the most recent N rows ordered by `unsubscribed_at DESC`, plus a
 // total-count and a `truncated` flag — same shape as the bounced-recipients
 // endpoint so the admin UI can render them with consistent affordances.
+//
+// Also returns `recent_resubscribes`: the last 30 days of rows from
+// `support_email_unsubscribe_audit` so support reps can answer "did the
+// customer opt back in themselves, or did we drop the entry by mistake?"
+// without grepping logs. The 30-day window matches the panel copy and is
+// long enough to cover a typical "I thought I asked to stop" complaint
+// cycle while keeping the response payload bounded.
 router.get(
   '/support/unsubscribed',
   requireAuth,
@@ -1424,12 +1431,21 @@ router.get(
       Math.max(parseInt(String(req.query.limit ?? '100'), 10) || 100, 1),
       500,
     );
+    // Cap the resubscribe list separately from the unsubscribe slice — a
+    // burst of bot-driven resubscribes shouldn't be able to push the
+    // payload past a sane size, and a smaller cap is fine here because
+    // the panel only renders the last 30 days regardless of how many
+    // rows exist within that window.
+    const RESUBSCRIBE_WINDOW_DAYS = 30;
+    const RESUBSCRIBE_LIMIT = 200;
     try {
       const pool = getPlatformPool();
-      // Two cheap reads: the bounded slice for display and a separate
-      // `COUNT(*)` so the panel can show "showing N of M" honestly without
-      // pulling the entire table just to count it.
-      const [rowsRes, totalRes] = await Promise.all([
+      // Three cheap reads in parallel: the unsubscribe slice, the
+      // unsubscribe count for the "showing N of M" banner, and the
+      // 30-day window of resubscribes. We don't need a separate count
+      // for resubscribes — the panel just lists them inline and the
+      // RESUBSCRIBE_LIMIT is the entire visible set.
+      const [rowsRes, totalRes, resubRes] = await Promise.all([
         pool.query<{
           email_lower: string;
           source: string | null;
@@ -1444,13 +1460,39 @@ router.get(
         pool.query<{ count: string }>(
           `SELECT COUNT(*)::text AS count FROM support_email_unsubscribes`,
         ),
+        pool.query<{
+          email_lower: string;
+          resubscribed_source: string | null;
+          resubscribed_at: string;
+          previous_unsubscribed_at: string | null;
+          previous_source: string | null;
+        }>(
+          `SELECT email_lower, resubscribed_source, resubscribed_at,
+                  previous_unsubscribed_at, previous_source
+             FROM support_email_unsubscribe_audit
+             WHERE resubscribed_at >= NOW() - ($1::int || ' days')::interval
+             ORDER BY resubscribed_at DESC
+             LIMIT $2`,
+          [RESUBSCRIBE_WINDOW_DAYS, RESUBSCRIBE_LIMIT],
+        ),
       ]);
 
       const total = parseInt(totalRes.rows[0]?.count ?? '0', 10) || 0;
+      // `recent_resubscribes_truncated` flips when the 30-day window has
+      // more rows than RESUBSCRIBE_LIMIT can return. Without this signal
+      // a high-volume window would silently render an incomplete list
+      // and ops would have no way to tell whether they're seeing every
+      // resubscribe or just the most-recent slice. We can't reuse the
+      // unsubscribes' `truncated` field — it tracks the active opt-out
+      // table, not the audit table.
+      const resubscribeTruncated = resubRes.rows.length >= RESUBSCRIBE_LIMIT;
       res.json({
         unsubscribes: rowsRes.rows,
         total,
         truncated: total > rowsRes.rows.length,
+        recent_resubscribes: resubRes.rows,
+        resubscribe_window_days: RESUBSCRIBE_WINDOW_DAYS,
+        recent_resubscribes_truncated: resubscribeTruncated,
       });
     } catch (err) {
       res

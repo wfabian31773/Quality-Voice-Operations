@@ -2877,16 +2877,35 @@ interface UnsubscribedAddress {
   unsubscribed_at: string;
 }
 
+interface RecentResubscribe {
+  email_lower: string;
+  resubscribed_source: string | null;
+  resubscribed_at: string;
+  previous_unsubscribed_at: string | null;
+  previous_source: string | null;
+}
+
 interface UnsubscribedAddressesResponse {
   unsubscribes: UnsubscribedAddress[];
   total: number;
   truncated: boolean;
+  recent_resubscribes?: RecentResubscribe[];
+  resubscribe_window_days?: number;
+  recent_resubscribes_truncated?: boolean;
 }
 
 // Lists addresses on the support unsubscribe list. The send-side gate
 // (`checkSupportEmailSkip`) already blocks outbound mail to these recipients;
 // this panel just gives ops a discoverable answer to "is X@Y opted out?"
 // without dropping into SQL.
+//
+// We also surface a "Recently resubscribed" sub-section sourced from the
+// `support_email_unsubscribe_audit` table. The resubscribe endpoint
+// DELETEs the unsubscribe row, so without this audit trail an address
+// would just silently disappear from the list with no explanation —
+// support reps couldn't answer "I thought I asked to stop" complaints
+// without grepping server logs. The window is 30 days (server-side
+// constant), long enough to cover a typical complaint cycle.
 function UnsubscribedAddressesPanel() {
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState('');
@@ -2901,18 +2920,49 @@ function UnsubscribedAddressesPanel() {
   const unsubscribes = data?.unsubscribes ?? [];
   const total = data?.total ?? 0;
   const truncated = data?.truncated ?? false;
+  const recentResubscribes = data?.recent_resubscribes ?? [];
+  const resubscribeWindowDays = data?.resubscribe_window_days ?? 30;
+  const recentResubscribesTruncated = data?.recent_resubscribes_truncated ?? false;
 
-  // Hide the panel entirely when nothing has been opted out — same posture
-  // as the bounced-recipients panel above, so the inbox stays uncluttered
-  // in the happy case.
-  if (!isLoading && unsubscribes.length === 0) {
+  // Hide the panel entirely only when BOTH lists are empty — a recent
+  // resubscribe is itself useful context for ops ("the address you're
+  // hunting for came off the list two days ago"), so we keep the panel
+  // visible whenever either list has content. The inbox still stays
+  // uncluttered in the truly-quiet case.
+  if (!isLoading && unsubscribes.length === 0 && recentResubscribes.length === 0) {
     return null;
   }
 
   const needle = filter.trim().toLowerCase();
-  const filtered = needle
+  const filteredUnsubs = needle
     ? unsubscribes.filter((u) => u.email_lower.includes(needle))
     : unsubscribes;
+  const filteredResubs = needle
+    ? recentResubscribes.filter((r) => r.email_lower.includes(needle))
+    : recentResubscribes;
+
+  // Header summary line — show counts for both lists so support reps can
+  // tell at a glance whether the interesting signal is "lots of new
+  // opt-outs" vs "a wave of resubscribes" without expanding the panel.
+  const summaryParts: string[] = [];
+  if (isLoading) {
+    summaryParts.push('loading…');
+  } else {
+    summaryParts.push(
+      `${total} address${total === 1 ? '' : 'es'} on the support opt-out list`,
+    );
+    if (truncated) {
+      summaryParts.push(`showing first ${unsubscribes.length}`);
+    }
+    if (recentResubscribes.length > 0) {
+      // Append "(more not shown)" when the audit window had more rows
+      // than RESUBSCRIBE_LIMIT — otherwise ops has no way to tell
+      // whether the panel is showing every resubscribe or just the
+      // most-recent slice.
+      const resubLabel = `${recentResubscribes.length}${recentResubscribesTruncated ? '+' : ''} resubscribed in the last ${resubscribeWindowDays} days`;
+      summaryParts.push(resubLabel);
+    }
+  }
 
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -2930,10 +2980,7 @@ function UnsubscribedAddressesPanel() {
             <div className="text-sm font-medium">
               Unsubscribed addresses
               <span className="ml-2 text-xs text-muted font-normal">
-                {isLoading
-                  ? 'loading…'
-                  : `${total} address${total === 1 ? '' : 'es'} on the support opt-out list`}
-                {truncated && ` (showing first ${unsubscribes.length})`}
+                {summaryParts.join(' · ')}
               </span>
             </div>
             <div className="text-xs text-muted mt-0.5">
@@ -2966,10 +3013,10 @@ function UnsubscribedAddressesPanel() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={3} className="text-center py-8 text-muted">Loading…</td></tr>
-              ) : filtered.length === 0 ? (
+              ) : filteredUnsubs.length === 0 ? (
                 <tr><td colSpan={3} className="text-center py-8 text-muted">No matching addresses</td></tr>
               ) : (
-                filtered.map((u) => (
+                filteredUnsubs.map((u) => (
                   <tr
                     key={u.email_lower}
                     className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
@@ -2986,6 +3033,70 @@ function UnsubscribedAddressesPanel() {
               )}
             </tbody>
           </table>
+          {/* "Recently resubscribed" — populated from the audit table. We
+              render it as a separate sub-section below the active opt-out
+              list (instead of mixing the two) because the row meanings
+              are different: the top table is "currently blocked", this
+              one is "previously blocked but opted back in". Conflating
+              them would make the first table lie about the live state of
+              the send-side gate. */}
+          {recentResubscribes.length > 0 && (
+            <div>
+              <div className="px-4 py-3 border-y border-border bg-surface-secondary/40">
+                <div className="text-xs font-medium text-muted">
+                  Recently resubscribed (last {resubscribeWindowDays} days)
+                </div>
+                <div className="text-[11px] text-muted mt-0.5">
+                  Addresses that came off the opt-out list. Useful for
+                  sanity-checking "I thought I asked to stop" complaints.
+                </div>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface">
+                    <th className="text-left px-4 py-3 font-medium text-muted">Address</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted">Resubscribed via</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted">Resubscribed at</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted">Originally opted out</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResubs.length === 0 ? (
+                    <tr><td colSpan={4} className="text-center py-6 text-muted">No matching resubscribes</td></tr>
+                  ) : (
+                    filteredResubs.map((r) => (
+                      <tr
+                        key={`${r.email_lower}-${r.resubscribed_at}`}
+                        className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
+                      >
+                        <td className="px-4 py-3 font-mono text-xs">{r.email_lower}</td>
+                        <td className="px-4 py-3 text-xs text-muted">
+                          {r.resubscribed_source ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted">
+                          {new Date(r.resubscribed_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted">
+                          {r.previous_unsubscribed_at
+                            ? (
+                              <>
+                                {new Date(r.previous_unsubscribed_at).toLocaleString()}
+                                {r.previous_source ? (
+                                  <span className="ml-1 text-[11px]">
+                                    (via {r.previous_source})
+                                  </span>
+                                ) : null}
+                              </>
+                            )
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

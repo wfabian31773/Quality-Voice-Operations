@@ -517,7 +517,13 @@ describe('Support resubscribe — static wiring contract', () => {
       'utf8',
     );
     expect(supp).toMatch(/export async function removeSupportEmailUnsubscribe/);
-    expect(supp).toMatch(/DELETE FROM support_email_unsubscribes WHERE email_lower = \$1/);
+    // Multi-line / RETURNING tolerant: the helper now reads the deleted
+    // row's source + unsubscribed_at via DELETE … RETURNING so it can
+    // snapshot them into the resubscribe audit table in the same
+    // statement (no race window between delete and snapshot).
+    expect(supp).toMatch(
+      /DELETE FROM support_email_unsubscribes\s+WHERE email_lower = \$1/,
+    );
   });
 
   it('renders the resubscribe form on the unsubscribe landing page', () => {

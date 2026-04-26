@@ -185,8 +185,21 @@ export async function addSupportEmailUnsubscribe(
  * a successful no-op for the caller, since the desired end state (mail
  * is allowed) holds either way.
  *
- * Throws on persistent DB errors so the caller can surface a retryable
- * failure instead of falsely confirming the resubscribe.
+ * On a real removal we also write a row to
+ * `support_email_unsubscribe_audit` snapshotting the deleted unsubscribe
+ * (`previous_unsubscribed_at`, `previous_source`) so the PlatformAdmin
+ * "Suppression list" view can show recently-resubscribed addresses for
+ * support reps to sanity-check against "I thought I asked to stop"
+ * complaints. We use `DELETE ... RETURNING` so the snapshot is captured
+ * in the same statement that erases the row — no race window where the
+ * row vanishes before we can read it.
+ *
+ * The audit insert is best-effort: if it fails after the delete already
+ * succeeded the resubscribe still stands (which is the user-facing
+ * promise we're keeping), and we log loudly so ops can see the missing
+ * trail. We do NOT swallow the DELETE error itself — callers need to
+ * surface a retryable failure rather than falsely confirming the
+ * resubscribe.
  */
 export async function removeSupportEmailUnsubscribe(
   email: string | null | undefined,
@@ -197,11 +210,34 @@ export async function removeSupportEmailUnsubscribe(
   if (!emailLower) return false;
 
   const pool = getPlatformPool();
-  const r = await pool.query(
-    `DELETE FROM support_email_unsubscribes WHERE email_lower = $1`,
+  const r = await pool.query<{ source: string | null; unsubscribed_at: string }>(
+    `DELETE FROM support_email_unsubscribes
+       WHERE email_lower = $1
+       RETURNING source, unsubscribed_at`,
     [emailLower],
   );
   const removed = (r.rowCount ?? 0) > 0;
+  if (removed) {
+    const prior = r.rows[0];
+    try {
+      await pool.query(
+        `INSERT INTO support_email_unsubscribe_audit
+           (email_lower, resubscribed_source, previous_unsubscribed_at, previous_source)
+         VALUES ($1, $2, $3, $4)`,
+        [emailLower, source, prior?.unsubscribed_at ?? null, prior?.source ?? null],
+      );
+    } catch (err) {
+      // Non-fatal: the resubscribe (the thing the user clicked) already
+      // succeeded. Missing the audit row just means ops loses the "who /
+      // when / source" trail for this one event — the next resubscribe
+      // for the same address will still land an audit row.
+      logger.warn('Failed to record support email resubscribe audit', {
+        email_lower: emailLower,
+        source,
+        error: String(err),
+      });
+    }
+  }
   logger.info('Resubscribe processed', {
     email_lower: emailLower,
     source,
