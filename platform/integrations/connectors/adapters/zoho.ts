@@ -169,7 +169,8 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
       const refs: DealRefs = {
         contactId: payload.contactId as string | undefined,
         accountId: payload.accountId as string | undefined,
-        dealId: payload.dealId as string | undefined,
+        dealId: (payload.dealId as string | undefined)
+          ?? (payload.opportunityId as string | undefined),
       };
 
       if (!refs.accountId && callerCompany) {
@@ -228,6 +229,7 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
           contactId: refs.contactId,
           accountId: refs.accountId,
           dealId: refs.dealId,
+          ...this.canonicalAliases(refs),
           callId,
           activityId: callId,
           provider: 'zoho',
@@ -267,7 +269,8 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
       const refs: DealRefs = {
         contactId: payload.contactId as string | undefined,
         accountId: payload.accountId as string | undefined,
-        dealId: payload.dealId as string | undefined,
+        dealId: (payload.dealId as string | undefined)
+          ?? (payload.opportunityId as string | undefined),
       };
 
       // Resolve account first so the new Contact can be linked at create time.
@@ -379,6 +382,7 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
           contactId: refs.contactId,
           accountId: refs.accountId,
           dealId: refs.dealId,
+          ...this.canonicalAliases(refs),
           noteId,
           activityId: noteId,
           provider: 'zoho',
@@ -392,6 +396,25 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
       logger.error('Zoho appointment logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * Canonical Salesforce-style aliases (`contactId`/`accountId`/`opportunityId`)
+   * derived from Zoho's native IDs. `contactId` and `accountId` already match
+   * the canonical names so they pass through verbatim; `opportunityId` is
+   * emitted alongside the existing `dealId` field. Mirrors the helper added
+   * to `hubspot.ts` and `pipedrive.ts` so the cross-provider caller-identity
+   * cache can store both shapes verbatim, and a future event for this caller
+   * can re-inject either shape as a payload hint — the adapter accepts both
+   * (see `handleCallCompleted` / `handleAppointmentBooked` where canonical
+   * names are tried as a fallback to native ones).
+   */
+  private canonicalAliases(refs: DealRefs): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (refs.contactId !== undefined) out.contactId = refs.contactId;
+    if (refs.accountId !== undefined) out.accountId = refs.accountId;
+    if (refs.dealId !== undefined) out.opportunityId = refs.dealId;
+    return out;
   }
 
   private async findOrCreateContact(

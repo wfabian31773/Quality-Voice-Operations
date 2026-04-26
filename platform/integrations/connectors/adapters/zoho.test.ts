@@ -194,6 +194,84 @@ describe('ZohoConnectorAdapter appointment.booked', () => {
     });
   });
 
+  test('accepts canonical opportunityId in payload and emits it in meta, skipping deal search/create', async () => {
+    const { calls } = setupFetch([
+      {
+        match: (u, i) => u.endsWith('/crm/v2/Deals') && i?.method === 'PUT',
+        response: writeOk('deal-canonical'),
+      },
+      {
+        match: (u, i) => u.endsWith('/crm/v2/Notes') && i?.method === 'POST',
+        response: writeOk('note-canonical'),
+      },
+    ]);
+
+    const adapter = new ZohoConnectorAdapter();
+    const payload: ConnectorPayload = {
+      type: 'appointment.booked',
+      contactId: 'contact-canonical',
+      accountId: 'account-canonical',
+      opportunityId: 'deal-canonical',
+    };
+
+    const result = await adapter.execute(TENANT, CONFIG, payload);
+
+    expect(result.success).toBe(true);
+    expect(result.meta).toMatchObject({
+      contactId: 'contact-canonical',
+      accountId: 'account-canonical',
+      dealId: 'deal-canonical',
+      opportunityId: 'deal-canonical',
+      noteId: 'note-canonical',
+      provider: 'zoho',
+    });
+
+    // No search calls and no create calls for contact/account/deal because
+    // canonical IDs are already supplied via payload.
+    expect(calls.find((c) => c.url.includes('/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/Contacts/contact-canonical/Deals'))).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/crm/v2/Contacts') && c.method === 'POST')).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/crm/v2/Accounts') && c.method === 'POST')).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/crm/v2/Deals') && c.method === 'POST')).toBeUndefined();
+
+    const noteCall = calls.find((c) => c.url.endsWith('/crm/v2/Notes') && c.method === 'POST');
+    const noteBody = noteCall!.body as { data: Array<Record<string, unknown>> };
+    expect(noteBody.data[0].Parent_Id).toEqual({ id: 'deal-canonical' });
+  });
+
+  test('call.completed emits opportunityId alias alongside dealId in meta', async () => {
+    const { calls } = setupFetch([
+      {
+        match: (u, i) => u.endsWith('/crm/v2/Calls') && i?.method === 'POST',
+        response: writeOk('call-canonical'),
+      },
+    ]);
+
+    const adapter = new ZohoConnectorAdapter();
+    const payload: ConnectorPayload = {
+      type: 'call.completed',
+      contactId: 'contact-canonical',
+      accountId: 'account-canonical',
+      opportunityId: 'deal-canonical',
+      summary: 'Quick check-in',
+      durationSeconds: 42,
+    };
+
+    const result = await adapter.execute(TENANT, CONFIG, payload);
+
+    expect(result.success).toBe(true);
+    expect(result.meta).toMatchObject({
+      contactId: 'contact-canonical',
+      accountId: 'account-canonical',
+      dealId: 'deal-canonical',
+      opportunityId: 'deal-canonical',
+      provider: 'zoho',
+    });
+
+    // No lookups should run when canonical IDs are supplied.
+    expect(calls.find((c) => c.url.includes('/search'))).toBeUndefined();
+  });
+
   test('honors hint IDs from payload to skip lookups', async () => {
     const { calls } = setupFetch([
       {
