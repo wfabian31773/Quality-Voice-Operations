@@ -21,9 +21,11 @@ import { QuickBooksConnectorAdapter } from './adapters/quickbooks';
 import { ZohoConnectorAdapter } from './adapters/zoho';
 import { recordIntegrationEvent } from '../../core/observability/traceLogger';
 import {
+  clearCrmCallerIdentity,
   extractIdentityFromMeta,
   lookupCrmCallerIdentity,
   upsertCrmCallerIdentity,
+  type StaleCrmIds,
 } from './crmCallerIdentity';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType, StandardEventType } from './types';
 import type { TenantId } from '../../core/types';
@@ -173,6 +175,8 @@ export class ConnectorService {
 
     if (result.success) {
       this.maybePersistCrmIdentity(tenantId, config, effectivePayload, result).catch(() => {});
+    } else {
+      this.maybeInvalidateCrmIdentity(tenantId, config, effectivePayload, result).catch(() => {});
     }
 
     const callSessionId = (payload as Record<string, unknown>).callSessionId as string | undefined;
@@ -313,6 +317,8 @@ export class ConnectorService {
 
     if (result.success) {
       this.maybePersistCrmIdentity(tenantId, config, effectivePayload, result).catch(() => {});
+    } else {
+      this.maybeInvalidateCrmIdentity(tenantId, config, effectivePayload, result).catch(() => {});
     }
 
     const callSessionId = (payload as Record<string, unknown>).callSessionId as string | undefined;
@@ -563,6 +569,55 @@ export class ConnectorService {
     const hasExtras = identity.extras && Object.keys(identity.extras).length > 0;
     if (!identity.contactId && !identity.accountId && !identity.opportunityId && !hasExtras) return;
     await upsertCrmCallerIdentity(tenantId, config.provider, callerPhone, identity);
+  }
+
+  /**
+   * When a CRM dispatch fails because a cached `{ contactId, accountId,
+   * opportunityId }` (or a provider-native equivalent) refers to a record
+   * that has been deleted/merged/archived in the upstream CRM, the adapter
+   * surfaces the offending IDs via `result.meta.staleIds`. Scrub those IDs
+   * from `crm_caller_identities` so the next event for the same caller
+   * re-runs phone/company lookup instead of injecting the same zombie ID.
+   *
+   * Matching inside `clearCrmCallerIdentity` is by value, so it's safe to
+   * forward IDs that may not actually be in the cache (no-op fallback).
+   */
+  private async maybeInvalidateCrmIdentity(
+    tenantId: TenantId,
+    config: ConnectorConfigType,
+    payload: ConnectorPayload,
+    result: ConnectorResult,
+  ): Promise<void> {
+    if (config.connectorType !== 'crm') return;
+    const callerPhone = (payload as Record<string, unknown>).callerPhone as string | undefined;
+    if (!callerPhone) return;
+    const meta = result.meta;
+    if (!meta || typeof meta !== 'object') return;
+    const rawStale = (meta as Record<string, unknown>).staleIds;
+    if (!rawStale || typeof rawStale !== 'object') return;
+
+    const stale: StaleCrmIds = {};
+    const allowedKeys: Array<keyof StaleCrmIds> = [
+      'contactId', 'accountId', 'opportunityId',
+      'companyId', 'dealId', 'personId', 'orgId',
+    ];
+    for (const key of allowedKeys) {
+      const value = (rawStale as Record<string, unknown>)[key];
+      if (typeof value === 'string' && value) stale[key] = value;
+      else if (typeof value === 'number' && Number.isFinite(value)) stale[key] = String(value);
+    }
+    if (Object.keys(stale).length === 0) return;
+
+    logger.info('Invalidating CRM caller identity due to stale-record dispatch failure', {
+      tenantId,
+      provider: config.provider,
+      payloadType: payload.type,
+      staleIds: stale,
+      errorCode: typeof (meta as Record<string, unknown>).staleErrorCode === 'string'
+        ? (meta as Record<string, unknown>).staleErrorCode
+        : undefined,
+    });
+    await clearCrmCallerIdentity(tenantId, config.provider, callerPhone, stale);
   }
 }
 

@@ -184,6 +184,159 @@ export async function lookupCrmCallerIdentity(
 }
 
 /**
+ * IDs that an adapter has confirmed are no longer accessible in the upstream
+ * CRM (404 / entity deleted / merged / archived). The dispatch layer uses
+ * these to scrub the matching slots from `crm_caller_identities` so the next
+ * call falls back to phone/company lookup instead of re-injecting a zombie ID.
+ *
+ * Both Salesforce-style canonical names and provider-native names (HubSpot's
+ * `companyId` / `dealId`, Pipedrive's `personId` / `orgId` / `dealId`) are
+ * accepted; matching is performed by value across the canonical columns AND
+ * the `extras` JSONB so an alias (e.g. HubSpot `companyId` cached under
+ * `extras.companyId` and also mirrored to the canonical `account_id` slot)
+ * gets cleared from both places in one call.
+ */
+export interface StaleCrmIds {
+  contactId?: string;
+  accountId?: string;
+  opportunityId?: string;
+  companyId?: string;
+  dealId?: string;
+  personId?: string;
+  orgId?: string;
+}
+
+function collectStaleValues(stale: StaleCrmIds): Set<string> {
+  const out = new Set<string>();
+  for (const value of Object.values(stale)) {
+    const coerced = coerceId(value);
+    if (coerced) out.add(coerced);
+  }
+  return out;
+}
+
+/**
+ * Invalidate stale CRM IDs cached for `(tenant, provider, phone)`.
+ *
+ * - When `stale` is omitted, the entire cache row is deleted.
+ * - When `stale` is provided, any canonical column (`contact_id`, `account_id`,
+ *   `opportunity_id`) whose current value matches one of the stale IDs is set
+ *   to NULL, and any `extras` JSONB key whose value matches a stale ID is
+ *   removed.
+ * - If the resulting row has no canonical IDs left and an empty `extras`, the
+ *   row is deleted entirely so subsequent lookups fall through to a fresh
+ *   phone/company resolution.
+ *
+ * Matching is by value, so the caller can safely pass IDs without knowing
+ * whether they came from the canonical columns or `extras`.
+ */
+export async function clearCrmCallerIdentity(
+  tenantId: TenantId,
+  provider: string,
+  phone: string,
+  stale?: StaleCrmIds,
+): Promise<void> {
+  const normalized = normalizeCallerPhone(phone);
+  if (!normalized) return;
+
+  try {
+    await withTenant(tenantId, async (client) => {
+      if (!stale) {
+        await client.query(
+          `DELETE FROM crm_caller_identities
+           WHERE tenant_id = $1 AND provider = $2 AND phone_e164 = $3`,
+          [tenantId, provider, normalized],
+        );
+        return;
+      }
+
+      const staleValues = collectStaleValues(stale);
+      if (staleValues.size === 0) return;
+
+      const { rows } = await client.query(
+        `SELECT contact_id, account_id, opportunity_id, extras
+         FROM crm_caller_identities
+         WHERE tenant_id = $1 AND provider = $2 AND phone_e164 = $3
+         FOR UPDATE`,
+        [tenantId, provider, normalized],
+      );
+      if (rows.length === 0) return;
+
+      const row = rows[0];
+      const currentContact = row.contact_id ? String(row.contact_id) : null;
+      const currentAccount = row.account_id ? String(row.account_id) : null;
+      const currentOpportunity = row.opportunity_id ? String(row.opportunity_id) : null;
+      const currentExtras = parseExtras(row.extras) ?? {};
+
+      const nextContact = currentContact && staleValues.has(currentContact) ? null : currentContact;
+      const nextAccount = currentAccount && staleValues.has(currentAccount) ? null : currentAccount;
+      const nextOpportunity = currentOpportunity && staleValues.has(currentOpportunity) ? null : currentOpportunity;
+
+      const nextExtras: Record<string, string> = {};
+      for (const [k, v] of Object.entries(currentExtras)) {
+        if (!staleValues.has(v)) nextExtras[k] = v;
+      }
+
+      const changedCanonical =
+        nextContact !== currentContact
+        || nextAccount !== currentAccount
+        || nextOpportunity !== currentOpportunity;
+      const changedExtras = Object.keys(nextExtras).length !== Object.keys(currentExtras).length;
+      if (!changedCanonical && !changedExtras) return;
+
+      const hasAnythingLeft =
+        nextContact !== null
+        || nextAccount !== null
+        || nextOpportunity !== null
+        || Object.keys(nextExtras).length > 0;
+
+      if (!hasAnythingLeft) {
+        await client.query(
+          `DELETE FROM crm_caller_identities
+           WHERE tenant_id = $1 AND provider = $2 AND phone_e164 = $3`,
+          [tenantId, provider, normalized],
+        );
+      } else {
+        await client.query(
+          `UPDATE crm_caller_identities
+           SET contact_id = $4,
+               account_id = $5,
+               opportunity_id = $6,
+               extras = $7::jsonb,
+               updated_at = NOW()
+           WHERE tenant_id = $1 AND provider = $2 AND phone_e164 = $3`,
+          [
+            tenantId,
+            provider,
+            normalized,
+            nextContact,
+            nextAccount,
+            nextOpportunity,
+            JSON.stringify(nextExtras),
+          ],
+        );
+      }
+
+      logger.info('CRM caller identity invalidated', {
+        tenantId,
+        provider,
+        phone: normalized,
+        clearedContact: nextContact !== currentContact,
+        clearedAccount: nextAccount !== currentAccount,
+        clearedOpportunity: nextOpportunity !== currentOpportunity,
+        rowDeleted: !hasAnythingLeft,
+      });
+    });
+  } catch (err) {
+    logger.warn('clearCrmCallerIdentity failed', {
+      tenantId,
+      provider,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Upsert per-tenant per-caller-phone CRM identifiers. Existing non-null IDs
  * are preserved when the new value is null so we never lose state across calls
  * (e.g. a later event without an opportunity must not blank out the cached one).

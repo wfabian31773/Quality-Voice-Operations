@@ -31,6 +31,104 @@ function classifySalesforceId(id: string | undefined): 'Lead' | 'Contact' | 'Acc
   }
 }
 
+/**
+ * Salesforce error codes that mean "the record you referenced is gone or
+ * unreachable" — i.e. a cached ID is now a zombie and must be evicted from
+ * `crm_caller_identities` so the next event re-runs phone/company lookup.
+ *
+ * - ENTITY_IS_DELETED: record was deleted (and possibly emptied from the
+ *   recycle bin), or merged away.
+ * - INVALID_CROSS_REFERENCE_KEY: a foreign-key field (WhoId/WhatId/AccountId/
+ *   etc.) references a record that doesn't exist or isn't visible.
+ * - MALFORMED_ID: the ID is not a real Salesforce ID at all.
+ * - NOT_FOUND: REST 404 with this code (rare, but Salesforce uses it for some
+ *   sObject endpoints).
+ */
+const SALESFORCE_STALE_ERROR_CODES = new Set([
+  'ENTITY_IS_DELETED',
+  'INVALID_CROSS_REFERENCE_KEY',
+  'MALFORMED_ID',
+  'NOT_FOUND',
+]);
+
+/**
+ * Thrown by Salesforce write helpers when an HTTP 404 or one of the
+ * `SALESFORCE_STALE_ERROR_CODES` is returned. Carries the IDs the failing
+ * call referenced so `handleCallCompleted` / `handleAppointmentBooked` can
+ * surface them via `result.meta.staleIds`, and the dispatch layer can scrub
+ * them from the caller-identity cache.
+ */
+class SalesforceStaleRecordError extends Error {
+  staleIds: { contactId?: string; accountId?: string; opportunityId?: string };
+  errorCode?: string;
+  constructor(
+    message: string,
+    staleIds: { contactId?: string; accountId?: string; opportunityId?: string },
+    errorCode?: string,
+  ) {
+    super(message);
+    this.name = 'SalesforceStaleRecordError';
+    this.staleIds = staleIds;
+    this.errorCode = errorCode;
+  }
+}
+
+/**
+ * Inspect a Salesforce REST error response body and decide whether it should
+ * be treated as a stale-record signal. Salesforce typically returns an array
+ * of `{ errorCode, message, fields? }` entries on failure.
+ *
+ * Returns the matching errorCode when stale, otherwise undefined.
+ */
+function extractSalesforceStaleErrorCode(status: number, body: string): string | undefined {
+  return extractSalesforceStaleErrorDetails(status, body)?.code;
+}
+
+/**
+ * Pull the stale-record errorCode AND the offending field names out of a
+ * Salesforce REST error body. Salesforce returns one of:
+ *   `[{ "errorCode": "ENTITY_IS_DELETED", "message": "...", "fields": ["WhoId"] }]`
+ * The `fields` array, when present, lets the caller scrub only the truly
+ * stale cached ID instead of all the IDs it passed in.
+ */
+function extractSalesforceStaleErrorDetails(
+  status: number,
+  body: string,
+): { code: string; fields: string[] } | undefined {
+  let parsed: unknown;
+  if (body) {
+    try { parsed = JSON.parse(body); } catch { /* falls through */ }
+  }
+  const list = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+  // 1. If the body contains a Salesforce error entry with a recognised
+  //    stale errorCode, that's the most specific signal -> use it.
+  let sawAnyErrorCode = false;
+  for (const entry of list) {
+    if (entry && typeof entry === 'object') {
+      const code = (entry as { errorCode?: unknown }).errorCode;
+      if (typeof code === 'string') {
+        sawAnyErrorCode = true;
+        if (SALESFORCE_STALE_ERROR_CODES.has(code)) {
+          const rawFields = (entry as { fields?: unknown }).fields;
+          const fields = Array.isArray(rawFields)
+            ? rawFields.filter((f): f is string => typeof f === 'string')
+            : [];
+          return { code, fields };
+        }
+      }
+    }
+  }
+  // 2. For raw 404s, only treat as NOT_FOUND when the body did NOT carry any
+  //    other Salesforce errorCode. This prevents misrouted endpoints or
+  //    config-level 404s (which still come back with a non-stale errorCode
+  //    like INVALID_TYPE / INVALID_FIELD) from over-clearing the identity
+  //    cache. An empty body 404 is still treated as record-not-found because
+  //    that's the canonical Salesforce response when the targeted sobject
+  //    really has been deleted.
+  if (status === 404 && !sawAnyErrorCode) return { code: 'NOT_FOUND', fields: [] };
+  return undefined;
+}
+
 type PipelineMode = 'leads' | 'contacts';
 
 interface SalesforceTokens {
@@ -360,10 +458,52 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof SalesforceStaleRecordError) {
+        logger.warn('Salesforce call logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Salesforce call logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * Build a `ConnectorResult` for a stale-record failure. Only IDs that
+   * actually appeared on the inbound payload (i.e. came from the cache or
+   * the explicit hint) are surfaced as `meta.staleIds` so the dispatch
+   * layer can scrub the matching `crm_caller_identities` slots without
+   * touching anything else.
+   */
+  private staleRecordResult(
+    err: SalesforceStaleRecordError,
+    payload: ConnectorPayload,
+  ): ConnectorResult {
+    const filtered: Record<string, string> = {};
+    const payloadContactId = payload.contactId as string | undefined;
+    const payloadAccountId = payload.accountId as string | undefined;
+    const payloadOpportunityId = payload.opportunityId as string | undefined;
+    if (err.staleIds.contactId && err.staleIds.contactId === payloadContactId) {
+      filtered.contactId = err.staleIds.contactId;
+    }
+    if (err.staleIds.accountId && err.staleIds.accountId === payloadAccountId) {
+      filtered.accountId = err.staleIds.accountId;
+    }
+    if (err.staleIds.opportunityId && err.staleIds.opportunityId === payloadOpportunityId) {
+      filtered.opportunityId = err.staleIds.opportunityId;
+    }
+    return {
+      success: false,
+      error: err.message,
+      meta: {
+        provider: 'salesforce',
+        staleRecord: true,
+        ...(err.errorCode ? { staleErrorCode: err.errorCode } : {}),
+        ...(Object.keys(filtered).length > 0 ? { staleIds: filtered } : {}),
+      },
+    };
   }
 
   private async handleAppointmentBooked(
@@ -483,6 +623,12 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         },
       };
     } catch (err) {
+      if (err instanceof SalesforceStaleRecordError) {
+        logger.warn('Salesforce appointment logging hit stale cached record', {
+          tenantId, errorCode: err.errorCode, staleIds: err.staleIds,
+        });
+        return this.staleRecordResult(err, payload);
+      }
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Salesforce appointment logging failed', { tenantId, error });
       return { success: false, error };
@@ -544,6 +690,20 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
       }
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // If the failure was caused by a stale `accountId` we passed in (cached
+        // from a previous call but since deleted/merged), surface it so the
+        // dispatch layer can scrub the cache. The leadId itself is freshly
+        // resolved earlier in this call and cannot be stale.
+        const staleCode = options.accountId
+          ? extractSalesforceStaleErrorCode(res.status, text)
+          : undefined;
+        if (staleCode && options.accountId) {
+          throw new SalesforceStaleRecordError(
+            `Salesforce Lead conversion failed ${res.status} (${staleCode}): ${text.slice(0, 200)}`,
+            { accountId: options.accountId },
+            staleCode,
+          );
+        }
         logger.warn('Salesforce Lead conversion failed', {
           leadId, status: res.status, convertedStatus, body: text.slice(0, 300),
         });
@@ -570,6 +730,10 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
         opportunityId: data.opportunityId,
       };
     } catch (err) {
+      // Stale-record errors must propagate so the call/appointment handler
+      // can surface them via meta.staleIds; never swallow them as "skipped
+      // conversion" because that would silently leave a zombie cache row.
+      if (err instanceof SalesforceStaleRecordError) throw err;
       logger.warn('Salesforce Lead conversion threw', { leadId, error: String(err) });
       return undefined;
     }
@@ -979,6 +1143,32 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
+      const staleDetails = extractSalesforceStaleErrorDetails(res.status, text);
+      if (staleDetails) {
+        // Map the failing reference back to the cache slot that injected it.
+        // Prefer Salesforce's own `fields` array when it tells us *which*
+        // reference was stale (e.g. ["WhoId"]), so we only scrub that one
+        // cache slot. Fall back to "flag every cached ID we passed" when
+        // Salesforce doesn't disclose the field, since either could be the
+        // culprit and clearing too much is safer than clearing too little.
+        const lcFields = staleDetails.fields.map((f) => f.toLowerCase());
+        const flagWho = lcFields.length === 0 || lcFields.includes('whoid');
+        const flagWhat = lcFields.length === 0 || lcFields.includes('whatid');
+        const whoClass = classifySalesforceId(params.whoId);
+        const whatClass = classifySalesforceId(params.whatId);
+        const staleIds: { contactId?: string; accountId?: string; opportunityId?: string } = {};
+        // WhoId can be a Contact (003) or a Lead (00Q); only Contacts come
+        // from the caller-identity cache (Leads are looked up by phone every
+        // call), so we only surface Contact stale-ness.
+        if (flagWho && whoClass === 'Contact' && params.whoId) staleIds.contactId = params.whoId;
+        if (flagWhat && whatClass === 'Account' && params.whatId) staleIds.accountId = params.whatId;
+        if (flagWhat && whatClass === 'Opportunity' && params.whatId) staleIds.opportunityId = params.whatId;
+        throw new SalesforceStaleRecordError(
+          `Salesforce Task create failed ${res.status} (${staleDetails.code}): ${text.slice(0, 200)}`,
+          staleIds,
+          staleDetails.code,
+        );
+      }
       throw new Error(`Salesforce Task create failed ${res.status}: ${text.slice(0, 200)}`);
     }
     const data = await res.json() as { id: string };
