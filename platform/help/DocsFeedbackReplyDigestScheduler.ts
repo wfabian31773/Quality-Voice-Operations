@@ -1,8 +1,32 @@
 import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
+import { isPermanentSmtpError } from '../email/smtpErrorClass';
 
 const logger = createLogger('DOCS_FEEDBACK_REPLY_DIGEST');
+
+/**
+ * Auto-retry gating helper.
+ *
+ * There is no auto-retry scheduler for docs feedback replies today — failures
+ * are surfaced once via this digest and a human retries them from the inbox.
+ * The classifier is wired in here preemptively for two reasons:
+ *
+ *   1. The digest groups failures by transient vs permanent so ops can
+ *      prioritise the hard bounces (no point asking a human to retry
+ *      "550 user unknown"), and
+ *   2. when an auto-retry scheduler eventually lands for this pipeline it
+ *      MUST gate on the same classifier — re-attempting a 5xx / mailbox-
+ *      not-found failure only burns sender reputation and gets the next
+ *      batch throttled. Use `shouldAutoRetryFailedDocsFeedbackReply` (or
+ *      `isPermanentSmtpError` directly) before queuing a re-send so we
+ *      stay in lockstep with the support-reply retry path.
+ */
+export function shouldAutoRetryFailedDocsFeedbackReply(
+  emailError: string | null | undefined,
+): boolean {
+  return !isPermanentSmtpError(emailError);
+}
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 7 * 60 * 1000;
@@ -77,34 +101,49 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderDigestEmail(replies: FailedReply[]): {
-  subject: string;
-  html: string;
-  text: string;
+/**
+ * Split failed replies into permanent (hard bounces — 5xx, mailbox unknown,
+ * recipient rejected, …) and transient (timeout, 4xx greylisting, connection
+ * refused, …) buckets using the shared SMTP classifier. Same rules as the
+ * support-reply retry scheduler so operators see one consistent definition
+ * of "this is worth retrying" across both pipelines.
+ */
+export function partitionFailuresByPermanence(replies: FailedReply[]): {
+  permanent: FailedReply[];
+  transient: FailedReply[];
 } {
-  const subject =
-    replies.length === 1
-      ? `[QVO Docs] 1 feedback reply failed to send`
-      : `[QVO Docs] ${replies.length} feedback replies failed to send`;
+  const permanent: FailedReply[] = [];
+  const transient: FailedReply[] = [];
+  for (const r of replies) {
+    if (isPermanentSmtpError(r.email_error)) {
+      permanent.push(r);
+    } else {
+      transient.push(r);
+    }
+  }
+  return { permanent, transient };
+}
 
-  const rows = replies
-    .map((r) => {
-      return `<tr>
+function renderRow(r: FailedReply): string {
+  return `<tr>
         <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb"><code>${escapeHtml(r.article_slug)}</code></td>
         <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${escapeHtml(r.to_email)}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${escapeHtml(new Date(r.created_at).toISOString())}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#b91c1c">${escapeHtml(r.email_error)}</td>
       </tr>`;
-    })
-    .join('');
+}
 
-  const html = `
-    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:720px">
-      <h2 style="margin:0 0 8px">Docs feedback replies that never reached the reader</h2>
-      <p style="margin:0 0 12px;color:#475569">
-        The following reply emails were recorded as failed. Open the Docs Feedback
-        inbox to retry them or contact the reader another way.
-      </p>
+function renderSection(
+  title: string,
+  blurb: string,
+  badgeColor: string,
+  rows: FailedReply[],
+): string {
+  if (rows.length === 0) return '';
+  const body = rows.map(renderRow).join('');
+  return `
+      <h3 style="margin:20px 0 4px;color:${badgeColor}">${escapeHtml(title)} (${rows.length})</h3>
+      <p style="margin:0 0 8px;color:#475569;font-size:13px">${escapeHtml(blurb)}</p>
       <table style="border-collapse:collapse;font-size:13px;width:100%">
         <thead>
           <tr style="background:#f1f5f9;text-align:left">
@@ -114,23 +153,71 @@ function renderDigestEmail(replies: FailedReply[]): {
             <th style="padding:8px 10px">Error</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
-      </table>
+        <tbody>${body}</tbody>
+      </table>`;
+}
+
+const PERMANENT_TITLE = 'Permanent failures (hard bounces — do not auto-retry)';
+const PERMANENT_BLURB =
+  'These addresses returned a hard SMTP error (5xx, mailbox unknown, recipient rejected, …). Re-sending will only burn sender reputation — reach the reader another way or close the loop.';
+const TRANSIENT_TITLE = 'Transient failures (safe to retry)';
+const TRANSIENT_BLURB =
+  'Timeouts, 4xx greylisting, connection refused, … — sending again later usually works. Retry from the Docs Feedback inbox.';
+
+export function renderDigestEmail(replies: FailedReply[]): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const { permanent, transient } = partitionFailuresByPermanence(replies);
+
+  const subject =
+    replies.length === 1
+      ? `[QVO Docs] 1 feedback reply failed to send`
+      : `[QVO Docs] ${replies.length} feedback replies failed to send` +
+        ` (${permanent.length} permanent, ${transient.length} transient)`;
+
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0f172a;max-width:720px">
+      <h2 style="margin:0 0 8px">Docs feedback replies that never reached the reader</h2>
+      <p style="margin:0 0 12px;color:#475569">
+        ${replies.length} failure${replies.length === 1 ? '' : 's'} recorded —
+        ${permanent.length} permanent, ${transient.length} transient. Open the
+        Docs Feedback inbox to retry transient ones or contact the reader
+        another way for the hard bounces.
+      </p>
+      ${renderSection(PERMANENT_TITLE, PERMANENT_BLURB, '#b91c1c', permanent)}
+      ${renderSection(TRANSIENT_TITLE, TRANSIENT_BLURB, '#92400e', transient)}
       <p style="margin:16px 0 0;color:#64748b;font-size:12px">
         Each failure is only reported once in this digest. New failures will appear in the next run.
       </p>
     </div>`;
 
-  const textLines = [
+  const textLines: string[] = [
     'Docs feedback replies that failed to send',
     '',
-    ...replies.map(
-      (r) =>
-        `- ${r.article_slug} → ${r.to_email} @ ${new Date(r.created_at).toISOString()}: ${r.email_error}`,
-    ),
+    `Total: ${replies.length} (${permanent.length} permanent, ${transient.length} transient)`,
     '',
-    'Each failure is only reported once in this digest.',
   ];
+  if (permanent.length > 0) {
+    textLines.push(`${PERMANENT_TITLE}:`);
+    for (const r of permanent) {
+      textLines.push(
+        `- ${r.article_slug} → ${r.to_email} @ ${new Date(r.created_at).toISOString()}: ${r.email_error}`,
+      );
+    }
+    textLines.push('');
+  }
+  if (transient.length > 0) {
+    textLines.push(`${TRANSIENT_TITLE}:`);
+    for (const r of transient) {
+      textLines.push(
+        `- ${r.article_slug} → ${r.to_email} @ ${new Date(r.created_at).toISOString()}: ${r.email_error}`,
+      );
+    }
+    textLines.push('');
+  }
+  textLines.push('Each failure is only reported once in this digest.');
 
   return { subject, html, text: textLines.join('\n') };
 }
