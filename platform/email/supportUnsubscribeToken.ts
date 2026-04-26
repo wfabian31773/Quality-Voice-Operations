@@ -142,6 +142,43 @@ function getMailtoTarget(): string {
 }
 
 /**
+ * Public accessor for the configured unsubscribe mailto address. Used by
+ * the inbound webhook to recognise mail addressed to the opt-out inbox so
+ * an older MUA that fell back to the mailto: target instead of one-click
+ * HTTPS still ends up writing to `support_email_unsubscribes`.
+ */
+export function getSupportUnsubscribeMailtoTarget(): string {
+  return getMailtoTarget();
+}
+
+/**
+ * True when `to` (the raw `To:` header from an inbound webhook payload)
+ * resolves to the configured unsubscribe inbox. Tolerates the common
+ * shapes inbound providers send:
+ *   - bare address: `unsubscribe@example.com`
+ *   - angle-bracketed: `Unsubscribe <unsubscribe@example.com>`
+ *   - comma-separated lists with either form mixed in
+ *
+ * Comparison is case-insensitive (RFC 5321 local-part is technically
+ * case-sensitive but every mainstream MTA folds case, and a stricter
+ * match would silently drop legitimate opt-outs).
+ */
+export function isSupportUnsubscribeMailtoTarget(
+  to: string | null | undefined,
+): boolean {
+  if (!to) return false;
+  const target = getMailtoTarget().trim().toLowerCase();
+  if (!target) return false;
+  const parts = to.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
+  for (const part of parts) {
+    if (part === target) return true;
+    const m = part.match(/<([^>]+)>/);
+    if (m && m[1].trim() === target) return true;
+  }
+  return false;
+}
+
+/**
  * Headers to attach to outbound support emails so MUAs surface the
  * unsubscribe affordance in their UI and one-click providers (Gmail,
  * Outlook) can submit the opt-out without a round-trip to the recipient.

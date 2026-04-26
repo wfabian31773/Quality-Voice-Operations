@@ -7,8 +7,9 @@
  *     scheduler / manual retry path the moment they classify a row as a
  *     permanent SMTP failure.
  *   - `support_email_unsubscribes`: addresses that have explicitly asked us
- *     to stop. Populated by an unsubscribe sink (TODO follow-up #461 will
- *     wire the List-Unsubscribe header + landing page).
+ *     to stop. Populated by the unsubscribe sink — the RFC 8058 one-click
+ *     POST + landing-page GET on `/support/unsubscribe` and the
+ *     `unsubscribe@<domain>` mailto: branch on `/support/inbound`.
  *
  * Both lists key on the lowercased address so a mixed-case retry can never
  * silently bypass an entry. Callers should treat the lists as read-mostly:

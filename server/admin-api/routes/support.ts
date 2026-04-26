@@ -12,6 +12,7 @@ import {
 import {
   buildSupportUnsubscribeEmailHeaders,
   buildSupportUnsubscribeFooter,
+  isSupportUnsubscribeMailtoTarget,
   verifySupportUnsubscribeToken,
 } from '../../../platform/email/supportUnsubscribeToken';
 import {
@@ -2445,6 +2446,51 @@ router.post('/support/inbound', async (req, res) => {
   const subject = String(payload.subject ?? '').trim();
   const text = String(payload.text ?? payload['stripped-text'] ?? '').trim();
   const html = String(payload.html ?? payload['stripped-html'] ?? '').trim();
+
+  // Routing rule: mail addressed to the configured `unsubscribe@<domain>`
+  // inbox is an opt-out — write the suppression keyed on the From address
+  // and short-circuit before the ticket lookup. The List-Unsubscribe
+  // header advertises this mailto: target as the legacy fallback for
+  // older MUAs that don't support RFC 8058 one-click HTTPS, so an opt-out
+  // sent here must produce the same `support_email_unsubscribes` row
+  // the HTTPS sink would have written. We do NOT require a body — a
+  // recipient hitting "Unsubscribe" in Apple Mail typically sends an
+  // empty message — and we do NOT require a ticket reference.
+  if (isSupportUnsubscribeMailtoTarget(to)) {
+    // Strip a sender address out of headers like "Name <user@x.com>".
+    // Reuse the same extraction as the ticket-reply branch below so an
+    // address surrounded by display-name + brackets isn't dropped.
+    const fromMatch = from.match(/<([^>]+)>/);
+    const senderEmail = (fromMatch ? fromMatch[1] : from).trim();
+    if (!senderEmail || !EMAIL_RE.test(senderEmail)) {
+      logger.warn('Inbound unsubscribe missing a usable sender', { to, from });
+      res.status(400).json({ error: 'missing sender' });
+      return;
+    }
+    try {
+      await addSupportEmailUnsubscribe(senderEmail, 'mailto_inbound');
+    } catch (err) {
+      // addSupportEmailUnsubscribe already swallows DB errors and logs
+      // them, but defend against future signature changes.
+      logger.error('Failed to record inbound unsubscribe', {
+        from: senderEmail.toLowerCase(),
+        to,
+        error: String(err),
+      });
+      res.status(500).json({ error: 'persist failed' });
+      return;
+    }
+    logger.info('Recorded inbound unsubscribe via mailto', {
+      from: senderEmail.toLowerCase(),
+      to,
+    });
+    res.json({
+      matched: true,
+      unsubscribed: senderEmail.toLowerCase(),
+      source: 'mailto_inbound',
+    });
+    return;
+  }
 
   const body = text || html;
   if (!body) {
