@@ -91,8 +91,8 @@ beforeEach(() => {
 });
 
 describe('list handler query budget — single round-trip via COUNT(*) OVER()', () => {
-  it('dispatch listJobsHandler issues exactly 1 query and finishes well under 500ms (200 rows)', async () => {
-    const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200) });
+  it('dispatch listJobsHandler issues exactly 1 query and finishes well under 250ms (200 rows)', async () => {
+    const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200), perQueryDelayMs: 10 });
     type Handler = (req: Request, res: Response) => Promise<void>;
     const handler = await loadHandler<Handler>(
       '../../server/admin-api/routes/dispatch',
@@ -118,8 +118,8 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     for (const j of jobs) expect(j._total_count).toBeUndefined();
   });
 
-  it('scheduling listBookingsHandler issues exactly 1 query and finishes under 500ms', async () => {
-    const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200) });
+  it('scheduling listBookingsHandler issues exactly 1 query and finishes under 250ms', async () => {
+    const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200), perQueryDelayMs: 10 });
     type Handler = (req: Request, res: Response) => Promise<void>;
     const handler = await loadHandler<Handler>(
       '../../server/admin-api/routes/scheduling',
@@ -145,8 +145,8 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     for (const b of bookings) expect(b._total_count).toBeUndefined();
   });
 
-  it('tickets listTicketsHandler issues exactly 1 query, uses LATERAL for SLA, finishes under 500ms', async () => {
-    const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200) });
+  it('tickets listTicketsHandler issues exactly 1 query, uses LATERAL for SLA, finishes under 250ms', async () => {
+    const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200), perQueryDelayMs: 10 });
     type Handler = (req: Request, res: Response) => Promise<void>;
     const handler = await loadHandler<Handler>(
       '../../server/admin-api/routes/tickets',
