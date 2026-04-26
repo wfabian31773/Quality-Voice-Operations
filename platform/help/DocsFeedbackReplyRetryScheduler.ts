@@ -10,9 +10,11 @@
  * pipeline behaves identically to the support pipeline for ops:
  *   - cap at MAX_RETRY_ATTEMPTS (= alert threshold) so a human still sees a
  *     Failed badge eventually,
- *   - gate every send on `shouldAutoRetryFailedDocsFeedbackReply` so 5xx /
+ *   - gate every send on `isDocsFeedbackReplyPermanentFailure` so 5xx /
  *     mailbox-unknown / recipient-rejected hard failures are skipped exactly
- *     once and bumped straight to the cap,
+ *     once and bumped straight to the cap (the same row-level helper drives
+ *     `partitionFailuresByPermanence` in the digest scheduler so the two
+ *     schedulers cannot disagree on what is permanent),
  *   - claim each row atomically (conditional UPDATE keyed on the observed
  *     retry_count) so concurrent workers / instances cannot double-send,
  *   - raise a critical error_log when a reply crosses the failure threshold
@@ -22,9 +24,8 @@
 import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
-import { isPermanentSmtpError } from '../email/smtpErrorClass';
+import { isPermanentSmtpError, isDocsFeedbackReplyPermanentFailure } from '../email/smtpErrorClass';
 import { renderDocsFeedbackReplyEmail } from './docsFeedbackReplyEmail';
-import { shouldAutoRetryFailedDocsFeedbackReply } from './DocsFeedbackReplyDigestScheduler';
 import {
   DOCS_FEEDBACK_REPLY_DELIVERY_ALERT_THRESHOLD,
   raiseDocsFeedbackReplyDeliveryFailureAlert,
@@ -327,8 +328,10 @@ export async function runDocsFeedbackReplyRetryCycle(): Promise<DocsRetryCycleRe
       // reputation and likely get throttled by the receiving server. Mark
       // the row as exhausted and move on so a human picks it up. We still
       // raise the ops alert because this is the threshold-cross event for
-      // this reply.
-      if (!shouldAutoRetryFailedDocsFeedbackReply(reply.email_error)) {
+      // this reply. The row-shaped helper keeps this scheduler and the
+      // digest scheduler's `partitionFailuresByPermanence` in lock-step on
+      // what counts as a permanent docs-feedback reply failure.
+      if (isDocsFeedbackReplyPermanentFailure(reply)) {
         const marked = await markReplyPermanentlyFailed(reply);
         if (!marked) {
           // Concurrent worker already advanced this row — nothing to do.

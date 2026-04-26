@@ -1,31 +1,31 @@
 import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
-import { isPermanentSmtpError } from '../email/smtpErrorClass';
+import { isDocsFeedbackReplyPermanentFailure } from '../email/smtpErrorClass';
 
 const logger = createLogger('DOCS_FEEDBACK_REPLY_DIGEST');
 
 /**
  * Auto-retry gating helper.
  *
- * There is no auto-retry scheduler for docs feedback replies today — failures
- * are surfaced once via this digest and a human retries them from the inbox.
- * The classifier is wired in here preemptively for two reasons:
+ * Used by both this digest (to group failures by transient vs permanent so
+ * ops can prioritise the hard bounces — no point asking a human to retry
+ * "550 user unknown") and by `DocsFeedbackReplyRetryScheduler` (to skip
+ * auto-retries on hard failures so we don't burn sender reputation and get
+ * the next batch throttled).
  *
- *   1. The digest groups failures by transient vs permanent so ops can
- *      prioritise the hard bounces (no point asking a human to retry
- *      "550 user unknown"), and
- *   2. when an auto-retry scheduler eventually lands for this pipeline it
- *      MUST gate on the same classifier — re-attempting a 5xx / mailbox-
- *      not-found failure only burns sender reputation and gets the next
- *      batch throttled. Use `shouldAutoRetryFailedDocsFeedbackReply` (or
- *      `isPermanentSmtpError` directly) before queuing a re-send so we
- *      stay in lockstep with the support-reply retry path.
+ * Internally delegates to the row-level `isDocsFeedbackReplyPermanentFailure`
+ * helper in `smtpErrorClass` so this string-shaped wrapper, the digest's
+ * row-shaped partition step, and the retry scheduler's row-shaped pre-check
+ * all share one definition of "permanent docs-feedback reply failure". If
+ * the rule ever grows extra signals (e.g. an explicit `hard_bounce` column),
+ * editing the row-level helper updates every caller in lock-step. The
+ * underlying SMTP classifier is `isPermanentSmtpError` from `smtpErrorClass`.
  */
 export function shouldAutoRetryFailedDocsFeedbackReply(
   emailError: string | null | undefined,
 ): boolean {
-  return !isPermanentSmtpError(emailError);
+  return !isDocsFeedbackReplyPermanentFailure({ email_error: emailError });
 }
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -115,7 +115,7 @@ export function partitionFailuresByPermanence(replies: FailedReply[]): {
   const permanent: FailedReply[] = [];
   const transient: FailedReply[] = [];
   for (const r of replies) {
-    if (isPermanentSmtpError(r.email_error)) {
+    if (isDocsFeedbackReplyPermanentFailure(r)) {
       permanent.push(r);
     } else {
       transient.push(r);

@@ -59,8 +59,13 @@ describe('DocsFeedbackReplyRetryScheduler — wiring & contract', () => {
     expect(schedulerFile).toMatch(/claim lost to concurrent worker/);
   });
 
-  it('gates every send on shouldAutoRetryFailedDocsFeedbackReply', () => {
-    expect(schedulerFile).toMatch(/shouldAutoRetryFailedDocsFeedbackReply/);
+  it('gates every send on the shared isDocsFeedbackReplyPermanentFailure row helper', () => {
+    // Both this scheduler and DocsFeedbackReplyDigestScheduler must route
+    // through the same row-level helper in `smtpErrorClass` so the two
+    // schedulers cannot drift on what counts as a permanent docs-feedback
+    // reply failure (mirrors the support-reply pipeline).
+    expect(schedulerFile).toMatch(/isDocsFeedbackReplyPermanentFailure/);
+    expect(schedulerFile).toMatch(/from '\.\.\/email\/smtpErrorClass'/);
   });
 
   it('reuses the same renderDocsFeedbackReplyEmail helper as the manual retry', () => {

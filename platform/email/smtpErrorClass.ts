@@ -100,3 +100,35 @@ export function isReplyPermanentFailure(reply: ReplyPermanenceCandidate): boolea
   if (!reply.email_error) return false;
   return isPermanentSmtpError(reply.email_error);
 }
+
+/**
+ * A docs_feedback_replies row (or row-like shape) used by the docs-feedback
+ * digest scheduler and the auto-retry scheduler. Only `email_error` is
+ * required so any wider row type satisfies the shape.
+ */
+export interface DocsFeedbackReplyPermanenceCandidate {
+  email_error?: string | null;
+}
+
+/**
+ * Single source of truth for "is this docs-feedback reply a permanent SMTP
+ * failure?"
+ *
+ * Mirrors `isReplyPermanentFailure` for the support-reply pipeline. The rule
+ * today is identical (has a recorded email_error + the underlying classifier
+ * tags it as permanent), but extracting a row-level helper keeps the docs-
+ * feedback retry scheduler and digest scheduler in lock-step if the rule ever
+ * grows extra signals (for example, also treating `error_count >= N` or an
+ * explicit `hard_bounce` column as permanent). Route every caller through
+ * this helper so the two schedulers cannot drift.
+ *
+ * Docs-feedback replies are inherently outbound (readers don't reply to the
+ * digest), so there is no `direction` field to gate on — unlike support
+ * replies, which carry both inbound and outbound rows on the same table.
+ */
+export function isDocsFeedbackReplyPermanentFailure(
+  reply: DocsFeedbackReplyPermanenceCandidate,
+): boolean {
+  if (!reply.email_error) return false;
+  return isPermanentSmtpError(reply.email_error);
+}
