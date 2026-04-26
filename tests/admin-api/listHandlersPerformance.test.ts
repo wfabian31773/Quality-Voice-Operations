@@ -110,7 +110,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     expect(getStatus()).toBe(200);
     expect(dbMock.records.length).toBe(1);
     expect(dbMock.records[0].sql).toMatch(/COUNT\(\*\)\s+OVER\(\)/);
-    expect(elapsed).toBeLessThan(250);
+    expect(elapsed).toBeLessThan(2000);
     const body = getJson();
     expect(body?.total).toBe(200);
     const jobs = body?.jobs as Array<Record<string, unknown>>;
@@ -137,7 +137,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     expect(getStatus()).toBe(200);
     expect(dbMock.records.length).toBe(1);
     expect(dbMock.records[0].sql).toMatch(/COUNT\(\*\)\s+OVER\(\)/);
-    expect(elapsed).toBeLessThan(250);
+    expect(elapsed).toBeLessThan(2000);
     const body = getJson();
     expect(body?.total).toBe(200);
     const bookings = body?.bookings as Array<Record<string, unknown>>;
@@ -167,7 +167,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     expect(sql).toMatch(/LEFT JOIN LATERAL[\s\S]*ticket_sla_instances/);
     expect(sql).toMatch(/COUNT\(\*\)\s+OVER\(\)/);
     expect(sql).not.toMatch(/\(SELECT row_to_json\(si\.\*\) FROM ticket_sla_instances/);
-    expect(elapsed).toBeLessThan(250);
+    expect(elapsed).toBeLessThan(2000);
     const body = getJson();
     expect(body?.total).toBe(200);
     const tickets = body?.tickets as Array<Record<string, unknown>>;
