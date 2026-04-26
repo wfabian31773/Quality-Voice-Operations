@@ -15,6 +15,7 @@ import {
   renderOutboundTicketReplyEmail,
   escapeHtml,
 } from '../../../platform/help/supportReplyEmail';
+import { tryReserveRetrySlot } from '../../../platform/help/docsFeedbackRetryLimiter';
 import { logError } from '../../../platform/core/observability';
 
 const logger = createLogger('SUPPORT');
@@ -724,6 +725,22 @@ router.post(
       return;
     }
 
+    // Atomically check the per-feedback cooldown AND reserve the slot in a
+    // single synchronous step before doing any awaited work. This is the
+    // anti-spam gate: two concurrent retries against the same broken inbox
+    // cannot both pass the limiter — Node is single-threaded, and the
+    // reserve happens before any await, so the second handler always sees
+    // the first handler's reservation.
+    const limit = tryReserveRetrySlot(id);
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(limit.retryAfterSeconds));
+      res.status(429).json({
+        error: `Retry rate limit reached. Try again in ${limit.retryAfterSeconds} second${limit.retryAfterSeconds === 1 ? '' : 's'}.`,
+        retry_after_seconds: limit.retryAfterSeconds,
+      });
+      return;
+    }
+
     let comment: DocsFeedbackComment | null;
     try {
       comment = await loadDocsFeedbackComment(id);
@@ -783,6 +800,9 @@ router.post(
     }
 
     const actor = req.user?.email ?? req.user?.userId ?? null;
+    // The retry slot was already reserved at the top of the handler, so even
+    // if SMTP fails below the cooldown is already in effect — back-to-back
+    // clicks during an outage will be rejected with 429.
     const { result, finalSubject } = await deliverDocsFeedbackReply({
       comment,
       body: lastReply.body,
