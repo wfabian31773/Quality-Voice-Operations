@@ -1460,6 +1460,65 @@ router.get(
   },
 );
 
+// ----- Platform admin: clear the per-recipient first-bounce alert -----
+//
+// The dedup table `support_recipient_bounce_alerts` exists so that the
+// "first hard bounce on this address" ops page only fires once per address.
+// That's the right default — we don't want every subsequent bounce on a
+// known-bad mailbox to keep paging — but it means a recipient that's been
+// fixed at the source (customer corrected their email, mailbox provisioned,
+// MX restored, etc.) and later starts bouncing again would silently NOT
+// re-fire the alert, because the dedup row is still present from the
+// original incident.
+//
+// This DELETE endpoint lets ops drop the dedup row for a single address
+// after they've investigated. The next permanent failure on that address
+// will then re-claim the row via the same INSERT ... ON CONFLICT DO NOTHING
+// path (see platform/help/supportReplyDeliveryAlert.ts) and re-fire the
+// alert. Mirrors the suppression-list "clear entry" semantics.
+//
+// Email is taken as a path param and lowercased server-side to match the
+// dedup table's primary-key casing (see migration 074).
+router.delete(
+  '/support/replies/bounced-recipients/:email/alert',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const raw = String(req.params.email ?? '').trim();
+    const emailLower = raw.toLowerCase();
+    if (!emailLower) {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+    try {
+      const pool = getPlatformPool();
+      const r = await pool.query<{ email_lower: string }>(
+        `DELETE FROM support_recipient_bounce_alerts
+         WHERE email_lower = $1
+         RETURNING email_lower`,
+        [emailLower],
+      );
+      const cleared = (r.rowCount ?? 0) > 0;
+      if (cleared) {
+        // Audit-only log so we have a trail of who reset which dedup row;
+        // the next bounce will produce its own critical error_log + ops
+        // alert when it re-claims the address, so we don't need to write
+        // an operations_alerts row here.
+        logger.info('Cleared per-recipient bounce alert dedup row', {
+          email_lower: emailLower,
+          actor_email: req.user?.email ?? null,
+          actor_id: req.user?.userId ?? null,
+        });
+      }
+      res.json({ cleared, email_lower: emailLower });
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: 'Failed to clear recipient bounce alert', detail: String(err) });
+    }
+  },
+);
+
 router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body ?? {};

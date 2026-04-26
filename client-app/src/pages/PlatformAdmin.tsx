@@ -2645,6 +2645,7 @@ function BouncedRecipientsPanel({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openEmails, setOpenEmails] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['support-bounced-recipients'],
@@ -2653,6 +2654,34 @@ function BouncedRecipientsPanel({
         `/support/replies/bounced-recipients?limit=200`,
       ),
     refetchInterval: 60_000,
+  });
+
+  // Drops the dedup row in `support_recipient_bounce_alerts` so the next
+  // bounce on this address re-fires the per-recipient first-bounce ops
+  // alert. Optimistically clears `alerted_at` in the cached panel data so
+  // the badge disappears immediately without waiting for the 60s refetch.
+  const clearAlert = useMutation({
+    mutationFn: (email: string) =>
+      api.delete<{ cleared: boolean; email_lower: string }>(
+        `/support/replies/bounced-recipients/${encodeURIComponent(email)}/alert`,
+      ),
+    onSuccess: (_data, email) => {
+      queryClient.setQueryData<BouncedRecipientsResponse>(
+        ['support-bounced-recipients'],
+        (prev) => {
+          if (!prev) return prev;
+          const lower = email.trim().toLowerCase();
+          return {
+            ...prev,
+            recipients: prev.recipients.map((r) =>
+              r.user_email.trim().toLowerCase() === lower
+                ? { ...r, alerted_at: null }
+                : r,
+            ),
+          };
+        },
+      );
+    },
   });
 
   const recipients = data?.recipients ?? [];
@@ -2751,13 +2780,30 @@ function BouncedRecipientsPanel({
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {r.alerted_at ? (
-                        <span
-                          className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800"
-                          title={`Ops was paged about this address at ${new Date(r.alerted_at).toLocaleString()}`}
-                        >
-                          <ShieldAlert className="h-3 w-3" />
-                          Alerted
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800"
+                            title={`Ops was paged about this address at ${new Date(r.alerted_at).toLocaleString()}`}
+                          >
+                            <ShieldAlert className="h-3 w-3" />
+                            Alerted
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => clearAlert.mutate(r.user_email)}
+                            disabled={
+                              clearAlert.isPending &&
+                              clearAlert.variables === r.user_email
+                            }
+                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
+                            title="Drop the dedup row so the next bounce on this address re-pages ops"
+                          >
+                            {clearAlert.isPending &&
+                            clearAlert.variables === r.user_email
+                              ? 'Clearing…'
+                              : 'Clear alert'}
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-muted">—</span>
                       )}

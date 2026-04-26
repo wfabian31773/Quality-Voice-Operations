@@ -65,6 +65,49 @@ describe('PlatformAdmin SupportInboxTab — bounced recipients panel', () => {
     expect(adminUiFile).toMatch(/onOpenTicket/);
     expect(adminUiFile).toMatch(/Open ticket/);
   });
+
+  it('exposes a Clear alert button in the panel that hits the new DELETE endpoint', () => {
+    // The button is what lets ops re-arm the per-recipient first-bounce
+    // alert after they've fixed the underlying issue. Without it, a once-
+    // bounced + recovered address would silently miss future bounces.
+    expect(adminUiFile).toMatch(/Clear alert/);
+    expect(adminUiFile).toMatch(
+      /api\.delete[\s\S]{0,160}\/support\/replies\/bounced-recipients\/\$\{encodeURIComponent\([^)]+\)\}\/alert/,
+    );
+  });
+
+  it('clears the Alerted badge optimistically without requiring a full refetch', () => {
+    // Done looks like: "Clearing the alert removes the badge from the
+    // panel without a full reload". Implementation pins the cached query
+    // entry through setQueryData and flips alerted_at to null in place.
+    expect(adminUiFile).toMatch(
+      /setQueryData<BouncedRecipientsResponse>\([\s\S]*?'support-bounced-recipients'/,
+    );
+    expect(adminUiFile).toMatch(/alerted_at:\s*null/);
+  });
+});
+
+describe('DELETE /support/replies/bounced-recipients/:email/alert — endpoint contract', () => {
+  it('mounts a DELETE endpoint guarded by requireAuth + requirePlatformAdmin', () => {
+    expect(supportFile).toMatch(
+      /router\.delete\(\s*['"]\/support\/replies\/bounced-recipients\/:email\/alert['"][\s\S]*?requireAuth[\s\S]*?requirePlatformAdmin/,
+    );
+  });
+
+  it('deletes from support_recipient_bounce_alerts keyed on lowercased email', () => {
+    // Lowercasing has to match the dedup table's primary-key casing
+    // (migration 074 stores email_lower). A future refactor that drops
+    // the toLowerCase() would let mixed-case clears miss the row.
+    const start = supportFile.indexOf(
+      "'/support/replies/bounced-recipients/:email/alert'",
+    );
+    expect(start).toBeGreaterThan(-1);
+    const after = supportFile.slice(start, start + 2000);
+    expect(after).toMatch(/toLowerCase\(\)/);
+    expect(after).toMatch(
+      /DELETE FROM support_recipient_bounce_alerts[\s\S]*?WHERE email_lower = \$1/,
+    );
+  });
 });
 
 // ---- Runtime behavior -------------------------------------------------------
@@ -313,5 +356,59 @@ describe('GET /support/replies/bounced-recipients — runtime behavior', () => {
     expect(r.status).toBe(500);
     expect(r.body.error).toMatch(/Failed to load bounced recipients/);
     expect(r.body.detail).toContain('boom');
+  });
+});
+
+describe('DELETE /support/replies/bounced-recipients/:email/alert — runtime behavior', () => {
+  it('deletes the dedup row by lowercased email and reports cleared=true on success', async () => {
+    queryMock.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ email_lower: 'alice@example.com' }],
+    });
+
+    // Path includes mixed casing — the route must lowercase before
+    // hitting the dedup table whose primary key is email_lower.
+    const r = await request(buildApp())
+      .delete('/support/replies/bounced-recipients/Alice%40Example.COM/alert')
+      .send();
+
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ cleared: true, email_lower: 'alice@example.com' });
+
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(String(sql)).toMatch(
+      /DELETE FROM support_recipient_bounce_alerts[\s\S]*?WHERE email_lower = \$1/,
+    );
+    expect(params).toEqual(['alice@example.com']);
+  });
+
+  it('reports cleared=false when no dedup row existed for the address', async () => {
+    // Idempotent: clearing an alert that was never set should not error.
+    // The next bounce on that address would still re-claim and fire the
+    // alert via the same INSERT ... ON CONFLICT DO NOTHING path.
+    queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+    const r = await request(buildApp())
+      .delete('/support/replies/bounced-recipients/never-alerted%40example.com/alert')
+      .send();
+
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({
+      cleared: false,
+      email_lower: 'never-alerted@example.com',
+    });
+  });
+
+  it('returns 500 with a detail message when the DELETE query fails', async () => {
+    queryMock.mockRejectedValueOnce(new Error('connection lost'));
+
+    const r = await request(buildApp())
+      .delete('/support/replies/bounced-recipients/x%40example.com/alert')
+      .send();
+
+    expect(r.status).toBe(500);
+    expect(r.body.error).toMatch(/Failed to clear recipient bounce alert/);
+    expect(r.body.detail).toContain('connection lost');
   });
 });
