@@ -2622,6 +2622,12 @@ interface BouncedRecipient {
   last_error: string;
   ticket_count: number;
   tickets: BouncedRecipientTicket[];
+  // ISO timestamp of when ops was first paged about this address. Null
+  // means the per-recipient first-bounce alert hasn't fired yet for this
+  // recipient, e.g. the address is being shown only because of bounces
+  // recorded before the alert pipeline shipped. Populated server-side from
+  // the `support_recipient_bounce_alerts` dedup table.
+  alerted_at: string | null;
 }
 
 interface BouncedRecipientsResponse {
@@ -2705,12 +2711,13 @@ function BouncedRecipientsPanel({
               <th className="text-left px-4 py-3 font-medium text-muted">Failures</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Tickets</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Last failure</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Alerted</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Most recent error</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-8 text-muted">Loading…</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-muted">Loading…</td></tr>
             ) : (
               recipients.map((r) => (
                 <Fragment key={r.user_email}>
@@ -2740,13 +2747,26 @@ function BouncedRecipientsPanel({
                     <td className="px-4 py-3 text-xs text-muted">
                       {new Date(r.last_failure_at).toLocaleString()}
                     </td>
+                    <td className="px-4 py-3 text-xs">
+                      {r.alerted_at ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800"
+                          title={`Ops was paged about this address at ${new Date(r.alerted_at).toLocaleString()}`}
+                        >
+                          <ShieldAlert className="h-3 w-3" />
+                          Alerted
+                        </span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs text-red-700 max-w-md truncate" title={r.last_error}>
                       {r.last_error}
                     </td>
                   </tr>
                   {openEmails.has(r.user_email) && (
                     <tr className="bg-surface-secondary/30">
-                      <td colSpan={6} className="px-6 py-3">
+                      <td colSpan={7} className="px-6 py-3">
                         <div className="text-xs text-muted mb-2">
                           Affected tickets (newest failure first):
                         </div>

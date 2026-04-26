@@ -29,6 +29,7 @@ import {
 } from './supportReplyEmail';
 import {
   REPLY_DELIVERY_ALERT_THRESHOLD,
+  raiseRecipientFirstBounceAlert,
   raiseReplyDeliveryFailureAlert,
 } from './supportReplyDeliveryAlert';
 
@@ -335,6 +336,37 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
         });
       });
     }
+
+    // Per-recipient first-bounce alert: when this live retry produced a
+    // permanent SMTP failure, page ops the first time we've ever seen a hard
+    // bounce for this address. Dedup is enforced by the alert helper itself
+    // (atomic INSERT ... ON CONFLICT DO NOTHING on
+    // `support_recipient_bounce_alerts`), so it's safe to call from any path
+    // that classifies a permanent failure. Also seed the suppression list so
+    // future replies to the same address short-circuit before the SMTP call.
+    if (permanent && reply.user_email) {
+      addSupportEmailSuppression(reply.user_email, {
+        reason: 'permanent_smtp_failure',
+        source: 'support_reply_retry_scheduler_live',
+        lastError: newError,
+      })
+        .then(() =>
+          raiseRecipientFirstBounceAlert({
+            recipientEmail: reply.user_email,
+            replyId: reply.reply_id,
+            ticketId: reply.ticket_id,
+            tenantId: reply.tenant_id ?? null,
+            error: newError ?? 'unknown',
+          }),
+        )
+        .catch((alertErr) => {
+          logger.warn('Failed to raise recipient first-bounce alert (scheduler live retry)', {
+            reply_id: reply.reply_id,
+            ticket_id: reply.ticket_id,
+            error: String(alertErr),
+          });
+        });
+    }
   }
 
   return {
@@ -416,11 +448,32 @@ export async function runSupportReplyRetryCycle(): Promise<RetryCycleResult> {
         // to the same recipient short-circuit on the cheap pre-check above
         // before going through the full classifier path. Best-effort — a
         // failed insert just means the next bounce will re-add it.
+        // Chained with the per-recipient first-bounce alert: the alert
+        // helper does its own atomic dedup against
+        // `support_recipient_bounce_alerts`, so even if multiple replies for
+        // the same address race through this branch only the first one ever
+        // pages ops.
         addSupportEmailSuppression(reply.user_email, {
           reason: 'permanent_smtp_failure',
           source: 'support_reply_retry_scheduler',
           lastError: reply.email_error,
-        }).catch(() => { /* logged inside helper */ });
+        })
+          .then(() =>
+            raiseRecipientFirstBounceAlert({
+              recipientEmail: reply.user_email,
+              replyId: reply.reply_id,
+              ticketId: reply.ticket_id,
+              tenantId: reply.tenant_id ?? null,
+              error: reply.email_error,
+            }),
+          )
+          .catch((alertErr) => {
+            logger.warn('Failed to raise recipient first-bounce alert (scheduler pre-check)', {
+              reply_id: reply.reply_id,
+              ticket_id: reply.ticket_id,
+              error: String(alertErr),
+            });
+          });
         const marked = await markReplyPermanentlyFailed(reply);
         if (!marked) {
           // Concurrent worker already advanced this row — nothing to do.

@@ -37,6 +37,7 @@ import { getSupportReplyRetryCooldownSeconds } from '../../../platform/help/supp
 import { logError } from '../../../platform/core/observability';
 import {
   REPLY_DELIVERY_ALERT_THRESHOLD,
+  raiseRecipientFirstBounceAlert,
   raiseReplyDeliveryFailureAlert,
 } from '../../../platform/help/supportReplyDeliveryAlert';
 
@@ -1273,6 +1274,10 @@ router.get(
         last_error: string;
         ticket_count: number;
         tickets: TicketEntry[];
+        // Timestamp from `support_recipient_bounce_alerts` if ops has
+        // already been paged about this address; null otherwise. Drives
+        // the "Alerted" badge in the admin panel.
+        alerted_at: string | null;
       }
       const byEmail = new Map<string, RecipientEntry>();
       const ticketsByEmail = new Map<string, Map<string, TicketEntry>>();
@@ -1289,6 +1294,9 @@ router.get(
             last_error: row.email_error,
             ticket_count: 0,
             tickets: [],
+            // Filled in later by the bulk lookup against
+            // support_recipient_bounce_alerts.
+            alerted_at: null,
           };
           byEmail.set(email, entry);
           ticketsByEmail.set(email, new Map());
@@ -1333,6 +1341,42 @@ router.get(
         entry.ticket_count = tickets.length;
         recipients.push(entry);
       }
+
+      // Bulk-fetch the per-recipient alerted_at timestamp so the panel can
+      // show an "Alerted" badge next to addresses that have already paged
+      // ops. Done in a single round-trip after grouping (we already know the
+      // exact set of email addresses in the response). Lowercased to match
+      // the dedup table's primary-key casing.
+      const emailLowerList = recipients.map((r) => r.user_email.trim().toLowerCase());
+      const alertedByEmail = new Map<string, string>();
+      if (emailLowerList.length > 0) {
+        try {
+          const alertsRes = await pool.query<{
+            email_lower: string;
+            first_alerted_at: string;
+          }>(
+            `SELECT email_lower, first_alerted_at
+             FROM support_recipient_bounce_alerts
+             WHERE email_lower = ANY($1::text[])`,
+            [emailLowerList],
+          );
+          for (const row of alertsRes.rows) {
+            alertedByEmail.set(row.email_lower, row.first_alerted_at);
+          }
+        } catch (err) {
+          // Don't fail the whole panel just because the badge lookup
+          // failed — admins can still see the bounced addresses, they just
+          // won't see the alerted decoration this load.
+          logger.warn('Failed to fetch recipient alert timestamps for bounced panel', {
+            error: String(err),
+          });
+        }
+      }
+      for (const entry of recipients) {
+        const ts = alertedByEmail.get(entry.user_email.trim().toLowerCase());
+        entry.alerted_at = ts ?? null;
+      }
+
       recipients.sort((a, b) => {
         // Primary: most recent failure first, so freshly broken addresses
         // surface at the top of the panel.
@@ -1902,6 +1946,28 @@ router.post(
             });
           });
         }
+
+        // Per-recipient first-bounce alert. Even though the reply was already
+        // classified permanent before this click, the recipient may not yet
+        // be on the bounce-alerts dedup table (e.g. if the original failing
+        // send happened before this feature shipped, or if a previous attempt
+        // was claimed by a worker that crashed before alerting). Calling the
+        // helper is cheap and idempotent, so do it here too — the dedup
+        // INSERT ... ON CONFLICT ensures we only ever page ops once per
+        // address regardless of which path tripped the wire first.
+        if (ticket.user_email) {
+          raiseRecipientFirstBounceAlert({
+            recipientEmail: ticket.user_email,
+            replyId: replyIdNum,
+            ticketId: ticket.id,
+            tenantId: ticket.tenant_id ?? null,
+            error: reply.email_error,
+          }).catch((alertErr) => {
+            logger.warn('Failed to raise recipient first-bounce alert on manual retry (early-permanent)', {
+              ticket_id: id, reply_id: replyIdNum, error: String(alertErr),
+            });
+          });
+        }
       }
 
       logger.info('Manual support reply retry refused — permanent SMTP failure', {
@@ -1996,12 +2062,30 @@ router.post(
 
     // Real hard bounce ⇒ add to the suppression list so future replies short-
     // circuit. Skipped sends already came from the list and don't re-add.
+    // Chained with the per-recipient first-bounce alert: the alert helper
+    // dedupes on the recipient address (atomic INSERT ... ON CONFLICT), so
+    // calling it here even when the address is already suppressed is safe —
+    // a second click never produces a second alert.
     if (!synthesisedRetrySkipReason && retryPermanent && ticket.user_email) {
       addSupportEmailSuppression(ticket.user_email, {
         reason: 'permanent_smtp_failure',
         source: 'support_ticket_reply_retry',
         lastError: retryErr,
-      }).catch(() => { /* logged inside helper */ });
+      })
+        .then(() =>
+          raiseRecipientFirstBounceAlert({
+            recipientEmail: ticket.user_email!,
+            replyId: replyIdNum,
+            ticketId: ticket.id,
+            tenantId: ticket.tenant_id ?? null,
+            error: retryErr ?? 'unknown',
+          }),
+        )
+        .catch((alertErr) => {
+          logger.warn('Failed to raise recipient first-bounce alert on manual retry (live-permanent)', {
+            ticket_id: id, reply_id: replyIdNum, error: String(alertErr),
+          });
+        });
     }
 
     let updatedRow: { retry_count?: number | null } & Record<string, unknown> = {};

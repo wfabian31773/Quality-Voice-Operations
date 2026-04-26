@@ -11,9 +11,20 @@ vi.mock('../../platform/db', () => {
   // answer that never reaches `queryMock.mock.calls` — preserving every
   // index/count assertion below.
   const SUPPRESSION_TABLE_RE = /support_email_(unsubscribes|suppressions)/i;
+  // The per-recipient first-bounce alert (`support_recipient_bounce_alerts`,
+  // see migration 074) is also an orthogonal write the per-reply retry path
+  // does not exercise — short-circuit the dedup INSERT so it never affects
+  // the index/count assertions in the manual /retry tests below.
+  const RECIPIENT_BOUNCE_ALERT_RE = /support_recipient_bounce_alerts/i;
   const wrappedQuery = (sql: unknown, ...rest: unknown[]) => {
     const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
     if (SUPPRESSION_TABLE_RE.test(sqlText)) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    if (RECIPIENT_BOUNCE_ALERT_RE.test(sqlText)) {
+      // rowCount: 0 means "lost the dedup race" — the helper short-circuits
+      // and never writes the operations_alerts / error_log rows, keeping the
+      // per-reply alert assertions in this file unambiguous.
       return Promise.resolve({ rowCount: 0, rows: [] });
     }
     return (queryMock as (...a: unknown[]) => unknown)(sql, ...rest);

@@ -85,9 +85,24 @@ vi.mock('../../platform/db', () => {
   // `mock.calls[3][0]`, `toHaveBeenCalledTimes(2)`) accurate to the
   // scheduler queries the tests actually care about.
   const SUPPRESSION_TABLE_RE = /support_email_(unsubscribes|suppressions)/i;
+  // Per-recipient first-bounce alert (`support_recipient_bounce_alerts`,
+  // see migration 074) and the operations_alerts row it triggers are also
+  // orthogonal to the scheduler queries this file pins down. Short-circuit
+  // both so the dedup INSERT never adds to `queryMock.mock.calls`. Returning
+  // `rowCount: 0` mimics losing the dedup race, which makes the helper
+  // skip the operations_alerts insert too — but we filter that table as
+  // well, defensively, in case a future code path inserts there directly.
+  const RECIPIENT_BOUNCE_ALERT_RE = /support_recipient_bounce_alerts/i;
+  const OPERATIONS_ALERTS_RE = /operations_alerts/i;
   const wrappedQuery = (sql: unknown, ...rest: unknown[]) => {
     const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
     if (SUPPRESSION_TABLE_RE.test(sqlText)) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    if (RECIPIENT_BOUNCE_ALERT_RE.test(sqlText)) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    if (OPERATIONS_ALERTS_RE.test(sqlText)) {
       return Promise.resolve({ rowCount: 0, rows: [] });
     }
     return (queryMock as (...a: unknown[]) => unknown)(sql, ...rest);
