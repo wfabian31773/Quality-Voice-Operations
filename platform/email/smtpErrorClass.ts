@@ -69,3 +69,34 @@ export function isPermanentSmtpError(error: string | null | undefined): boolean 
 
   return PERMANENT_KEYWORDS.some((kw) => e.includes(kw));
 }
+
+/**
+ * A support_ticket_replies row (or row-like shape) used by both the scheduler
+ * and the admin API. Only the two fields the permanence rule needs are
+ * required so any wider row type satisfies the shape.
+ */
+export interface ReplyPermanenceCandidate {
+  direction?: string | null;
+  email_error?: string | null;
+}
+
+/**
+ * Single source of truth for "is this support reply a permanent SMTP failure?"
+ *
+ * The rule is: outbound + has a recorded email_error + the classifier above
+ * tags that error as permanent. This boolean is what the auto-retry scheduler,
+ * the manual /retry endpoint, and the GET /replies endpoint all need to agree
+ * on — duplicating the inline expression invites drift if we ever extend the
+ * rule (for example, also treating `error_count >= N` or an explicit
+ * `hard_bounce` column as permanent). Route every caller through this helper
+ * so the three sites stay in lock-step.
+ *
+ * The direction check is skipped when the field is omitted entirely (e.g. the
+ * scheduler's row type only selects outbound rows in SQL, so it doesn't carry
+ * `direction`). When the field is present, it must literally be `'outbound'`.
+ */
+export function isReplyPermanentFailure(reply: ReplyPermanenceCandidate): boolean {
+  if (reply.direction != null && reply.direction !== 'outbound') return false;
+  if (!reply.email_error) return false;
+  return isPermanentSmtpError(reply.email_error);
+}

@@ -12,7 +12,7 @@
 import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
-import { isPermanentSmtpError } from '../email/smtpErrorClass';
+import { isPermanentSmtpError, isReplyPermanentFailure } from '../email/smtpErrorClass';
 import {
   buildReplyToAddress,
   generateInboundToken,
@@ -329,7 +329,7 @@ export async function runSupportReplyRetryCycle(): Promise<RetryCycleResult> {
       // the row as exhausted and move on so a human picks it up. We still
       // raise the ops alert because this is the threshold-cross event for
       // this reply.
-      if (isPermanentSmtpError(reply.email_error)) {
+      if (isReplyPermanentFailure(reply)) {
         const marked = await markReplyPermanentlyFailed(reply);
         if (!marked) {
           // Concurrent worker already advanced this row — nothing to do.

@@ -4,7 +4,10 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
-import { isPermanentSmtpError } from '../../../platform/email/smtpErrorClass';
+import {
+  isPermanentSmtpError,
+  isReplyPermanentFailure,
+} from '../../../platform/email/smtpErrorClass';
 import {
   runDocsFeedbackAlertCycle,
   runDocsFeedbackPendingReplyAlertCycle,
@@ -1485,10 +1488,12 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
     // Compute `permanent_failure` here (instead of in the UI) so the client
     // doesn't have to import or duplicate the SMTP classifier. Mirrors the
     // hard-bounce skip the manual /retry endpoint and the auto-retry
-    // scheduler use to decide whether re-sending is worth attempting.
+    // scheduler use to decide whether re-sending is worth attempting — all
+    // three sites route through the shared `isReplyPermanentFailure` helper
+    // so they extend in lock-step.
     const replies = r.rows.map((row) => ({
       ...row,
-      permanent_failure: row.direction === 'outbound' && isPermanentSmtpError(row.email_error),
+      permanent_failure: isReplyPermanentFailure(row),
     }));
     res.json({ replies });
   } catch (err) {
@@ -1739,8 +1744,9 @@ router.post(
     // ceiling so the background SupportReplyRetryScheduler also leaves the
     // row alone, and fire the threshold-cross ops alert if this is the
     // first time we're crossing it. Mirrors the permanent-skip path the
-    // scheduler already runs in `runSupportReplyRetryCycle`.
-    if (isPermanentSmtpError(reply.email_error)) {
+    // scheduler already runs in `runSupportReplyRetryCycle` — both paths
+    // share the `isReplyPermanentFailure` helper so the rule stays in sync.
+    if (isReplyPermanentFailure(reply)) {
       const previousRetryCount = reply.retry_count ?? 0;
       const targetRetryCount = REPLY_DELIVERY_ALERT_THRESHOLD;
       if (previousRetryCount < targetRetryCount) {
