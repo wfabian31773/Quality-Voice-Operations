@@ -8,12 +8,28 @@ const previousNodeEnv = process.env.NODE_ENV;
 
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
 const indexHtmlPath = path.join(clientDistPath, 'index.html');
-const distAvailable = fs.existsSync(indexHtmlPath);
 
 let app: import('express').Express;
+let createdDist = false;
+let createdIndex = false;
+let expectedHtml = '';
 
-describe.skipIf(!distAvailable)('admin-api production-mode boot smoke', () => {
+const FIXTURE_HTML =
+  '<!doctype html><html><head><title>QVO SPA</title></head>' +
+  '<body><div id="root"></div></body></html>';
+
+describe('admin-api production-mode boot smoke', () => {
   beforeAll(async () => {
+    if (!fs.existsSync(clientDistPath)) {
+      fs.mkdirSync(clientDistPath, { recursive: true });
+      createdDist = true;
+    }
+    if (!fs.existsSync(indexHtmlPath)) {
+      fs.writeFileSync(indexHtmlPath, FIXTURE_HTML);
+      createdIndex = true;
+    }
+    expectedHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+
     process.env.APP_ENV = 'production';
     vi.resetModules();
     const mod = (await import('../../server/admin-api/app')) as {
@@ -23,6 +39,18 @@ describe.skipIf(!distAvailable)('admin-api production-mode boot smoke', () => {
   });
 
   afterAll(() => {
+    if (createdIndex && fs.existsSync(indexHtmlPath)) {
+      fs.unlinkSync(indexHtmlPath);
+    }
+    if (createdDist && fs.existsSync(clientDistPath)) {
+      try {
+        fs.rmdirSync(clientDistPath);
+      } catch {
+        // Directory not empty (real build artifacts landed mid-test).
+        // Leaving it in place is safe.
+      }
+    }
+
     if (previousAppEnv === undefined) {
       delete process.env.APP_ENV;
     } else {
@@ -41,7 +69,6 @@ describe.skipIf(!distAvailable)('admin-api production-mode boot smoke', () => {
   });
 
   it('GET /dashboard returns the bundled index.html', async () => {
-    const expectedHtml = fs.readFileSync(indexHtmlPath, 'utf8');
     const res = await request(app).get('/dashboard');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/html/);
@@ -49,14 +76,12 @@ describe.skipIf(!distAvailable)('admin-api production-mode boot smoke', () => {
   });
 
   it('GET / serves the static index.html', async () => {
-    const expectedHtml = fs.readFileSync(indexHtmlPath, 'utf8');
     const res = await request(app).get('/');
     expect(res.status).toBe(200);
     expect(res.text).toBe(expectedHtml);
   });
 
   it('a deep SPA route resolves through the fallback', async () => {
-    const expectedHtml = fs.readFileSync(indexHtmlPath, 'utf8');
     const res = await request(app).get('/admin/sales-inbox/details/abc-123');
     expect(res.status).toBe(200);
     expect(res.text).toBe(expectedHtml);
