@@ -167,7 +167,7 @@ export function connectorSyncErrorEmail(params: {
       <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
       <p style="margin:8px 0 0" class="muted">Detected at ${params.detectedAt}</p>
     </div>
-    <p>Open the Connectors page to review the error and re-authorize the integration:</p>
+    <p>The link below jumps straight to the ${params.providerLabel} card on your Connectors page so you can re-authorize without hunting for it:</p>
     <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
     <p class="muted">You won't get another email about this integration for 24 hours, even if it keeps failing.</p>
   `);
@@ -204,7 +204,7 @@ export function connectorAutoDisabledEmail(params: {
     <p>Events that depend on this integration will no longer be dispatched until it is reconnected and re-enabled.</p>
     ${errorBlock}
     <p class="muted">Auto-disabled at ${params.disabledAt}</p>
-    <p>To restore the integration, sign in again and re-enable it from the Connectors page:</p>
+    <p>The link below jumps straight to the ${params.providerLabel} card on your Connectors page — sign in again and re-enable it from there:</p>
     <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
     <p class="muted">This is the final automated email about this connector. You will not get more reminders unless it is reconnected and fails again.</p>
   `);
@@ -248,7 +248,7 @@ export function connectorReconnectNeededEmail(params: {
     <p>Hi,</p>
     <p>The <strong>${params.providerLabel}</strong> integration for <strong>${org}</strong> needs to be reconnected. Until you reauthorize it, calls, events, and other workflows that depend on this integration will not sync.</p>
     ${errorBlock}
-    <p>Open the Connectors page to reauthorize the integration. We've linked you straight to it:</p>
+    <p>The link below jumps straight to the ${params.providerLabel} card on your Connectors page so you can reauthorize without hunting for it:</p>
     <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
     <p class="muted">You won't get another email about this integration for 24 hours, even if the next refresh attempt also fails.</p>
   `);

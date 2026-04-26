@@ -111,7 +111,11 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
 
   const providerLabel = PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
   const errorMessage = params.errorMessage ?? 'Sync failed';
-  const reconnectPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
+  // Provider-keyed deep link so the alert still lands on the right connector
+  // card if the underlying integration row was deleted between detection
+  // and email send. Mirrors the dashboard's "needs reconnect" badge link
+  // so tenants get the same one-click reconnect flow from email and in-app.
+  const reconnectPath = `/connectors?provider=${encodeURIComponent(provider)}`;
   const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
 
   const title = `${providerLabel} integration is failing`;
@@ -480,7 +484,10 @@ export async function notifySustainedConnectorFailure(
   const providerLabel = PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
   const errorMessage = params.errorMessage ?? 'Sync failed';
   const outageMinutes = Math.round(outageMs / 60000);
-  const reconnectPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
+  // Provider-keyed deep link so the SMS reconnect URL still resolves to the
+  // right connector card if the integration row was deleted between
+  // detection and SMS send. Matches the email/in-app surfaces' link form.
+  const reconnectPath = `/connectors?provider=${encodeURIComponent(provider)}`;
   const tenantPrefix = tenantName ? `[${tenantName}] ` : '';
   const smsBody =
     `${tenantPrefix}QVO alert: ${providerLabel} integration has been failing for ` +
@@ -664,7 +671,11 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
 
   const providerLabel = PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
   const outageDescription = describeOutage(outageDurationMs);
-  const connectorsPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
+  // Provider-keyed deep link so the recovery email lands on the right
+  // connector card even if the tenant has since renamed or removed the
+  // integration row. Matches the failure-path link form so admins always
+  // jump to the same place from outage and recovery notifications.
+  const connectorsPath = `/connectors?provider=${encodeURIComponent(provider)}`;
   const connectorsUrl = `${appBaseUrl().replace(/\/$/, '')}${connectorsPath}`;
 
   const title = `${providerLabel} integration is back online`;

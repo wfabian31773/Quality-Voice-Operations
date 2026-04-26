@@ -118,7 +118,11 @@ describe('dispatchConnectorAuthAlert', () => {
     const templateArg = reconnectTemplateMock.mock.calls[0][0];
     expect(templateArg.providerLabel).toBe('HubSpot');
     expect(templateArg.tenantName).toBe('Acme');
-    expect(String(templateArg.reconnectUrl)).toContain('/connectors?integration=int-1');
+    // Provider-keyed deep link so the email lands on the right connector
+    // card whether the integration row is still present in `needs_reconnect`
+    // state OR has been removed entirely (matches the dashboard badge link).
+    expect(String(templateArg.reconnectUrl)).toContain('/connectors?provider=hubspot');
+    expect(String(templateArg.reconnectUrl)).not.toContain('integration=');
     expect(templateArg.errorMessage).toBe('Token refresh HTTP 401: invalid_grant');
 
     // In-app: 2 rows, one per admin (NOT tenant-wide).
@@ -133,7 +137,9 @@ describe('dispatchConnectorAuthAlert', () => {
       expect(metadata.integrationId).toBe('int-1');
       expect(metadata.provider).toBe('hubspot');
       expect(metadata.reason).toBe('needs_reconnect');
-      expect(metadata.link).toBe('/connectors?integration=int-1');
+      // In-app `link` matches the email's reconnect URL form so click-through
+      // works whether the integration row was deleted or still present.
+      expect(metadata.link).toBe('/connectors?provider=hubspot');
     }
     // Confirm the in-app fanout used the restricted-by-userIds query.
     const restrictedFanout = queryMock.mock.calls.find((c) => {

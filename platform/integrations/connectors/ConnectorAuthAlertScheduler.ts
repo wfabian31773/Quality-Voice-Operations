@@ -388,7 +388,13 @@ export async function dispatchConnectorAuthAlert(
       : providerLabel(params.provider);
   const errorMessage =
     params.errorMessage ?? row.last_sync_error ?? 'Authentication failed; reconnect required';
-  const reconnectPath = `/connectors?integration=${encodeURIComponent(params.integrationId)}`;
+  // Provider-keyed deep link survives integration row deletion (e.g. tenant
+  // disconnects, then we still need to nudge them to reconnect from a
+  // background failure detected before deletion). The Connectors page also
+  // accepts `?integration=<id>` for a more specific match, but `?provider=`
+  // works whether the row is still present in `needs_reconnect` state OR
+  // has been removed entirely.
+  const reconnectPath = `/connectors?provider=${encodeURIComponent(params.provider)}`;
   const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
   const detectedAtSource =
     params.detectedAt ?? (row.last_sync_error_at ? new Date(row.last_sync_error_at as string | Date).toISOString() : null);
@@ -922,7 +928,11 @@ export async function runConnectorAutoDisableCycle(
       ? Math.max(thresholdDays, Math.round((Date.now() - failedAtMs) / (24 * 60 * 60 * 1000)))
       : thresholdDays;
     const errorMessage = row.last_sync_error ?? 'Authentication failed; reconnect required';
-    const reconnectPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
+    // Provider-keyed deep link so the auto-disable email still lands on the
+    // right connector card even after a tenant has fully removed the
+    // integration row (the dashboard "needs reconnect" badges use the same
+    // form, so behavior is consistent across surfaces).
+    const reconnectPath = `/connectors?provider=${encodeURIComponent(provider)}`;
     const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
     const disabledAt = new Date().toUTCString();
 

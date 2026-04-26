@@ -229,6 +229,12 @@ describe('notifySustainedConnectorFailure', () => {
     expect(body).toContain('To=%2B15551234567');
     expect(body).toContain('From=%2B15555550100');
     expect(body).toContain('Salesforce');
+    // Regression: SMS body must include the provider-keyed reconnect link
+    // (URL-encoded inside the form-urlencoded body), so admins can jump
+    // straight to the right connector card from their phone whether or
+    // not the integration row still exists.
+    expect(body).toContain('%2Fconnectors%3Fprovider%3Dsalesforce');
+    expect(body).not.toContain('%2Fconnectors%3Fintegration%3D');
 
     // The dispatch is now fanned out per-user — every insert should target
     // the SMS notification type with the integration metadata.
@@ -563,6 +569,10 @@ describe('notifyConnectorRecovery', () => {
       expect(metadata.provider).toBe('salesforce');
       expect(metadata.outageDurationMs).toBe(90 * 60 * 1000);
       expect(metadata.outageDescription).toBeTruthy();
+      // Regression: recovery in-app `link` must be the provider-keyed form
+      // so click-through resolves to the right connector card even if the
+      // integration row was deleted between failure and recovery.
+      expect(metadata.link).toBe('/connectors?provider=salesforce');
     }
 
     // The throttle marker must have been stamped.
@@ -896,6 +906,11 @@ describe('notifyConnectorSyncError', () => {
     const metadata = JSON.parse(insertArgs[5] as string);
     expect(metadata.integrationId).toBe('int-1');
     expect(metadata.provider).toBe('salesforce');
+    // Regression: per-event in-app reconnect link must be the provider-keyed
+    // form (`/connectors?provider=<provider>`) so it still resolves to the
+    // right connector card after the integration row is deleted. Mirrors
+    // the dashboard "needs reconnect" badge link form.
+    expect(metadata.link).toBe('/connectors?provider=salesforce');
 
     // Email: only owner@acme.test should receive it (admin@acme.test opted out).
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
