@@ -381,6 +381,79 @@ describe('notifySustainedConnectorFailure', () => {
     expect(metadata.twilioConfigured).toBe(false);
     expect(metadata.smsAttempted).toBe(0);
   });
+
+  it('SMSes a sustained-failure recipient who only holds the tenant_owner role via user_roles', async () => {
+    // Regression test (mirrors the notifyConnectorSyncError user_roles test):
+    // sustained-failure SMS now goes through the shared recipient helper
+    // (getTenantAlertPhoneRecipients), which UNIONs the legacy `users.role`
+    // column with the canonical `user_roles` join. If a future refactor
+    // re-narrows this lookup back to `role IN ('admin','owner')`, tenant
+    // owners / operations managers whose role only lives in user_roles
+    // would silently stop being paged on outages. This test pins both the
+    // SQL shape and the actual Twilio dispatch.
+    queryMock
+      // tenant lookup (name + sms_alerts_disabled)
+      .mockResolvedValueOnce({
+        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
+      })
+      // SMS throttle — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // shared recipient helper query — return a tenant_owner whose legacy
+      // users.role is something else but who matches via user_roles.
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-owner', phone_number: '+15551234567' }],
+      })
+      // filterUserIdsByPreference for SMS phones — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-owner' }] })
+      // fanoutInAppNotification: in_app pref filter
+      .mockResolvedValueOnce({ rows: [] })
+      // INSERT for user-owner
+      .mockResolvedValueOnce({ rows: [] });
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () => '',
+    } as unknown as Response);
+
+    const { notifySustainedConnectorFailure } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifySustainedConnectorFailure({
+      ...baseParams,
+      firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    });
+
+    // The phone recipient query MUST be the shared helper's JOIN —
+    // references user_roles and accepts the canonical tenant_owner /
+    // operations_manager role values. If this regresses to
+    // `role IN ('admin','owner')` on users alone, user_roles-only owners
+    // silently stop being paged.
+    const recipientQuery = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return (
+        sql.includes('FROM users u') &&
+        sql.includes('LEFT JOIN user_roles ur') &&
+        sql.includes('u.phone_number')
+      );
+    });
+    expect(recipientQuery).toBeDefined();
+    const sql = String(recipientQuery![0]);
+    expect(sql).toContain("ur.role IN ('tenant_owner', 'operations_manager')");
+    expect(sql).toContain(
+      "u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')",
+    );
+    const recipientArgs = recipientQuery![1] as unknown[];
+    expect(recipientArgs[0]).toBe('tenant-1');
+
+    // The Twilio SMS actually went out to the user_roles-only owner.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('To=%2B15551234567');
+    expect(body).toContain('From=%2B15555550100');
+  });
 });
 
 describe('notifyConnectorRecovery', () => {
@@ -666,6 +739,75 @@ describe('notifyConnectorRecovery', () => {
 
     // No email sent — bail to avoid spamming on every retry.
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('emails a recovery recipient who only holds the tenant_owner role via user_roles', async () => {
+    // Regression test (mirrors the notifyConnectorSyncError user_roles test):
+    // the recovery email path now goes through the shared recipient helper
+    // (getTenantAlertEmailRecipients), which UNIONs the legacy `users.role`
+    // column with the canonical `user_roles` join. If a future refactor
+    // re-narrows this lookup back to `role IN ('admin','owner')`, tenant
+    // owners / operations managers whose role only lives in user_roles
+    // would silently stop receiving the "back online" email. This test
+    // pins both the SQL shape and the actual email send.
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
+      // fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-owner' }] })
+      // fanoutInAppNotification: in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // INSERT for user-owner
+      .mockResolvedValueOnce({ rows: [] })
+      // UPDATE integrations SET recovery_alert_sent_at
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      // tenant name lookup
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // shared recipient helper query — return a tenant_owner whose
+      // legacy users.role is something else but who matches via user_roles.
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-owner', email: 'owner-via-roles@acme.test' }],
+      })
+      // filterEmailRecipientsByPreference — nobody opted out
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { notifyConnectorRecovery } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorRecovery(baseParams);
+
+    // The recipient query MUST be the shared helper's JOIN — references
+    // user_roles and accepts the canonical tenant_owner / operations_manager
+    // role values. If this regresses to `role IN ('admin','owner')` on
+    // users alone, user_roles-only owners silently stop being emailed.
+    const recipientQuery = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return (
+        sql.includes('FROM users u') &&
+        sql.includes('LEFT JOIN user_roles ur') &&
+        sql.includes('u.email')
+      );
+    });
+    expect(recipientQuery).toBeDefined();
+    const sql = String(recipientQuery![0]);
+    expect(sql).toContain("ur.role IN ('tenant_owner', 'operations_manager')");
+    expect(sql).toContain(
+      "u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')",
+    );
+    const recipientArgs = recipientQuery![1] as unknown[];
+    expect(recipientArgs[0]).toBe('tenant-1');
+
+    // The recovery email actually went out to the user_roles-only owner,
+    // and the email pref filter was scoped to the recovery category.
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect((sendEmailMock.mock.calls[0][0] as { to: string }).to).toBe(
+      'owner-via-roles@acme.test',
+    );
+    const prefFilterCall = queryMock.mock.calls.find((c) => {
+      const s = String(c[0]);
+      return s.includes('user_notification_preferences') && s.includes('LOWER(u.email)');
+    });
+    expect(prefFilterCall).toBeDefined();
+    expect(prefFilterCall![1][2]).toBe('integration_recovery');
   });
 });
 
