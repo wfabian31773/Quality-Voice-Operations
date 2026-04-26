@@ -8,7 +8,13 @@ const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const INITIAL_DELAY_MS = 60 * 1000;
 const REFRESH_HORIZON_MS = 30 * 60 * 1000;
 
-const REFRESHABLE_PROVIDERS = ['hubspot', 'pipedrive', 'quickbooks'];
+const REFRESHABLE_PROVIDERS = [
+  'hubspot',
+  'pipedrive',
+  'quickbooks',
+  'salesforce',
+  'outlook-calendar',
+];
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let initialTimer: ReturnType<typeof setTimeout> | null = null;

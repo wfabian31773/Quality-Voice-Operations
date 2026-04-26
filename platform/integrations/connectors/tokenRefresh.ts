@@ -145,6 +145,87 @@ async function refreshZoho(
   };
 }
 
+async function refreshSalesforce(
+  refreshToken: string,
+  _credentials?: Record<string, string>,
+): Promise<ProviderRefreshResult> {
+  const clientId = process.env.SALESFORCE_CLIENT_ID ?? '';
+  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET ?? '';
+  if (!clientId || !clientSecret) {
+    throw new Error('Salesforce OAuth env vars missing (SALESFORCE_CLIENT_ID / SALESFORCE_CLIENT_SECRET)');
+  }
+  const loginUrl = process.env.SALESFORCE_LOGIN_URL ?? 'https://login.salesforce.com';
+  const res = await timedFetch(`${loginUrl}/services/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }).toString(),
+  });
+  const json = await res.json() as {
+    access_token: string;
+    refresh_token?: string;
+    instance_url?: string;
+    expires_in?: number;
+  };
+  const extra: Record<string, string> = {};
+  // Salesforce can rotate the instance_url (e.g. on org migration); persist
+  // the new value when it's returned so subsequent API calls hit the right
+  // host. When omitted, the existing stored instance_url is left intact.
+  if (json.instance_url) extra.instance_url = json.instance_url;
+  // Salesforce's refresh_token grant typically omits expires_in. Fall back to
+  // 90 minutes — the same conservative TTL the inline adapter used previously
+  // (Salesforce session tokens default to ~2 hours).
+  const expiresIn = typeof json.expires_in === 'number' && json.expires_in > 0
+    ? json.expires_in
+    : 90 * 60;
+  return {
+    access_token: json.access_token,
+    refresh_token: json.refresh_token,
+    expires_in: expiresIn,
+    extra,
+  };
+}
+
+async function refreshOutlookCalendar(
+  refreshToken: string,
+  credentials?: Record<string, string>,
+): Promise<ProviderRefreshResult> {
+  const clientId = credentials?.client_id ?? process.env.MICROSOFT_CLIENT_ID ?? '';
+  const clientSecret = credentials?.client_secret ?? process.env.MICROSOFT_CLIENT_SECRET ?? '';
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'Outlook OAuth credentials missing (client_id/client_secret on connector or MICROSOFT_CLIENT_ID/MICROSOFT_CLIENT_SECRET env)',
+    );
+  }
+  const tenant = process.env.MICROSOFT_TENANT_ID || 'common';
+  const url = `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`;
+  const res = await timedFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: 'https://graph.microsoft.com/Calendars.ReadWrite offline_access',
+    }).toString(),
+  });
+  const json = await res.json() as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+  };
+  return {
+    access_token: json.access_token,
+    refresh_token: json.refresh_token,
+    expires_in: json.expires_in,
+  };
+}
+
 async function refreshQuickBooks(refreshToken: string): Promise<ProviderRefreshResult> {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID ?? '';
   const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET ?? '';
@@ -195,6 +276,8 @@ const REFRESHERS: Record<string, ProviderRefresher> = {
   pipedrive: refreshPipedrive,
   quickbooks: refreshQuickBooks,
   zoho: refreshZoho,
+  salesforce: refreshSalesforce,
+  'outlook-calendar': refreshOutlookCalendar,
 };
 
 export function isRefreshableProvider(provider: string): boolean {

@@ -1,5 +1,5 @@
 import { createLogger } from '../../../core/logger';
-import { upsertConnector } from '../db';
+import { ensureFreshOAuthToken } from '../tokenRefresh';
 import {
   parseDispositionMap as parseSharedDispositionMap,
   mapDisposition,
@@ -150,78 +150,30 @@ async function salesforceFetchWithTimeout(url: string, init: RequestInit = {}): 
   }
 }
 
+/**
+ * Resolve a fresh Salesforce access token + instance URL pair, refreshing via
+ * the shared `ensureFreshOAuthToken` flow when the stored token is close to
+ * expiry. The shared refresher handles persistence, audit logging, and
+ * `markConnectorReconnectNeeded` on failure — so callers only need to handle
+ * the thrown error (or a `null` result when credentials were never stored).
+ */
 export async function ensureSalesforceAccessToken(
   tenantId: TenantId,
   config: ConnectorConfig,
 ): Promise<SalesforceTokens | null> {
-  const accessToken = config.credentials.access_token ?? '';
-  const refreshToken = config.credentials.refresh_token ?? '';
-  const instanceUrl = config.credentials.instance_url ?? '';
-  const expiresAtRaw = config.credentials.token_expires_at ?? '0';
-  const expiresAt = parseInt(expiresAtRaw, 10) || 0;
+  const initialAccessToken = config.credentials.access_token ?? '';
+  const initialInstanceUrl = config.credentials.instance_url ?? '';
 
-  if (!accessToken || !instanceUrl) {
+  if (!initialAccessToken || !initialInstanceUrl) {
     logger.error('Missing Salesforce credentials', { tenantId });
     return null;
   }
 
-  const skewMs = 60_000;
-  if (expiresAt && Date.now() < expiresAt - skewMs) {
-    return { accessToken, instanceUrl };
-  }
-
-  if (!refreshToken) {
-    return { accessToken, instanceUrl };
-  }
-
-  const clientId = process.env.SALESFORCE_CLIENT_ID ?? '';
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET ?? '';
-  const loginUrl = process.env.SALESFORCE_LOGIN_URL ?? 'https://login.salesforce.com';
-  if (!clientId || !clientSecret) {
-    logger.warn('Cannot refresh Salesforce token: SALESFORCE_CLIENT_ID/SECRET not set', { tenantId });
-    return { accessToken, instanceUrl };
-  }
-
-  try {
-    const res = await fetch(`${loginUrl}/services/oauth2/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-      }).toString(),
-    });
-    if (!res.ok) {
-      logger.error('Salesforce token refresh failed', { tenantId, status: res.status });
-      return { accessToken, instanceUrl };
-    }
-    const data = await res.json() as {
-      access_token: string;
-      instance_url?: string;
-      issued_at?: string;
-    };
-    const newAccessToken = data.access_token;
-    const newInstanceUrl = data.instance_url ?? instanceUrl;
-    const newExpiresAt = Date.now() + 90 * 60 * 1000;
-    await upsertConnector(tenantId, {
-      connectorType: 'crm',
-      provider: 'salesforce',
-      name: 'Salesforce',
-      credentials: {
-        ...config.credentials,
-        access_token: newAccessToken,
-        instance_url: newInstanceUrl,
-        token_expires_at: String(newExpiresAt),
-      },
-      isEnabled: true,
-    });
-    return { accessToken: newAccessToken, instanceUrl: newInstanceUrl };
-  } catch (err) {
-    logger.error('Salesforce token refresh threw', { tenantId, error: String(err) });
-    return { accessToken, instanceUrl };
-  }
+  const fresh = await ensureFreshOAuthToken(config);
+  return {
+    accessToken: fresh.credentials.access_token ?? initialAccessToken,
+    instanceUrl: fresh.credentials.instance_url ?? initialInstanceUrl,
+  };
 }
 
 export interface SalesforceTaskPicklists {
@@ -277,7 +229,14 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    const tokens = await this.ensureAccessToken(tenantId, config);
+    let tokens: SalesforceTokens | null;
+    try {
+      tokens = await this.ensureAccessToken(tenantId, config);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('Salesforce token refresh failed', { tenantId, error });
+      return { success: false, error: `Salesforce token refresh failed: ${error}` };
+    }
     if (!tokens) {
       return { success: false, error: 'Salesforce connector not configured: missing or invalid tokens' };
     }

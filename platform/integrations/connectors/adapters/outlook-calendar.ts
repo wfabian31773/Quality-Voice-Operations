@@ -1,12 +1,11 @@
 import { createLogger } from '../../../core/logger';
+import { ensureFreshOAuthToken } from '../tokenRefresh';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('OUTLOOK_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
-const TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
-const DEFAULT_SCOPES = 'https://graph.microsoft.com/Calendars.ReadWrite offline_access';
 
 export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
   async execute(
@@ -14,14 +13,15 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
     config: ConnectorConfig,
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
-    let accessToken: string | null;
+    let activeConfig = config;
     try {
-      accessToken = await this.getAccessToken(config);
+      activeConfig = await ensureFreshOAuthToken(config);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Outlook Calendar token refresh failed', { tenantId, error });
-      return { success: false, error: `Outlook Calendar token refresh failed (invalid_grant): ${error}` };
+      return { success: false, error: `Outlook Calendar token refresh failed: ${error}` };
     }
+    const accessToken = activeConfig.credentials.access_token ?? '';
     if (!accessToken) {
       logger.error('Missing Outlook Calendar credentials', { tenantId });
       return {
@@ -32,50 +32,12 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
 
     switch (payload.type) {
       case 'appointment.booked':
-        return this.createEvent(tenantId, accessToken, config, payload);
+        return this.createEvent(tenantId, accessToken, activeConfig, payload);
       case 'check_availability':
-        return this.checkAvailability(tenantId, accessToken, config, payload);
+        return this.checkAvailability(tenantId, accessToken, activeConfig, payload);
       default:
         return { success: false, error: `Outlook Calendar adapter does not handle event: ${payload.type}` };
     }
-  }
-
-  private async getAccessToken(config: ConnectorConfig): Promise<string | null> {
-    const expiresAtStr = config.credentials.token_expires_at;
-    const expiresAt = expiresAtStr ? Number(expiresAtStr) : 0;
-    const stillFresh = expiresAt && Date.now() < expiresAt - 60_000;
-
-    if (config.credentials.access_token && stillFresh) {
-      return config.credentials.access_token;
-    }
-
-    const refreshToken = config.credentials.refresh_token;
-    const clientId = config.credentials.client_id ?? process.env.MICROSOFT_CLIENT_ID ?? '';
-    const clientSecret = config.credentials.client_secret ?? process.env.MICROSOFT_CLIENT_SECRET ?? '';
-
-    if (!refreshToken || !clientId || !clientSecret) {
-      return config.credentials.access_token || null;
-    }
-
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        client_id: clientId,
-        client_secret: clientSecret,
-        scope: DEFAULT_SCOPES,
-      }).toString(),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      logger.warn('Outlook token refresh failed', { status: res.status });
-      throw new Error(`refresh_token rejected (${res.status}): ${text.slice(0, 200)}`);
-    }
-    const data = await res.json() as { access_token: string };
-    return data.access_token;
   }
 
   private async createEvent(
