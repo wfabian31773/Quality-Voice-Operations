@@ -1004,6 +1004,144 @@ describe('notifyConnectorSyncError', () => {
     expect(stampCall).toBeDefined();
   });
 
+  it('persists recipientCount, emailRecipientCount, firstFailedAt, and outageMinutes on every fanned-out in-app row', async () => {
+    // Pin the enriched in-app metadata so the GET /connectors/alerts route
+    // can collapse fan-out rows back into a single event with the actual
+    // email recipient count and outage duration. If a future refactor of
+    // notifyConnectorSyncError stops computing the recipient list before
+    // fan-out (or drops one of these fields), the alerts UI silently shows
+    // 0 recipients / "—" outage forever after; this test is the canary.
+    const firstFailedAtIso = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+    queryMock
+      // 0. isConnectorMuted — not muted
+      .mockResolvedValueOnce({ rows: [] })
+      // 1. throttle check — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // 2. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 3. shared recipient helper — two admin emails on file
+      .mockResolvedValueOnce({
+        rows: [
+          { id: 'user-a', email: 'a@acme.test' },
+          { id: 'user-b', email: 'b@acme.test' },
+          { id: 'user-c', email: 'c@acme.test' },
+        ],
+      })
+      // 4. filterEmailRecipientsByPreference — c@acme.test opted OUT, leaving 2
+      .mockResolvedValueOnce({
+        rows: [{ email: 'c@acme.test', enabled: false }],
+      })
+      // 5a. fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a' }, { id: 'user-b' }, { id: 'user-c' }],
+      })
+      // 5b. in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 5c. INSERT for user-a
+      .mockResolvedValueOnce({ rows: [] })
+      // 5c. INSERT for user-b
+      .mockResolvedValueOnce({ rows: [] })
+      // 5c. INSERT for user-c
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. getConnectorAlertSettings — digest disabled
+      .mockResolvedValueOnce({ rows: [] })
+      // 7. UPDATE integrations SET auth_alert_sent_at
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError({
+      ...baseParams,
+      firstFailedAt: firstFailedAtIso,
+    });
+
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    // One fanned-out row per active tenant user (the in_app filter didn't
+    // drop anyone in this test).
+    expect(insertCalls.length).toBe(3);
+
+    for (const call of insertCalls) {
+      const args = call[1] as unknown[];
+      // type column — confirms these are integration alerts (not SMS).
+      expect(args[2]).toBe('integration');
+      const metadata = JSON.parse(args[5] as string);
+      // Counts reflect the EMAIL-eligible audience (post pref filter), not
+      // the raw admin list — c@acme.test opted out so 3 -> 2.
+      expect(metadata.recipientCount).toBe(2);
+      expect(metadata.emailRecipientCount).toBe(2);
+      // Outage timing was carried through verbatim from firstFailedAt and
+      // computed in whole minutes from "now".
+      expect(metadata.firstFailedAt).toBe(firstFailedAtIso);
+      expect(metadata.outageMinutes).toBe(45);
+      // Sanity: integrationId/provider/connectorType still populated so the
+      // /connectors/alerts collapse query has a stable key.
+      expect(metadata.integrationId).toBe('int-1');
+      expect(metadata.provider).toBe('salesforce');
+      expect(metadata.connectorType).toBe('crm');
+    }
+
+    // The two opted-in admins received the email.
+    expect(sendEmailMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('records recipientCount=0 and outageMinutes=null when firstFailedAt is missing and every admin opts out of email', async () => {
+    // Edge case: the per-event email is suppressed entirely (every admin
+    // opted out of the integration email channel) and the caller never
+    // supplied firstFailedAt. The in-app rows must still be written and
+    // their metadata must record the zero/null values explicitly so the
+    // alerts UI distinguishes "no email recipients" from "old alert
+    // missing the field".
+    queryMock
+      // 0. isConnectorMuted — not muted
+      .mockResolvedValueOnce({ rows: [] })
+      // 1. throttle check — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // 2. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 3. shared recipient helper — one admin
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a', email: 'a@acme.test' }],
+      })
+      // 4. filterEmailRecipientsByPreference — admin opted OUT
+      .mockResolvedValueOnce({
+        rows: [{ email: 'a@acme.test', enabled: false }],
+      })
+      // 5a. fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      // 5b. in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 5c. INSERT for user-a
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. getConnectorAlertSettings — digest disabled
+      .mockResolvedValueOnce({ rows: [] });
+    // No UPDATE — the function bails before stamping auth_alert_sent_at
+    // because every email recipient opted out.
+
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError({
+      ...baseParams,
+      firstFailedAt: null,
+    });
+
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(1);
+    const metadata = JSON.parse((insertCalls[0][1] as unknown[])[5] as string);
+    expect(metadata.recipientCount).toBe(0);
+    expect(metadata.emailRecipientCount).toBe(0);
+    expect(metadata.firstFailedAt).toBeNull();
+    expect(metadata.outageMinutes).toBeNull();
+
+    // No email actually sent (everyone opted out).
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
   it('reaches a recipient who only holds the tenant_owner role via user_roles', async () => {
     // Regression test: prior to the shared-recipient refactor, the
     // SyncErrorAlerter only matched on the legacy `users.role` column
