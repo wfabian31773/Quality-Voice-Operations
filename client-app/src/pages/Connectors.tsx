@@ -29,6 +29,7 @@ interface Connector {
   lastSyncStatus: string | null;
   lastSyncError: string | null;
   lastSyncErrorAt: string | null;
+  autoDisabledAt: string | null;
 }
 
 const AUTH_ERROR_REGEX = /\b(401|403|unauthorized|forbidden|invalid[_ -]?(grant|token|credential|auth)|expired|refresh.*(failed|token)|token.*expired|auth(entication)?[ _-]?(failed|error)|missing.*(token|credential)|not_authed|token_revoked|account_inactive)\b/i;
@@ -1595,6 +1596,7 @@ function ConnectedCard({
 }) {
   const queryClient = useQueryClient();
   const enabled = connector.isEnabled;
+  const autoDisabled = !enabled && Boolean(connector.autoDisabledAt);
   const needsReconnect = connector.lastSyncStatus === 'needs_reconnect';
   const syncError = connector.lastSyncStatus === 'error';
   const errorMessage = connector.lastSyncError;
@@ -1669,7 +1671,14 @@ function ConnectedCard({
             <p className="text-xs text-text-secondary">{definition.category}</p>
           </div>
         </div>
-        {needsReconnect ? (
+        {autoDisabled ? (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 ring-1 ring-red-400/60 dark:ring-red-500/40 whitespace-nowrap"
+            title="This integration was failing for too long, so we automatically disabled it to stop wasting tool budget."
+          >
+            <AlertCircle className="h-3 w-3" /> Auto-disabled
+          </span>
+        ) : needsReconnect ? (
           <span
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 ring-1 ring-amber-400/60 dark:ring-amber-500/40 whitespace-nowrap"
             title="The stored access token can no longer be refreshed. Sign in again to restore syncing."
@@ -1712,7 +1721,43 @@ function ConnectedCard({
         )}
       </div>
 
-      {needsReconnect && (
+      {autoDisabled && (
+        <div
+          className="mb-3 rounded-lg border border-red-300 dark:border-red-800/60 bg-red-50 dark:bg-red-900/15 p-3 text-xs"
+          title="This integration was failing for too long, so it was automatically disabled to stop wasting tool budget."
+        >
+          <div className="flex items-start gap-1.5 text-red-800 dark:text-red-300">
+            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-semibold mb-0.5">We disabled this integration</p>
+              <p className="text-red-700 dark:text-red-200/90">
+                {definition.name} was failing for too long, so we paused event dispatch to stop wasting tool budget. Reconnect below to re-enable it.
+              </p>
+              {connector.autoDisabledAt && (
+                <p className="text-[10px] text-red-500/80 dark:text-red-400/70 mt-1">
+                  Disabled {formatSyncTime(connector.autoDisabledAt)}
+                </p>
+              )}
+            </div>
+          </div>
+          {isManager && (
+            <button
+              onClick={definition.oauthProvider ? startReauth : onReconnect}
+              disabled={reauthPending}
+              className="mt-2 w-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            >
+              <ExternalLink className="h-3 w-3" />
+              {reauthPending
+                ? 'Waiting for authorization…'
+                : definition.oauthProvider
+                  ? `Reconnect with ${definition.name}`
+                  : `Reconnect ${definition.name}`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {needsReconnect && !autoDisabled && (
         <div
           className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-3 text-xs"
           title="The stored OAuth refresh token expired or was revoked. Reconnect to restore syncing."

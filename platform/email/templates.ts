@@ -177,6 +177,49 @@ export function connectorSyncErrorEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorAutoDisabledEmail(params: {
+  tenantName?: string;
+  providerLabel: string;
+  daysFailing: number;
+  reconnectUrl: string;
+  disabledAt: string;
+  lastErrorMessage?: string | null;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const subject = `${params.providerLabel} integration has been disabled`;
+  const safeError = params.lastErrorMessage
+    ? params.lastErrorMessage.slice(0, 500)
+    : null;
+  const errorBlock = safeError
+    ? `<div class="alert-error">
+         <p style="margin:0"><strong>Last recorded error</strong></p>
+         <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
+       </div>`
+    : '';
+  const errorTextLine = safeError ? `\nLast recorded error: ${safeError}\n` : '';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>The <strong>${params.providerLabel}</strong> integration for <strong>${org}</strong> has been failing to authenticate for <strong>${params.daysFailing} day${params.daysFailing === 1 ? '' : 's'}</strong>. To stop wasting tool budget on calls that can't succeed, we've automatically <strong>disabled</strong> this connector.</p>
+    <p>Events that depend on this integration will no longer be dispatched until it is reconnected and re-enabled.</p>
+    ${errorBlock}
+    <p class="muted">Auto-disabled at ${params.disabledAt}</p>
+    <p>To restore the integration, sign in again and re-enable it from the Connectors page:</p>
+    <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
+    <p class="muted">This is the final automated email about this connector. You will not get more reminders unless it is reconnected and fails again.</p>
+  `);
+
+  const text = `${subject}\n\n` +
+    `The ${params.providerLabel} integration for ${org} has been failing to authenticate for ${params.daysFailing} day${params.daysFailing === 1 ? '' : 's'}, ` +
+    `so it has been automatically disabled. Events to this integration will no longer be dispatched until it is reconnected.\n` +
+    errorTextLine +
+    `\nAuto-disabled at ${params.disabledAt}\n\n` +
+    `Reconnect: ${params.reconnectUrl}\n\n` +
+    `This is the final automated email about this connector.`;
+
+  return { subject, html, text };
+}
+
 export function connectorSyncRecoveryEmail(params: {
   tenantName?: string;
   providerLabel: string;

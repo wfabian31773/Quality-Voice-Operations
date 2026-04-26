@@ -1,16 +1,35 @@
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
-import { sendEmail, connectorSyncErrorEmail } from '../../email';
+import {
+  sendEmail,
+  connectorSyncErrorEmail,
+  connectorAutoDisabledEmail,
+} from '../../email';
 import {
   fanoutInAppNotification,
   filterEmailRecipientsByPreference,
 } from '../../notifications/NotificationPreferences';
+import { writeAuditLog } from '../../audit/AuditService';
 
 const logger = createLogger('CONNECTOR_AUTH_ALERT');
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const INITIAL_DELAY_MS = 5 * 60 * 1000;
 const MAX_RECIPIENTS_PER_TENANT = 5;
+
+/**
+ * Number of days a connector must remain in an auth-error / needs_reconnect
+ * state before the scheduler auto-disables it. Configurable via the
+ * `CONNECTOR_AUTO_DISABLE_DAYS` env var (must parse to a positive integer);
+ * otherwise defaults to 14.
+ */
+export function getAutoDisableThresholdDays(): number {
+  const raw = process.env.CONNECTOR_AUTO_DISABLE_DAYS;
+  if (raw === undefined || raw === '') return 14;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 14;
+  return parsed;
+}
 
 const AUTH_ERROR_REGEX = /\b(401|403|unauthorized|forbidden|invalid[_ -]?(grant|token|credential|auth)|expired|refresh.*(failed|token)|token.*expired|auth(entication)?[ _-]?(failed|error)|missing.*(token|credential)|not_authed|token_revoked|account_inactive)\b/i;
 
@@ -328,25 +347,321 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
   };
 }
 
+interface PendingAutoDisable {
+  tenant_id: string;
+  integration_id: string;
+  provider: string;
+  integration_type: string;
+  name: string | null;
+  last_sync_status: string | null;
+  last_sync_error: string | null;
+  last_sync_error_at: Date | null;
+}
+
+/**
+ * Find integrations that have been failing authentication for at least
+ * `thresholdDays` and are still enabled. Mirrors the regex / status filter
+ * used by `findPendingAuthFailures` so we never auto-disable for a non-auth
+ * error class (e.g. transient network 5xx).
+ */
+export async function findIntegrationsToAutoDisable(
+  thresholdDays: number,
+): Promise<PendingAutoDisable[]> {
+  const pool = getPlatformPool();
+  const { rows } = await pool.query<PendingAutoDisable>(
+    `SELECT tenant_id,
+            id AS integration_id,
+            provider,
+            integration_type::text AS integration_type,
+            name,
+            last_sync_status,
+            last_sync_error,
+            last_sync_error_at
+       FROM integrations
+      WHERE is_enabled = TRUE
+        AND auto_disabled_at IS NULL
+        AND last_sync_error_at IS NOT NULL
+        AND last_sync_error_at <= NOW() - ($1 || ' days')::interval
+        AND (
+          last_sync_status = 'needs_reconnect'
+          OR (last_sync_status = 'error' AND last_sync_error IS NOT NULL)
+        )
+      ORDER BY last_sync_error_at, tenant_id, provider`,
+    [String(thresholdDays)],
+  );
+  return rows.filter((r) =>
+    r.last_sync_status === 'needs_reconnect' || isAuthError(r.last_sync_error),
+  );
+}
+
+/**
+ * Atomically flip `is_enabled` to FALSE and stamp `auto_disabled_at = NOW()`.
+ * Returns true when the row was updated, false when another worker (or a
+ * concurrent admin action) already disabled or re-enabled the integration.
+ *
+ * The WHERE clause re-asserts the preconditions (`is_enabled = TRUE` and the
+ * failure status is unchanged) so two scheduler workers cannot both send the
+ * "we disabled this" email for the same outage.
+ */
+async function autoDisableIntegration(row: PendingAutoDisable): Promise<boolean> {
+  const pool = getPlatformPool();
+  try {
+    // Re-assert the full auth-class criteria the SELECT used so we cannot
+    // race-disable a row whose status has just transitioned (e.g. another
+    // worker observed a successful sync, or the error message changed to a
+    // non-auth class). For `error` rows we additionally require the original
+    // error string to still match — if the error message changed since the
+    // SELECT, defer to the next cycle so the regex check runs again on the
+    // fresh value.
+    const result = await pool.query(
+      `UPDATE integrations
+          SET is_enabled = FALSE,
+              auto_disabled_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1
+          AND tenant_id = $2
+          AND is_enabled = TRUE
+          AND auto_disabled_at IS NULL
+          AND last_sync_status = $3
+          AND (
+                last_sync_status = 'needs_reconnect'
+             OR last_sync_error = $4
+          )`,
+      [row.integration_id, row.tenant_id, row.last_sync_status, row.last_sync_error],
+    );
+    return (result.rowCount ?? 0) > 0;
+  } catch (err) {
+    logger.error('Failed to auto-disable connector', {
+      tenantId: row.tenant_id,
+      integrationId: row.integration_id,
+      error: String(err),
+    });
+    return false;
+  }
+}
+
+export interface AutoDisableCycleResult {
+  inspected: number;
+  disabled: number;
+  emailedRecipients: number;
+  skippedNoRecipients: number;
+}
+
+export async function runConnectorAutoDisableCycle(
+  thresholdDays: number = getAutoDisableThresholdDays(),
+): Promise<AutoDisableCycleResult> {
+  let pending: PendingAutoDisable[];
+  try {
+    pending = await findIntegrationsToAutoDisable(thresholdDays);
+  } catch (err) {
+    logger.error('Failed to query connectors eligible for auto-disable', {
+      error: String(err),
+    });
+    return { inspected: 0, disabled: 0, emailedRecipients: 0, skippedNoRecipients: 0 };
+  }
+
+  if (pending.length === 0) {
+    logger.debug('No connectors eligible for auto-disable');
+    return { inspected: 0, disabled: 0, emailedRecipients: 0, skippedNoRecipients: 0 };
+  }
+
+  let disabled = 0;
+  let emailedRecipients = 0;
+  let skippedNoRecipients = 0;
+
+  for (const row of pending) {
+    const { tenant_id: tenantId, integration_id: integrationId, provider } = row;
+    const label = providerLabel(provider);
+
+    const flipped = await autoDisableIntegration(row);
+    if (!flipped) {
+      logger.debug('Auto-disable skipped: row no longer matches preconditions', {
+        tenantId,
+        integrationId,
+        provider,
+      });
+      continue;
+    }
+
+    disabled += 1;
+
+    const failedAtMs = row.last_sync_error_at
+      ? new Date(row.last_sync_error_at).getTime()
+      : null;
+    const daysFailing = failedAtMs
+      ? Math.max(thresholdDays, Math.round((Date.now() - failedAtMs) / (24 * 60 * 60 * 1000)))
+      : thresholdDays;
+    const errorMessage = row.last_sync_error ?? 'Authentication failed; reconnect required';
+    const reconnectPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
+    const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
+    const disabledAt = new Date().toUTCString();
+
+    const title = `${label} integration auto-disabled`;
+    const message =
+      `${label} has been failing authentication for ${daysFailing} day${daysFailing === 1 ? '' : 's'} ` +
+      `and was automatically disabled. Reconnect to resume event dispatch.`;
+
+    try {
+      await fanoutInAppNotification({
+        tenantId,
+        type: 'integration_disabled',
+        title,
+        message,
+        metadata: {
+          link: reconnectPath,
+          integrationId,
+          connectorType: row.integration_type,
+          provider,
+          reason: 'auto_disabled',
+          daysFailing,
+          errorMessage: errorMessage.slice(0, 500),
+        },
+        category: 'integration',
+      });
+    } catch (err) {
+      logger.warn('Failed to fan out auto-disable in-app notification', {
+        tenantId,
+        integrationId,
+        error: String(err),
+      });
+    }
+
+    try {
+      await writeAuditLog({
+        tenantId,
+        actorUserId: 'system',
+        actorRole: 'system',
+        action: 'connector.auto_disabled',
+        resourceType: 'connector',
+        resourceId: integrationId,
+        severity: 'warning',
+        changes: {
+          provider,
+          connectorType: row.integration_type,
+          daysFailing,
+          lastError: errorMessage.slice(0, 500),
+        },
+      });
+    } catch {
+      // best-effort; writeAuditLog already logs
+    }
+
+    const { name: tenantName, emails: rawRecipients } = await getTenantAdmins(tenantId);
+
+    if (rawRecipients.length === 0) {
+      logger.info('Connector auto-disable: no admin recipients to notify', {
+        tenantId,
+        integrationId,
+        provider,
+      });
+      skippedNoRecipients += 1;
+      continue;
+    }
+
+    const recipients = await filterEmailRecipientsByPreference(
+      tenantId,
+      rawRecipients,
+      'integration',
+    );
+    if (recipients.length === 0) {
+      logger.info(
+        'Connector auto-disable: all admins opted out of integration emails',
+        {
+          tenantId,
+          integrationId,
+          provider,
+          removed: rawRecipients.length,
+        },
+      );
+      skippedNoRecipients += 1;
+      continue;
+    }
+
+    const { subject, html, text } = connectorAutoDisabledEmail({
+      tenantName,
+      providerLabel: label,
+      daysFailing,
+      reconnectUrl,
+      disabledAt,
+      lastErrorMessage: errorMessage,
+    });
+
+    let delivered = 0;
+    for (const to of recipients) {
+      try {
+        const result = await sendEmail({ to, subject, html, text });
+        if (result.success) {
+          delivered += 1;
+        } else {
+          logger.warn('Connector auto-disable email send failed', {
+            tenantId,
+            integrationId,
+            to,
+            error: result.error,
+          });
+        }
+      } catch (err) {
+        logger.warn('Connector auto-disable email threw', {
+          tenantId,
+          integrationId,
+          to,
+          error: String(err),
+        });
+      }
+    }
+
+    emailedRecipients += delivered;
+
+    logger.info('Connector auto-disable dispatched', {
+      tenantId,
+      integrationId,
+      provider,
+      daysFailing,
+      recipients: recipients.length,
+      delivered,
+    });
+  }
+
+  return {
+    inspected: pending.length,
+    disabled,
+    emailedRecipients,
+    skippedNoRecipients,
+  };
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let initialTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function runFullCycle(): Promise<void> {
+  await runConnectorAuthAlertCycle();
+  // Auto-disable runs after the alert cycle so that within the same tick we
+  // first try to nudge admins, then sweep up the long-stale ones. The two
+  // cycles operate on disjoint rows (alert cycle gates on
+  // auth_alert_sent_at IS NULL, auto-disable gates on auto_disabled_at IS NULL
+  // and last_sync_error_at <= NOW() - threshold) so order doesn't change behavior.
+  await runConnectorAutoDisableCycle();
+}
 
 export function startConnectorAuthAlertScheduler(intervalMs: number = CHECK_INTERVAL_MS): void {
   if (timer) return;
 
   initialTimer = setTimeout(() => {
-    runConnectorAuthAlertCycle().catch((err) => {
+    runFullCycle().catch((err) => {
       logger.error('Initial connector auth-alert cycle failed', { error: String(err) });
     });
   }, INITIAL_DELAY_MS);
 
   timer = setInterval(() => {
-    runConnectorAuthAlertCycle().catch((err) => {
+    runFullCycle().catch((err) => {
       logger.error('Connector auth-alert cycle failed', { error: String(err) });
     });
   }, intervalMs);
 
-  logger.info('Connector auth-alert scheduler started', { intervalMs });
+  logger.info('Connector auth-alert scheduler started', {
+    intervalMs,
+    autoDisableThresholdDays: getAutoDisableThresholdDays(),
+  });
 }
 
 export function stopConnectorAuthAlertScheduler(): void {

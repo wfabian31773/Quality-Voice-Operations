@@ -146,17 +146,20 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
   lastSyncStatus: string | null;
   lastSyncError: string | null;
   lastSyncErrorAt: string | null;
+  autoDisabledAt: string | null;
 }>> {
   return withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
       `SELECT i.id, i.integration_type, i.provider, i.name, i.is_enabled,
               i.last_sync_at, i.last_sync_status, i.last_sync_error, i.last_sync_error_at,
+              i.auto_disabled_at,
               COALESCE(json_agg(cc.config_key) FILTER (WHERE cc.config_key IS NOT NULL), '[]') AS config_keys
        FROM integrations i
        LEFT JOIN connector_configs cc ON cc.integration_id = i.id AND cc.tenant_id = i.tenant_id
        WHERE i.tenant_id = $1
        GROUP BY i.id, i.integration_type, i.provider, i.name, i.is_enabled,
-                i.last_sync_at, i.last_sync_status, i.last_sync_error, i.last_sync_error_at
+                i.last_sync_at, i.last_sync_status, i.last_sync_error, i.last_sync_error_at,
+                i.auto_disabled_at
        ORDER BY i.created_at`,
       [tenantId],
     );
@@ -172,6 +175,7 @@ export async function listConnectorConfigs(tenantId: TenantId): Promise<Array<{
       lastSyncStatus: (r.last_sync_status as string) ?? null,
       lastSyncError: (r.last_sync_error as string) ?? null,
       lastSyncErrorAt: r.last_sync_error_at ? new Date(r.last_sync_error_at as string).toISOString() : null,
+      autoDisabledAt: r.auto_disabled_at ? new Date(r.auto_disabled_at as string).toISOString() : null,
     }));
   });
 }
@@ -217,16 +221,26 @@ export async function updateConnectorCredentials(
 export async function markConnectorReconnectNeeded(
   tenantId: TenantId,
   integrationId: string,
+  reason?: string,
 ): Promise<void> {
   try {
     await withTenant(tenantId, async (client) => {
+      // We stamp `last_sync_error_at` (preserving an earlier failure
+      // timestamp via COALESCE) and `last_sync_error` so that the
+      // auto-disable scheduler can age this connector out. Without these
+      // fields, a connector that transitioned directly from healthy →
+      // needs_reconnect (e.g. expired refresh token) would never become
+      // eligible for auto-disable because that scheduler gates on
+      // `last_sync_error_at`.
       await client.query(
         `UPDATE integrations
             SET last_sync_status = 'needs_reconnect',
                 last_sync_at = NOW(),
+                last_sync_error_at = COALESCE(last_sync_error_at, NOW()),
+                last_sync_error = COALESCE($3, last_sync_error, 'Reconnect required: stored credentials are no longer valid'),
                 updated_at = NOW()
           WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, integrationId],
+        [tenantId, integrationId, reason ?? null],
       );
     });
   } catch (err) {
@@ -291,6 +305,7 @@ export async function updateConnectorSyncStatus(
              SET last_sync_at = NOW(), last_sync_status = $3,
                  last_sync_error = NULL, last_sync_error_at = NULL,
                  auth_alert_sent_at = NULL,
+                 auto_disabled_at = NULL,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
             [tenantId, connectorType, status, provider],
@@ -301,6 +316,7 @@ export async function updateConnectorSyncStatus(
              SET last_sync_at = NOW(), last_sync_status = $3,
                  last_sync_error = NULL, last_sync_error_at = NULL,
                  auth_alert_sent_at = NULL,
+                 auto_disabled_at = NULL,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,
             [tenantId, connectorType, status],
@@ -403,6 +419,8 @@ export async function upsertConnector(
        ON CONFLICT (tenant_id, provider)
        DO UPDATE SET name = EXCLUDED.name, is_enabled = EXCLUDED.is_enabled,
                      last_sync_error = NULL, last_sync_error_at = NULL,
+                     auth_alert_sent_at = NULL,
+                     auto_disabled_at = NULL,
                      updated_at = NOW()
        RETURNING id`,
       [tenantId, params.name, params.connectorType, params.provider, params.isEnabled ?? true],
