@@ -81,24 +81,16 @@ export type {
 export { startInsightsScheduler, stopInsightsScheduler } from './InsightsScheduler';
 export { startCallViewDigestScheduler, stopCallViewDigestScheduler, runCallViewDigestCycle } from './CallViewDigestScheduler';
 export {
-  detectWeaknesses,
-  generatePromptImprovement,
-  simulateImprovement,
-  analyzeCallAndGenerateSuggestions,
   getSuggestions,
   getSuggestionById,
   acceptSuggestion,
   dismissSuggestion,
-  getImprovementVelocity,
-  getCategoryBreakdown,
 } from './SelfImprovementService';
 export type {
   WeaknessCategory,
   SuggestionStatus,
-  WeaknessDetection,
   PromptImprovementSuggestion,
   ImprovementMetrics,
-  ImprovementVelocity,
 } from './SelfImprovementService';
 export {
   checkMilestones,
