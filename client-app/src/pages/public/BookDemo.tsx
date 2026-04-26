@@ -212,8 +212,9 @@ export default function BookDemo() {
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-harbor mb-1.5">Full name *</label>
+                    <label htmlFor="book-demo-name" className="block text-xs font-semibold text-harbor mb-1.5">Full name *</label>
                     <input
+                      id="book-demo-name"
                       required
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -221,8 +222,9 @@ export default function BookDemo() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-harbor mb-1.5">Work email *</label>
+                    <label htmlFor="book-demo-email" className="block text-xs font-semibold text-harbor mb-1.5">Work email *</label>
                     <input
+                      id="book-demo-email"
                       required
                       type="email"
                       value={form.email}
@@ -231,8 +233,9 @@ export default function BookDemo() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-harbor mb-1.5">Company *</label>
+                    <label htmlFor="book-demo-company" className="block text-xs font-semibold text-harbor mb-1.5">Company *</label>
                     <input
+                      id="book-demo-company"
                       required
                       value={form.company}
                       onChange={(e) => setForm({ ...form, company: e.target.value })}
@@ -240,8 +243,9 @@ export default function BookDemo() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-harbor mb-1.5">Phone</label>
+                    <label htmlFor="book-demo-phone" className="block text-xs font-semibold text-harbor mb-1.5">Phone</label>
                     <input
+                      id="book-demo-phone"
                       type="tel"
                       value={form.phone}
                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -249,8 +253,9 @@ export default function BookDemo() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-harbor mb-1.5">Team size</label>
+                    <label htmlFor="book-demo-team-size" className="block text-xs font-semibold text-harbor mb-1.5">Team size</label>
                     <select
+                      id="book-demo-team-size"
                       value={form.teamSize}
                       onChange={(e) => setForm({ ...form, teamSize: e.target.value })}
                       className="w-full px-3 py-2.5 rounded-lg border border-soft-steel/40 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white"
@@ -259,8 +264,9 @@ export default function BookDemo() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-harbor mb-1.5">Preferred timing</label>
+                    <label htmlFor="book-demo-preferred-time" className="block text-xs font-semibold text-harbor mb-1.5">Preferred timing</label>
                     <select
+                      id="book-demo-preferred-time"
                       value={form.preferredTime}
                       onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
                       className="w-full px-3 py-2.5 rounded-lg border border-soft-steel/40 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white"
@@ -270,8 +276,9 @@ export default function BookDemo() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-harbor mb-1.5">What are you trying to solve?</label>
+                  <label htmlFor="book-demo-use-case" className="block text-xs font-semibold text-harbor mb-1.5">What are you trying to solve?</label>
                   <textarea
+                    id="book-demo-use-case"
                     rows={4}
                     value={form.useCase}
                     onChange={(e) => setForm({ ...form, useCase: e.target.value })}

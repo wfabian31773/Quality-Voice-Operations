@@ -214,12 +214,10 @@ interface BookDemoFields {
   useCase: HTMLTextAreaElement;
 }
 
-// The BookDemo form does not associate <label>s with <input>s via htmlFor,
-// so we look up fields by their input type / position. The 4 inputs are, in
-// document order: name, email, company, phone (text, email, text, tel) plus
-// two <select>s for team size and preferred timing.
+// The BookDemo form associates each <label> with its <input> via htmlFor / id,
+// so we can look up fields by their accessible label rather than position.
 function fillBookDemoForm(
-  form: HTMLFormElement,
+  _form: HTMLFormElement,
   values: Partial<{
     name: string;
     email: string;
@@ -228,26 +226,14 @@ function fillBookDemoForm(
     useCase: string;
   }>,
 ): BookDemoFields {
-  const inputs = Array.from(form.querySelectorAll('input')) as HTMLInputElement[];
-  const textareas = Array.from(
-    form.querySelectorAll('textarea'),
-  ) as HTMLTextAreaElement[];
-
-  expect(
-    inputs.length,
-    'BookDemo form should expose at least 4 text-style inputs',
-  ).toBeGreaterThanOrEqual(4);
-  expect(
-    textareas.length,
-    'BookDemo form should expose a "use case" textarea',
-  ).toBeGreaterThanOrEqual(1);
-
   const fields: BookDemoFields = {
-    name: inputs[0],
-    email: inputs[1],
-    company: inputs[2],
-    phone: inputs[3],
-    useCase: textareas[0],
+    name: screen.getByLabelText(/full name/i) as HTMLInputElement,
+    email: screen.getByLabelText(/work email/i) as HTMLInputElement,
+    company: screen.getByLabelText(/company/i) as HTMLInputElement,
+    phone: screen.getByLabelText(/phone/i) as HTMLInputElement,
+    useCase: screen.getByLabelText(
+      /what are you trying to solve/i,
+    ) as HTMLTextAreaElement,
   };
 
   // Sanity check the structure so a future markup change fails loudly.
