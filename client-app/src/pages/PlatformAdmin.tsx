@@ -2163,6 +2163,12 @@ interface SupportTicket {
   email_error: string | null;
   created_at: string;
   updated_at: string;
+  // Server-side LATERAL join: surfaces the most recent outbound admin reply's
+  // SMTP error and timestamp so the inbox can render hard-bounce badges
+  // against replies and apply the "Hard bounces only" filter without an
+  // extra round trip per row.
+  last_outbound_reply_error?: string | null;
+  last_outbound_reply_at?: string | null;
 }
 
 interface SupportReply {
@@ -2188,11 +2194,18 @@ interface SupportReply {
 function SupportInboxTab() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'resolved' | 'closed'>('open');
+  const [hardBounceOnly, setHardBounceOnly] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['support-tickets', statusFilter],
-    queryFn: () => api.get<{ tickets: SupportTicket[] }>(`/support/tickets?status=${statusFilter}&limit=200`),
+    queryKey: ['support-tickets', statusFilter, hardBounceOnly],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('status', statusFilter);
+      params.set('limit', '200');
+      if (hardBounceOnly) params.set('reply_state', 'hard_bounce');
+      return api.get<{ tickets: SupportTicket[] }>(`/support/tickets?${params.toString()}`);
+    },
     refetchInterval: 60_000,
   });
 
@@ -2206,6 +2219,8 @@ function SupportInboxTab() {
         email_failed_open: number;
         reply_email_failed: number;
         reply_email_failed_open: number;
+        hard_bounce: number;
+        hard_bounce_open: number;
       }>(`/support/tickets/stats`),
     refetchInterval: 60_000,
   });
@@ -2225,6 +2240,8 @@ function SupportInboxTab() {
   const failedOpenCount = stats?.email_failed_open ?? 0;
   const replyFailedCount = stats?.reply_email_failed ?? 0;
   const replyFailedOpenCount = stats?.reply_email_failed_open ?? 0;
+  const hardBounceCount = stats?.hard_bounce ?? 0;
+  const hardBounceOpenCount = stats?.hard_bounce_open ?? 0;
   return (
     <div className="space-y-4">
       {failedCount > 0 && (
@@ -2252,16 +2269,30 @@ function SupportInboxTab() {
               {replyFailedOpenCount > 0 && replyFailedOpenCount !== replyFailedCount && (
                 <span className="font-normal"> ({replyFailedOpenCount} still open)</span>
               )}
+              {hardBounceCount > 0 && (
+                <>
+                  {' '}<span className="font-normal text-amber-800">·</span>{' '}
+                  <span className="font-medium">
+                    {hardBounceCount} hard bounce{hardBounceCount === 1 ? '' : 's'}
+                  </span>
+                  {hardBounceOpenCount > 0 && hardBounceOpenCount !== hardBounceCount && (
+                    <span className="font-normal"> ({hardBounceOpenCount} still open)</span>
+                  )}
+                </>
+              )}
             </div>
             <div className="text-xs mt-0.5">
               An outbound admin reply failed to deliver. Auto-retries run in the background; persistent failures
               raise an operations alert. Open the ticket to see the failed reply and re-send manually.
+              {hardBounceCount > 0 && (
+                <> Use the &ldquo;Hard bounces only&rdquo; filter to focus on permanently undeliverable addresses.</>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex gap-2">
           {(['open', 'in_progress', 'resolved', 'closed', 'all'] as const).map((s) => (
             <button
@@ -2277,7 +2308,30 @@ function SupportInboxTab() {
             </button>
           ))}
         </div>
-        <div className="text-xs text-muted">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</div>
+        <div className="flex items-center gap-3">
+          <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={hardBounceOnly}
+              onChange={(e) => setHardBounceOnly(e.target.checked)}
+            />
+            <span className={hardBounceOnly ? 'text-red-700 font-medium' : ''}>
+              Hard bounces only
+              {/* The count next to this label has to be the global hard-bounce
+                  total (status-agnostic) — the stats endpoint isn't
+                  status-scoped, and showing "(7)" while the visible "open"
+                  inbox only contains 2 of them would look inconsistent. To
+                  avoid that confusion we only surface the count when the
+                  status filter is "all" (the visible list matches the global
+                  count) or when the hard-bounce filter is already on (the
+                  user is explicitly asking for the global subset). */}
+              {hardBounceCount > 0 && (statusFilter === 'all' || hardBounceOnly) && (
+                <span className="ml-1 text-muted font-normal">({hardBounceCount})</span>
+              )}
+            </span>
+          </label>
+          <div className="text-xs text-muted">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</div>
+        </div>
       </div>
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">

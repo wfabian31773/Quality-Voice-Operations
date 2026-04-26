@@ -25,6 +25,7 @@ import {
   REPLY_DELIVERY_ALERT_THRESHOLD,
   raiseReplyDeliveryFailureAlert,
 } from '../../../platform/help/supportReplyDeliveryAlert';
+import { isPermanentSmtpError } from '../../../platform/email/smtpErrorClass';
 
 const logger = createLogger('SUPPORT');
 const router = Router();
@@ -861,6 +862,13 @@ router.post(
 // ----- Platform admin: support ticket inbox -----
 const TICKET_STATUSES = new Set(['open', 'in_progress', 'resolved', 'closed']);
 
+// Allowed values for the `reply_state` query param on /support/tickets.
+// `hard_bounce` mirrors the docs-feedback "Failed only" filter and narrows
+// the inbox to tickets whose latest outbound delivery (most recent admin
+// reply, or the initial routed send if no reply has gone out yet) is
+// classified as a permanent SMTP failure by isPermanentSmtpError().
+const VALID_TICKET_REPLY_STATES = new Set(['hard_bounce']);
+
 router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : null;
   const limit = Math.min(parseInt(String(req.query.limit ?? '100'), 10) || 100, 500);
@@ -868,28 +876,107 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
     res.status(400).json({ error: 'invalid status filter' });
     return;
   }
+  const replyStateParam =
+    typeof req.query.reply_state === 'string' ? req.query.reply_state : null;
+  if (replyStateParam && !VALID_TICKET_REPLY_STATES.has(replyStateParam)) {
+    res.status(400).json({ error: 'invalid reply_state filter' });
+    return;
+  }
+  const hardBounceOnly = replyStateParam === 'hard_bounce';
   try {
     const pool = getPlatformPool();
     const params: unknown[] = [];
-    let where = '';
+    const whereParts: string[] = [];
     if (status && status !== 'all') {
       params.push(status);
-      where = `WHERE t.status = $${params.length}`;
+      whereParts.push(`t.status = $${params.length}`);
     }
-    params.push(limit);
-    const r = await pool.query(
+    // When hard-bounce filtering is on, narrow the candidate set in SQL to
+    // the (necessarily small) subset of tickets that have *some* outbound
+    // delivery failure recorded — the same superset the JS classifier walks
+    // in /support/tickets/stats. This keeps a large support_tickets table
+    // from being fully scanned just to filter out the no-error rows JS
+    // would have rejected anyway.
+    if (hardBounceOnly) {
+      whereParts.push(
+        `((lr.created_at IS NOT NULL AND lr.email_error IS NOT NULL) OR
+          (lr.created_at IS NULL AND t.email_error IS NOT NULL))`,
+      );
+    }
+    const where = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    // The LATERAL join surfaces the most recent outbound reply's error so the
+    // admin UI can render a hard-bounce badge against the reply (not just the
+    // initial send) and so the hard-bounce filter below has a single column to
+    // classify against. When no outbound reply exists yet, both columns are
+    // NULL and we fall back to t.email_error.
+    // When the hard-bounce filter is active we leave the LIMIT off the SQL
+    // query and re-apply it in JS *after* the classifier filter so the page
+    // size stays meaningful — otherwise a result page filled with non-hard
+    // bounce tickets could shrink to nothing after filtering. The SQL prune
+    // above already ensures we're only walking failure rows in JS, not the
+    // entire table.
+    const sqlLimit = hardBounceOnly ? null : limit;
+    if (sqlLimit !== null) {
+      params.push(sqlLimit);
+    }
+    const r = await pool.query<{
+      id: string;
+      tenant_id: string | null;
+      user_id: string | null;
+      user_email: string | null;
+      plan: string | null;
+      topic: string;
+      message: string;
+      recent_errors: string | null;
+      context: Record<string, unknown> | null;
+      routed_to: string;
+      status: string;
+      email_message_id: string | null;
+      email_error: string | null;
+      created_at: string;
+      updated_at: string;
+      tenant_name: string | null;
+      last_outbound_reply_error: string | null;
+      last_outbound_reply_at: string | null;
+    }>(
       `SELECT t.id, t.tenant_id, t.user_id, t.user_email, t.plan, t.topic, t.message,
               t.recent_errors, t.context, t.routed_to, t.status, t.email_message_id,
               t.email_error, t.created_at, t.updated_at,
-              tn.name AS tenant_name
+              tn.name AS tenant_name,
+              lr.email_error AS last_outbound_reply_error,
+              lr.created_at  AS last_outbound_reply_at
        FROM support_tickets t
        LEFT JOIN tenants tn ON tn.id = t.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT email_error, created_at
+         FROM support_ticket_replies
+         WHERE ticket_id = t.id AND direction = 'outbound'
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) lr ON TRUE
        ${where}
        ORDER BY t.created_at DESC
-       LIMIT $${params.length}`,
+       ${sqlLimit !== null ? `LIMIT $${params.length}` : ''}`,
       params,
     );
-    res.json({ tickets: r.rows });
+    let tickets = r.rows;
+    if (hardBounceOnly) {
+      tickets = tickets
+        .filter((t) => {
+          // "Latest outbound delivery": prefer the most recent admin reply's
+          // SMTP error if one exists (succeeded or failed), otherwise fall
+          // back to the initial routed send error. This matches the badge the
+          // UI already shows on tickets/replies and keeps the filter aligned
+          // with what an admin sees in the table.
+          const latestErr = t.last_outbound_reply_at
+            ? t.last_outbound_reply_error
+            : t.email_error;
+          return isPermanentSmtpError(latestErr);
+        })
+        .slice(0, limit);
+    }
+    res.json({ tickets });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load tickets', detail: String(err) });
   }
@@ -924,13 +1011,56 @@ router.get('/support/tickets/stats', requireAuth, requirePlatformAdmin, async (_
          (SELECT COUNT(*)::int FROM reply_failures) AS reply_email_failed,
          (SELECT COUNT(*)::int FROM reply_failures WHERE ticket_status IN ('open','in_progress')) AS reply_email_failed_open`,
     );
-    res.json(r.rows[0] ?? {
+    const base = r.rows[0] ?? {
       total: 0,
       open: 0,
       email_failed: 0,
       email_failed_open: 0,
       reply_email_failed: 0,
       reply_email_failed_open: 0,
+    };
+
+    // Hard-bounce subset: tickets whose latest outbound delivery (most recent
+    // admin reply, or the initial routed send when no reply has gone out) is
+    // classified as a permanent SMTP failure. The classifier lives in JS so we
+    // pull just the ticket id, status and the relevant error column for every
+    // ticket that has *some* outbound failure recorded — that's necessarily a
+    // superset of the hard-bounce set, and bounded by the failure count which
+    // is far smaller than the full ticket table in practice.
+    const candidatesRes = await pool.query<{
+      id: string;
+      status: string;
+      latest_error: string | null;
+    }>(
+      `SELECT t.id, t.status,
+              CASE WHEN lr.created_at IS NOT NULL THEN lr.email_error
+                   ELSE t.email_error END AS latest_error
+       FROM support_tickets t
+       LEFT JOIN LATERAL (
+         SELECT email_error, created_at
+         FROM support_ticket_replies
+         WHERE ticket_id = t.id AND direction = 'outbound'
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) lr ON TRUE
+       WHERE (lr.created_at IS NOT NULL AND lr.email_error IS NOT NULL)
+          OR (lr.created_at IS NULL AND t.email_error IS NOT NULL)`,
+    );
+
+    let hardBounce = 0;
+    let hardBounceOpen = 0;
+    for (const row of candidatesRes.rows) {
+      if (!isPermanentSmtpError(row.latest_error)) continue;
+      hardBounce += 1;
+      if (row.status === 'open' || row.status === 'in_progress') {
+        hardBounceOpen += 1;
+      }
+    }
+
+    res.json({
+      ...base,
+      hard_bounce: hardBounce,
+      hard_bounce_open: hardBounceOpen,
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load ticket stats', detail: String(err) });
