@@ -6,6 +6,10 @@ import {
   filterEmailRecipientsByPreference,
   filterUserIdsByPreference,
 } from '../../notifications/NotificationPreferences';
+import {
+  getConnectorAlertSettings,
+  isConnectorMuted,
+} from './ConnectorAlertPreferences';
 import type { ConnectorType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -53,6 +57,18 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
   const { tenantId, integrationId, connectorType, provider } = params;
 
   if (!isRevenueCriticalProvider(provider)) return;
+
+  // Honour per-tenant connector mute preferences. A muted provider or
+  // integration suppresses both the in-app fan-out and the email so the
+  // admin's "I don't want alerts for this" preference is global.
+  if (await isConnectorMuted(tenantId, provider, integrationId)) {
+    logger.info('Connector sync error alert suppressed by mute', {
+      tenantId,
+      integrationId,
+      provider,
+    });
+    return;
+  }
 
   const pool = getPlatformPool();
 
@@ -147,6 +163,20 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
 
   if (recipients.length === 0) {
     logger.info('No tenant admins found to email about connector sync failure', {
+      tenantId,
+      integrationId,
+      provider,
+    });
+    return;
+  }
+
+  // When the tenant has digest mode enabled, skip the per-event email and
+  // skip stamping auth_alert_sent_at so the scheduler can pick this failure
+  // up and roll it into the next 24h digest. The in-app fan-out above has
+  // already happened (subject to the existing 24h throttle).
+  const alertSettings = await getConnectorAlertSettings(tenantId);
+  if (alertSettings.digestMode) {
+    logger.info('Per-event sync alert email suppressed by tenant digest mode', {
       tenantId,
       integrationId,
       provider,
@@ -305,6 +335,17 @@ export async function notifySustainedConnectorFailure(
   if (!Number.isFinite(failedAtMs)) return;
   const outageMs = Date.now() - failedAtMs;
   if (outageMs < SUSTAINED_FAILURE_MS) return;
+
+  // A mute on the provider or specific integration suppresses every alert
+  // class — SMS included — so admins truly stop hearing about it.
+  if (await isConnectorMuted(tenantId, provider, integrationId)) {
+    logger.info('Sustained SMS alert suppressed by connector mute', {
+      tenantId,
+      integrationId,
+      provider,
+    });
+    return;
+  }
 
   const pool = getPlatformPool();
 
@@ -554,6 +595,18 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
   const { tenantId, integrationId, connectorType, provider, outageDurationMs } = params;
 
   if (!isRevenueCriticalProvider(provider)) return;
+
+  // Recovery emails follow the same mute rules as failure alerts — if the
+  // admin doesn't want to hear about this connector at all, they don't want
+  // the "back online" email either.
+  if (await isConnectorMuted(tenantId, provider, integrationId)) {
+    logger.info('Connector recovery alert suppressed by mute', {
+      tenantId,
+      integrationId,
+      provider,
+    });
+    return;
+  }
 
   const pool = getPlatformPool();
 

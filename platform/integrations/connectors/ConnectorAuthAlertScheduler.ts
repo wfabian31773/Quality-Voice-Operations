@@ -5,18 +5,25 @@ import {
   connectorSyncErrorEmail,
   connectorAutoDisabledEmail,
   connectorReconnectNeededEmail,
+  connectorSyncDigestEmail,
 } from '../../email';
 import {
   fanoutInAppNotification,
   filterEmailRecipientsByPreference,
 } from '../../notifications/NotificationPreferences';
 import { writeAuditLog } from '../../audit/AuditService';
+import {
+  getConnectorAlertSettings,
+  loadMuteSetsForTenants,
+  recordDigestSent,
+} from './ConnectorAlertPreferences';
 
 const logger = createLogger('CONNECTOR_AUTH_ALERT');
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const INITIAL_DELAY_MS = 5 * 60 * 1000;
 const MAX_RECIPIENTS_PER_TENANT = 5;
+const DIGEST_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 /** How long after a previous alert before we'll send another one for the same integration. */
 const ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
@@ -262,6 +269,13 @@ export interface DispatchAuthAlertParams {
   errorMessage?: string | null;
   detectedAt?: string | null;
   reason?: 'needs_reconnect' | 'auth_error';
+  /**
+   * When true, the dispatcher still does the throttle check, atomic slot
+   * claim, and in-app fanout, but skips sending the per-event email. The
+   * cycle loop uses this for tenants in digest mode so the row is buffered
+   * for a once-per-24h tenant digest instead of fanning out N emails.
+   */
+  suppressEmail?: boolean;
 }
 
 export interface DispatchAuthAlertResult {
@@ -327,14 +341,22 @@ export async function dispatchConnectorAuthAlert(
     }
   }
 
-  const claimed = await claimAuthAlertSlot(params.integrationId, params.tenantId);
-  if (!claimed) {
-    logger.debug('Connector auth alert claim lost (race or throttle)', {
-      tenantId: params.tenantId,
-      integrationId: params.integrationId,
-      provider: params.provider,
-    });
-    return { status: 'throttled', emailedRecipients: 0 };
+  // In digest mode we deliberately skip the slot claim here. The caller is
+  // responsible for stamping auth_alert_sent_at via claimAuthAlertSlot ONLY
+  // after the per-tenant digest email actually delivers — otherwise a 24h
+  // throttle window or transient SMTP outage would silently drop the failure
+  // (findPendingAuthFailures filters on auth_alert_sent_at IS NULL). The
+  // in-app fanout below stays deduped by recentInAppNotificationExists.
+  if (!params.suppressEmail) {
+    const claimed = await claimAuthAlertSlot(params.integrationId, params.tenantId);
+    if (!claimed) {
+      logger.debug('Connector auth alert claim lost (race or throttle)', {
+        tenantId: params.tenantId,
+        integrationId: params.integrationId,
+        provider: params.provider,
+      });
+      return { status: 'throttled', emailedRecipients: 0 };
+    }
   }
 
   const label =
@@ -379,6 +401,18 @@ export async function dispatchConnectorAuthAlert(
       reason,
       recipientUserIds: adminUserIds,
     });
+  }
+
+  // Digest-mode short-circuit: throttle slot claimed and in-app fanned out
+  // above; the cycle loop will buffer this row into the per-tenant digest
+  // email instead of sending one email per failure.
+  if (params.suppressEmail) {
+    logger.debug('Per-event email suppressed by digest mode', {
+      tenantId: params.tenantId,
+      integrationId: params.integrationId,
+      provider: params.provider,
+    });
+    return { status: 'sent', emailedRecipients: 0 };
   }
 
   if (rawRecipients.length === 0) {
@@ -477,6 +511,17 @@ export interface CycleResult {
   alerted: number;
   emailedRecipients: number;
   skippedNoRecipients: number;
+  mutedSkipped: number;
+  digestEmailsSent: number;
+}
+
+interface DigestEntry {
+  integrationId: string;
+  provider: string;
+  providerLabel: string;
+  name: string | null;
+  errorMessage: string;
+  detectedAt: Date | null;
 }
 
 export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
@@ -485,28 +530,109 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
     pending = await findPendingAuthFailures();
   } catch (err) {
     logger.error('Failed to query pending connector auth failures', { error: String(err) });
-    return { inspected: 0, alerted: 0, emailedRecipients: 0, skippedNoRecipients: 0 };
+    return {
+      inspected: 0,
+      alerted: 0,
+      emailedRecipients: 0,
+      skippedNoRecipients: 0,
+      mutedSkipped: 0,
+      digestEmailsSent: 0,
+    };
   }
 
   if (pending.length === 0) {
     logger.debug('No pending connector auth failures to alert on');
-    return { inspected: 0, alerted: 0, emailedRecipients: 0, skippedNoRecipients: 0 };
+    return {
+      inspected: 0,
+      alerted: 0,
+      emailedRecipients: 0,
+      skippedNoRecipients: 0,
+      mutedSkipped: 0,
+      digestEmailsSent: 0,
+    };
   }
+
+  const tenantIds = Array.from(new Set(pending.map((p) => p.tenant_id)));
+  const muteSets = await loadMuteSetsForTenants(tenantIds);
+
+  // Tenant-level digest preferences are loaded once per tenant up front so a
+  // long failure list doesn't fan out to N preference queries.
+  const settingsByTenant = new Map<string, Awaited<ReturnType<typeof getConnectorAlertSettings>>>();
+  await Promise.all(
+    tenantIds.map(async (tid) => {
+      settingsByTenant.set(tid, await getConnectorAlertSettings(tid));
+    }),
+  );
 
   let alerted = 0;
   let emailedRecipients = 0;
   let skippedNoRecipients = 0;
+  let mutedSkipped = 0;
+  let digestEmailsSent = 0;
+  const digestQueueByTenant = new Map<string, DigestEntry[]>();
 
   for (const row of pending) {
+    const tenantId = row.tenant_id;
+    const integrationId = row.integration_id;
+    const provider = row.provider;
+
+    // Tenant-level mute: skip the alert entirely but claim the throttle slot
+    // so we don't re-evaluate this row every cycle. The slot clears via
+    // db.markSyncStatus on the next recovery → re-failure transition.
+    const muteSet = muteSets.get(tenantId);
+    const muted =
+      !!muteSet &&
+      (muteSet.providers.has(provider.toLowerCase()) ||
+        muteSet.integrations.has(integrationId));
+    if (muted) {
+      logger.info('Connector auth-alert suppressed by mute', {
+        tenantId,
+        integrationId,
+        provider,
+      });
+      mutedSkipped += 1;
+      await claimAuthAlertSlot(integrationId, tenantId);
+      continue;
+    }
+
+    const settings = settingsByTenant.get(tenantId);
+    const digestMode = !!settings?.digestMode;
+
     const result = await dispatchConnectorAuthAlert({
-      tenantId: row.tenant_id,
-      integrationId: row.integration_id,
-      provider: row.provider,
+      tenantId,
+      integrationId,
+      provider,
       connectorType: row.integration_type,
       errorMessage: row.last_sync_error,
-      detectedAt: row.last_sync_error_at ? new Date(row.last_sync_error_at).toISOString() : null,
-      reason: row.last_sync_status === 'needs_reconnect' ? 'needs_reconnect' : 'auth_error',
+      detectedAt: row.last_sync_error_at
+        ? new Date(row.last_sync_error_at).toISOString()
+        : null,
+      reason:
+        row.last_sync_status === 'needs_reconnect' ? 'needs_reconnect' : 'auth_error',
+      // Digest mode: dispatcher fans out in-app (deduped) but skips both
+      // the per-event email AND the auth_alert_sent_at stamp. We buffer the
+      // row here and stamp each entry only after the digest delivers below
+      // — otherwise a 24h throttle or SMTP outage would silently drop the
+      // failure from every future digest cycle.
+      suppressEmail: digestMode,
     });
+
+    if (digestMode && result.status === 'sent') {
+      const queue = digestQueueByTenant.get(tenantId) ?? [];
+      queue.push({
+        integrationId,
+        provider,
+        providerLabel: providerLabel(provider),
+        name: row.name,
+        errorMessage:
+          row.last_sync_error ?? 'Authentication failed; reconnect required',
+        detectedAt: row.last_sync_error_at
+          ? new Date(row.last_sync_error_at)
+          : null,
+      });
+      digestQueueByTenant.set(tenantId, queue);
+      continue;
+    }
 
     if (result.status === 'sent') {
       alerted += 1;
@@ -516,11 +642,115 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
     }
   }
 
+  // ---- Digest mode emails (one per tenant per 24h) ----
+  for (const [tenantId, entries] of digestQueueByTenant) {
+    const settings = settingsByTenant.get(tenantId);
+    if (!settings?.digestMode) continue;
+    if (entries.length === 0) continue;
+
+    const lastSentMs = settings.digestLastSentAt
+      ? new Date(settings.digestLastSentAt).getTime()
+      : null;
+    if (lastSentMs !== null && Number.isFinite(lastSentMs) && Date.now() - lastSentMs < DIGEST_THROTTLE_MS) {
+      logger.debug('Digest email suppressed by 24h throttle', {
+        tenantId,
+        queued: entries.length,
+      });
+      continue;
+    }
+
+    const { name: tenantName, emails: rawRecipients } = await getTenantAdmins(tenantId);
+    if (rawRecipients.length === 0) {
+      logger.info('Digest email skipped: no admin recipients', { tenantId, queued: entries.length });
+      continue;
+    }
+    const recipients = await filterEmailRecipientsByPreference(
+      tenantId,
+      rawRecipients,
+      'integration',
+    );
+    if (recipients.length === 0) {
+      logger.info('Digest email skipped: all admins opted out of integration emails', {
+        tenantId,
+        queued: entries.length,
+      });
+      continue;
+    }
+
+    const connectorsUrl = `${appBaseUrl().replace(/\/$/, '')}/connectors`;
+    const generatedAt = new Date().toUTCString();
+    const failures = entries.map((e) => ({
+      providerLabel: e.providerLabel,
+      name: e.name,
+      errorMessage: e.errorMessage,
+      detectedAt: e.detectedAt ? e.detectedAt.toUTCString() : null,
+    }));
+    const { subject, html, text } = connectorSyncDigestEmail({
+      tenantName,
+      connectorsUrl,
+      generatedAt,
+      failures,
+    });
+
+    let delivered = 0;
+    for (const to of recipients) {
+      try {
+        const result = await sendEmail({ to, subject, html, text });
+        if (result.success) {
+          delivered += 1;
+        } else {
+          logger.warn('Connector digest email send failed', {
+            tenantId,
+            to,
+            error: result.error,
+          });
+        }
+      } catch (err) {
+        logger.warn('Connector digest email threw', {
+          tenantId,
+          to,
+          error: String(err),
+        });
+      }
+    }
+
+    emailedRecipients += delivered;
+    if (delivered > 0) {
+      digestEmailsSent += 1;
+      alerted += entries.length;
+      await recordDigestSent(tenantId);
+      // Now that the digest has actually been delivered, mark every
+      // included integration so it isn't re-emailed in the next digest.
+      // (If the integration recovers and re-fails before the next cycle,
+      // db.markSyncStatus will clear auth_alert_sent_at again.)
+      for (const e of entries) {
+        await claimAuthAlertSlot(e.integrationId, tenantId);
+      }
+      logger.info('Connector digest email dispatched', {
+        tenantId,
+        recipients: recipients.length,
+        delivered,
+        failures: failures.length,
+      });
+    } else {
+      // Don't stamp digest_last_sent_at or auth_alert_sent_at when every
+      // send failed — leaving both clear lets the next cycle retry
+      // instead of suppressing the same failures for 24h after a
+      // transient SMTP outage.
+      logger.warn('Digest email had zero successful sends; not stamping throttle', {
+        tenantId,
+        recipients: recipients.length,
+      });
+    }
+  }
+
   return {
     inspected: pending.length,
     alerted,
     emailedRecipients,
     skippedNoRecipients,
+    mutedSkipped,
+    digestEmailsSent,
   };
 }
 

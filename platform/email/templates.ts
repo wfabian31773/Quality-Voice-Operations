@@ -258,6 +258,59 @@ export function connectorReconnectNeededEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorSyncDigestEmail(params: {
+  tenantName?: string;
+  connectorsUrl: string;
+  generatedAt: string;
+  failures: Array<{
+    providerLabel: string;
+    name: string | null;
+    errorMessage: string;
+    detectedAt: string | null;
+  }>;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const count = params.failures.length;
+  const subject =
+    count === 1
+      ? `Daily integration digest: 1 connector failing`
+      : `Daily integration digest: ${count} connectors failing`;
+
+  const rowsHtml = params.failures
+    .map((f) => {
+      const safeError = (f.errorMessage || 'Sync failed').slice(0, 240);
+      const detected = f.detectedAt ? `<p style="margin:4px 0 0" class="muted">Last error ${f.detectedAt}</p>` : '';
+      const subtitle = f.name && f.name !== f.providerLabel ? ` — ${f.name}` : '';
+      return `
+        <div class="alert-error">
+          <p style="margin:0"><strong>${f.providerLabel}${subtitle}</strong></p>
+          <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
+          ${detected}
+        </div>`;
+    })
+    .join('');
+
+  const rowsText = params.failures
+    .map((f) => {
+      const detected = f.detectedAt ? ` (last error ${f.detectedAt})` : '';
+      const subtitle = f.name && f.name !== f.providerLabel ? ` — ${f.name}` : '';
+      return `• ${f.providerLabel}${subtitle}${detected}\n  ${(f.errorMessage || 'Sync failed').slice(0, 240)}`;
+    })
+    .join('\n\n');
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>This is your daily digest of integration failures for <strong>${org}</strong>. ${count === 1 ? 'One connector is' : `${count} connectors are`} currently failing to sync. Reconnect them from the Connectors page to restore syncing.</p>
+    ${rowsHtml}
+    <p><a href="${params.connectorsUrl}" class="btn">Open Connectors</a></p>
+    <p class="muted">Digest generated ${params.generatedAt}. You're receiving one email per day instead of one per failure because digest mode is enabled in Settings → Notifications.</p>
+  `);
+
+  const text = `${subject}\n\nThis is your daily digest of integration failures for ${org}. ${count === 1 ? 'One connector is' : `${count} connectors are`} currently failing to sync.\n\n${rowsText}\n\nOpen Connectors: ${params.connectorsUrl}\n\nDigest generated ${params.generatedAt}. Digest mode is enabled in Settings → Notifications.`;
+
+  return { subject, html, text };
+}
+
 export function connectorSyncRecoveryEmail(params: {
   tenantName?: string;
   providerLabel: string;

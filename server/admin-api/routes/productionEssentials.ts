@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPlatformPool } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
-import { requirePlatformAdmin } from '../middleware/rbac';
+import { requirePlatformAdmin, requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import {
   getUserPreferences,
@@ -12,6 +12,13 @@ import {
   isNotificationChannel,
   type PreferenceMatrix,
 } from '../../../platform/notifications/NotificationPreferences';
+import {
+  getConnectorAlertSettings,
+  setConnectorAlertSettings,
+  getConnectorAlertMutes,
+  replaceConnectorAlertMutes,
+  type ConnectorAlertMute,
+} from '../../../platform/integrations/connectors/ConnectorAlertPreferences';
 
 const router = Router();
 const logger = createLogger('PRODUCTION_ESSENTIALS');
@@ -232,6 +239,94 @@ router.put('/platform/notifications/preferences', requireAuth, async (req, res) 
     return res.status(500).json({ error: 'Failed to save notification preferences' });
   }
 });
+
+// ---------- Connector alert preferences (per-tenant) ----------
+//
+// Tenant-wide knobs that an owner/manager toggles for the whole workspace:
+//   * digestMode  — fold connector failure emails into a single daily digest
+//   * mutes       — silence alerts for a specific provider or integration row
+//
+// In-app and email alerts both honour the mute list. Digest mode applies to
+// emails only; in-app notifications still fire (subject to the existing
+// 24h tenant_notifications throttle).
+
+router.get('/platform/notifications/connector-alerts', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const [settings, mutes] = await Promise.all([
+      getConnectorAlertSettings(tenantId),
+      getConnectorAlertMutes(tenantId),
+    ]);
+    return res.json({
+      settings: {
+        digestMode: settings.digestMode,
+        digestLastSentAt: settings.digestLastSentAt
+          ? settings.digestLastSentAt.toISOString()
+          : null,
+        updatedAt: settings.updatedAt ? settings.updatedAt.toISOString() : null,
+      },
+      mutes,
+    });
+  } catch (err) {
+    logger.error('connector alert prefs load failed', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to load connector alert preferences' });
+  }
+});
+
+router.put(
+  '/platform/notifications/connector-alerts',
+  requireAuth,
+  requireRole('manager'),
+  async (req, res) => {
+    const { tenantId, userId } = req.user!;
+    const body = (req.body ?? {}) as {
+      digestMode?: unknown;
+      mutes?: unknown;
+    };
+
+    const sanitizedMutes: ConnectorAlertMute[] = [];
+    if (Array.isArray(body.mutes)) {
+      for (const raw of body.mutes) {
+        if (!raw || typeof raw !== 'object') continue;
+        const scope = (raw as { scope?: unknown }).scope;
+        const target = (raw as { target?: unknown }).target;
+        if (scope !== 'provider' && scope !== 'integration') continue;
+        if (typeof target !== 'string' || !target.trim()) continue;
+        sanitizedMutes.push({ scope, target: target.trim() });
+      }
+    } else if (body.mutes !== undefined) {
+      return res.status(400).json({ error: 'mutes must be an array' });
+    }
+
+    let digestPatch: { digestMode?: boolean } = {};
+    if (typeof body.digestMode === 'boolean') {
+      digestPatch.digestMode = body.digestMode;
+    } else if (body.digestMode !== undefined) {
+      return res.status(400).json({ error: 'digestMode must be a boolean' });
+    }
+
+    try {
+      const settings = await setConnectorAlertSettings(tenantId, digestPatch, userId);
+      const mutes =
+        body.mutes !== undefined
+          ? await replaceConnectorAlertMutes(tenantId, sanitizedMutes, userId)
+          : await getConnectorAlertMutes(tenantId);
+      return res.json({
+        settings: {
+          digestMode: settings.digestMode,
+          digestLastSentAt: settings.digestLastSentAt
+            ? settings.digestLastSentAt.toISOString()
+            : null,
+          updatedAt: settings.updatedAt ? settings.updatedAt.toISOString() : null,
+        },
+        mutes,
+      });
+    } catch (err) {
+      logger.error('connector alert prefs save failed', { tenantId, error: String(err) });
+      return res.status(500).json({ error: 'Failed to save connector alert preferences' });
+    }
+  },
+);
 
 router.delete('/platform/notifications', requireAuth, async (req, res) => {
   const { tenantId, userId } = req.user!;

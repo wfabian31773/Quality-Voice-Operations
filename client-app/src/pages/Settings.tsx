@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
 import {
   Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
-  Lock, Download, Trash2, Bell,
+  Lock, Download, Trash2, Bell, BellOff, Mail,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 
@@ -715,6 +715,381 @@ const CHANNEL_LABELS: Record<NotificationChannel, string> = {
   email: 'Email',
 };
 
+// ---- Connector alert preferences (per-tenant) ----
+
+type MuteScope = 'provider' | 'integration';
+
+interface ConnectorAlertMute {
+  scope: MuteScope;
+  target: string;
+}
+
+interface ConnectorAlertSettingsResp {
+  digestMode: boolean;
+  digestLastSentAt: string | null;
+  updatedAt: string | null;
+}
+
+interface ConnectorAlertPrefsResponse {
+  settings: ConnectorAlertSettingsResp;
+  mutes: ConnectorAlertMute[];
+}
+
+interface ConnectorListItem {
+  integrationId: string;
+  provider: string;
+  name: string | null;
+  integrationType?: string;
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  salesforce: 'Salesforce',
+  hubspot: 'HubSpot',
+  quickbooks: 'QuickBooks',
+  google: 'Google',
+  google_calendar: 'Google Calendar',
+  outlook: 'Outlook',
+  outlook_calendar: 'Outlook Calendar',
+  microsoft: 'Microsoft',
+  pipedrive: 'Pipedrive',
+  slack: 'Slack',
+  zapier: 'Zapier',
+  twilio: 'Twilio',
+};
+
+function providerLabel(provider: string | null | undefined): string {
+  if (!provider) return 'Integration';
+  return PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
+}
+
+function ConnectorAlertSettings() {
+  const queryClient = useQueryClient();
+  const { isManager } = useRole();
+  const [savedAt, setSavedAt] = useState(0);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['connector-alert-prefs'],
+    queryFn: () => api.get<ConnectorAlertPrefsResponse>('/platform/notifications/connector-alerts'),
+  });
+  const { data: connectorsData } = useQuery({
+    queryKey: ['connectors-list-for-alerts'],
+    queryFn: () =>
+      api.get<{ connectors: ConnectorListItem[] }>('/connectors?limit=100'),
+  });
+
+  const [digestMode, setDigestMode] = useState(false);
+  const [mutedProviders, setMutedProviders] = useState<Set<string>>(new Set());
+  const [mutedIntegrations, setMutedIntegrations] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!data) return;
+    setDigestMode(!!data.settings.digestMode);
+    const provs = new Set<string>();
+    const ints = new Set<string>();
+    for (const m of data.mutes ?? []) {
+      if (m.scope === 'provider') provs.add(m.target.toLowerCase());
+      else if (m.scope === 'integration') ints.add(m.target);
+    }
+    setMutedProviders(provs);
+    setMutedIntegrations(ints);
+  }, [data]);
+
+  const mutation = useMutation({
+    mutationFn: (payload: { digestMode: boolean; mutes: ConnectorAlertMute[] }) =>
+      api.put<ConnectorAlertPrefsResponse>(
+        '/platform/notifications/connector-alerts',
+        payload,
+      ),
+    onSuccess: (resp) => {
+      setSavedAt(Date.now());
+      queryClient.setQueryData(['connector-alert-prefs'], resp);
+    },
+  });
+
+  const connectors = connectorsData?.connectors ?? [];
+  const providersInUse = useMemo(() => {
+    const seen = new Map<string, ConnectorListItem[]>();
+    for (const c of connectors) {
+      const key = (c.provider || '').toLowerCase();
+      if (!key) continue;
+      if (!seen.has(key)) seen.set(key, []);
+      seen.get(key)!.push(c);
+    }
+    return Array.from(seen.entries())
+      .map(([provider, items]) => ({ provider, items }))
+      .sort((a, b) => providerLabel(a.provider).localeCompare(providerLabel(b.provider)));
+  }, [connectors]);
+
+  const dirty = useMemo(() => {
+    if (!data) return false;
+    if (digestMode !== !!data.settings.digestMode) return true;
+    const origProvs = new Set(
+      (data.mutes ?? []).filter((m) => m.scope === 'provider').map((m) => m.target.toLowerCase()),
+    );
+    const origInts = new Set(
+      (data.mutes ?? []).filter((m) => m.scope === 'integration').map((m) => m.target),
+    );
+    if (origProvs.size !== mutedProviders.size) return true;
+    for (const p of mutedProviders) if (!origProvs.has(p)) return true;
+    if (origInts.size !== mutedIntegrations.size) return true;
+    for (const i of mutedIntegrations) if (!origInts.has(i)) return true;
+    return false;
+  }, [data, digestMode, mutedProviders, mutedIntegrations]);
+
+  const showSaved = savedAt > 0 && Date.now() - savedAt < 3000;
+
+  if (error) {
+    return (
+      <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Couldn't load connector alert preferences. Please try again.</span>
+      </div>
+    );
+  }
+  if (isLoading || !data) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  const toggleProvider = (provider: string) => {
+    if (!isManager) return;
+    setMutedProviders((prev) => {
+      const next = new Set(prev);
+      const key = provider.toLowerCase();
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const toggleIntegration = (integrationId: string) => {
+    if (!isManager) return;
+    setMutedIntegrations((prev) => {
+      const next = new Set(prev);
+      if (next.has(integrationId)) next.delete(integrationId);
+      else next.add(integrationId);
+      return next;
+    });
+  };
+
+  const reset = () => {
+    if (!data) return;
+    setDigestMode(!!data.settings.digestMode);
+    const provs = new Set<string>();
+    const ints = new Set<string>();
+    for (const m of data.mutes ?? []) {
+      if (m.scope === 'provider') provs.add(m.target.toLowerCase());
+      else if (m.scope === 'integration') ints.add(m.target);
+    }
+    setMutedProviders(provs);
+    setMutedIntegrations(ints);
+  };
+
+  const save = () => {
+    if (!isManager) return;
+    const mutes: ConnectorAlertMute[] = [
+      ...Array.from(mutedProviders).map<ConnectorAlertMute>((target) => ({
+        scope: 'provider',
+        target,
+      })),
+      ...Array.from(mutedIntegrations).map<ConnectorAlertMute>((target) => ({
+        scope: 'integration',
+        target,
+      })),
+    ];
+    mutation.mutate({ digestMode, mutes });
+  };
+
+  return (
+    <div className="space-y-5 mt-10">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">Connector alert preferences</h2>
+          <p className="text-sm text-text-muted mt-0.5">
+            Mute alerts for specific connectors, or batch every connector failure into a single
+            daily digest email instead of one per integration. The 24-hour in-app throttle still
+            applies on top of these settings.
+          </p>
+        </div>
+      </div>
+
+      {!isManager && (
+        <div className="bg-amber-100/40 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          Only owners and managers can change these tenant-wide settings.
+        </div>
+      )}
+
+      {mutation.error && (
+        <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {(mutation.error as Error).message || 'Failed to save preferences'}
+        </div>
+      )}
+      {showSaved && (
+        <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          Preferences saved
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-text-secondary" />
+              <span className="text-sm font-medium text-text-primary">Daily digest mode</span>
+            </div>
+            <p className="text-xs text-text-muted mt-1 max-w-md">
+              When on, connector failures stop sending one email per integration. Instead, every
+              admin gets a single summary email at most once per 24 hours that lists every
+              currently-failing connector. In-app notifications still fire normally.
+            </p>
+            {data.settings.digestLastSentAt && (
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Last digest sent: {new Date(data.settings.digestLastSentAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={digestMode}
+            disabled={!isManager}
+            onClick={() => isManager && setDigestMode((v) => !v)}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+              digestMode ? 'bg-primary' : 'bg-surface-hover border border-border'
+            } ${isManager ? '' : 'opacity-60 cursor-not-allowed'}`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                digestMode ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-surface-hover">
+          <div className="flex items-center gap-2">
+            <BellOff className="h-4 w-4 text-text-secondary" />
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+              Mute alerts
+            </span>
+          </div>
+          <p className="text-xs text-text-muted mt-1">
+            Silence both email and in-app failure alerts for an entire provider, or a single
+            connected integration. Recovery and SMS alerts honour the same mute.
+          </p>
+        </div>
+        {providersInUse.length === 0 ? (
+          <div className="px-5 py-6 text-center text-sm text-text-muted">
+            You don't have any connected integrations yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {providersInUse.map(({ provider, items }) => {
+              const provMuted = mutedProviders.has(provider);
+              return (
+                <div key={provider} className="px-5 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-text-primary">
+                        {providerLabel(provider)}
+                      </div>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {items.length === 1
+                          ? '1 connected integration'
+                          : `${items.length} connected integrations`}
+                      </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
+                      <span>Mute provider</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={provMuted}
+                        disabled={!isManager}
+                        onClick={() => toggleProvider(provider)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          provMuted ? 'bg-primary' : 'bg-surface-hover border border-border'
+                        } ${isManager ? '' : 'opacity-60 cursor-not-allowed'}`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                            provMuted ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    </label>
+                  </div>
+                  {!provMuted && items.length > 1 && (
+                    <div className="mt-2 ml-1 space-y-1.5">
+                      {items.map((item) => {
+                        const intMuted = mutedIntegrations.has(item.integrationId);
+                        return (
+                          <label
+                            key={item.integrationId}
+                            className="flex items-center justify-between gap-2 text-xs text-text-secondary"
+                          >
+                            <span className="truncate">
+                              {item.name?.trim() || providerLabel(item.provider)}
+                            </span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={intMuted}
+                              disabled={!isManager}
+                              onClick={() => toggleIntegration(item.integrationId)}
+                              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                                intMuted ? 'bg-primary' : 'bg-surface-hover border border-border'
+                              } ${isManager ? '' : 'opacity-60 cursor-not-allowed'}`}
+                            >
+                              <span
+                                className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                                  intMuted ? 'translate-x-3.5' : 'translate-x-0.5'
+                                }`}
+                              />
+                            </button>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {isManager && (
+        <div className="flex items-center justify-end gap-3">
+          {dirty && (
+            <button
+              onClick={reset}
+              className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary"
+            >
+              Discard changes
+            </button>
+          )}
+          <button
+            onClick={save}
+            disabled={!dirty || mutation.isPending}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            {mutation.isPending ? 'Saving…' : 'Save connector preferences'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NotificationSettings() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<PreferenceMatrix | null>(null);
@@ -777,6 +1152,53 @@ function NotificationSettings() {
 
   return (
     <div className="space-y-6">
+      <NotificationCategoryMatrix
+        data={data}
+        draft={draft}
+        categories={categories}
+        channels={channels}
+        dirty={dirty}
+        showSaved={showSaved}
+        mutationError={mutation.error as Error | null}
+        isPending={mutation.isPending}
+        onToggle={toggle}
+        onReset={() => data?.preferences && setDraft(data.preferences)}
+        onSave={() => draft && mutation.mutate(draft)}
+      />
+      <ConnectorAlertSettings />
+    </div>
+  );
+}
+
+interface NotificationCategoryMatrixProps {
+  data: PreferencesResponse | undefined;
+  draft: PreferenceMatrix;
+  categories: NotificationCategory[];
+  channels: NotificationChannel[];
+  dirty: boolean;
+  showSaved: boolean;
+  mutationError: Error | null;
+  isPending: boolean;
+  onToggle: (category: NotificationCategory, channel: NotificationChannel) => void;
+  onReset: () => void;
+  onSave: () => void;
+}
+
+function NotificationCategoryMatrix({
+  data,
+  draft,
+  categories,
+  channels,
+  dirty,
+  showSaved,
+  mutationError,
+  isPending,
+  onToggle,
+  onReset,
+  onSave,
+}: NotificationCategoryMatrixProps) {
+  return (
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-text-primary">Notification preferences</h2>
         <p className="text-sm text-text-muted mt-0.5">
@@ -785,10 +1207,10 @@ function NotificationSettings() {
         </p>
       </div>
 
-      {mutation.error && (
+      {mutationError && (
         <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          {(mutation.error as Error).message || 'Failed to save preferences'}
+          {mutationError.message || 'Failed to save preferences'}
         </div>
       )}
       {showSaved && (
@@ -827,7 +1249,7 @@ function NotificationSettings() {
                         role="switch"
                         aria-checked={enabled}
                         aria-label={`${meta.label} — ${CHANNEL_LABELS[ch]}`}
-                        onClick={() => toggle(cat, ch)}
+                        onClick={() => onToggle(cat, ch)}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                           enabled ? 'bg-primary' : 'bg-surface-hover border border-border'
                         }`}
@@ -850,19 +1272,19 @@ function NotificationSettings() {
       <div className="flex items-center justify-end gap-3">
         {dirty && (
           <button
-            onClick={() => data?.preferences && setDraft(data.preferences)}
+            onClick={onReset}
             className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary"
           >
             Discard changes
           </button>
         )}
         <button
-          onClick={() => draft && mutation.mutate(draft)}
-          disabled={!dirty || mutation.isPending}
+          onClick={onSave}
+          disabled={!dirty || isPending}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
         >
           <Save className="h-4 w-4" />
-          {mutation.isPending ? 'Saving…' : 'Save preferences'}
+          {isPending ? 'Saving…' : 'Save preferences'}
         </button>
       </div>
     </div>

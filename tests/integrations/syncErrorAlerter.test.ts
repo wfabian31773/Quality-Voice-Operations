@@ -90,6 +90,12 @@ describe('notifySustainedConnectorFailure', () => {
     errorMessage: 'API rate limit',
   };
 
+  // The alerter now begins by checking connector_alert_mutes; tests below
+  // mock it as "not muted" so they can exercise the rest of the flow.
+  beforeEach(() => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+  });
+
   it('skips non-revenue-critical providers', async () => {
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -135,8 +141,8 @@ describe('notifySustainedConnectorFailure', () => {
       ...baseParams,
       firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
-    // Only the tenant lookup query was issued.
-    expect(queryMock).toHaveBeenCalledTimes(1);
+    // Mute lookup + tenant lookup were issued; nothing else.
+    expect(queryMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -153,7 +159,7 @@ describe('notifySustainedConnectorFailure', () => {
       ...baseParams,
       firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
-    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -328,10 +334,10 @@ describe('notifySustainedConnectorFailure', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // Only the four pre-send queries (tenant lookup, throttle check, phones,
-    // SMS-pref filter) should have been issued — no tenant_notifications
-    // insert.
-    expect(queryMock).toHaveBeenCalledTimes(4);
+    // Only the five pre-send queries (mute lookup, tenant lookup, throttle
+    // check, phones, SMS-pref filter) should have been issued — no
+    // tenant_notifications insert.
+    expect(queryMock).toHaveBeenCalledTimes(5);
     const insertCalls = queryMock.mock.calls.filter((c) =>
       String(c[0]).includes('INSERT INTO tenant_notifications'),
     );
@@ -386,6 +392,11 @@ describe('notifyConnectorRecovery', () => {
     outageDurationMs: 90 * 60 * 1000,
   };
 
+  // Recovery now also runs the mute check first; mock it as not muted.
+  beforeEach(() => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+  });
+
   it('skips non-revenue-critical providers', async () => {
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -406,8 +417,9 @@ describe('notifyConnectorRecovery', () => {
     );
     await notifyConnectorRecovery(baseParams);
 
-    expect(queryMock).toHaveBeenCalledTimes(1);
-    const throttleArgs = queryMock.mock.calls[0];
+    // Mute lookup + throttle check; nothing else.
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    const throttleArgs = queryMock.mock.calls[1];
     expect(String(throttleArgs[0])).toContain('recovery_alert_sent_at');
     expect(String(throttleArgs[0])).toContain('FROM integrations');
     // Must scope by both id and tenant_id so two HubSpot connectors for
