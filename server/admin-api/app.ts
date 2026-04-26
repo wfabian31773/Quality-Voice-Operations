@@ -2,8 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
-import fs from 'fs';
 import { errorHandler } from './middleware/errorHandler';
+import { attachSpaFallback, isProductionBoot } from './spaFallback';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
 import tenantRoutes from './routes/tenants';
@@ -139,15 +139,10 @@ app.use('/', legalComplianceRoutes);
 app.use('/', supportRoutes);
 app.use('/', productionEssentialsRoutes);
 
-const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
 
-if (isProduction && fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
-
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(clientDistPath, 'index.html'));
-  });
+if (isProductionBoot()) {
+  attachSpaFallback(app, clientDistPath);
 }
 
 app.use(errorHandler);
