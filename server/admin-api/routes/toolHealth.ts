@@ -6,6 +6,7 @@ import {
   listEscalationTasks,
   updateEscalationTask,
   getEscalationTaskStats,
+  listEscalationRecipients,
 } from '../../../platform/tools/HumanEscalationService';
 
 const logger = createLogger('TOOL_HEALTH_API');
@@ -60,6 +61,17 @@ router.get('/escalation-tasks', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('Failed to list escalation tasks', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list escalation tasks' });
+  }
+});
+
+router.get('/escalation-tasks/recipients', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const recipients = await listEscalationRecipients(tenantId);
+    return res.json({ recipients });
+  } catch (err) {
+    logger.error('Failed to list escalation recipients', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list escalation recipients' });
   }
 });
 

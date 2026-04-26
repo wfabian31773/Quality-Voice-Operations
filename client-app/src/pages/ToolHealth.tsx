@@ -3,6 +3,7 @@ import {
   Activity, AlertTriangle, CheckCircle, XCircle, RefreshCw,
   Clock, Wrench, ArrowUpRight, Shield, ChevronDown, ChevronUp,
   Phone, Users, ShieldAlert, KeyRound, ServerCrash,
+  BellOff, BellRing, Mail, MailX, UserX,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
@@ -52,6 +53,15 @@ interface EscalationStats {
   pending: number;
   inProgress: number;
   completed: number;
+}
+
+interface EscalationRecipient {
+  id: string;
+  email: string;
+  name: string | null;
+  role: 'admin' | 'owner';
+  prefs: { inApp: boolean; email: boolean };
+  optedOut: boolean;
 }
 
 type RejectionReason = 'missing_header' | 'invalid_signature' | 'validator_unavailable';
@@ -145,6 +155,8 @@ export default function ToolHealth() {
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [escalationTasks, setEscalationTasks] = useState<EscalationTask[]>([]);
   const [escalationStats, setEscalationStats] = useState<EscalationStats | null>(null);
+  const [escalationRecipients, setEscalationRecipients] = useState<EscalationRecipient[] | null>(null);
+  const [recipientsError, setRecipientsError] = useState<string | null>(null);
   const [webhookSecurity, setWebhookSecurity] = useState<WebhookSecuritySnapshot | null>(null);
   const [webhookSecurityError, setWebhookSecurityError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,6 +175,14 @@ export default function ToolHealth() {
         ]);
         setEscalationTasks(tasksRes.tasks);
         setEscalationStats(statsRes);
+        try {
+          const recipientsRes = await apiFetch('/escalation-tasks/recipients');
+          setEscalationRecipients(recipientsRes.recipients ?? []);
+          setRecipientsError(null);
+        } catch (err) {
+          setEscalationRecipients(null);
+          setRecipientsError(err instanceof Error ? err.message : 'Failed to load on-call roster');
+        }
       } else if (tab === 'webhookSecurity') {
         try {
           const data = await apiFetch('/observability/twilio-webhook-security');
@@ -439,6 +459,8 @@ export default function ToolHealth() {
             </div>
           )}
 
+          <OnCallRosterPanel recipients={escalationRecipients} error={recipientsError} loading={loading} />
+
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="p-4 border-b border-border">
               <h2 className="text-lg font-semibold text-foreground">Escalation Queue</h2>
@@ -525,6 +547,144 @@ function formatRelativeFromNow(iso: string | null): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   return `${day}d ago`;
+}
+
+function OnCallRosterPanel({
+  recipients,
+  error,
+  loading,
+}: {
+  recipients: EscalationRecipient[] | null;
+  error: string | null;
+  loading: boolean;
+}) {
+  if (loading && recipients === null && !error) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-4">
+        <div className="h-5 w-40 bg-border/40 rounded animate-pulse mb-3" />
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-10 bg-border/30 rounded animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 text-sm text-foreground">
+          <Users className="w-4 h-4 text-muted" />
+          <span className="font-semibold">On-call roster</span>
+        </div>
+        <p className="text-sm text-muted mt-2">Could not load on-call roster: {error}</p>
+      </div>
+    );
+  }
+
+  const list = recipients ?? [];
+  const reachable = list.filter((r) => !r.optedOut).length;
+  const optedOut = list.length - reachable;
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="p-4 border-b border-border flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">On-call roster</h2>
+          </div>
+          <p className="text-xs text-muted mt-1">
+            Tenant admins and owners who are paged when an escalation fires. Toggles reflect each
+            teammate&apos;s current escalation notification preferences.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2 py-1 rounded-md bg-green-500/10 text-green-500 font-medium">
+            {reachable} reachable
+          </span>
+          {optedOut > 0 && (
+            <span className="px-2 py-1 rounded-md bg-red-500/10 text-red-500 font-medium flex items-center gap-1">
+              <BellOff className="w-3 h-3" />
+              {optedOut} silenced
+            </span>
+          )}
+        </div>
+      </div>
+
+      {list.length === 0 ? (
+        <div className="p-6 text-center text-muted">
+          <UserX className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No tenant admin or owner accounts found.</p>
+          <p className="text-xs mt-1">Invite at least one admin so escalations have a human to reach.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {list.map((r) => {
+            const inApp = r.prefs.inApp;
+            const email = r.prefs.email;
+            const fullySilenced = r.optedOut;
+            const partiallySilenced = !fullySilenced && (!inApp || !email);
+
+            return (
+              <li
+                key={r.id}
+                className={`px-4 py-3 flex items-center justify-between gap-3 ${
+                  fullySilenced ? 'bg-red-500/5' : ''
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {r.name ?? r.email}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted/15 text-muted">
+                      {r.role}
+                    </span>
+                    {fullySilenced && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 font-semibold flex items-center gap-1">
+                        <BellOff className="w-3 h-3" />
+                        Will not be paged
+                      </span>
+                    )}
+                    {partiallySilenced && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-500 font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Partial coverage
+                      </span>
+                    )}
+                  </div>
+                  {r.name && <div className="text-xs text-muted truncate">{r.email}</div>}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 text-xs">
+                  <span
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md ${
+                      inApp ? 'bg-green-500/10 text-green-500' : 'bg-muted/10 text-muted line-through'
+                    }`}
+                    title={inApp ? 'In-app escalation alerts on' : 'In-app escalation alerts muted'}
+                  >
+                    {inApp ? <BellRing className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
+                    In-app
+                  </span>
+                  <span
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md ${
+                      email ? 'bg-green-500/10 text-green-500' : 'bg-muted/10 text-muted line-through'
+                    }`}
+                    title={email ? 'Email escalation alerts on' : 'Email escalation alerts muted'}
+                  >
+                    {email ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
+                    Email
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function WebhookSecuritySection({

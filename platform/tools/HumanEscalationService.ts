@@ -185,13 +185,18 @@ export async function notifyHumanEscalation(task: EscalationTask): Promise<void>
       tenantName = (tenantRows[0].name as string | null) ?? undefined;
     }
 
+    // NOTE: Ordering and audience here are kept in lock-step with
+    // listEscalationRecipients so the on-call roster shown in the
+    // Reliability > Escalations panel is an accurate preview of who
+    // will actually be paged.
     const { rows: userRows } = await pool.query(
       `SELECT email FROM users
        WHERE tenant_id = $1
          AND role IN ('admin', 'owner')
          AND email IS NOT NULL
          AND COALESCE(is_active, TRUE) = TRUE
-       LIMIT 10`,
+       ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END,
+                LOWER(email) ASC`,
       [task.tenantId],
     );
     recipients = userRows
@@ -340,6 +345,69 @@ export async function updateEscalationTask(
 
     if (rows.length === 0) return null;
     return mapRow(rows[0]);
+  });
+}
+
+export interface EscalationRecipient {
+  id: string;
+  email: string;
+  name: string | null;
+  role: 'admin' | 'owner';
+  prefs: { inApp: boolean; email: boolean };
+  optedOut: boolean;
+}
+
+/**
+ * Returns the on-call roster for a tenant: admin/owner users that the
+ * escalation fan-out targets, paired with their current escalation
+ * in-app/email preferences. Used by the Reliability > Escalations panel
+ * so admins can see at a glance who will (or won't) be paged next.
+ */
+export async function listEscalationRecipients(
+  tenantId: string,
+): Promise<EscalationRecipient[]> {
+  return withTenant(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT u.id,
+              u.email,
+              u.first_name,
+              u.last_name,
+              u.role,
+              COALESCE(in_app_pref.enabled, TRUE) AS in_app_enabled,
+              COALESCE(email_pref.enabled, TRUE)  AS email_enabled
+         FROM users u
+         LEFT JOIN user_notification_preferences in_app_pref
+                ON in_app_pref.user_id = u.id
+               AND in_app_pref.category = 'escalation'
+               AND in_app_pref.channel  = 'in_app'
+         LEFT JOIN user_notification_preferences email_pref
+                ON email_pref.user_id = u.id
+               AND email_pref.category = 'escalation'
+               AND email_pref.channel  = 'email'
+        WHERE u.tenant_id = $1
+          AND u.role IN ('admin', 'owner')
+          AND u.email IS NOT NULL
+          AND COALESCE(u.is_active, TRUE) = TRUE
+        ORDER BY CASE u.role WHEN 'owner' THEN 0 ELSE 1 END,
+                 LOWER(u.email) ASC`,
+      [tenantId],
+    );
+
+    return rows.map((row) => {
+      const first = (row.first_name as string | null) ?? '';
+      const last = (row.last_name as string | null) ?? '';
+      const fullName = `${first} ${last}`.trim();
+      const inApp = row.in_app_enabled !== false;
+      const email = row.email_enabled !== false;
+      return {
+        id: row.id as string,
+        email: row.email as string,
+        name: fullName.length > 0 ? fullName : null,
+        role: row.role as 'admin' | 'owner',
+        prefs: { inApp, email },
+        optedOut: !inApp && !email,
+      };
+    });
   });
 }
 

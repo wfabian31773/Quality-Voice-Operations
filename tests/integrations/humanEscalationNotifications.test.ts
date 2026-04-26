@@ -164,6 +164,44 @@ describe('notifyHumanEscalation', () => {
     expect(templateArg.callSessionId).toBe('call-1');
   });
 
+  it('emails every admin/owner (no arbitrary cap) and uses deterministic ordering so the on-call roster matches dispatch', async () => {
+    // 12 admin/owner accounts — historically this path capped at 10 with
+    // no ordering, which made the on-call roster panel misleading for
+    // tenants with many admins. Dispatch must now match listEscalationRecipients.
+    const adminEmails = Array.from({ length: 12 }, (_, i) => ({ email: `admin${i + 1}@acme.test` }));
+
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant active users
+      .mockResolvedValueOnce({ rows: [] }) // in_app preference filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme Co' }] }) // tenant name
+      .mockResolvedValueOnce({ rows: adminEmails }) // admin recipient lookup
+      .mockResolvedValueOnce({ rows: [] }); // email preference filter (nobody opted out)
+
+    const { notifyHumanEscalation } = await import(
+      '../../platform/tools/HumanEscalationService'
+    );
+
+    await notifyHumanEscalation(baseTask);
+
+    // All 12 admins receive the escalation email — no LIMIT 10 cap.
+    expect(sendEmailMock).toHaveBeenCalledTimes(12);
+
+    // The admin recipient lookup query must be ordered deterministically
+    // (owners first, then case-insensitive email) so the roster endpoint
+    // and the dispatcher always agree on who appears in the rotation.
+    const adminLookupCall = queryMock.mock.calls.find(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes("role IN ('admin', 'owner')") &&
+        sql.includes('FROM users'),
+    );
+    expect(adminLookupCall).toBeDefined();
+    const sql = (adminLookupCall as unknown[])[0] as string;
+    expect(sql).toMatch(/ORDER BY[\s\S]*CASE role WHEN 'owner' THEN 0 ELSE 1 END[\s\S]*LOWER\(email\) ASC/);
+    expect(sql).not.toMatch(/LIMIT\s+10/i);
+  });
+
   it('sends to everyone when no preferences are stored (default-on)', async () => {
     queryMock
       // 1. tenant active users
