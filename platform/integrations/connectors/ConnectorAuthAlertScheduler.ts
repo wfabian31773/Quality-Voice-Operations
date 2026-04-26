@@ -17,6 +17,7 @@ import {
   loadMuteSetsForTenants,
   recordDigestSent,
 } from './ConnectorAlertPreferences';
+import { getTenantAlertEmailRecipients } from './ConnectorAlertRecipients';
 
 const logger = createLogger('CONNECTOR_AUTH_ALERT');
 
@@ -136,33 +137,13 @@ async function getTenantAdmins(tenantId: string): Promise<{
     logger.warn('Failed to look up tenant name', { tenantId, error: String(err) });
   }
 
-  try {
-    // Pull from both canonical user_roles and legacy users.role; ORDER BY
-    // makes the LIMIT subset deterministic for large admin teams.
-    const { rows } = await pool.query(
-      `SELECT DISTINCT u.id, u.email, u.created_at
-         FROM users u
-         LEFT JOIN user_roles ur
-           ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
-        WHERE u.tenant_id = $1
-          AND COALESCE(u.is_active, TRUE) = TRUE
-          AND (
-            ur.role IN ('tenant_owner', 'operations_manager')
-            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
-          )
-        ORDER BY u.created_at NULLS LAST, u.id
-        LIMIT $2`,
-      [tenantId, MAX_RECIPIENTS_PER_TENANT],
-    );
-    userIds = rows
-      .map((r) => (r.id as string | null) ?? '')
-      .filter((id): id is string => Boolean(id));
-    emails = rows
-      .map((r) => (r.email as string | null) ?? '')
-      .filter((e): e is string => Boolean(e));
-  } catch (err) {
-    logger.warn('Failed to look up tenant admin recipients', { tenantId, error: String(err) });
-  }
+  // Delegated to the shared helper so this lookup stays in lock-step with
+  // the SyncErrorAlerter's per-event / digest / recovery / SMS recipient
+  // queries — every connector notification class must agree on who counts
+  // as a notification recipient.
+  const recipients = await getTenantAlertEmailRecipients(tenantId, MAX_RECIPIENTS_PER_TENANT);
+  emails = recipients.emails;
+  userIds = recipients.userIds;
 
   return { name, emails, userIds };
 }

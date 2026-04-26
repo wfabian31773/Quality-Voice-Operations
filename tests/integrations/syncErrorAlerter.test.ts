@@ -677,7 +677,11 @@ describe('notifyConnectorSyncError', () => {
   //       b. SELECT user_id, enabled FROM user_notification_preferences ... (in_app pref filter)
   //       c. INSERT INTO tenant_notifications ... (per opted-in user)
   //  3. SELECT name FROM tenants WHERE id = $1
-  //  4. SELECT email FROM users WHERE role IN ('admin','owner') ...
+  //  4. SELECT DISTINCT u.id, u.email FROM users u LEFT JOIN user_roles ur ...
+  //     (shared helper — accepts the canonical tenant_owner /
+  //     operations_manager roles via user_roles in addition to the legacy
+  //     users.role values, so SyncErrorAlerter agrees with the auth-alert
+  //     scheduler on who counts as a notification recipient)
   //  5. filterEmailRecipientsByPreference (SELECT ... LEFT JOIN user_notification_preferences)
   //  6. UPDATE integrations SET auth_alert_sent_at = NOW() ... (stamp marker)
 
@@ -856,5 +860,78 @@ describe('notifyConnectorSyncError', () => {
       return sql.includes('UPDATE integrations') && sql.includes('auth_alert_sent_at');
     });
     expect(stampCall).toBeDefined();
+  });
+
+  it('reaches a recipient who only holds the tenant_owner role via user_roles', async () => {
+    // Regression test: prior to the shared-recipient refactor, the
+    // SyncErrorAlerter only matched on the legacy `users.role` column
+    // ('admin','owner') and silently dropped users whose
+    // tenant_owner / operations_manager role lived in the user_roles join.
+    // Those users still got reconnect nudges from the auth-alert scheduler
+    // but were missing from per-event sync error emails. This test asserts
+    // the recipient query is now the shared helper's JOIN — accepting role
+    // values from user_roles — and that an email actually goes out to a
+    // user who only holds the role there.
+    queryMock
+      // 0. isConnectorMuted — not muted
+      .mockResolvedValueOnce({ rows: [] })
+      // 1. throttle check — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // 2. tenant name lookup
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 3. shared recipient helper query — return a tenant_owner whose
+      //    legacy users.role is something else (e.g. NULL/regular agent)
+      //    but who matches via the user_roles JOIN.
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-owner', email: 'owner-via-roles@acme.test' }],
+      })
+      // 4. filterEmailRecipientsByPreference — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 5a. fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-owner' }] })
+      // 5b. fanoutInAppNotification: in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 5c. INSERT for user-owner
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. getConnectorAlertSettings — digest mode disabled
+      .mockResolvedValueOnce({ rows: [] })
+      // 7. UPDATE integrations SET auth_alert_sent_at
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError(baseParams);
+
+    // The recipient query MUST be the shared helper's JOIN — i.e. it
+    // references the user_roles table and the canonical tenant_owner /
+    // operations_manager role values. If this assertion regresses, we've
+    // gone back to the old `role IN ('admin','owner')` query that silently
+    // drops user_roles-only owners.
+    const recipientQuery = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return (
+        sql.includes('FROM users u') &&
+        sql.includes('LEFT JOIN user_roles ur') &&
+        sql.includes('u.email')
+      );
+    });
+    expect(recipientQuery).toBeDefined();
+    const sql = String(recipientQuery![0]);
+    // user_roles must accept the canonical newer role values…
+    expect(sql).toContain("ur.role IN ('tenant_owner', 'operations_manager')");
+    // …and the legacy users.role column must keep accepting admin/owner
+    // alongside the new role names so backwards compatibility holds.
+    expect(sql).toContain(
+      "u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')",
+    );
+    const recipientArgs = recipientQuery![1] as unknown[];
+    expect(recipientArgs[0]).toBe('tenant-1');
+
+    // The email actually went out to the user_roles-only owner.
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect((sendEmailMock.mock.calls[0][0] as { to: string }).to).toBe(
+      'owner-via-roles@acme.test',
+    );
   });
 });

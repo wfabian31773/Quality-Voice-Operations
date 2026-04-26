@@ -10,6 +10,10 @@ import {
   getConnectorAlertSettings,
   isConnectorMuted,
 } from './ConnectorAlertPreferences';
+import {
+  getTenantAlertEmailRecipients,
+  getTenantAlertPhoneRecipients,
+} from './ConnectorAlertRecipients';
 import type { ConnectorType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -136,25 +140,18 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     if (tenantRows.length > 0) {
       tenantName = (tenantRows[0].name as string | null) ?? undefined;
     }
-
-    const { rows: userRows } = await pool.query(
-      `SELECT email FROM users
-       WHERE tenant_id = $1
-         AND role IN ('admin', 'owner')
-         AND email IS NOT NULL
-         AND COALESCE(is_active, TRUE) = TRUE
-       LIMIT 5`,
-      [tenantId],
-    );
-    allAdminEmails = userRows
-      .map((r) => (r.email as string | null) ?? '')
-      .filter((e): e is string => Boolean(e));
   } catch (err) {
-    logger.warn('Failed to look up tenant admins for sync alert email', {
+    logger.warn('Failed to look up tenant name for sync alert email', {
       tenantId,
       error: String(err),
     });
   }
+
+  // Use the shared recipient helper so per-event sync error emails reach the
+  // same set of users as the auth-alert scheduler's reconnect nudges —
+  // including tenant owners and operations managers who only hold the role
+  // via the `user_roles` join.
+  ({ emails: allAdminEmails } = await getTenantAlertEmailRecipients(tenantId, 5));
 
   let recipients: string[] = [];
   if (allAdminEmails.length > 0) {
@@ -436,33 +433,17 @@ export async function notifySustainedConnectorFailure(
   }
 
   // Admin/owner phone numbers, joined with user id so we can filter by the
-  // per-user "sms" notification preference.
-  let phoneRows: Array<{ user_id: string; phone: string }> = [];
-  try {
-    const { rows: userRows } = await pool.query<{ id: string; phone_number: string | null }>(
-      `SELECT id, phone_number FROM users
-        WHERE tenant_id = $1
-          AND role IN ('admin', 'owner')
-          AND phone_number IS NOT NULL
-          AND phone_number <> ''
-          AND COALESCE(is_active, TRUE) = TRUE
-        LIMIT 5`,
-      [tenantId],
-    );
-    phoneRows = userRows
-      .map((r) => {
-        const normalized = normalizeE164(r.phone_number);
-        if (!normalized) return null;
-        return { user_id: r.id, phone: normalized };
-      })
-      .filter((p): p is { user_id: string; phone: string } => p !== null);
-  } catch (err) {
-    logger.warn('Failed to look up admin phone numbers for sustained SMS alert', {
-      tenantId,
-      error: String(err),
-    });
-    return;
-  }
+  // per-user "sms" notification preference. Pulled via the shared recipient
+  // helper so tenant owners / operations managers who only hold the role via
+  // user_roles are still paged on sustained outages.
+  const phoneRecipients = await getTenantAlertPhoneRecipients(tenantId, 5);
+  const phoneRows: Array<{ user_id: string; phone: string }> = phoneRecipients
+    .map((r) => {
+      const normalized = normalizeE164(r.phone_number);
+      if (!normalized) return null;
+      return { user_id: r.id, phone: normalized };
+    })
+    .filter((p): p is { user_id: string; phone: string } => p !== null);
 
   if (phoneRows.length === 0) {
     logger.info('No admin phone numbers on file for sustained SMS alert', {
@@ -760,25 +741,17 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
     if (tenantRows.length > 0) {
       tenantName = (tenantRows[0].name as string | null) ?? undefined;
     }
-
-    const { rows: userRows } = await pool.query(
-      `SELECT email FROM users
-       WHERE tenant_id = $1
-         AND role IN ('admin', 'owner')
-         AND email IS NOT NULL
-         AND COALESCE(is_active, TRUE) = TRUE
-       LIMIT 5`,
-      [tenantId],
-    );
-    recipients = userRows
-      .map((r) => (r.email as string | null) ?? '')
-      .filter((e): e is string => Boolean(e));
   } catch (err) {
-    logger.warn('Failed to look up tenant admins for recovery email', {
+    logger.warn('Failed to look up tenant name for recovery email', {
       tenantId,
       error: String(err),
     });
   }
+
+  // Recovery emails go to the same recipients as the failure path (and the
+  // auth-alert scheduler) — including tenant owners and operations managers
+  // who only hold the role via the `user_roles` join.
+  ({ emails: recipients } = await getTenantAlertEmailRecipients(tenantId, 5));
 
   if (recipients.length === 0) {
     logger.info('Connector recovery in-app notification recorded (no admin emails on file)', {
