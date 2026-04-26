@@ -15,6 +15,8 @@ import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { fetchSalesforceTaskPicklists } from '../../../platform/integrations/connectors/adapters/salesforce';
 import { fetchHubSpotDealPipelines } from '../../../platform/integrations/connectors/adapters/hubspot';
 import { fetchPipedrivePipelinesAndStages } from '../../../platform/integrations/connectors/adapters/pipedrive';
+import { fetchGoogleCalendarList } from '../../../platform/integrations/connectors/adapters/google-calendar';
+import { fetchOutlookCalendarList } from '../../../platform/integrations/connectors/adapters/outlook-calendar';
 import { resolveZohoApiDomain, resolveZohoAccountsServer } from '../../../platform/integrations/connectors/zohoRegion';
 
 const router = Router();
@@ -432,6 +434,36 @@ router.get('/connectors/:integrationId/settings', requireAuth, async (req, res) 
     if (meta.provider === 'zoho') {
       settings.appointmentPipelineId = credentials.appointment_pipeline_id ?? null;
       settings.appointmentStageId = credentials.appointment_stage_id ?? null;
+    }
+    if (meta.provider === 'google-calendar' || meta.provider === 'outlook-calendar') {
+      const rawCalendarId = typeof credentials.calendar_id === 'string' ? credentials.calendar_id.trim() : '';
+      const calendarId = rawCalendarId === '' ? null : rawCalendarId;
+      const timezone = typeof credentials.timezone === 'string' && credentials.timezone.trim() !== ''
+        ? credentials.timezone.trim()
+        : null;
+      settings.calendarId = calendarId;
+      settings.timezone = timezone;
+
+      const isPrimary = !calendarId || calendarId.toLowerCase() === 'primary';
+      if (isPrimary) {
+        settings.calendarLabel = null;
+        settings.calendarLookupError = null;
+      } else if (!fullConfig) {
+        settings.calendarLabel = null;
+        settings.calendarLookupError = null;
+      } else {
+        try {
+          const list = meta.provider === 'google-calendar'
+            ? await fetchGoogleCalendarList(tenantId, fullConfig)
+            : await fetchOutlookCalendarList(tenantId, fullConfig);
+          const match = list.find((c) => c.id === calendarId);
+          settings.calendarLabel = match?.name ?? null;
+          settings.calendarLookupError = null;
+        } catch (err) {
+          settings.calendarLabel = null;
+          settings.calendarLookupError = err instanceof Error ? err.message : String(err);
+        }
+      }
     }
     return res.json({ provider: meta.provider, settings });
   } catch (err) {

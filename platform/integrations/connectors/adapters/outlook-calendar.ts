@@ -7,6 +7,51 @@ const logger = createLogger('OUTLOOK_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
 
+export interface OutlookCalendarSummary {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export async function fetchOutlookCalendarList(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+): Promise<OutlookCalendarSummary[]> {
+  const fresh = await ensureFreshOAuthToken(config);
+  const accessToken = fresh.credentials.access_token ?? '';
+  if (!accessToken) {
+    throw new Error('Missing Outlook Calendar access token — please reconnect.');
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${GRAPH_API}/me/calendars?$select=id,name,isDefaultCalendar&$top=200`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Microsoft Graph calendars error ${res.status}: ${text.slice(0, 200)}`);
+    }
+    const data = await res.json() as {
+      value?: Array<{
+        id: string;
+        name?: string;
+        isDefaultCalendar?: boolean;
+      }>;
+    };
+    const items = data.value ?? [];
+    logger.info('Outlook Calendar list fetched', { tenantId, count: items.length });
+    return items.map((item) => ({
+      id: item.id,
+      name: item.name ?? item.id,
+      isDefault: !!item.isDefaultCalendar,
+    }));
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
   async execute(
     tenantId: TenantId,

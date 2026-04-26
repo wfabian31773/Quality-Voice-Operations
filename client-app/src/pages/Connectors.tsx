@@ -1469,6 +1469,13 @@ interface ConnectorPipelineSettings {
   pipelineLookupError?: string | null;
 }
 
+interface ConnectorCalendarSettings {
+  calendarId?: string | null;
+  timezone?: string | null;
+  calendarLabel?: string | null;
+  calendarLookupError?: string | null;
+}
+
 function PipelineSummary({
   provider,
   integrationId,
@@ -1570,6 +1577,83 @@ function PipelineSummary({
   }
 
   if (rows.length === 0) return null;
+
+  return (
+    <>
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-start gap-2">
+          <Settings className="h-3 w-3 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <span>
+              {row.label}:{' '}
+              <span className={`font-medium ${row.raw ? 'text-amber-700 dark:text-amber-400 font-mono' : 'text-text-primary'}`}>
+                {row.value}
+              </span>
+            </span>
+            {row.hint && (
+              <span className="block text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                {row.hint}
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function CalendarSummary({
+  provider,
+  integrationId,
+}: {
+  provider: 'google-calendar' | 'outlook-calendar';
+  integrationId: string;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['connector-settings', integrationId],
+    queryFn: () =>
+      api.get<{ provider: string; settings: ConnectorCalendarSettings }>(
+        `/connectors/${integrationId}/settings`,
+      ),
+    staleTime: 60_000,
+  });
+
+  if (isLoading || !data) return null;
+  const settings = data.settings ?? {};
+  const providerLabel = provider === 'google-calendar' ? 'Google' : 'Outlook';
+
+  type Row = { label: string; value: string; hint?: string; raw: boolean };
+  const rows: Row[] = [];
+
+  const calendarId = settings.calendarId ?? null;
+  const calendarLabel = settings.calendarLabel ?? null;
+  const lookupError = settings.calendarLookupError ?? null;
+  const isPrimary = !calendarId || calendarId.toLowerCase() === 'primary';
+
+  let calendarValue: string;
+  let calendarRaw = false;
+  let calendarHint: string | undefined;
+  if (isPrimary) {
+    calendarValue = 'Primary calendar';
+  } else if (calendarLabel) {
+    calendarValue = calendarLabel;
+  } else {
+    calendarValue = calendarId ?? '—';
+    calendarRaw = true;
+    if (lookupError) {
+      calendarHint = `Could not load calendar name from ${providerLabel} — open Manage to reconfigure.`;
+    } else {
+      calendarHint = `Saved calendar no longer exists in ${providerLabel} — open Manage to reconfigure.`;
+    }
+  }
+  rows.push({ label: 'Calendar', value: calendarValue, hint: calendarHint, raw: calendarRaw });
+
+  const timezone = settings.timezone ?? null;
+  rows.push({
+    label: 'Timezone',
+    value: timezone ?? 'America/New_York (default)',
+    raw: false,
+  });
 
   return (
     <>
@@ -1729,6 +1813,12 @@ function ConnectedCard({
         </div>
         {(definition.provider === 'hubspot' || definition.provider === 'pipedrive') && (
           <PipelineSummary
+            provider={definition.provider}
+            integrationId={connector.integrationId}
+          />
+        )}
+        {(definition.provider === 'google-calendar' || definition.provider === 'outlook-calendar') && (
+          <CalendarSummary
             provider={definition.provider}
             integrationId={connector.integrationId}
           />
