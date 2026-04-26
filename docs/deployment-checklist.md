@@ -31,6 +31,9 @@
 | `STRIPE_METER_EVENT_AI_MINUTES` | Stripe meter event name for AI minute usage | Stripe Dashboard > Billing > Meters | `ai_minutes` |
 | `VOICE_GATEWAY_BASE_URL` | Public URL of the voice gateway | Your deployment domain | `https://your-domain.replit.app:3001` |
 | `ADMIN_API_BASE_URL` | Public URL of the admin API | Your deployment domain | `https://your-domain.replit.app:3002` |
+| `VITE_BOOK_DEMO_SCHEDULER_URL` | Embedded scheduler URL used by the public `/book-demo` page. Must be set at **build time** (Vite inlines `VITE_*` vars). | Cal.com event link or Calendly link | `https://cal.com/qvo/30min` |
+| `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used to verify the `X-Cal-Signature-256` header on `/book-demo/calendar-webhook`. The endpoint **rejects all unsigned requests in production** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). | Cal.com Webhook config (see §5) | Random 32+ char secret |
+| `SALES_NOTIFICATION_EMAIL` | Inbox that receives "new demo lead" and "booking created/rescheduled/cancelled" notifications from `marketing-leads.ts`. | Your sales / SDR distribution list | `sales@yourdomain.com` |
 
 ### Required (development only)
 
@@ -54,6 +57,9 @@
 | `CAMPAIGN_TENANT_MAX_CONCURRENT` | `5` | Max concurrent outbound calls per tenant |
 | `DISABLE_PHI_LOGGING` | `false` | Set to `true` to redact phone numbers from logs |
 | `ADMIN_INTERNAL_TOKEN` | none | Internal bearer token for inter-service calls |
+| `VITE_BOOK_DEMO_SCHEDULER_PROVIDER` | `cal.com` | Set to `calendly` to switch the `/book-demo` embed and prefill semantics. Must be set at build time. |
+| `CALCOM_WEBHOOK_ALLOW_UNSIGNED` | unset | **Dev/staging only.** Set to `1` to accept unsigned `/book-demo/calendar-webhook` requests when `CALCOM_WEBHOOK_SECRET` is not configured. Has no effect when `NODE_ENV=production` or `APP_ENV=production` — production always fails closed. |
+| `SALES_EMAIL` | none | Legacy fallback for `SALES_NOTIFICATION_EMAIL`. Prefer the latter. |
 
 ## 2. Pre-deployment Validation
 
@@ -197,6 +203,53 @@ Copy the webhook signing secret to `STRIPE_WEBHOOK_SECRET`.
 3. Create **Price** objects for each plan tier (starter/pro/enterprise) and interval (monthly/annual)
 4. Set the Price IDs as `STRIPE_PRICE_{TIER}_{INTERVAL}` environment variables
 
+### Cal.com Webhook (Book a Demo)
+
+The public `/book-demo` page embeds an external scheduler (Cal.com by default, optionally Calendly) and the Admin API exposes `POST /book-demo/calendar-webhook` so the booking lifecycle is mirrored back into the marketing-leads tables and forwarded to the sales inbox.
+
+**Required env vars** (see §1):
+
+- `VITE_BOOK_DEMO_SCHEDULER_URL` — the embed URL (e.g. `https://cal.com/qvo/30min`). Must be present at **`vite build` time** because `VITE_*` vars are inlined into the client bundle. Rebuild and redeploy after changing it.
+- `VITE_BOOK_DEMO_SCHEDULER_PROVIDER` *(optional)* — set to `calendly` to switch the embed semantics; defaults to `cal.com`.
+- `CALCOM_WEBHOOK_SECRET` — HMAC-SHA256 secret. **Production rejects every request that lacks a valid `X-Cal-Signature-256` header**; missing secret returns HTTP 500.
+- `SALES_NOTIFICATION_EMAIL` — sales inbox that receives lead-capture and booking lifecycle emails. When unset, lead capture still succeeds but no email is sent (a debug log is emitted).
+
+#### Step 1 — Create the webhook in Cal.com
+
+1. In Cal.com, go to **Settings → Developer → Webhooks → New Webhook**.
+2. **Subscriber URL**: `https://{ADMIN_API_BASE_URL}/book-demo/calendar-webhook`
+   - This is the **Admin API** host (port 3002 / your public Admin domain), **not** the voice gateway.
+3. **Event Triggers** — subscribe to all three:
+   - `BOOKING_CREATED`
+   - `BOOKING_RESCHEDULED`
+   - `BOOKING_CANCELLED`
+4. **Secret**: paste the value of `CALCOM_WEBHOOK_SECRET`. Generate one with `openssl rand -hex 32` if you do not already have one stored.
+5. Set **Payload Template** to *Default* (the route parses the standard Cal.com envelope `{ triggerEvent, payload: { uid, attendees, organizer, metadata, ... } }`).
+6. Save and use Cal.com's **Send Test** button to fire a sample `BOOKING_CREATED`. A `200 OK` confirms signature verification works.
+
+#### Step 2 — Calendly alternative (optional)
+
+If you switch to Calendly:
+
+1. Set `VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly` and rebuild the client bundle.
+2. Set `VITE_BOOK_DEMO_SCHEDULER_URL` to the public Calendly event link.
+3. Calendly does not currently push into `/book-demo/calendar-webhook` (the verifier is HMAC-SHA256 keyed for Cal.com). Lead capture still works via the on-page form; bookings will only show up in your Calendly dashboard until a Calendly verifier is added.
+
+#### Step 3 — Verify end to end
+
+1. Visit `https://{ADMIN_API_BASE_URL}/book-demo`, fill the form, and submit. The page should land on the embedded scheduler. Confirm the sales inbox receives the "new demo lead" email.
+2. Pick a slot in the embed. Cal.com fires `BOOKING_CREATED`; check the Admin API logs for `Cal.com webhook processed` (rejections show up as `Cal.com webhook rejected`) and confirm a "booking created" email arrives.
+3. From the Cal.com dashboard, reschedule and cancel the test booking — the corresponding lifecycle emails should follow.
+4. If Cal.com shows `401 Invalid signature`, double-check that the secret in Cal.com matches the value in `CALCOM_WEBHOOK_SECRET` exactly (no trailing whitespace).
+5. If you see `500 Webhook secret not configured`, the env var is missing or empty — set it and restart the Admin API.
+
+#### Local / staging testing
+
+For local development without a real Cal.com webhook, you can either:
+
+- Use Cal.com's webhook tester pointed at an `ngrok` tunnel of the Admin API, **or**
+- Set `CALCOM_WEBHOOK_ALLOW_UNSIGNED=1` (only honoured when both `NODE_ENV` and `APP_ENV` are non-production) and POST a hand-crafted JSON envelope. **Never set this in production** — the verifier deliberately ignores it there.
+
 ## 6. Post-Deployment Verification
 
 1. Check server health: `curl https://{ADMIN_API_BASE_URL}/health`
@@ -216,6 +269,9 @@ Copy the webhook signing secret to `STRIPE_WEBHOOK_SECRET`.
 - [ ] `DISABLE_PHI_LOGGING` is set to `true` in production
 - [ ] All Twilio webhook URLs use HTTPS
 - [ ] Stripe webhook signing secret is configured and verified
+- [ ] `CALCOM_WEBHOOK_SECRET` is set (and matches the secret pasted into the Cal.com webhook config) — verifier fails closed in production
+- [ ] `SALES_NOTIFICATION_EMAIL` points at a monitored sales inbox so demo leads and bookings are not silently dropped
+- [ ] `VITE_BOOK_DEMO_SCHEDULER_URL` was set **before** running the production `vite build` (re-run the build if you change it later)
 
 ## 8. Migration Validation Record
 

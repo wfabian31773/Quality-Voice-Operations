@@ -27,6 +27,10 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Federated Ingest API:** Supports federated agent ingestion via REST API, enabling external voice agent systems to push call completion and ticket creation events into QVO. Endpoints are authenticated via API key, rate-limited, and use atomic idempotency. Federated agents are read-only in the platform.
 - **Native Agent Porting (Azul Vision):** Supports running Azul Vision's production agents natively inside QVO's WebSocket-based voice gateway. This involves specific integrations for ticketing and schedule lookups, dual-write mechanisms for tickets, and custom prompts for ophthalmology-specific content.
 
+## Operations
+- **Production runbook:** `docs/deployment-checklist.md` is the source of truth for required env vars, webhook setup (Twilio, Stripe, Cal.com), seeding, and the security checklist. Update it whenever a new env var, webhook, or deployment-time step is added.
+- **Book-a-Demo / Cal.com webhook:** the public `/book-demo` page embeds a Cal.com (or Calendly) scheduler controlled by `VITE_BOOK_DEMO_SCHEDULER_URL` (+ optional `VITE_BOOK_DEMO_SCHEDULER_PROVIDER`). The Admin API exposes `POST /book-demo/calendar-webhook`, which verifies an HMAC-SHA256 signature using `CALCOM_WEBHOOK_SECRET` and fails closed in production. Booking lifecycle and lead capture emails go to `SALES_NOTIFICATION_EMAIL`. Cal.com webhook must subscribe to `BOOKING_CREATED`, `BOOKING_RESCHEDULED`, and `BOOKING_CANCELLED` and point at `https://<admin-host>/book-demo/calendar-webhook` — full setup steps in `docs/deployment-checklist.md` §5.
+
 ## External Dependencies
 - **Database:** PostgreSQL (Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).
