@@ -5,8 +5,9 @@ import {
   Inbox, Mail, Building2, Phone, ExternalLink, Calendar, RefreshCw,
   CheckCircle, X as XIcon, Search, Filter, ChevronDown, ChevronRight,
   CalendarCheck, CalendarX, CalendarClock, MailCheck, UserCheck, FileText,
+  Download,
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 
 type LeadSource = 'book_demo' | 'roi_calculator' | 'contact';
@@ -141,6 +142,9 @@ export default function AdminSalesInbox() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
 
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
   const limit = 25;
 
   const queryKey = ['marketing-leads', { source, booking, status, search, page }];
@@ -182,6 +186,51 @@ export default function AdminSalesInbox() {
     setPage(1);
   };
 
+  const handleExportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const params = new URLSearchParams();
+      if (source !== 'all') params.set('source', source);
+      if (booking !== 'all') params.set('booking', booking);
+      if (status !== 'all') params.set('status', status);
+      if (search.trim()) params.set('q', search.trim());
+
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const qs = params.toString();
+      const res = await fetch(`/api/platform/marketing-leads.csv${qs ? `?${qs}` : ''}`, {
+        headers,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as { error?: string }));
+        throw new Error(body.error || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+
+      const cd = res.headers.get('content-disposition') ?? '';
+      const match = /filename\s*=\s*"?([^";]+)"?/i.exec(cd);
+      const filename = match?.[1] ?? `sales-inbox-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <GlobalScopeBanner
@@ -200,15 +249,32 @@ export default function AdminSalesInbox() {
             {counts ? `${counts.by_status.new} new, ${counts.by_status.contacted} contacted, ${counts.by_status.closed} closed` : ''}
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
-        >
-          <RefreshCw className={clsx('h-4 w-4', isFetching && 'animate-spin')} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={exporting}
+            title="Download the current filtered view as a CSV file"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 disabled:opacity-50"
+          >
+            <Download className={clsx('h-4 w-4', exporting && 'animate-pulse')} />
+            {exporting ? 'Preparing CSV…' : 'Download CSV'}
+          </button>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw className={clsx('h-4 w-4', isFetching && 'animate-spin')} />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {exportError && (
+        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+          Export failed: {exportError}
+        </div>
+      )}
 
       {counts && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

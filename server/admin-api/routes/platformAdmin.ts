@@ -14,9 +14,11 @@ import { redactPHI } from '../../../platform/core/phi/redact';
 import { getConversationCost } from '../../../platform/billing/cost';
 import { listToolExecutions } from '../../../platform/tools/ToolExecutionService';
 import {
+  iterateLeadsForExport,
   listLeads,
   updateLeadStatus,
   type BookingStatusFilter,
+  type LeadListItem,
   type LeadSource,
   type LeadStatus,
 } from '../services/marketing-leads';
@@ -720,6 +722,122 @@ const VALID_LEAD_SOURCES: ReadonlyArray<LeadSource | 'all'> = ['all', 'book_demo
 const VALID_BOOKING_STATUSES: ReadonlyArray<BookingStatusFilter> = ['all', 'booked', 'no_booking', 'cancelled'];
 const VALID_LEAD_STATUSES: ReadonlyArray<LeadStatus | 'all'> = ['all', 'new', 'contacted', 'closed'];
 const TRIAGEABLE_LEAD_STATUSES: ReadonlyArray<LeadStatus> = ['new', 'contacted', 'closed'];
+
+// Mitigates CSV formula injection (CWE-1236): when a spreadsheet (Excel,
+// Numbers, LibreOffice, Google Sheets) opens a CSV cell that begins with
+// `=`, `+`, `-`, `@`, TAB, or CR, it interprets the cell as a formula and
+// will execute it. Lead names/companies/emails are user-controlled, so we
+// prefix risky leading characters with a single quote so the cell is
+// rendered as literal text.
+function sanitizeForFormulaInjection(value: string): string {
+  if (value === '') return value;
+  const first = value.charCodeAt(0);
+  // = + - @ \t \r
+  if (first === 0x3d || first === 0x2b || first === 0x2d || first === 0x40 || first === 0x09 || first === 0x0d) {
+    return `'${value}`;
+  }
+  return value;
+}
+
+function csvField(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const raw = typeof value === 'string' ? value : String(value);
+  if (raw === '') return '';
+  const s = sanitizeForFormulaInjection(raw);
+  if (/[",\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function getLatestBooking(lead: LeadListItem): Record<string, unknown> | null {
+  const booking = (lead.payload as { booking?: unknown }).booking;
+  if (booking && typeof booking === 'object') return booking as Record<string, unknown>;
+  return null;
+}
+
+const CSV_COLUMNS = [
+  'id',
+  'source',
+  'name',
+  'email',
+  'company',
+  'phone',
+  'status',
+  'booking_start',
+  'booking_timezone',
+  'meeting_url',
+  'reschedule_url',
+  'cancel_url',
+  'created_at',
+] as const;
+
+router.get('/platform/marketing-leads.csv', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const sourceParam = String(req.query.source ?? 'all');
+  const bookingParam = String(req.query.booking ?? 'all');
+  const statusParam = String(req.query.status ?? 'all');
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+
+  const source = (VALID_LEAD_SOURCES as readonly string[]).includes(sourceParam)
+    ? (sourceParam as LeadSource | 'all')
+    : 'all';
+  const booking = (VALID_BOOKING_STATUSES as readonly string[]).includes(bookingParam)
+    ? (bookingParam as BookingStatusFilter)
+    : 'all';
+  const status = (VALID_LEAD_STATUSES as readonly string[]).includes(statusParam)
+    ? (statusParam as LeadStatus | 'all')
+    : 'all';
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = `sales-inbox-${stamp}.csv`;
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  let exported = 0;
+  try {
+    res.write(CSV_COLUMNS.join(',') + '\r\n');
+    for await (const lead of iterateLeadsForExport({ source, status, bookingStatus: booking, q })) {
+      const latest = getLatestBooking(lead);
+      const row = [
+        lead.id,
+        lead.source,
+        lead.name,
+        lead.email,
+        lead.company,
+        lead.phone,
+        lead.status,
+        latest?.startTime ?? '',
+        latest?.timezone ?? '',
+        latest?.meetingUrl ?? '',
+        latest?.rescheduleUrl ?? '',
+        latest?.cancelUrl ?? '',
+        lead.created_at,
+      ].map(csvField).join(',');
+      res.write(row + '\r\n');
+      exported += 1;
+    }
+    res.end();
+    logger.info('Marketing leads CSV exported', {
+      adminUserId: req.user?.userId,
+      filters: { source, booking, status, q: q ?? null },
+      rows: exported,
+    });
+  } catch (err) {
+    logger.error('Failed to stream marketing leads CSV', {
+      error: err instanceof Error ? err.message : String(err),
+      exported,
+    });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to export marketing leads' });
+    }
+    // Headers already sent — terminate the stream so the client sees a partial download.
+    try { res.end(); } catch { /* ignore */ }
+  }
+});
 
 router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async (req, res) => {
   const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, 200);

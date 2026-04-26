@@ -104,13 +104,7 @@ export interface LeadListResult {
   };
 }
 
-export async function listLeads(filters: LeadListFilters = {}): Promise<LeadListResult> {
-  await ensureTable();
-  const pool = getPlatformPool();
-
-  const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
-  const offset = Math.max(filters.offset ?? 0, 0);
-
+function buildLeadWhereClause(filters: LeadListFilters): { where: string; values: unknown[] } {
   const conditions: string[] = [];
   const values: unknown[] = [];
 
@@ -142,7 +136,38 @@ export async function listLeads(filters: LeadListFilters = {}): Promise<LeadList
     conditions.push(`(LOWER(email) LIKE LOWER($${idx}) OR LOWER(COALESCE(name,'')) LIKE LOWER($${idx}) OR LOWER(COALESCE(company,'')) LIKE LOWER($${idx}))`);
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  return {
+    where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
+    values,
+  };
+}
+
+function mapLeadRow(r: Record<string, unknown>): LeadListItem {
+  return {
+    id: Number(r.id),
+    source: r.source as LeadSource,
+    name: (r.name as string | null) ?? null,
+    email: r.email as string,
+    company: (r.company as string | null) ?? null,
+    phone: (r.phone as string | null) ?? null,
+    payload: (r.payload as Record<string, unknown>) ?? {},
+    notified: Boolean(r.notified),
+    status: ((r.status as LeadStatus) ?? 'new'),
+    status_notes: (r.status_notes as string | null) ?? null,
+    status_updated_at: r.status_updated_at ? new Date(r.status_updated_at as string).toISOString() : null,
+    status_updated_by: (r.status_updated_by as string | null) ?? null,
+    created_at: new Date(r.created_at as string).toISOString(),
+  };
+}
+
+export async function listLeads(filters: LeadListFilters = {}): Promise<LeadListResult> {
+  await ensureTable();
+  const pool = getPlatformPool();
+
+  const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+  const offset = Math.max(filters.offset ?? 0, 0);
+
+  const { where, values } = buildLeadWhereClause(filters);
 
   const listQuery = `
     SELECT id, source, name, email, company, phone, payload, notified,
@@ -179,21 +204,7 @@ export async function listLeads(filters: LeadListFilters = {}): Promise<LeadList
     `),
   ]);
 
-  const leads = listRes.rows.map((r): LeadListItem => ({
-    id: Number(r.id),
-    source: r.source as LeadSource,
-    name: r.name,
-    email: r.email,
-    company: r.company,
-    phone: r.phone,
-    payload: r.payload ?? {},
-    notified: Boolean(r.notified),
-    status: (r.status as LeadStatus) ?? 'new',
-    status_notes: r.status_notes,
-    status_updated_at: r.status_updated_at ? new Date(r.status_updated_at).toISOString() : null,
-    status_updated_by: r.status_updated_by,
-    created_at: new Date(r.created_at).toISOString(),
-  }));
+  const leads = listRes.rows.map(mapLeadRow);
 
   const summary = summaryRes.rows[0] ?? {};
   return {
@@ -218,6 +229,40 @@ export async function listLeads(filters: LeadListFilters = {}): Promise<LeadList
       total: summary.total ?? 0,
     },
   };
+}
+
+export type LeadExportFilters = Pick<LeadListFilters, 'source' | 'status' | 'bookingStatus' | 'q'>;
+
+export async function* iterateLeadsForExport(
+  filters: LeadExportFilters = {},
+  batchSize = 500,
+): AsyncGenerator<LeadListItem> {
+  await ensureTable();
+  const pool = getPlatformPool();
+  const { where, values } = buildLeadWhereClause(filters);
+  const safeBatch = Math.min(Math.max(batchSize, 50), 1000);
+
+  let offset = 0;
+  // Stream rows in batches so very large result sets do not load entirely into memory.
+  for (;;) {
+    const result = await pool.query(
+      `
+        SELECT id, source, name, email, company, phone, payload, notified,
+               status, status_notes, status_updated_at, status_updated_by, created_at
+        FROM marketing_leads
+        ${where}
+        ORDER BY created_at DESC, id DESC
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+      `,
+      [...values, safeBatch, offset],
+    );
+    if (result.rows.length === 0) return;
+    for (const row of result.rows) {
+      yield mapLeadRow(row);
+    }
+    if (result.rows.length < safeBatch) return;
+    offset += result.rows.length;
+  }
 }
 
 export async function updateLeadStatus(
