@@ -16,6 +16,7 @@ import {
   escapeHtml,
 } from '../../../platform/help/supportReplyEmail';
 import { tryReserveRetrySlot } from '../../../platform/help/docsFeedbackRetryLimiter';
+import { tryReserveSupportReplyRetrySlot } from '../../../platform/help/supportReplyRetryLimiter';
 import { logError } from '../../../platform/core/observability';
 import {
   REPLY_DELIVERY_ALERT_THRESHOLD,
@@ -1252,6 +1253,24 @@ router.post(
     const replyIdNum = parseInt(replyId, 10);
     if (!Number.isFinite(replyIdNum) || replyIdNum <= 0) {
       res.status(400).json({ error: 'Invalid replyId' });
+      return;
+    }
+
+    // Atomically check the per-reply cooldown AND reserve the slot in a
+    // single synchronous step before doing any awaited work. Mirrors the
+    // docs-feedback retry limiter: two concurrent retries against the same
+    // failed reply cannot both pass the gate — Node is single-threaded, and
+    // the reserve happens before any await, so the second handler always
+    // observes the first handler's reservation. This is the anti-spam gate
+    // that keeps an admin mashing the Retry button from re-sending to a
+    // bouncing recipient on every click.
+    const limit = tryReserveSupportReplyRetrySlot(replyIdNum);
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(limit.retryAfterSeconds));
+      res.status(429).json({
+        error: `Retry rate limit reached. Try again in ${limit.retryAfterSeconds} second${limit.retryAfterSeconds === 1 ? '' : 's'}.`,
+        retry_after_seconds: limit.retryAfterSeconds,
+      });
       return;
     }
 
