@@ -1973,7 +1973,15 @@ function SupportInboxTab() {
 
   const { data: stats } = useQuery({
     queryKey: ['support-ticket-stats'],
-    queryFn: () => api.get<{ total: number; open: number; email_failed: number; email_failed_open: number }>(`/support/tickets/stats`),
+    queryFn: () =>
+      api.get<{
+        total: number;
+        open: number;
+        email_failed: number;
+        email_failed_open: number;
+        reply_email_failed: number;
+        reply_email_failed_open: number;
+      }>(`/support/tickets/stats`),
     refetchInterval: 60_000,
   });
 
@@ -1990,6 +1998,8 @@ function SupportInboxTab() {
 
   const failedCount = stats?.email_failed ?? 0;
   const failedOpenCount = stats?.email_failed_open ?? 0;
+  const replyFailedCount = stats?.reply_email_failed ?? 0;
+  const replyFailedOpenCount = stats?.reply_email_failed_open ?? 0;
   return (
     <div className="space-y-4">
       {failedCount > 0 && (
@@ -1997,13 +2007,30 @@ function SupportInboxTab() {
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <div className="text-sm">
             <div className="font-medium">
-              {failedCount} ticket{failedCount === 1 ? '' : 's'} with email delivery errors
+              {failedCount} ticket{failedCount === 1 ? '' : 's'} with initial-send email delivery errors
               {failedOpenCount > 0 && failedOpenCount !== failedCount && (
                 <span className="font-normal"> ({failedOpenCount} still open)</span>
               )}
             </div>
             <div className="text-xs mt-0.5">
               The platform team has been alerted. Check SMTP configuration and the routing destinations below.
+            </div>
+          </div>
+        </div>
+      )}
+      {replyFailedCount > 0 && (
+        <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <div className="font-medium">
+              {replyFailedCount} ticket{replyFailedCount === 1 ? '' : 's'} with admin reply delivery errors
+              {replyFailedOpenCount > 0 && replyFailedOpenCount !== replyFailedCount && (
+                <span className="font-normal"> ({replyFailedOpenCount} still open)</span>
+              )}
+            </div>
+            <div className="text-xs mt-0.5">
+              An outbound admin reply failed to deliver. Auto-retries run in the background; persistent failures
+              raise an operations alert. Open the ticket to see the failed reply and re-send manually.
             </div>
           </div>
         </div>

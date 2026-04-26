@@ -38,7 +38,11 @@ describe('SupportReplyRetryScheduler — wiring & contract', () => {
   });
 
   it('caps total automatic attempts so the human still sees a Failed badge eventually', () => {
-    expect(schedulerFile).toMatch(/MAX_RETRY_ATTEMPTS\s*=\s*\d+/);
+    // MAX_RETRY_ATTEMPTS is derived from REPLY_DELIVERY_ALERT_THRESHOLD so the
+    // retry cap and the ops-alert boundary stay in lockstep.
+    expect(schedulerFile).toMatch(
+      /MAX_RETRY_ATTEMPTS\s*=\s*(?:\d+|REPLY_DELIVERY_ALERT_THRESHOLD)/,
+    );
   });
 
   it('updates the row in place: increments retry_count and sets last_retry_at', () => {

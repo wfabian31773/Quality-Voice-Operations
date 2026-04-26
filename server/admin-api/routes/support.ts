@@ -17,6 +17,10 @@ import {
 } from '../../../platform/help/supportReplyEmail';
 import { tryReserveRetrySlot } from '../../../platform/help/docsFeedbackRetryLimiter';
 import { logError } from '../../../platform/core/observability';
+import {
+  REPLY_DELIVERY_ALERT_THRESHOLD,
+  raiseReplyDeliveryFailureAlert,
+} from '../../../platform/help/supportReplyDeliveryAlert';
 
 const logger = createLogger('SUPPORT');
 const router = Router();
@@ -888,20 +892,40 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
 router.get('/support/tickets/stats', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
     const pool = getPlatformPool();
+    // Initial-send failures live on support_tickets.email_error. Outbound
+    // reply failures live on support_ticket_replies.email_error and are
+    // counted separately so the admin banner can call them out.
     const r = await pool.query<{
       total: number;
       open: number;
       email_failed: number;
       email_failed_open: number;
+      reply_email_failed: number;
+      reply_email_failed_open: number;
     }>(
-      `SELECT
-         COUNT(*)::int AS total,
-         COUNT(*) FILTER (WHERE status IN ('open','in_progress'))::int AS open,
-         COUNT(*) FILTER (WHERE email_error IS NOT NULL)::int AS email_failed,
-         COUNT(*) FILTER (WHERE email_error IS NOT NULL AND status IN ('open','in_progress'))::int AS email_failed_open
-       FROM support_tickets`,
+      `WITH reply_failures AS (
+         SELECT DISTINCT t.id AS ticket_id, t.status AS ticket_status
+         FROM support_ticket_replies r
+         JOIN support_tickets t ON t.id = r.ticket_id
+         WHERE r.direction = 'outbound'
+           AND r.email_error IS NOT NULL
+       )
+       SELECT
+         (SELECT COUNT(*)::int FROM support_tickets) AS total,
+         (SELECT COUNT(*)::int FROM support_tickets WHERE status IN ('open','in_progress')) AS open,
+         (SELECT COUNT(*)::int FROM support_tickets WHERE email_error IS NOT NULL) AS email_failed,
+         (SELECT COUNT(*)::int FROM support_tickets WHERE email_error IS NOT NULL AND status IN ('open','in_progress')) AS email_failed_open,
+         (SELECT COUNT(*)::int FROM reply_failures) AS reply_email_failed,
+         (SELECT COUNT(*)::int FROM reply_failures WHERE ticket_status IN ('open','in_progress')) AS reply_email_failed_open`,
     );
-    res.json(r.rows[0] ?? { total: 0, open: 0, email_failed: 0, email_failed_open: 0 });
+    res.json(r.rows[0] ?? {
+      total: 0,
+      open: 0,
+      email_failed: 0,
+      email_failed_open: 0,
+      reply_email_failed: 0,
+      reply_email_failed_open: 0,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load ticket stats', detail: String(err) });
   }
@@ -1243,10 +1267,11 @@ router.post(
       body: string;
       email_message_id: string | null;
       email_error: string | null;
+      retry_count: number | null;
     };
     try {
       const r = await pool.query<typeof reply>(
-        `SELECT id, ticket_id, direction, body, email_message_id, email_error
+        `SELECT id, ticket_id, direction, body, email_message_id, email_error, retry_count
          FROM support_ticket_replies
          WHERE id = $1 AND ticket_id = $2
          LIMIT 1`,
@@ -1272,15 +1297,18 @@ router.post(
     }
 
     // Load the ticket for the recipient address, topic, and inbound token.
+    // tenant_id is needed to write the operations_alerts row when this retry
+    // is the one that crosses the persistent-failure threshold.
     let ticket: {
       id: string;
       user_email: string | null;
       topic: string;
       inbound_token: string | null;
+      tenant_id: string | null;
     };
     try {
       const r = await pool.query<typeof ticket>(
-        `SELECT id, user_email, topic, inbound_token FROM support_tickets WHERE id = $1 LIMIT 1`,
+        `SELECT id, user_email, topic, inbound_token, tenant_id FROM support_tickets WHERE id = $1 LIMIT 1`,
         [id],
       );
       if (r.rowCount === 0) {
@@ -1321,21 +1349,28 @@ router.post(
       headers: { 'X-QVO-Ticket-Id': ticket.id },
     });
 
-    let updatedRow: unknown = null;
+    // The UPDATE bumps retry_count/last_retry_at in the same statement that
+    // records the new delivery state. Both the manual /retry path and the
+    // background SupportReplyRetryScheduler share this counter so persistent-
+    // failure alerts can fire correctly regardless of who triggered the send.
+    let updatedRow: { retry_count?: number | null } & Record<string, unknown> = {};
+    let newRetryCount = 0;
     try {
-      const upd = await pool.query(
+      const upd = await pool.query<{ retry_count: number } & Record<string, unknown>>(
         `UPDATE support_ticket_replies
-         SET email_message_id = $2, email_error = $3
+         SET email_message_id = $2, email_error = $3, retry_count = retry_count + 1, last_retry_at = NOW()
          WHERE id = $1
          RETURNING id, ticket_id, direction, author_user_id, author_email, body,
-                   email_message_id, email_error, source, created_at`,
+                   email_message_id, email_error, retry_count, last_retry_at,
+                   source, created_at`,
         [
           replyIdNum,
           result.messageId ?? null,
           result.success ? null : (result.error ?? 'unknown'),
         ],
       );
-      updatedRow = upd.rows[0];
+      updatedRow = upd.rows[0] ?? {};
+      newRetryCount = Number(updatedRow.retry_count ?? 0);
       // Bump ticket updated_at so dashboards reflect the activity.
       await pool.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [id]);
     } catch (err) {
@@ -1346,11 +1381,32 @@ router.post(
       return;
     }
 
+    // Boundary-cross alert: when this failed retry is the one that pushes
+    // the reply's total attempt count to the persistent-failure threshold,
+    // raise an operations_alerts row + critical error_log so ops can step in.
+    // Strict equality dedupes — retry_count only ever increases, so the
+    // threshold is crossed exactly once per reply across both retry paths.
+    if (!result.success && newRetryCount === REPLY_DELIVERY_ALERT_THRESHOLD) {
+      raiseReplyDeliveryFailureAlert({
+        replyId: replyIdNum,
+        ticketId: ticket.id,
+        tenantId: ticket.tenant_id ?? null,
+        customerEmail: ticket.user_email ?? null,
+        attempts: newRetryCount,
+        error: result.error ?? 'unknown',
+      }).catch((alertErr) => {
+        logger.warn('Failed to raise support reply delivery alert', {
+          ticket_id: id, reply_id: replyIdNum, error: String(alertErr),
+        });
+      });
+    }
+
     logger.info('Support reply retry attempted', {
       ticket_id: id,
       reply_id: replyIdNum,
       by: req.user?.email,
       email_delivered: result.success,
+      retry_count: newRetryCount,
     });
 
     res.json({ success: true, email_delivered: result.success, reply: updatedRow });

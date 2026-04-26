@@ -17,13 +17,19 @@ import {
   generateInboundToken,
   renderOutboundTicketReplyEmail,
 } from './supportReplyEmail';
+import {
+  REPLY_DELIVERY_ALERT_THRESHOLD,
+  raiseReplyDeliveryFailureAlert,
+} from './supportReplyDeliveryAlert';
 
 const logger = createLogger('SUPPORT_REPLY_RETRY');
 
 const CHECK_INTERVAL_MS = 90 * 1000; // every 90 seconds
 const INITIAL_DELAY_MS = 30 * 1000;
 const LOOKBACK_MINUTES = 60;
-const MAX_RETRY_ATTEMPTS = 3;
+// Sourced from REPLY_DELIVERY_ALERT_THRESHOLD so the retry cap and the ops-alert
+// boundary stay in lockstep — editing one updates both.
+const MAX_RETRY_ATTEMPTS = REPLY_DELIVERY_ALERT_THRESHOLD;
 const BATCH_LIMIT = 25;
 
 export interface FailedOutboundReply {
@@ -35,6 +41,7 @@ export interface FailedOutboundReply {
   user_email: string;
   topic: string;
   inbound_token: string | null;
+  tenant_id: string | null;
 }
 
 export async function findFailedOutboundReplies(
@@ -51,7 +58,8 @@ export async function findFailedOutboundReplies(
             r.retry_count  AS retry_count,
             t.user_email   AS user_email,
             t.topic        AS topic,
-            t.inbound_token AS inbound_token
+            t.inbound_token AS inbound_token,
+            t.tenant_id    AS tenant_id
      FROM support_ticket_replies r
      JOIN support_tickets t ON t.id = r.ticket_id
      WHERE r.direction = 'outbound'
@@ -191,6 +199,30 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
       error: newError ?? 'unknown',
       exhausted,
     });
+
+    // Boundary-cross alert: when this failed attempt is the one that pushes
+    // the reply's total attempt count to the configured threshold, raise an
+    // operations_alerts row + critical error_log so ops can intervene. The
+    // strict equality check naturally dedupes — retry_count only increases,
+    // so the threshold is crossed exactly once per reply (regardless of
+    // whether the failed attempts came from this scheduler or the manual
+    // /retry endpoint, which both bump the same counter).
+    if (attempt === REPLY_DELIVERY_ALERT_THRESHOLD) {
+      raiseReplyDeliveryFailureAlert({
+        replyId: reply.reply_id,
+        ticketId: reply.ticket_id,
+        tenantId: reply.tenant_id ?? null,
+        customerEmail: reply.user_email ?? null,
+        attempts: attempt,
+        error: newError ?? 'unknown',
+      }).catch((alertErr) => {
+        logger.warn('Failed to raise support reply delivery alert', {
+          reply_id: reply.reply_id,
+          ticket_id: reply.ticket_id,
+          error: String(alertErr),
+        });
+      });
+    }
   }
 
   return {
