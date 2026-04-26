@@ -91,7 +91,7 @@ beforeEach(() => {
 });
 
 describe('list handler query budget — single round-trip via COUNT(*) OVER()', () => {
-  it('dispatch listJobsHandler issues exactly 1 query and finishes well under 250ms (200 rows)', async () => {
+  it('dispatch listJobsHandler issues exactly 1 query and finishes well under 500ms (200 rows)', async () => {
     const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200) });
     type Handler = (req: Request, res: Response) => Promise<void>;
     const handler = await loadHandler<Handler>(
@@ -110,7 +110,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     expect(getStatus()).toBe(200);
     expect(dbMock.records.length).toBe(1);
     expect(dbMock.records[0].sql).toMatch(/COUNT\(\*\)\s+OVER\(\)/);
-    expect(elapsed).toBeLessThan(2000);
+    expect(elapsed).toBeLessThan(500);
     const body = getJson();
     expect(body?.total).toBe(200);
     const jobs = body?.jobs as Array<Record<string, unknown>>;
@@ -118,7 +118,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     for (const j of jobs) expect(j._total_count).toBeUndefined();
   });
 
-  it('scheduling listBookingsHandler issues exactly 1 query and finishes under 250ms', async () => {
+  it('scheduling listBookingsHandler issues exactly 1 query and finishes under 500ms', async () => {
     const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200) });
     type Handler = (req: Request, res: Response) => Promise<void>;
     const handler = await loadHandler<Handler>(
@@ -137,7 +137,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     expect(getStatus()).toBe(200);
     expect(dbMock.records.length).toBe(1);
     expect(dbMock.records[0].sql).toMatch(/COUNT\(\*\)\s+OVER\(\)/);
-    expect(elapsed).toBeLessThan(2000);
+    expect(elapsed).toBeLessThan(500);
     const body = getJson();
     expect(body?.total).toBe(200);
     const bookings = body?.bookings as Array<Record<string, unknown>>;
@@ -145,7 +145,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     for (const b of bookings) expect(b._total_count).toBeUndefined();
   });
 
-  it('tickets listTicketsHandler issues exactly 1 query, uses LATERAL for SLA, finishes under 250ms', async () => {
+  it('tickets listTicketsHandler issues exactly 1 query, uses LATERAL for SLA, finishes under 500ms', async () => {
     const dbMock = buildPoolMock({ rows: fakeRowsForList(200, 200) });
     type Handler = (req: Request, res: Response) => Promise<void>;
     const handler = await loadHandler<Handler>(
@@ -167,7 +167,7 @@ describe('list handler query budget — single round-trip via COUNT(*) OVER()', 
     expect(sql).toMatch(/LEFT JOIN LATERAL[\s\S]*ticket_sla_instances/);
     expect(sql).toMatch(/COUNT\(\*\)\s+OVER\(\)/);
     expect(sql).not.toMatch(/\(SELECT row_to_json\(si\.\*\) FROM ticket_sla_instances/);
-    expect(elapsed).toBeLessThan(2000);
+    expect(elapsed).toBeLessThan(500);
     const body = getJson();
     expect(body?.total).toBe(200);
     const tickets = body?.tickets as Array<Record<string, unknown>>;
