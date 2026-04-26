@@ -11,6 +11,8 @@ const sendEmailMock = vi.fn(async () => ({ success: true }));
 vi.mock('../../platform/email', () => ({
   sendEmail: (...args: unknown[]) => sendEmailMock(...(args as [])),
   connectorSyncErrorEmail: () => ({ subject: 's', html: 'h', text: 't' }),
+  connectorReconnectNeededEmail: () => ({ subject: 'reconnect', html: 'h', text: 't' }),
+  connectorAutoDisabledEmail: () => ({ subject: 'disabled', html: 'h', text: 't' }),
   connectorSyncDigestEmail: () => ({
     subject: 'digest',
     html: 'h',
@@ -68,6 +70,13 @@ interface RouterOpts {
   stamps: string[];
 }
 
+// NOTE: When matching SQL in this file, prefer stable structural fragments
+// (table names, JOIN clauses, distinctive WHERE predicates) over volatile
+// literals like role lists. The previous matcher keyed off
+// `role IN ('admin', 'owner')`, which silently broke when production widened
+// `getTenantAdmins` to include `tenant_owner` / `operations_manager` via a
+// `user_roles` join — the test fell through to the catch-all empty result
+// and the digest pipeline reported "no admin recipients".
 function installRouter(opts: RouterOpts): void {
   queryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
     const text = String(sql);
@@ -120,8 +129,10 @@ function installRouter(opts: RouterOpts): void {
     if (text.startsWith('SELECT name FROM tenants')) {
       return { rows: [{ name: 'Acme' }] };
     }
-    // getTenantAdmins: admin emails
-    if (text.includes('FROM users') && text.includes("role IN ('admin', 'owner')")) {
+    // getTenantAdmins: admin emails. The production query was widened to
+    // include tenant_owner / operations_manager via the user_roles join, so
+    // we match on the stable LEFT JOIN clause rather than the old role list.
+    if (text.includes('FROM users') && text.includes('LEFT JOIN user_roles')) {
       return { rows: opts.admins.map((email) => ({ email })) };
     }
     // recordDigestSent (UPSERT into connector_alert_settings)
@@ -241,6 +252,27 @@ describe('runConnectorAuthAlertCycle — digest mode gating', () => {
           ],
         };
       }
+      // dispatchConnectorAuthAlert: per-integration row lookup. Without this
+      // the dispatcher returns 'skipped' immediately and the active row is
+      // never alerted on / claimed.
+      if (
+        text.includes('FROM integrations') &&
+        text.includes('WHERE tenant_id = $1 AND id = $2')
+      ) {
+        const integrationId = (params?.[1] as string) ?? '';
+        return {
+          rows: [
+            {
+              name: 'Acme Salesforce',
+              integration_type: 'crm',
+              auth_alert_sent_at: null,
+              last_sync_error: '401 unauthorized',
+              last_sync_error_at: new Date(Date.now() - 30 * 60 * 1000),
+              integration_id: integrationId,
+            },
+          ],
+        };
+      }
       if (text.includes('FROM connector_alert_mutes')) {
         // Slack is provider-muted at the tenant level.
         return {
@@ -263,12 +295,15 @@ describe('runConnectorAuthAlertCycle — digest mode gating', () => {
       if (text.startsWith('SELECT name FROM tenants')) {
         return { rows: [{ name: 'Acme' }] };
       }
-      if (text.includes('FROM users') && text.includes("role IN ('admin', 'owner')")) {
+      if (text.includes('FROM users') && text.includes('LEFT JOIN user_roles')) {
         return { rows: [{ email: 'admin@acme.com' }] };
       }
       if (text.includes('UPDATE integrations') && text.includes('auth_alert_sent_at = NOW()')) {
         stamps.push((params?.[0] as string) ?? '');
-        return { rows: [] };
+        // claimAuthAlertSlot inspects rowCount to decide whether the row was
+        // actually claimed; without this the active connector's dispatch is
+        // treated as a throttle race loss and never counted in `alerted`.
+        return { rows: [], rowCount: 1 };
       }
       return { rows: [] };
     });
