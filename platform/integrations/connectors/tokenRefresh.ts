@@ -271,11 +271,11 @@ async function handleRefreshFailure(config: ConnectorConfig, err: unknown): Prom
     integrationId: config.integrationId,
     error: message,
   });
-  await markConnectorReconnectNeeded(
-    config.tenantId,
-    config.integrationId,
-    `OAuth token refresh failed: ${message.slice(0, 400)}`,
-  );
+  await markConnectorReconnectNeeded(config.tenantId, config.integrationId, {
+    errorMessage: `OAuth token refresh failed: ${message.slice(0, 400)}`,
+    provider: config.provider,
+    connectorType: config.connectorType,
+  });
   try {
     await writeAuditLog({
       tenantId: config.tenantId,

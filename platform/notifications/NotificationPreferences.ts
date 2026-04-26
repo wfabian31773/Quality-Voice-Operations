@@ -285,6 +285,14 @@ interface FanoutParams {
    * miss the next event because someone else already saw it.
    */
   throttleHours?: number;
+  /**
+   * Optional caller-provided audience. When set, the fan-out is
+   * restricted to these user IDs (intersected with the tenant's active
+   * users) instead of every active member. Use this to scope a
+   * notification to admins/owners only while still respecting per-user
+   * notification preferences.
+   */
+  userIds?: string[];
 }
 
 /**
@@ -299,13 +307,32 @@ export async function fanoutInAppNotification(params: FanoutParams): Promise<num
   const pool = getPlatformPool();
   let userIds: string[] = [];
   try {
-    const { rows } = await pool.query<{ id: string }>(
-      `SELECT id FROM users
-        WHERE tenant_id = $1
-          AND COALESCE(is_active, TRUE) = TRUE`,
-      [params.tenantId],
-    );
-    userIds = rows.map((r) => r.id);
+    if (params.userIds !== undefined) {
+      // Caller restricted the audience explicitly. An empty list means
+      // "send to no one" (do NOT silently fall back to tenant-wide).
+      // Otherwise, intersect with active members of the tenant so a
+      // stale ID list cannot leak rows across tenants.
+      if (params.userIds.length === 0) {
+        userIds = [];
+      } else {
+        const { rows } = await pool.query<{ id: string }>(
+          `SELECT id FROM users
+            WHERE tenant_id = $1
+              AND id = ANY($2::varchar[])
+              AND COALESCE(is_active, TRUE) = TRUE`,
+          [params.tenantId, params.userIds],
+        );
+        userIds = rows.map((r) => r.id);
+      }
+    } else {
+      const { rows } = await pool.query<{ id: string }>(
+        `SELECT id FROM users
+          WHERE tenant_id = $1
+            AND COALESCE(is_active, TRUE) = TRUE`,
+        [params.tenantId],
+      );
+      userIds = rows.map((r) => r.id);
+    }
   } catch (err) {
     logger.warn('Failed to load tenant users for in-app fan-out', {
       tenantId: params.tenantId,

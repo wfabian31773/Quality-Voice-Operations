@@ -4,6 +4,7 @@ import {
   sendEmail,
   connectorSyncErrorEmail,
   connectorAutoDisabledEmail,
+  connectorReconnectNeededEmail,
 } from '../../email';
 import {
   fanoutInAppNotification,
@@ -16,6 +17,9 @@ const logger = createLogger('CONNECTOR_AUTH_ALERT');
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const INITIAL_DELAY_MS = 5 * 60 * 1000;
 const MAX_RECIPIENTS_PER_TENANT = 5;
+
+/** How long after a previous alert before we'll send another one for the same integration. */
+const ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Number of days a connector must remain in an auth-error / needs_reconnect
@@ -89,7 +93,10 @@ export async function findPendingAuthFailures(): Promise<PendingAuthFailure[]> {
             last_sync_error_at
        FROM integrations
       WHERE is_enabled = TRUE
-        AND auth_alert_sent_at IS NULL
+        AND (
+          auth_alert_sent_at IS NULL
+          OR auth_alert_sent_at < NOW() - INTERVAL '24 hours'
+        )
         AND (
           last_sync_status = 'needs_reconnect'
           OR (last_sync_status = 'error' AND last_sync_error IS NOT NULL)
@@ -101,10 +108,15 @@ export async function findPendingAuthFailures(): Promise<PendingAuthFailure[]> {
   );
 }
 
-async function getTenantAdmins(tenantId: string): Promise<{ name: string | undefined; emails: string[] }> {
+async function getTenantAdmins(tenantId: string): Promise<{
+  name: string | undefined;
+  emails: string[];
+  userIds: string[];
+}> {
   const pool = getPlatformPool();
   let name: string | undefined;
   let emails: string[] = [];
+  let userIds: string[] = [];
   try {
     const { rows: tenantRows } = await pool.query(
       `SELECT name FROM tenants WHERE id = $1`,
@@ -118,54 +130,84 @@ async function getTenantAdmins(tenantId: string): Promise<{ name: string | undef
   }
 
   try {
+    // Pull from both canonical user_roles and legacy users.role; ORDER BY
+    // makes the LIMIT subset deterministic for large admin teams.
     const { rows } = await pool.query(
-      `SELECT email FROM users
-        WHERE tenant_id = $1
-          AND role IN ('admin', 'owner')
-          AND email IS NOT NULL
-          AND COALESCE(is_active, TRUE) = TRUE
+      `SELECT DISTINCT u.id, u.email, u.created_at
+         FROM users u
+         LEFT JOIN user_roles ur
+           ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+        WHERE u.tenant_id = $1
+          AND COALESCE(u.is_active, TRUE) = TRUE
+          AND (
+            ur.role IN ('tenant_owner', 'operations_manager')
+            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
+          )
+        ORDER BY u.created_at NULLS LAST, u.id
         LIMIT $2`,
       [tenantId, MAX_RECIPIENTS_PER_TENANT],
     );
+    userIds = rows
+      .map((r) => (r.id as string | null) ?? '')
+      .filter((id): id is string => Boolean(id));
     emails = rows
       .map((r) => (r.email as string | null) ?? '')
       .filter((e): e is string => Boolean(e));
   } catch (err) {
-    logger.warn('Failed to look up tenant admin emails', { tenantId, error: String(err) });
+    logger.warn('Failed to look up tenant admin recipients', { tenantId, error: String(err) });
   }
 
-  return { name, emails };
+  return { name, emails, userIds };
 }
 
-async function recordAlertSent(integrationId: string, tenantId: string): Promise<void> {
+/** Atomic 24h slot claim; true on win, false on race loss or DB error (fail-closed). */
+async function claimAuthAlertSlot(integrationId: string, tenantId: string): Promise<boolean> {
   const pool = getPlatformPool();
   try {
-    await pool.query(
+    const result = await pool.query(
       `UPDATE integrations
           SET auth_alert_sent_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND tenant_id = $2`,
+        WHERE id = $1
+          AND tenant_id = $2
+          AND (
+            auth_alert_sent_at IS NULL
+            OR auth_alert_sent_at < NOW() - INTERVAL '24 hours'
+          )`,
       [integrationId, tenantId],
     );
+    return (result as { rowCount?: number }).rowCount === 1;
   } catch (err) {
-    logger.warn('Failed to mark auth alert as sent', {
+    logger.warn('Failed to claim auth alert slot', {
       tenantId,
       integrationId,
       error: String(err),
     });
+    return false;
   }
 }
 
-async function recentInAppNotificationExists(tenantId: string, provider: string): Promise<boolean> {
+/** Per-integrationId in-app dedupe (provider fallback for legacy rows). */
+async function recentInAppNotificationExists(
+  tenantId: string,
+  integrationId: string,
+  provider: string,
+): Promise<boolean> {
   const pool = getPlatformPool();
   try {
     const { rows } = await pool.query(
       `SELECT 1 FROM tenant_notifications
         WHERE tenant_id = $1
           AND type = 'integration'
-          AND LOWER(metadata ->> 'provider') = LOWER($2)
           AND created_at > NOW() - INTERVAL '24 hours'
+          AND (
+            metadata ->> 'integrationId' = $2
+            OR (
+              metadata ->> 'integrationId' IS NULL
+              AND LOWER(metadata ->> 'provider') = LOWER($3)
+            )
+          )
         LIMIT 1`,
-      [tenantId, provider],
+      [tenantId, integrationId, provider],
     );
     return rows.length > 0;
   } catch {
@@ -182,6 +224,9 @@ async function insertInAppNotification(params: {
   title: string;
   message: string;
   errorMessage: string;
+  reason: string;
+  /** Restrict fan-out to these user IDs; empty/undefined = tenant-wide. */
+  recipientUserIds?: string[];
 }): Promise<void> {
   try {
     await fanoutInAppNotification({
@@ -194,10 +239,11 @@ async function insertInAppNotification(params: {
         integrationId: params.integrationId,
         connectorType: params.connectorType,
         provider: params.provider,
-        reason: 'auth_error',
+        reason: params.reason,
         errorMessage: params.errorMessage.slice(0, 500),
       },
       category: 'integration',
+      userIds: params.recipientUserIds,
     });
   } catch (err) {
     logger.warn('Failed to fan out in-app auth alert notification', {
@@ -206,6 +252,224 @@ async function insertInAppNotification(params: {
       error: String(err),
     });
   }
+}
+
+export interface DispatchAuthAlertParams {
+  tenantId: string;
+  integrationId: string;
+  provider: string;
+  connectorType: string;
+  errorMessage?: string | null;
+  detectedAt?: string | null;
+  reason?: 'needs_reconnect' | 'auth_error';
+}
+
+export interface DispatchAuthAlertResult {
+  status: 'sent' | 'throttled' | 'no_recipients' | 'skipped';
+  emailedRecipients: number;
+}
+
+/** Dispatch a reconnect alert for one integration; 24h-throttled via auth_alert_sent_at. */
+export async function dispatchConnectorAuthAlert(
+  params: DispatchAuthAlertParams,
+): Promise<DispatchAuthAlertResult> {
+  const pool = getPlatformPool();
+  const reason = params.reason ?? 'needs_reconnect';
+
+  let row: {
+    name: string | null;
+    integration_type: string;
+    auth_alert_sent_at: Date | string | null;
+    last_sync_error: string | null;
+    last_sync_error_at: Date | string | null;
+  } | null = null;
+  try {
+    const { rows } = await pool.query<{
+      name: string | null;
+      integration_type: string;
+      auth_alert_sent_at: Date | string | null;
+      last_sync_error: string | null;
+      last_sync_error_at: Date | string | null;
+    }>(
+      `SELECT name,
+              integration_type::text AS integration_type,
+              auth_alert_sent_at,
+              last_sync_error,
+              last_sync_error_at
+         FROM integrations
+        WHERE tenant_id = $1 AND id = $2
+        LIMIT 1`,
+      [params.tenantId, params.integrationId],
+    );
+    if (rows.length > 0) row = rows[0];
+  } catch (err) {
+    logger.warn('Failed to load integration row for auth alert dispatch', {
+      tenantId: params.tenantId,
+      integrationId: params.integrationId,
+      error: String(err),
+    });
+  }
+
+  if (!row) {
+    return { status: 'skipped', emailedRecipients: 0 };
+  }
+
+  // Fast-path throttle check; atomic claim below is the race-safe source of truth.
+  if (row.auth_alert_sent_at) {
+    const sentMs = new Date(row.auth_alert_sent_at as string | Date).getTime();
+    if (Number.isFinite(sentMs) && Date.now() - sentMs < ALERT_THROTTLE_MS) {
+      logger.debug('Connector auth alert suppressed by 24h throttle', {
+        tenantId: params.tenantId,
+        integrationId: params.integrationId,
+        provider: params.provider,
+      });
+      return { status: 'throttled', emailedRecipients: 0 };
+    }
+  }
+
+  const claimed = await claimAuthAlertSlot(params.integrationId, params.tenantId);
+  if (!claimed) {
+    logger.debug('Connector auth alert claim lost (race or throttle)', {
+      tenantId: params.tenantId,
+      integrationId: params.integrationId,
+      provider: params.provider,
+    });
+    return { status: 'throttled', emailedRecipients: 0 };
+  }
+
+  const label =
+    typeof row.name === 'string' && row.name.trim().length > 0
+      ? row.name.trim()
+      : providerLabel(params.provider);
+  const errorMessage =
+    params.errorMessage ?? row.last_sync_error ?? 'Authentication failed; reconnect required';
+  const reconnectPath = `/connectors?integration=${encodeURIComponent(params.integrationId)}`;
+  const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
+  const detectedAtSource =
+    params.detectedAt ?? (row.last_sync_error_at ? new Date(row.last_sync_error_at as string | Date).toISOString() : null);
+  const detectedAt = detectedAtSource ? new Date(detectedAtSource).toUTCString() : new Date().toUTCString();
+
+  const title = `${label} integration needs to be reconnected`;
+  const message =
+    reason === 'needs_reconnect'
+      ? `${label} can't sync until you reauthorize it. Open Connectors to reconnect.`
+      : `Latest sync to ${label} failed: ${errorMessage.slice(0, 200)}. Open Connectors to reconnect.`;
+
+  const {
+    name: tenantName,
+    emails: rawRecipients,
+    userIds: adminUserIds,
+  } = await getTenantAdmins(params.tenantId);
+
+  const alreadyNotifiedInApp = await recentInAppNotificationExists(
+    params.tenantId,
+    params.integrationId,
+    params.provider,
+  );
+  if (!alreadyNotifiedInApp) {
+    await insertInAppNotification({
+      tenantId: params.tenantId,
+      integrationId: params.integrationId,
+      connectorType: params.connectorType ?? row.integration_type,
+      provider: params.provider,
+      reconnectPath,
+      title,
+      message,
+      errorMessage,
+      reason,
+      recipientUserIds: adminUserIds,
+    });
+  }
+
+  if (rawRecipients.length === 0) {
+    logger.info('Connector auth-alert: no admin recipients, slot already claimed', {
+      tenantId: params.tenantId,
+      integrationId: params.integrationId,
+      provider: params.provider,
+    });
+    return { status: 'no_recipients', emailedRecipients: 0 };
+  }
+
+  const recipients = await filterEmailRecipientsByPreference(
+    params.tenantId,
+    rawRecipients,
+    'integration',
+  );
+  if (recipients.length === 0) {
+    logger.info(
+      'Connector auth-alert: all admin recipients opted out of integration emails, slot already claimed',
+      {
+        tenantId: params.tenantId,
+        integrationId: params.integrationId,
+        provider: params.provider,
+        removed: rawRecipients.length,
+      },
+    );
+    return { status: 'no_recipients', emailedRecipients: 0 };
+  }
+
+  const { subject, html, text } =
+    reason === 'needs_reconnect'
+      ? connectorReconnectNeededEmail({
+          tenantName,
+          providerLabel: label,
+          errorMessage,
+          reconnectUrl,
+          detectedAt,
+        })
+      : connectorSyncErrorEmail({
+          tenantName,
+          providerLabel: label,
+          errorMessage,
+          reconnectUrl,
+          detectedAt,
+        });
+
+  let delivered = 0;
+  for (const to of recipients) {
+    try {
+      const result = await sendEmail({ to, subject, html, text });
+      if (result.success) {
+        delivered += 1;
+      } else {
+        logger.warn('Connector auth-alert email send failed', {
+          tenantId: params.tenantId,
+          integrationId: params.integrationId,
+          to,
+          error: result.error,
+        });
+      }
+    } catch (err) {
+      logger.warn('Connector auth-alert email threw', {
+        tenantId: params.tenantId,
+        integrationId: params.integrationId,
+        to,
+        error: String(err),
+      });
+    }
+  }
+
+  // Claimed the slot but delivered nothing — surface for ops alerting.
+  if (delivered === 0 && recipients.length > 0) {
+    logger.error('Connector auth-alert claim succeeded but zero emails delivered', {
+      tenantId: params.tenantId,
+      integrationId: params.integrationId,
+      provider: params.provider,
+      attemptedRecipients: recipients.length,
+      reason,
+    });
+  }
+
+  logger.info('Connector auth-alert dispatched', {
+    tenantId: params.tenantId,
+    integrationId: params.integrationId,
+    provider: params.provider,
+    recipients: recipients.length,
+    delivered,
+    reason,
+  });
+
+  return { status: 'sent', emailedRecipients: delivered };
 }
 
 export interface CycleResult {
@@ -234,109 +498,22 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
   let skippedNoRecipients = 0;
 
   for (const row of pending) {
-    const { tenant_id: tenantId, integration_id: integrationId, provider } = row;
-    const label = providerLabel(provider);
-    const errorMessage = row.last_sync_error ?? 'Authentication failed; reconnect required';
-    const reconnectPath = `/connectors?integration=${encodeURIComponent(integrationId)}`;
-    const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
-    const detectedAtDate = row.last_sync_error_at
-      ? new Date(row.last_sync_error_at)
-      : new Date();
-    const detectedAt = detectedAtDate.toUTCString();
-
-    const title = `${label} integration is failing`;
-    const message = `Latest sync to ${label} failed: ${errorMessage.slice(0, 200)}. Open Connectors to reconnect.`;
-
-    const alreadyNotifiedInApp = await recentInAppNotificationExists(tenantId, provider);
-    if (!alreadyNotifiedInApp) {
-      await insertInAppNotification({
-        tenantId,
-        integrationId,
-        connectorType: row.integration_type,
-        provider,
-        reconnectPath,
-        title,
-        message,
-        errorMessage,
-      });
-    }
-
-    const { name: tenantName, emails: rawRecipients } = await getTenantAdmins(tenantId);
-
-    if (rawRecipients.length === 0) {
-      logger.info('Connector auth-alert: no admin recipients, marking sent to avoid retries', {
-        tenantId,
-        integrationId,
-        provider,
-      });
-      skippedNoRecipients += 1;
-      await recordAlertSent(integrationId, tenantId);
-      continue;
-    }
-
-    const recipients = await filterEmailRecipientsByPreference(
-      tenantId,
-      rawRecipients,
-      'integration',
-    );
-    if (recipients.length === 0) {
-      logger.info(
-        'Connector auth-alert: all admin recipients opted out of integration emails, marking sent to avoid retries',
-        {
-          tenantId,
-          integrationId,
-          provider,
-          removed: rawRecipients.length,
-        },
-      );
-      skippedNoRecipients += 1;
-      await recordAlertSent(integrationId, tenantId);
-      continue;
-    }
-
-    const { subject, html, text } = connectorSyncErrorEmail({
-      tenantName,
-      providerLabel: label,
-      errorMessage,
-      reconnectUrl,
-      detectedAt,
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: row.tenant_id,
+      integrationId: row.integration_id,
+      provider: row.provider,
+      connectorType: row.integration_type,
+      errorMessage: row.last_sync_error,
+      detectedAt: row.last_sync_error_at ? new Date(row.last_sync_error_at).toISOString() : null,
+      reason: row.last_sync_status === 'needs_reconnect' ? 'needs_reconnect' : 'auth_error',
     });
 
-    let delivered = 0;
-    for (const to of recipients) {
-      try {
-        const result = await sendEmail({ to, subject, html, text });
-        if (result.success) {
-          delivered += 1;
-        } else {
-          logger.warn('Connector auth-alert email send failed', {
-            tenantId,
-            integrationId,
-            to,
-            error: result.error,
-          });
-        }
-      } catch (err) {
-        logger.warn('Connector auth-alert email threw', {
-          tenantId,
-          integrationId,
-          to,
-          error: String(err),
-        });
-      }
+    if (result.status === 'sent') {
+      alerted += 1;
+      emailedRecipients += result.emailedRecipients;
+    } else if (result.status === 'no_recipients') {
+      skippedNoRecipients += 1;
     }
-
-    emailedRecipients += delivered;
-    alerted += 1;
-    await recordAlertSent(integrationId, tenantId);
-
-    logger.info('Connector auth-alert dispatched', {
-      tenantId,
-      integrationId,
-      provider,
-      recipients: recipients.length,
-      delivered,
-    });
   }
 
   return {

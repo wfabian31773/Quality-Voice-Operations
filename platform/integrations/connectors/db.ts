@@ -218,21 +218,32 @@ export async function updateConnectorCredentials(
   });
 }
 
+export interface MarkReconnectNeededOptions {
+  /** Underlying error message that triggered the reconnect requirement. Surfaced in alerts. */
+  errorMessage?: string | null;
+  /** Provider id for the integration (e.g. 'hubspot'). Avoids an extra DB lookup in the alerter. */
+  provider?: string;
+  /** integration_type / connector type for the integration. Avoids an extra DB lookup in the alerter. */
+  connectorType?: string;
+  /**
+   * When true (default), proactively dispatch an alert to tenant admins via
+   * the in-app + email pipeline. Set false in tests / batch tools that just
+   * want to flip the status flag.
+   */
+  notify?: boolean;
+}
+
 export async function markConnectorReconnectNeeded(
   tenantId: TenantId,
   integrationId: string,
-  reason?: string,
+  options: MarkReconnectNeededOptions = {},
 ): Promise<void> {
+  let rowsAffected = 0;
   try {
     await withTenant(tenantId, async (client) => {
-      // We stamp `last_sync_error_at` (preserving an earlier failure
-      // timestamp via COALESCE) and `last_sync_error` so that the
-      // auto-disable scheduler can age this connector out. Without these
-      // fields, a connector that transitioned directly from healthy →
-      // needs_reconnect (e.g. expired refresh token) would never become
-      // eligible for auto-disable because that scheduler gates on
-      // `last_sync_error_at`.
-      await client.query(
+      // Stamp `last_sync_error_at` (COALESCE preserves earlier failure
+      // timestamp) so the auto-disable scheduler can age this connector out.
+      const result = await client.query(
         `UPDATE integrations
             SET last_sync_status = 'needs_reconnect',
                 last_sync_at = NOW(),
@@ -240,12 +251,47 @@ export async function markConnectorReconnectNeeded(
                 last_sync_error = COALESCE($3, last_sync_error, 'Reconnect required: stored credentials are no longer valid'),
                 updated_at = NOW()
           WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, integrationId, reason ?? null],
+        [tenantId, integrationId, options.errorMessage ?? null],
       );
+      rowsAffected = (result as { rowCount?: number }).rowCount ?? 0;
     });
   } catch (err) {
     logger.warn('Failed to mark connector needs_reconnect', { tenantId, integrationId, error: String(err) });
+    return;
   }
+
+  if (rowsAffected === 0 || options.notify === false) return;
+
+  // Fire-and-forget; dynamic import keeps notification deps out of db.ts.
+  void (async () => {
+    try {
+      const { dispatchConnectorAuthAlert } = await import('./ConnectorAuthAlertScheduler');
+      let provider = options.provider;
+      let connectorType = options.connectorType;
+      if (!provider || !connectorType) {
+        const meta = await getConnectorById(tenantId, integrationId);
+        if (meta) {
+          provider = provider ?? meta.provider;
+          connectorType = connectorType ?? meta.connectorType;
+        }
+      }
+      if (!provider) return; // can't sensibly notify without a provider label
+      await dispatchConnectorAuthAlert({
+        tenantId,
+        integrationId,
+        provider,
+        connectorType: connectorType ?? 'unknown',
+        errorMessage: options.errorMessage ?? null,
+        reason: 'needs_reconnect',
+      });
+    } catch (err) {
+      logger.warn('Immediate reconnect alert dispatch failed', {
+        tenantId,
+        integrationId,
+        error: String(err),
+      });
+    }
+  })();
 }
 
 export interface SyncStatusUpdateResult {

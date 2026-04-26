@@ -220,6 +220,44 @@ export function connectorAutoDisabledEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorReconnectNeededEmail(params: {
+  tenantName?: string;
+  providerLabel: string;
+  errorMessage?: string | null;
+  reconnectUrl: string;
+  detectedAt: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const subject = `Action required: reconnect ${params.providerLabel}`;
+  const safeError = (params.errorMessage ?? '').slice(0, 500);
+  const errorBlock = safeError
+    ? `
+    <div class="alert-error">
+      <p style="margin:0"><strong>Why we couldn't refresh automatically</strong></p>
+      <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
+      <p style="margin:8px 0 0" class="muted">Detected at ${params.detectedAt}</p>
+    </div>`
+    : `
+    <div class="alert-error">
+      <p style="margin:0"><strong>Authorization expired</strong></p>
+      <p style="margin:4px 0 0">We tried to refresh the access automatically and couldn't.</p>
+      <p style="margin:8px 0 0" class="muted">Detected at ${params.detectedAt}</p>
+    </div>`;
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>The <strong>${params.providerLabel}</strong> integration for <strong>${org}</strong> needs to be reconnected. Until you reauthorize it, calls, events, and other workflows that depend on this integration will not sync.</p>
+    ${errorBlock}
+    <p>Open the Connectors page to reauthorize the integration. We've linked you straight to it:</p>
+    <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
+    <p class="muted">You won't get another email about this integration for 24 hours, even if the next refresh attempt also fails.</p>
+  `);
+
+  const text = `${subject}\n\nThe ${params.providerLabel} integration for ${org} needs to be reconnected. Until you reauthorize it, calls and events that depend on this integration will not sync.\n\n${safeError ? `Reason: ${safeError}\n` : ''}Detected at ${params.detectedAt}\n\nReconnect: ${params.reconnectUrl}\n\nYou won't get another email about this integration for 24 hours.`;
+
+  return { subject, html, text };
+}
+
 export function connectorSyncRecoveryEmail(params: {
   tenantName?: string;
   providerLabel: string;
