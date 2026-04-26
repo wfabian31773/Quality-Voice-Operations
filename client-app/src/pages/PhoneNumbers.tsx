@@ -770,9 +770,13 @@ export default function PhoneNumbers() {
                         {schedulingDrift && (
                           <button
                             type="button"
-                            onClick={() => navigate('/connectors')}
+                            onClick={() =>
+                              navigate(
+                                `/connectors?provider=${encodeURIComponent(pn.scheduling_provider!)}`,
+                              )
+                            }
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline"
-                            title={`${formatSchedulingProvider(pn.scheduling_provider!)} isn't connected — appointments booked on this number won't sync until you reconnect it.`}
+                            title={`${formatSchedulingProvider(pn.scheduling_provider!)} isn't connected — click to reconnect it in Integrations.`}
                           >
                             <AlertTriangle className="h-3 w-3" />
                             {formatSchedulingProvider(pn.scheduling_provider!)} not connected
@@ -787,13 +791,17 @@ export default function PhoneNumbers() {
                           !!provider && connectorsLoaded && !connectedProviders.has(provider);
                         if (isDisconnected) {
                           return (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50"
-                              title={`${formatSchedulingProvider(provider)} is no longer connected. Reconnect this calendar in Settings → Integrations so this number can book appointments.`}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(`/connectors?provider=${encodeURIComponent(provider)}`)
+                              }
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition cursor-pointer"
+                              title={`${formatSchedulingProvider(provider)} is no longer connected. Click to reconnect this calendar in Integrations.`}
                             >
                               <AlertTriangle className="h-3 w-3" />
                               {formatSchedulingProvider(provider)} (not connected)
-                            </span>
+                            </button>
                           );
                         }
                         return (

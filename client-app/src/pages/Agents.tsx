@@ -502,13 +502,17 @@ export default function Agents() {
                     !!provider && connectorsLoaded && !connectedProviders.has(provider);
                   if (isDisconnected) {
                     return (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50"
-                        title={`${formatSchedulingProvider(provider)} is no longer connected. Reconnect this calendar in Settings → Integrations so this agent can book appointments.`}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/connectors?provider=${encodeURIComponent(provider)}`)
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition cursor-pointer"
+                        title={`${formatSchedulingProvider(provider)} is no longer connected. Click to reconnect this calendar in Integrations.`}
                       >
                         <AlertTriangle className="h-3 w-3" />
                         {formatSchedulingProvider(provider)} (not connected)
-                      </span>
+                      </button>
                     );
                   }
                   return (
@@ -529,7 +533,11 @@ export default function Agents() {
               {schedulingDrift && (
                 <button
                   type="button"
-                  onClick={() => navigate('/connectors')}
+                  onClick={() =>
+                    navigate(
+                      `/connectors?provider=${encodeURIComponent(agent.scheduling_provider!)}`,
+                    )
+                  }
                   className="w-full text-left flex items-start gap-2 text-xs mb-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/25 transition"
                   title="Open Integrations to reconnect this calendar"
                 >
@@ -537,6 +545,7 @@ export default function Agents() {
                   <span className="text-amber-800 dark:text-amber-200">
                     {formatSchedulingProvider(agent.scheduling_provider!)} isn't connected.
                     Appointments booked by this agent won't sync until you reconnect it.
+                    <span className="ml-1 font-semibold underline">Reconnect →</span>
                   </span>
                 </button>
               )}

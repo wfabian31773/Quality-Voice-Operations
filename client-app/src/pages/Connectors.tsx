@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -1759,6 +1760,7 @@ function ConnectedCard({
   return (
     <div
       data-integration-id={connector.integrationId}
+      data-provider={definition.provider}
       className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -1992,7 +1994,10 @@ function AvailableCard({
   const providerLabel = oauthAvailability?.providerLabel || definition.name;
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md hover:border-primary/30 transition-all flex flex-col">
+    <div
+      data-provider={definition.provider}
+      className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md hover:border-primary/30 transition-all flex flex-col"
+    >
       <div className="flex items-start gap-3 mb-3">
         <BrandLogo provider={definition.logoId} size={36} />
         <div className="min-w-0 flex-1">
@@ -2385,6 +2390,7 @@ export default function Connectors() {
   });
 
   const oauthAvailability = oauthAvailabilityData?.providers;
+  const location = useLocation();
 
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'scheduling-drift'],
@@ -2401,21 +2407,52 @@ export default function Connectors() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const targetId = params.get('integration');
-    if (!targetId) return;
-    const list = data?.connectors ?? [];
-    const match = list.find((c) => c.integrationId === targetId);
-    if (!match) return;
-    const def = CONNECTOR_DEFINITIONS.find((d) => d.provider === match.provider);
-    if (def) setConnectTarget(def);
-    const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-      ? CSS.escape(targetId)
-      : targetId.replace(/[^a-zA-Z0-9_-]/g, '');
-    const el = document.querySelector<HTMLElement>(`[data-integration-id="${escaped}"]`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const targetProvider = params.get('provider');
+    if (!targetId && !targetProvider) return;
+    const escapeAttr = (value: string) =>
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(value)
+        : value.replace(/[^a-zA-Z0-9_-]/g, '');
+    let el: HTMLElement | null = null;
+    if (targetId) {
+      const list = data?.connectors ?? [];
+      const match = list.find((c) => c.integrationId === targetId);
+      if (match) {
+        const def = CONNECTOR_DEFINITIONS.find((d) => d.provider === match.provider);
+        if (def) setConnectTarget(def);
+      }
+      el = document.querySelector<HTMLElement>(
+        `[data-integration-id="${escapeAttr(targetId)}"]`,
+      );
+    } else if (targetProvider) {
+      el = document.querySelector<HTMLElement>(
+        `[data-provider="${escapeAttr(targetProvider)}"]`,
+      );
+    }
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add(
+        'ring-2',
+        'ring-amber-400',
+        'ring-offset-2',
+        'ring-offset-surface',
+        'transition-shadow',
+      );
+      window.setTimeout(() => {
+        el?.classList.remove(
+          'ring-2',
+          'ring-amber-400',
+          'ring-offset-2',
+          'ring-offset-surface',
+          'transition-shadow',
+        );
+      }, 2400);
+    }
     params.delete('integration');
+    params.delete('provider');
     const next = params.toString();
     window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
-  }, [isLoading, data]);
+  }, [isLoading, data, location.search]);
 
   const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => api.delete(`/connectors/${integrationId}`),
