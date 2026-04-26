@@ -31,9 +31,9 @@
 | `STRIPE_METER_EVENT_AI_MINUTES` | Stripe meter event name for AI minute usage | Stripe Dashboard > Billing > Meters | `ai_minutes` |
 | `VOICE_GATEWAY_BASE_URL` | Public URL of the voice gateway | Your deployment domain | `https://your-domain.replit.app:3001` |
 | `ADMIN_API_BASE_URL` | Public URL of the admin API | Your deployment domain | `https://your-domain.replit.app:3002` |
-| `VITE_BOOK_DEMO_SCHEDULER_URL` | Embedded scheduler URL used by the public `/book-demo` page. Must be set at **build time** (Vite inlines `VITE_*` vars). | Cal.com event link or Calendly link | `https://cal.com/qvo/30min` |
-| `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used to verify the `X-Cal-Signature-256` header on `/book-demo/calendar-webhook`. The endpoint **rejects all unsigned requests in production** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). | Cal.com Webhook config (see §5) | Random 32+ char secret |
-| `SALES_NOTIFICATION_EMAIL` | Inbox that receives "new demo lead" and "booking created/rescheduled/cancelled" notifications from `marketing-leads.ts`. | Your sales / SDR distribution list | `sales@yourdomain.com` |
+| `VITE_BOOK_DEMO_SCHEDULER_URL` | Embedded scheduler URL used by the public `/book-demo` page. Must be set at **build time** (Vite inlines `VITE_*` vars). Enforced by `scripts/validate-env.ts` and Admin API startup — missing in production = hard fail. | Cal.com event link or Calendly link | `https://cal.com/qvo/30min` |
+| `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used to verify the `X-Cal-Signature-256` header on `/book-demo/calendar-webhook`. The endpoint **rejects all unsigned requests in production** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). Enforced by `scripts/validate-env.ts` and Admin API startup. | Cal.com Webhook config (see §5) | Random 32+ char secret |
+| `SALES_NOTIFICATION_EMAIL` | Inbox that receives "new demo lead" and "booking created/rescheduled/cancelled" notifications from `marketing-leads.ts`. Enforced by `scripts/validate-env.ts` and Admin API startup so demo leads are never silently dropped. | Your sales / SDR distribution list | `sales@yourdomain.com` |
 
 ### Required (development only)
 
@@ -214,6 +214,8 @@ The public `/book-demo` page embeds an external scheduler (Cal.com by default, o
 - `CALCOM_WEBHOOK_SECRET` — HMAC-SHA256 secret. **Production rejects every request that lacks a valid `X-Cal-Signature-256` header**; missing secret returns HTTP 500.
 - `SALES_NOTIFICATION_EMAIL` — sales inbox that receives lead-capture and booking lifecycle emails. When unset, lead capture still succeeds but no email is sent (a debug log is emitted).
 
+> **Don't rely on a manual checklist for these.** All three vars are listed in `scripts/validate-env.ts` as production-required, so `APP_ENV=production npx tsx scripts/validate-env.ts` (see §2) and Admin API startup will both exit non-zero if any of them is missing. Run the validator before promoting a build instead of eyeballing this section.
+
 #### Step 1 — Create the webhook in Cal.com
 
 1. In Cal.com, go to **Settings → Developer → Webhooks → New Webhook**.
@@ -269,9 +271,9 @@ For local development without a real Cal.com webhook, you can either:
 - [ ] `DISABLE_PHI_LOGGING` is set to `true` in production
 - [ ] All Twilio webhook URLs use HTTPS
 - [ ] Stripe webhook signing secret is configured and verified
-- [ ] `CALCOM_WEBHOOK_SECRET` is set (and matches the secret pasted into the Cal.com webhook config) — verifier fails closed in production
-- [ ] `SALES_NOTIFICATION_EMAIL` points at a monitored sales inbox so demo leads and bookings are not silently dropped
-- [ ] `VITE_BOOK_DEMO_SCHEDULER_URL` was set **before** running the production `vite build` (re-run the build if you change it later)
+- [ ] `CALCOM_WEBHOOK_SECRET` is set (and matches the secret pasted into the Cal.com webhook config) — verifier fails closed in production. Confirmed by `scripts/validate-env.ts` / Admin API startup (no manual review needed).
+- [ ] `SALES_NOTIFICATION_EMAIL` points at a monitored sales inbox so demo leads and bookings are not silently dropped. Confirmed by `scripts/validate-env.ts` / Admin API startup.
+- [ ] `VITE_BOOK_DEMO_SCHEDULER_URL` was set **before** running the production `vite build` (re-run the build if you change it later). Confirmed by `scripts/validate-env.ts` — run it as part of the pre-build step.
 
 ## 8. Migration Validation Record
 
