@@ -1,24 +1,27 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Menu, X, Phone } from 'lucide-react';
 import WebsiteSalesWidget from './WebsiteSalesWidget';
 import CookieConsent from './CookieConsent';
+import LanguageSwitcher from './LanguageSwitcher';
 
 const navLinks = [
-  { to: '/product', label: 'Product' },
-  { to: '/features', label: 'Features' },
-  { to: '/ai-agents', label: 'Agents' },
-  { to: '/pricing', label: 'Pricing' },
-  { to: '/use-cases', label: 'Use Cases' },
-  { to: '/integrations', label: 'Integrations' },
-  { to: '/demo', label: 'Demo' },
-  { to: '/resources', label: 'Resources' },
-  { to: '/contact', label: 'Contact' },
-];
+  { to: '/product', i18nKey: 'public_nav.product' },
+  { to: '/features', i18nKey: 'public_nav.features' },
+  { to: '/ai-agents', i18nKey: 'public_nav.agents' },
+  { to: '/pricing', i18nKey: 'public_nav.pricing' },
+  { to: '/use-cases', i18nKey: 'public_nav.use_cases' },
+  { to: '/integrations', i18nKey: 'public_nav.integrations' },
+  { to: '/demo', i18nKey: 'public_nav.demo' },
+  { to: '/resources', i18nKey: 'public_nav.resources' },
+  { to: '/contact', i18nKey: 'public_nav.contact' },
+] as const;
 
 export default function PublicLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen flex flex-col bg-mist font-body text-slate-ink">
@@ -29,7 +32,7 @@ export default function PublicLayout() {
               <div className="w-8 h-8 rounded-lg bg-teal flex items-center justify-center">
                 <Phone className="h-4 w-4 text-white" />
               </div>
-              <span className="font-display text-xl font-bold tracking-tight">QVO</span>
+              <span className="font-display text-xl font-bold tracking-tight">{t('brand.name')}</span>
             </Link>
 
             <nav className="hidden lg:flex items-center gap-1">
@@ -43,35 +46,37 @@ export default function PublicLayout() {
                       : 'text-white/75 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  {link.label}
+                  {t(link.i18nKey)}
                 </Link>
               ))}
             </nav>
 
             <div className="hidden lg:flex items-center gap-2">
+              <LanguageSwitcher variant="header" className="mr-1" />
               <Link
                 to="/login"
                 className="text-sm font-medium text-white/80 hover:text-white transition-colors px-3 py-2"
               >
-                Sign In
+                {t('actions.sign_in')}
               </Link>
               <Link
                 to="/book-demo"
                 className="text-sm font-medium text-white/90 hover:text-white border border-white/20 hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors"
               >
-                Book a Demo
+                {t('actions.book_demo')}
               </Link>
               <Link
                 to="/signup"
                 className="text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2 rounded-lg transition-colors"
               >
-                Start Free Trial
+                {t('actions.start_trial')}
               </Link>
             </div>
 
             <button
               className="lg:hidden p-2 text-white/80 hover:text-white"
               onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label={t('actions.open_menu')}
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -92,30 +97,33 @@ export default function PublicLayout() {
                       : 'text-white/75 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  {link.label}
+                  {t(link.i18nKey)}
                 </Link>
               ))}
               <div className="pt-3 border-t border-white/10 mt-3 space-y-2">
+                <div className="flex items-center justify-center px-3 py-2">
+                  <LanguageSwitcher variant="header" />
+                </div>
                 <Link
                   to="/login"
                   onClick={() => setMobileOpen(false)}
                   className="block text-center text-sm font-medium text-white/80 hover:text-white px-3 py-2.5"
                 >
-                  Sign In
+                  {t('actions.sign_in')}
                 </Link>
                 <Link
                   to="/book-demo"
                   onClick={() => setMobileOpen(false)}
                   className="block text-center text-sm font-medium text-white border border-white/20 hover:border-white/40 px-4 py-2.5 rounded-lg"
                 >
-                  Book a Demo
+                  {t('actions.book_demo')}
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMobileOpen(false)}
                   className="block text-center text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2.5 rounded-lg"
                 >
-                  Start Free Trial
+                  {t('actions.start_trial')}
                 </Link>
               </div>
             </div>
@@ -138,61 +146,59 @@ export default function PublicLayout() {
                 <div className="w-7 h-7 rounded-md bg-teal flex items-center justify-center">
                   <Phone className="h-3.5 w-3.5 text-white" />
                 </div>
-                <span className="font-display text-lg font-bold text-white tracking-tight">QVO</span>
+                <span className="font-display text-lg font-bold text-white tracking-tight">{t('brand.name')}</span>
               </div>
-              <p className="text-sm leading-relaxed">
-                Quality Voice Operations. The voice operations hub for small businesses.
-              </p>
+              <p className="text-sm leading-relaxed">{t('brand.tagline')}</p>
             </div>
 
             <div>
-              <h4 className="font-display text-sm font-semibold text-white mb-4">Product</h4>
+              <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_product')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/product" className="text-sm hover:text-white transition-colors">Platform</Link></li>
-                <li><Link to="/features" className="text-sm hover:text-white transition-colors">Features</Link></li>
-                <li><Link to="/ai-agents" className="text-sm hover:text-white transition-colors">Agents</Link></li>
-                <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">Pricing</Link></li>
-                <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">Integrations</Link></li>
-                <li><Link to="/demo" className="text-sm hover:text-white transition-colors">Live Demo</Link></li>
-                <li><Link to="/book-demo" className="text-sm hover:text-white transition-colors">Book a Demo</Link></li>
+                <li><Link to="/product" className="text-sm hover:text-white transition-colors">{t('footer.platform')}</Link></li>
+                <li><Link to="/features" className="text-sm hover:text-white transition-colors">{t('public_nav.features')}</Link></li>
+                <li><Link to="/ai-agents" className="text-sm hover:text-white transition-colors">{t('public_nav.agents')}</Link></li>
+                <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">{t('public_nav.pricing')}</Link></li>
+                <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">{t('public_nav.integrations')}</Link></li>
+                <li><Link to="/demo" className="text-sm hover:text-white transition-colors">{t('footer.live_demo')}</Link></li>
+                <li><Link to="/book-demo" className="text-sm hover:text-white transition-colors">{t('actions.book_demo')}</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-display text-sm font-semibold text-white mb-4">Solutions</h4>
+              <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_solutions')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/industries/healthcare" className="text-sm hover:text-white transition-colors">Healthcare</Link></li>
-                <li><Link to="/industries/dental" className="text-sm hover:text-white transition-colors">Dental</Link></li>
-                <li><Link to="/industries/legal" className="text-sm hover:text-white transition-colors">Legal</Link></li>
-                <li><Link to="/industries/real-estate" className="text-sm hover:text-white transition-colors">Real Estate</Link></li>
-                <li><Link to="/industries/home-services" className="text-sm hover:text-white transition-colors">Home Services</Link></li>
-                <li><Link to="/case-studies" className="text-sm hover:text-white transition-colors">Case Studies</Link></li>
+                <li><Link to="/industries/healthcare" className="text-sm hover:text-white transition-colors">{t('footer.healthcare')}</Link></li>
+                <li><Link to="/industries/dental" className="text-sm hover:text-white transition-colors">{t('footer.dental')}</Link></li>
+                <li><Link to="/industries/legal" className="text-sm hover:text-white transition-colors">{t('footer.legal')}</Link></li>
+                <li><Link to="/industries/real-estate" className="text-sm hover:text-white transition-colors">{t('footer.real_estate')}</Link></li>
+                <li><Link to="/industries/home-services" className="text-sm hover:text-white transition-colors">{t('footer.home_services')}</Link></li>
+                <li><Link to="/case-studies" className="text-sm hover:text-white transition-colors">{t('footer.case_studies')}</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-display text-sm font-semibold text-white mb-4">Company</h4>
+              <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_company')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/contact" className="text-sm hover:text-white transition-colors">Contact</Link></li>
-                <li><Link to="/blog" className="text-sm hover:text-white transition-colors">Blog</Link></li>
-                <li><Link to="/resources" className="text-sm hover:text-white transition-colors">Resources</Link></li>
-                <li><Link to="/docs" className="text-sm hover:text-white transition-colors">Documentation</Link></li>
-                <li><Link to="/docs/api-overview" className="text-sm hover:text-white transition-colors">API Reference</Link></li>
-                <li><Link to="/login" className="text-sm hover:text-white transition-colors">Sign In</Link></li>
+                <li><Link to="/contact" className="text-sm hover:text-white transition-colors">{t('public_nav.contact')}</Link></li>
+                <li><Link to="/blog" className="text-sm hover:text-white transition-colors">{t('footer.blog')}</Link></li>
+                <li><Link to="/resources" className="text-sm hover:text-white transition-colors">{t('public_nav.resources')}</Link></li>
+                <li><Link to="/docs" className="text-sm hover:text-white transition-colors">{t('footer.documentation')}</Link></li>
+                <li><Link to="/docs/api-overview" className="text-sm hover:text-white transition-colors">{t('footer.api_reference')}</Link></li>
+                <li><Link to="/login" className="text-sm hover:text-white transition-colors">{t('actions.sign_in')}</Link></li>
               </ul>
             </div>
           </div>
 
           <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-white/50">
-              &copy; {new Date().getFullYear()} Quality Voice Operations. All rights reserved.
+              {t('footer.rights', { year: new Date().getFullYear() })}
             </p>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-white/60">
-              <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
-              <Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
-              <Link to="/security" className="hover:text-white transition-colors">Security</Link>
-              <Link to="/subprocessors" className="hover:text-white transition-colors">Sub-processors</Link>
-              <a href="/legal/dpa" className="hover:text-white transition-colors">DPA</a>
+              <Link to="/privacy" className="hover:text-white transition-colors">{t('footer.privacy')}</Link>
+              <Link to="/terms" className="hover:text-white transition-colors">{t('footer.terms')}</Link>
+              <Link to="/security" className="hover:text-white transition-colors">{t('footer.security')}</Link>
+              <Link to="/subprocessors" className="hover:text-white transition-colors">{t('footer.subprocessors')}</Link>
+              <a href="/legal/dpa" className="hover:text-white transition-colors">{t('footer.dpa')}</a>
             </div>
           </div>
         </div>

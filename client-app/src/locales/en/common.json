@@ -1,0 +1,92 @@
+{
+  "brand": {
+    "name": "QVO",
+    "tagline": "Quality Voice Operations. The voice operations hub for small businesses."
+  },
+  "language": {
+    "switcher_label": "Language",
+    "current": "Current language",
+    "english": "English",
+    "spanish": "Spanish"
+  },
+  "actions": {
+    "sign_in": "Sign In",
+    "sign_out": "Sign Out",
+    "book_demo": "Book a Demo",
+    "start_trial": "Start Free Trial",
+    "open_menu": "Open menu",
+    "close": "Close"
+  },
+  "theme": {
+    "light": "Light Mode",
+    "dark": "Dark Mode"
+  },
+  "public_nav": {
+    "product": "Product",
+    "features": "Features",
+    "agents": "Agents",
+    "pricing": "Pricing",
+    "use_cases": "Use Cases",
+    "integrations": "Integrations",
+    "demo": "Demo",
+    "resources": "Resources",
+    "contact": "Contact"
+  },
+  "footer": {
+    "section_product": "Product",
+    "section_solutions": "Solutions",
+    "section_company": "Company",
+    "platform": "Platform",
+    "live_demo": "Live Demo",
+    "healthcare": "Healthcare",
+    "dental": "Dental",
+    "legal": "Legal",
+    "real_estate": "Real Estate",
+    "home_services": "Home Services",
+    "case_studies": "Case Studies",
+    "blog": "Blog",
+    "documentation": "Documentation",
+    "api_reference": "API Reference",
+    "rights": "© {{year}} Quality Voice Operations. All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "security": "Security",
+    "subprocessors": "Sub-processors",
+    "dpa": "DPA",
+    "your_data": "Your data",
+    "compact_copyright": "© {{year}} Quality Voice Operations",
+    "compact_privacy": "Privacy",
+    "compact_terms": "Terms"
+  },
+  "tenant_nav": {
+    "tenant_badge": "Tenant",
+    "dashboard": "Dashboard",
+    "agents": "Agents",
+    "conversations": "Conversations",
+    "campaigns": "Campaigns",
+    "analytics": "Analytics",
+    "operations": "Operations",
+    "autopilot": "Autopilot",
+    "sms_inbox": "SMS Inbox",
+    "scheduling": "Scheduling",
+    "tickets": "Tickets",
+    "dispatch": "Dispatch",
+    "configure": "Configure",
+    "workflows": "Workflows",
+    "integrations": "Integrations",
+    "knowledge": "Knowledge",
+    "marketplace": "Marketplace",
+    "settings": "Settings",
+    "whats_new": "What's new"
+  },
+  "admin_nav": {
+    "console": "Platform Admin Console",
+    "badge": "Platform Admin",
+    "tenants": "Tenants",
+    "analytics": "Analytics",
+    "marketplace": "Marketplace",
+    "billing": "Billing",
+    "security": "Security",
+    "governance": "Governance"
+  }
+}

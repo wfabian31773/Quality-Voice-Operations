@@ -10,12 +10,14 @@ import {
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
 import { HelpDrawer } from './HelpDrawer';
 import TrialBanner from './TrialBanner';
 import NotificationsCenter from './NotificationsCenter';
+import LanguageSwitcher from './LanguageSwitcher';
 import { Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import CommandPalette from './CommandPalette';
@@ -26,39 +28,40 @@ import ProductTour, { getTourCompleted } from './ProductTour';
 export interface NavItem {
   to: string;
   icon: typeof LayoutDashboard;
-  label: string;
+  i18nKey: string;
 }
 
 export const tenantLinks: NavItem[] = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/calls', icon: PhoneCall, label: 'Conversations' },
-  { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
-  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/dashboard', icon: LayoutDashboard, i18nKey: 'tenant_nav.dashboard' },
+  { to: '/agents', icon: Bot, i18nKey: 'tenant_nav.agents' },
+  { to: '/calls', icon: PhoneCall, i18nKey: 'tenant_nav.conversations' },
+  { to: '/campaigns', icon: Megaphone, i18nKey: 'tenant_nav.campaigns' },
+  { to: '/analytics', icon: BarChart3, i18nKey: 'tenant_nav.analytics' },
 ];
 
 export const operationsLinks: NavItem[] = [
-  { to: '/autopilot', icon: Zap, label: 'Autopilot' },
-  { to: '/sms-inbox', icon: MessageSquare, label: 'SMS Inbox' },
-  { to: '/scheduling', icon: CalendarClock, label: 'Scheduling' },
-  { to: '/tickets', icon: ClipboardList, label: 'Tickets' },
-  { to: '/dispatch', icon: Truck, label: 'Dispatch' },
+  { to: '/autopilot', icon: Zap, i18nKey: 'tenant_nav.autopilot' },
+  { to: '/sms-inbox', icon: MessageSquare, i18nKey: 'tenant_nav.sms_inbox' },
+  { to: '/scheduling', icon: CalendarClock, i18nKey: 'tenant_nav.scheduling' },
+  { to: '/tickets', icon: ClipboardList, i18nKey: 'tenant_nav.tickets' },
+  { to: '/dispatch', icon: Truck, i18nKey: 'tenant_nav.dispatch' },
 ];
 
 export const configureLinks: NavItem[] = [
-  { to: '/workflows', icon: Network, label: 'Workflows' },
-  { to: '/connectors', icon: Plug, label: 'Integrations' },
-  { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge' },
-  { to: '/marketplace', icon: Store, label: 'Marketplace' },
+  { to: '/workflows', icon: Network, i18nKey: 'tenant_nav.workflows' },
+  { to: '/connectors', icon: Plug, i18nKey: 'tenant_nav.integrations' },
+  { to: '/knowledge-base', icon: BookOpen, i18nKey: 'tenant_nav.knowledge' },
+  { to: '/marketplace', icon: Store, i18nKey: 'tenant_nav.marketplace' },
 ];
 
-export const settingsLink: NavItem = { to: '/settings', icon: Settings2, label: 'Settings' };
+export const settingsLink: NavItem = { to: '/settings', icon: Settings2, i18nKey: 'tenant_nav.settings' };
 
 export default function TenantLayout() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const opsRef = useRef<HTMLDivElement>(null);
   const configureRef = useRef<HTMLDivElement>(null);
@@ -162,8 +165,8 @@ export default function TenantLayout() {
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase tracking-wider">Tenant</span>
+          <h1 className="text-lg font-bold text-white tracking-tight font-display">{t('brand.name')}</h1>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase tracking-wider">{t('tenant_nav.tenant_badge')}</span>
         </div>
         <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
       </div>
@@ -193,7 +196,7 @@ export default function TenantLayout() {
                 }
               >
                 <link.icon className="h-4.5 w-4.5 shrink-0" />
-                {link.label}
+                {t(link.i18nKey)}
               </NavLink>
               {link.to === '/calls' && !user?.isPlatformAdmin && (
                 <PinnedCallViews onLinkClick={() => setMobileOpen(false)} />
@@ -203,7 +206,7 @@ export default function TenantLayout() {
         })}
 
         <NavGroup
-          label="Operations"
+          label={t('tenant_nav.operations')}
           icon={Boxes}
           links={operationsLinks}
           location={location}
@@ -214,7 +217,7 @@ export default function TenantLayout() {
         />
 
         <NavGroup
-          label="Configure"
+          label={t('tenant_nav.configure')}
           icon={Wrench}
           links={configureLinks}
           location={location}
@@ -238,25 +241,26 @@ export default function TenantLayout() {
           }
         >
           <settingsLink.icon className="h-4.5 w-4.5 shrink-0" />
-          {settingsLink.label}
+          {t(settingsLink.i18nKey)}
         </NavLink>
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10 space-y-1">
         <PortalSwitcher />
+        <LanguageSwitcher variant="sidebar" />
         <button
           onClick={toggle}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
         >
           {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-          {dark ? 'Light Mode' : 'Dark Mode'}
+          {dark ? t('theme.light') : t('theme.dark')}
         </button>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
         >
           <LogOut className="h-4.5 w-4.5" />
-          Sign Out
+          {t('actions.sign_out')}
         </button>
       </div>
     </div>
@@ -281,10 +285,10 @@ export default function TenantLayout() {
         <TrialBanner />
         <header className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border print:hidden">
           <div className="flex items-center gap-2">
-            <button className="lg:hidden p-1.5 -ml-1.5" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+            <button className="lg:hidden p-1.5 -ml-1.5" onClick={() => setMobileOpen(true)} aria-label={t('actions.open_menu')}>
               <Menu className="h-5 w-5" />
             </button>
-            <span className="font-semibold text-sm font-display lg:hidden">QVO</span>
+            <span className="font-semibold text-sm font-display lg:hidden">{t('brand.name')}</span>
           </div>
           <div className="flex items-center gap-1">
             <ChangelogBadgeLink />
@@ -326,6 +330,7 @@ export default function TenantLayout() {
 }
 
 function ChangelogBadgeLink() {
+  const { t } = useTranslation();
   const { data } = useQuery({
     queryKey: ['changelog-unread'],
     queryFn: () => api.get<{ count: number }>('/platform/changelog/unread-count').catch(() => ({ count: 0 })),
@@ -337,8 +342,8 @@ function ChangelogBadgeLink() {
     <NavLink
       to="/changelog"
       className="relative p-2 rounded-lg hover:bg-surface-hover text-text-secondary transition-colors"
-      aria-label="What's new"
-      title="What's new"
+      aria-label={t('tenant_nav.whats_new')}
+      title={t('tenant_nav.whats_new')}
     >
       <Sparkles className="h-5 w-5" />
       {count > 0 && (
@@ -410,6 +415,7 @@ interface NavGroupProps {
 }
 
 function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef, onLinkClick }: NavGroupProps) {
+  const { t } = useTranslation();
   const isActiveGroup = links.some((l) => location.pathname.startsWith(l.to));
   return (
     <div className="pt-2" ref={groupRef}>
@@ -459,7 +465,7 @@ function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef,
               }
             >
               <link.icon className="h-4 w-4 shrink-0" />
-              {link.label}
+              {t(link.i18nKey)}
             </NavLink>
           ))}
         </div>

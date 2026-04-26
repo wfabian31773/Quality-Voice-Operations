@@ -7,30 +7,33 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
 import NotificationsCenter from './NotificationsCenter';
+import LanguageSwitcher from './LanguageSwitcher';
 
 interface NavItem {
   to: string;
   icon: typeof Building2;
-  label: string;
+  i18nKey: string;
 }
 
 const adminLinks: NavItem[] = [
-  { to: '/admin/dashboard', icon: Building2, label: 'Tenants' },
-  { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/admin/marketplace', icon: Store, label: 'Marketplace' },
-  { to: '/admin/billing', icon: CreditCard, label: 'Billing' },
-  { to: '/admin/security', icon: Shield, label: 'Security' },
-  { to: '/admin/governance', icon: Compass, label: 'Governance' },
+  { to: '/admin/dashboard', icon: Building2, i18nKey: 'admin_nav.tenants' },
+  { to: '/admin/analytics', icon: BarChart3, i18nKey: 'admin_nav.analytics' },
+  { to: '/admin/marketplace', icon: Store, i18nKey: 'admin_nav.marketplace' },
+  { to: '/admin/billing', icon: CreditCard, i18nKey: 'admin_nav.billing' },
+  { to: '/admin/security', icon: Shield, i18nKey: 'admin_nav.security' },
+  { to: '/admin/governance', icon: Compass, i18nKey: 'admin_nav.governance' },
 ];
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
@@ -42,8 +45,8 @@ export default function AdminLayout() {
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-purple-500/20">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wider">Platform Admin</span>
+          <h1 className="text-lg font-bold text-white tracking-tight font-display">{t('brand.name')}</h1>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wider">{t('admin_nav.badge')}</span>
         </div>
         <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
       </div>
@@ -65,26 +68,27 @@ export default function AdminLayout() {
             }
           >
             <link.icon className="h-4.5 w-4.5 shrink-0" />
-            {link.label}
+            {t(link.i18nKey)}
           </NavLink>
         ))}
       </nav>
 
       <div className="px-3 py-4 border-t border-purple-500/20 space-y-1">
         <PortalSwitcher />
+        <LanguageSwitcher variant="sidebar" />
         <button
           onClick={toggle}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-purple-600/10 hover:text-white w-full transition-colors"
         >
           {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-          {dark ? 'Light Mode' : 'Dark Mode'}
+          {dark ? t('theme.light') : t('theme.dark')}
         </button>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-purple-600/10 hover:text-white w-full transition-colors"
         >
           <LogOut className="h-4.5 w-4.5" />
-          Sign Out
+          {t('actions.sign_out')}
         </button>
       </div>
     </div>
@@ -111,7 +115,7 @@ export default function AdminLayout() {
             <button className="lg:hidden" onClick={() => setMobileOpen(true)}>
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">Platform Admin Console</span>
+            <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">{t('admin_nav.console')}</span>
           </div>
           <div className="flex items-center gap-1">
             <NotificationsCenter />

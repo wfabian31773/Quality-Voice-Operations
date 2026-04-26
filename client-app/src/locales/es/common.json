@@ -1,0 +1,92 @@
+{
+  "brand": {
+    "name": "QVO",
+    "tagline": "Quality Voice Operations. El centro de operaciones de voz para pequeñas empresas."
+  },
+  "language": {
+    "switcher_label": "Idioma",
+    "current": "Idioma actual",
+    "english": "Inglés",
+    "spanish": "Español"
+  },
+  "actions": {
+    "sign_in": "Iniciar sesión",
+    "sign_out": "Cerrar sesión",
+    "book_demo": "Solicitar demo",
+    "start_trial": "Iniciar prueba gratis",
+    "open_menu": "Abrir menú",
+    "close": "Cerrar"
+  },
+  "theme": {
+    "light": "Modo claro",
+    "dark": "Modo oscuro"
+  },
+  "public_nav": {
+    "product": "Producto",
+    "features": "Funcionalidades",
+    "agents": "Agentes",
+    "pricing": "Precios",
+    "use_cases": "Casos de uso",
+    "integrations": "Integraciones",
+    "demo": "Demo",
+    "resources": "Recursos",
+    "contact": "Contacto"
+  },
+  "footer": {
+    "section_product": "Producto",
+    "section_solutions": "Soluciones",
+    "section_company": "Empresa",
+    "platform": "Plataforma",
+    "live_demo": "Demo en vivo",
+    "healthcare": "Salud",
+    "dental": "Dental",
+    "legal": "Jurídico",
+    "real_estate": "Bienes raíces",
+    "home_services": "Servicios para el hogar",
+    "case_studies": "Casos de éxito",
+    "blog": "Blog",
+    "documentation": "Documentación",
+    "api_reference": "Referencia de la API",
+    "rights": "© {{year}} Quality Voice Operations. Todos los derechos reservados.",
+    "privacy": "Política de privacidad",
+    "terms": "Términos del servicio",
+    "security": "Seguridad",
+    "subprocessors": "Subprocesadores",
+    "dpa": "DPA",
+    "your_data": "Tus datos",
+    "compact_copyright": "© {{year}} Quality Voice Operations",
+    "compact_privacy": "Privacidad",
+    "compact_terms": "Términos"
+  },
+  "tenant_nav": {
+    "tenant_badge": "Cliente",
+    "dashboard": "Panel",
+    "agents": "Agentes",
+    "conversations": "Conversaciones",
+    "campaigns": "Campañas",
+    "analytics": "Analíticas",
+    "operations": "Operaciones",
+    "autopilot": "Autopilot",
+    "sms_inbox": "Bandeja SMS",
+    "scheduling": "Agenda",
+    "tickets": "Tickets",
+    "dispatch": "Despacho",
+    "configure": "Configurar",
+    "workflows": "Flujos de trabajo",
+    "integrations": "Integraciones",
+    "knowledge": "Conocimiento",
+    "marketplace": "Marketplace",
+    "settings": "Ajustes",
+    "whats_new": "Novedades"
+  },
+  "admin_nav": {
+    "console": "Consola de administración de plataforma",
+    "badge": "Admin plataforma",
+    "tenants": "Clientes",
+    "analytics": "Analíticas",
+    "marketplace": "Marketplace",
+    "billing": "Facturación",
+    "security": "Seguridad",
+    "governance": "Gobernanza"
+  }
+}

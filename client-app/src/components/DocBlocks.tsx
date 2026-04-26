@@ -1,6 +1,43 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Info, Lightbulb, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { DocBlock } from '../data/docs';
+
+const INTEGRATION_IMAGE_PREFIXES = [
+  'salesforce-',
+  'outlook-',
+  'hubspot-',
+  'google-',
+  'slack-',
+  'pipedrive-',
+  'quickbooks-',
+];
+
+function imageIdFromSrc(src: string): string | null {
+  const match = src.match(/\/docs\/screenshots\/([^/]+?)\.(svg|jpg|jpeg|png|webp)$/i);
+  if (!match) return null;
+  const id = match[1];
+  if (!INTEGRATION_IMAGE_PREFIXES.some((p) => id.startsWith(p))) return null;
+  return id;
+}
+
+function translateImageStrings(
+  src: string,
+  alt: string,
+  caption: string | undefined,
+  i18n: { exists: (key: string, opts?: { ns?: string }) => boolean; language: string },
+  t: (key: string) => string,
+): { alt: string; caption: string | undefined } {
+  const id = imageIdFromSrc(src);
+  if (!id) return { alt, caption };
+  const altKey = `images.${id}.alt`;
+  const captionKey = `images.${id}.caption`;
+  const translatedAlt = i18n.exists(altKey, { ns: 'docs' }) ? t(altKey) : alt;
+  const translatedCaption = caption && i18n.exists(captionKey, { ns: 'docs' })
+    ? t(captionKey)
+    : caption;
+  return { alt: translatedAlt, caption: translatedCaption };
+}
 
 const calloutStyles = {
   info: { wrap: 'bg-teal/5 border-teal/20', icon: Info, iconClass: 'text-teal' },
@@ -10,13 +47,17 @@ const calloutStyles = {
 
 export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense?: boolean }) {
   const [zoomedIndex, setZoomedIndex] = useState<number | null>(null);
+  const { t, i18n } = useTranslation('docs');
 
   const images = useMemo(
     () =>
-      blocks.flatMap((b) =>
-        b.type === 'image' ? [{ src: b.src, alt: b.alt, caption: b.caption }] : []
-      ),
-    [blocks]
+      blocks.flatMap((b) => {
+        if (b.type !== 'image') return [];
+        const { alt, caption } = translateImageStrings(b.src, b.alt, b.caption, i18n, t);
+        return [{ src: b.src, alt, caption }];
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [blocks, i18n.language, t]
   );
 
   const zoomed = zoomedIndex !== null ? images[zoomedIndex] ?? null : null;
@@ -147,25 +188,17 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
           );
         }
         if (block.type === 'image') {
-          const imageIndex = images.findIndex((img) => img.src === block.src && img.alt === block.alt);
+          const imageIndex = images.findIndex((img) => img.src === block.src);
+          const resolvedIndex = imageIndex >= 0 ? imageIndex : 0;
+          const resolved = images[resolvedIndex] ?? { alt: block.alt, caption: block.caption };
           return (
-            <figure key={idx} className="my-4">
-              <button
-                type="button"
-                onClick={() => setZoomedIndex(imageIndex >= 0 ? imageIndex : 0)}
-                className="group block w-full rounded-xl border border-soft-steel/50 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal cursor-zoom-in"
-                aria-label={`Zoom image: ${block.alt}`}
-              >
-                <img
-                  src={block.src}
-                  alt={block.alt}
-                  className="w-full transition-transform duration-200 group-hover:scale-[1.01]"
-                />
-              </button>
-              {block.caption && (
-                <figcaption className="text-xs text-slate-ink/50 mt-2 text-center font-body">{block.caption}</figcaption>
-              )}
-            </figure>
+            <ImageBlock
+              key={idx}
+              src={block.src}
+              alt={resolved.alt}
+              caption={resolved.caption}
+              onZoom={() => setZoomedIndex(resolvedIndex)}
+            />
           );
         }
         if (block.type === 'common-issues') {
@@ -265,4 +298,33 @@ export function slugify(text: string): string {
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-');
+}
+
+interface ImageBlockProps {
+  src: string;
+  alt: string;
+  caption?: string;
+  onZoom: () => void;
+}
+
+function ImageBlock({ src, alt, caption, onZoom }: ImageBlockProps) {
+  return (
+    <figure className="my-4">
+      <button
+        type="button"
+        onClick={onZoom}
+        className="group block w-full rounded-xl border border-soft-steel/50 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal cursor-zoom-in"
+        aria-label={`Zoom image: ${alt}`}
+      >
+        <img
+          src={src}
+          alt={alt}
+          className="w-full transition-transform duration-200 group-hover:scale-[1.01]"
+        />
+      </button>
+      {caption && (
+        <figcaption className="text-xs text-slate-ink/50 mt-2 text-center font-body">{caption}</figcaption>
+      )}
+    </figure>
+  );
 }
