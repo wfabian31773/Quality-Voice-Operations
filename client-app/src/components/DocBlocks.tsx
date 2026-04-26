@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type TouchEvent as ReactTouchEvent } from 'react';
 import { Info, Lightbulb, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DocBlock } from '../data/docs';
@@ -226,6 +226,44 @@ function ZoomableImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
+const HINT_STORAGE_KEY = 'qvo:docs-lightbox-hint-shown';
+const HINT_FADE_MS = 2500;
+
+function isTouchDevice(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+
+function LightboxHint({ onDismiss }: { onDismiss: () => void }) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(false), HINT_FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const handleDismiss = (e: ReactMouseEvent | ReactTouchEvent) => {
+    e.stopPropagation();
+    setVisible(false);
+  };
+
+  return (
+    <button
+      type="button"
+      role="status"
+      aria-live="polite"
+      onClick={handleDismiss}
+      onTouchStart={handleDismiss}
+      onTransitionEnd={(e) => {
+        if (e.propertyName === 'opacity' && !visible) onDismiss();
+      }}
+      className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full bg-white/15 backdrop-blur-sm text-white text-xs sm:text-sm font-body shadow-lg transition-opacity duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+    >
+      Pinch to zoom · Double-tap for 2x
+    </button>
+  );
+}
+
 const calloutStyles = {
   info: { wrap: 'bg-teal/5 border-teal/20', icon: Info, iconClass: 'text-teal' },
   tip: { wrap: 'bg-emerald-50 border-emerald-200', icon: Lightbulb, iconClass: 'text-emerald-600' },
@@ -234,6 +272,7 @@ const calloutStyles = {
 
 export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense?: boolean }) {
   const [zoomedIndex, setZoomedIndex] = useState<number | null>(null);
+  const [showZoomHint, setShowZoomHint] = useState(false);
   const { t, i18n } = useTranslation('docs');
 
   const images = useMemo(
@@ -251,7 +290,20 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
   const hasMultiple = images.length > 1;
 
   useEffect(() => {
-    if (zoomedIndex === null) return;
+    if (zoomedIndex === null) {
+      setShowZoomHint(false);
+      return;
+    }
+    if (isTouchDevice()) {
+      try {
+        if (window.sessionStorage.getItem(HINT_STORAGE_KEY) !== '1') {
+          window.sessionStorage.setItem(HINT_STORAGE_KEY, '1');
+          setShowZoomHint(true);
+        }
+      } catch {
+        // sessionStorage may be unavailable (private mode); skip the hint.
+      }
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setZoomedIndex(null);
@@ -460,6 +512,9 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
             </figcaption>
           )}
         </figure>
+        {showZoomHint && (
+          <LightboxHint onDismiss={() => setShowZoomHint(false)} />
+        )}
       </div>
     )}
     </>
