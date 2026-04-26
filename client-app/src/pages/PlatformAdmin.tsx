@@ -7,6 +7,7 @@ import {
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
+  AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -556,6 +557,308 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
   );
 }
 
+interface ConnectorHealthRow {
+  integrationId: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  connectorType: string;
+  provider: string;
+  name: string | null;
+  isEnabled: boolean;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  lastSyncErrorAt: string | null;
+  authAlertSentAt: string | null;
+  recoveryAlertSentAt: string | null;
+  updatedAt: string | null;
+}
+
+interface ConnectorRefreshFailure {
+  id: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string | null;
+  provider: string | null;
+  errorMessage: string | null;
+  occurredAt: string;
+}
+
+interface ConnectorHealthResponse {
+  connectors: ConnectorHealthRow[];
+  recentRefreshFailures: ConnectorRefreshFailure[];
+  summary: {
+    needsReconnect: number;
+    syncError: number;
+    healthy: number;
+    totalEnabled: number;
+    affectedTenants: number;
+  };
+  window: { sinceDays: number; eventsLimit: number };
+}
+
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHr / 24);
+  if (Number.isNaN(date.getTime())) return '—';
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+function ConnectorHealthPanel() {
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-connector-health'],
+    queryFn: () => api.get<ConnectorHealthResponse>('/platform/connector-health'),
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-muted">
+        Loading connector health…
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+        Failed to load connector health: {error ? (error as Error).message : 'no data'}
+      </div>
+    );
+  }
+
+  const { connectors, recentRefreshFailures, summary, window } = data;
+  const reconnectConnectors = connectors.filter((c) => c.lastSyncStatus === 'needs_reconnect');
+  const erroredConnectors = connectors.filter((c) => c.lastSyncStatus === 'error');
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-primary" /> Connector Health
+          </h2>
+          <p className="text-xs text-muted mt-1">
+            Cross-tenant view of connectors that need a reconnect or are failing to sync, plus
+            recent proactive token-refresh failures from the background sweep.
+          </p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground disabled:opacity-50"
+          title="Refresh"
+        >
+          <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-muted">Reconnect needed</div>
+          <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+            {summary.needsReconnect}
+          </div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-muted">Sync errors</div>
+          <div className={`text-2xl font-bold ${summary.syncError > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+            {summary.syncError}
+          </div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-muted">Healthy</div>
+          <div className="text-2xl font-bold text-green-600 dark:text-green-400">{summary.healthy}</div>
+          <div className="text-xs text-muted mt-0.5">of {summary.totalEnabled} enabled</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-muted">Affected tenants</div>
+          <div className="text-2xl font-bold">{summary.affectedTenants}</div>
+        </div>
+      </div>
+
+      <ConnectorAttentionTable
+        title="Reconnect needed"
+        emptyText="No connectors are flagged as needing a reconnect. All OAuth tokens look healthy."
+        rows={reconnectConnectors}
+        accent="amber"
+      />
+
+      <ConnectorAttentionTable
+        title="Sync errors"
+        emptyText="No connectors are currently in a sync-error state."
+        rows={erroredConnectors}
+        accent="red"
+      />
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              Recent token refresh failures
+            </h3>
+            <p className="text-xs text-muted mt-0.5">
+              From <code className="font-mono">connector.token_refresh_failed</code> audit events in the last {window.sinceDays} days.
+            </p>
+          </div>
+        </div>
+        {recentRefreshFailures.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-muted">
+            No proactive token refresh failures in the last {window.sinceDays} days.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-2 font-medium text-muted">When</th>
+                  <th className="text-left px-4 py-2 font-medium text-muted">Tenant</th>
+                  <th className="text-left px-4 py-2 font-medium text-muted">Provider</th>
+                  <th className="text-left px-4 py-2 font-medium text-muted">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentRefreshFailures.map((ev) => (
+                  <tr key={ev.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+                      <span title={new Date(ev.occurredAt).toLocaleString()}>
+                        {formatRelativeTime(ev.occurredAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium">{ev.tenantName ?? '—'}</div>
+                      {ev.tenantSlug && (
+                        <div className="text-muted font-mono">{ev.tenantSlug}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs font-medium capitalize">{ev.provider ?? '—'}</td>
+                    <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[420px]">
+                      {ev.errorMessage ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConnectorAttentionTable({
+  title,
+  emptyText,
+  rows,
+  accent,
+}: {
+  title: string;
+  emptyText: string;
+  rows: ConnectorHealthRow[];
+  accent: 'amber' | 'red';
+}) {
+  const accentClasses = accent === 'amber'
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <h3 className="font-semibold text-sm">
+          {title}{' '}
+          <span className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${accentClasses}`}>
+            {rows.length}
+          </span>
+        </h3>
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-muted">{emptyText}</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2 font-medium text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Connector</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Last sync</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">First failed</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Last error</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Alerts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const truncated = c.lastSyncError && c.lastSyncError.length > 140
+                  ? `${c.lastSyncError.slice(0, 140)}…`
+                  : c.lastSyncError;
+                return (
+                  <tr key={c.integrationId} className="border-b border-border last:border-0 align-top">
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium">{c.tenantName ?? '—'}</div>
+                      {c.tenantSlug && (
+                        <div className="text-muted font-mono">{c.tenantSlug}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium capitalize">{c.name ?? c.provider}</div>
+                      <div className="text-muted">
+                        <span className="capitalize">{c.connectorType}</span>
+                        {c.provider && c.provider !== c.name && (
+                          <span className="font-mono"> · {c.provider}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+                      <span title={c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : 'never'}>
+                        {formatRelativeTime(c.lastSyncAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+                      <span title={c.lastSyncErrorAt ? new Date(c.lastSyncErrorAt).toLocaleString() : 'never'}>
+                        {formatRelativeTime(c.lastSyncErrorAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div
+                        className="font-mono text-red-600 dark:text-red-400 break-all max-w-[360px]"
+                        title={c.lastSyncError ?? ''}
+                      >
+                        {truncated ?? '—'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-xs whitespace-nowrap">
+                      {c.authAlertSentAt ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
+                          title={`Reconnect email sent ${new Date(c.authAlertSentAt).toLocaleString()}`}
+                        >
+                          <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt)}
+                        </span>
+                      ) : (
+                        <span className="text-muted">No email yet</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface IntegrationProviderStatus {
   provider: string;
   label: string;
@@ -721,7 +1024,7 @@ function IntegrationsStatusPanel() {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support' | 'integrations'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support' | 'integrations' | 'connector-health'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -889,9 +1192,20 @@ export default function PlatformAdmin() {
         >
           <span className="flex items-center gap-2"><Plug className="h-4 w-4" /> Integrations</span>
         </button>
+        <button
+          onClick={() => setActiveTab('connector-health')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'connector-health'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Connector Health</span>
+        </button>
       </div>
 
       {activeTab === 'integrations' && <IntegrationsStatusPanel />}
+      {activeTab === 'connector-health' && <ConnectorHealthPanel />}
 
       {activeTab === 'tenants' && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
