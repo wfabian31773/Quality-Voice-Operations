@@ -6,6 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e:sales-inbox-filters": "tsx tests/e2e/salesInboxFilters.spec.ts",
     "dev": "bash scripts/start-platform-dev.sh",
     "start": "npx tsx server/admin-api/start.ts",
     "db:migrate": "tsx scripts/run-migrations.ts",
