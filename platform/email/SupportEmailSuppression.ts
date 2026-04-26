@@ -99,10 +99,24 @@ export async function checkSupportEmailSkip(
  * Adds (or refreshes) an entry in the suppression list. Idempotent via
  * ON CONFLICT. Use when a send hard-bounces so future sends to the same
  * address are skipped before the network call.
+ *
+ * `addedByUserId` and `notes` are optional and only populated by the
+ * manual admin path — the automated bounce paths leave them NULL because
+ * `source` (e.g. 'support_reply_retry_scheduler') already explains who
+ * inserted the row. When refreshing an existing entry we preserve any
+ * earlier admin attribution + notes by COALESCing the new values onto
+ * the old ones; that way an automated re-bounce can't accidentally erase
+ * the reason a human originally suppressed an address.
  */
 export async function addSupportEmailSuppression(
   email: string | null | undefined,
-  args: { reason: string; source: string; lastError?: string | null },
+  args: {
+    reason: string;
+    source: string;
+    lastError?: string | null;
+    addedByUserId?: string | null;
+    notes?: string | null;
+  },
 ): Promise<void> {
   if (!email) return;
   const emailLower = email.trim().toLowerCase();
@@ -112,19 +126,33 @@ export async function addSupportEmailSuppression(
   try {
     await pool.query(
       `INSERT INTO support_email_suppressions
-         (email_lower, reason, source, last_error)
-       VALUES ($1, $2, $3, $4)
+         (email_lower, reason, source, last_error, added_by_user_id, notes)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (email_lower) DO UPDATE
          SET reason = EXCLUDED.reason,
              source = EXCLUDED.source,
              last_error = EXCLUDED.last_error,
+             -- Keep the first admin attribution / notes if a later automated
+             -- write doesn't bring its own. EXCLUDED.added_by_user_id is the
+             -- value supplied to the new INSERT, which is NULL for the
+             -- automated paths.
+             added_by_user_id = COALESCE(EXCLUDED.added_by_user_id, support_email_suppressions.added_by_user_id),
+             notes = COALESCE(EXCLUDED.notes, support_email_suppressions.notes),
              added_at = NOW()`,
-      [emailLower, args.reason, args.source, args.lastError ?? null],
+      [
+        emailLower,
+        args.reason,
+        args.source,
+        args.lastError ?? null,
+        args.addedByUserId ?? null,
+        args.notes ?? null,
+      ],
     );
     logger.info('Added support email to suppression list', {
       email_lower: emailLower,
       reason: args.reason,
       source: args.source,
+      added_by_user_id: args.addedByUserId ?? null,
     });
   } catch (err) {
     // Non-fatal: a missed suppression entry just means the next send to this
@@ -137,6 +165,194 @@ export async function addSupportEmailSuppression(
       error: String(err),
     });
   }
+}
+
+/**
+ * Removes an entry from the suppression list (manual admin "unsuppress").
+ * Returns true when a row was actually deleted so the API can 404 on a
+ * stale unsuppress click instead of silently doing nothing. DB errors are
+ * swallowed and turn into `false` so background callers can't crash on a
+ * transient failure — the strict variant below is what the admin endpoint
+ * uses so a real DB failure never gets misreported as "row not found".
+ *
+ * Note: this does NOT touch `support_email_unsubscribes` — unsubscribes
+ * are user-driven and durable, and a CAN-SPAM-respecting product must not
+ * let an admin "undo" them by accident. The unsubscribe sink owns those
+ * rows.
+ */
+export async function removeSupportEmailSuppression(
+  email: string | null | undefined,
+): Promise<boolean> {
+  if (!email) return false;
+  const emailLower = email.trim().toLowerCase();
+  if (!emailLower) return false;
+
+  const pool = getPlatformPool();
+  try {
+    const r = await pool.query(
+      `DELETE FROM support_email_suppressions WHERE email_lower = $1`,
+      [emailLower],
+    );
+    const removed = (r.rowCount ?? 0) > 0;
+    if (removed) {
+      logger.info('Removed support email from suppression list', { email_lower: emailLower });
+    }
+    return removed;
+  } catch (err) {
+    logger.warn('Failed to remove support email suppression', {
+      email_lower: emailLower,
+      error: String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Strict variants for the manual admin endpoints. Unlike the best-effort
+ * helpers above, these surface DB errors to the caller so the admin UI can
+ * show a real 5xx instead of a misleading "200 success" (after a failed
+ * insert) or "404 not found" (after a failed delete). The auto-bounce paths
+ * keep using the swallowing variants because there a transient failure
+ * just means the next bounce will retry — no human is waiting on the result.
+ */
+export async function addSupportEmailSuppressionStrict(
+  email: string,
+  args: {
+    reason: string;
+    source: string;
+    lastError?: string | null;
+    addedByUserId?: string | null;
+    notes?: string | null;
+  },
+): Promise<void> {
+  const emailLower = email.trim().toLowerCase();
+  if (!emailLower) {
+    throw new Error('email is required');
+  }
+  const pool = getPlatformPool();
+  await pool.query(
+    `INSERT INTO support_email_suppressions
+       (email_lower, reason, source, last_error, added_by_user_id, notes)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (email_lower) DO UPDATE
+       SET reason = EXCLUDED.reason,
+           source = EXCLUDED.source,
+           last_error = EXCLUDED.last_error,
+           added_by_user_id = COALESCE(EXCLUDED.added_by_user_id, support_email_suppressions.added_by_user_id),
+           notes = COALESCE(EXCLUDED.notes, support_email_suppressions.notes),
+           added_at = NOW()`,
+    [
+      emailLower,
+      args.reason,
+      args.source,
+      args.lastError ?? null,
+      args.addedByUserId ?? null,
+      args.notes ?? null,
+    ],
+  );
+  logger.info('Added support email to suppression list (strict)', {
+    email_lower: emailLower,
+    reason: args.reason,
+    source: args.source,
+    added_by_user_id: args.addedByUserId ?? null,
+  });
+}
+
+/**
+ * Result of a strict delete:
+ *   - 'removed': we actually deleted a row.
+ *   - 'absent': the address wasn't on the list (legitimate 404).
+ * DB errors throw — the caller must surface a 5xx so admins don't get a
+ * false 404 on infrastructure problems.
+ */
+export type RemoveSupportEmailSuppressionStrictResult = 'removed' | 'absent';
+
+export async function removeSupportEmailSuppressionStrict(
+  email: string,
+): Promise<RemoveSupportEmailSuppressionStrictResult> {
+  const emailLower = email.trim().toLowerCase();
+  if (!emailLower) {
+    throw new Error('email is required');
+  }
+  const pool = getPlatformPool();
+  const r = await pool.query(
+    `DELETE FROM support_email_suppressions WHERE email_lower = $1`,
+    [emailLower],
+  );
+  const removed = (r.rowCount ?? 0) > 0;
+  if (removed) {
+    logger.info('Removed support email from suppression list (strict)', {
+      email_lower: emailLower,
+    });
+    return 'removed';
+  }
+  return 'absent';
+}
+
+export interface SupportEmailSuppressionEntry {
+  email_lower: string;
+  reason: string;
+  source: string | null;
+  last_error: string | null;
+  added_at: string;
+  added_by_user_id: string | null;
+  notes: string | null;
+}
+
+/**
+ * Bulk-fetch suppression rows for a set of addresses. Used by the admin
+ * panel so a single round-trip enriches every recipient row with its
+ * suppression state (no N+1). Lowercases inputs to match the storage
+ * format. Returns a Map keyed by lowercased email; addresses with no
+ * entry are simply absent.
+ */
+export async function getSupportEmailSuppressionsByEmails(
+  emails: ReadonlyArray<string>,
+): Promise<Map<string, SupportEmailSuppressionEntry>> {
+  const out = new Map<string, SupportEmailSuppressionEntry>();
+  const lowered = Array.from(
+    new Set(
+      emails
+        .map((e) => (e ?? '').trim().toLowerCase())
+        .filter((e) => e.length > 0),
+    ),
+  );
+  if (lowered.length === 0) return out;
+
+  const pool = getPlatformPool();
+  try {
+    const r = await pool.query<SupportEmailSuppressionEntry>(
+      `SELECT email_lower, reason, source, last_error, added_at,
+              added_by_user_id, notes
+         FROM support_email_suppressions
+        WHERE email_lower = ANY($1::text[])`,
+      [lowered],
+    );
+    for (const row of r.rows) {
+      out.set(row.email_lower, row);
+    }
+  } catch (err) {
+    // Non-fatal — caller falls back to "no suppression info" rendering.
+    logger.warn('Failed to fetch support email suppressions in bulk', {
+      count: lowered.length,
+      error: String(err),
+    });
+  }
+  return out;
+}
+
+/**
+ * Single-address suppression lookup. Convenience wrapper around the bulk
+ * helper for the ticket-thread badge in the admin UI.
+ */
+export async function getSupportEmailSuppression(
+  email: string | null | undefined,
+): Promise<SupportEmailSuppressionEntry | null> {
+  if (!email) return null;
+  const emailLower = email.trim().toLowerCase();
+  if (!emailLower) return null;
+  const map = await getSupportEmailSuppressionsByEmails([emailLower]);
+  return map.get(emailLower) ?? null;
 }
 
 /**

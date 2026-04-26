@@ -6,9 +6,15 @@ import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
 import {
   addSupportEmailSuppression,
+  addSupportEmailSuppressionStrict,
   addSupportEmailUnsubscribe,
   checkSupportEmailSkip,
+  getSupportEmailSuppression,
+  getSupportEmailSuppressionsByEmails,
+  removeSupportEmailSuppression,
+  removeSupportEmailSuppressionStrict,
   removeSupportEmailUnsubscribe,
+  type SupportEmailSuppressionEntry,
 } from '../../../platform/email/SupportEmailSuppression';
 import {
   buildSupportUnsubscribeEmailHeaders,
@@ -1392,8 +1398,24 @@ router.get(
       });
 
       const truncated = recipients.length > limit;
+      const visible = recipients.slice(0, limit);
+
+      // Bulk-enrich every visible row with its current suppression entry (if
+      // any) so the panel can render the "Suppressed" badge + flip the
+      // action button to "Unsuppress" in a single round-trip. Done after
+      // the slice so we don't pay for hidden rows. Best-effort — the helper
+      // logs and returns an empty map if the lookup fails so the panel still
+      // renders the bounce data.
+      const suppressionMap = await getSupportEmailSuppressionsByEmails(
+        visible.map((r) => r.user_email),
+      );
+      const visibleWithSuppression = visible.map((r) => ({
+        ...r,
+        suppression: suppressionMap.get(r.user_email.toLowerCase()) ?? null,
+      }));
+
       res.json({
-        recipients: recipients.slice(0, limit),
+        recipients: visibleWithSuppression,
         total: recipients.length,
         truncated,
       });
@@ -1557,6 +1579,141 @@ router.delete(
       res
         .status(500)
         .json({ error: 'Failed to clear recipient bounce alert', detail: String(err) });
+    }
+  },
+);
+
+// ----- Platform admin: manual email suppression -----
+//
+// Admin-driven counterpart to the auto-suppression done by the bounce
+// scheduler. Lets ops click "Suppress" once on the Bounced recipients
+// panel and have every future support send (initial routed reply,
+// SupportReplyRetryScheduler, manual /retry, docs feedback reply) refuse
+// to email that address. The pre-checks already exist on every send path —
+// see `checkSupportEmailSkip` callers — so once the row lands in
+// support_email_suppressions every path stops sending.
+//
+// We deliberately reuse the same table the auto-bounce path writes to
+// (instead of a separate "manual" list) so the read-side stays a single
+// PK lookup and admins can see / clear auto-suppressions from the same UI.
+// The audit columns (added_by_user_id + notes) tell the two apart.
+router.post(
+  '/support/email-suppressions',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { email, notes } = req.body ?? {};
+    const user = req.user!;
+    if (!email || typeof email !== 'string') {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+    const trimmed = email.trim();
+    if (trimmed.length === 0 || trimmed.length > 320 || !EMAIL_RE.test(trimmed)) {
+      res.status(400).json({ error: 'invalid email' });
+      return;
+    }
+    let normalisedNotes: string | null = null;
+    if (notes !== undefined && notes !== null && notes !== '') {
+      if (typeof notes !== 'string' || notes.length > 1000) {
+        res.status(400).json({ error: 'notes must be a string up to 1000 chars' });
+        return;
+      }
+      normalisedNotes = notes.trim();
+      if (normalisedNotes.length === 0) normalisedNotes = null;
+    }
+
+    try {
+      // Strict variant: a DB failure throws and we surface a 5xx instead of
+      // returning {success:true, suppression:null} (which the swallowing
+      // helper would do silently). Admins acting in real time need accurate
+      // feedback — they shouldn't have to refresh the panel to discover the
+      // write didn't land.
+      await addSupportEmailSuppressionStrict(trimmed, {
+        reason: 'manual_admin',
+        source: 'platform_admin_ui',
+        addedByUserId: user.userId,
+        notes: normalisedNotes,
+      });
+      const entry = await getSupportEmailSuppression(trimmed);
+      if (!entry) {
+        // Belt-and-braces: the upsert returned without throwing but the
+        // follow-up read couldn't find the row. Treat as a server error so
+        // the UI doesn't show a "suppressed" state we can't actually verify.
+        logger.error('Suppression upsert succeeded but read-back failed', {
+          email_lower: trimmed.toLowerCase(),
+          admin_user_id: user.userId,
+        });
+        res.status(500).json({
+          error: 'Suppression saved but could not be re-read',
+        });
+        return;
+      }
+      logger.info('Admin suppressed support email', {
+        email_lower: trimmed.toLowerCase(),
+        admin_user_id: user.userId,
+        admin_email: user.email,
+      });
+      res.json({ success: true, suppression: entry });
+    } catch (err) {
+      logger.error('Admin suppress request failed', {
+        email_lower: trimmed.toLowerCase(),
+        admin_user_id: user.userId,
+        error: String(err),
+      });
+      res.status(500).json({
+        error: 'Failed to suppress email',
+        detail: String(err),
+      });
+    }
+  },
+);
+
+router.delete(
+  '/support/email-suppressions/:emailLower',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    // The path param is treated as an opaque address — we lowercase before
+    // both the validation regex and the helper so a click on a row whose
+    // visible email is mixed-case still matches the lower-cased PK in the
+    // table. Express has already URL-decoded the parameter for us.
+    const raw = req.params.emailLower ?? '';
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed.length === 0 || trimmed.length > 320 || !EMAIL_RE.test(trimmed)) {
+      res.status(400).json({ error: 'invalid email' });
+      return;
+    }
+    const user = req.user!;
+    try {
+      // Strict variant: throws on DB errors instead of returning a falsy
+      // "not removed" that would be indistinguishable from a legitimate
+      // 404. Admins need that distinction so they don't assume the row was
+      // already cleared when in reality the DELETE never ran.
+      const result = await removeSupportEmailSuppressionStrict(trimmed);
+      if (result === 'absent') {
+        // Either the row never existed or another admin cleared it first.
+        // 404 so the UI can refresh + show the user the current state
+        // instead of falsely claiming a successful unsuppress.
+        res.status(404).json({ error: 'No suppression entry for that address' });
+        return;
+      }
+      logger.info('Admin unsuppressed support email', {
+        email_lower: trimmed,
+        admin_user_id: user.userId,
+        admin_email: user.email,
+      });
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('Admin unsuppress request failed', {
+        email_lower: trimmed,
+        admin_user_id: user.userId,
+        error: String(err),
+      });
+      res.status(500).json({
+        error: 'Failed to unsuppress email',
+        detail: String(err),
+      });
     }
   },
 );
@@ -1766,7 +1923,27 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
       ...row,
       permanent_failure: isReplyPermanentFailure(row),
     }));
-    res.json({ replies });
+
+    // Look up the ticket's recipient address so the thread view can render
+    // a "Suppressed by ops" badge + offer the unsuppress button without a
+    // separate round-trip. Done as a small follow-up read instead of joining
+    // because the replies query already exists in production and we want to
+    // keep its SQL stable. Best-effort — a failure here just means the
+    // badge won't render.
+    let suppression: SupportEmailSuppressionEntry | null = null;
+    try {
+      const t = await pool.query<{ user_email: string | null }>(
+        `SELECT user_email FROM support_tickets WHERE id = $1 LIMIT 1`,
+        [id],
+      );
+      if ((t.rowCount ?? 0) > 0) {
+        suppression = await getSupportEmailSuppression(t.rows[0].user_email);
+      }
+    } catch {
+      /* non-fatal */
+    }
+
+    res.json({ replies, suppression });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load replies', detail: String(err) });
   }

@@ -14,7 +14,7 @@ import {
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
-  AlertTriangle, ShieldAlert, ExternalLink, Send, MailX,
+  AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -2617,6 +2617,16 @@ interface BouncedRecipientTicket {
   last_error: string;
 }
 
+interface SuppressionEntry {
+  email_lower: string;
+  reason: string;
+  source: string | null;
+  last_error: string | null;
+  added_at: string;
+  added_by_user_id: string | null;
+  notes: string | null;
+}
+
 interface BouncedRecipient {
   user_email: string;
   occurrence_count: number;
@@ -2630,6 +2640,7 @@ interface BouncedRecipient {
   // recorded before the alert pipeline shipped. Populated server-side from
   // the `support_recipient_bounce_alerts` dedup table.
   alerted_at: string | null;
+  suppression: SuppressionEntry | null;
 }
 
 interface BouncedRecipientsResponse {
@@ -2638,14 +2649,55 @@ interface BouncedRecipientsResponse {
   truncated: boolean;
 }
 
+function SuppressedBadge({
+  suppression,
+  size = 'sm',
+}: {
+  suppression: SuppressionEntry;
+  size?: 'xs' | 'sm';
+}) {
+  // Tooltip explains *who* suppressed and *why*. Manual ops entries get the
+  // admin user id so on-call can chase the original decision; auto entries
+  // surface the source label (e.g. 'support_reply_retry_scheduler') so it's
+  // obvious the bounce loop did it on its own.
+  const wasManual = !!suppression.added_by_user_id;
+  const tooltipParts = [
+    wasManual
+      ? `Suppressed by admin (${suppression.added_by_user_id ?? '?'})`
+      : `Auto-suppressed (${suppression.source ?? 'system'})`,
+    `Added ${new Date(suppression.added_at).toLocaleString()}`,
+    `Reason: ${suppression.reason}`,
+  ];
+  if (suppression.notes) tooltipParts.push(`Notes: ${suppression.notes}`);
+  const padding = size === 'xs' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-xs';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded border border-orange-300 bg-orange-50 text-orange-800 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900 ${padding}`}
+      title={tooltipParts.join(' · ')}
+    >
+      <ShieldOff className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
+      Suppressed{wasManual ? ' by ops' : ''}
+    </span>
+  );
+}
+
 function BouncedRecipientsPanel({
   onOpenTicket,
 }: {
   onOpenTicket: (ticketId: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [openEmails, setOpenEmails] = useState<Set<string>>(new Set());
-  const queryClient = useQueryClient();
+  // Per-row "show notes input" toggle. Drafts are kept here so flipping
+  // between rows doesn't blow away half-typed text. Cleared after a
+  // successful suppress so the next click on the same address starts blank.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [showNoteFor, setShowNoteFor] = useState<string | null>(null);
+  // Per-row error surface so a failed suppress / unsuppress doesn't get
+  // silently swallowed — keyed on the lowercased email so the badge change
+  // doesn't lose track of which row failed.
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['support-bounced-recipients'],
@@ -2655,6 +2707,13 @@ function BouncedRecipientsPanel({
       ),
     refetchInterval: 60_000,
   });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['support-bounced-recipients'] });
+    // Refresh any open ticket thread so the in-thread suppression badge
+    // updates without a manual reload.
+    queryClient.invalidateQueries({ queryKey: ['support-ticket-replies'] });
+  };
 
   // Drops the dedup row in `support_recipient_bounce_alerts` so the next
   // bounce on this address re-fires the per-recipient first-bounce ops
@@ -2681,6 +2740,61 @@ function BouncedRecipientsPanel({
           };
         },
       );
+    },
+  });
+
+  const suppressMutation = useMutation({
+    mutationFn: ({ email, notes }: { email: string; notes: string | null }) =>
+      api.post<{ success: boolean; suppression: SuppressionEntry | null }>(
+        `/support/email-suppressions`,
+        { email, notes: notes ?? undefined },
+      ),
+    onSuccess: (_data, vars) => {
+      const key = vars.email.toLowerCase();
+      setRowErrors((prev) => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setShowNoteFor((cur) => (cur === key ? null : cur));
+      invalidate();
+    },
+    onError: (err, vars) => {
+      const key = vars.email.toLowerCase();
+      setRowErrors((prev) => ({
+        ...prev,
+        [key]: err instanceof Error ? err.message : 'Suppress failed',
+      }));
+    },
+  });
+
+  const unsuppressMutation = useMutation({
+    mutationFn: (email: string) =>
+      api.delete<{ success: boolean }>(
+        `/support/email-suppressions/${encodeURIComponent(email.toLowerCase())}`,
+      ),
+    onSuccess: (_data, email) => {
+      const key = email.toLowerCase();
+      setRowErrors((prev) => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      invalidate();
+    },
+    onError: (err, email) => {
+      const key = email.toLowerCase();
+      setRowErrors((prev) => ({
+        ...prev,
+        [key]: err instanceof Error ? err.message : 'Unsuppress failed',
+      }));
     },
   });
 
@@ -2744,13 +2858,26 @@ function BouncedRecipientsPanel({
               <th className="text-left px-4 py-3 font-medium text-muted">Last failure</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Alerted</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Most recent error</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Suppression</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr><td colSpan={7} className="text-center py-8 text-muted">Loading…</td></tr>
             ) : (
-              recipients.map((r) => (
+              recipients.map((r) => {
+                const key = r.user_email.toLowerCase();
+                const isSuppressed = !!r.suppression;
+                const noteOpen = showNoteFor === key;
+                const draft = noteDrafts[key] ?? '';
+                const rowError = rowErrors[key];
+                const suppressing =
+                  suppressMutation.isPending &&
+                  suppressMutation.variables?.email.toLowerCase() === key;
+                const unsuppressing =
+                  unsuppressMutation.isPending &&
+                  unsuppressMutation.variables?.toLowerCase() === key;
+                return (
                 <Fragment key={r.user_email}>
                   <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                     <td className="px-2">
@@ -2765,7 +2892,14 @@ function BouncedRecipientsPanel({
                           : <ChevronRight className="h-4 w-4 text-muted" />}
                       </button>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs">{r.user_email}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{r.user_email}</span>
+                        {isSuppressed && (
+                          <SuppressedBadge suppression={r.suppression!} size="xs" />
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-100 text-red-800">
                         <AlertCircle className="h-3 w-3" />
@@ -2810,6 +2944,79 @@ function BouncedRecipientsPanel({
                     </td>
                     <td className="px-4 py-3 text-xs text-red-700 max-w-md truncate" title={r.last_error}>
                       {r.last_error}
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Suppress / Unsuppress action. Suppression is reversible
+                          (DELETE removes the row) but unsubscribes are not — we
+                          never expose an unsubscribe-clear button here on
+                          purpose, see the helper docstrings. */}
+                      <div className="flex flex-col gap-1">
+                        {isSuppressed ? (
+                          <button
+                            type="button"
+                            disabled={unsuppressing}
+                            onClick={() => unsuppressMutation.mutate(r.user_email)}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50"
+                            title="Remove this address from the suppression list so future replies attempt delivery again."
+                          >
+                            <RotateCw className={`h-3 w-3 ${unsuppressing ? 'animate-spin' : ''}`} />
+                            {unsuppressing ? 'Unsuppressing…' : 'Unsuppress'}
+                          </button>
+                        ) : noteOpen ? (
+                          <div className="flex flex-col gap-1">
+                            <textarea
+                              value={draft}
+                              onChange={(e) =>
+                                setNoteDrafts((prev) => ({ ...prev, [key]: e.target.value }))
+                              }
+                              maxLength={1000}
+                              rows={2}
+                              placeholder="Optional note (why suppress?)"
+                              className="text-xs px-2 py-1 rounded border border-border bg-surface w-56"
+                            />
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={suppressing}
+                                onClick={() =>
+                                  suppressMutation.mutate({
+                                    email: r.user_email,
+                                    notes: draft.trim() ? draft.trim() : null,
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
+                              >
+                                <ShieldOff className="h-3 w-3" />
+                                {suppressing ? 'Suppressing…' : 'Confirm'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowNoteFor(null);
+                                }}
+                                className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowNoteFor(key)}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900"
+                            title="Stop every future support send to this address until an admin unsuppresses it."
+                          >
+                            <ShieldOff className="h-3 w-3" />
+                            Suppress
+                          </button>
+                        )}
+                        {rowError && (
+                          <div className="text-[10px] text-red-600" title={rowError}>
+                            {rowError}
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {openEmails.has(r.user_email) && (
@@ -2862,7 +3069,8 @@ function BouncedRecipientsPanel({
                     </tr>
                   )}
                 </Fragment>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -3109,8 +3317,53 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
 
   const { data, isLoading } = useQuery({
     queryKey: ['support-ticket-replies', ticket.id],
-    queryFn: () => api.get<{ replies: SupportReply[] }>(`/support/tickets/${ticket.id}/replies`),
+    queryFn: () =>
+      api.get<{ replies: SupportReply[]; suppression: SuppressionEntry | null }>(
+        `/support/tickets/${ticket.id}/replies`,
+      ),
     refetchInterval: 30_000,
+  });
+
+  // Suppression state for the ticket recipient. Drives the "Suppressed by
+  // ops" pill above the conversation and the in-thread Suppress / Unsuppress
+  // toggle. The mutations target the same admin endpoints as the Bounced
+  // recipients panel, so a change in either place reflects in the other on
+  // the next invalidation.
+  const [threadSuppressError, setThreadSuppressError] = useState<string | null>(null);
+  const [threadNoteOpen, setThreadNoteOpen] = useState(false);
+  const [threadNoteDraft, setThreadNoteDraft] = useState('');
+
+  const suppressFromThread = useMutation({
+    mutationFn: ({ email, notes }: { email: string; notes: string | null }) =>
+      api.post<{ success: boolean }>(`/support/email-suppressions`, {
+        email,
+        notes: notes ?? undefined,
+      }),
+    onSuccess: () => {
+      setThreadSuppressError(null);
+      setThreadNoteOpen(false);
+      setThreadNoteDraft('');
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['support-bounced-recipients'] });
+    },
+    onError: (err) => {
+      setThreadSuppressError(err instanceof Error ? err.message : 'Suppress failed');
+    },
+  });
+
+  const unsuppressFromThread = useMutation({
+    mutationFn: (email: string) =>
+      api.delete<{ success: boolean }>(
+        `/support/email-suppressions/${encodeURIComponent(email.toLowerCase())}`,
+      ),
+    onSuccess: () => {
+      setThreadSuppressError(null);
+      queryClient.invalidateQueries({ queryKey: ['support-ticket-replies', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['support-bounced-recipients'] });
+    },
+    onError: (err) => {
+      setThreadSuppressError(err instanceof Error ? err.message : 'Unsuppress failed');
+    },
   });
 
   const sendReply = useMutation({
@@ -3260,6 +3513,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
   const isResolved = ticket.status === 'resolved' || ticket.status === 'closed';
 
   const replies = data?.replies ?? [];
+  const suppression = data?.suppression ?? null;
   const trimmed = draft.trim();
   const sendError = sendReply.error instanceof Error ? sendReply.error.message : null;
   const lastReply = sendReply.data;
@@ -3270,9 +3524,83 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         <div>
           <div className="text-xs font-medium text-muted mb-1">Original message</div>
           <pre className="whitespace-pre-wrap text-sm bg-surface p-3 rounded border border-border">{ticket.message}</pre>
-          <div className="text-xs text-muted mt-1">
-            {ticket.user_email ?? '—'} · {new Date(ticket.created_at).toLocaleString()}
+          <div className="text-xs text-muted mt-1 flex items-center gap-2 flex-wrap">
+            <span>
+              {ticket.user_email ?? '—'} · {new Date(ticket.created_at).toLocaleString()}
+            </span>
+            {suppression && <SuppressedBadge suppression={suppression} size="xs" />}
           </div>
+          {/* In-thread suppress / unsuppress controls. Placed next to the
+              recipient identity so the action is obvious in context — admins
+              don't have to scroll back up to the Bounced recipients panel
+              to flip the flag for the address they're already looking at. */}
+          {ticket.user_email && (
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              {suppression ? (
+                <button
+                  type="button"
+                  disabled={unsuppressFromThread.isPending}
+                  onClick={() => unsuppressFromThread.mutate(ticket.user_email!)}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50"
+                  title="Remove this address from the suppression list so future replies attempt delivery again."
+                >
+                  <RotateCw className={`h-3 w-3 ${unsuppressFromThread.isPending ? 'animate-spin' : ''}`} />
+                  {unsuppressFromThread.isPending ? 'Unsuppressing…' : 'Unsuppress recipient'}
+                </button>
+              ) : threadNoteOpen ? (
+                <div className="flex flex-col gap-1">
+                  <textarea
+                    value={threadNoteDraft}
+                    onChange={(e) => setThreadNoteDraft(e.target.value)}
+                    maxLength={1000}
+                    rows={2}
+                    placeholder="Optional note (why suppress?)"
+                    className="text-xs px-2 py-1 rounded border border-border bg-surface w-72"
+                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={suppressFromThread.isPending}
+                      onClick={() =>
+                        suppressFromThread.mutate({
+                          email: ticket.user_email!,
+                          notes: threadNoteDraft.trim() ? threadNoteDraft.trim() : null,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
+                    >
+                      <ShieldOff className="h-3 w-3" />
+                      {suppressFromThread.isPending ? 'Suppressing…' : 'Confirm suppress'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setThreadNoteOpen(false);
+                      }}
+                      className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setThreadNoteOpen(true)}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900"
+                  title="Stop every future support send to this address until an admin unsuppresses it."
+                >
+                  <ShieldOff className="h-3 w-3" />
+                  Suppress recipient
+                </button>
+              )}
+              {threadSuppressError && (
+                <div className="text-[10px] text-red-600" title={threadSuppressError}>
+                  {threadSuppressError}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {ticket.recent_errors && (
           <div>
