@@ -534,14 +534,14 @@ describe('Marketing conversion funnel: Live Demo entry CTA', () => {
       />,
     );
 
-    // Anchor text is "Try the Live Demo"; the analytics ctaText is "Try the Demo".
+    // Anchor text and analytics ctaText both read "Try the Live Demo".
     const links = screen.getAllByRole('link', {
       name: /try the live demo/i,
     }) as HTMLAnchorElement[];
     const bottomLink = links.find((a) => a.getAttribute('href') === '/demo');
     expect(
       bottomLink,
-      'Landing bottom CTA should expose a Try the Demo link pointing at /demo',
+      'Landing bottom CTA should expose a Try the Live Demo link pointing at /demo',
     ).toBeTruthy();
 
     fireEvent.click(bottomLink!);
@@ -553,7 +553,7 @@ describe('Marketing conversion funnel: Live Demo entry CTA', () => {
     expect(
       analyticsCalls.ctaClicks.some(
         (c) =>
-          c.ctaText === 'Try the Demo' &&
+          c.ctaText === 'Try the Live Demo' &&
           c.page === '/' &&
           c.position === 'bottom-cta',
       ),

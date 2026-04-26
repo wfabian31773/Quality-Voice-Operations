@@ -644,7 +644,7 @@ export default function Landing() {
               <Link
                 to="/demo"
                 className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3.5 rounded-xl transition-all text-sm"
-                onClick={() => trackCTAClick('Try the Demo', '/', 'bottom-cta')}
+                onClick={() => trackCTAClick('Try the Live Demo', '/', 'bottom-cta')}
               >
                 Try the Live Demo
               </Link>
