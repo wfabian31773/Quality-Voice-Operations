@@ -45,6 +45,17 @@ interface OAuthNotConfigured {
   docsUrl: string;
 }
 
+interface OAuthProviderAvailability {
+  available: boolean;
+  providerLabel: string;
+  missingEnv?: string;
+  docsUrl?: string;
+}
+
+interface OAuthAvailabilityResponse {
+  providers: Record<string, OAuthProviderAvailability>;
+}
+
 function parseOAuthNotConfigured(err: unknown, fallback: { providerLabel: string; docsUrl?: string }): OAuthNotConfigured | null {
   if (!err || typeof err !== 'object') return null;
   const body = (err as { body?: { code?: string; providerLabel?: string; missingEnv?: string; docsUrl?: string } }).body;
@@ -1874,11 +1885,19 @@ function AvailableCard({
   definition,
   isManager,
   onConnect,
+  oauthAvailability,
 }: {
   definition: ConnectorDefinition;
   isManager: boolean;
   onConnect: () => void;
+  oauthAvailability?: OAuthProviderAvailability;
 }) {
+  const oauthUnavailable = Boolean(
+    definition.oauthProvider && oauthAvailability && oauthAvailability.available === false,
+  );
+  const docsUrl = oauthAvailability?.docsUrl || definition.docsUrl;
+  const providerLabel = oauthAvailability?.providerLabel || definition.name;
+
   return (
     <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md hover:border-primary/30 transition-all flex flex-col">
       <div className="flex items-start gap-3 mb-3">
@@ -1902,13 +1921,58 @@ function AvailableCard({
         ))}
       </div>
 
+      {oauthUnavailable && (
+        <div
+          role="status"
+          className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-2.5 text-xs"
+          title={
+            oauthAvailability?.missingEnv
+              ? `Platform admin needs to set ${oauthAvailability.missingEnv} on the server.`
+              : `${providerLabel} OAuth client credentials are missing on the server.`
+          }
+        >
+          <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-semibold mb-0.5">Server credentials needed</p>
+              <p className="text-amber-700 dark:text-amber-200/90">
+                QVO is missing the {providerLabel} OAuth client credentials. Ask your platform admin to set{' '}
+                {oauthAvailability?.missingEnv ? (
+                  <code className="font-mono">{oauthAvailability.missingEnv}</code>
+                ) : (
+                  'the OAuth client credentials'
+                )}{' '}
+                before connecting.
+                {docsUrl && (
+                  <>
+                    {' '}
+                    <a
+                      href={docsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                    >
+                      See the setup guide
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isManager && (
         <button
           onClick={onConnect}
-          className="w-full text-sm font-medium bg-primary text-white hover:bg-primary-hover transition px-4 py-2 rounded-lg inline-flex items-center justify-center gap-1.5"
+          disabled={oauthUnavailable}
+          aria-disabled={oauthUnavailable}
+          title={oauthUnavailable ? `${providerLabel} OAuth isn't configured on this server yet.` : undefined}
+          className="w-full text-sm font-medium bg-primary text-white hover:bg-primary-hover transition px-4 py-2 rounded-lg inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
         >
           <Plug className="h-4 w-4" />
-          Connect
+          {oauthUnavailable ? 'Unavailable' : 'Connect'}
         </button>
       )}
     </div>
@@ -1928,6 +1992,14 @@ export default function Connectors() {
     queryKey: ['connectors'],
     queryFn: () => api.get<{ connectors: Connector[]; total: number }>('/connectors?limit=100'),
   });
+
+  const { data: oauthAvailabilityData } = useQuery({
+    queryKey: ['connectors', 'oauth-availability'],
+    queryFn: () => api.get<OAuthAvailabilityResponse>('/connectors/oauth/availability'),
+    staleTime: 5 * 60_000,
+  });
+
+  const oauthAvailability = oauthAvailabilityData?.providers;
 
   useEffect(() => {
     if (isLoading) return;
@@ -2103,16 +2175,27 @@ export default function Connectors() {
                 Pick one of these to get the most value from QVO right away — calls, calendars, and team alerts.
               </p>
               <div className="flex flex-wrap justify-center gap-3">
-                {suggested.map((def) => (
-                  <button
-                    key={def.id}
-                    onClick={() => setConnectTarget(def)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-border bg-surface hover:border-primary/40 hover:bg-surface-hover transition text-sm font-medium text-text-primary"
-                  >
-                    <BrandLogo provider={def.logoId} size={20} />
-                    Connect {def.name}
-                  </button>
-                ))}
+                {suggested.map((def) => {
+                  const avail = def.oauthProvider ? oauthAvailability?.[def.oauthProvider] : undefined;
+                  const oauthUnavailable = Boolean(def.oauthProvider && avail && avail.available === false);
+                  return (
+                    <button
+                      key={def.id}
+                      onClick={() => setConnectTarget(def)}
+                      disabled={oauthUnavailable}
+                      aria-disabled={oauthUnavailable}
+                      title={
+                        oauthUnavailable
+                          ? `${avail?.providerLabel ?? def.name} OAuth isn't configured on this server yet — ask your platform admin to set ${avail?.missingEnv ?? 'the OAuth client credentials'}.`
+                          : undefined
+                      }
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-border bg-surface hover:border-primary/40 hover:bg-surface-hover transition text-sm font-medium text-text-primary disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-surface"
+                    >
+                      <BrandLogo provider={def.logoId} size={20} />
+                      {oauthUnavailable ? `${def.name} unavailable` : `Connect ${def.name}`}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2170,6 +2253,9 @@ export default function Connectors() {
                     definition={def}
                     isManager={isManager}
                     onConnect={() => setConnectTarget(def)}
+                    oauthAvailability={
+                      def.oauthProvider ? oauthAvailability?.[def.oauthProvider] : undefined
+                    }
                   />
                 ))}
               </div>

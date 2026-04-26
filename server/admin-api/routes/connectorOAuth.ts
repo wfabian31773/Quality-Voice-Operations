@@ -30,6 +30,46 @@ function getBaseUrl(req: { headers: Record<string, string | string[] | undefined
   return `${proto}://${host}`;
 }
 
+interface OAuthProviderAvailability {
+  available: boolean;
+  providerLabel: string;
+  missingEnv?: string;
+  docsUrl?: string;
+}
+
+const OAUTH_PROVIDER_REGISTRY: Array<{
+  provider: string;
+  providerLabel: string;
+  envVar: string;
+  docsUrl: string;
+}> = [
+  { provider: 'hubspot', providerLabel: 'HubSpot', envVar: 'HUBSPOT_CLIENT_ID', docsUrl: '/docs/connecting-hubspot' },
+  { provider: 'google', providerLabel: 'Google', envVar: 'GOOGLE_CLIENT_ID', docsUrl: '/docs/connecting-calendar' },
+  { provider: 'outlook', providerLabel: 'Microsoft', envVar: 'MICROSOFT_CLIENT_ID', docsUrl: '/docs/connecting-outlook' },
+  { provider: 'slack', providerLabel: 'Slack', envVar: 'SLACK_CLIENT_ID', docsUrl: '/docs/connecting-slack' },
+  { provider: 'pipedrive', providerLabel: 'Pipedrive', envVar: 'PIPEDRIVE_CLIENT_ID', docsUrl: '/docs/connecting-pipedrive' },
+  { provider: 'salesforce', providerLabel: 'Salesforce', envVar: 'SALESFORCE_CLIENT_ID', docsUrl: '/docs/connecting-salesforce' },
+  { provider: 'quickbooks', providerLabel: 'QuickBooks', envVar: 'QUICKBOOKS_CLIENT_ID', docsUrl: '/docs/connecting-quickbooks' },
+  { provider: 'zoho', providerLabel: 'Zoho CRM', envVar: 'ZOHO_CLIENT_ID', docsUrl: '/docs/connecting-zoho' },
+];
+
+router.get('/connectors/oauth/availability', requireAuth, (_req, res) => {
+  const providers: Record<string, OAuthProviderAvailability> = {};
+  for (const entry of OAUTH_PROVIDER_REGISTRY) {
+    const configured = Boolean(process.env[entry.envVar]);
+    providers[entry.provider] = configured
+      ? { available: true, providerLabel: entry.providerLabel }
+      : {
+          available: false,
+          providerLabel: entry.providerLabel,
+          missingEnv: entry.envVar,
+          docsUrl: entry.docsUrl,
+        };
+  }
+  res.setHeader('Cache-Control', 'private, max-age=30');
+  return res.json({ providers });
+});
+
 function getStateSecret(): string {
   return process.env.ADMIN_JWT_SECRET ?? process.env.CONNECTOR_ENCRYPTION_KEY ?? 'fallback-dev-secret';
 }
