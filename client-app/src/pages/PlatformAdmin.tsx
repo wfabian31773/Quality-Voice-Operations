@@ -2174,6 +2174,13 @@ interface SupportReply {
   body: string;
   email_message_id: string | null;
   email_error: string | null;
+  /**
+   * Server-computed flag (via platform/email/smtpErrorClass.isPermanentSmtpError)
+   * that's true when the prior delivery error is a hard SMTP failure (5xx,
+   * "no such user", mailbox full, …). When true the manual /retry endpoint
+   * refuses to re-send and the row also leaves the auto-retry pool.
+   */
+  permanent_failure?: boolean;
   source: string | null;
   created_at: string;
 }
@@ -2545,19 +2552,32 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 );
               }
               const isOutbound = r.direction === 'outbound';
-              const replyHardBounce = !!r.email_error && isPermanentSmtpError(r.email_error);
+              // Server-supplied flag is the authoritative signal here — it's
+              // the same classifier the retry handler and auto-retry
+              // scheduler use to decide whether to skip the row, so the UI
+              // never disagrees with the backend. (Other places in this file
+              // still call isPermanentSmtpError() directly on
+              // last_reply_error fields where no server-computed flag is
+              // available.)
+              const isPermanentFailure = isOutbound && !!r.email_error && r.permanent_failure === true;
               let badge: { label: string; className: string; title: string } | null = null;
               if (isOutbound) {
                 if (r.email_error) {
-                  badge = replyHardBounce
+                  badge = isPermanentFailure
                     ? {
-                        label: 'Hard bounce — won\u2019t auto-retry',
-                        className: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
-                        title: `Permanent SMTP failure — auto-retry skipped. ${r.email_error}`,
+                        // Distinct dark-red styling so a hard bounce reads
+                        // differently from a transient "still down" failure.
+                        // The retry button is suppressed for these rows.
+                        label: 'Permanent failure',
+                        className:
+                          'bg-red-200 text-red-900 border-red-500 dark:bg-red-900/60 dark:text-red-100 dark:border-red-700',
+                        title:
+                          'Hard SMTP failure (5xx, address rejected, mailbox full, …) — won\'t retry. Investigate the recipient address before resending manually.',
                       }
                     : {
                         label: 'Failed',
-                        className: 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
+                        className:
+                          'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
                         title: r.email_error,
                       };
                 } else if (r.email_message_id) {
@@ -2574,7 +2594,11 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   };
                 }
               }
-              const canRetry = isOutbound && !!r.email_error && !!ticket.user_email;
+              // Suppress the retry button for hard bounces: re-sending to a
+              // recipient the server has explicitly rejected only burns
+              // sender reputation (server enforces the same gate via 409).
+              const canRetry =
+                isOutbound && !!r.email_error && !isPermanentFailure && !!ticket.user_email;
               const isRetrying = retryingReplyId === r.id && retryReply.isPending;
               const retryError = retryErrors[r.id];
               const cooldownUntil = retryCooldownByReply[r.id] ?? 0;
@@ -2641,6 +2665,12 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           recipient address.
                         </div>
                       )}
+                    </div>
+                  )}
+                  {isPermanentFailure && (
+                    <div className="text-xs text-red-700 dark:text-red-300 mt-1">
+                      Won&apos;t retry — recipient address was permanently rejected. Fix the address (or
+                      reply to the customer through another channel) before resending manually.
                     </div>
                   )}
                   {retryError && (

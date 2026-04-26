@@ -55,7 +55,9 @@ describe('support ticket reply retry — server', () => {
 
   it('re-sends to the original recipient via the existing SMTP path with the inbound reply-to', () => {
     const retryRouteIdx = supportFile.indexOf("'/support/tickets/:id/replies/:replyId/retry'");
-    const retryRouteSlice = supportFile.slice(retryRouteIdx, retryRouteIdx + 4000);
+    // Slice generously — the handler grew a hard-bounce skip block before
+    // the actual sendEmail() call, so 4 KB is no longer enough to reach it.
+    const retryRouteSlice = supportFile.slice(retryRouteIdx, retryRouteIdx + 8000);
     // sendEmail call uses ticket.user_email and buildReplyToAddress(token).
     expect(retryRouteSlice).toMatch(/sendEmail\(/);
     expect(retryRouteSlice).toMatch(/to:\s*ticket\.user_email/);
@@ -66,9 +68,12 @@ describe('support ticket reply retry — server', () => {
 describe('support ticket reply retry — admin UI', () => {
   it('renders a Retry send button next to the Failed badge for failed outbound replies', () => {
     expect(adminUiFile).toMatch(/Retry send/);
-    // The button is gated on outbound + email_error + a recipient address.
+    // The button is gated on outbound + email_error + not a permanent SMTP
+    // failure + a recipient address. The permanent-failure check mirrors the
+    // server-side hard-bounce skip so admins don't burn sender reputation
+    // re-sending to a clearly undeliverable address.
     expect(adminUiFile).toMatch(
-      /const canRetry = isOutbound && !!r\.email_error && !!ticket\.user_email/,
+      /const canRetry =\s*\n?\s*isOutbound && !!r\.email_error && !isPermanentFailure && !!ticket\.user_email/,
     );
   });
 

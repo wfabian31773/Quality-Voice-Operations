@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
+import { isPermanentSmtpError } from '../../../platform/email/smtpErrorClass';
 import {
   runDocsFeedbackAlertCycle,
   runDocsFeedbackPendingReplyAlertCycle,
@@ -1111,7 +1112,18 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
   const { id } = req.params;
   try {
     const pool = getPlatformPool();
-    const r = await pool.query(
+    const r = await pool.query<{
+      id: number;
+      ticket_id: string;
+      direction: string;
+      author_user_id: string | null;
+      author_email: string | null;
+      body: string;
+      email_message_id: string | null;
+      email_error: string | null;
+      source: string | null;
+      created_at: string;
+    }>(
       `SELECT id, ticket_id, direction, author_user_id, author_email, body,
               email_message_id, email_error, source, created_at
        FROM support_ticket_replies
@@ -1119,7 +1131,15 @@ router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, as
        ORDER BY created_at ASC`,
       [id],
     );
-    res.json({ replies: r.rows });
+    // Compute `permanent_failure` here (instead of in the UI) so the client
+    // doesn't have to import or duplicate the SMTP classifier. Mirrors the
+    // hard-bounce skip the manual /retry endpoint and the auto-retry
+    // scheduler use to decide whether re-sending is worth attempting.
+    const replies = r.rows.map((row) => ({
+      ...row,
+      permanent_failure: row.direction === 'outbound' && isPermanentSmtpError(row.email_error),
+    }));
+    res.json({ replies });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load replies', detail: String(err) });
   }
@@ -1346,6 +1366,75 @@ router.post(
 
     if (!ticket.user_email) {
       res.status(400).json({ error: 'Ticket has no user email to reply to' });
+      return;
+    }
+
+    // Hard-bounce skip. If the prior failure was a permanent SMTP error
+    // (5xx, "no such user", mailbox full, …) re-sending will only burn
+    // sender reputation — and likely get throttled by the receiving server.
+    // Refuse the retry, jump retry_count straight to the alert/auto-retry
+    // ceiling so the background SupportReplyRetryScheduler also leaves the
+    // row alone, and fire the threshold-cross ops alert if this is the
+    // first time we're crossing it. Mirrors the permanent-skip path the
+    // scheduler already runs in `runSupportReplyRetryCycle`.
+    if (isPermanentSmtpError(reply.email_error)) {
+      const previousRetryCount = reply.retry_count ?? 0;
+      const targetRetryCount = REPLY_DELIVERY_ALERT_THRESHOLD;
+      if (previousRetryCount < targetRetryCount) {
+        try {
+          // Conditional bump: only writes when retry_count is still below the
+          // ceiling. Idempotent under concurrent calls — the second click
+          // sees retry_count already at MAX and the WHERE matches no rows.
+          await pool.query(
+            `UPDATE support_ticket_replies
+             SET retry_count = $2, last_retry_at = NOW()
+             WHERE id = $1 AND retry_count < $2`,
+            [replyIdNum, targetRetryCount],
+          );
+          await pool.query(
+            `UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`,
+            [id],
+          );
+        } catch (err) {
+          logger.warn('Failed to mark support reply as permanently failed on manual retry', {
+            ticketId: id, replyId: replyIdNum, error: String(err),
+          });
+        }
+
+        // Threshold-cross alert. previousRetryCount < THRESHOLD &&
+        // targetRetryCount === MAX === THRESHOLD, so this fires exactly
+        // once per reply (whichever path crosses the boundary first).
+        if (previousRetryCount < REPLY_DELIVERY_ALERT_THRESHOLD) {
+          raiseReplyDeliveryFailureAlert({
+            replyId: replyIdNum,
+            ticketId: ticket.id,
+            tenantId: ticket.tenant_id ?? null,
+            customerEmail: ticket.user_email ?? null,
+            attempts: targetRetryCount,
+            error: reply.email_error,
+          }).catch((alertErr) => {
+            logger.warn('Failed to raise support reply delivery alert on permanent-failure manual retry', {
+              ticket_id: id, reply_id: replyIdNum, error: String(alertErr),
+            });
+          });
+        }
+      }
+
+      logger.info('Manual support reply retry refused — permanent SMTP failure', {
+        ticket_id: id,
+        reply_id: replyIdNum,
+        by: req.user?.email,
+        email_error: reply.email_error,
+        previous_retry_count: previousRetryCount,
+        new_retry_count: Math.max(previousRetryCount, targetRetryCount),
+      });
+
+      res.status(409).json({
+        error:
+          'Permanent delivery failure — auto-retry disabled. Investigate the recipient address before retrying manually.',
+        permanent: true,
+        retry_count: Math.max(previousRetryCount, targetRetryCount),
+      });
       return;
     }
 

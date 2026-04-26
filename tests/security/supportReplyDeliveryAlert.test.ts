@@ -198,6 +198,9 @@ const sendEmailMock = ((await import('../../platform/email/EmailService')) as an
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const logErrorMock = ((await import('../../platform/core/observability')) as any)
   .logError as ReturnType<typeof vi.fn>;
+const { __resetForTesting: __resetSupportReplyLimiterForTesting } = await import(
+  '../../platform/help/supportReplyRetryLimiter'
+);
 
 function buildApp() {
   const app = express();
@@ -230,6 +233,10 @@ beforeEach(() => {
   queryMock.mockReset();
   sendEmailMock.mockReset();
   logErrorMock.mockReset();
+  // Manual /retry runs through the per-reply cooldown limiter; without a
+  // reset between tests the second test in this file would 429 instead of
+  // exercising the handler we're trying to verify.
+  __resetSupportReplyLimiterForTesting();
 });
 
 describe('manual /retry — alert firing behavior', () => {
