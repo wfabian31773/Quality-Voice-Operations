@@ -1,13 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { listEnabledMock, getPreferredMock } = vi.hoisted(() => ({
+const {
+  listEnabledMock,
+  getPreferredMock,
+  recordAppointmentMock,
+  getRecordedAppointmentMock,
+} = vi.hoisted(() => ({
   listEnabledMock: vi.fn(),
   getPreferredMock: vi.fn(),
+  recordAppointmentMock: vi.fn(),
+  getRecordedAppointmentMock: vi.fn(),
 }));
 
 vi.mock('../../platform/integrations/connectors/db', () => ({
   listEnabledConnectorConfigs: listEnabledMock,
   getPreferredSchedulingProvider: getPreferredMock,
+  recordAppointmentSchedulingDispatch: recordAppointmentMock,
+  getAppointmentSchedulingProvider: getRecordedAppointmentMock,
   getConnectorConfig: vi.fn(),
   updateConnectorSyncStatus: vi.fn(),
 }));
@@ -15,6 +24,7 @@ vi.mock('../../platform/integrations/connectors/db', () => ({
 vi.mock('../../platform/integrations/connectors/SyncErrorAlerter', () => ({
   notifyConnectorSyncError: vi.fn(),
   notifySustainedConnectorFailure: vi.fn(),
+  notifyConnectorRecovery: vi.fn(),
   isRevenueCriticalProvider: () => false,
 }));
 
@@ -57,6 +67,10 @@ describe('ConnectorService.dispatchEvent scheduling provider routing', () => {
   beforeEach(() => {
     listEnabledMock.mockReset();
     getPreferredMock.mockReset();
+    recordAppointmentMock.mockReset();
+    recordAppointmentMock.mockResolvedValue(undefined);
+    getRecordedAppointmentMock.mockReset();
+    getRecordedAppointmentMock.mockResolvedValue(null);
     executeSpy = vi
       .spyOn(connectorService as unknown as { executeWithConfig: (...args: unknown[]) => Promise<unknown> }, 'executeWithConfig')
       .mockImplementation(async () => ({ success: true }));
@@ -157,6 +171,306 @@ describe('ConnectorService.dispatchEvent scheduling provider routing', () => {
 
     expect(executeSpy).toHaveBeenCalledTimes(1);
     expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'hubspot' });
+    expect(result.dispatched).toBe(1);
+  });
+
+  it('records every derivable key after a successful appointment.booked dispatch', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getPreferredMock.mockResolvedValue('google-calendar');
+    executeSpy.mockImplementation(async (_tenantId, config) => {
+      const cfg = config as { connectorType: string };
+      return cfg.connectorType === 'scheduling'
+        ? { success: true, externalId: 'gcal-event-1' }
+        : { success: true };
+    });
+
+    await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.booked',
+      {
+        type: 'appointment.booked',
+        agentId: 'agent-1',
+        appointmentId: 'appt-99',
+        callSid: 'CA-booked-1',
+        callerPhone: '+15551234567',
+        appointmentDate: '2026-05-01',
+        appointmentTime: '14:00',
+      } as never,
+    );
+
+    // Every derivable key is recorded so later lifecycle events with a
+    // different subset of identifying fields can still route back to the
+    // original calendar.
+    expect(recordAppointmentMock).toHaveBeenCalledWith(
+      tenantId,
+      'appt:appt-99',
+      'google-calendar',
+      'gcal-event-1',
+    );
+    expect(recordAppointmentMock).toHaveBeenCalledWith(
+      tenantId,
+      'sid:CA-booked-1',
+      'google-calendar',
+      'gcal-event-1',
+    );
+    expect(recordAppointmentMock).toHaveBeenCalledWith(
+      tenantId,
+      'phone:+15551234567:2026-05-01T14:00',
+      'google-calendar',
+      'gcal-event-1',
+    );
+    expect(recordAppointmentMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not record a ledger entry when the appointment.booked scheduling dispatch fails', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getPreferredMock.mockResolvedValue('google-calendar');
+    executeSpy.mockImplementation(async () => ({ success: false, error: 'gcal exploded' }));
+
+    await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.booked',
+      {
+        type: 'appointment.booked',
+        agentId: 'agent-1',
+        callSid: 'CA-booked-2',
+      } as never,
+    );
+
+    expect(recordAppointmentMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConnectorService.dispatchEvent appointment lifecycle routing', () => {
+  let executeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    listEnabledMock.mockReset();
+    getPreferredMock.mockReset();
+    getPreferredMock.mockResolvedValue(null);
+    recordAppointmentMock.mockReset();
+    recordAppointmentMock.mockResolvedValue(undefined);
+    getRecordedAppointmentMock.mockReset();
+    getRecordedAppointmentMock.mockResolvedValue(null);
+    executeSpy = vi
+      .spyOn(connectorService as unknown as { executeWithConfig: (...args: unknown[]) => Promise<unknown> }, 'executeWithConfig')
+      .mockImplementation(async () => ({ success: true }));
+  });
+
+  afterEach(() => {
+    executeSpy.mockRestore();
+  });
+
+  it('routes appointment.rescheduled to the same calendar that originally received the booking', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockResolvedValue('outlook-calendar');
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.rescheduled',
+      {
+        type: 'appointment.rescheduled',
+        callSid: 'CA-original-booking',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(tenantId, 'sid:CA-original-booking');
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'outlook-calendar' });
+    expect(result.dispatched).toBe(1);
+    expect(result.results[0]).toMatchObject({ provider: 'outlook-calendar', success: true });
+    // Lifecycle events must not overwrite the ledger entry — only the
+    // original appointment.booked event writes to it.
+    expect(recordAppointmentMock).not.toHaveBeenCalled();
+  });
+
+  it('routes appointment.cancelled to the same calendar that originally received the booking', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockResolvedValue('google-calendar');
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.cancelled',
+      {
+        type: 'appointment.cancelled',
+        appointmentId: 'appt-42',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(tenantId, 'appt:appt-42');
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'google-calendar' });
+    expect(result.dispatched).toBe(1);
+    expect(result.results[0]).toMatchObject({ provider: 'google-calendar', success: true });
+  });
+
+  it('falls back to broadcasting reschedule events when no ledger entry and no agent/phone identifiers exist', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockResolvedValue(null);
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.rescheduled',
+      {
+        type: 'appointment.rescheduled',
+        callSid: 'CA-no-record',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(tenantId, 'sid:CA-no-record');
+    expect(executeSpy).toHaveBeenCalledTimes(2);
+    expect(result.dispatched).toBe(2);
+  });
+
+  it('prefers an explicit options.schedulingProvider over the ledger lookup for cancel events', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockResolvedValue('google-calendar');
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.cancelled',
+      {
+        type: 'appointment.cancelled',
+        appointmentId: 'appt-42',
+      } as never,
+      { schedulingProvider: 'outlook-calendar' },
+    );
+
+    expect(getRecordedAppointmentMock).not.toHaveBeenCalled();
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'outlook-calendar' });
+    expect(result.dispatched).toBe(1);
+  });
+
+  it('lets the ledger override the current agent/phone preference for reschedule events', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    // The tenant has *since* changed their default scheduling provider for
+    // this agent to Outlook, but the original booking actually landed in
+    // Google Calendar. We must route the reschedule back to Google so the
+    // existing event is updated — not duplicated into Outlook.
+    getPreferredMock.mockResolvedValue('outlook-calendar');
+    getRecordedAppointmentMock.mockResolvedValue('google-calendar');
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.rescheduled',
+      {
+        type: 'appointment.rescheduled',
+        agentId: 'agent-1',
+        callSid: 'CA-original-booking',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(tenantId, 'sid:CA-original-booking');
+    // The agent preference lookup is short-circuited once the ledger
+    // returns a hit.
+    expect(getPreferredMock).not.toHaveBeenCalled();
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'google-calendar' });
+    expect(result.dispatched).toBe(1);
+  });
+
+  it('falls back to agent/phone preference when the ledger has no entry for a lifecycle event', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockResolvedValue(null);
+    getPreferredMock.mockResolvedValue('outlook-calendar');
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.rescheduled',
+      {
+        type: 'appointment.rescheduled',
+        agentId: 'agent-1',
+        callSid: 'CA-no-ledger',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(tenantId, 'sid:CA-no-ledger');
+    expect(getPreferredMock).toHaveBeenCalled();
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'outlook-calendar' });
+    expect(result.dispatched).toBe(1);
+  });
+
+  it('tries every derivable key and uses the first ledger hit for cancel events', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    // The cancel event carries no appointmentId or callSid, only the
+    // caller phone + appointment time. The ledger entry was recorded
+    // under that key at booking time, so the lookup still succeeds.
+    getRecordedAppointmentMock.mockImplementation(async (_tenantId: string, key: string) => {
+      if (key === 'phone:+15551234567:2026-05-01T14:00') return 'outlook-calendar';
+      return null;
+    });
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.cancelled',
+      {
+        type: 'appointment.cancelled',
+        callerPhone: '+15551234567',
+        appointmentDate: '2026-05-01',
+        appointmentTime: '14:00',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(
+      tenantId,
+      'phone:+15551234567:2026-05-01T14:00',
+    );
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'outlook-calendar' });
+    expect(result.dispatched).toBe(1);
+  });
+
+  it('walks the keys in preference order and stops at the first hit for cancel events', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockImplementation(async (_tenantId: string, key: string) => {
+      // Only the callSid key has a recorded provider — the appointmentId
+      // key returns null, simulating a partial backfill / mismatched
+      // identifier between the booked and cancel events.
+      if (key === 'sid:CA-booked-1') return 'google-calendar';
+      return null;
+    });
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.cancelled',
+      {
+        type: 'appointment.cancelled',
+        appointmentId: 'appt-not-recorded',
+        callSid: 'CA-booked-1',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenNthCalledWith(1, tenantId, 'appt:appt-not-recorded');
+    expect(getRecordedAppointmentMock).toHaveBeenNthCalledWith(2, tenantId, 'sid:CA-booked-1');
+    expect(getRecordedAppointmentMock).toHaveBeenCalledTimes(2);
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'google-calendar' });
+    expect(result.dispatched).toBe(1);
+  });
+
+  it('uses callerPhone + appointment time as a fallback lookup key when no callSid or appointmentId is present', async () => {
+    listEnabledMock.mockResolvedValue([googleConfig, outlookConfig]);
+    getRecordedAppointmentMock.mockResolvedValue('outlook-calendar');
+
+    const result = await connectorService.dispatchEvent(
+      tenantId,
+      'appointment.no_show',
+      {
+        type: 'appointment.no_show',
+        callerPhone: '+15551234567',
+        appointmentDate: '2026-05-01',
+        appointmentTime: '14:00',
+      } as never,
+    );
+
+    expect(getRecordedAppointmentMock).toHaveBeenCalledWith(
+      tenantId,
+      'phone:+15551234567:2026-05-01T14:00',
+    );
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(executeSpy.mock.calls[0]?.[1]).toMatchObject({ provider: 'outlook-calendar' });
     expect(result.dispatched).toBe(1);
   });
 });

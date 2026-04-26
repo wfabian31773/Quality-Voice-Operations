@@ -2,7 +2,15 @@ import type { TenantId } from '../../core/types';
 
 export type ConnectorType = 'ticketing' | 'sms' | 'crm' | 'scheduling' | 'ehr' | 'email' | 'webhook' | 'custom' | 'accounting';
 
-export type StandardEventType = 'call.completed' | 'appointment.booked' | 'sms.sent' | 'ticket.created' | 'call.missed';
+export type StandardEventType =
+  | 'call.completed'
+  | 'appointment.booked'
+  | 'appointment.rescheduled'
+  | 'appointment.cancelled'
+  | 'appointment.no_show'
+  | 'sms.sent'
+  | 'ticket.created'
+  | 'call.missed';
 
 export interface ConnectorConfig {
   integrationId: string;
@@ -86,4 +94,9 @@ export interface StandardEventPayload extends ConnectorPayload {
   to?: string;
   body?: string;
   reason?: string;
+  // Optional canonical identifier the dispatch layer uses to remember which
+  // scheduling integration originally received the booking, so reschedule /
+  // cancel / no-show events resolve back to the same calendar even when
+  // agentId / phoneNumberId aren't on the payload.
+  appointmentId?: string;
 }

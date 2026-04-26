@@ -780,3 +780,78 @@ export async function deleteConnector(tenantId: TenantId, integrationId: string)
     );
   });
 }
+
+/**
+ * Persist the scheduling provider (e.g. `google-calendar`, `outlook-calendar`)
+ * that an `appointment.booked` event resolved to, keyed by a stable lookup
+ * derived from the payload. Reused by `getAppointmentSchedulingProvider` so
+ * downstream lifecycle events (reschedule / cancel / no-show) can re-route to
+ * the same calendar even when their payload does not carry agentId or
+ * phoneNumberId.
+ *
+ * Re-bookings for the same key overwrite the previous entry — the ledger
+ * always reflects the most recent successful booking decision.
+ */
+export async function recordAppointmentSchedulingDispatch(
+  tenantId: TenantId,
+  lookupKey: string,
+  schedulingProvider: string,
+  externalEventId?: string | null,
+): Promise<void> {
+  if (!lookupKey || !schedulingProvider) return;
+  try {
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `INSERT INTO appointment_scheduling_dispatch
+           (tenant_id, lookup_key, scheduling_provider, external_event_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW())
+         ON CONFLICT (tenant_id, lookup_key)
+         DO UPDATE SET
+           scheduling_provider = EXCLUDED.scheduling_provider,
+           external_event_id = COALESCE(EXCLUDED.external_event_id, appointment_scheduling_dispatch.external_event_id),
+           updated_at = NOW()`,
+        [tenantId, lookupKey, schedulingProvider, externalEventId ?? null],
+      );
+    });
+  } catch (err) {
+    logger.warn('Failed to record appointment scheduling dispatch', {
+      tenantId,
+      lookupKey,
+      schedulingProvider,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Look up the scheduling provider that previously received an
+ * `appointment.booked` event for this appointment key. Returns null when no
+ * matching record exists (the dispatch layer will then fall back to its
+ * legacy broadcast behaviour for downstream lifecycle events).
+ */
+export async function getAppointmentSchedulingProvider(
+  tenantId: TenantId,
+  lookupKey: string,
+): Promise<string | null> {
+  if (!lookupKey) return null;
+  try {
+    return await withTenant(tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT scheduling_provider
+         FROM appointment_scheduling_dispatch
+         WHERE tenant_id = $1 AND lookup_key = $2
+         LIMIT 1`,
+        [tenantId, lookupKey],
+      );
+      const value = rows[0]?.scheduling_provider as string | null | undefined;
+      return value ?? null;
+    });
+  } catch (err) {
+    logger.warn('Failed to look up appointment scheduling dispatch', {
+      tenantId,
+      lookupKey,
+      error: String(err),
+    });
+    return null;
+  }
+}

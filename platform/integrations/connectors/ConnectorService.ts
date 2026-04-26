@@ -1,6 +1,13 @@
 import { createLogger } from '../../core/logger';
 import { withPrivilegedClient } from '../../db';
-import { getConnectorConfig, getPreferredSchedulingProvider, listEnabledConnectorConfigs, updateConnectorSyncStatus } from './db';
+import {
+  getConnectorConfig,
+  getPreferredSchedulingProvider,
+  listEnabledConnectorConfigs,
+  updateConnectorSyncStatus,
+  recordAppointmentSchedulingDispatch,
+  getAppointmentSchedulingProvider,
+} from './db';
 import {
   notifyConnectorSyncError,
   notifySustainedConnectorFailure,
@@ -95,6 +102,9 @@ function resolveAdapter(connectorType: ConnectorType, provider?: string): Connec
 const STANDARD_EVENT_TYPES = new Set<string>([
   'call.completed',
   'appointment.booked',
+  'appointment.rescheduled',
+  'appointment.cancelled',
+  'appointment.no_show',
   'sms.sent',
   'ticket.created',
   'call.missed',
@@ -103,10 +113,56 @@ const STANDARD_EVENT_TYPES = new Set<string>([
 const EVENT_TO_CONNECTOR_TYPES: Record<string, ConnectorType[]> = {
   'call.completed': ['crm', 'accounting', 'custom', 'webhook'],
   'appointment.booked': ['crm', 'scheduling', 'accounting', 'custom', 'webhook'],
+  'appointment.rescheduled': ['crm', 'scheduling', 'custom', 'webhook'],
+  'appointment.cancelled': ['crm', 'scheduling', 'custom', 'webhook'],
+  'appointment.no_show': ['crm', 'scheduling', 'custom', 'webhook'],
   'sms.sent': ['custom', 'webhook'],
   'ticket.created': ['custom', 'webhook'],
   'call.missed': ['custom', 'webhook'],
 };
+
+const APPOINTMENT_LIFECYCLE_EVENTS = new Set<string>([
+  'appointment.booked',
+  'appointment.rescheduled',
+  'appointment.cancelled',
+  'appointment.no_show',
+]);
+
+/**
+ * Derive every stable lookup key the payload supports, ordered by
+ * specificity (most specific first). At booking time we record one ledger
+ * row per derived key so that downstream lifecycle events — which may carry
+ * a different subset of identifying fields — can still find the original
+ * scheduling provider. At lookup time we try the keys in the same order
+ * and return on the first hit.
+ *
+ * Supported keys:
+ *   - `appt:<appointmentId>`           (explicit canonical ID)
+ *   - `sid:<callSid>`                  (voice-gateway initiated bookings)
+ *   - `phone:<callerPhone>:<startTime>` derived from `startTime` or
+ *     `appointmentDate`+`appointmentTime`.
+ */
+function deriveAppointmentLookupKeys(payload: ConnectorPayload): string[] {
+  const p = payload as Record<string, unknown>;
+  const keys: string[] = [];
+
+  const appointmentId = typeof p.appointmentId === 'string' ? p.appointmentId.trim() : '';
+  if (appointmentId) keys.push(`appt:${appointmentId}`);
+
+  const callSid = typeof p.callSid === 'string' ? p.callSid.trim() : '';
+  if (callSid) keys.push(`sid:${callSid}`);
+
+  const callerPhone = typeof p.callerPhone === 'string' ? p.callerPhone.trim() : '';
+  let startTime = typeof p.startTime === 'string' ? p.startTime.trim() : '';
+  if (!startTime) {
+    const date = typeof p.appointmentDate === 'string' ? p.appointmentDate.trim() : '';
+    const time = typeof p.appointmentTime === 'string' ? p.appointmentTime.trim() : '';
+    if (date && time) startTime = `${date}T${time}`;
+  }
+  if (callerPhone && startTime) keys.push(`phone:${callerPhone}:${startTime}`);
+
+  return keys;
+}
 
 function inferConnectorType(payload: ConnectorPayload): ConnectorType | null {
   switch (payload.type) {
@@ -388,22 +444,54 @@ export class ConnectorService {
       return { dispatched: 0, results };
     }
 
+    const isLifecycleEvent = APPOINTMENT_LIFECYCLE_EVENTS.has(eventType);
+    const appointmentLookupKeys = isLifecycleEvent ? deriveAppointmentLookupKeys(payload) : [];
+
     let schedulingProvider: string | null | undefined = options?.schedulingProvider;
     if (schedulingProvider === undefined && targetTypes.includes('scheduling')) {
-      const payloadObj = payload as Record<string, unknown>;
-      const agentId = typeof payloadObj.agentId === 'string'
-        ? (payloadObj.agentId as string)
-        : null;
-      const phoneNumberId = typeof payloadObj.phoneNumberId === 'string'
-        ? (payloadObj.phoneNumberId as string)
-        : null;
-      if (agentId || phoneNumberId) {
-        schedulingProvider = await getPreferredSchedulingProvider(tenantId, {
-          agentId,
-          phoneNumberId,
-        });
-      } else {
-        schedulingProvider = null;
+      // For non-booked lifecycle events (reschedule / cancel / no-show) the
+      // ledger is authoritative: we always want to route back to the calendar
+      // that originally received the booking, even if the tenant has since
+      // changed their default scheduling provider for that agent or phone
+      // number. Otherwise a reschedule could land in a calendar that has no
+      // record of the original event.
+      //
+      // For `appointment.booked` itself we skip the ledger — the booking
+      // *creates* the entry, so reading from it for the same event would
+      // only ever return a stale prior decision — and instead use the
+      // per-target preference (agentId / phoneNumberId).
+      if (isLifecycleEvent && eventType !== 'appointment.booked' && appointmentLookupKeys.length > 0) {
+        for (const key of appointmentLookupKeys) {
+          const recorded = await getAppointmentSchedulingProvider(tenantId, key);
+          if (recorded) {
+            schedulingProvider = recorded;
+            logger.info('Resolved scheduling provider from appointment dispatch ledger', {
+              tenantId,
+              eventType,
+              lookupKey: key,
+              schedulingProvider: recorded,
+            });
+            break;
+          }
+        }
+      }
+
+      if (schedulingProvider === undefined) {
+        const payloadObj = payload as Record<string, unknown>;
+        const agentId = typeof payloadObj.agentId === 'string'
+          ? (payloadObj.agentId as string)
+          : null;
+        const phoneNumberId = typeof payloadObj.phoneNumberId === 'string'
+          ? (payloadObj.phoneNumberId as string)
+          : null;
+        if (agentId || phoneNumberId) {
+          schedulingProvider = await getPreferredSchedulingProvider(tenantId, {
+            agentId,
+            phoneNumberId,
+          });
+        } else {
+          schedulingProvider = null;
+        }
       }
     }
 
@@ -429,6 +517,44 @@ export class ConnectorService {
           success: result.success,
           error: result.error,
         });
+
+        // Remember which scheduling integration accepted the booking so that
+        // downstream reschedule / cancel / no-show events for the same
+        // appointment can route back to the same calendar. We record one
+        // row per derivable key (appointmentId, callSid, phone+startTime)
+        // so a later lifecycle event finds the booking even if it carries
+        // a different subset of identifiers.
+        //
+        // Awaited (in parallel across keys) so an immediately-following
+        // lifecycle event can't race past the ledger write and fall back
+        // to broadcast/preference behaviour. Failures are logged but do
+        // not fail the dispatch itself — the booking has already
+        // succeeded at this point.
+        if (
+          eventType === 'appointment.booked'
+          && config.connectorType === 'scheduling'
+          && result.success
+          && appointmentLookupKeys.length > 0
+        ) {
+          await Promise.all(
+            appointmentLookupKeys.map((key) =>
+              recordAppointmentSchedulingDispatch(
+                tenantId,
+                key,
+                config.provider,
+                result.externalId ?? null,
+              ).catch((err) => {
+                logger.warn('Failed to record appointment scheduling dispatch', {
+                  tenantId,
+                  eventType,
+                  provider: config.provider,
+                  lookupKey: key,
+                  error: String(err),
+                });
+              }),
+            ),
+          );
+        }
       } catch (err) {
         results.push({
           connectorType: config.connectorType,
