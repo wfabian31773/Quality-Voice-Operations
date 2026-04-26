@@ -656,3 +656,181 @@ describe('notifyConnectorRecovery', () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });
+
+describe('notifyConnectorSyncError', () => {
+  // Query order in notifyConnectorSyncError:
+  //  1. SELECT id FROM tenant_notifications ... (throttle check)
+  //  2. fanoutInAppNotification:
+  //       a. SELECT id FROM users WHERE tenant_id = $1 ... (tenant users)
+  //       b. SELECT user_id, enabled FROM user_notification_preferences ... (in_app pref filter)
+  //       c. INSERT INTO tenant_notifications ... (per opted-in user)
+  //  3. SELECT name FROM tenants WHERE id = $1
+  //  4. SELECT email FROM users WHERE role IN ('admin','owner') ...
+  //  5. filterEmailRecipientsByPreference (SELECT ... LEFT JOIN user_notification_preferences)
+  //  6. UPDATE integrations SET auth_alert_sent_at = NOW() ... (stamp marker)
+
+  const baseParams = {
+    tenantId: 'tenant-1',
+    integrationId: 'int-1',
+    connectorType: 'crm' as const,
+    provider: 'salesforce',
+    errorMessage: 'API rate limit exceeded',
+  };
+
+  it('skips non-revenue-critical providers (no throttle check, no fan-out, no email)', async () => {
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError({ ...baseParams, provider: 'slack' });
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('honors per-user opt-outs: drops in-app for users with integration in_app off and drops email for opted-out admins', async () => {
+    queryMock
+      // 1. throttle check — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // 2a. fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a' }, { id: 'user-b' }],
+      })
+      // 2b. fanoutInAppNotification: in_app pref filter — user-a opted OUT
+      //     of integration in_app channel.
+      .mockResolvedValueOnce({
+        rows: [{ user_id: 'user-a', enabled: false }],
+      })
+      // 2c. INSERT for user-b only (user-a was filtered out)
+      .mockResolvedValueOnce({ rows: [] })
+      // 3. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 4. admin email lookup
+      .mockResolvedValueOnce({
+        rows: [
+          { email: 'owner@acme.test' },
+          { email: 'admin@acme.test' },
+        ],
+      })
+      // 5. filterEmailRecipientsByPreference — admin@acme.test opted OUT of
+      //    integration email channel.
+      .mockResolvedValueOnce({
+        rows: [{ email: 'admin@acme.test', enabled: false }],
+      })
+      // 6. UPDATE integrations SET auth_alert_sent_at
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError(baseParams);
+
+    // In-app: only one row inserted, and it must target user-b (user-a opted out).
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(1);
+    const insertArgs = insertCalls[0][1] as unknown[];
+    expect(insertArgs[1]).toBe('user-b');
+    expect(insertArgs[2]).toBe('integration');
+    const metadata = JSON.parse(insertArgs[5] as string);
+    expect(metadata.integrationId).toBe('int-1');
+    expect(metadata.provider).toBe('salesforce');
+
+    // Email: only owner@acme.test should receive it (admin@acme.test opted out).
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect((sendEmailMock.mock.calls[0][0] as { to: string }).to).toBe('owner@acme.test');
+
+    // The email pref filter must have been called with the 'integration' category.
+    const prefFilterCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return sql.includes('user_notification_preferences') && sql.includes('LOWER(u.email)');
+    });
+    expect(prefFilterCall).toBeDefined();
+    expect(prefFilterCall![1][2]).toBe('integration');
+  });
+
+  it('suppresses email entirely (and logs) when every admin has opted out of integration email', async () => {
+    queryMock
+      // 1. throttle check — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // 2a. tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      // 2b. in_app pref filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 2c. INSERT for user-a
+      .mockResolvedValueOnce({ rows: [] })
+      // 3. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 4. admin emails
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
+      // 5. filterEmailRecipientsByPreference: admin opted OUT
+      .mockResolvedValueOnce({
+        rows: [{ email: 'admin@acme.test', enabled: false }],
+      });
+    // No further queries expected — early return before stamping
+    // auth_alert_sent_at because there's nobody to email.
+
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError(baseParams);
+
+    // In-app row still recorded for user-a.
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(1);
+
+    // No email sent.
+    expect(sendEmailMock).not.toHaveBeenCalled();
+
+    // Throttle marker was NOT stamped (the function bails before the UPDATE).
+    const stampCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return sql.includes('UPDATE integrations') && sql.includes('auth_alert_sent_at');
+    });
+    expect(stampCall).toBeUndefined();
+  });
+
+  it('suppresses in-app entirely when every active user has opted out of integration in_app, but still emails admins who allow integration email', async () => {
+    queryMock
+      // 1. throttle check — empty
+      .mockResolvedValueOnce({ rows: [] })
+      // 2a. tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      // 2b. in_app pref filter — user-a OFF
+      .mockResolvedValueOnce({
+        rows: [{ user_id: 'user-a', enabled: false }],
+      })
+      // 2c. (no INSERT — eligible list empty)
+      // 3. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      // 4. admin emails
+      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
+      // 5. email pref filter — nobody opted out of email
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. UPDATE integrations SET auth_alert_sent_at
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const { notifyConnectorSyncError } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifyConnectorSyncError(baseParams);
+
+    // No in-app rows inserted — every active user opted out of in_app.
+    const insertCalls = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCalls.length).toBe(0);
+
+    // Email still went out — opt-outs are per (category, channel).
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect((sendEmailMock.mock.calls[0][0] as { to: string }).to).toBe('admin@acme.test');
+
+    // Throttle marker stamped after a successful email round.
+    const stampCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return sql.includes('UPDATE integrations') && sql.includes('auth_alert_sent_at');
+    });
+    expect(stampCall).toBeDefined();
+  });
+});
