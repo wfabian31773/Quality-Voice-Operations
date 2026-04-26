@@ -6,7 +6,16 @@ vi.mock('../../platform/integrations/connectors/db', () => ({
 
 vi.mock('../../platform/integrations/connectors/tokenRefresh', () => ({
   ensureFreshOAuthToken: vi.fn(),
-  isRefreshableProvider: (p: string) => ['hubspot', 'pipedrive', 'quickbooks'].includes(p),
+  isRefreshableProvider: (p: string) =>
+    [
+      'hubspot',
+      'pipedrive',
+      'quickbooks',
+      'salesforce',
+      'outlook-calendar',
+      'google-calendar',
+      'zoho',
+    ].includes(p),
 }));
 
 import { runOAuthTokenRefreshCycle } from '../../platform/integrations/connectors/OAuthTokenRefreshScheduler';
@@ -110,6 +119,47 @@ describe('runOAuthTokenRefreshCycle', () => {
     expect(result.refreshed).toBe(1);
     expect(result.failed).toBe(1);
     expect(ensureFreshOAuthToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('includes zoho in the providers swept each cycle', async () => {
+    vi.mocked(listRefreshableConnectorConfigs).mockResolvedValue([]);
+
+    await runOAuthTokenRefreshCycle(30 * 60 * 1000);
+
+    expect(listRefreshableConnectorConfigs).toHaveBeenCalledTimes(1);
+    const providers = vi.mocked(listRefreshableConnectorConfigs).mock.calls[0][0];
+    expect(providers).toEqual(
+      expect.arrayContaining([
+        'hubspot',
+        'pipedrive',
+        'quickbooks',
+        'salesforce',
+        'outlook-calendar',
+        'google-calendar',
+        'zoho',
+      ]),
+    );
+  });
+
+  it('refreshes an expiring zoho token without a user interaction', async () => {
+    const zohoCfg = makeConfig({
+      integrationId: 'integ-zoho',
+      provider: 'zoho',
+      credentials: {
+        access_token: 'zoho-at',
+        refresh_token: 'zoho-rt',
+        token_expires_at: String(Date.now() + 5 * 60 * 1000),
+      },
+    });
+    vi.mocked(listRefreshableConnectorConfigs).mockResolvedValue([zohoCfg]);
+    vi.mocked(ensureFreshOAuthToken).mockResolvedValue(zohoCfg);
+
+    const result = await runOAuthTokenRefreshCycle(30 * 60 * 1000);
+
+    expect(result.expiringSoon).toBe(1);
+    expect(result.refreshed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(ensureFreshOAuthToken).toHaveBeenCalledWith(zohoCfg, { leadMs: 30 * 60 * 1000 });
   });
 
   it('flags configs missing a refresh_token', async () => {
