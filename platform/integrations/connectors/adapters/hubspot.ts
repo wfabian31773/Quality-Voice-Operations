@@ -144,9 +144,11 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       const dispositionFields = mapDisposition('hubspot', disposition, customMap);
 
       const refs: DealRefs = {
-        contactId: payload.contactId as string | undefined,
-        companyId: payload.companyId as string | undefined,
-        dealId: payload.dealId as string | undefined,
+        contactId: (payload.contactId as string | undefined),
+        companyId: (payload.companyId as string | undefined)
+          ?? (payload.accountId as string | undefined),
+        dealId: (payload.dealId as string | undefined)
+          ?? (payload.opportunityId as string | undefined),
       };
 
       if (!refs.contactId && callerPhone) {
@@ -184,6 +186,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
           contactId: refs.contactId,
           companyId: refs.companyId,
           dealId: refs.dealId,
+          ...this.canonicalAliases(refs),
           engagementId: engagementResult,
           provider: 'hubspot',
           ...(config.credentials.appointment_pipeline_id
@@ -221,9 +224,11 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       parseDispositionMap(config.credentials, 'hubspot');
 
       const refs: DealRefs = {
-        contactId: payload.contactId as string | undefined,
-        companyId: payload.companyId as string | undefined,
-        dealId: payload.dealId as string | undefined,
+        contactId: (payload.contactId as string | undefined),
+        companyId: (payload.companyId as string | undefined)
+          ?? (payload.accountId as string | undefined),
+        dealId: (payload.dealId as string | undefined)
+          ?? (payload.opportunityId as string | undefined),
       };
 
       if (!refs.contactId && callerPhone) {
@@ -290,6 +295,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
           contactId: refs.contactId,
           companyId: refs.companyId,
           dealId: refs.dealId,
+          ...this.canonicalAliases(refs),
           engagementId,
           provider: 'hubspot',
           ...(pipelineId ? { pipelineId } : {}),
@@ -302,6 +308,23 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       logger.error('HubSpot appointment logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * Canonical Salesforce-style aliases (`contactId`/`accountId`/`opportunityId`)
+   * derived from HubSpot's native IDs (`contactId`/`companyId`/`dealId`).
+   * Emitted alongside the native fields in `result.meta` so the cross-provider
+   * caller-identity cache can store both shapes verbatim, and a future event
+   * can re-inject either shape as a payload hint — the adapter accepts both
+   * (see `handleCallCompleted` / `handleAppointmentBooked` where canonical
+   * names are tried as a fallback to native ones).
+   */
+  private canonicalAliases(refs: DealRefs): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (refs.contactId !== undefined) out.contactId = refs.contactId;
+    if (refs.companyId !== undefined) out.accountId = refs.companyId;
+    if (refs.dealId !== undefined) out.opportunityId = refs.dealId;
+    return out;
   }
 
   private async findOrCreateContact(

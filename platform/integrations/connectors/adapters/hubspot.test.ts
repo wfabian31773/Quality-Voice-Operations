@@ -234,6 +234,85 @@ describe('HubSpotConnectorAdapter appointment.booked', () => {
     expect(calls.find((c) => c.url.endsWith('/objects/companies') && c.method === 'POST')).toBeUndefined();
     expect(calls.find((c) => c.url.endsWith('/objects/deals') && c.method === 'POST')).toBeUndefined();
   });
+
+  test('canonical-only payload (accountId/opportunityId) skips company + deal lookups and emits aliases', async () => {
+    const { calls } = setupFetch([
+      {
+        match: (u, i) => u.endsWith('/objects/notes') && i?.method === 'POST',
+        response: { body: { id: 'note-canon' } },
+      },
+      {
+        match: (u) => u.includes('/crm/v4/objects/deals/deal-canon/associations/companies/company-canon'),
+        response: { body: { results: [] } },
+      },
+    ]);
+
+    const adapter = new HubSpotConnectorAdapter();
+    // Canonical Salesforce-style names only — no native companyId/dealId.
+    const payload: ConnectorPayload = {
+      type: 'appointment.booked',
+      contactId: 'contact-canon',
+      accountId: 'company-canon',
+      opportunityId: 'deal-canon',
+    };
+
+    const result = await adapter.execute(TENANT, CONFIG, payload);
+    expect(result.success).toBe(true);
+    expect(result.externalId).toBe('note-canon');
+    // Both native and canonical aliases present in meta.
+    expect(result.meta).toMatchObject({
+      contactId: 'contact-canon',
+      companyId: 'company-canon',
+      dealId: 'deal-canon',
+      accountId: 'company-canon',
+      opportunityId: 'deal-canon',
+      provider: 'hubspot',
+    });
+    // No search or create traffic for company/deal/contact paths.
+    expect(calls.find((c) => c.url.includes('/companies/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/deals/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/contacts/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/objects/companies') && c.method === 'POST')).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/objects/deals') && c.method === 'POST')).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/objects/contacts') && c.method === 'POST')).toBeUndefined();
+  });
+
+  test('canonical-only payload on call.completed skips company lookup and emits aliases', async () => {
+    const { calls } = setupFetch([
+      {
+        match: (u, i) => u.endsWith('/objects/calls') && i?.method === 'POST',
+        response: { body: { id: 'call-canon' } },
+      },
+    ]);
+
+    const adapter = new HubSpotConnectorAdapter();
+    const payload: ConnectorPayload = {
+      type: 'call.completed',
+      contactId: 'contact-canon-2',
+      accountId: 'company-canon-2',
+      opportunityId: 'deal-canon-2',
+      summary: 'Repeat caller',
+      durationSeconds: 30,
+      callerCompany: 'Acme Inc',
+    };
+
+    const result = await adapter.execute(TENANT, CONFIG, payload);
+    expect(result.success).toBe(true);
+    expect(result.externalId).toBe('call-canon');
+    expect(result.meta).toMatchObject({
+      contactId: 'contact-canon-2',
+      companyId: 'company-canon-2',
+      dealId: 'deal-canon-2',
+      accountId: 'company-canon-2',
+      opportunityId: 'deal-canon-2',
+      provider: 'hubspot',
+    });
+    // No company search/create triggered even though callerCompany was supplied,
+    // because companyId was already resolved via the canonical accountId hint.
+    expect(calls.find((c) => c.url.includes('/companies/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.endsWith('/objects/companies') && c.method === 'POST')).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/contacts/search'))).toBeUndefined();
+  });
 });
 
 describe('fetchHubSpotDealPipelines', () => {
