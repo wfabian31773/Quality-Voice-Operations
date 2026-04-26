@@ -54,8 +54,207 @@ async function ensureTable(): Promise<void> {
       ON marketing_leads (source, created_at DESC);
     CREATE INDEX IF NOT EXISTS marketing_leads_email_lower_idx
       ON marketing_leads (LOWER(email));
+    ALTER TABLE marketing_leads
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new',
+      ADD COLUMN IF NOT EXISTS status_notes TEXT,
+      ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS status_updated_by TEXT;
+    CREATE INDEX IF NOT EXISTS marketing_leads_status_idx
+      ON marketing_leads (status, created_at DESC);
   `);
   tableEnsured = true;
+}
+
+export type LeadStatus = 'new' | 'contacted' | 'closed';
+export type BookingStatusFilter = 'all' | 'booked' | 'no_booking' | 'cancelled';
+
+export interface LeadListFilters {
+  source?: LeadSource | 'all';
+  status?: LeadStatus | 'all';
+  bookingStatus?: BookingStatusFilter;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LeadListItem {
+  id: number;
+  source: LeadSource;
+  name: string | null;
+  email: string;
+  company: string | null;
+  phone: string | null;
+  payload: Record<string, unknown>;
+  notified: boolean;
+  status: LeadStatus;
+  status_notes: string | null;
+  status_updated_at: string | null;
+  status_updated_by: string | null;
+  created_at: string;
+}
+
+export interface LeadListResult {
+  leads: LeadListItem[];
+  total: number;
+  counts: {
+    by_status: Record<LeadStatus, number>;
+    by_source: Record<LeadSource, number>;
+    by_booking: Record<'booked' | 'cancelled' | 'no_booking', number>;
+    total: number;
+  };
+}
+
+export async function listLeads(filters: LeadListFilters = {}): Promise<LeadListResult> {
+  await ensureTable();
+  const pool = getPlatformPool();
+
+  const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+  const offset = Math.max(filters.offset ?? 0, 0);
+
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (filters.source && filters.source !== 'all') {
+    values.push(filters.source);
+    conditions.push(`source = $${values.length}`);
+  }
+  if (filters.status && filters.status !== 'all') {
+    values.push(filters.status);
+    conditions.push(`status = $${values.length}`);
+  }
+  if (filters.bookingStatus && filters.bookingStatus !== 'all') {
+    if (filters.bookingStatus === 'booked') {
+      conditions.push(
+        `(payload ? 'booking') AND COALESCE(payload->'booking'->>'eventType','created') IN ('created','rescheduled')`,
+      );
+    } else if (filters.bookingStatus === 'cancelled') {
+      conditions.push(
+        `(payload ? 'booking') AND payload->'booking'->>'eventType' = 'cancelled'`,
+      );
+    } else if (filters.bookingStatus === 'no_booking') {
+      conditions.push(`NOT (payload ? 'booking')`);
+    }
+  }
+  if (filters.q && filters.q.trim()) {
+    const term = `%${filters.q.trim()}%`;
+    values.push(term);
+    const idx = values.length;
+    conditions.push(`(LOWER(email) LIKE LOWER($${idx}) OR LOWER(COALESCE(name,'')) LIKE LOWER($${idx}) OR LOWER(COALESCE(company,'')) LIKE LOWER($${idx}))`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const listQuery = `
+    SELECT id, source, name, email, company, phone, payload, notified,
+           status, status_notes, status_updated_at, status_updated_by, created_at
+    FROM marketing_leads
+    ${where}
+    ORDER BY created_at DESC
+    LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+  `;
+  const countQuery = `SELECT COUNT(*)::int AS total FROM marketing_leads ${where}`;
+
+  const [listRes, countRes, summaryRes] = await Promise.all([
+    pool.query(listQuery, [...values, limit, offset]),
+    pool.query(countQuery, values),
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status = 'new')::int AS status_new,
+        COUNT(*) FILTER (WHERE status = 'contacted')::int AS status_contacted,
+        COUNT(*) FILTER (WHERE status = 'closed')::int AS status_closed,
+        COUNT(*) FILTER (WHERE source = 'book_demo')::int AS source_book_demo,
+        COUNT(*) FILTER (WHERE source = 'roi_calculator')::int AS source_roi_calculator,
+        COUNT(*) FILTER (WHERE source = 'contact')::int AS source_contact,
+        COUNT(*) FILTER (
+          WHERE (payload ? 'booking')
+            AND COALESCE(payload->'booking'->>'eventType','created') IN ('created','rescheduled')
+        )::int AS booked,
+        COUNT(*) FILTER (
+          WHERE (payload ? 'booking')
+            AND payload->'booking'->>'eventType' = 'cancelled'
+        )::int AS cancelled,
+        COUNT(*) FILTER (WHERE NOT (payload ? 'booking'))::int AS no_booking
+      FROM marketing_leads
+    `),
+  ]);
+
+  const leads = listRes.rows.map((r): LeadListItem => ({
+    id: Number(r.id),
+    source: r.source as LeadSource,
+    name: r.name,
+    email: r.email,
+    company: r.company,
+    phone: r.phone,
+    payload: r.payload ?? {},
+    notified: Boolean(r.notified),
+    status: (r.status as LeadStatus) ?? 'new',
+    status_notes: r.status_notes,
+    status_updated_at: r.status_updated_at ? new Date(r.status_updated_at).toISOString() : null,
+    status_updated_by: r.status_updated_by,
+    created_at: new Date(r.created_at).toISOString(),
+  }));
+
+  const summary = summaryRes.rows[0] ?? {};
+  return {
+    leads,
+    total: countRes.rows[0]?.total ?? 0,
+    counts: {
+      by_status: {
+        new: summary.status_new ?? 0,
+        contacted: summary.status_contacted ?? 0,
+        closed: summary.status_closed ?? 0,
+      },
+      by_source: {
+        book_demo: summary.source_book_demo ?? 0,
+        roi_calculator: summary.source_roi_calculator ?? 0,
+        contact: summary.source_contact ?? 0,
+      },
+      by_booking: {
+        booked: summary.booked ?? 0,
+        cancelled: summary.cancelled ?? 0,
+        no_booking: summary.no_booking ?? 0,
+      },
+      total: summary.total ?? 0,
+    },
+  };
+}
+
+export async function updateLeadStatus(
+  leadId: number,
+  status: LeadStatus,
+  options: { notes?: string | null; updatedBy?: string | null } = {},
+): Promise<LeadListItem | null> {
+  await ensureTable();
+  const pool = getPlatformPool();
+  const result = await pool.query(
+    `UPDATE marketing_leads
+        SET status = $1,
+            status_notes = COALESCE($2, status_notes),
+            status_updated_at = NOW(),
+            status_updated_by = $3
+      WHERE id = $4
+      RETURNING id, source, name, email, company, phone, payload, notified,
+                status, status_notes, status_updated_at, status_updated_by, created_at`,
+    [status, options.notes ?? null, options.updatedBy ?? null, leadId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    source: row.source as LeadSource,
+    name: row.name,
+    email: row.email,
+    company: row.company,
+    phone: row.phone,
+    payload: row.payload ?? {},
+    notified: Boolean(row.notified),
+    status: row.status as LeadStatus,
+    status_notes: row.status_notes,
+    status_updated_at: row.status_updated_at ? new Date(row.status_updated_at).toISOString() : null,
+    status_updated_by: row.status_updated_by,
+    created_at: new Date(row.created_at).toISOString(),
+  };
 }
 
 export async function recordLead(lead: LeadRecord): Promise<{ id: number | null }> {

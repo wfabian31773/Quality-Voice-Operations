@@ -19,6 +19,7 @@ import AdminTenantAnalytics from './pages/AdminTenantAnalytics';
 import AdminTenantCalls from './pages/AdminTenantCalls';
 import AdminTenantCampaign from './pages/AdminTenantCampaign';
 import AdminMarketplace from './pages/AdminMarketplace';
+import AdminSalesInbox from './pages/AdminSalesInbox';
 import Onboarding from './pages/Onboarding';
 import Demo from './pages/Demo';
 import Campaigns from './pages/Campaigns';
@@ -215,6 +216,7 @@ export default function App() {
         <Route path="/admin/analytics/tenants/:tenantId/calls" element={<AdminTenantCalls />} />
         <Route path="/admin/analytics/tenants/:tenantId/campaigns/:campaignId" element={<AdminTenantCampaign />} />
         <Route path="/admin/marketplace" element={<AdminMarketplace />} />
+        <Route path="/admin/sales-inbox" element={<AdminSalesInbox />} />
         <Route path="/admin/billing" element={<Billing />} />
         <Route path="/admin/security" element={<Compliance />} />
         <Route path="/admin/governance" element={<Governance />} />

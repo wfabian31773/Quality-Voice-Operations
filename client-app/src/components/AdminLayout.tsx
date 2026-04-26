@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
   Building2, BarChart3, Store, CreditCard, Shield,
-  LogOut, Moon, Sun, Menu, X, Compass,
+  LogOut, Moon, Sun, Menu, X, Compass, Inbox,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -23,6 +23,7 @@ interface NavItem {
 const adminLinks: NavItem[] = [
   { to: '/admin/dashboard', icon: Building2, i18nKey: 'admin_nav.tenants' },
   { to: '/admin/analytics', icon: BarChart3, i18nKey: 'admin_nav.analytics' },
+  { to: '/admin/sales-inbox', icon: Inbox, i18nKey: 'admin_nav.sales_inbox' },
   { to: '/admin/marketplace', icon: Store, i18nKey: 'admin_nav.marketplace' },
   { to: '/admin/billing', icon: CreditCard, i18nKey: 'admin_nav.billing' },
   { to: '/admin/security', icon: Shield, i18nKey: 'admin_nav.security' },

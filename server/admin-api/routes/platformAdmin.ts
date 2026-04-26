@@ -13,6 +13,13 @@ import { getCampaign, getCampaignMetrics, listContacts } from '../../../platform
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { getConversationCost } from '../../../platform/billing/cost';
 import { listToolExecutions } from '../../../platform/tools/ToolExecutionService';
+import {
+  listLeads,
+  updateLeadStatus,
+  type BookingStatusFilter,
+  type LeadSource,
+  type LeadStatus,
+} from '../services/marketing-leads';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -706,6 +713,78 @@ router.get('/platform/activation-metrics', requireAuth, requirePlatformAdmin, as
   } catch (err) {
     logger.error('Failed to get activation metrics', { error: String(err) });
     return res.status(500).json({ error: 'Failed to get activation metrics' });
+  }
+});
+
+const VALID_LEAD_SOURCES: ReadonlyArray<LeadSource | 'all'> = ['all', 'book_demo', 'roi_calculator', 'contact'];
+const VALID_BOOKING_STATUSES: ReadonlyArray<BookingStatusFilter> = ['all', 'booked', 'no_booking', 'cancelled'];
+const VALID_LEAD_STATUSES: ReadonlyArray<LeadStatus | 'all'> = ['all', 'new', 'contacted', 'closed'];
+const TRIAGEABLE_LEAD_STATUSES: ReadonlyArray<LeadStatus> = ['new', 'contacted', 'closed'];
+
+router.get('/platform/marketing-leads', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, 200);
+  const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
+  const offset = (page - 1) * limit;
+
+  const sourceParam = String(req.query.source ?? 'all');
+  const bookingParam = String(req.query.booking ?? 'all');
+  const statusParam = String(req.query.status ?? 'all');
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+
+  const source = (VALID_LEAD_SOURCES as readonly string[]).includes(sourceParam)
+    ? (sourceParam as LeadSource | 'all')
+    : 'all';
+  const booking = (VALID_BOOKING_STATUSES as readonly string[]).includes(bookingParam)
+    ? (bookingParam as BookingStatusFilter)
+    : 'all';
+  const status = (VALID_LEAD_STATUSES as readonly string[]).includes(statusParam)
+    ? (statusParam as LeadStatus | 'all')
+    : 'all';
+
+  try {
+    const result = await listLeads({ source, status, bookingStatus: booking, q, limit, offset });
+    return res.json({
+      leads: result.leads,
+      total: result.total,
+      counts: result.counts,
+      limit,
+      offset,
+      page,
+    });
+  } catch (err) {
+    logger.error('Failed to list marketing leads', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to list marketing leads' });
+  }
+});
+
+router.patch('/platform/marketing-leads/:id', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  const leadId = parseInt(id, 10);
+  if (!Number.isFinite(leadId) || leadId <= 0) {
+    return res.status(400).json({ error: 'Invalid lead id' });
+  }
+
+  const { status, notes } = (req.body ?? {}) as { status?: string; notes?: string | null };
+  if (!status || !(TRIAGEABLE_LEAD_STATUSES as readonly string[]).includes(status)) {
+    return res.status(400).json({ error: 'status must be one of new, contacted, closed' });
+  }
+
+  try {
+    const updated = await updateLeadStatus(leadId, status as LeadStatus, {
+      notes: typeof notes === 'string' ? notes : null,
+      updatedBy: req.user!.email,
+    });
+    if (!updated) return res.status(404).json({ error: 'Lead not found' });
+
+    logger.info('Marketing lead status updated by platform admin', {
+      leadId,
+      newStatus: status,
+      adminUserId: req.user!.userId,
+    });
+    return res.json({ lead: updated });
+  } catch (err) {
+    logger.error('Failed to update marketing lead status', { leadId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update marketing lead' });
   }
 });
 
