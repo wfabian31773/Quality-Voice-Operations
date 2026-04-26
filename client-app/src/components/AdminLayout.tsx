@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
   Building2, BarChart3, Store, CreditCard, Shield,
-  LogOut, Moon, Sun, Menu, X, Cpu, Filter, Globe,
+  LogOut, Moon, Sun, Menu, X, Compass,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -24,9 +24,7 @@ const adminLinks: NavItem[] = [
   { to: '/admin/marketplace', icon: Store, label: 'Marketplace' },
   { to: '/admin/billing', icon: CreditCard, label: 'Billing' },
   { to: '/admin/security', icon: Shield, label: 'Security' },
-  { to: '/admin/evolution', icon: Cpu, label: 'Evolution' },
-  { to: '/admin/conversion', icon: Filter, label: 'Funnel' },
-  { to: '/admin/intelligence', icon: Globe, label: 'Intelligence' },
+  { to: '/admin/governance', icon: Compass, label: 'Governance' },
 ];
 
 export default function AdminLayout() {

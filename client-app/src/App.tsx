@@ -37,8 +37,7 @@ import UpdateCenter from './pages/UpdateCenter';
 import PostInstallSetup from './pages/PostInstallSetup';
 import AcceptInvite from './pages/AcceptInvite';
 import DigitalTwin from './pages/DigitalTwin';
-import GlobalIntelligence from './pages/GlobalIntelligence';
-import EvolutionEngine from './pages/EvolutionEngine';
+import Governance from './pages/Governance';
 import ToolHealth from './pages/ToolHealth';
 import CostOptimization from './pages/CostOptimization';
 import CallDebug from './pages/CallDebug';
@@ -69,7 +68,6 @@ import Terms from './pages/public/Terms';
 import Privacy from './pages/public/Privacy';
 import Security from './pages/public/Security';
 import Subprocessors from './pages/public/Subprocessors';
-import ConversionFunnel from './pages/ConversionFunnel';
 import Workflows from './pages/Workflows';
 import RoleGuard from './components/RoleGuard';
 import SmsInbox from './pages/SmsInbox';
@@ -219,9 +217,10 @@ export default function App() {
         <Route path="/admin/marketplace" element={<AdminMarketplace />} />
         <Route path="/admin/billing" element={<Billing />} />
         <Route path="/admin/security" element={<Compliance />} />
-        <Route path="/admin/evolution" element={<EvolutionEngine />} />
-        <Route path="/admin/conversion" element={<ConversionFunnel />} />
-        <Route path="/admin/intelligence" element={<GlobalIntelligence />} />
+        <Route path="/admin/governance" element={<Governance />} />
+        <Route path="/admin/evolution" element={<Navigate to="/admin/governance?tab=evolution" replace />} />
+        <Route path="/admin/conversion" element={<Navigate to="/admin/governance?tab=funnel" replace />} />
+        <Route path="/admin/intelligence" element={<Navigate to="/admin/governance?tab=intelligence" replace />} />
       </Route>
 
       {/* Operations Console */}
