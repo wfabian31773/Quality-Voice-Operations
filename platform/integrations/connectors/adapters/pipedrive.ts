@@ -231,9 +231,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       const dispositionFields = mapDisposition('pipedrive', disposition, customMap);
 
       const refs: DealRefs = {
-        personId: toNumericId(payload.personId),
-        orgId: toNumericId(payload.orgId),
-        dealId: toNumericId(payload.dealId),
+        personId: toNumericId(payload.personId) ?? toNumericId(payload.contactId),
+        orgId: toNumericId(payload.orgId) ?? toNumericId(payload.accountId),
+        dealId: toNumericId(payload.dealId) ?? toNumericId(payload.opportunityId),
       };
 
       if (!refs.orgId && callerCompany) {
@@ -284,6 +284,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
           personId: refs.personId,
           orgId: refs.orgId,
           dealId: refs.dealId,
+          ...this.canonicalAliases(refs),
           activityId,
           provider: 'pipedrive',
         },
@@ -314,9 +315,9 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       const dispositionFields = mapDisposition('pipedrive', 'booked', customMap);
 
       const refs: DealRefs = {
-        personId: toNumericId(payload.personId),
-        orgId: toNumericId(payload.orgId),
-        dealId: toNumericId(payload.dealId),
+        personId: toNumericId(payload.personId) ?? toNumericId(payload.contactId),
+        orgId: toNumericId(payload.orgId) ?? toNumericId(payload.accountId),
+        dealId: toNumericId(payload.dealId) ?? toNumericId(payload.opportunityId),
       };
 
       // Resolve org first so the new Person can be linked at create time.
@@ -396,6 +397,7 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
           personId: refs.personId,
           orgId: refs.orgId,
           dealId: refs.dealId,
+          ...this.canonicalAliases(refs),
           activityId,
           provider: 'pipedrive',
           ...(appointmentStageId ? { stageId: appointmentStageId } : {}),
@@ -407,6 +409,25 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
       logger.error('Pipedrive appointment logging failed', { tenantId, error });
       return { success: false, error };
     }
+  }
+
+  /**
+   * Canonical Salesforce-style aliases (`contactId`/`accountId`/`opportunityId`)
+   * derived from Pipedrive's native numeric IDs (`personId`/`orgId`/`dealId`),
+   * stringified for the cross-provider cache. Emitted alongside the native
+   * fields in `result.meta` so:
+   *   - the caller-identity cache layer can store both shapes verbatim, and
+   *   - the next event for this caller can re-inject either shape as a
+   *     payload hint (the adapter accepts both — see `handleCallCompleted`
+   *     and `handleAppointmentBooked` where canonical names are tried as a
+   *     fallback to native ones).
+   */
+  private canonicalAliases(refs: DealRefs): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (refs.personId !== undefined) out.contactId = String(refs.personId);
+    if (refs.orgId !== undefined) out.accountId = String(refs.orgId);
+    if (refs.dealId !== undefined) out.opportunityId = String(refs.dealId);
+    return out;
   }
 
   private async findOrCreatePerson(

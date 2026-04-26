@@ -108,6 +108,12 @@ describe('PipedriveConnectorAdapter appointment.booked', () => {
       personId: 111,
       orgId: 555,
       dealId: 999,
+      // Salesforce-style aliases so the cross-provider caller-identity cache
+      // can store both shapes verbatim and the next event for the same
+      // caller can re-inject either name as a hint.
+      contactId: '111',
+      accountId: '555',
+      opportunityId: '999',
       activityId: '777',
       provider: 'pipedrive',
     });
@@ -164,6 +170,9 @@ describe('PipedriveConnectorAdapter appointment.booked', () => {
       personId: 22,
       orgId: 33,
       dealId: 88,
+      contactId: '22',
+      accountId: '33',
+      opportunityId: '88',
       activityId: '7',
       stageId: 42,
       dealStageMoved: true,
@@ -196,11 +205,112 @@ describe('PipedriveConnectorAdapter appointment.booked', () => {
 
     const result = await adapter.execute(TENANT, CONFIG, payload);
     expect(result.success).toBe(true);
-    expect(result.meta).toMatchObject({ personId: 1, orgId: 2, dealId: 3, activityId: '5' });
+    expect(result.meta).toMatchObject({
+      personId: 1,
+      orgId: 2,
+      dealId: 3,
+      contactId: '1',
+      accountId: '2',
+      opportunityId: '3',
+      activityId: '5',
+    });
 
     expect(calls.find((c) => c.url.includes('/persons/search'))).toBeUndefined();
     expect(calls.find((c) => c.url.includes('/organizations/search'))).toBeUndefined();
     expect(calls.find((c) => c.url.includes('/deals') && c.method === 'POST')).toBeUndefined();
+  });
+
+  test('honors canonical Salesforce-style hint IDs (contactId/accountId/opportunityId) to skip lookups', async () => {
+    // The cache layer stores Pipedrive's native IDs *and* the Salesforce-style
+    // canonical aliases. If a downstream caller (or a legacy cache row that
+    // pre-dates the `extras` JSONB column) re-injects only the canonical
+    // names, the adapter must treat them as equivalent to personId/orgId/dealId
+    // so the lookup-skipping speed-up still applies.
+    const { calls } = setupFetch([
+      {
+        match: (u, i) => u.includes('/deals/3') && i?.method === 'PUT',
+        response: { body: { success: true } },
+      },
+      {
+        match: (u, i) => (u.endsWith('/activities') || u.includes('/activities?')) && i?.method === 'POST',
+        response: { body: { success: true, data: { id: 9 } } },
+      },
+    ]);
+
+    const adapter = new PipedriveConnectorAdapter();
+    const payload: ConnectorPayload = {
+      type: 'appointment.booked',
+      // String form is what the cache replays — the adapter must coerce.
+      contactId: '1',
+      accountId: '2',
+      opportunityId: '3',
+    };
+
+    const result = await adapter.execute(TENANT, CONFIG, payload);
+    expect(result.success).toBe(true);
+    expect(result.meta).toMatchObject({
+      personId: 1,
+      orgId: 2,
+      dealId: 3,
+      contactId: '1',
+      accountId: '2',
+      opportunityId: '3',
+      activityId: '9',
+    });
+
+    expect(calls.find((c) => c.url.includes('/persons/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/organizations/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/deals') && c.method === 'POST')).toBeUndefined();
+
+    // The activity body should still use Pipedrive's native field names — i.e.
+    // the canonical hints are translated, not passed through to the API.
+    const activity = calls.find((c) => c.method === 'POST' && /\/activities(\?|$)/.test(c.url));
+    expect(activity).toBeDefined();
+    expect(activity!.body).toMatchObject({ person_id: 1, org_id: 2, deal_id: 3 });
+  });
+
+  test('canonical hints round-trip through call.completed too', async () => {
+    const { calls } = setupFetch([
+      {
+        match: (u, i) => (u.endsWith('/activities') || u.includes('/activities?')) && i?.method === 'POST',
+        response: { body: { success: true, data: { id: 12 } } },
+      },
+    ]);
+
+    const adapter = new PipedriveConnectorAdapter();
+    const payload: ConnectorPayload = {
+      type: 'call.completed',
+      callerPhone: '+15551234567',
+      summary: 'Cached caller',
+      durationSeconds: 30,
+      contactId: '111',
+      accountId: '555',
+      opportunityId: '999',
+    };
+
+    const result = await adapter.execute(TENANT, CONFIG, payload);
+    expect(result.success).toBe(true);
+    expect(result.meta).toMatchObject({
+      personId: 111,
+      orgId: 555,
+      dealId: 999,
+      contactId: '111',
+      accountId: '555',
+      opportunityId: '999',
+      activityId: '12',
+    });
+
+    // Zero search/create traffic — canonical hints fully short-circuited.
+    expect(calls.find((c) => c.url.includes('/persons/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/organizations/search'))).toBeUndefined();
+    expect(calls.find((c) => c.url.includes('/persons/111/deals'))).toBeUndefined();
+    expect(calls.find((c) => c.method === 'POST' && /\/persons(\?|$)/.test(c.url))).toBeUndefined();
+    expect(calls.find((c) => c.method === 'POST' && /\/organizations(\?|$)/.test(c.url))).toBeUndefined();
+    expect(calls.find((c) => c.method === 'POST' && /\/deals(\?|$)/.test(c.url))).toBeUndefined();
+
+    const activity = calls.find((c) => c.method === 'POST' && /\/activities(\?|$)/.test(c.url));
+    expect(activity).toBeDefined();
+    expect(activity!.body).toMatchObject({ person_id: 111, org_id: 555, deal_id: 999 });
   });
 });
 
