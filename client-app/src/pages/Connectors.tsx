@@ -2132,16 +2132,29 @@ function providerLabelFromAlert(alert: OutageAlert): string {
   return 'Integration';
 }
 
-function OutageAlertHistory() {
+function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
+  const [integrationFilter, setIntegrationFilter] = useState<string>('');
+
+  // Reset back to page 1 whenever the integration filter changes so admins
+  // don't end up looking at an empty page that no longer exists for the
+  // narrower result set.
+  useEffect(() => {
+    setPage(1);
+  }, [integrationFilter]);
 
   const { data, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ['connector-outage-alerts', page],
-    queryFn: () =>
-      api.get<{ alerts: OutageAlert[]; total: number; limit: number; offset: number }>(
-        `/connectors/alerts?page=${page}&limit=${PAGE_SIZE}`,
-      ),
+    queryKey: ['connector-outage-alerts', page, integrationFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(PAGE_SIZE));
+      if (integrationFilter) params.set('integrationId', integrationFilter);
+      return api.get<{ alerts: OutageAlert[]; total: number; limit: number; offset: number }>(
+        `/connectors/alerts?${params.toString()}`,
+      );
+    },
     placeholderData: (prev) => prev,
   });
 
@@ -2149,9 +2162,30 @@ function OutageAlertHistory() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Build the filter dropdown from both currently-connected integrations
+  // and any integrationIds we've seen in the alert history. This lets
+  // admins still filter to disconnected/deleted integrations whose alert
+  // trail is in scrollback. Use a Map keyed by integrationId so the live
+  // connector record always wins over the alert-derived label.
+  const filterOptionMap = new Map<string, string>();
+  for (const alert of alerts) {
+    if (!alert.integrationId) continue;
+    filterOptionMap.set(
+      alert.integrationId,
+      alert.integrationName || alert.provider || alert.integrationId,
+    );
+  }
+  for (const c of connectors) {
+    filterOptionMap.set(c.integrationId, c.name || c.provider);
+  }
+  const filterableConnectors = [...filterOptionMap.entries()]
+    .map(([integrationId, label]) => ({ integrationId, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const filterIsActive = integrationFilter !== '';
+
   return (
     <div className="bg-surface border border-border rounded-xl p-5">
-      <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -2161,14 +2195,40 @@ function OutageAlertHistory() {
             Recent connector failure escalations sent to your admins. SMS escalations only fire after a revenue-critical integration has been failing for over an hour.
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-border text-text-secondary hover:bg-surface-hover transition disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-xs text-text-secondary inline-flex items-center gap-1.5">
+            <span className="sr-only">Filter by integration</span>
+            <select
+              value={integrationFilter}
+              onChange={(e) => setIntegrationFilter(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-md border border-border bg-surface text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+              aria-label="Filter outage alerts by integration"
+            >
+              <option value="">All integrations</option>
+              {filterableConnectors.map((c) => (
+                <option key={c.integrationId} value={c.integrationId}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {filterIsActive && (
+            <button
+              onClick={() => setIntegrationFilter('')}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-md border border-border text-text-secondary hover:bg-surface-hover transition"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-border text-text-secondary hover:bg-surface-hover transition disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -2179,7 +2239,9 @@ function OutageAlertHistory() {
         </div>
       ) : alerts.length === 0 ? (
         <div className="text-sm text-text-secondary py-8 text-center border border-dashed border-border rounded-lg">
-          No outage alerts have been sent. We'll log every email or SMS escalation here so you can audit who got paged.
+          {filterIsActive
+            ? 'No outage alerts for this integration yet.'
+            : "No outage alerts have been sent. We'll log every email or SMS escalation here so you can audit who got paged."}
         </div>
       ) : (
         <>
@@ -2190,8 +2252,10 @@ function OutageAlertHistory() {
                   <th className="font-medium py-2 px-2">When</th>
                   <th className="font-medium py-2 px-2">Integration</th>
                   <th className="font-medium py-2 px-2">Channel</th>
+                  <th className="font-medium py-2 px-2">First failed</th>
                   <th className="font-medium py-2 px-2">Outage</th>
                   <th className="font-medium py-2 px-2">Recipients</th>
+                  <th className="font-medium py-2 px-2">In-app</th>
                   <th className="font-medium py-2 px-2">Delivery</th>
                 </tr>
               </thead>
@@ -2297,17 +2361,44 @@ function OutageAlertHistory() {
                           {isSms ? 'SMS' : 'Email'}
                         </span>
                       </td>
+                      <td
+                        className="py-2.5 px-2 text-text-primary whitespace-nowrap"
+                        title={alert.firstFailedAt ? formatExactTimestamp(alert.firstFailedAt) : undefined}
+                      >
+                        {alert.firstFailedAt ? (
+                          formatSyncTime(alert.firstFailedAt)
+                        ) : (
+                          <span className="text-text-secondary">—</span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-2 text-text-primary whitespace-nowrap">
                         {outage ?? <span className="text-text-secondary">—</span>}
                       </td>
-                      <td className="py-2.5 px-2 text-text-primary">
-                        {recipientCount}
-                        {alert.inAppRecipientCount > 0 && alert.inAppRecipientCount !== recipientCount && (
-                          <span className="text-text-secondary text-[11px]">
-                            {' '}
-                            · {alert.inAppRecipientCount} in-app
-                          </span>
-                        )}
+                      <td
+                        className="py-2.5 px-2 text-text-primary whitespace-nowrap"
+                        title={
+                          isSms
+                            ? `${recipientCount} admin${recipientCount === 1 ? '' : 's'} targeted by SMS at dispatch.`
+                            : `${recipientCount} admin${recipientCount === 1 ? '' : 's'} emailed at dispatch.`
+                        }
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {isSms ? (
+                            <MessageSquare className="h-3 w-3 text-text-secondary" />
+                          ) : (
+                            <Mail className="h-3 w-3 text-text-secondary" />
+                          )}
+                          {recipientCount}
+                        </span>
+                      </td>
+                      <td
+                        className="py-2.5 px-2 text-text-primary whitespace-nowrap"
+                        title={`${alert.inAppRecipientCount} admin${alert.inAppRecipientCount === 1 ? '' : 's'} received the in-app notification badge.`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <ShieldAlert className="h-3 w-3 text-text-secondary" />
+                          {alert.inAppRecipientCount}
+                        </span>
                       </td>
                       <td className="py-2.5 px-2">{deliveryNode}</td>
                     </tr>
@@ -2773,7 +2864,7 @@ export default function Connectors() {
             )}
           </div>
 
-          <OutageAlertHistory />
+          <OutageAlertHistory connectors={data?.connectors ?? []} />
 
           <div className="bg-surface border border-border rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text-primary mb-2">Event Bus</h3>
