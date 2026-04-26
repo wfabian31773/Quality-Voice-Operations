@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import path from 'path';
 import fs from 'fs';
@@ -15,6 +15,7 @@ let app: import('express').Express;
 describe.skipIf(!distAvailable)('admin-api production-mode boot smoke', () => {
   beforeAll(async () => {
     process.env.APP_ENV = 'production';
+    vi.resetModules();
     const mod = (await import('../../server/admin-api/app')) as {
       default: import('express').Express;
     };
