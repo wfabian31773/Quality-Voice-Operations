@@ -26,7 +26,6 @@ import {
   REPLY_DELIVERY_ALERT_THRESHOLD,
   raiseReplyDeliveryFailureAlert,
 } from '../../../platform/help/supportReplyDeliveryAlert';
-import { isPermanentSmtpError } from '../../../platform/email/smtpErrorClass';
 
 const logger = createLogger('SUPPORT');
 const router = Router();
@@ -1138,6 +1137,155 @@ router.get('/support/tickets/stats', requireAuth, requirePlatformAdmin, async (_
     res.status(500).json({ error: 'Failed to load ticket stats', detail: String(err) });
   }
 });
+
+// ----- Platform admin: bounced recipients -----
+//
+// Aggregates outbound support_ticket_replies whose SMTP error is classified as
+// permanent by the same isPermanentSmtpError() helper used by the manual /retry
+// endpoint and the SupportReplyRetryScheduler. Grouped by recipient email so
+// admins can clean their list — a single user_email may have produced hard
+// bounces across multiple tickets and we want one row per address with all
+// affected tickets linked from it.
+//
+// The classifier lives in JS so we let SQL prune the candidate set to outbound
+// reply rows that recorded *some* email_error (necessarily a superset of the
+// permanent-failure set, and bounded by the failure count which is far smaller
+// than the full reply table in practice). We then group in JS.
+router.get(
+  '/support/replies/bounced-recipients',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const limit = Math.min(
+      Math.max(parseInt(String(req.query.limit ?? '100'), 10) || 100, 1),
+      500,
+    );
+    try {
+      const pool = getPlatformPool();
+      const candidatesRes = await pool.query<{
+        reply_id: number;
+        ticket_id: string;
+        ticket_status: string;
+        user_email: string;
+        email_error: string;
+        reply_created_at: string;
+      }>(
+        `SELECT r.id            AS reply_id,
+                r.ticket_id     AS ticket_id,
+                t.status        AS ticket_status,
+                t.user_email    AS user_email,
+                r.email_error   AS email_error,
+                r.created_at    AS reply_created_at
+         FROM support_ticket_replies r
+         JOIN support_tickets t ON t.id = r.ticket_id
+         WHERE r.direction = 'outbound'
+           AND r.email_error IS NOT NULL
+           AND t.user_email IS NOT NULL
+         ORDER BY r.created_at DESC`,
+      );
+
+      // Group permanent-failure rows by user_email. Each recipient gets one
+      // entry with the rolled-up occurrence count, the timestamp + error of
+      // the most recent failure, and a per-ticket breakdown so the admin can
+      // jump straight to any affected thread from the row.
+      interface TicketEntry {
+        ticket_id: string;
+        ticket_status: string;
+        occurrence_count: number;
+        last_failure_at: string;
+        last_error: string;
+      }
+      interface RecipientEntry {
+        user_email: string;
+        occurrence_count: number;
+        last_failure_at: string;
+        last_error: string;
+        ticket_count: number;
+        tickets: TicketEntry[];
+      }
+      const byEmail = new Map<string, RecipientEntry>();
+      const ticketsByEmail = new Map<string, Map<string, TicketEntry>>();
+
+      for (const row of candidatesRes.rows) {
+        if (!isPermanentSmtpError(row.email_error)) continue;
+        const email = row.user_email;
+        let entry = byEmail.get(email);
+        if (!entry) {
+          entry = {
+            user_email: email,
+            occurrence_count: 0,
+            last_failure_at: row.reply_created_at,
+            last_error: row.email_error,
+            ticket_count: 0,
+            tickets: [],
+          };
+          byEmail.set(email, entry);
+          ticketsByEmail.set(email, new Map());
+        }
+        entry.occurrence_count += 1;
+        // Rows arrive newest-first from SQL, so the first one we see for an
+        // (email, ticket) pair is the most recent failure for that combo.
+        if (new Date(row.reply_created_at) > new Date(entry.last_failure_at)) {
+          entry.last_failure_at = row.reply_created_at;
+          entry.last_error = row.email_error;
+        }
+        const tMap = ticketsByEmail.get(email)!;
+        let tEntry = tMap.get(row.ticket_id);
+        if (!tEntry) {
+          tEntry = {
+            ticket_id: row.ticket_id,
+            ticket_status: row.ticket_status,
+            occurrence_count: 0,
+            last_failure_at: row.reply_created_at,
+            last_error: row.email_error,
+          };
+          tMap.set(row.ticket_id, tEntry);
+        }
+        tEntry.occurrence_count += 1;
+        if (new Date(row.reply_created_at) > new Date(tEntry.last_failure_at)) {
+          tEntry.last_failure_at = row.reply_created_at;
+          tEntry.last_error = row.email_error;
+        }
+      }
+
+      // Materialise the per-recipient ticket list (newest failure first) and
+      // sort recipients by recency so the worst-offending addresses bubble up.
+      const recipients: RecipientEntry[] = [];
+      for (const [email, entry] of byEmail.entries()) {
+        const tMap = ticketsByEmail.get(email)!;
+        const tickets = Array.from(tMap.values()).sort(
+          (a, b) =>
+            new Date(b.last_failure_at).getTime() -
+            new Date(a.last_failure_at).getTime(),
+        );
+        entry.tickets = tickets;
+        entry.ticket_count = tickets.length;
+        recipients.push(entry);
+      }
+      recipients.sort((a, b) => {
+        // Primary: most recent failure first, so freshly broken addresses
+        // surface at the top of the panel.
+        const tDiff =
+          new Date(b.last_failure_at).getTime() -
+          new Date(a.last_failure_at).getTime();
+        if (tDiff !== 0) return tDiff;
+        // Tiebreaker: higher repeat count first.
+        return b.occurrence_count - a.occurrence_count;
+      });
+
+      const truncated = recipients.length > limit;
+      res.json({
+        recipients: recipients.slice(0, limit),
+        total: recipients.length,
+        truncated,
+      });
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: 'Failed to load bounced recipients', detail: String(err) });
+    }
+  },
+);
 
 router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;

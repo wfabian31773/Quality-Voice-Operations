@@ -2414,6 +2414,14 @@ function SupportInboxTab() {
         </div>
       </div>
 
+      <BouncedRecipientsPanel
+        onOpenTicket={(ticketId) => {
+          setStatusFilter('all');
+          setHardBounceOnly(false);
+          setExpandedId(ticketId);
+        }}
+      />
+
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -2506,6 +2514,202 @@ function SupportInboxTab() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+interface BouncedRecipientTicket {
+  ticket_id: string;
+  ticket_status: string;
+  occurrence_count: number;
+  last_failure_at: string;
+  last_error: string;
+}
+
+interface BouncedRecipient {
+  user_email: string;
+  occurrence_count: number;
+  last_failure_at: string;
+  last_error: string;
+  ticket_count: number;
+  tickets: BouncedRecipientTicket[];
+}
+
+interface BouncedRecipientsResponse {
+  recipients: BouncedRecipient[];
+  total: number;
+  truncated: boolean;
+}
+
+function BouncedRecipientsPanel({
+  onOpenTicket,
+}: {
+  onOpenTicket: (ticketId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [openEmails, setOpenEmails] = useState<Set<string>>(new Set());
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['support-bounced-recipients'],
+    queryFn: () =>
+      api.get<BouncedRecipientsResponse>(
+        `/support/replies/bounced-recipients?limit=200`,
+      ),
+    refetchInterval: 60_000,
+  });
+
+  const recipients = data?.recipients ?? [];
+  const total = data?.total ?? 0;
+  const truncated = data?.truncated ?? false;
+
+  // Hide the section entirely when there's nothing to act on — admins don't
+  // need a "0 recipients" placeholder cluttering the inbox in the happy case.
+  if (!isLoading && recipients.length === 0) {
+    return null;
+  }
+
+  const toggleEmail = (email: string) => {
+    setOpenEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  };
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-secondary border-b border-border hover:bg-surface-secondary/70"
+      >
+        <div className="flex items-center gap-2 text-left">
+          {expanded
+            ? <ChevronDown className="h-4 w-4 text-muted" />
+            : <ChevronRight className="h-4 w-4 text-muted" />}
+          <ShieldAlert className="h-4 w-4 text-red-600" />
+          <div>
+            <div className="text-sm font-medium">
+              Bounced recipients
+              <span className="ml-2 text-xs text-muted font-normal">
+                {isLoading
+                  ? 'loading…'
+                  : `${total} address${total === 1 ? '' : 'es'} with permanent SMTP failures`}
+                {truncated && ' (showing first 200)'}
+              </span>
+            </div>
+            <div className="text-xs text-muted mt-0.5">
+              Addresses that have produced at least one hard bounce on an outbound reply.
+              Use this list to clean records, contact users via another channel, or suspend
+              tickets that can&rsquo;t be answered by email.
+            </div>
+          </div>
+        </div>
+      </button>
+      {expanded && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface">
+              <th className="w-8 px-2"></th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Recipient</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Failures</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Tickets</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Last failure</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Most recent error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={6} className="text-center py-8 text-muted">Loading…</td></tr>
+            ) : (
+              recipients.map((r) => (
+                <Fragment key={r.user_email}>
+                  <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                    <td className="px-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleEmail(r.user_email)}
+                        className="p-1 rounded hover:bg-surface-secondary"
+                        aria-label={openEmails.has(r.user_email) ? 'Collapse tickets' : 'Expand tickets'}
+                      >
+                        {openEmails.has(r.user_email)
+                          ? <ChevronDown className="h-4 w-4 text-muted" />
+                          : <ChevronRight className="h-4 w-4 text-muted" />}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">{r.user_email}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-100 text-red-800">
+                        <AlertCircle className="h-3 w-3" />
+                        {r.occurrence_count}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted">
+                      {r.ticket_count} ticket{r.ticket_count === 1 ? '' : 's'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted">
+                      {new Date(r.last_failure_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-red-700 max-w-md truncate" title={r.last_error}>
+                      {r.last_error}
+                    </td>
+                  </tr>
+                  {openEmails.has(r.user_email) && (
+                    <tr className="bg-surface-secondary/30">
+                      <td colSpan={6} className="px-6 py-3">
+                        <div className="text-xs text-muted mb-2">
+                          Affected tickets (newest failure first):
+                        </div>
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-muted">
+                              <th className="text-left py-1 font-medium">Ticket</th>
+                              <th className="text-left py-1 font-medium">Status</th>
+                              <th className="text-left py-1 font-medium">Failures</th>
+                              <th className="text-left py-1 font-medium">Last failure</th>
+                              <th className="text-left py-1 font-medium">Last error</th>
+                              <th className="py-1"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.tickets.map((tk) => (
+                              <tr key={tk.ticket_id} className="border-t border-border/50">
+                                <td className="py-1.5 pr-3 font-mono">{tk.ticket_id}</td>
+                                <td className="py-1.5 pr-3">{tk.ticket_status}</td>
+                                <td className="py-1.5 pr-3">{tk.occurrence_count}</td>
+                                <td className="py-1.5 pr-3 text-muted">
+                                  {new Date(tk.last_failure_at).toLocaleString()}
+                                </td>
+                                <td
+                                  className="py-1.5 pr-3 text-red-700 max-w-xs truncate"
+                                  title={tk.last_error}
+                                >
+                                  {tk.last_error}
+                                </td>
+                                <td className="py-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenTicket(tk.ticket_id)}
+                                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-border hover:bg-surface"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Open ticket
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
