@@ -188,18 +188,79 @@ describe('notifyHumanEscalation', () => {
     expect(sendEmailMock).toHaveBeenCalledTimes(12);
 
     // The admin recipient lookup query must be ordered deterministically
-    // (owners first, then case-insensitive email) so the roster endpoint
-    // and the dispatcher always agree on who appears in the rotation.
+    // (owners — including the canonical tenant_owner role — first, then
+    // case-insensitive email) so the roster endpoint and the dispatcher
+    // always agree on who appears in the rotation. The query must also
+    // reach through the `user_roles` join so tenant_owner /
+    // operations_manager users who only carry the role via the canonical
+    // RBAC table still get paged.
     const adminLookupCall = queryMock.mock.calls.find(
       ([sql]) =>
         typeof sql === 'string' &&
-        sql.includes("role IN ('admin', 'owner')") &&
-        sql.includes('FROM users'),
+        sql.includes('FROM users u') &&
+        sql.includes('LEFT JOIN user_roles ur'),
     );
     expect(adminLookupCall).toBeDefined();
     const sql = (adminLookupCall as unknown[])[0] as string;
-    expect(sql).toMatch(/ORDER BY[\s\S]*CASE role WHEN 'owner' THEN 0 ELSE 1 END[\s\S]*LOWER\(email\) ASC/);
+    expect(sql).toContain("ur.role IN ('tenant_owner', 'operations_manager')");
+    expect(sql).toContain(
+      "u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')",
+    );
+    expect(sql).toMatch(
+      /ORDER BY[\s\S]*CASE WHEN u\.role IN \('owner', 'tenant_owner'\) THEN 0 ELSE 1 END[\s\S]*LOWER\(u\.email\) ASC/,
+    );
     expect(sql).not.toMatch(/LIMIT\s+10/i);
+  });
+
+  it('reaches a recipient who only holds the tenant_owner role via user_roles', async () => {
+    // Regression for task #420: before broadening this lookup the dispatcher
+    // gated on `users.role IN ('admin', 'owner')`, which silently dropped
+    // tenant owners and operations managers whose role was assigned through
+    // the canonical `user_roles` table. The shared connector helper already
+    // handled this audience; the human-escalation path must too.
+    queryMock
+      // 1. tenant active users for in-app fan-out
+      .mockResolvedValueOnce({ rows: [{ id: 'user-rbac-only' }] })
+      // 2. in_app preference filter — nobody opted out
+      .mockResolvedValueOnce({ rows: [] })
+      // 3. INSERT for the in-app row
+      .mockResolvedValueOnce({ rows: [] })
+      // 4. tenant name
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme Co' }] })
+      // 5. admin recipient lookup — the tenant_owner only carries the role
+      //    through user_roles, so `users.role` is something benign like
+      //    'member'. The join in the new query is what surfaces them.
+      .mockResolvedValueOnce({
+        rows: [{ email: 'rbac-owner@acme.test', role: 'member' }],
+      })
+      // 6. email preference filter — no opt-outs
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { notifyHumanEscalation } = await import(
+      '../../platform/tools/HumanEscalationService'
+    );
+
+    await notifyHumanEscalation(baseTask);
+
+    // The recipient who only matched via user_roles still got an email.
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0].to).toBe('rbac-owner@acme.test');
+
+    // And the SQL we ran really does query through user_roles with the
+    // canonical role values, so this stays a true regression test rather
+    // than a no-op assertion.
+    const adminLookupCall = queryMock.mock.calls.find(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes('FROM users u') &&
+        sql.includes('LEFT JOIN user_roles ur'),
+    );
+    expect(adminLookupCall).toBeDefined();
+    const sql = (adminLookupCall as unknown[])[0] as string;
+    expect(sql).toContain("ur.role IN ('tenant_owner', 'operations_manager')");
+    expect(sql).toContain(
+      "u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')",
+    );
   });
 
   it('sends to everyone when no preferences are stored (default-on)', async () => {

@@ -59,7 +59,10 @@ interface EscalationRecipient {
   id: string;
   email: string;
   name: string | null;
-  role: 'admin' | 'owner';
+  // Mirrors EscalationRecipientRole on the server: legacy admin/owner plus
+  // the canonical RBAC roles tenant_owner / operations_manager that come in
+  // through the user_roles join.
+  role: 'admin' | 'owner' | 'tenant_owner' | 'operations_manager';
   prefs: { inApp: boolean; email: boolean };
   optedOut: boolean;
 }

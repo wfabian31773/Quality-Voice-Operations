@@ -894,41 +894,46 @@ async function autoApproveRecommendation(tenantId: string, recommendationId: str
   }
 }
 
-async function notifyHighRiskRecommendation(tenantId: string, rec: AutopilotRecommendation): Promise<void> {
-  const pool = getPlatformPool();
-  const client = await pool.connect();
+// Exported for tests; production callers should rely on the autopilot scan
+// triggering this automatically when a high-risk recommendation is produced.
+export async function notifyHighRiskRecommendation(
+  tenantId: string,
+  rec: AutopilotRecommendation,
+): Promise<void> {
+  // Recipient lookup is delegated to the shared connector-alert helpers so the
+  // autopilot high-risk page-out fans out to the same audience as the connector
+  // sync-error pipeline: legacy `admin` / `owner` users from `users.role`
+  // *plus* tenant_owner / operations_manager users who only carry the role
+  // through the canonical `user_roles` join. The previous inline query also
+  // referenced a non-existent `phone` column (the schema column is
+  // `phone_number`); routing through the helper fixes that silently-broken
+  // SMS path as well.
   try {
-    await client.query('BEGIN');
-    await withTenantContext(client, tenantId, async () => {});
-
-    const { rows: adminRows } = await client.query(
-      `SELECT email, phone FROM users WHERE tenant_id = $1 AND role IN ('admin', 'owner') AND email IS NOT NULL LIMIT 3`,
-      [tenantId],
-    );
-    await client.query('COMMIT');
+    const { getTenantAlertEmailRecipients, getTenantAlertPhoneRecipients } =
+      await import('../integrations/connectors/ConnectorAlertRecipients');
+    const [{ emails }, phones] = await Promise.all([
+      getTenantAlertEmailRecipients(tenantId, 3),
+      getTenantAlertPhoneRecipients(tenantId, 3),
+    ]);
 
     const { sendRecommendationEmail, sendUrgentSmsAlert } = await import('./NotificationService');
-    for (const admin of adminRows) {
-      if (admin.email) {
-        try {
-          await sendRecommendationEmail(tenantId, rec, admin.email as string);
-        } catch (err) {
-          logger.error('High-risk email notification failed', { tenantId, email: admin.email, error: String(err) });
-        }
+
+    for (const email of emails) {
+      try {
+        await sendRecommendationEmail(tenantId, rec, email);
+      } catch (err) {
+        logger.error('High-risk email notification failed', { tenantId, email, error: String(err) });
       }
-      if (admin.phone) {
-        try {
-          await sendUrgentSmsAlert(tenantId, rec, admin.phone as string);
-        } catch (err) {
-          logger.error('High-risk SMS notification failed', { tenantId, error: String(err) });
-        }
+    }
+    for (const phone of phones) {
+      try {
+        await sendUrgentSmsAlert(tenantId, rec, phone.phone_number);
+      } catch (err) {
+        logger.error('High-risk SMS notification failed', { tenantId, error: String(err) });
       }
     }
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to notify about high-risk recommendation', { tenantId, recId: rec.id, error: String(err) });
-  } finally {
-    client.release();
   }
 }
 

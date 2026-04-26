@@ -189,14 +189,29 @@ export async function notifyHumanEscalation(task: EscalationTask): Promise<void>
     // listEscalationRecipients so the on-call roster shown in the
     // Reliability > Escalations panel is an accurate preview of who
     // will actually be paged.
+    //
+    // The LEFT JOIN against `user_roles` mirrors the connector-alert
+    // recipient helper introduced in task #410: tenant owners and
+    // operations managers who only carry the role through `user_roles`
+    // (the canonical RBAC table) are paged alongside legacy
+    // `users.role IN ('admin', 'owner')` accounts. Without the join,
+    // those teammates silently miss escalation emails even though they
+    // are on call. DISTINCT collapses duplicates from users who hold
+    // the role via both `user_roles` and the legacy column.
     const { rows: userRows } = await pool.query(
-      `SELECT email FROM users
-       WHERE tenant_id = $1
-         AND role IN ('admin', 'owner')
-         AND email IS NOT NULL
-         AND COALESCE(is_active, TRUE) = TRUE
-       ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END,
-                LOWER(email) ASC`,
+      `SELECT DISTINCT u.email, u.role
+         FROM users u
+         LEFT JOIN user_roles ur
+           ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+        WHERE u.tenant_id = $1
+          AND u.email IS NOT NULL
+          AND COALESCE(u.is_active, TRUE) = TRUE
+          AND (
+            ur.role IN ('tenant_owner', 'operations_manager')
+            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
+          )
+        ORDER BY CASE WHEN u.role IN ('owner', 'tenant_owner') THEN 0 ELSE 1 END,
+                 LOWER(u.email) ASC`,
       [task.tenantId],
     );
     recipients = userRows
@@ -348,34 +363,76 @@ export async function updateEscalationTask(
   });
 }
 
+export type EscalationRecipientRole =
+  | 'admin'
+  | 'owner'
+  | 'tenant_owner'
+  | 'operations_manager';
+
+const LEADERSHIP_ROLES: ReadonlySet<EscalationRecipientRole> = new Set([
+  'admin',
+  'owner',
+  'tenant_owner',
+  'operations_manager',
+]);
+
+function isLeadershipRole(value: string | null | undefined): value is EscalationRecipientRole {
+  return !!value && LEADERSHIP_ROLES.has(value as EscalationRecipientRole);
+}
+
 export interface EscalationRecipient {
   id: string;
   email: string;
   name: string | null;
-  role: 'admin' | 'owner';
+  role: EscalationRecipientRole;
   prefs: { inApp: boolean; email: boolean };
   optedOut: boolean;
 }
 
 /**
- * Returns the on-call roster for a tenant: admin/owner users that the
+ * Returns the on-call roster for a tenant: leadership users that the
  * escalation fan-out targets, paired with their current escalation
  * in-app/email preferences. Used by the Reliability > Escalations panel
  * so admins can see at a glance who will (or won't) be paged next.
+ *
+ * The `LEFT JOIN user_roles` mirrors the connector-alert recipient
+ * helper from task #410 so tenant owners and operations managers who
+ * only carry the role through `user_roles` (the canonical RBAC table)
+ * appear in the roster alongside legacy `users.role IN ('admin',
+ * 'owner')` accounts. Without the join, those teammates would be paged
+ * by the dispatch query but invisible in the roster preview — exactly
+ * the kind of drift the lock-step comment on `notifyHumanEscalation`
+ * warns about.
  */
 export async function listEscalationRecipients(
   tenantId: string,
 ): Promise<EscalationRecipient[]> {
   return withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
-      `SELECT u.id,
+      `SELECT DISTINCT
+              u.id,
               u.email,
               u.first_name,
               u.last_name,
               u.role,
+              -- For users who only qualify as leadership through the
+              -- canonical RBAC table, surface that role so the UI badge
+              -- says "tenant_owner" instead of whatever benign value
+              -- (e.g. 'member') happens to live in users.role. Picks a
+              -- single deterministic role per user — tenant_owner wins
+              -- over operations_manager when both are assigned.
+              (SELECT ur2.role
+                 FROM user_roles ur2
+                WHERE ur2.user_id = u.id
+                  AND ur2.tenant_id = u.tenant_id
+                  AND ur2.role IN ('tenant_owner', 'operations_manager')
+                ORDER BY CASE ur2.role WHEN 'tenant_owner' THEN 0 ELSE 1 END
+                LIMIT 1) AS rbac_role,
               COALESCE(in_app_pref.enabled, TRUE) AS in_app_enabled,
               COALESCE(email_pref.enabled, TRUE)  AS email_enabled
          FROM users u
+         LEFT JOIN user_roles ur
+                ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
          LEFT JOIN user_notification_preferences in_app_pref
                 ON in_app_pref.user_id = u.id
                AND in_app_pref.category = 'escalation'
@@ -385,10 +442,13 @@ export async function listEscalationRecipients(
                AND email_pref.category = 'escalation'
                AND email_pref.channel  = 'email'
         WHERE u.tenant_id = $1
-          AND u.role IN ('admin', 'owner')
           AND u.email IS NOT NULL
           AND COALESCE(u.is_active, TRUE) = TRUE
-        ORDER BY CASE u.role WHEN 'owner' THEN 0 ELSE 1 END,
+          AND (
+            ur.role IN ('tenant_owner', 'operations_manager')
+            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
+          )
+        ORDER BY CASE WHEN u.role IN ('owner', 'tenant_owner') THEN 0 ELSE 1 END,
                  LOWER(u.email) ASC`,
       [tenantId],
     );
@@ -399,11 +459,29 @@ export async function listEscalationRecipients(
       const fullName = `${first} ${last}`.trim();
       const inApp = row.in_app_enabled !== false;
       const email = row.email_enabled !== false;
+      // Prefer a leadership value from `users.role`; otherwise fall back
+      // to the canonical RBAC role we surfaced via the subquery so the
+      // returned `role` always satisfies the EscalationRecipientRole
+      // contract — never a non-leadership legacy value like 'member'.
+      const legacyRole = row.role as string | null;
+      const rbacRole = row.rbac_role as string | null;
+      let role: EscalationRecipientRole;
+      if (isLeadershipRole(legacyRole)) {
+        role = legacyRole;
+      } else if (isLeadershipRole(rbacRole)) {
+        role = rbacRole;
+      } else {
+        // Defensive default: every row matched the WHERE clause through
+        // either users.role or user_roles, so we should always have a
+        // leadership value. If we somehow don't, treat the user as a
+        // tenant_owner — it errs on the safe side of "include in roster".
+        role = 'tenant_owner';
+      }
       return {
         id: row.id as string,
         email: row.email as string,
         name: fullName.length > 0 ? fullName : null,
-        role: row.role as 'admin' | 'owner',
+        role,
         prefs: { inApp, email },
         optedOut: !inApp && !email,
       };
