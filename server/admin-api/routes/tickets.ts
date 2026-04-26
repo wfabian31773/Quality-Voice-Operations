@@ -257,7 +257,6 @@ export const listTicketsHandler: RequestHandler = async (req, res) => {
               COUNT(*) OVER() AS _total_count
        FROM tickets t
        LEFT JOIN users u ON u.id = t.assignee_user_id
-       LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = t.tenant_id
        LEFT JOIN ticket_categories c ON c.id = t.category_id
        LEFT JOIN LATERAL (
          SELECT row_to_json(si.*) AS sla_instance
