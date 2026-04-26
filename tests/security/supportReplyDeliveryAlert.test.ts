@@ -52,10 +52,17 @@ describe('SupportReplyRetryScheduler — wires the alert in at the threshold', (
     expect(schedulerFile).toMatch(/raiseReplyDeliveryFailureAlert/);
   });
 
-  it('only fires the alert when the failed attempt equals the threshold (boundary cross)', () => {
-    // Strict equality — retry_count is monotonic so the threshold is crossed
-    // exactly once per reply, naturally deduping the alert across both paths.
-    expect(schedulerFile).toMatch(/attempt === REPLY_DELIVERY_ALERT_THRESHOLD/);
+  it('fires the alert exactly when the failed attempt crosses the threshold (boundary cross)', () => {
+    // retry_count is monotonic so the threshold is crossed exactly once per
+    // reply, naturally deduping the alert across both paths. The check is a
+    // strict crossing (previous < threshold && new >= threshold) instead of a
+    // raw equality so a permanent SMTP failure that jumps retry_count straight
+    // to MAX in a single step (skipping the equality boundary) still fires
+    // the alert exactly once.
+    expect(schedulerFile).toMatch(/previousRetryCount < REPLY_DELIVERY_ALERT_THRESHOLD/);
+    expect(schedulerFile).toMatch(
+      /effectiveRetryCount >= REPLY_DELIVERY_ALERT_THRESHOLD|MAX_RETRY_ATTEMPTS >= REPLY_DELIVERY_ALERT_THRESHOLD/,
+    );
   });
 
   it('selects tenant_id from support_tickets so the alert can be tenant-scoped', () => {

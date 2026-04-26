@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter, SendMailOptions } from 'nodemailer';
 import { createLogger } from '../core/logger';
+import { isPermanentSmtpError } from './smtpErrorClass';
 
 const logger = createLogger('EMAIL_SERVICE');
 
@@ -17,6 +18,16 @@ export interface EmailResult {
   success: boolean;
   messageId?: string;
   error?: string;
+  /**
+   * True when the underlying SMTP failure is terminal (5xx, address rejected,
+   * mailbox full, …) and we should NOT auto-retry. Undefined / false means
+   * either the send succeeded or the failure looks transient. Surfaced here
+   * (instead of forcing every caller to re-parse `error`) so the support
+   * reply auto-retry scheduler can short-circuit cleanly.
+   */
+  permanent?: boolean;
+  responseCode?: number;
+  smtpCode?: string;
 }
 
 let transporter: Transporter | null = null;
@@ -79,8 +90,25 @@ export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
     logger.info('Email sent', { to: message.to, messageId: info.messageId });
     return { success: true, messageId: info.messageId };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.error('Failed to send email', { to: message.to, error });
-    return { success: false, error };
+    const baseMessage = err instanceof Error ? err.message : String(err);
+    // Nodemailer attaches structured fields to its errors. Pull them out so
+    // callers (notably the auto-retry scheduler) can decide whether the
+    // failure is worth retrying without re-parsing the message text.
+    const e = err as Record<string, unknown> | null;
+    const responseCode =
+      e && typeof e.responseCode === 'number' ? (e.responseCode as number) : undefined;
+    const smtpCode = e && typeof e.code === 'string' ? (e.code as string) : undefined;
+    const response = e && typeof e.response === 'string' ? (e.response as string) : undefined;
+    // Combine the human-readable message with the raw server response so
+    // downstream classification has the most signal possible.
+    const error = response && !baseMessage.includes(response)
+      ? `${baseMessage} | ${response}`
+      : baseMessage;
+    const permanent =
+      (responseCode !== undefined && responseCode >= 500 && responseCode < 600) ||
+      isPermanentSmtpError(error) ||
+      isPermanentSmtpError(smtpCode ?? null);
+    logger.error('Failed to send email', { to: message.to, error, responseCode, smtpCode, permanent });
+    return { success: false, error, permanent, responseCode, smtpCode };
   }
 }

@@ -12,6 +12,7 @@
 import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
+import { isPermanentSmtpError } from '../email/smtpErrorClass';
 import {
   buildReplyToAddress,
   generateInboundToken,
@@ -130,6 +131,28 @@ async function claimReplyForRetry(reply: FailedOutboundReply): Promise<boolean> 
   return (r.rowCount ?? 0) > 0;
 }
 
+/**
+ * Atomically jump retry_count straight to MAX_RETRY_ATTEMPTS for a reply we've
+ * decided is permanently undeliverable. Same conditional-UPDATE shape as the
+ * regular claim so we don't race a concurrent worker. Returns true when this
+ * worker actually made the transition (so we know whether to fire the alert).
+ */
+async function markReplyPermanentlyFailed(reply: FailedOutboundReply): Promise<boolean> {
+  const pool = getPlatformPool();
+  const r = await pool.query<{ id: number }>(
+    `UPDATE support_ticket_replies
+     SET retry_count = $3,
+         last_retry_at = NOW()
+     WHERE id = $1
+       AND direction = 'outbound'
+       AND email_error IS NOT NULL
+       AND retry_count = $2
+     RETURNING id`,
+    [reply.reply_id, reply.retry_count ?? 0, MAX_RETRY_ATTEMPTS],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
 async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemptResult | null> {
   const claimed = await claimReplyForRetry(reply);
   if (!claimed) {
@@ -158,18 +181,39 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
 
   const attempt = (reply.retry_count ?? 0) + 1;
   const newError = result.success ? null : (result.error ?? 'unknown');
+  // Permanent if either the EmailService surfaced a structured permanent
+  // flag (preferred — driven by the actual SMTP response code) or the error
+  // string itself matches a known terminal pattern.
+  const permanent = !result.success && (result.permanent === true || isPermanentSmtpError(newError));
+  // Effective attempt count after this cycle: jump straight to MAX on a
+  // permanent failure so the row leaves the auto-retry pool.
+  const effectiveRetryCount = permanent ? MAX_RETRY_ATTEMPTS : attempt;
 
   const pool = getPlatformPool();
   try {
-    // The claim already incremented retry_count and stamped last_retry_at;
-    // here we just record the outcome (message id / error) of this attempt.
-    await pool.query(
-      `UPDATE support_ticket_replies
-       SET email_message_id = $2,
-           email_error = $3
-       WHERE id = $1`,
-      [reply.reply_id, result.messageId ?? null, newError],
-    );
+    if (permanent) {
+      // Hard failure: record the outcome AND bump retry_count to MAX so the
+      // next cycle leaves the row alone for a human to look at. Folded into
+      // a single UPDATE so the row is consistent if either statement fails.
+      await pool.query(
+        `UPDATE support_ticket_replies
+         SET email_message_id = $2,
+             email_error = $3,
+             retry_count = $4
+         WHERE id = $1`,
+        [reply.reply_id, result.messageId ?? null, newError, MAX_RETRY_ATTEMPTS],
+      );
+    } else {
+      // The claim already incremented retry_count and stamped last_retry_at;
+      // here we just record the outcome (message id / error) of this attempt.
+      await pool.query(
+        `UPDATE support_ticket_replies
+         SET email_message_id = $2,
+             email_error = $3
+         WHERE id = $1`,
+        [reply.reply_id, result.messageId ?? null, newError],
+      );
+    }
     // Bump ticket updated_at so the inbox surfaces the activity.
     await pool.query(
       `UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`,
@@ -190,30 +234,38 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
       attempt,
     });
   } else {
-    const exhausted = attempt >= MAX_RETRY_ATTEMPTS;
+    const exhausted = effectiveRetryCount >= MAX_RETRY_ATTEMPTS;
     logger.warn('Support reply auto-retry failed', {
       reply_id: reply.reply_id,
       ticket_id: reply.ticket_id,
       attempt,
+      effective_retry_count: effectiveRetryCount,
       max_attempts: MAX_RETRY_ATTEMPTS,
       error: newError ?? 'unknown',
+      permanent,
       exhausted,
     });
 
     // Boundary-cross alert: when this failed attempt is the one that pushes
     // the reply's total attempt count to the configured threshold, raise an
     // operations_alerts row + critical error_log so ops can intervene. The
-    // strict equality check naturally dedupes — retry_count only increases,
+    // strict-crossing check naturally dedupes — retry_count only increases,
     // so the threshold is crossed exactly once per reply (regardless of
     // whether the failed attempts came from this scheduler or the manual
-    // /retry endpoint, which both bump the same counter).
-    if (attempt === REPLY_DELIVERY_ALERT_THRESHOLD) {
+    // /retry endpoint, which both bump the same counter). Permanent failures
+    // jump retry_count to MAX in one go, so we use the effective count here
+    // to make sure the alert still fires on the very first hard bounce.
+    const previousRetryCount = reply.retry_count ?? 0;
+    if (
+      previousRetryCount < REPLY_DELIVERY_ALERT_THRESHOLD &&
+      effectiveRetryCount >= REPLY_DELIVERY_ALERT_THRESHOLD
+    ) {
       raiseReplyDeliveryFailureAlert({
         replyId: reply.reply_id,
         ticketId: reply.ticket_id,
         tenantId: reply.tenant_id ?? null,
         customerEmail: reply.user_email ?? null,
-        attempts: attempt,
+        attempts: effectiveRetryCount,
         error: newError ?? 'unknown',
       }).catch((alertErr) => {
         logger.warn('Failed to raise support reply delivery alert', {
@@ -259,8 +311,57 @@ export async function runSupportReplyRetryCycle(): Promise<RetryCycleResult> {
   let delivered = 0;
   let failed = 0;
   let skipped = 0;
+  let permanentSkipped = 0;
   for (const reply of candidates) {
     try {
+      // Pre-check: if the prior failure was a hard SMTP error (5xx, address
+      // rejected, mailbox full, …) sending again will only burn sender
+      // reputation and likely get throttled by the receiving server. Mark
+      // the row as exhausted and move on so a human picks it up. We still
+      // raise the ops alert because this is the threshold-cross event for
+      // this reply.
+      if (isPermanentSmtpError(reply.email_error)) {
+        const marked = await markReplyPermanentlyFailed(reply);
+        if (!marked) {
+          // Concurrent worker already advanced this row — nothing to do.
+          logger.debug('Support reply skip-on-permanent lost claim', {
+            reply_id: reply.reply_id,
+            ticket_id: reply.ticket_id,
+          });
+          skipped += 1;
+          continue;
+        }
+        const previousRetryCount = reply.retry_count ?? 0;
+        logger.info('Skipped auto-retry for permanent SMTP failure', {
+          reply_id: reply.reply_id,
+          ticket_id: reply.ticket_id,
+          previous_retry_count: previousRetryCount,
+          new_retry_count: MAX_RETRY_ATTEMPTS,
+          email_error: reply.email_error,
+        });
+        if (
+          previousRetryCount < REPLY_DELIVERY_ALERT_THRESHOLD &&
+          MAX_RETRY_ATTEMPTS >= REPLY_DELIVERY_ALERT_THRESHOLD
+        ) {
+          raiseReplyDeliveryFailureAlert({
+            replyId: reply.reply_id,
+            ticketId: reply.ticket_id,
+            tenantId: reply.tenant_id ?? null,
+            customerEmail: reply.user_email ?? null,
+            attempts: MAX_RETRY_ATTEMPTS,
+            error: reply.email_error,
+          }).catch((alertErr) => {
+            logger.warn('Failed to raise support reply delivery alert', {
+              reply_id: reply.reply_id,
+              ticket_id: reply.ticket_id,
+              error: String(alertErr),
+            });
+          });
+        }
+        permanentSkipped += 1;
+        continue;
+      }
+
       const r = await retrySingleReply(reply);
       if (r === null) {
         skipped += 1;
@@ -284,6 +385,7 @@ export async function runSupportReplyRetryCycle(): Promise<RetryCycleResult> {
     delivered,
     failed,
     skipped,
+    permanent_skipped: permanentSkipped,
   });
 
   return { considered: candidates.length, delivered, failed, attempts };

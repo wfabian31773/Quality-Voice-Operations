@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isPermanentSmtpError } from '../../platform/email/smtpErrorClass';
 
 // ---- Static contract tests --------------------------------------------------
 const schedulerFile = readFileSync(
@@ -283,6 +284,214 @@ describe('runSupportReplyRetryCycle — runtime behavior', () => {
     expect(r.delivered).toBe(1);
     expect(r.failed).toBe(1);
     expect(sendEmailMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('isPermanentSmtpError — classifier', () => {
+  it.each([
+    ['550 5.1.1 The email account that you tried to reach does not exist'],
+    ['Message failed: 550 No such user here'],
+    ['SMTP code 553: mailbox name not allowed'],
+    ['554 5.7.1 Recipient address rejected: Access denied'],
+    ['501 5.1.3 Bad recipient address syntax'],
+    ['Mailbox unavailable'],
+    ['mailbox is full'],
+    ['Mailbox not found'],
+    ['User unknown in virtual mailbox table'],
+    ['Recipient rejected by remote server'],
+    ['551 User not local; please try forwarding'],
+    ['552 5.2.2 Over quota'],
+    ['Quota exceeded for that recipient'],
+    ['Permanent failure: address rejected'],
+    ['Relay access denied'],
+    ['Sender address rejected: Domain not found'],
+    ['EENVELOPE: Invalid envelope address'],
+    ['No mailbox here by that name'],
+  ])('classifies as permanent: %s', (msg) => {
+    expect(isPermanentSmtpError(msg)).toBe(true);
+  });
+
+  it.each([
+    ['connection refused'],
+    ['ETIMEDOUT'],
+    ['ECONNRESET'],
+    ['ECONNREFUSED'],
+    ['ENOTFOUND smtp.example.com'],
+    ['EAI_AGAIN: temporary failure in name resolution'],
+    ['421 Service not available, closing transmission channel'],
+    ['450 4.7.1 greylisted, please try again later'],
+    ['451 4.3.0 Temporary local problem - please try again later'],
+    ['452 4.2.2 Insufficient system storage; try again later'],
+    ['Greylisted, retry later'],
+    ['still down'],
+    ['soft bounce'],
+    ['unknown'],
+    [''],
+    [null],
+    [undefined],
+  ])('classifies as transient: %s', (msg) => {
+    expect(isPermanentSmtpError(msg)).toBe(false);
+  });
+
+  it('lets a 4xx numeric code override a permanent-looking phrase later in the string', () => {
+    // Real-world example: provider returns "451 4.3.0 try again, mailbox not
+    // found right now" — the 4xx code is authoritative; this is transient.
+    expect(isPermanentSmtpError('451 4.3.0 try again, mailbox not found right now')).toBe(false);
+  });
+});
+
+describe('runSupportReplyRetryCycle — permanent SMTP failure handling', () => {
+  it('skips the send and bumps retry_count straight to MAX when the prior error is a 5xx', async () => {
+    queryMock
+      // 1. SELECT failed outbound replies
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ ...FAILED_REPLY, email_error: '550 5.1.1 user unknown', tenant_id: null }],
+      })
+      // 2. markReplyPermanentlyFailed: conditional UPDATE bumps retry_count to MAX
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
+
+    const r = await runSupportReplyRetryCycle();
+
+    // Considered the row but did NOT count it as either delivered or failed —
+    // it never went out, the human will see the existing Failed badge.
+    expect(r.considered).toBe(1);
+    expect(r.delivered).toBe(0);
+    expect(r.failed).toBe(0);
+    expect(r.attempts).toEqual([]);
+
+    // Critically: no email send, no result UPDATE, no ticket bump.
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(queryMock).toHaveBeenCalledTimes(2);
+
+    // The exhaust UPDATE jumps retry_count straight to MAX (=3) and is gated
+    // on the same observed retry_count so concurrent workers can't double-fire.
+    const exhaustCall = queryMock.mock.calls[1];
+    expect(exhaustCall[0]).toMatch(/UPDATE support_ticket_replies/);
+    expect(exhaustCall[0]).toMatch(/SET retry_count = \$3/);
+    expect(exhaustCall[0]).toMatch(/last_retry_at = NOW\(\)/);
+    expect(exhaustCall[0]).toMatch(/AND retry_count = \$2/);
+    expect(exhaustCall[1]).toEqual([7, 0, 3]);
+  });
+
+  it('skips the send for "mailbox not found" / "address rejected" prior failures too', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rowCount: 2,
+        rows: [
+          { ...FAILED_REPLY, reply_id: 9, email_error: 'Mailbox not found', tenant_id: null },
+          { ...FAILED_REPLY, reply_id: 10, email_error: 'Recipient address rejected', tenant_id: null },
+        ],
+      })
+      // exhaust UPDATE for reply 9
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 9 }] })
+      // exhaust UPDATE for reply 10
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 10 }] });
+
+    const r = await runSupportReplyRetryCycle();
+
+    expect(r.considered).toBe(2);
+    expect(r.delivered).toBe(0);
+    expect(r.failed).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    // Only the SELECT and the two exhaust UPDATEs — no claim/result/ticket queries.
+    expect(queryMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('still retries when the prior error looks transient (connection refused, 4xx, timeout)', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ ...FAILED_REPLY, email_error: '451 4.7.1 greylisted, try again' }],
+      })
+      // claim
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+      // result UPDATE
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+      // ticket bump
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    sendEmailMock.mockResolvedValueOnce({ success: true, messageId: 'm-after-greylist' });
+
+    const r = await runSupportReplyRetryCycle();
+
+    expect(r.delivered).toBe(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('on a transient retry that hard-bounces, jumps retry_count to MAX in the result UPDATE', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ ...FAILED_REPLY, retry_count: 0, email_error: 'connection refused' }],
+      })
+      // claim
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+      // result UPDATE (with retry_count = MAX)
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+      // ticket bump
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    // The send fails permanently this time (rcpt rejected by destination).
+    sendEmailMock.mockResolvedValueOnce({
+      success: false,
+      error: '550 5.1.1 No such user here',
+      permanent: true,
+    });
+
+    const r = await runSupportReplyRetryCycle();
+
+    expect(r.delivered).toBe(0);
+    expect(r.failed).toBe(1);
+
+    const resultCall = queryMock.mock.calls[2];
+    expect(resultCall[0]).toMatch(/UPDATE support_ticket_replies/);
+    // The result UPDATE now also writes retry_count when the failure is permanent.
+    expect(resultCall[0]).toMatch(/retry_count = \$4/);
+    expect(resultCall[1]).toEqual([7, null, '550 5.1.1 No such user here', 3]);
+  });
+
+  it('respects EmailService.permanent=true even when the error string alone looks transient', async () => {
+    // Belt-and-suspenders: structured permanent flag from EmailService wins
+    // even if the human-readable message doesn't match a known keyword.
+    queryMock
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ ...FAILED_REPLY, retry_count: 0, email_error: 'connection refused' }],
+      })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    sendEmailMock.mockResolvedValueOnce({
+      success: false,
+      error: 'unusual provider message',
+      permanent: true,
+    });
+
+    await runSupportReplyRetryCycle();
+
+    // retry_count gets set to MAX because permanent=true.
+    expect(queryMock.mock.calls[2][1]).toEqual([7, null, 'unusual provider message', 3]);
+  });
+
+  it('does not exhaust the row when the atomic permanent-mark loses the race', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ ...FAILED_REPLY, email_error: '550 mailbox unavailable', tenant_id: null }],
+      })
+      // permanent-mark UPDATE finds 0 matching rows (concurrent worker won)
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+    const r = await runSupportReplyRetryCycle();
+
+    expect(r.considered).toBe(1);
+    expect(r.delivered).toBe(0);
+    expect(r.failed).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    // No further queries beyond the lost permanent-mark.
+    expect(queryMock).toHaveBeenCalledTimes(2);
   });
 });
 
