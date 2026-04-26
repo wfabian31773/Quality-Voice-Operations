@@ -51,7 +51,36 @@ interface DocsFeedbackReply {
   body: string;
   email_message_id: string | null;
   email_error: string | null;
+  retry_of: number | null;
   created_at: string;
+}
+
+interface DocsFeedbackReplyChain {
+  root: DocsFeedbackReply;
+  retries: DocsFeedbackReply[];
+}
+
+function groupDocsFeedbackReplyChains(
+  replies: DocsFeedbackReply[],
+): DocsFeedbackReplyChain[] {
+  const ascending = [...replies].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  const chainsByRoot = new Map<number, DocsFeedbackReplyChain>();
+  for (const r of ascending) {
+    if (r.retry_of != null && chainsByRoot.has(r.retry_of)) {
+      chainsByRoot.get(r.retry_of)!.retries.push(r);
+    } else {
+      // Root attempt, or an orphan retry (root row deleted / pre-migration data).
+      chainsByRoot.set(r.id, { root: r, retries: [] });
+    }
+  }
+  return Array.from(chainsByRoot.values()).sort(
+    (a, b) =>
+      new Date(b.root.created_at).getTime() -
+      new Date(a.root.created_at).getTime(),
+  );
 }
 
 type DocsFeedbackSort = 'lowest_ratio' | 'highest_ratio' | 'most_votes' | 'recent';
@@ -1524,20 +1553,60 @@ function DocsFeedbackCommentRow({
           ) : replies.length === 0 ? (
             <div className="text-xs text-muted">No replies yet.</div>
           ) : (
-            replies.map((r) => (
-              <div key={r.id} className="text-xs border border-border rounded p-2 bg-surface">
-                <div className="flex items-center gap-2 text-muted mb-1 flex-wrap">
-                  <span>{new Date(r.created_at).toLocaleString()}</span>
-                  <span>· from {r.sent_by ?? 'admin'}</span>
-                  <span>· to {r.to_email}</span>
-                  {r.email_error
-                    ? <span className="text-red-600">· failed: {r.email_error}</span>
-                    : <span className="text-green-700">· delivered</span>}
+            groupDocsFeedbackReplyChains(replies).map((chain) => {
+              const r = chain.root;
+              const totalAttempts = 1 + chain.retries.length;
+              return (
+                <div
+                  key={r.id}
+                  className="text-xs border border-border rounded p-2 bg-surface"
+                >
+                  <div className="flex items-center gap-2 text-muted mb-1 flex-wrap">
+                    <span>{new Date(r.created_at).toLocaleString()}</span>
+                    <span>· from {r.sent_by ?? 'admin'}</span>
+                    <span>· to {r.to_email}</span>
+                    {r.email_error
+                      ? <span className="text-red-600">· failed: {r.email_error}</span>
+                      : <span className="text-green-700">· delivered</span>}
+                    {chain.retries.length > 0 && (
+                      <span
+                        className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
+                        title={`Original attempt followed by ${chain.retries.length} retr${chain.retries.length === 1 ? 'y' : 'ies'} of the same body`}
+                      >
+                        {totalAttempts} attempts
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm font-medium mb-1">{r.subject}</div>
+                  <div className="text-sm whitespace-pre-wrap">{r.body}</div>
+                  {chain.retries.length > 0 && (
+                    <div className="mt-2 pl-3 border-l-2 border-amber-200 space-y-1">
+                      <div className="text-[10px] uppercase tracking-wide text-amber-700 font-semibold">
+                        Retries of this attempt
+                      </div>
+                      {chain.retries.map((retry, idx) => (
+                        <div
+                          key={retry.id}
+                          className="flex items-center gap-2 text-muted flex-wrap"
+                        >
+                          <span
+                            className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
+                            title={`Same body re-sent; original attempt at ${new Date(r.created_at).toLocaleString()}`}
+                          >
+                            Retry #{idx + 1}
+                          </span>
+                          <span>{new Date(retry.created_at).toLocaleString()}</span>
+                          <span>· from {retry.sent_by ?? 'admin'}</span>
+                          {retry.email_error
+                            ? <span className="text-red-600">· failed: {retry.email_error}</span>
+                            : <span className="text-green-700">· delivered</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="text-sm font-medium mb-1">{r.subject}</div>
-                <div className="text-sm whitespace-pre-wrap">{r.body}</div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}

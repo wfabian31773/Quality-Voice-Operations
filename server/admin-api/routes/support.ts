@@ -516,7 +516,7 @@ router.get('/docs/feedback/comments/:id/replies', requireAuth, requirePlatformAd
     const pool = getPlatformPool();
     const r = await pool.query(
       `SELECT id, feedback_id, sent_by, to_email, subject, body,
-              email_message_id, email_error, created_at
+              email_message_id, email_error, retry_of, created_at
        FROM docs_feedback_replies
        WHERE feedback_id = $1
        ORDER BY created_at DESC`,
@@ -559,8 +559,9 @@ async function deliverDocsFeedbackReply(input: {
   subject: string;
   actor: string | null;
   markResolved: boolean;
+  retryOf?: number | null;
 }): Promise<{ result: EmailResult; finalSubject: string }> {
-  const { comment, body, subject, actor, markResolved } = input;
+  const { comment, body, subject, actor, markResolved, retryOf = null } = input;
   if (!comment.reply_email) {
     throw new Error('comment has no reply_email');
   }
@@ -592,8 +593,8 @@ async function deliverDocsFeedbackReply(input: {
   try {
     await pool.query(
       `INSERT INTO docs_feedback_replies
-         (feedback_id, sent_by, to_email, subject, body, email_message_id, email_error)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         (feedback_id, sent_by, to_email, subject, body, email_message_id, email_error, retry_of)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         comment.id,
         actor,
@@ -602,6 +603,7 @@ async function deliverDocsFeedbackReply(input: {
         body,
         result.messageId ?? null,
         result.success ? null : (result.error ?? 'unknown'),
+        retryOf,
       ],
     );
   } catch (err) {
@@ -759,19 +761,23 @@ router.post(
 
     const pool = getPlatformPool();
     let lastReply: {
+      id: number;
       subject: string;
       body: string;
       to_email: string;
       email_error: string | null;
+      retry_of: number | null;
     } | null = null;
     try {
       const r = await pool.query<{
+        id: number;
         subject: string;
         body: string;
         to_email: string;
         email_error: string | null;
+        retry_of: number | null;
       }>(
-        `SELECT subject, body, to_email, email_error
+        `SELECT id, subject, body, to_email, email_error, retry_of
          FROM docs_feedback_replies
          WHERE feedback_id = $1
          ORDER BY created_at DESC
@@ -799,6 +805,11 @@ router.post(
       return;
     }
 
+    // Point retry_of at the *chain root* so every retry of the same original
+    // attempt shares the same parent. If the previous attempt was itself a
+    // retry, inherit its retry_of; otherwise the previous attempt IS the root.
+    const chainRoot = lastReply.retry_of ?? lastReply.id;
+
     const actor = req.user?.email ?? req.user?.userId ?? null;
     // The retry slot was already reserved at the top of the handler, so even
     // if SMTP fails below the cooldown is already in effect — back-to-back
@@ -809,6 +820,7 @@ router.post(
       subject: lastReply.subject,
       actor,
       markResolved: false,
+      retryOf: chainRoot,
     });
 
     if (!result.success) {
