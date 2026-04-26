@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, invalidateTenantStatusCache } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { getProvisioningStatus, provisionTenant } from '../../../platform/tenant/provisioning/TenantProvisioningService';
@@ -94,6 +94,7 @@ router.post('/tenants/me/verify-checkout', requireAuth, async (req, res) => {
     }
 
     if (tenantStatus === 'active') {
+      invalidateTenantStatusCache(tenantId);
       return res.json({ status: 'ready' });
     }
 
@@ -140,6 +141,7 @@ router.post('/tenants/me/verify-checkout', requireAuth, async (req, res) => {
     }
 
     await provisionTenant(tenantId, userId, plan);
+    invalidateTenantStatusCache(tenantId);
     logger.info('Tenant provisioned via checkout verification', { tenantId, userId, plan });
 
     return res.json({ status: 'ready' });

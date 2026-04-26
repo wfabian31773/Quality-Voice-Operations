@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireTenantContext } from './tenantGuard';
@@ -43,7 +44,62 @@ interface ResolvedAuth {
   isPlatformAdmin: boolean;
 }
 
-async function resolveCurrentRole(userId: string, tenantId: string): Promise<ResolvedAuth | null> {
+const TENANT_STATUS_CACHE_TTL_MS = 30_000;
+const TENANT_STATUS_CACHE_MAX_ENTRIES = 1_000;
+
+interface TenantStatusEntry {
+  status: string;
+  expiresAt: number;
+}
+
+const tenantStatusCache = new Map<string, TenantStatusEntry>();
+
+function getCachedTenantStatus(tenantId: string, now: number = Date.now()): string | null {
+  const entry = tenantStatusCache.get(tenantId);
+  if (!entry) return null;
+  if (entry.expiresAt <= now) {
+    tenantStatusCache.delete(tenantId);
+    return null;
+  }
+  // Touch to refresh insertion order — Map iteration is insertion-ordered,
+  // so re-setting promotes this entry to the most-recently-used position.
+  tenantStatusCache.delete(tenantId);
+  tenantStatusCache.set(tenantId, entry);
+  return entry.status;
+}
+
+function setCachedTenantStatus(
+  tenantId: string,
+  status: string,
+  now: number = Date.now(),
+): void {
+  tenantStatusCache.set(tenantId, {
+    status,
+    expiresAt: now + TENANT_STATUS_CACHE_TTL_MS,
+  });
+  while (tenantStatusCache.size > TENANT_STATUS_CACHE_MAX_ENTRIES) {
+    const oldestKey = tenantStatusCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    tenantStatusCache.delete(oldestKey);
+  }
+}
+
+export function invalidateTenantStatusCache(tenantId: string): void {
+  tenantStatusCache.delete(tenantId);
+}
+
+export function clearTenantStatusCache(): void {
+  tenantStatusCache.clear();
+}
+
+export function tenantStatusCacheSize(): number {
+  return tenantStatusCache.size;
+}
+
+async function resolveCurrentRole(
+  userId: string,
+  tenantId: string,
+): Promise<ResolvedAuth | null> {
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
@@ -65,9 +121,9 @@ async function resolveCurrentRole(userId: string, tenantId: string): Promise<Res
     const isPlatformAdmin = (userRows[0]?.is_platform_admin as boolean) ?? false;
 
     return { role: rows[0].role as string, isPlatformAdmin };
-  } catch {
-    await client.query('ROLLBACK');
-    return null;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
   } finally {
     client.release();
   }
@@ -95,7 +151,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
     resolveCurrentRole(userId, tenantId)
       .then(async (auth) => {
-        if (!auth) {
+        if (auth === null) {
           res.status(403).json({ error: 'No active role in this tenant' });
           return;
         }
@@ -107,16 +163,36 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
           allowedPendingPaths.some((p) => path === p) ||
           (req.method === 'GET' && path === '/agents');
         if (!isAllowedForPending) {
-          try {
-            const pool = (await import('../../../platform/db')).getPlatformPool();
-            const { rows } = await pool.query(`SELECT status FROM tenants WHERE id = $1`, [tenantId]);
-            if (rows.length > 0 && rows[0].status === 'pending') {
-              res.status(403).json({ error: 'TENANT_NOT_PROVISIONED', message: 'Your account setup is not complete. Please finish checkout.' });
+          let tenantStatus = getCachedTenantStatus(tenantId);
+          if (tenantStatus === null) {
+            try {
+              const pool = getPlatformPool();
+              const { rows } = await pool.query(
+                `SELECT status FROM tenants WHERE id = $1`,
+                [tenantId],
+              );
+              tenantStatus = (rows[0]?.status as string) ?? 'unknown';
+              setCachedTenantStatus(tenantId, tenantStatus);
+            } catch (checkErr) {
+              const correlationId = crypto.randomUUID();
+              logger.error('Failed to check tenant status for pending gate', {
+                error: String(checkErr),
+                correlationId,
+                tenantId,
+                userId,
+              });
+              res.status(500).json({
+                error: 'Unable to verify tenant status',
+                correlationId,
+              });
               return;
             }
-          } catch (checkErr) {
-            logger.error('Failed to check tenant status for pending gate', { error: String(checkErr) });
-            res.status(500).json({ error: 'Unable to verify tenant status' });
+          }
+          if (tenantStatus === 'pending') {
+            res.status(403).json({
+              error: 'TENANT_NOT_PROVISIONED',
+              message: 'Your account setup is not complete. Please finish checkout.',
+            });
             return;
           }
         }
@@ -124,8 +200,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         requireTenantContext(req, res, next);
       })
       .catch((err) => {
-        logger.error('Failed to resolve user role from DB', { error: String(err) });
-        res.status(500).json({ error: 'Failed to verify authorization' });
+        const correlationId = crypto.randomUUID();
+        logger.error('Failed to resolve user role from DB', {
+          error: String(err),
+          correlationId,
+          userId,
+          tenantId,
+        });
+        res.status(500).json({
+          error: 'Failed to verify authorization',
+          correlationId,
+        });
       });
   } catch (err) {
     logger.warn('JWT verification failed', { error: String(err) });
