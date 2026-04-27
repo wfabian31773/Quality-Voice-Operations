@@ -9,17 +9,87 @@ import { processDocument } from '../../../platform/knowledge/ingestionPipeline';
 const router = Router();
 const logger = createLogger('ADMIN_KNOWLEDGE_DOCUMENTS');
 
+const ALLOWED_MIME_TYPES = new Set<string>(['application/pdf']);
+const ALLOWED_EXTENSIONS = new Set<string>(['.pdf']);
+
+type MagicByteSignature = {
+  mime: string;
+  bytes: number[];
+  offset?: number;
+};
+
+const MAGIC_BYTE_SIGNATURES: MagicByteSignature[] = [
+  { mime: 'application/pdf', bytes: [0x25, 0x50, 0x44, 0x46, 0x2d] },
+];
+
+function getFileExtension(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  return dot === -1 ? '' : filename.slice(dot).toLowerCase();
+}
+
+function detectMimeFromMagicBytes(buffer: Buffer): string | null {
+  for (const sig of MAGIC_BYTE_SIGNATURES) {
+    const offset = sig.offset ?? 0;
+    if (buffer.length < offset + sig.bytes.length) continue;
+    let match = true;
+    for (let i = 0; i < sig.bytes.length; i++) {
+      if (buffer[offset + i] !== sig.bytes[i]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return sig.mime;
+  }
+  return null;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF files are allowed'));
+    const ext = getFileExtension(file.originalname);
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      return cb(new Error(`Unsupported file type "${file.mimetype}". Only PDF files are allowed.`));
     }
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      return cb(new Error(`Unsupported file extension "${ext}". Only .pdf files are allowed.`));
+    }
+    cb(null, true);
   },
 });
+
+function handleUploadError(err: unknown, res: import('express').Response): boolean {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'File is too large. Maximum size is 10 MB.' });
+      return true;
+    }
+    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+      res.status(400).json({ error: 'Only a single file upload is allowed.' });
+      return true;
+    }
+    res.status(400).json({ error: err.message });
+    return true;
+  }
+  if (err instanceof Error) {
+    res.status(415).json({ error: err.message });
+    return true;
+  }
+  return false;
+}
+
+function uploadSingle(field: string): import('express').RequestHandler {
+  const handler = upload.single(field);
+  return (req, res, next) => {
+    handler(req, res, (err) => {
+      if (err) {
+        if (handleUploadError(err, res)) return;
+        return next(err);
+      }
+      next();
+    });
+  };
+}
 
 const VALID_CATEGORIES = ['FAQ', 'Services', 'Policies', 'Pricing', 'Procedures', 'Troubleshooting'];
 
@@ -94,11 +164,24 @@ router.get('/knowledge-documents/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), upload.single('file'), async (req, res) => {
+router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), uploadSingle('file'), async (req, res) => {
   const { tenantId } = req.user!;
   const file = req.file;
 
   if (!file) return res.status(400).json({ error: 'PDF file is required' });
+
+  const detectedMime = detectMimeFromMagicBytes(file.buffer);
+  if (detectedMime !== 'application/pdf') {
+    logger.warn('Rejected upload with mismatched magic bytes', {
+      tenantId,
+      claimedMime: file.mimetype,
+      filename: file.originalname,
+      detectedMime,
+    });
+    return res.status(415).json({
+      error: 'File contents do not match a PDF. Only valid PDF files are accepted.',
+    });
+  }
 
   const title = (req.body.title as string) || file.originalname.replace(/\.pdf$/i, '');
   const category = req.body.category as string | undefined;
