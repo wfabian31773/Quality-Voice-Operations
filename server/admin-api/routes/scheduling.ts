@@ -266,6 +266,191 @@ export async function buildOverrideConflictResponse(
   };
 }
 
+// ─── RECURRING-SERIES EXPANSION HELPERS ───
+//
+// `scheduling_recurring_series` is a template — each row describes a cadence
+// (e.g. "every Friday at 14:00 for 30 minutes"). The series row itself does
+// not produce calendar entries; we materialize individual `bookings` rows
+// from it so they show up alongside one-off appointments.
+//
+// Materialization MUST honour `scheduling_overrides` for the same reason
+// the one-off booking writes do (see BL-038): otherwise a recurring series
+// would happily land an appointment in the middle of a holiday/blackout.
+// Blocked dates are skipped and reported back in the create response so the
+// admin can decide what to do (re-book manually, shift the cadence, etc.).
+
+const MAX_RECURRING_OCCURRENCES = 260;
+const DEFAULT_HORIZON_DAYS_DAILY = 90;
+const DEFAULT_HORIZON_DAYS_WEEKLY = 365;
+const DEFAULT_HORIZON_MONTHS_MONTHLY = 12;
+
+export type RecurrencePattern = 'daily' | 'weekly' | 'biweekly' | 'monthly';
+
+function toUtcDateOnly(value: string | Date): Date {
+  if (value instanceof Date) {
+    const d = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+    return d;
+  }
+  // Accept "YYYY-MM-DD" or any ISO string; collapse to the Y/M/D in UTC.
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const d = new Date(value);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function addUtcDays(d: Date, n: number): Date {
+  const copy = new Date(d.getTime());
+  copy.setUTCDate(copy.getUTCDate() + n);
+  return copy;
+}
+
+function addUtcMonths(d: Date, n: number): Date {
+  const copy = new Date(d.getTime());
+  copy.setUTCMonth(copy.getUTCMonth() + n);
+  return copy;
+}
+
+/**
+ * Expand a recurring series into the list of `YYYY-MM-DD` dates on which an
+ * occurrence should fall. Capped by `MAX_RECURRING_OCCURRENCES` and by a
+ * pattern-specific default horizon when `seriesEnd` is null.
+ */
+export function expandRecurringSeriesDates(
+  seriesStart: string | Date,
+  seriesEnd: string | Date | null | undefined,
+  pattern: RecurrencePattern,
+  dayOfWeek: number | null | undefined,
+  maxOccurrences: number = MAX_RECURRING_OCCURRENCES,
+): string[] {
+  const start = toUtcDateOnly(seriesStart);
+  const horizon = seriesEnd
+    ? toUtcDateOnly(seriesEnd)
+    : pattern === 'daily'
+      ? addUtcDays(start, DEFAULT_HORIZON_DAYS_DAILY)
+      : pattern === 'monthly'
+        ? addUtcMonths(start, DEFAULT_HORIZON_MONTHS_MONTHLY)
+        : addUtcDays(start, DEFAULT_HORIZON_DAYS_WEEKLY);
+
+  let cursor = start;
+  if ((pattern === 'weekly' || pattern === 'biweekly') && dayOfWeek != null) {
+    const delta = ((dayOfWeek - cursor.getUTCDay()) + 7) % 7;
+    cursor = addUtcDays(cursor, delta);
+  }
+
+  const out: string[] = [];
+  while (cursor.getTime() <= horizon.getTime() && out.length < maxOccurrences) {
+    out.push(cursor.toISOString().slice(0, 10));
+    if (pattern === 'daily') cursor = addUtcDays(cursor, 1);
+    else if (pattern === 'weekly') cursor = addUtcDays(cursor, 7);
+    else if (pattern === 'biweekly') cursor = addUtcDays(cursor, 14);
+    else cursor = addUtcMonths(cursor, 1);
+  }
+  return out;
+}
+
+export type RecurringSeriesRow = {
+  id: string;
+  tenant_id: string;
+  title: string;
+  provider_id: string | null;
+  appointment_type_id: string | null;
+  resource_id: string | null;
+  recurrence_pattern: RecurrencePattern;
+  recurrence_day_of_week: number | null;
+  recurrence_time: string;
+  duration_minutes: number;
+  series_start: string | Date;
+  series_end: string | Date | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+};
+
+export type SkippedOccurrence = {
+  date: string;
+  reason: string;
+  override_id?: string | null;
+};
+
+/**
+ * Materialize a recurring series into individual `bookings` rows, skipping
+ * any occurrence that lands on a `scheduling_overrides` blackout for the
+ * matching scope. Returns the IDs that were created and a `skipped` array
+ * (per-date reasons) so callers can surface "needs manual decision" rows.
+ */
+export async function materializeRecurringSeries(
+  pool: ReturnType<typeof getPlatformPool>,
+  series: RecurringSeriesRow,
+  createdBy: string | null,
+  timezone: string = 'America/New_York',
+): Promise<{ created: string[]; skipped: SkippedOccurrence[] }> {
+  const dates = expandRecurringSeriesDates(
+    series.series_start,
+    series.series_end,
+    series.recurrence_pattern,
+    series.recurrence_day_of_week,
+  );
+  const time = normalizeTime(series.recurrence_time) || series.recurrence_time;
+  const created: string[] = [];
+  const skipped: SkippedOccurrence[] = [];
+
+  for (const date of dates) {
+    // Pin the occurrence to UTC so override-date bucketing in
+    // `findBlockingOverride` lands on `date` deterministically across
+    // server timezones. The booking row carries the original `timezone`
+    // alongside so calendar UIs can render it locally.
+    const startISO = `${date}T${time}.000Z`;
+    const startMs = new Date(startISO).getTime();
+    const endISO = new Date(startMs + series.duration_minutes * 60_000).toISOString();
+
+    const blocker = await findBlockingOverride(
+      pool,
+      series.tenant_id,
+      startISO,
+      endISO,
+      series.provider_id,
+    );
+    if (blocker) {
+      skipped.push({
+        date,
+        reason: blocker.reason || 'Blocked by schedule override',
+        override_id: blocker.id ?? null,
+      });
+      continue;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
+          contact_name, contact_phone, contact_email, agent_id, created_by, notes,
+          provider_id, appointment_type_id, resource_id, recurring_series_id,
+          intake_data, timezone, location, booking_source)
+       VALUES ($1, $2, '', $3::timestamptz, $4::timestamptz, 'confirmed',
+          $5, $6, $7, NULL, $8, '',
+          $9, $10, $11, $12,
+          '{}'::jsonb, $13, '', 'manual')
+       RETURNING id`,
+      [
+        series.tenant_id,
+        series.title,
+        startISO,
+        endISO,
+        series.contact_name || '',
+        series.contact_phone || '',
+        series.contact_email || '',
+        createdBy,
+        series.provider_id,
+        series.appointment_type_id,
+        series.resource_id,
+        series.id,
+        timezone,
+      ],
+    );
+    created.push(rows[0].id as string);
+  }
+
+  return { created, skipped };
+}
+
 // ─── BOOKINGS CRUD ───
 
 export const listBookingsHandler: RequestHandler = async (req, res) => {
@@ -1273,7 +1458,7 @@ const listRecurringSeriesHandler: RequestHandler = async (req, res) => {
 
 const createRecurringSeriesHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { title, provider_id, appointment_type_id, resource_id, recurrence_pattern, recurrence_day_of_week, recurrence_time, duration_minutes, series_start, series_end, contact_name, contact_phone, contact_email } = req.body;
+  const { title, provider_id, appointment_type_id, resource_id, recurrence_pattern, recurrence_day_of_week, recurrence_time, duration_minutes, series_start, series_end, contact_name, contact_phone, contact_email, timezone } = req.body;
   if (!title || !recurrence_time || !series_start) return res.status(400).json({ error: 'title, recurrence_time, and series_start are required' });
   const pool = getPlatformPool();
   try {
@@ -1282,7 +1467,40 @@ const createRecurringSeriesHandler: RequestHandler = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [tenantId, title, provider_id || null, appointment_type_id || null, resource_id || null, recurrence_pattern || 'weekly', recurrence_day_of_week ?? null, recurrence_time, duration_minutes || 30, series_start, series_end || null, contact_name || '', contact_phone || '', contact_email || '', req.user!.userId],
     );
-    return res.status(201).json({ series: rows[0] });
+    const series = rows[0] as RecurringSeriesRow;
+
+    // Materialize the series into individual bookings, skipping any
+    // occurrence that lands on a `scheduling_overrides` blackout. Skipped
+    // dates are returned to the caller so the admin can decide what to do.
+    let occurrences: {
+      created: string[];
+      skipped: SkippedOccurrence[];
+      error?: string;
+    } = {
+      created: [],
+      skipped: [],
+    };
+    try {
+      occurrences = await materializeRecurringSeries(
+        pool,
+        series,
+        req.user!.userId ?? null,
+        typeof timezone === 'string' && timezone ? timezone : 'America/New_York',
+      );
+    } catch (matErr) {
+      // The series row is already persisted; surface a partial-success
+      // signal in the response (and log it) rather than 500-ing so the
+      // user sees the series exist AND knows expansion did not finish.
+      const message = String(matErr instanceof Error ? matErr.message : matErr);
+      logger.error('Failed to materialize recurring series', {
+        tenantId,
+        seriesId: series.id,
+        error: message,
+      });
+      occurrences.error = message;
+    }
+
+    return res.status(201).json({ series, occurrences });
   } catch (err) {
     logger.error('Failed to create recurring series', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to create recurring series' });

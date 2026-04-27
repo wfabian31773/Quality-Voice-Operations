@@ -49,6 +49,7 @@ vi.mock('../../server/admin-api/middleware/rbac', () => ({
 
 import {
   applyOverridesToScheduleBlocks,
+  expandRecurringSeriesDates,
   findBlockingOverride,
   buildOverrideConflictResponse,
   type ScheduleOverride,
@@ -347,8 +348,9 @@ describe('booking endpoints honour schedule overrides', () => {
   let app: ReturnType<typeof express>;
   const queryQueue: Array<{
     match?: RegExp;
-    rows: unknown[];
+    rows?: unknown[];
     rowCount?: number;
+    throws?: Error;
   }> = [];
   const queryMock = vi.fn(async (sql: string) => {
     if (queryQueue.length === 0) {
@@ -360,7 +362,9 @@ describe('booking endpoints honour schedule overrides', () => {
         `Query did not match expected pattern.\nExpected: ${next.match}\nGot: ${sql}`,
       );
     }
-    return { rows: next.rows, rowCount: next.rowCount ?? next.rows.length };
+    if (next.throws) throw next.throws;
+    const rows = next.rows ?? [];
+    return { rows, rowCount: next.rowCount ?? rows.length };
   });
 
   beforeEach(() => {
@@ -628,5 +632,322 @@ describe('booking endpoints honour schedule overrides', () => {
     expect(res.body.override.id).toBe('ovr-holiday');
     // No UPDATE / INSERT / audit-log writes should follow the gate.
     expect(queryQueue).toHaveLength(0);
+  });
+
+  // ─── RECURRING SERIES MATERIALIZATION ───
+  //
+  // The series row alone is not a calendar entry — `createRecurringSeriesHandler`
+  // also expands the cadence into individual bookings. Those expansions must
+  // honour the same `scheduling_overrides` gate as one-off booking writes,
+  // otherwise a weekly appointment would happily land on a blackout date.
+  it('POST /scheduling/recurring → skips occurrences that fall on a full-day blackout', async () => {
+    queryQueue.push(
+      // INSERT INTO scheduling_recurring_series — return a series that
+      // expands to three Friday occurrences (2026-05-01, 05-08, 05-15).
+      {
+        match: /INSERT INTO scheduling_recurring_series/i,
+        rows: [
+          {
+            id: 'series-1',
+            tenant_id: TENANT,
+            title: 'Weekly cleaning',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+            resource_id: null,
+            recurrence_pattern: 'weekly',
+            recurrence_day_of_week: 5,
+            recurrence_time: '14:00:00',
+            duration_minutes: 30,
+            series_start: '2026-05-01',
+            series_end: '2026-05-15',
+            contact_name: 'Acme HQ',
+            contact_phone: '',
+            contact_email: '',
+          },
+        ],
+      },
+      // findBlockingOverride for 2026-05-01 → full-day blackout (Holiday)
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-holiday',
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: 'Holiday',
+          },
+        ],
+      },
+      // findBlockingOverride for 2026-05-08 → no overrides
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      // INSERT INTO bookings — first materialized occurrence
+      {
+        match: /INSERT INTO bookings[\s\S]+recurring_series_id/i,
+        rows: [{ id: 'bk-2026-05-08' }],
+      },
+      // findBlockingOverride for 2026-05-15 → no overrides
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      // INSERT INTO bookings — second materialized occurrence
+      {
+        match: /INSERT INTO bookings[\s\S]+recurring_series_id/i,
+        rows: [{ id: 'bk-2026-05-15' }],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/recurring').send({
+      title: 'Weekly cleaning',
+      provider_id: PROVIDER_A,
+      recurrence_pattern: 'weekly',
+      recurrence_day_of_week: 5,
+      recurrence_time: '14:00:00',
+      duration_minutes: 30,
+      series_start: '2026-05-01',
+      series_end: '2026-05-15',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.series.id).toBe('series-1');
+    // The 2026-05-01 occurrence MUST be skipped — the whole point of this
+    // fix is that a recurring series cannot land on a blackout date.
+    expect(res.body.occurrences.created).toEqual([
+      'bk-2026-05-08',
+      'bk-2026-05-15',
+    ]);
+    expect(res.body.occurrences.skipped).toEqual([
+      {
+        date: '2026-05-01',
+        reason: 'Holiday',
+        override_id: 'ovr-holiday',
+      },
+    ]);
+    // Every queued response should have been consumed.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('POST /scheduling/recurring → returns occurrences.error when materialization fails after the series row is saved', async () => {
+    queryQueue.push(
+      // INSERT INTO scheduling_recurring_series — series persisted successfully
+      {
+        match: /INSERT INTO scheduling_recurring_series/i,
+        rows: [
+          {
+            id: 'series-err',
+            tenant_id: TENANT,
+            title: 'Weekly cleaning',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+            resource_id: null,
+            recurrence_pattern: 'weekly',
+            recurrence_day_of_week: 5,
+            recurrence_time: '14:00:00',
+            duration_minutes: 30,
+            series_start: '2026-05-01',
+            series_end: '2026-05-08',
+            contact_name: '',
+            contact_phone: '',
+            contact_email: '',
+          },
+        ],
+      },
+      // findBlockingOverride hits scheduling_overrides first — make that
+      // throw to simulate a transient DB error mid-materialization. The
+      // handler must NOT 500: the series row is already persisted, so the
+      // failure has to surface in the response payload instead.
+      {
+        match: /FROM scheduling_overrides/i,
+        throws: new Error('overrides table down'),
+      },
+    );
+
+    const res = await request(app).post('/scheduling/recurring').send({
+      title: 'Weekly cleaning',
+      provider_id: PROVIDER_A,
+      recurrence_pattern: 'weekly',
+      recurrence_day_of_week: 5,
+      recurrence_time: '14:00:00',
+      duration_minutes: 30,
+      series_start: '2026-05-01',
+      series_end: '2026-05-08',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.series.id).toBe('series-err');
+    expect(res.body.occurrences.created).toEqual([]);
+    expect(res.body.occurrences.skipped).toEqual([]);
+    // Surface the failure in the response so callers can act on it instead of
+    // silently believing the series was fully expanded.
+    expect(res.body.occurrences.error).toMatch(/overrides table down/i);
+  });
+
+  it('POST /scheduling/recurring → still skips a date when the only override row is for that exact date (TZ-stable bucketing)', async () => {
+    // Locks in the convention that override-date bucketing is deterministic
+    // regardless of which timezone the calling tenant is in. A series whose
+    // wall-clock time is "14:00" with timezone "America/Los_Angeles" must
+    // still match the 2026-05-01 override row even though 14:00 PT crosses
+    // into 21:00 UTC (still 2026-05-01 in UTC). Without this guarantee, a
+    // tenant in a non-default timezone could quietly land an appointment on
+    // a holiday date.
+    queryQueue.push(
+      {
+        match: /INSERT INTO scheduling_recurring_series/i,
+        rows: [
+          {
+            id: 'series-tz',
+            tenant_id: TENANT,
+            title: 'Pacific weekly cleaning',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+            resource_id: null,
+            recurrence_pattern: 'weekly',
+            recurrence_day_of_week: 5,
+            recurrence_time: '14:00:00',
+            duration_minutes: 30,
+            series_start: '2026-05-01',
+            series_end: '2026-05-01',
+            contact_name: '',
+            contact_phone: '',
+            contact_email: '',
+          },
+        ],
+      },
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-pt-holiday',
+            provider_id: PROVIDER_A,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: 'Pacific holiday',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/recurring').send({
+      title: 'Pacific weekly cleaning',
+      provider_id: PROVIDER_A,
+      recurrence_pattern: 'weekly',
+      recurrence_day_of_week: 5,
+      recurrence_time: '14:00:00',
+      duration_minutes: 30,
+      series_start: '2026-05-01',
+      series_end: '2026-05-01',
+      timezone: 'America/Los_Angeles',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.occurrences.created).toEqual([]);
+    expect(res.body.occurrences.skipped).toEqual([
+      { date: '2026-05-01', reason: 'Pacific holiday', override_id: 'ovr-pt-holiday' },
+    ]);
+    // No INSERT INTO bookings should have been issued.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('POST /scheduling/recurring → materializes every occurrence when no overrides apply', async () => {
+    queryQueue.push(
+      {
+        match: /INSERT INTO scheduling_recurring_series/i,
+        rows: [
+          {
+            id: 'series-2',
+            tenant_id: TENANT,
+            title: 'Daily standup',
+            provider_id: null,
+            appointment_type_id: null,
+            resource_id: null,
+            recurrence_pattern: 'daily',
+            recurrence_day_of_week: null,
+            recurrence_time: '09:00:00',
+            duration_minutes: 15,
+            series_start: '2026-06-01',
+            series_end: '2026-06-03',
+            contact_name: '',
+            contact_phone: '',
+            contact_email: '',
+          },
+        ],
+      },
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      { match: /INSERT INTO bookings/i, rows: [{ id: 'bk-d1' }] },
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      { match: /INSERT INTO bookings/i, rows: [{ id: 'bk-d2' }] },
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      { match: /INSERT INTO bookings/i, rows: [{ id: 'bk-d3' }] },
+    );
+
+    const res = await request(app).post('/scheduling/recurring').send({
+      title: 'Daily standup',
+      recurrence_pattern: 'daily',
+      recurrence_time: '09:00:00',
+      duration_minutes: 15,
+      series_start: '2026-06-01',
+      series_end: '2026-06-03',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.occurrences.created).toEqual(['bk-d1', 'bk-d2', 'bk-d3']);
+    expect(res.body.occurrences.skipped).toEqual([]);
+    expect(queryQueue).toHaveLength(0);
+  });
+});
+
+describe('expandRecurringSeriesDates', () => {
+  it('expands a weekly cadence between series_start and series_end', () => {
+    const dates = expandRecurringSeriesDates(
+      '2026-05-01', // Friday
+      '2026-05-29',
+      'weekly',
+      5, // Friday
+    );
+    expect(dates).toEqual([
+      '2026-05-01',
+      '2026-05-08',
+      '2026-05-15',
+      '2026-05-22',
+      '2026-05-29',
+    ]);
+  });
+
+  it('snaps the first occurrence forward to the requested day-of-week', () => {
+    // 2026-05-04 is a Monday; asking for Friday should jump to 2026-05-08.
+    const dates = expandRecurringSeriesDates('2026-05-04', '2026-05-22', 'weekly', 5);
+    expect(dates[0]).toBe('2026-05-08');
+    expect(dates[dates.length - 1]).toBe('2026-05-22');
+  });
+
+  it('expands a biweekly cadence on a 14-day stride', () => {
+    const dates = expandRecurringSeriesDates('2026-05-01', '2026-06-12', 'biweekly', 5);
+    expect(dates).toEqual(['2026-05-01', '2026-05-15', '2026-05-29', '2026-06-12']);
+  });
+
+  it('expands a monthly cadence on the same day-of-month', () => {
+    const dates = expandRecurringSeriesDates('2026-01-15', '2026-04-15', 'monthly', null);
+    expect(dates).toEqual(['2026-01-15', '2026-02-15', '2026-03-15', '2026-04-15']);
+  });
+
+  it('caps daily expansion to the default 90-day horizon when series_end is null', () => {
+    const dates = expandRecurringSeriesDates('2026-01-01', null, 'daily', null);
+    // 91 occurrences (Jan 1 plus 90 more days) is the inclusive horizon.
+    expect(dates.length).toBe(91);
+    expect(dates[0]).toBe('2026-01-01');
+    expect(dates[dates.length - 1]).toBe('2026-04-01');
+  });
+
+  it('respects the maxOccurrences cap so a runaway daily series cannot explode', () => {
+    const dates = expandRecurringSeriesDates(
+      '2026-01-01',
+      '2030-01-01',
+      'daily',
+      null,
+      10,
+    );
+    expect(dates).toHaveLength(10);
   });
 });
