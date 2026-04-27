@@ -12,10 +12,15 @@
  *
  * Coverage tracked here corresponds to the BL-026 / D-20 audit items:
  * agents, calls, phone numbers, tickets, scheduling/bookings, dispatch,
- * sms-inbox, autopilot, digital-twin, evolution (platform-admin only),
- * insights (served via /autopilot/insights), improvements, case-studies,
- * widget tokens, knowledge documents, tool executions/replay, and
- * marketplace installation customization.
+ * sms-inbox, autopilot (recommendations + insights + actions, including
+ * approve / reject / execute / dismiss / rollback mutations), digital-twin
+ * (models + scenarios + runs + forecasts), evolution (platform-admin only),
+ * insights (currently served via /autopilot/insights — the bare /insights/*
+ * tree is reserved by a regression guard below), improvements, case-studies,
+ * widget tokens, knowledge documents, tool executions/replay, marketplace
+ * installations (customize / generic update / checklist / customization
+ * schema), and the reserved /workforce/* family (regression-guarded until it
+ * is exposed on admin-api).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
@@ -46,6 +51,8 @@ interface SeededIds {
   autopilotRecB: string;
   autopilotInsightA: string;
   autopilotInsightB: string;
+  autopilotActionA: string;
+  autopilotActionB: string;
   dtModelA: string;
   dtModelB: string;
   dtScenarioA: string;
@@ -121,6 +128,7 @@ async function seedResources(tenantId: string, templateId: string): Promise<Reco
     sms: randomUUID(),
     autopilotRec: randomUUID(),
     autopilotInsight: randomUUID(),
+    autopilotAction: randomUUID(),
     dtModel: randomUUID(),
     dtScenario: randomUUID(),
     dtRun: randomUUID(),
@@ -184,6 +192,19 @@ async function seedResources(tenantId: string, templateId: string): Promise<Reco
        ) VALUES ($1, $2, 'volume', 'info', 'XTest insight', 'XTest description',
          'XTest signal', 'active')`,
       [ids.autopilotInsight, tenantId],
+    );
+
+    // Autopilot action backs /autopilot/actions (list) and
+    // /autopilot/actions/:id/rollback (mutate). Seeded as completed with a
+    // null rollback_payload so rollbackAction() updates the row in place
+    // without dispatching any side-effecting reverse action.
+    await client.query(
+      `INSERT INTO autopilot_actions (
+         id, tenant_id, recommendation_id, action_type, action_payload, status,
+         executed_at, completed_at, rollback_payload
+       ) VALUES ($1, $2, $3, 'noop', '{}'::jsonb, 'completed',
+         now(), now(), NULL)`,
+      [ids.autopilotAction, tenantId, ids.autopilotRec],
     );
 
     // Digital-twin model + scenario + run + forecast for /digital-twin/* tests.
@@ -332,6 +353,7 @@ describe('HTTP cross-tenant isolation', () => {
       smsA: a.sms, smsB: b.sms,
       autopilotRecA: a.autopilotRec, autopilotRecB: b.autopilotRec,
       autopilotInsightA: a.autopilotInsight, autopilotInsightB: b.autopilotInsight,
+      autopilotActionA: a.autopilotAction, autopilotActionB: b.autopilotAction,
       dtModelA: a.dtModel, dtModelB: b.dtModel,
       dtScenarioA: a.dtScenario, dtScenarioB: b.dtScenario,
       dtRunA: a.dtRun, dtRunB: b.dtRun,
@@ -382,6 +404,7 @@ describe('HTTP cross-tenant isolation', () => {
       { name: 'GET /sms-inbox/threads', path: '/sms-inbox/threads', ownIdKey: 'smsA', foreignIdKey: 'smsB' },
       { name: 'GET /autopilot/recommendations', path: '/autopilot/recommendations', ownIdKey: 'autopilotRecA', foreignIdKey: 'autopilotRecB', requireOwn: true },
       { name: 'GET /autopilot/insights', path: '/autopilot/insights', ownIdKey: 'autopilotInsightA', foreignIdKey: 'autopilotInsightB', requireOwn: true },
+      { name: 'GET /autopilot/actions', path: '/autopilot/actions', ownIdKey: 'autopilotActionA', foreignIdKey: 'autopilotActionB', requireOwn: true },
       { name: 'GET /digital-twin/models', path: '/digital-twin/models', ownIdKey: 'dtModelA', foreignIdKey: 'dtModelB', requireOwn: true },
       { name: 'GET /digital-twin/runs', path: '/digital-twin/runs', ownIdKey: 'dtRunA', foreignIdKey: 'dtRunB', requireOwn: true },
       { name: 'GET /digital-twin/forecasts', path: '/digital-twin/forecasts', ownIdKey: 'forecastA', foreignIdKey: 'forecastB', requireOwn: true },
@@ -401,7 +424,7 @@ describe('HTTP cross-tenant isolation', () => {
         expect(res.status, `${c.path} returned ${res.status}: ${JSON.stringify(res.body).slice(0, 200)}`).toBe(200);
 
         const body = res.body as Record<string, unknown>;
-        const candidateArrays = [body.items, body.data, body.results, body.rows, body.tokens, body.documents, body.executions, body.installations, body.suggestions, body.recommendations, body.insights, body.models, body.runs, body.forecasts, body];
+        const candidateArrays = [body.items, body.data, body.results, body.rows, body.tokens, body.documents, body.executions, body.installations, body.suggestions, body.recommendations, body.insights, body.models, body.runs, body.forecasts, body.actions, body];
         const list = candidateArrays.find((v) => Array.isArray(v)) as unknown[] | undefined;
         const arr = (list ?? []) as Array<Record<string, unknown>>;
 
@@ -475,6 +498,41 @@ describe('HTTP cross-tenant isolation', () => {
       expect([403, 404]).toContain(res.status);
     });
 
+    it('POST /autopilot/recommendations/:id/approve returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .post(`/autopilot/recommendations/${seeded.autopilotRecB}/approve`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({});
+      expect([403, 404]).toContain(res.status);
+    });
+
+    it('POST /autopilot/recommendations/:id/reject returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .post(`/autopilot/recommendations/${seeded.autopilotRecB}/reject`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ reason: 'cross-tenant-test' });
+      expect([403, 404]).toContain(res.status);
+    });
+
+    it('POST /autopilot/recommendations/:id/execute returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .post(`/autopilot/recommendations/${seeded.autopilotRecB}/execute`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({});
+      // /execute returns 400 ("must be approved") only when the row is found
+      // in the caller's tenant. A foreign-tenant id must surface as 404/403,
+      // never as 400 (which would imply the row leaked).
+      expect([403, 404]).toContain(res.status);
+    });
+
+    it('POST /autopilot/actions/:id/rollback returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .post(`/autopilot/actions/${seeded.autopilotActionB}/rollback`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({});
+      expect([403, 404]).toContain(res.status);
+    });
+
     it('POST /improvements/suggestions/:id/accept returns 404 for tenant B id', async () => {
       const res = await request(app)
         .post(`/improvements/suggestions/${seeded.improvementB}/accept`)
@@ -543,6 +601,61 @@ describe('HTTP cross-tenant isolation', () => {
         .send({ name: 'attempted-cross-tenant-update' });
       expect([403, 404]).toContain(res.status);
     });
+
+    it('PATCH /marketplace/installations/:id returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .patch(`/marketplace/installations/${seeded.installationB}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'attempted-cross-tenant-rename' });
+      expect([403, 404]).toContain(res.status);
+    });
+
+    it('GET /marketplace/installations/:id/checklist returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .get(`/marketplace/installations/${seeded.installationB}/checklist`)
+        .set('Authorization', `Bearer ${tokenA}`);
+      expect([403, 404]).toContain(res.status);
+      const body = JSON.stringify(res.body);
+      expect(body).not.toContain(seeded.installationB);
+    });
+
+    it('GET /marketplace/installations/:id/customization-schema returns 404 for tenant B id', async () => {
+      const res = await request(app)
+        .get(`/marketplace/installations/${seeded.installationB}/customization-schema`)
+        .set('Authorization', `Bearer ${tokenA}`);
+      expect([403, 404]).toContain(res.status);
+      const body = JSON.stringify(res.body);
+      expect(body).not.toContain(seeded.installationB);
+    });
+  });
+
+  // /workforce/* and /insights/* are called out by BL-026 as endpoint
+  // families we must keep cross-tenant-tested. They are not yet mounted on
+  // admin-api (workforce currently lives only as an internal platform service
+  // and insights surface through /autopilot/insights). These tests guard
+  // against a future regression where someone adds those routes without
+  // adding cross-tenant tests: the moment any /workforce/* or /insights/*
+  // endpoint is mounted, these assertions will start failing and require
+  // proper tenant-scoped coverage to be authored alongside the new routes.
+  describe('Reserved route families (workforce, insights) are not yet exposed', () => {
+    const reservedPaths = [
+      '/workforce/teams',
+      '/workforce/members',
+      '/workforce/handoffs',
+      '/insights',
+      '/insights/summary',
+    ];
+    for (const p of reservedPaths) {
+      it(`${p} is not mounted (would otherwise need its own cross-tenant tests)`, async () => {
+        const res = await request(app)
+          .get(p)
+          .set('Authorization', `Bearer ${tokenA}`);
+        expect(
+          res.status,
+          `${p} now responds with ${res.status}; if you just mounted this route, add a cross-tenant test for it before relaxing this assertion.`,
+        ).toBe(404);
+      });
+    }
   });
 
   describe('TenantGuard rejects body/query tenant overrides', () => {
