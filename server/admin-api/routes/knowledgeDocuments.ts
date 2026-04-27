@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { processDocument } from '../../../platform/knowledge/ingestionPipeline';
+import { scanPdfBuffer, buildRejectionMessage } from '../../../platform/knowledge/pdfSecurityScanner';
 
 const router = Router();
 const logger = createLogger('ADMIN_KNOWLEDGE_DOCUMENTS');
@@ -181,6 +182,19 @@ router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), 
     return res.status(415).json({
       error: 'File contents do not match a PDF. Only valid PDF files are accepted.',
     });
+  }
+
+  const scan = await scanPdfBuffer(file.buffer);
+  if (scan.verdict !== 'clean') {
+    logger.warn('Rejected PDF upload that failed malware scan', {
+      tenantId,
+      filename: file.originalname,
+      detector: scan.detector,
+      verdict: scan.verdict,
+      reason: scan.reason,
+      findings: scan.findings,
+    });
+    return res.status(422).json({ error: buildRejectionMessage(scan) });
   }
 
   const title = (req.body.title as string) || file.originalname.replace(/\.pdf$/i, '');
@@ -362,7 +376,7 @@ router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('manage
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `SELECT id, source_type, source_url, raw_content, raw_file FROM knowledge_documents WHERE id = $1 AND tenant_id = $2`,
+      `SELECT id, source_type, source_url, raw_content, raw_file, file_name FROM knowledge_documents WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
 
@@ -394,11 +408,38 @@ router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('manage
         } catch { await errClient.query('ROLLBACK').catch(() => {}); } finally { errClient.release(); }
         return res.status(400).json({ error: 'Original PDF file not stored. Please re-upload the document.' });
       }
+
+      const pdfBuffer = Buffer.from(doc.raw_file);
+      const scan = await scanPdfBuffer(pdfBuffer);
+      if (scan.verdict !== 'clean') {
+        const message = buildRejectionMessage(scan);
+        logger.warn('Rejected PDF reindex that failed malware scan', {
+          tenantId,
+          documentId: doc.id,
+          filename: doc.file_name ?? null,
+          detector: scan.detector,
+          verdict: scan.verdict,
+          reason: scan.reason,
+          findings: scan.findings,
+        });
+        const errClient = await pool.connect();
+        try {
+          await errClient.query('BEGIN');
+          await withTenantContext(errClient, tenantId, async () => {});
+          await errClient.query(
+            `UPDATE knowledge_documents SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+            [message, id, tenantId],
+          );
+          await errClient.query('COMMIT');
+        } catch { await errClient.query('ROLLBACK').catch(() => {}); } finally { errClient.release(); }
+        return res.status(422).json({ error: message });
+      }
+
       processDocument({
         tenantId,
         documentId: doc.id,
         sourceType: 'pdf',
-        fileBuffer: Buffer.from(doc.raw_file),
+        fileBuffer: pdfBuffer,
       }).catch((err) => {
         logger.error('Background PDF reindex failed', { documentId: doc.id, error: String(err) });
       });
