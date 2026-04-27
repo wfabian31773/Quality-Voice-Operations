@@ -745,10 +745,12 @@ function TemplateDetailView({
 
   if (!template) {
     return (
-      <div className="text-center py-20 text-text-muted">
-        <p>Template not found</p>
-        <button onClick={onBack} className="text-primary text-sm mt-2">Back to Marketplace</button>
-      </div>
+      <EmptyState
+        icon={Package}
+        title="Template not found"
+        description="This template may have been removed or is no longer available."
+        primaryAction={{ label: 'Back to Marketplace', onClick: onBack }}
+      />
     );
   }
 

@@ -5,7 +5,7 @@ import {
   Shield, Download, Key, Users, Lock, CheckCircle2, AlertCircle,
   ChevronLeft, ChevronRight, FileText, Trash2, RefreshCw, RotateCcw,
 } from 'lucide-react';
-import { ErrorState, Skeleton, SkeletonRows } from '../components/state';
+import { EmptyState, ErrorState, Skeleton, SkeletonRows } from '../components/state';
 
 type Tab = 'audit' | 'api-keys' | 'roles' | 'encryption' | 'soc2' | 'gdpr';
 
@@ -199,7 +199,7 @@ function AuditLogTab() {
               {isLoading ? (
                 <tr><td colSpan={7} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
               ) : !data?.events.length ? (
-                <tr><td colSpan={7} className="text-center py-12 text-muted">No audit events found</td></tr>
+                <tr><td colSpan={7} className="p-0"><EmptyState icon={FileText} title="No audit events found" variant="compact" /></td></tr>
               ) : (
                 data.events.map((event) => (
                   <tr key={event.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
@@ -354,7 +354,7 @@ function ApiKeysTab() {
             {isLoading ? (
               <tr><td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !data?.keys.length ? (
-              <tr><td colSpan={6} className="text-center py-8 text-muted">No API keys</td></tr>
+              <tr><td colSpan={6} className="p-0"><EmptyState icon={Key} title="No API keys" variant="compact" /></td></tr>
             ) : (
               data.keys.map((key) => (
                 <tr key={key.id} className="border-b border-border last:border-0">
@@ -451,7 +451,7 @@ function RolesTab() {
             {isLoading ? (
               <tr><td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !data?.roles.length ? (
-              <tr><td colSpan={5} className="text-center py-8 text-muted">No role assignments</td></tr>
+              <tr><td colSpan={5} className="p-0"><EmptyState icon={Users} title="No role assignments" variant="compact" /></td></tr>
             ) : (
               data.roles.map((r) => (
                 <tr key={r.id} className="border-b border-border last:border-0">
@@ -813,7 +813,7 @@ function GdprTab() {
             {isLoading ? (
               <tr><td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !requestsData?.requests.length ? (
-              <tr><td colSpan={5} className="text-center py-8 text-muted">No GDPR requests</td></tr>
+              <tr><td colSpan={5} className="p-0"><EmptyState icon={Shield} title="No GDPR requests" variant="compact" /></td></tr>
             ) : (
               requestsData.requests.map((req) => (
                 <tr key={req.id} className="border-b border-border last:border-0">

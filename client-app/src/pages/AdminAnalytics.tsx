@@ -5,9 +5,10 @@ import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import { Inbox } from 'lucide-react';
 import { api } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
-import { Skeleton, SkeletonRows } from '../components/state';
+import { EmptyState, Skeleton, SkeletonRows } from '../components/state';
 
 interface PlatformStats {
   active_tenants: string | number;
@@ -223,7 +224,7 @@ export default function AdminAnalytics() {
         {monitoringLoading ? (
           <Skeleton className="h-64 w-full" rounded="lg" />
         ) : !trendData.length ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">No data</div>
+          <div className="h-64 flex items-center justify-center"><EmptyState icon={Inbox} title="No data yet" variant="compact" /></div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={trendData}>
@@ -252,7 +253,7 @@ export default function AdminAnalytics() {
           {monitoringLoading ? (
             <SkeletonRows count={7} rowClassName="h-5" gap="sm" />
           ) : !mon ? (
-            <div className="text-muted-foreground">No data</div>
+            <EmptyState icon={Inbox} title="No data yet" variant="compact" />
           ) : (
             <div className="space-y-3">
               <Row label="Monthly Revenue" value={formatCents(mon.monthly.revenueCents)} bold />
@@ -275,7 +276,7 @@ export default function AdminAnalytics() {
           {monitoringLoading ? (
             <SkeletonRows count={4} rowClassName="h-5" gap="sm" />
           ) : !mon ? (
-            <div className="text-muted-foreground">No data</div>
+            <EmptyState icon={Inbox} title="No data yet" variant="compact" />
           ) : (
             <div className="space-y-3">
               <Row label="Active Trials" value={mon.trials.activeTrials.toLocaleString()} />
