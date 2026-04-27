@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import TenantLayout from './components/TenantLayout';
@@ -6,82 +7,85 @@ import OpsLayout from './components/OpsLayout';
 import PublicLayout from './components/PublicLayout';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import OpsGuard from './components/OpsGuard';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Agents from './pages/Agents';
-import PhoneNumbers from './pages/PhoneNumbers';
-import Calls from './pages/Calls';
-import Connectors from './pages/Connectors';
-import UsersPage from './pages/Users';
-import Analytics from './pages/Analytics';
-import AdminAnalytics from './pages/AdminAnalytics';
-import AdminTenantAnalytics from './pages/AdminTenantAnalytics';
-import AdminTenantCalls from './pages/AdminTenantCalls';
-import AdminTenantCampaign from './pages/AdminTenantCampaign';
-import AdminMarketplace from './pages/AdminMarketplace';
-import AdminSalesInbox from './pages/AdminSalesInbox';
-import Onboarding from './pages/Onboarding';
-import Demo from './pages/Demo';
-import Campaigns from './pages/Campaigns';
-import Billing from './pages/Billing';
-import Settings from './pages/Settings';
-import Quality from './pages/Quality';
-import AuditLog from './pages/AuditLog';
-import KnowledgeBase from './pages/KnowledgeBase';
-import Widget from './pages/Widget';
-import AgentBuilder from './pages/AgentBuilder';
-import Marketplace from './pages/Marketplace';
-import DeveloperPortal from './pages/DeveloperPortal';
-import PlatformAdmin from './pages/PlatformAdmin';
-import Operations from './pages/Operations';
-import UpdateCenter from './pages/UpdateCenter';
-import PostInstallSetup from './pages/PostInstallSetup';
-import AcceptInvite from './pages/AcceptInvite';
-import DigitalTwin from './pages/DigitalTwin';
-import Governance from './pages/Governance';
-import ToolHealth from './pages/ToolHealth';
-import CostOptimization from './pages/CostOptimization';
-import CallDebug from './pages/CallDebug';
-import Compliance from './pages/Compliance';
-import Autopilot from './pages/Autopilot';
-import IntegrationDiagnostics from './pages/IntegrationDiagnostics';
-import PlatformAssistant from './components/PlatformAssistant';
-import Landing from './pages/public/Landing';
-import Product from './pages/public/Product';
-import Features from './pages/public/Features';
-import Pricing from './pages/public/Pricing';
-import UseCases from './pages/public/UseCases';
-import Integrations from './pages/public/Integrations';
-import Contact from './pages/public/Contact';
-import Docs from './pages/public/Docs';
-import DocArticle from './pages/public/DocArticle';
-import AgentsShowcase from './pages/public/AgentsShowcase';
-import Signup from './pages/public/Signup';
-import VerifyEmail from './pages/public/VerifyEmail';
-import Blog from './pages/public/Blog';
-import BlogArticle from './pages/public/BlogArticle';
-import Resources from './pages/public/Resources';
-import GuideDetail from './pages/public/GuideDetail';
-import VerticalLanding from './pages/public/VerticalLanding';
-import CaseStudies from './pages/public/CaseStudies';
-import BookDemo from './pages/public/BookDemo';
-import Terms from './pages/public/Terms';
-import Privacy from './pages/public/Privacy';
-import Security from './pages/public/Security';
-import Subprocessors from './pages/public/Subprocessors';
-import Workflows from './pages/Workflows';
 import RoleGuard from './components/RoleGuard';
-import SmsInbox from './pages/SmsInbox';
-import Scheduling from './pages/Scheduling';
-import Tickets from './pages/Tickets';
-import TicketDetail from './pages/TicketDetail';
-import TicketReporting from './pages/TicketReporting';
-import TicketAdmin from './pages/TicketAdmin';
-import Dispatch from './pages/Dispatch';
-import NotFound from './pages/NotFound';
-import Changelog from './pages/Changelog';
 import ErrorBoundary from './components/ErrorBoundary';
 import MaintenanceGate from './components/MaintenanceGate';
+import PlatformAssistant from './components/PlatformAssistant';
+import PageSkeleton from './components/PageSkeleton';
+
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Agents = lazy(() => import('./pages/Agents'));
+const PhoneNumbers = lazy(() => import('./pages/PhoneNumbers'));
+const Calls = lazy(() => import('./pages/Calls'));
+const Connectors = lazy(() => import('./pages/Connectors'));
+const UsersPage = lazy(() => import('./pages/Users'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const AdminAnalytics = lazy(() => import('./pages/AdminAnalytics'));
+const AdminTenantAnalytics = lazy(() => import('./pages/AdminTenantAnalytics'));
+const AdminTenantCalls = lazy(() => import('./pages/AdminTenantCalls'));
+const AdminTenantCampaign = lazy(() => import('./pages/AdminTenantCampaign'));
+const AdminMarketplace = lazy(() => import('./pages/AdminMarketplace'));
+const AdminSalesInbox = lazy(() => import('./pages/AdminSalesInbox'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Demo = lazy(() => import('./pages/Demo'));
+const Campaigns = lazy(() => import('./pages/Campaigns'));
+const Billing = lazy(() => import('./pages/Billing'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Quality = lazy(() => import('./pages/Quality'));
+const AuditLog = lazy(() => import('./pages/AuditLog'));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const Widget = lazy(() => import('./pages/Widget'));
+const AgentBuilder = lazy(() => import('./pages/AgentBuilder'));
+const Marketplace = lazy(() => import('./pages/Marketplace'));
+const DeveloperPortal = lazy(() => import('./pages/DeveloperPortal'));
+const PlatformAdmin = lazy(() => import('./pages/PlatformAdmin'));
+const Operations = lazy(() => import('./pages/Operations'));
+const UpdateCenter = lazy(() => import('./pages/UpdateCenter'));
+const PostInstallSetup = lazy(() => import('./pages/PostInstallSetup'));
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
+const DigitalTwin = lazy(() => import('./pages/DigitalTwin'));
+const Governance = lazy(() => import('./pages/Governance'));
+const ToolHealth = lazy(() => import('./pages/ToolHealth'));
+const CostOptimization = lazy(() => import('./pages/CostOptimization'));
+const CallDebug = lazy(() => import('./pages/CallDebug'));
+const Compliance = lazy(() => import('./pages/Compliance'));
+const Autopilot = lazy(() => import('./pages/Autopilot'));
+const IntegrationDiagnostics = lazy(() => import('./pages/IntegrationDiagnostics'));
+const Workflows = lazy(() => import('./pages/Workflows'));
+const SmsInbox = lazy(() => import('./pages/SmsInbox'));
+const Scheduling = lazy(() => import('./pages/Scheduling'));
+const Tickets = lazy(() => import('./pages/Tickets'));
+const TicketDetail = lazy(() => import('./pages/TicketDetail'));
+const TicketReporting = lazy(() => import('./pages/TicketReporting'));
+const TicketAdmin = lazy(() => import('./pages/TicketAdmin'));
+const Dispatch = lazy(() => import('./pages/Dispatch'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const Changelog = lazy(() => import('./pages/Changelog'));
+
+const Landing = lazy(() => import('./pages/public/Landing'));
+const Product = lazy(() => import('./pages/public/Product'));
+const Features = lazy(() => import('./pages/public/Features'));
+const Pricing = lazy(() => import('./pages/public/Pricing'));
+const UseCases = lazy(() => import('./pages/public/UseCases'));
+const Integrations = lazy(() => import('./pages/public/Integrations'));
+const Contact = lazy(() => import('./pages/public/Contact'));
+const Docs = lazy(() => import('./pages/public/Docs'));
+const DocArticle = lazy(() => import('./pages/public/DocArticle'));
+const AgentsShowcase = lazy(() => import('./pages/public/AgentsShowcase'));
+const Signup = lazy(() => import('./pages/public/Signup'));
+const VerifyEmail = lazy(() => import('./pages/public/VerifyEmail'));
+const Blog = lazy(() => import('./pages/public/Blog'));
+const BlogArticle = lazy(() => import('./pages/public/BlogArticle'));
+const Resources = lazy(() => import('./pages/public/Resources'));
+const GuideDetail = lazy(() => import('./pages/public/GuideDetail'));
+const VerticalLanding = lazy(() => import('./pages/public/VerticalLanding'));
+const CaseStudies = lazy(() => import('./pages/public/CaseStudies'));
+const BookDemo = lazy(() => import('./pages/public/BookDemo'));
+const Terms = lazy(() => import('./pages/public/Terms'));
+const Privacy = lazy(() => import('./pages/public/Privacy'));
+const Security = lazy(() => import('./pages/public/Security'));
+const Subprocessors = lazy(() => import('./pages/public/Subprocessors'));
 
 const SETTINGS_TABS = ['general', 'notifications', 'roles', 'security', 'api-keys', 'privacy'];
 
@@ -98,6 +102,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <MaintenanceGate>
+    <Suspense fallback={<PageSkeleton />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -250,6 +255,7 @@ export default function App() {
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
     </MaintenanceGate>
     </ErrorBoundary>
   );
