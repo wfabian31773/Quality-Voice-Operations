@@ -1,3 +1,4 @@
+import { writeAuditLog } from '../audit/AuditService';
 import { createLogger } from '../core/logger';
 import { fanoutInAppNotification } from '../notifications/NotificationPreferences';
 import { getTenantAlertEmailRecipients } from '../integrations/connectors/ConnectorAlertRecipients';
@@ -41,6 +42,31 @@ const INITIAL_DELAY_MS = 30 * 1000;
  */
 const MAX_PER_CYCLE = 100;
 
+/**
+ * Per-tenant cap on rows touched in one cycle. Twilio rate-limits
+ * `OutgoingCallerIds` reads at ~100 req/s per account, but a single
+ * tenant going wild with hundreds of pending rows could still starve
+ * the rest of the queue and burn through that budget on one tenant.
+ * Capping per-tenant per-cycle ensures fair scheduling and predictable
+ * Twilio load even when one tenant has a backlog. Stragglers carry
+ * over to the next cycle, which still beats the previous "operator has
+ * to click Sync" workflow.
+ */
+const MAX_PER_TENANT_PER_CYCLE = 25;
+
+export interface VerifiedCallerSyncTenantStats {
+  inspected: number;
+  verified: number;
+  failed: number;
+  stillPending: number;
+  errors: number;
+  /**
+   * Rows for this tenant that were skipped this cycle because the
+   * per-tenant cap was hit. They'll be re-listed on the next sweep.
+   */
+  deferred: number;
+}
+
 export interface VerifiedCallerSyncCycleResult {
   inspected: number;
   verified: number;
@@ -55,6 +81,29 @@ export interface VerifiedCallerSyncCycleResult {
    * deploy overlap) — expected to be ~0 in steady state.
    */
   notificationsThrottled: number;
+  /**
+   * Rows skipped this cycle because their tenant already hit
+   * `MAX_PER_TENANT_PER_CYCLE`. Always 0 in normal operation; a
+   * non-zero value means at least one tenant has a backlog larger than
+   * the per-tenant cap and is being drained over multiple cycles.
+   */
+  deferred: number;
+  /**
+   * Per-tenant counts for the cycle. Keyed by tenant id so operators
+   * can answer "which tenant is generating the auto-verify load?".
+   */
+  byTenant: Record<string, VerifiedCallerSyncTenantStats>;
+}
+
+function emptyTenantStats(): VerifiedCallerSyncTenantStats {
+  return {
+    inspected: 0,
+    verified: 0,
+    failed: 0,
+    stillPending: 0,
+    errors: 0,
+    deferred: 0,
+  };
 }
 
 function emptyCycleResult(): VerifiedCallerSyncCycleResult {
@@ -66,7 +115,21 @@ function emptyCycleResult(): VerifiedCallerSyncCycleResult {
     errors: 0,
     notificationsSent: 0,
     notificationsThrottled: 0,
+    deferred: 0,
+    byTenant: {},
   };
+}
+
+function getTenantBucket(
+  stats: VerifiedCallerSyncCycleResult,
+  tenantId: string,
+): VerifiedCallerSyncTenantStats {
+  let bucket = stats.byTenant[tenantId];
+  if (!bucket) {
+    bucket = emptyTenantStats();
+    stats.byTenant[tenantId] = bucket;
+  }
+  return bucket;
 }
 
 /**
@@ -154,12 +217,56 @@ async function dispatchVerifiedNotification(
 }
 
 /**
+ * Write an `audit_logs` entry for an auto-state-transition done by the
+ * scheduler. Best-effort: if the audit write fails the cycle continues
+ * (the actual DB row was already updated by `syncCallerIdStatus`).
+ *
+ * Uses `actorUserId = 'system'` to mirror the convention from
+ * `ConnectorAuthAlertScheduler` so admin tooling can filter
+ * scheduler-driven transitions out of human-actor reports.
+ */
+async function recordAutoTransitionAudit(
+  caller: VerifiedCallerId,
+  transition: 'verified' | 'failed',
+): Promise<void> {
+  try {
+    await writeAuditLog({
+      tenantId: caller.tenantId,
+      actorUserId: 'system',
+      actorRole: 'system',
+      action:
+        transition === 'verified'
+          ? 'trusted_caller.auto_verified'
+          : 'trusted_caller.auto_failed',
+      resourceType: 'trusted_caller',
+      resourceId: caller.id,
+      severity: transition === 'failed' ? 'warning' : 'info',
+      changes: {
+        phoneNumber: caller.phoneNumber,
+        friendlyName: caller.friendlyName,
+        reason:
+          transition === 'failed'
+            ? 'verification_window_expired'
+            : 'twilio_confirmed_outgoing_caller_id',
+      },
+    });
+  } catch {
+    // writeAuditLog already logs the underlying failure; swallow so
+    // the rest of the cycle can complete. The actual state change is
+    // already persisted to verified_caller_ids.
+  }
+}
+
+/**
  * One full sweep. Lists every pending caller (across tenants), polls
- * Twilio for each, and dispatches a success notification on the
- * `pending → verified` transition. Rows that have passed
- * `VERIFICATION_TTL_MS` get auto-flipped to `failed` by
- * `syncCallerIdStatus` (which checks the row's `verificationExpiresAt`
- * before contacting Twilio).
+ * Twilio for each (subject to the per-tenant cap), and dispatches a
+ * success notification on the `pending → verified` transition. Rows
+ * that have passed `VERIFICATION_TTL_MS` get auto-flipped to `failed`
+ * by `syncCallerIdStatus` (which checks the row's
+ * `verificationExpiresAt` before contacting Twilio); the scheduler
+ * then writes an `audit_logs` entry for the auto-transition so
+ * operators can trace which rows the system flipped vs. which were
+ * flipped by hand.
  *
  * Exported so admin / test code can trigger a manual cycle without
  * waiting for the next interval.
@@ -181,8 +288,20 @@ export async function runVerifiedCallerSyncCycle(): Promise<VerifiedCallerSyncCy
     return stats;
   }
 
+  const perTenantTouched = new Map<string, number>();
+
   for (const caller of pending) {
+    const tenantBucket = getTenantBucket(stats, caller.tenantId);
+    const touched = perTenantTouched.get(caller.tenantId) ?? 0;
+    if (touched >= MAX_PER_TENANT_PER_CYCLE) {
+      stats.deferred += 1;
+      tenantBucket.deferred += 1;
+      continue;
+    }
+    perTenantTouched.set(caller.tenantId, touched + 1);
+
     stats.inspected += 1;
+    tenantBucket.inspected += 1;
 
     let updated: VerifiedCallerId;
     try {
@@ -192,6 +311,7 @@ export async function runVerifiedCallerSyncCycle(): Promise<VerifiedCallerSyncCy
       updated = await syncCallerIdStatus(caller.tenantId, caller.id);
     } catch (err) {
       stats.errors += 1;
+      tenantBucket.errors += 1;
       logger.warn('Pending caller sync failed', {
         tenantId: caller.tenantId,
         callerId: caller.id,
@@ -203,6 +323,8 @@ export async function runVerifiedCallerSyncCycle(): Promise<VerifiedCallerSyncCy
 
     if (updated.status === 'verified' && caller.status === 'pending') {
       stats.verified += 1;
+      tenantBucket.verified += 1;
+      await recordAutoTransitionAudit(updated, 'verified');
       const dispatch = await dispatchVerifiedNotification(updated);
       if (dispatch === 'sent') {
         stats.notificationsSent += 1;
@@ -215,8 +337,10 @@ export async function runVerifiedCallerSyncCycle(): Promise<VerifiedCallerSyncCy
         phoneNumber: caller.phoneNumber,
         notification: dispatch,
       });
-    } else if (updated.status === 'failed') {
+    } else if (updated.status === 'failed' && caller.status === 'pending') {
       stats.failed += 1;
+      tenantBucket.failed += 1;
+      await recordAutoTransitionAudit(updated, 'failed');
       logger.info('Pending caller expired and was marked failed', {
         tenantId: caller.tenantId,
         callerId: caller.id,
@@ -224,11 +348,23 @@ export async function runVerifiedCallerSyncCycle(): Promise<VerifiedCallerSyncCy
       });
     } else {
       stats.stillPending += 1;
+      tenantBucket.stillPending += 1;
     }
   }
 
-  if (stats.inspected > 0) {
-    logger.info('Verified-caller sync cycle complete', { ...stats });
+  if (stats.inspected > 0 || stats.deferred > 0) {
+    logger.info('Verified-caller sync cycle complete', {
+      inspected: stats.inspected,
+      verified: stats.verified,
+      failed: stats.failed,
+      stillPending: stats.stillPending,
+      errors: stats.errors,
+      notificationsSent: stats.notificationsSent,
+      notificationsThrottled: stats.notificationsThrottled,
+      deferred: stats.deferred,
+      tenantCount: Object.keys(stats.byTenant).length,
+      byTenant: stats.byTenant,
+    });
   }
   return stats;
 }
@@ -270,6 +406,7 @@ export function startVerifiedCallerSyncScheduler(
     initialDelayMs: INITIAL_DELAY_MS,
     verificationTtlMs: VERIFICATION_TTL_MS,
     maxPerCycle: MAX_PER_CYCLE,
+    maxPerTenantPerCycle: MAX_PER_TENANT_PER_CYCLE,
   });
 }
 
