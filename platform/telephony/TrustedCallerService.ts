@@ -1,10 +1,42 @@
-import { getPlatformPool, withTenantContext } from '../db';
+import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('TRUSTED_CALLER');
 
 export type VerifiedCallerStatus = 'pending' | 'verified' | 'failed' | 'rotated';
 export type AttestationLevel = 'A' | 'B' | 'C';
+
+/**
+ * Health states reported by `checkCallerHealth` and persisted on the
+ * `verified_caller_ids` row by the weekly scheduler.
+ *
+ *   - `healthy`        — Twilio confirms the OutgoingCallerIds row exists
+ *                        and any Trust Hub product / brand attached is
+ *                        approved with a `valid_until` more than
+ *                        `EXPIRING_SOON_THRESHOLD_DAYS` away.
+ *   - `expiring_soon`  — `valid_until` is within the threshold window.
+ *                        Carriers will keep attesting A until the date
+ *                        passes; we just nudge owners ahead of time.
+ *   - `expired`        — `valid_until` has passed but Twilio hasn't yet
+ *                        revoked the row. Treated as a hard error so the
+ *                        UI flips the badge to red.
+ *   - `revoked`        — Twilio no longer reports the row at all (the
+ *                        OutgoingCallerIds entry was deleted, the Trust
+ *                        Hub product is `twilio-rejected`, the brand
+ *                        registration is `FAILED`, etc.). The scheduler
+ *                        also demotes the row's stored attestation level
+ *                        so it can't be re-used by the campaign guard.
+ *   - `unknown`        — health check couldn't run (no Twilio creds,
+ *                        network error). We never alert on `unknown` to
+ *                        avoid noisy false positives during transient
+ *                        Twilio outages.
+ */
+export type CallerHealthStatus =
+  | 'healthy'
+  | 'expiring_soon'
+  | 'expired'
+  | 'revoked'
+  | 'unknown';
 
 export interface VerifiedCallerId {
   id: string;
@@ -26,6 +58,11 @@ export interface VerifiedCallerId {
   registeredByUserId: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
+  expiresAt: Date | null;
+  lastHealthCheckAt: Date | null;
+  lastHealthStatus: CallerHealthStatus | null;
+  lastHealthMessage: string | null;
+  expiryAlertSentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,6 +129,11 @@ function rowToCaller(r: Record<string, unknown>): VerifiedCallerId {
     registeredByUserId: (r.registered_by_user_id as string) ?? null,
     notes: (r.notes as string) ?? null,
     metadata: (typeof r.metadata === 'object' && r.metadata !== null ? r.metadata : {}) as Record<string, unknown>,
+    expiresAt: r.expires_at ? new Date(r.expires_at as string) : null,
+    lastHealthCheckAt: r.last_health_check_at ? new Date(r.last_health_check_at as string) : null,
+    lastHealthStatus: ((r.last_health_status as string) ?? null) as CallerHealthStatus | null,
+    lastHealthMessage: (r.last_health_message as string) ?? null,
+    expiryAlertSentAt: r.expiry_alert_sent_at ? new Date(r.expiry_alert_sent_at as string) : null,
     createdAt: new Date(r.created_at as string),
     updatedAt: new Date(r.updated_at as string),
   };
@@ -526,4 +568,397 @@ export async function resolveCampaignCallerId(
 ): Promise<VerifiedCallerId | null> {
   if (!verifiedCallerId) return null;
   return getVerifiedCallerById(tenantId, verifiedCallerId);
+}
+
+// ============================================================================
+// Weekly health check — see VerifiedCallerHealthScheduler
+// ============================================================================
+
+/**
+ * Days of advance warning for an upcoming `valid_until`. Once a caller's
+ * Trust Hub product / brand registration is within this window we flip the
+ * UI badge to "expires in N days" and dispatch a one-shot weekly nudge so
+ * owners can re-register before carriers downgrade attestation.
+ */
+export const EXPIRING_SOON_THRESHOLD_DAYS = 14;
+
+const TRUST_HUB_REVOKED_STATUSES = new Set([
+  'twilio-rejected',
+  'rejected',
+  'draft', // a previously approved product reverted to draft, attestation invalid
+]);
+
+const BRAND_REVOKED_STATUSES = new Set([
+  'FAILED',
+  'SUSPENDED',
+]);
+
+export interface CallerHealthResult {
+  status: CallerHealthStatus;
+  expiresAt: Date | null;
+  message: string | null;
+  /** Set when the result implies we should demote attestation (revoked). */
+  demoteAttestation: boolean;
+}
+
+interface TwilioTrustProductResponse {
+  sid?: string;
+  status?: string;
+  valid_until?: string | null;
+  date_updated?: string | null;
+}
+
+interface TwilioBrandResponse {
+  sid?: string;
+  status?: string;
+  brand_score?: number | null;
+}
+
+async function fetchTrustProductStatus(
+  creds: TwilioCreds,
+  sid: string,
+): Promise<TwilioTrustProductResponse | { httpStatus: number; error: string }> {
+  const url = `https://trusthub.twilio.com/v1/TrustProducts/${encodeURIComponent(sid)}`;
+  const headers: Record<string, string> = {
+    Authorization: `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString('base64')}`,
+  };
+  const response = await fetch(url, { method: 'GET', headers });
+  if (!response.ok) {
+    return { httpStatus: response.status, error: await response.text() };
+  }
+  return (await response.json()) as TwilioTrustProductResponse;
+}
+
+async function fetchBrandStatus(
+  creds: TwilioCreds,
+  sid: string,
+): Promise<TwilioBrandResponse | { httpStatus: number; error: string }> {
+  const url = `https://messaging.twilio.com/v1/a2p/BrandRegistrations/${encodeURIComponent(sid)}`;
+  const headers: Record<string, string> = {
+    Authorization: `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString('base64')}`,
+  };
+  const response = await fetch(url, { method: 'GET', headers });
+  if (!response.ok) {
+    return { httpStatus: response.status, error: await response.text() };
+  }
+  return (await response.json()) as TwilioBrandResponse;
+}
+
+/**
+ * Inspect Twilio for the current health of a verified caller. Combines:
+ *
+ *   1. OutgoingCallerIds presence — if Twilio doesn't return our number
+ *      anymore, the caller verification was deleted and we can no longer
+ *      attest at the entry level. Result: `revoked`.
+ *   2. Trust Hub product (when configured) — query the trust product SID
+ *      and use its `status` + `valid_until`. `twilio-rejected` /
+ *      reverted-to-draft mean the product is no longer carrying
+ *      attestation.
+ *   3. Brand registration (when configured) — query the brand SID and
+ *      treat `FAILED` / `SUSPENDED` as revoked.
+ *
+ * The most severe state across all three checks wins. When Twilio
+ * credentials aren't configured we return `unknown` so the scheduler skips
+ * alerting (alerting on `unknown` would spam tenants every time the
+ * environment lost its Twilio creds).
+ */
+export async function checkCallerHealth(
+  caller: Pick<
+    VerifiedCallerId,
+    'phoneNumber' | 'trustProductSid' | 'brandSid'
+  >,
+  options: { now?: Date; expiringSoonDays?: number } = {},
+): Promise<CallerHealthResult> {
+  const creds = getTwilioCreds();
+  if (!creds) {
+    return {
+      status: 'unknown',
+      expiresAt: null,
+      message: 'Twilio credentials not configured; health check skipped.',
+      demoteAttestation: false,
+    };
+  }
+
+  const now = options.now ?? new Date();
+  const thresholdMs =
+    (options.expiringSoonDays ?? EXPIRING_SOON_THRESHOLD_DAYS) * 24 * 60 * 60 * 1000;
+
+  // 1. OutgoingCallerIds presence — the floor of every verification.
+  //
+  // We deliberately do NOT use `fetchTwilioVerifiedCaller` here. That helper
+  // collapses every non-2xx response to `null`, which is fine for the
+  // existing "is the caller verified yet?" callers but catastrophic for
+  // health checks: a transient 5xx, a 429 rate-limit, or a 401 from a
+  // misconfigured-but-present credential set would all silently look like
+  // "Twilio doesn't know about this number" and trigger a false `revoked`
+  // alert + attestation demotion across every tenant in the cycle.
+  //
+  // Instead, distinguish:
+  //   - 200 + empty list  → genuinely missing → revoked
+  //   - 200 + match       → present → keep going
+  //   - 404               → genuinely missing → revoked
+  //   - 401 / 403 / 429 / 5xx → transient or auth-misconfig → unknown
+  //   - network throw     → unknown (caught below)
+  let outgoingResponse: Response;
+  try {
+    outgoingResponse = await twilioRequest(
+      creds,
+      `OutgoingCallerIds.json?PhoneNumber=${encodeURIComponent(caller.phoneNumber)}`,
+    );
+  } catch (err) {
+    return {
+      status: 'unknown',
+      expiresAt: null,
+      message: `Twilio OutgoingCallerIds lookup failed: ${String(err).slice(0, 200)}`,
+      demoteAttestation: false,
+    };
+  }
+
+  if (outgoingResponse.status === 404) {
+    return {
+      status: 'revoked',
+      expiresAt: null,
+      message: 'Twilio no longer reports this number under OutgoingCallerIds. Re-verify to restore attestation.',
+      demoteAttestation: true,
+    };
+  }
+  if (!outgoingResponse.ok) {
+    // Auth (401/403), rate limit (429), and 5xx all flow here. Treat them
+    // as unknown so the scheduler does NOT alert and does NOT demote
+    // attestation — the row will simply be retried on the next weekly tick.
+    let errorBody = '';
+    try {
+      errorBody = (await outgoingResponse.text()).slice(0, 200);
+    } catch {
+      errorBody = '';
+    }
+    return {
+      status: 'unknown',
+      expiresAt: null,
+      message: `Twilio OutgoingCallerIds lookup returned ${outgoingResponse.status}: ${errorBody}`,
+      demoteAttestation: false,
+    };
+  }
+
+  let outgoingPayload: TwilioListResponse<TwilioOutgoingCallerIdResponse>;
+  try {
+    outgoingPayload = (await outgoingResponse.json()) as TwilioListResponse<TwilioOutgoingCallerIdResponse>;
+  } catch (err) {
+    // Twilio returned a 2xx with non-JSON / truncated body. Treat as
+    // unknown rather than risking a false revocation.
+    return {
+      status: 'unknown',
+      expiresAt: null,
+      message: `Twilio OutgoingCallerIds returned malformed JSON: ${String(err).slice(0, 200)}`,
+      demoteAttestation: false,
+    };
+  }
+
+  if (!outgoingPayload.outgoing_caller_ids?.length) {
+    return {
+      status: 'revoked',
+      expiresAt: null,
+      message: 'Twilio no longer reports this number under OutgoingCallerIds. Re-verify to restore attestation.',
+      demoteAttestation: true,
+    };
+  }
+
+  // 2. Trust Hub product (optional).
+  let expiresAt: Date | null = null;
+  let trustHubMessage: string | null = null;
+  if (caller.trustProductSid) {
+    const result = await fetchTrustProductStatus(creds, caller.trustProductSid);
+    if ('httpStatus' in result) {
+      // 404 means the product was deleted → revoked. Other HTTP errors
+      // are transient and shouldn't downgrade health.
+      if (result.httpStatus === 404) {
+        return {
+          status: 'revoked',
+          expiresAt: null,
+          message: `Trust Hub product ${caller.trustProductSid} no longer exists.`,
+          demoteAttestation: true,
+        };
+      }
+      return {
+        status: 'unknown',
+        expiresAt: null,
+        message: `Trust Hub lookup failed (${result.httpStatus}): ${result.error.slice(0, 200)}`,
+        demoteAttestation: false,
+      };
+    }
+    const status = (result.status ?? '').toLowerCase();
+    if (TRUST_HUB_REVOKED_STATUSES.has(status)) {
+      return {
+        status: 'revoked',
+        expiresAt: null,
+        message: `Trust Hub product status is "${result.status ?? 'unknown'}" — re-register to keep A-attestation.`,
+        demoteAttestation: true,
+      };
+    }
+    if (typeof result.valid_until === 'string' && result.valid_until.length > 0) {
+      const parsed = new Date(result.valid_until);
+      if (Number.isFinite(parsed.getTime())) {
+        expiresAt = parsed;
+        trustHubMessage = `Trust Hub product expires ${parsed.toUTCString()}.`;
+      }
+    }
+  }
+
+  // 3. Brand registration (optional).
+  if (caller.brandSid) {
+    const result = await fetchBrandStatus(creds, caller.brandSid);
+    if ('httpStatus' in result) {
+      if (result.httpStatus === 404) {
+        return {
+          status: 'revoked',
+          expiresAt,
+          message: `Brand registration ${caller.brandSid} no longer exists.`,
+          demoteAttestation: true,
+        };
+      }
+      return {
+        status: 'unknown',
+        expiresAt,
+        message: `Brand registration lookup failed (${result.httpStatus}): ${result.error.slice(0, 200)}`,
+        demoteAttestation: false,
+      };
+    }
+    const status = (result.status ?? '').toUpperCase();
+    if (BRAND_REVOKED_STATUSES.has(status)) {
+      return {
+        status: 'revoked',
+        expiresAt,
+        message: `Brand registration status is "${result.status ?? 'unknown'}" — re-register to keep A-attestation.`,
+        demoteAttestation: true,
+      };
+    }
+  }
+
+  // 4. Compute expiring_soon / expired against the resolved expiresAt.
+  if (expiresAt) {
+    const msRemaining = expiresAt.getTime() - now.getTime();
+    if (msRemaining <= 0) {
+      return {
+        status: 'expired',
+        expiresAt,
+        message: `Trust Hub product expired ${expiresAt.toUTCString()}. Re-register to restore attestation.`,
+        demoteAttestation: false,
+      };
+    }
+    if (msRemaining <= thresholdMs) {
+      return {
+        status: 'expiring_soon',
+        expiresAt,
+        message: trustHubMessage ?? `Expires ${expiresAt.toUTCString()}.`,
+        demoteAttestation: false,
+      };
+    }
+  }
+
+  return {
+    status: 'healthy',
+    expiresAt,
+    message: trustHubMessage,
+    demoteAttestation: false,
+  };
+}
+
+/**
+ * Cross-tenant lookup of verified callers due for a health check. The
+ * scheduler calls this at the top of each cycle to find rows that have
+ * either never been health-checked, or whose last check was more than
+ * `staleAfterMs` ago.
+ *
+ * Uses `withPrivilegedClient` so the platform pool can read across all
+ * tenants (the verified_caller_ids table has RLS enabled and is otherwise
+ * locked to a single `app.tenant_id` setting).
+ */
+export async function listCallersDueForHealthCheck(
+  staleAfterMs: number,
+  limit: number = 500,
+): Promise<VerifiedCallerId[]> {
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM verified_caller_ids
+        WHERE status = 'verified'
+          AND (
+            last_health_check_at IS NULL
+            OR last_health_check_at < NOW() - ($1 || ' milliseconds')::interval
+          )
+        ORDER BY last_health_check_at NULLS FIRST, verified_at NULLS FIRST
+        LIMIT $2`,
+      [String(staleAfterMs), limit],
+    );
+    return rows.map(rowToCaller);
+  });
+}
+
+/**
+ * Persist the outcome of a health check on the row. Always stamps
+ * `last_health_check_at`. When the result is `revoked` and
+ * `demoteAttestation` is set, drops the stored attestation level so
+ * subsequent campaign activations through `getVerifiedCallerById` will not
+ * silently keep claiming A-attestation.
+ *
+ * Runs through `withPrivilegedClient` so the scheduler doesn't need to
+ * thread tenant context for cross-tenant updates.
+ */
+export async function recordCallerHealth(
+  callerId: string,
+  tenantId: string,
+  result: CallerHealthResult,
+): Promise<void> {
+  await withPrivilegedClient(async (client) => {
+    await client.query(
+      `UPDATE verified_caller_ids
+          SET expires_at = $3,
+              last_health_check_at = NOW(),
+              last_health_status = $4,
+              last_health_message = $5,
+              attestation_level = CASE
+                WHEN $6::boolean THEN NULL
+                ELSE attestation_level
+              END,
+              updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2`,
+      [
+        callerId,
+        tenantId,
+        result.expiresAt ? result.expiresAt.toISOString() : null,
+        result.status,
+        result.message,
+        result.demoteAttestation,
+      ],
+    );
+  });
+}
+
+/**
+ * Atomic claim of the weekly alert slot for one caller. Returns true when
+ * we won the claim (so the caller should send the alert), false when
+ * another scheduler tick already sent one within `throttleMs`.
+ *
+ * Mirrors the pattern used by `ConnectorAuthAlertScheduler.claimAuthAlertSlot`
+ * — the throttle stamp is set inside the same UPDATE so two scheduler
+ * instances racing for the same row can't both alert.
+ */
+export async function claimExpiryAlertSlot(
+  callerId: string,
+  tenantId: string,
+  throttleMs: number,
+): Promise<boolean> {
+  return withPrivilegedClient(async (client) => {
+    const result = await client.query(
+      `UPDATE verified_caller_ids
+          SET expiry_alert_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1
+          AND tenant_id = $2
+          AND (
+            expiry_alert_sent_at IS NULL
+            OR expiry_alert_sent_at < NOW() - ($3 || ' milliseconds')::interval
+          )`,
+      [callerId, tenantId, String(throttleMs)],
+    );
+    return (result.rowCount ?? 0) === 1;
+  });
 }

@@ -586,6 +586,95 @@ export function deletionCancelledEmail(params: {
   return { subject: `Account deletion cancelled for ${org}`, html, text };
 }
 
+export function verifiedCallerExpiringEmail(params: {
+  tenantName?: string;
+  phoneNumber: string;
+  friendlyName?: string | null;
+  daysRemaining: number;
+  expiresAt: string;
+  trustedCallersUrl: string;
+  detail?: string | null;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const label = params.friendlyName
+    ? `${params.friendlyName} (${params.phoneNumber})`
+    : params.phoneNumber;
+  const subject =
+    params.daysRemaining <= 0
+      ? `Verified caller ${params.phoneNumber} has expired`
+      : `Verified caller ${params.phoneNumber} expires in ${params.daysRemaining} day${params.daysRemaining === 1 ? '' : 's'}`;
+
+  const banner =
+    params.daysRemaining <= 0
+      ? `<div class="alert-error">
+           <p style="margin:0"><strong>Attestation expired</strong></p>
+           <p style="margin:4px 0 0">Outbound calls dialed from <strong>${label}</strong> will be attested at level C until you re-register the number.</p>
+           <p style="margin:8px 0 0" class="muted">Expired ${params.expiresAt}</p>
+         </div>`
+      : `<div class="alert-warn">
+           <p style="margin:0"><strong>Heads up — re-register soon</strong></p>
+           <p style="margin:4px 0 0">The Trust Hub product backing <strong>${label}</strong> for <strong>${org}</strong> expires in <strong>${params.daysRemaining} day${params.daysRemaining === 1 ? '' : 's'}</strong>.</p>
+           <p style="margin:8px 0 0" class="muted">Expires ${params.expiresAt}</p>
+         </div>`;
+
+  const detailBlock = params.detail
+    ? `<p class="muted">${params.detail}</p>`
+    : '';
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>One of your verified outbound caller IDs needs attention. Without re-registration, carriers will downgrade STIR/SHAKEN attestation from <strong>A</strong> to <strong>C</strong> and downstream calls will start landing in spam folders.</p>
+    ${banner}
+    ${detailBlock}
+    <p>The link below jumps straight to the Trusted Callers page so you can rotate or re-verify the number:</p>
+    <p><a href="${params.trustedCallersUrl}" class="btn">Open Trusted Callers</a></p>
+    <p class="muted">You won't get another email about this caller for 7 days, even if it stays in this state.</p>
+  `);
+
+  const text = `${subject}\n\n` +
+    `${label} for ${org} ${params.daysRemaining <= 0 ? 'has expired' : `expires in ${params.daysRemaining} day${params.daysRemaining === 1 ? '' : 's'}`} (${params.expiresAt}).\n` +
+    (params.detail ? `${params.detail}\n` : '') +
+    `\nReview: ${params.trustedCallersUrl}\n\n` +
+    `You won't get another email about this caller for 7 days.`;
+
+  return { subject, html, text };
+}
+
+export function verifiedCallerRevokedEmail(params: {
+  tenantName?: string;
+  phoneNumber: string;
+  friendlyName?: string | null;
+  trustedCallersUrl: string;
+  detail: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const label = params.friendlyName
+    ? `${params.friendlyName} (${params.phoneNumber})`
+    : params.phoneNumber;
+  const subject = `Verified caller ${params.phoneNumber} was revoked by Twilio`;
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>Twilio no longer reports <strong>${label}</strong> as a verified outbound caller for <strong>${org}</strong>. Outbound campaigns dialing from this number will start being attested at level <strong>C</strong> — carriers may flag those calls as spam — until the number is re-verified.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>Why we caught this</strong></p>
+      <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${params.detail}</p>
+    </div>
+    <p>Open Trusted Callers to either re-verify the number with Twilio or rotate the campaign onto a fresh, verified number:</p>
+    <p><a href="${params.trustedCallersUrl}" class="btn">Open Trusted Callers</a></p>
+    <p class="muted">You won't get another email about this caller for 7 days, even if it remains revoked.</p>
+  `);
+
+  const text = `${subject}\n\n` +
+    `Twilio no longer reports ${label} as a verified outbound caller for ${org}. ` +
+    `Outbound campaigns will fall back to level-C attestation until the number is re-verified.\n\n` +
+    `Reason: ${params.detail}\n\n` +
+    `Re-verify: ${params.trustedCallersUrl}\n\n` +
+    `You won't get another email about this caller for 7 days.`;
+
+  return { subject, html, text };
+}
+
 export function deletionExecutedEmail(params: {
   tenantName?: string;
   executedAt: string;

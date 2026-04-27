@@ -18,6 +18,12 @@ import EmptyState from '../components/EmptyState';
 
 type CallerStatus = 'pending' | 'verified' | 'failed' | 'rotated';
 type AttestationLevel = 'A' | 'B' | 'C';
+type CallerHealthStatus =
+  | 'healthy'
+  | 'expiring_soon'
+  | 'expired'
+  | 'revoked'
+  | 'unknown';
 
 interface TrustedCaller {
   id: string;
@@ -37,6 +43,11 @@ interface TrustedCaller {
   rotatedToId: string | null;
   registeredByUserId: string | null;
   notes: string | null;
+  expiresAt: string | null;
+  lastHealthCheckAt: string | null;
+  lastHealthStatus: CallerHealthStatus | null;
+  lastHealthMessage: string | null;
+  expiryAlertSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +70,102 @@ const STATUS_STYLES: Record<CallerStatus, { label: string; color: string; Icon: 
   failed: { label: 'Failed', color: 'bg-danger/10 text-danger', Icon: ShieldAlert },
   rotated: { label: 'Rotated', color: 'bg-text-muted/10 text-text-muted', Icon: RotateCw },
 };
+
+/**
+ * Compute the human-readable expiry badge for a caller. Returns `null` when
+ * we have nothing useful to render — either because the row is not in the
+ * `verified` lifecycle state (badge would be misleading) or because the
+ * weekly health scheduler hasn't recorded any data for it yet.
+ *
+ * Color states:
+ *   - red    → revoked or already expired (carriers will downgrade)
+ *   - amber  → expiring within EXPIRING_SOON_THRESHOLD_DAYS (14 days)
+ *   - green  → healthy with a known `expiresAt` date in the future
+ *   - muted  → unknown status (Twilio creds missing, transient error)
+ *
+ * Returning a tuple keeps the rendering site tiny and the test surface flat.
+ */
+function expiryBadge(caller: TrustedCaller): {
+  label: string;
+  className: string;
+  Icon: typeof Clock;
+  title: string;
+} | null {
+  if (caller.status !== 'verified') return null;
+
+  const status = caller.lastHealthStatus;
+  if (!status) return null;
+
+  const detail = caller.lastHealthMessage ?? '';
+
+  if (status === 'revoked') {
+    return {
+      label: 'Revoked',
+      className: 'bg-danger/10 text-danger',
+      Icon: ShieldAlert,
+      title: detail || 'Twilio no longer reports this caller as verified.',
+    };
+  }
+  if (status === 'expired') {
+    return {
+      label: 'Expired',
+      className: 'bg-danger/10 text-danger',
+      Icon: Clock,
+      title:
+        detail ||
+        (caller.expiresAt
+          ? `Expired ${new Date(caller.expiresAt).toLocaleString()}`
+          : 'Carrier attestation has expired.'),
+    };
+  }
+
+  // Compute days remaining if we have an expiresAt — covers both
+  // `expiring_soon` (always within 14 days) and `healthy` (only if the
+  // server recorded an explicit `valid_until`).
+  const daysRemaining = caller.expiresAt
+    ? Math.max(
+        0,
+        Math.ceil((new Date(caller.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+      )
+    : null;
+
+  if (status === 'expiring_soon') {
+    const label = daysRemaining !== null ? `Expires in ${daysRemaining}d` : 'Expiring soon';
+    return {
+      label,
+      className: 'bg-warning/10 text-warning',
+      Icon: Clock,
+      title:
+        detail ||
+        (caller.expiresAt
+          ? `Expires ${new Date(caller.expiresAt).toLocaleString()}`
+          : 'Re-register before attestation lapses.'),
+    };
+  }
+
+  if (status === 'healthy' && daysRemaining !== null) {
+    return {
+      label: `Expires in ${daysRemaining}d`,
+      className: 'bg-success/10 text-success',
+      Icon: ShieldCheck,
+      title: caller.expiresAt
+        ? `Expires ${new Date(caller.expiresAt).toLocaleString()}`
+        : 'Healthy.',
+    };
+  }
+
+  if (status === 'unknown') {
+    return {
+      label: 'Unknown',
+      className: 'bg-text-muted/10 text-text-muted',
+      Icon: ShieldQuestion,
+      title: detail || 'Health check did not run — Twilio credentials may be unset.',
+    };
+  }
+
+  // status === 'healthy' with no expiresAt: nothing actionable to surface.
+  return null;
+}
 
 function formatPhone(e164: string): string {
   const cleaned = e164.replace(/[^\d+]/g, '');
@@ -537,6 +644,7 @@ export default function TrustedCallers() {
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-left">Attestation</th>
                 <th className="px-4 py-3 text-left">Trust Hub</th>
+                <th className="px-4 py-3 text-left">Health</th>
                 <th className="px-4 py-3 text-left">Verified At</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -571,6 +679,23 @@ export default function TrustedCallers() {
                       ) : (
                         <span className="text-text-muted text-xs">Not registered</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const badge = expiryBadge(caller);
+                        if (!badge) {
+                          return <span className="text-text-muted text-xs">—</span>;
+                        }
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${badge.className}`}
+                            title={badge.title}
+                          >
+                            <badge.Icon className="h-3 w-3" />
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-text-muted text-xs">
                       {caller.verifiedAt ? new Date(caller.verifiedAt).toLocaleString() : '—'}

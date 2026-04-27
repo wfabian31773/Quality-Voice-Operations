@@ -48,6 +48,9 @@ export function categoryForNotificationType(type: string | null | undefined): No
   if (t === 'call') return 'call';
   if (t === 'integration') return 'integration';
   if (t === 'integration_recovery') return 'integration_recovery';
+  // Verified-caller expiry / revocation alerts share the integration
+  // toggle — they're both "outbound infrastructure broke, go reconnect".
+  if (t === 'trusted_caller_expiry' || t === 'trusted_caller_revoked') return 'integration';
   if (t === 'integration_sms' || t === 'sms') return 'sms';
   if (t === 'campaign') return null; // not yet user-toggleable
   if (t === 'escalation') return 'escalation';
