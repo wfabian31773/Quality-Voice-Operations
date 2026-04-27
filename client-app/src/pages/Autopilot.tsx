@@ -8,6 +8,8 @@ import {
   Bell, Settings2, Activity, Eye, ThumbsUp, ThumbsDown, Trash2,
   RefreshCw, Target, Sparkles, ArrowRight, Info, FileText, Gauge,
 } from 'lucide-react';
+import TourLauncher from '../components/TourLauncher';
+import { autopilotTour } from '../components/tours';
 
 interface DashboardSummary {
   totalInsights: number;
@@ -254,11 +256,12 @@ export default function Autopilot() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-tour="autopilot-header">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <Brain className="h-6 w-6 text-primary" />
             AI Business Autopilot
+            <TourLauncher tourId="autopilot" steps={autopilotTour} />
           </h1>
           <p className="text-sm text-text-secondary mt-1">
             Proactive intelligence that detects issues, recommends actions, and optimizes your operations
@@ -267,6 +270,7 @@ export default function Autopilot() {
         <button
           onClick={() => scanMutation.mutate()}
           disabled={scanMutation.isPending}
+          data-tour="autopilot-run-scan"
           className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
         >
           {scanMutation.isPending ? (
@@ -278,7 +282,7 @@ export default function Autopilot() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" data-tour="autopilot-summary">
         <SummaryCard
           icon={Eye}
           label="Active Insights"
@@ -312,7 +316,7 @@ export default function Autopilot() {
         />
       </div>
 
-      <div className="border-b border-border">
+      <div className="border-b border-border" data-tour="autopilot-tabs">
         <div className="flex gap-0 overflow-x-auto">
           {tabs.map((t) => (
             <button

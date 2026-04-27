@@ -24,6 +24,7 @@ import CommandPalette from './CommandPalette';
 import HelpWidget from './HelpWidget';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import ProductTour, { getTourCompleted } from './ProductTour';
+import { dashboardTour } from './tours';
 
 export interface NavItem {
   to: string;
@@ -101,11 +102,19 @@ export default function TenantLayout() {
   }, []);
 
   useEffect(() => {
-    if (needsOnboarding === false && !getTourCompleted()) {
+    // Only auto-launch the dashboard tour when the user is actually on the
+    // dashboard. Without this gate, a brand-new tenant who lands on /autopilot
+    // (or any other surface with its own tour) would have the dashboard tour
+    // pop open over the page-specific tour and yank them back to /dashboard.
+    if (
+      needsOnboarding === false &&
+      !getTourCompleted() &&
+      location.pathname === '/dashboard'
+    ) {
       const t = setTimeout(() => setTourOpen(true), 1500);
       return () => clearTimeout(t);
     }
-  }, [needsOnboarding]);
+  }, [needsOnboarding, location.pathname]);
 
   useEffect(() => {
     if (user?.isPlatformAdmin) {
@@ -324,7 +333,12 @@ export default function TenantLayout() {
 
       <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
-      <ProductTour active={tourOpen} onClose={() => setTourOpen(false)} />
+      <ProductTour
+        active={tourOpen}
+        onClose={() => setTourOpen(false)}
+        steps={dashboardTour}
+        tourId="dashboard"
+      />
     </div>
   );
 }

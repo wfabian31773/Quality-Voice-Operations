@@ -5,6 +5,8 @@ import {
   Layers, Zap, AlertTriangle, CheckCircle, ArrowUpRight, ArrowDownRight,
   RefreshCw, Trash2, Eye, Activity, DollarSign, Users, PhoneCall,
 } from 'lucide-react';
+import TourLauncher from '../components/TourLauncher';
+import { digitalTwinTour } from '../components/tours';
 
 interface DigitalTwinModel {
   id: string;
@@ -279,16 +281,20 @@ export default function DigitalTwin() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-tour="twin-header">
         <div className="flex items-center gap-3">
           <Cpu className="w-7 h-7 text-purple-500" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Digital Twin</h1>
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+              Digital Twin
+              <TourLauncher tourId="digital-twin" steps={digitalTwinTour} />
+            </h1>
             <p className="text-sm text-text-secondary">Simulate, forecast, and validate operational changes</p>
           </div>
         </div>
         <button
           onClick={() => setShowCreateModel(true)}
+          data-tour="twin-new-model"
           className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
         >
           <Plus className="w-4 h-4" /> New Model
@@ -308,7 +314,7 @@ export default function DigitalTwin() {
 
           {selectedModel && (
             <>
-              <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
+              <div className="flex gap-1 bg-surface-hover rounded-lg p-1" data-tour="twin-tabs">
                 {(['overview', 'scenarios', 'results', 'forecasts'] as TabType[]).map(t => (
                   <button
                     key={t}

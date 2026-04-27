@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type CSSProperties } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 
@@ -10,59 +10,37 @@ export interface TourStep {
   placement?: 'top' | 'bottom' | 'left' | 'right';
 }
 
-const STEPS: TourStep[] = [
-  {
-    selector: '[data-tour="agents"]',
-    title: 'Build voice agents',
-    description: 'Create and tune AI voice agents in minutes. Each agent can answer calls, follow workflows, and use tools.',
-    path: '/dashboard',
-    placement: 'right',
-  },
-  {
-    selector: '[data-tour="campaigns"]',
-    title: 'Run outbound campaigns',
-    description: 'Upload contact lists and launch outbound calls — appointment reminders, follow-ups, win-back, and more.',
-    path: '/dashboard',
-    placement: 'right',
-  },
-  {
-    selector: '[data-tour="conversations"]',
-    title: 'Review every call',
-    description: 'Listen to recordings, read transcripts, see outcomes, and follow up on escalations from one place.',
-    path: '/dashboard',
-    placement: 'right',
-  },
-  {
-    selector: '[data-tour="analytics"]',
-    title: 'Measure what matters',
-    description: 'Calls handled, automation rate, revenue attributed, and tool reliability — all live from your tenant data.',
-    path: '/dashboard',
-    placement: 'right',
-  },
-  {
-    selector: '[data-tour="help"]',
-    title: 'Help when you need it',
-    description: 'Press ⌘K for the command palette, or click here for docs, shortcuts, support, and what\'s new.',
-    path: '/dashboard',
-    placement: 'left',
-  },
-];
+const STORAGE_PREFIX = 'qvo_tour_completed.';
+const LEGACY_DASHBOARD_KEY = 'qvo_product_tour_v1';
 
-const STORAGE_KEY = 'qvo_product_tour_v1';
+function storageKeyFor(tourId: string): string {
+  // Back-compat: the original dashboard tour shipped with this fixed key.
+  // Preserve it so users who already completed it stay completed after the
+  // refactor.
+  if (tourId === 'dashboard') return LEGACY_DASHBOARD_KEY;
+  return `${STORAGE_PREFIX}${tourId}`;
+}
 
 interface ProductTourProps {
   active: boolean;
   onClose: () => void;
+  steps: TourStep[];
+  tourId: string;
 }
 
-export default function ProductTour({ active, onClose }: ProductTourProps) {
+export default function ProductTour({ active, onClose, steps, tourId }: ProductTourProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const rafRef = useRef<number>(0);
 
-  const current = STEPS[step];
+  // Reset to first step whenever the tour is (re)opened so replays start clean.
+  useEffect(() => {
+    if (active) setStep(0);
+  }, [active]);
+
+  const current = steps[step];
 
   useEffect(() => {
     if (!active) return;
@@ -94,7 +72,7 @@ export default function ProductTour({ active, onClose }: ProductTourProps) {
   if (!active || !current) return null;
 
   const finish = () => {
-    try { localStorage.setItem(STORAGE_KEY, 'completed'); } catch {}
+    try { localStorage.setItem(storageKeyFor(tourId), 'completed'); } catch {}
     setStep(0);
     onClose();
   };
@@ -142,12 +120,17 @@ export default function ProductTour({ active, onClose }: ProductTourProps) {
       <div
         className="absolute pointer-events-auto bg-surface border border-border rounded-xl shadow-2xl p-4 w-[320px] max-w-[calc(100vw-2rem)]"
         style={tooltipPos}
+        data-testid={`product-tour-${tourId}`}
       >
         <div className="flex items-start justify-between mb-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
-            Step {step + 1} of {STEPS.length}
+            Step {step + 1} of {steps.length}
           </span>
-          <button onClick={finish} className="text-text-muted hover:text-text-primary">
+          <button
+            onClick={finish}
+            className="text-text-muted hover:text-text-primary"
+            aria-label="Close tour"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -162,16 +145,16 @@ export default function ProductTour({ active, onClose }: ProductTourProps) {
             <ChevronLeft className="h-3 w-3" /> Back
           </button>
           <div className="flex gap-1">
-            {STEPS.map((_, i) => (
+            {steps.map((_, i) => (
               <span
                 key={i}
                 className={`h-1 w-4 rounded-full transition-colors ${i === step ? 'bg-primary' : 'bg-border'}`}
               />
             ))}
           </div>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <button
-              onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+              onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))}
               className="text-xs font-medium text-primary hover:text-primary-hover inline-flex items-center gap-1"
             >
               Next <ChevronRight className="h-3 w-3" />
@@ -190,7 +173,7 @@ export default function ProductTour({ active, onClose }: ProductTourProps) {
   );
 }
 
-function computeTooltipPosition(rect: DOMRect | null, placement: 'top' | 'bottom' | 'left' | 'right'): React.CSSProperties {
+function computeTooltipPosition(rect: DOMRect | null, placement: 'top' | 'bottom' | 'left' | 'right'): CSSProperties {
   if (!rect) {
     return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
   }
@@ -222,10 +205,10 @@ function computeTooltipPosition(rect: DOMRect | null, placement: 'top' | 'bottom
   return { top, left };
 }
 
-export function getTourCompleted(): boolean {
-  try { return localStorage.getItem(STORAGE_KEY) === 'completed'; } catch { return false; }
+export function getTourCompleted(tourId: string = 'dashboard'): boolean {
+  try { return localStorage.getItem(storageKeyFor(tourId)) === 'completed'; } catch { return false; }
 }
 
-export function resetTour() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+export function resetTour(tourId: string = 'dashboard') {
+  try { localStorage.removeItem(storageKeyFor(tourId)); } catch {}
 }

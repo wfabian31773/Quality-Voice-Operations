@@ -6,6 +6,8 @@ import {
   CheckCircle2, XCircle, Loader2, Shield, ShieldCheck, ChevronDown,
   ChevronUp, Sparkles, ArrowUpRight, ArrowDownRight, Minus, Info,
 } from 'lucide-react';
+import TourLauncher from '../components/TourLauncher';
+import { ginTour } from '../components/tours';
 
 interface BenchmarkComparison {
   metricName: string;
@@ -170,18 +172,19 @@ export default function GlobalIntelligence() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-tour="gin-header">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <Globe className="h-6 w-6 text-primary" />
             Global Intelligence Network
+            <TourLauncher tourId="gin" steps={ginTour} />
           </h1>
           <p className="text-sm text-text-secondary mt-1">
             Anonymized cross-platform insights and industry benchmarks
           </p>
         </div>
         {participation && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-tour="gin-participation">
             {participation.ginParticipation ? (
               <span className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400 font-medium bg-green-100 dark:bg-green-900/30 px-3 py-1.5 rounded-lg">
                 <ShieldCheck className="h-4 w-4" />
@@ -197,7 +200,7 @@ export default function GlobalIntelligence() {
         )}
       </div>
 
-      <div className="border-b border-border">
+      <div className="border-b border-border" data-tour="gin-tabs">
         <div className="flex gap-0">
           {([
             { key: 'benchmarks', label: 'Industry Benchmarks', icon: BarChart3 },
