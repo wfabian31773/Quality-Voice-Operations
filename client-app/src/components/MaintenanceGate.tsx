@@ -19,25 +19,18 @@ interface MaintenanceState {
  *   landed in an unauthenticated tab) had no way back in: `/login` itself
  *   was blocked, and so was `/admin/*`. The whole point of maintenance mode
  *   is to give operators a way to keep working ON the system while users
- *   are kept OUT, so we whitelist:
+ *   are kept OUT, so we whitelist exactly the three paths called out in
+ *   BL-013:
  *
- *     - `/login`             — operators must be able to sign in
- *     - `/healthz`           — uptime/health probes never get a 503 SPA
- *     - `/admin/*`           — the entire platform-admin console
- *     - `/accept-invite`     — invited operators can still finish onboarding
- *     - `/auth/verify-email` — email-verification deep links keep working
+ *     - `/login`   — operators must be able to sign in
+ *     - `/healthz` — uptime/health probes never get a 503 SPA
+ *     - `/admin/*` — the entire platform-admin console
  *
  *   Anyone (logged-in or not) who lands on these paths bypasses the gate.
  *   That's safe because the platform-admin guard / login form themselves
  *   still enforce auth.
  */
-const WHITELISTED_PREFIXES = [
-  '/login',
-  '/healthz',
-  '/admin',
-  '/accept-invite',
-  '/auth/verify-email',
-];
+const WHITELISTED_PREFIXES = ['/login', '/healthz', '/admin'];
 
 function isWhitelisted(pathname: string): boolean {
   return WHITELISTED_PREFIXES.some(

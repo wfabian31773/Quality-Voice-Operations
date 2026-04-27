@@ -228,12 +228,19 @@ describe('MaintenanceGate (BL-013)', () => {
       expect(screen.queryByText(/QVO is briefly offline/i)).toBeNull();
     });
 
-    it('lets a tenant user reach /accept-invite/abc (whitelisted prefix)', async () => {
+    it('does NOT whitelist paths outside BL-013 scope (e.g. /accept-invite)', async () => {
+      // Defensive: BL-013 only mandates /login, /healthz, /admin/*.
+      // Other auth flows like /accept-invite stay gated, since broadening
+      // the bypass surface beyond the explicit task scope was rejected in
+      // code review.
       loginAs({ isPlatformAdmin: false });
 
       await renderAt('/accept-invite/abc-123');
 
-      await waitFor(() => expect(screen.getByTestId('protected')).toBeTruthy());
+      await waitFor(() =>
+        expect(screen.getByText(/QVO is briefly offline/i)).toBeTruthy(),
+      );
+      expect(screen.queryByTestId('protected')).toBeNull();
     });
 
     it('lets ANY user reach /admin/* (whitelisted) so admins can recover access', async () => {
