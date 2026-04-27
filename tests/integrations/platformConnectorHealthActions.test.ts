@@ -15,6 +15,8 @@ import { randomUUID } from 'crypto';
 const ensureFreshOAuthTokenMock = vi.fn<(config: unknown, opts?: { force?: boolean }) => Promise<void>>();
 const isRefreshableProviderMock = vi.fn<(provider: string) => boolean>();
 const getConnectorConfigMock = vi.fn<(tenantId: string, type: string, provider: string) => Promise<unknown>>();
+const listConnectorTokenHealthMock = vi.fn<(providers: string[]) => Promise<Array<Record<string, unknown>>>>();
+const getRefreshableProvidersMock = vi.fn<() => string[]>();
 const dispatchConnectorAuthAlertMock = vi.fn<(params: Record<string, unknown>) => Promise<{
   status: 'sent' | 'throttled' | 'no_recipients' | 'skipped';
   emailedRecipients: number;
@@ -36,6 +38,11 @@ vi.mock('../../platform/integrations/connectors', () => ({
   isRefreshableProvider: (provider: string) => isRefreshableProviderMock(provider),
   getConnectorConfig: (tenantId: string, type: string, provider: string) =>
     getConnectorConfigMock(tenantId, type, provider),
+  listConnectorTokenHealth: (providers: string[]) => listConnectorTokenHealthMock(providers),
+}));
+
+vi.mock('../../platform/integrations/connectors/tokenRefresh', () => ({
+  getRefreshableProviders: () => getRefreshableProvidersMock(),
 }));
 
 vi.mock('../../platform/integrations/connectors/ConnectorAuthAlertScheduler', () => ({
@@ -79,6 +86,10 @@ beforeEach(() => {
   isRefreshableProviderMock.mockReturnValue(true);
   getConnectorConfigMock.mockReset();
   getConnectorConfigMock.mockResolvedValue({ tenantId: TENANT_ID, provider: 'hubspot' });
+  listConnectorTokenHealthMock.mockReset();
+  listConnectorTokenHealthMock.mockResolvedValue([]);
+  getRefreshableProvidersMock.mockReset();
+  getRefreshableProvidersMock.mockReturnValue(['hubspot', 'pipedrive']);
   dispatchConnectorAuthAlertMock.mockReset();
   writeAuditLogMock.mockReset();
   writeAuditLogMock.mockResolvedValue(undefined);
@@ -241,5 +252,175 @@ describe('POST /platform/connector-health/integrations/:tenantId/:integrationId/
     expect(res.body.ok).toBe(false);
     expect(res.body.error).toMatch(/SMTP exploded/);
     expect(writeAuditLogMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /platform/connector-health (token health surface)', () => {
+  const FIFTEEN_MIN = 15 * 60 * 1000;
+
+  function withGetClient(connectorRows: Array<Record<string, unknown>>) {
+    // The GET handler issues 3 sequential queries: connectors, summary,
+    // events. We satisfy them in order so the response body is fully
+    // populated for the token-health assertions below.
+    let call = 0;
+    withPrivilegedClientMock.mockImplementation(async (fn) =>
+      fn({
+        query: async () => {
+          call += 1;
+          if (call === 1) return { rows: connectorRows };
+          if (call === 2) {
+            return {
+              rows: [{
+                needs_reconnect: '0',
+                sync_error: '0',
+                healthy: String(connectorRows.length),
+                total: String(connectorRows.length),
+                affected_tenants: '0',
+              }],
+            };
+          }
+          return { rows: [] };
+        },
+      }),
+    );
+  }
+
+  it('returns tokenHealth with computed status and stale flags', async () => {
+    withGetClient([]);
+    const now = Date.now();
+    listConnectorTokenHealthMock.mockResolvedValue([
+      {
+        // Healthy: token issued recently and expires far in the future.
+        tenantId: 't-healthy',
+        tenantName: 'Healthy Tenant',
+        tenantSlug: 'healthy',
+        integrationId: 'int-healthy',
+        integrationType: 'crm',
+        provider: 'hubspot',
+        name: 'HubSpot',
+        isEnabled: true,
+        lastSyncStatus: 'success',
+        lastSyncAt: new Date(now - 60_000).toISOString(),
+        lastSyncErrorAt: null,
+        tokenIssuedAt: now - 30 * 60 * 1000,
+        tokenExpiresAt: now + 7 * 24 * 60 * 60 * 1000,
+        tokenDecryptFailed: false,
+      },
+      {
+        // Expiring: less than 24h to go but still valid.
+        tenantId: 't-expiring',
+        tenantName: 'Expiring Soon',
+        tenantSlug: 'expiring',
+        integrationId: 'int-expiring',
+        integrationType: 'crm',
+        provider: 'pipedrive',
+        name: 'Pipedrive',
+        isEnabled: true,
+        lastSyncStatus: 'success',
+        lastSyncAt: null,
+        lastSyncErrorAt: null,
+        tokenIssuedAt: now - 23 * 60 * 60 * 1000,
+        tokenExpiresAt: now + 30 * 60 * 1000,
+        tokenDecryptFailed: false,
+      },
+      {
+        // Expired and stale: been past expiry for 5 cycles → stale.
+        tenantId: 't-stale-expired',
+        tenantName: 'Stale Expired',
+        tenantSlug: 'stale-exp',
+        integrationId: 'int-stale-exp',
+        integrationType: 'crm',
+        provider: 'hubspot',
+        name: null,
+        isEnabled: true,
+        lastSyncStatus: 'success',
+        lastSyncAt: null,
+        lastSyncErrorAt: null,
+        tokenIssuedAt: null,
+        tokenExpiresAt: now - 5 * FIFTEEN_MIN,
+        tokenDecryptFailed: false,
+      },
+      {
+        // Needs reconnect, error stamped >2 cycles ago → stale.
+        tenantId: 't-needs-reconnect',
+        tenantName: 'Needs Reconnect',
+        tenantSlug: 'reconnect',
+        integrationId: 'int-needs-reconnect',
+        integrationType: 'crm',
+        provider: 'hubspot',
+        name: 'HubSpot',
+        isEnabled: true,
+        lastSyncStatus: 'needs_reconnect',
+        lastSyncAt: null,
+        lastSyncErrorAt: new Date(now - 3 * FIFTEEN_MIN).toISOString(),
+        tokenIssuedAt: now - 26 * 60 * 60 * 1000,
+        tokenExpiresAt: now - 60_000,
+        tokenDecryptFailed: false,
+      },
+      {
+        // Unknown: no expires_at recorded.
+        tenantId: 't-unknown',
+        tenantName: 'No Token',
+        tenantSlug: 'no-token',
+        integrationId: 'int-unknown',
+        integrationType: 'crm',
+        provider: 'hubspot',
+        name: 'HubSpot',
+        isEnabled: true,
+        lastSyncStatus: 'success',
+        lastSyncAt: null,
+        lastSyncErrorAt: null,
+        tokenIssuedAt: null,
+        tokenExpiresAt: null,
+        tokenDecryptFailed: false,
+      },
+    ]);
+
+    const app = await buildApp();
+    const res = await request(app).get('/api/platform/connector-health');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.tokenHealth)).toBe(true);
+    expect(res.body.tokenHealthRefreshIntervalMs).toBe(FIFTEEN_MIN);
+    expect(res.body.tokenHealthExpiringHorizonMs).toBe(24 * 60 * 60 * 1000);
+    expect(res.body.tokenHealthStaleCycleThreshold).toBe(2);
+    expect(getRefreshableProvidersMock).toHaveBeenCalled();
+    expect(listConnectorTokenHealthMock).toHaveBeenCalledWith(['hubspot', 'pipedrive']);
+
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const r of res.body.tokenHealth as Array<Record<string, unknown>>) {
+      byId.set(r.integrationId as string, r);
+    }
+
+    expect(byId.get('int-healthy')?.status).toBe('healthy');
+    expect(byId.get('int-healthy')?.stale).toBe(false);
+
+    expect(byId.get('int-expiring')?.status).toBe('expiring');
+    expect(byId.get('int-expiring')?.stale).toBe(false);
+
+    const staleExpired = byId.get('int-stale-exp')!;
+    expect(staleExpired.status).toBe('expired');
+    expect(staleExpired.stale).toBe(true);
+    expect(staleExpired.expiresInMs as number).toBeLessThan(0);
+
+    const needsReconnect = byId.get('int-needs-reconnect')!;
+    expect(needsReconnect.status).toBe('needs_reconnect');
+    expect(needsReconnect.stale).toBe(true);
+
+    const unknown = byId.get('int-unknown')!;
+    expect(unknown.status).toBe('unknown');
+    expect(unknown.expiresInMs).toBeNull();
+    expect(unknown.cyclesSinceRefresh).toBeNull();
+  });
+
+  it('falls back to an empty tokenHealth array when the snapshot helper throws', async () => {
+    withGetClient([]);
+    listConnectorTokenHealthMock.mockRejectedValue(new Error('decrypt blew up'));
+    const app = await buildApp();
+    const res = await request(app).get('/api/platform/connector-health');
+    expect(res.status).toBe(200);
+    expect(res.body.tokenHealth).toEqual([]);
+    // The rest of the payload still comes through.
+    expect(res.body.summary).toBeDefined();
+    expect(res.body.connectors).toEqual([]);
   });
 });

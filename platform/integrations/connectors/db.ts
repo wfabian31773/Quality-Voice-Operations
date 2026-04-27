@@ -724,6 +724,167 @@ export async function listRefreshableConnectorConfigs(
   return results;
 }
 
+export interface ConnectorTokenHealthRow {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string;
+  integrationType: string;
+  provider: string;
+  name: string | null;
+  isEnabled: boolean;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  lastSyncErrorAt: string | null;
+  /** Epoch milliseconds when the current access_token was minted, or null when unknown. */
+  tokenIssuedAt: number | null;
+  /** Epoch milliseconds when the current access_token expires, or null when unknown. */
+  tokenExpiresAt: number | null;
+  /** True when the token credentials row exists but failed to decrypt — surface so ops can investigate. */
+  tokenDecryptFailed: boolean;
+}
+
+/**
+ * Cross-tenant snapshot of OAuth token freshness for connectors whose
+ * provider supports refresh. Decrypts only the two tracking fields we need
+ * (`token_issued_at`, `token_expires_at`) — never the access/refresh tokens
+ * themselves — so we can render "last refresh" / "expires in" in the
+ * Platform Admin Connector Health panel without hauling sensitive secrets
+ * across the wire.
+ *
+ * Mirrors the per-tenant decrypt fan-out from `listRefreshableConnectorConfigs`
+ * but includes `needs_reconnect` rows so ops can see the wedged ones too.
+ */
+export async function listConnectorTokenHealth(
+  providers: string[],
+): Promise<ConnectorTokenHealthRow[]> {
+  if (providers.length === 0) return [];
+
+  const pool = getPlatformPool();
+  const { rows: integRows } = await pool.query(
+    `SELECT i.tenant_id, i.id, i.integration_type, i.provider, i.name,
+            i.is_enabled, i.last_sync_status, i.last_sync_at, i.last_sync_error_at,
+            t.name AS tenant_name, t.slug AS tenant_slug
+       FROM integrations i
+       LEFT JOIN tenants t ON t.id = i.tenant_id
+      WHERE i.is_enabled = TRUE
+        AND i.provider = ANY($1::text[])`,
+    [providers],
+  );
+
+  if (integRows.length === 0) return [];
+
+  const byTenant = new Map<string, Record<string, unknown>[]>();
+  for (const row of integRows) {
+    const tid = row.tenant_id as string;
+    const arr = byTenant.get(tid) ?? [];
+    arr.push(row);
+    byTenant.set(tid, arr);
+  }
+
+  const TRACKING_KEYS = new Set(['token_issued_at', 'token_expires_at']);
+  const results: ConnectorTokenHealthRow[] = [];
+
+  for (const [tenantId, integrations] of byTenant) {
+    try {
+      const tenantRows = await withTenant(tenantId, async (client) => {
+        let envelopeDecrypt: ((ciphertext: string) => Promise<string>) | null = null;
+        try {
+          const { decryptSensitiveField } = await import('../../security/FieldEncryption');
+          envelopeDecrypt = (ciphertext: string) => decryptSensitiveField(tenantId, ciphertext);
+        } catch {
+          // Envelope decryption not available
+        }
+
+        const integrationIds = integrations.map((i) => i.id as string);
+        const { rows: configRows } = await client.query(
+          `SELECT integration_id, config_key, encrypted_value
+             FROM connector_configs
+            WHERE tenant_id = $1
+              AND integration_id = ANY($2::uuid[])
+              AND config_key = ANY($3::text[])`,
+          [tenantId, integrationIds, Array.from(TRACKING_KEYS)],
+        );
+
+        const tokenStateByIntegration = new Map<
+          string,
+          { issuedAt: number | null; expiresAt: number | null; decryptFailed: boolean }
+        >();
+        for (const row of configRows) {
+          const integrationId = row.integration_id as string;
+          const key = row.config_key as string;
+          const val = row.encrypted_value as string | null;
+          const state = tokenStateByIntegration.get(integrationId)
+            ?? { issuedAt: null as number | null, expiresAt: null as number | null, decryptFailed: false };
+          if (!val) {
+            tokenStateByIntegration.set(integrationId, state);
+            continue;
+          }
+          let decrypted: string;
+          try {
+            if (isEnvelopeEncrypted(val) && envelopeDecrypt) {
+              decrypted = await envelopeDecrypt(val);
+            } else {
+              decrypted = decryptValue(val);
+            }
+          } catch {
+            logger.warn('Failed to decrypt connector token tracking field', {
+              tenantId,
+              key,
+              integrationId,
+            });
+            state.decryptFailed = true;
+            tokenStateByIntegration.set(integrationId, state);
+            continue;
+          }
+          const num = Number(decrypted);
+          if (!Number.isFinite(num)) {
+            tokenStateByIntegration.set(integrationId, state);
+            continue;
+          }
+          if (key === 'token_issued_at') state.issuedAt = num;
+          if (key === 'token_expires_at') state.expiresAt = num;
+          tokenStateByIntegration.set(integrationId, state);
+        }
+
+        return integrations.map((integration) => {
+          const integrationId = integration.id as string;
+          const state = tokenStateByIntegration.get(integrationId)
+            ?? { issuedAt: null, expiresAt: null, decryptFailed: false };
+          return {
+            tenantId,
+            tenantName: (integration.tenant_name as string) ?? null,
+            tenantSlug: (integration.tenant_slug as string) ?? null,
+            integrationId,
+            integrationType: integration.integration_type as string,
+            provider: integration.provider as string,
+            name: (integration.name as string) ?? null,
+            isEnabled: integration.is_enabled as boolean,
+            lastSyncStatus: (integration.last_sync_status as string) ?? null,
+            lastSyncAt: integration.last_sync_at
+              ? new Date(integration.last_sync_at as string).toISOString()
+              : null,
+            lastSyncErrorAt: integration.last_sync_error_at
+              ? new Date(integration.last_sync_error_at as string).toISOString()
+              : null,
+            tokenIssuedAt: state.issuedAt,
+            tokenExpiresAt: state.expiresAt,
+            tokenDecryptFailed: state.decryptFailed,
+          };
+        });
+      });
+      results.push(...tenantRows);
+    } catch (err) {
+      logger.warn('Failed to load connector token health for tenant', {
+        tenantId,
+        error: String(err),
+      });
+    }
+  }
+
+  return results;
+}
+
 /**
  * Resolve the scheduling provider chosen for a particular agent or phone
  * number. Phone-number selection wins over agent selection when both are

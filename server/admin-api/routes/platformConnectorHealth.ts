@@ -7,7 +7,9 @@ import {
   ensureFreshOAuthToken,
   isRefreshableProvider,
   getConnectorConfig,
+  listConnectorTokenHealth,
 } from '../../../platform/integrations/connectors';
+import { getRefreshableProviders } from '../../../platform/integrations/connectors/tokenRefresh';
 import { dispatchConnectorAuthAlert } from '../../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import type { ConnectorType } from '../../../platform/integrations/connectors/types';
@@ -45,6 +47,63 @@ interface RefreshFailureRow {
   provider: string | null;
   errorMessage: string | null;
   occurredAt: string;
+}
+
+type TokenHealthStatus = 'healthy' | 'expiring' | 'expired' | 'needs_reconnect' | 'unknown';
+
+interface TokenHealthRow {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string;
+  integrationType: string;
+  provider: string;
+  name: string | null;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  lastSyncErrorAt: string | null;
+  tokenIssuedAt: string | null;
+  tokenExpiresAt: string | null;
+  tokenDecryptFailed: boolean;
+  /** Status combining `needs_reconnect` with token freshness. */
+  status: TokenHealthStatus;
+  /** Milliseconds until the token expires (negative when expired). Null when unknown. */
+  expiresInMs: number | null;
+  /**
+   * Whole sweep cycles since the worker last successfully refreshed (or
+   * since the token expired, when no issued_at is available). Null when we
+   * cannot reason about the cycle count.
+   */
+  cyclesSinceRefresh: number | null;
+  /**
+   * True when the worker should have refreshed the token by now but
+   * hasn't — i.e. the token is expired or in needs_reconnect AND we have
+   * been past that point for >=2 sweep cycles. Surfaces wedged tokens.
+   */
+  stale: boolean;
+}
+
+// Mirror the scheduler's check interval so the UI can render
+// "X cycles since refresh" using the same yardstick the worker uses.
+// Kept locally (vs. exported from the scheduler) to avoid pulling the
+// scheduler module — and its setInterval side effects — into the route.
+const REFRESH_CYCLE_INTERVAL_MS = 15 * 60 * 1000;
+// Window inside which we treat a still-valid token as "expiring soon" for
+// the green/yellow/red badge. Matches the scheduler's refresh horizon.
+const TOKEN_EXPIRING_HORIZON_MS = 24 * 60 * 60 * 1000;
+// Number of sweep cycles past expiry before we badge a connector as
+// "stale" (worker keeps failing). 2 cycles ≈ 30min of missed refreshes.
+const STALE_CYCLE_THRESHOLD = 2;
+
+function computeTokenHealthStatus(
+  lastSyncStatus: string | null,
+  expiresInMs: number | null,
+): TokenHealthStatus {
+  if (lastSyncStatus === 'needs_reconnect') return 'needs_reconnect';
+  if (expiresInMs === null) return 'unknown';
+  if (expiresInMs <= 0) return 'expired';
+  if (expiresInMs <= TOKEN_EXPIRING_HORIZON_MS) return 'expiring';
+  return 'healthy';
 }
 
 /**
@@ -165,10 +224,83 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       };
     });
 
+    let tokenHealth: TokenHealthRow[] = [];
+    try {
+      const refreshableProviders = getRefreshableProviders();
+      const snapshots = await listConnectorTokenHealth(refreshableProviders);
+      const now = Date.now();
+      tokenHealth = snapshots.map((s) => {
+        const expiresInMs = s.tokenExpiresAt !== null ? s.tokenExpiresAt - now : null;
+        const status = computeTokenHealthStatus(s.lastSyncStatus, expiresInMs);
+
+        // "Cycles since refresh" prefers the worker's view (when did we
+        // last successfully mint a token), falling back to "how long has
+        // this token been expired" so we can still flag wedged connectors
+        // that never had an issued_at recorded.
+        let cyclesSinceRefresh: number | null = null;
+        if (s.tokenIssuedAt !== null) {
+          const ageMs = now - s.tokenIssuedAt;
+          cyclesSinceRefresh = Math.max(0, Math.floor(ageMs / REFRESH_CYCLE_INTERVAL_MS));
+        } else if (expiresInMs !== null && expiresInMs < 0) {
+          cyclesSinceRefresh = Math.floor(-expiresInMs / REFRESH_CYCLE_INTERVAL_MS);
+        }
+
+        // Stale = the worker should have rotated this token by now but
+        // hasn't. Captures both "expired & untouched" and
+        // "needs_reconnect & nothing has happened since".
+        let stale = false;
+        if (status === 'needs_reconnect') {
+          if (s.lastSyncErrorAt) {
+            const errAgeMs = now - Date.parse(s.lastSyncErrorAt);
+            if (
+              Number.isFinite(errAgeMs)
+              && errAgeMs >= STALE_CYCLE_THRESHOLD * REFRESH_CYCLE_INTERVAL_MS
+            ) {
+              stale = true;
+            }
+          }
+        } else if (status === 'expired') {
+          if (expiresInMs !== null && -expiresInMs >= STALE_CYCLE_THRESHOLD * REFRESH_CYCLE_INTERVAL_MS) {
+            stale = true;
+          }
+        }
+
+        return {
+          tenantId: s.tenantId,
+          tenantName: s.tenantName,
+          tenantSlug: s.tenantSlug,
+          integrationId: s.integrationId,
+          integrationType: s.integrationType,
+          provider: s.provider,
+          name: s.name,
+          lastSyncStatus: s.lastSyncStatus,
+          lastSyncAt: s.lastSyncAt,
+          lastSyncErrorAt: s.lastSyncErrorAt,
+          tokenIssuedAt: s.tokenIssuedAt !== null ? new Date(s.tokenIssuedAt).toISOString() : null,
+          tokenExpiresAt: s.tokenExpiresAt !== null ? new Date(s.tokenExpiresAt).toISOString() : null,
+          tokenDecryptFailed: s.tokenDecryptFailed,
+          status,
+          expiresInMs,
+          cyclesSinceRefresh,
+          stale,
+        };
+      });
+    } catch (err) {
+      // Token snapshot is best-effort. If decryption or DB access fails for
+      // the entire fan-out we still want to return the rest of the health
+      // payload so ops can keep triaging.
+      logger.warn('Failed to load token health snapshot', { error: String(err) });
+      tokenHealth = [];
+    }
+
     return res.json({
       connectors,
       recentRefreshFailures,
       summary,
+      tokenHealth,
+      tokenHealthRefreshIntervalMs: REFRESH_CYCLE_INTERVAL_MS,
+      tokenHealthExpiringHorizonMs: TOKEN_EXPIRING_HORIZON_MS,
+      tokenHealthStaleCycleThreshold: STALE_CYCLE_THRESHOLD,
       window: { sinceDays, eventsLimit },
     });
   } catch (err) {

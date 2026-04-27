@@ -16,6 +16,7 @@ import {
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
   AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
+  Clock, ArrowUpDown,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -685,6 +686,33 @@ interface ConnectorRefreshFailure {
   occurredAt: string;
 }
 
+type ConnectorTokenHealthStatus =
+  | 'healthy'
+  | 'expiring'
+  | 'expired'
+  | 'needs_reconnect'
+  | 'unknown';
+
+interface ConnectorTokenHealthRow {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string;
+  integrationType: string;
+  provider: string;
+  name: string | null;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  lastSyncErrorAt: string | null;
+  tokenIssuedAt: string | null;
+  tokenExpiresAt: string | null;
+  tokenDecryptFailed: boolean;
+  status: ConnectorTokenHealthStatus;
+  expiresInMs: number | null;
+  cyclesSinceRefresh: number | null;
+  stale: boolean;
+}
+
 interface ConnectorHealthResponse {
   connectors: ConnectorHealthRow[];
   recentRefreshFailures: ConnectorRefreshFailure[];
@@ -695,6 +723,10 @@ interface ConnectorHealthResponse {
     totalEnabled: number;
     affectedTenants: number;
   };
+  tokenHealth?: ConnectorTokenHealthRow[];
+  tokenHealthRefreshIntervalMs?: number;
+  tokenHealthExpiringHorizonMs?: number;
+  tokenHealthStaleCycleThreshold?: number;
   window: { sinceDays: number; eventsLimit: number };
 }
 
@@ -736,7 +768,16 @@ function ConnectorHealthPanel() {
     );
   }
 
-  const { connectors, recentRefreshFailures, summary, window } = data;
+  const {
+    connectors,
+    recentRefreshFailures,
+    summary,
+    window,
+    tokenHealth,
+    tokenHealthRefreshIntervalMs,
+    tokenHealthExpiringHorizonMs,
+    tokenHealthStaleCycleThreshold,
+  } = data;
   const reconnectConnectors = connectors.filter((c) => c.lastSyncStatus === 'needs_reconnect');
   const erroredConnectors = connectors.filter((c) => c.lastSyncStatus === 'error');
 
@@ -798,6 +839,13 @@ function ConnectorHealthPanel() {
         emptyText="No connectors are currently in a sync-error state."
         rows={erroredConnectors}
         accent="red"
+      />
+
+      <ConnectorTokenHealthPanel
+        rows={tokenHealth ?? []}
+        refreshIntervalMs={tokenHealthRefreshIntervalMs ?? 15 * 60 * 1000}
+        expiringHorizonMs={tokenHealthExpiringHorizonMs ?? 24 * 60 * 60 * 1000}
+        staleCycleThreshold={tokenHealthStaleCycleThreshold ?? 2}
       />
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -1070,6 +1118,281 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+function formatExpiresIn(ms: number | null): string {
+  if (ms === null) return 'unknown';
+  const abs = Math.abs(ms);
+  const min = Math.floor(abs / 60_000);
+  const hr = Math.floor(min / 60);
+  const days = Math.floor(hr / 24);
+  let label: string;
+  if (min < 1) label = 'less than a minute';
+  else if (min < 60) label = `${min}m`;
+  else if (hr < 24) label = `${hr}h ${min - hr * 60}m`;
+  else label = `${days}d ${hr - days * 24}h`;
+  return ms >= 0 ? `in ${label}` : `${label} ago`;
+}
+
+function tokenStatusBadgeClasses(status: ConnectorTokenHealthStatus): string {
+  switch (status) {
+    case 'healthy':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
+    case 'expiring':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+    case 'expired':
+    case 'needs_reconnect':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    default:
+      return 'bg-surface-secondary text-muted border border-border';
+  }
+}
+
+function tokenStatusLabel(status: ConnectorTokenHealthStatus): string {
+  switch (status) {
+    case 'healthy': return 'Healthy';
+    case 'expiring': return 'Expiring soon';
+    case 'expired': return 'Expired';
+    case 'needs_reconnect': return 'Reconnect needed';
+    default: return 'Unknown';
+  }
+}
+
+type TokenHealthSortKey = 'expiring' | 'lastRefresh' | 'tenant';
+type TokenHealthFilter = 'all' | 'attention' | 'expiring' | 'stale' | 'healthy';
+
+function ConnectorTokenHealthPanel({
+  rows,
+  refreshIntervalMs,
+  expiringHorizonMs,
+  staleCycleThreshold,
+}: {
+  rows: ConnectorTokenHealthRow[];
+  refreshIntervalMs: number;
+  expiringHorizonMs: number;
+  staleCycleThreshold: number;
+}) {
+  const [sortKey, setSortKey] = useState<TokenHealthSortKey>('expiring');
+  const [filter, setFilter] = useState<TokenHealthFilter>('all');
+
+  const filtered = rows.filter((r) => {
+    switch (filter) {
+      case 'attention':
+        return r.status === 'expired' || r.status === 'needs_reconnect' || r.stale;
+      case 'expiring':
+        return r.status === 'expiring' || r.status === 'expired';
+      case 'stale':
+        return r.stale;
+      case 'healthy':
+        return r.status === 'healthy';
+      default:
+        return true;
+    }
+  });
+
+  // Sort by "expiring soonest" puts unknown/null expiry at the end so ops
+  // see actionable rows first; tenant sort is a stable alphabetical fallback.
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === 'expiring') {
+      const aMs = a.expiresInMs;
+      const bMs = b.expiresInMs;
+      if (aMs === null && bMs === null) return 0;
+      if (aMs === null) return 1;
+      if (bMs === null) return -1;
+      return aMs - bMs;
+    }
+    if (sortKey === 'lastRefresh') {
+      const aT = a.tokenIssuedAt ? new Date(a.tokenIssuedAt).getTime() : 0;
+      const bT = b.tokenIssuedAt ? new Date(b.tokenIssuedAt).getTime() : 0;
+      return bT - aT;
+    }
+    const aName = (a.tenantName ?? a.tenantSlug ?? a.tenantId).toLowerCase();
+    const bName = (b.tenantName ?? b.tenantSlug ?? b.tenantId).toLowerCase();
+    return aName.localeCompare(bName);
+  });
+
+  const expiringSoonCount = rows.filter(
+    (r) => r.status === 'expiring' || r.status === 'expired',
+  ).length;
+  const staleCount = rows.filter((r) => r.stale).length;
+  const horizonHours = Math.round(expiringHorizonMs / (60 * 60 * 1000));
+  const cycleMinutes = Math.round(refreshIntervalMs / 60_000);
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Clock className="h-4 w-4 text-primary" /> OAuth token freshness
+            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-secondary text-foreground border border-border">
+              {rows.length}
+            </span>
+            {expiringSoonCount > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                {expiringSoonCount} expiring
+              </span>
+            )}
+            {staleCount > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                {staleCount} stale
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-muted mt-0.5">
+            Last refresh and next expiry per OAuth connector. Tokens expiring within {horizonHours}h are
+            flagged; the worker sweeps every ~{cycleMinutes}m and a row badges as "stale" after{' '}
+            {staleCycleThreshold} missed cycles.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <label className="text-muted">Filter</label>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as TokenHealthFilter)}
+            className="border border-border rounded px-2 py-1 bg-surface text-foreground"
+          >
+            <option value="all">All</option>
+            <option value="attention">Needs attention</option>
+            <option value="expiring">Expiring / expired</option>
+            <option value="stale">Stale only</option>
+            <option value="healthy">Healthy only</option>
+          </select>
+          <label className="text-muted ml-2">Sort</label>
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as TokenHealthSortKey)}
+            className="border border-border rounded px-2 py-1 bg-surface text-foreground"
+          >
+            <option value="expiring">Expiring soonest</option>
+            <option value="lastRefresh">Most recently refreshed</option>
+            <option value="tenant">Tenant (A–Z)</option>
+          </select>
+        </div>
+      </div>
+      {sorted.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-muted">
+          {rows.length === 0
+            ? 'No OAuth connectors enabled across tenants yet.'
+            : 'No connectors match the current filter.'}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2 font-medium text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Connector</th>
+                <th className="text-left px-4 py-2 font-medium text-muted">
+                  <button
+                    type="button"
+                    onClick={() => setSortKey('lastRefresh')}
+                    className={`inline-flex items-center gap-1 hover:text-foreground ${sortKey === 'lastRefresh' ? 'text-foreground' : ''}`}
+                  >
+                    Last refresh
+                    {sortKey === 'lastRefresh' && <ArrowUpDown className="h-3 w-3" />}
+                  </button>
+                </th>
+                <th className="text-left px-4 py-2 font-medium text-muted">
+                  <button
+                    type="button"
+                    onClick={() => setSortKey('expiring')}
+                    className={`inline-flex items-center gap-1 hover:text-foreground ${sortKey === 'expiring' ? 'text-foreground' : ''}`}
+                  >
+                    Expires
+                    {sortKey === 'expiring' && <ArrowUpDown className="h-3 w-3" />}
+                  </button>
+                </th>
+                <th className="text-left px-4 py-2 font-medium text-muted">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr key={r.integrationId} className="border-b border-border last:border-0 align-top">
+                  <td className="px-4 py-2 text-xs">
+                    <div className="font-medium">{r.tenantName ?? '—'}</div>
+                    {r.tenantSlug && (
+                      <div className="text-muted font-mono">{r.tenantSlug}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-xs">
+                    <div className="font-medium capitalize">{r.name ?? r.provider}</div>
+                    <div className="text-muted">
+                      <span className="capitalize">{r.integrationType}</span>
+                      {r.provider && r.provider !== r.name && (
+                        <span className="font-mono"> · {r.provider}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-xs whitespace-nowrap">
+                    <div
+                      className="text-muted"
+                      title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : 'never'}
+                    >
+                      {formatRelativeTime(r.tokenIssuedAt)}
+                    </div>
+                    {r.cyclesSinceRefresh !== null && r.cyclesSinceRefresh > 0 && (
+                      <div className="text-muted text-[10px] mt-0.5">
+                        {r.cyclesSinceRefresh} cycle{r.cyclesSinceRefresh === 1 ? '' : 's'} since refresh
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-xs whitespace-nowrap">
+                    <div
+                      className={
+                        r.expiresInMs !== null && r.expiresInMs < 0
+                          ? 'text-red-600 dark:text-red-400'
+                          : r.expiresInMs !== null && r.expiresInMs <= expiringHorizonMs
+                            ? 'text-amber-700 dark:text-amber-300'
+                            : 'text-muted'
+                      }
+                      title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : 'unknown'}
+                    >
+                      {formatExpiresIn(r.expiresInMs)}
+                    </div>
+                    {r.tokenExpiresAt && (
+                      <div className="text-muted text-[10px] mt-0.5">
+                        {new Date(r.tokenExpiresAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tokenStatusBadgeClasses(r.status)}`}
+                      >
+                        {tokenStatusLabel(r.status)}
+                      </span>
+                      {r.stale && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          title={`Worker has missed at least ${staleCycleThreshold} refresh cycle${staleCycleThreshold === 1 ? '' : 's'} for this connector`}
+                        >
+                          <AlertTriangle className="h-3 w-3" /> Stale
+                        </span>
+                      )}
+                      {r.tokenDecryptFailed && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                          title="One or more token tracking fields failed to decrypt — check encryption keys"
+                        >
+                          <ShieldAlert className="h-3 w-3" /> Decrypt failed
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
