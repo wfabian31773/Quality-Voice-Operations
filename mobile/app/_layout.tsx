@@ -8,6 +8,7 @@ import { useColorScheme, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { queryClient } from '@/lib/queryClient';
 import { LoadingView } from '@/components/LoadingView';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useColors } from '@/hooks/useColors';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (!ready) return <LoadingView />;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <OfflineBanner />
       {children}
     </View>
   );

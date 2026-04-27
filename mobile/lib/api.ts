@@ -1,4 +1,7 @@
 import Constants from 'expo-constants';
+import { markOffline, markOnline } from './connectivity';
+
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 const STORAGE_BASE_URL_KEY = 'voiceai.tech.baseUrl';
 const STORAGE_API_KEY = 'voiceai.tech.apiKey';
@@ -172,6 +175,27 @@ export class ApiError extends Error {
   }
 }
 
+export class OfflineError extends Error {
+  cause?: unknown;
+  constructor(message = 'No network connection', cause?: unknown) {
+    super(message);
+    this.name = 'OfflineError';
+    this.cause = cause;
+  }
+}
+
+function isNetworkErrorMessage(msg: string): boolean {
+  if (!msg) return false;
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('network request failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('load failed') ||
+    lower.includes('the internet connection') ||
+    lower.includes('network error')
+  );
+}
+
 function buildUrl(
   base: string,
   path: string,
@@ -213,12 +237,51 @@ export async function apiCall<T>(
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(buildUrl(client.baseUrl, path, opts.query), {
-    method: opts.method ?? 'GET',
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  let detachExternal: (() => void) | null = null;
+  if (opts.signal) {
+    if (opts.signal.aborted) {
+      controller.abort();
+    } else {
+      const onAbort = () => controller.abort();
+      opts.signal.addEventListener('abort', onAbort);
+      detachExternal = () => opts.signal!.removeEventListener('abort', onAbort);
+    }
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(client.baseUrl, path, opts.query), {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    detachExternal?.();
+    if (err instanceof Error) {
+      const isUserAbort =
+        err.name === 'AbortError' && opts.signal?.aborted === true;
+      if (isUserAbort) {
+        throw err;
+      }
+      if (err.name === 'AbortError' || isNetworkErrorMessage(err.message)) {
+        markOffline();
+        throw new OfflineError(
+          err.name === 'AbortError'
+            ? 'Request timed out — you may be offline'
+            : err.message,
+          err,
+        );
+      }
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
+  detachExternal?.();
+  markOnline();
 
   const text = await res.text();
   let body: unknown = null;

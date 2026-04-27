@@ -115,3 +115,28 @@ If you add background tracking, push, or maps later, declare them in
 - Pull-to-refresh is available on every list. The job/booking detail screens
   invalidate the corresponding list query after each successful transition.
 - Both light and dark mode are supported and follow the system preference.
+
+## Offline-aware transitions
+
+Field techs often work in basements, crawl spaces, or rural homes with no
+cell signal. To keep them moving:
+
+- `lib/connectivity.ts` tracks an `online`/`offline` flag that flips when
+  `apiCall` either succeeds or throws a `TypeError`/`AbortError` (15-second
+  fetch timeout).
+- `lib/offlineQueue.ts` persists job and booking transitions to
+  `AsyncStorage` (`voiceai.tech.offlineQueue.v2`) when the device is offline
+  or `apiCall` raises an `OfflineError`. Queued payloads contain only the
+  mutation intent (kind, target id, action, optional notes) — **no
+  credentials are persisted**. The drainer resolves the current API key
+  from `expo-secure-store` (`loadStoredCredentials`) on each attempt, so
+  signing out automatically pauses the queue until the tech signs back
+  in.
+- A drainer runs on app start, on `AppState 'active'`, when connectivity
+  flips back to online, on a 30-second timer, and on manual retry. Items
+  replay in FIFO order; 5xx is treated as transient and 4xx is treated as
+  a real conflict (item is dropped, conflict surfaced via `Alert.alert`).
+- `components/OfflineBanner.tsx` shows a sticky banner whenever the queue
+  has items: "Working offline — N pending updates" + a Retry button.
+- The Job and Appointment detail screens show an inline "Queued offline:
+  …" card while their transition is waiting in the queue.

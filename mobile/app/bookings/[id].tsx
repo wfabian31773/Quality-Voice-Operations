@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,14 +15,22 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   api,
   ApiError,
+  OfflineError,
   type BookingAction,
   type SchedulingBooking,
 } from '@/lib/api';
+import { isOffline } from '@/lib/connectivity';
+import {
+  enqueueBookingTransition,
+  getBookingQueueEntry,
+  subscribe as subscribeQueue,
+  type QueuedItem,
+} from '@/lib/offlineQueue';
 import { StatusPill } from '@/components/StatusPill';
 import { ContactRow } from '@/components/ContactRow';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
-import { formatTimeRange } from '@/lib/formatters';
+import { formatStatus, formatTimeRange } from '@/lib/formatters';
 
 const NEXT_ACTIONS: Record<
   SchedulingBooking['status'],
@@ -73,16 +81,63 @@ export default function BookingDetailScreen() {
     queryFn: () => api.getBooking(client!, id!),
   });
 
-  const transition = useMutation({
-    mutationFn: (action: BookingAction) =>
-      api.transitionBooking(client!, id!, action),
+  const booking = query.data?.booking;
+
+  const [queuedEntry, setQueuedEntry] = useState<QueuedItem | null>(
+    id ? getBookingQueueEntry(id) : null,
+  );
+
+  useEffect(() => {
+    if (!id) return;
+    setQueuedEntry(getBookingQueueEntry(id));
+    return subscribeQueue(() => {
+      setQueuedEntry(getBookingQueueEntry(id));
+    });
+  }, [id]);
+
+  type TransitionResult =
+    | { queued: true; action: BookingAction }
+    | { queued: false };
+
+  const transition = useMutation<TransitionResult, Error, BookingAction>({
+    mutationFn: async (action) => {
+      if (isOffline()) {
+        await enqueueBookingTransition({
+          bookingId: id!,
+          bookingTitle: booking?.title,
+          action,
+        });
+        return { queued: true, action };
+      }
+      try {
+        await api.transitionBooking(client!, id!, action);
+        return { queued: false };
+      } catch (err) {
+        if (err instanceof OfflineError) {
+          await enqueueBookingTransition({
+            bookingId: id!,
+            bookingTitle: booking?.title,
+            action,
+          });
+          return { queued: true, action };
+        }
+        throw err;
+      }
+    },
     onMutate: (action) => {
       setPendingAction(action);
     },
     onSettled: () => {
       setPendingAction(null);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.queued) {
+        Alert.alert(
+          'Queued offline',
+          `“${formatStatus(result.action)}” will sync as soon as you’re back online.`,
+        );
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['bookings'] });
     },
@@ -94,8 +149,6 @@ export default function BookingDetailScreen() {
       Alert.alert('Update failed', message);
     },
   });
-
-  const booking = query.data?.booking;
   const actions = useMemo(
     () => (booking ? NEXT_ACTIONS[booking.status] ?? [] : []),
     [booking],
@@ -167,6 +220,35 @@ export default function BookingDetailScreen() {
         <Text style={[styles.description, { color: colors.textMuted }]}>
           {booking.description}
         </Text>
+      ) : null}
+
+      {queuedEntry ? (
+        <View
+          style={[
+            styles.queuedCard,
+            {
+              backgroundColor: colors.warningMuted,
+              borderColor: colors.warning,
+            },
+          ]}
+        >
+          <Ionicons
+            name="cloud-upload-outline"
+            size={16}
+            color={colors.warning}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.queuedTitle, { color: colors.text }]}>
+              Queued offline:{' '}
+              {formatStatus(queuedEntry.bookingAction ?? '')}
+            </Text>
+            <Text style={[styles.queuedHint, { color: colors.textMuted }]}>
+              {queuedEntry.lastError
+                ? `Last try failed: ${queuedEntry.lastError}`
+                : 'Will sync as soon as you’re back online.'}
+            </Text>
+          </View>
+        </View>
       ) : null}
 
       <View
@@ -303,4 +385,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   notesText: { fontSize: 14, lineHeight: 20 },
+  queuedCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  queuedTitle: { fontSize: 13, fontWeight: '700' },
+  queuedHint: { fontSize: 12, marginTop: 2 },
 });

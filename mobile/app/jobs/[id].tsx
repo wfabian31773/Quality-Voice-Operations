@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,10 +17,18 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   api,
   ApiError,
+  OfflineError,
   type DispatchJob,
   type DispatchTransition,
   type JobAttachment,
 } from '@/lib/api';
+import { isOffline } from '@/lib/connectivity';
+import {
+  enqueueJobTransition,
+  getJobQueueEntry,
+  subscribe as subscribeQueue,
+  type QueuedItem,
+} from '@/lib/offlineQueue';
 import { StatusPill } from '@/components/StatusPill';
 import { ContactRow } from '@/components/ContactRow';
 import { JobMapPreview } from '@/components/JobMapPreview';
@@ -88,16 +96,71 @@ export default function JobDetailScreen() {
     queryFn: () => api.getJob(client!, id!),
   });
 
-  const transition = useMutation({
-    mutationFn: (next: DispatchTransition) =>
-      api.transitionJob(client!, id!, next),
+  const job = query.data?.job;
+  const events = query.data?.events ?? [];
+  const attachments = query.data?.attachments ?? [];
+
+  const [queuedEntry, setQueuedEntry] = useState<QueuedItem | null>(
+    id ? getJobQueueEntry(id) : null,
+  );
+
+  useEffect(() => {
+    if (!id) return;
+    setQueuedEntry(getJobQueueEntry(id));
+    return subscribeQueue(() => {
+      setQueuedEntry(getJobQueueEntry(id));
+    });
+  }, [id]);
+
+  type TransitionResult =
+    | { queued: true; status: DispatchTransition }
+    | { queued: false };
+
+  const transition = useMutation<
+    TransitionResult,
+    Error,
+    DispatchTransition
+  >({
+    mutationFn: async (next) => {
+      // Short-circuit when we already know the device is offline so the tech
+      // doesn't have to wait for a 15s timeout before the queue picks it up.
+      if (isOffline()) {
+        await enqueueJobTransition({
+          jobId: id!,
+          jobTitle: job?.title,
+          status: next,
+        });
+        return { queued: true, status: next };
+      }
+      try {
+        await api.transitionJob(client!, id!, next);
+        return { queued: false };
+      } catch (err) {
+        if (err instanceof OfflineError) {
+          await enqueueJobTransition({
+            jobId: id!,
+            jobTitle: job?.title,
+            status: next,
+          });
+          return { queued: true, status: next };
+        }
+        throw err;
+      }
+    },
     onMutate: (next) => {
       setPendingTransition(next);
     },
     onSettled: () => {
       setPendingTransition(null);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.queued) {
+        Alert.alert(
+          'Queued offline',
+          `“${formatStatus(result.status)}” will sync as soon as you’re back online.`,
+        );
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['job', id] });
       qc.invalidateQueries({ queryKey: ['jobs'] });
     },
@@ -107,10 +170,6 @@ export default function JobDetailScreen() {
       Alert.alert('Update failed', message);
     },
   });
-
-  const job = query.data?.job;
-  const events = query.data?.events ?? [];
-  const attachments = query.data?.attachments ?? [];
 
   const attachmentById = useMemo(() => {
     const map = new Map<string, JobAttachment>();
@@ -214,6 +273,35 @@ export default function JobDetailScreen() {
         <Text style={[styles.description, { color: colors.textMuted }]}>
           {job.description}
         </Text>
+      ) : null}
+
+      {queuedEntry ? (
+        <View
+          style={[
+            styles.queuedCard,
+            {
+              backgroundColor: colors.warningMuted,
+              borderColor: colors.warning,
+            },
+          ]}
+        >
+          <Ionicons
+            name="cloud-upload-outline"
+            size={16}
+            color={colors.warning}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.queuedTitle, { color: colors.text }]}>
+              Queued offline:{' '}
+              {formatStatus(queuedEntry.jobStatus ?? '')}
+            </Text>
+            <Text style={[styles.queuedHint, { color: colors.textMuted }]}>
+              {queuedEntry.lastError
+                ? `Last try failed: ${queuedEntry.lastError}`
+                : 'Will sync as soon as you’re back online.'}
+            </Text>
+          </View>
+        </View>
       ) : null}
 
       <View
@@ -549,6 +637,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   notesText: { fontSize: 14, lineHeight: 20 },
+  queuedCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  queuedTitle: { fontSize: 13, fontWeight: '700' },
+  queuedHint: { fontSize: 12, marginTop: 2 },
   photoStrip: {
     flexDirection: 'row',
     flexWrap: 'wrap',

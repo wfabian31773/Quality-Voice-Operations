@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import { attachQueryClient, startOfflineQueueRunner } from './offlineQueue';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -12,3 +13,6 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+attachQueryClient(queryClient);
+startOfflineQueueRunner();
