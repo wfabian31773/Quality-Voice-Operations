@@ -1,4 +1,5 @@
 import type { TriageOutcome } from '../config/triageOutcomes';
+import { buildLocalizedGreeting } from '../../greetingTranslations';
 
 export interface AfterHoursPromptContext {
   practiceName: string;
@@ -220,6 +221,6 @@ NOT URGENT (ticket for next business day):
   return sections.join('\n');
 }
 
-export function getAfterHoursGreeting(practiceName: string): string {
-  return `Thank you for calling ${practiceName}. All of our offices are currently closed. You have reached the after-hours call service. If this is a medical emergency, please dial 911. All calls are recorded for quality assurance. How can I help you?`;
+export function getAfterHoursGreeting(practiceName: string, language?: string): string {
+  return buildLocalizedGreeting('medical-after-hours', practiceName, language);
 }

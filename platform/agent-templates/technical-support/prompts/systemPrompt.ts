@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface TechnicalSupportPromptContext {
   companyName: string;
   productName?: string;
@@ -81,6 +83,6 @@ When escalating, always include:
   return sections.join('\n');
 }
 
-export function getTechnicalSupportGreeting(companyName: string): string {
-  return `Thank you for calling ${companyName} technical support. How can I assist you?`;
+export function getTechnicalSupportGreeting(companyName: string, language?: string): string {
+  return buildLocalizedGreeting('technical-support', companyName, language);
 }

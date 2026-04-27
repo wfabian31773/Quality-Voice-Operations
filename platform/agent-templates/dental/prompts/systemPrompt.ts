@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface DentalPromptContext {
   practiceName: string;
   callerPhone?: string;
@@ -71,6 +73,6 @@ For non-urgent issues (mild sensitivity, lost filling, minor chip), schedule the
   return sections.join('\n');
 }
 
-export function getDentalGreeting(practiceName: string): string {
-  return `Thank you for calling ${practiceName}. How can I help you today?`;
+export function getDentalGreeting(practiceName: string, language?: string): string {
+  return buildLocalizedGreeting('dental', practiceName, language);
 }

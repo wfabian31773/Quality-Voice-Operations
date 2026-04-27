@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface PropertyManagementPromptContext {
   companyName: string;
   callerPhone?: string;
@@ -73,6 +75,6 @@ Tell the caller to evacuate for fire, gas leak, or carbon monoxide. Call 911 if 
   return sections.join('\n');
 }
 
-export function getPropertyManagementGreeting(companyName: string): string {
-  return `Thank you for calling ${companyName}. How can I assist you today?`;
+export function getPropertyManagementGreeting(companyName: string, language?: string): string {
+  return buildLocalizedGreeting('property-management', companyName, language);
 }

@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface LegalPromptContext {
   firmName: string;
   practiceAreas?: string[];
@@ -85,6 +87,6 @@ For criminal emergencies (arrest, detention), also advise the caller to exercise
   return sections.join('\n');
 }
 
-export function getLegalGreeting(firmName: string): string {
-  return `Thank you for calling ${firmName}. How may I assist you?`;
+export function getLegalGreeting(firmName: string, language?: string): string {
+  return buildLocalizedGreeting('legal', firmName, language);
 }

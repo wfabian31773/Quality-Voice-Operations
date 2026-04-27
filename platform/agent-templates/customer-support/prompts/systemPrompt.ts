@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface CustomerSupportPromptContext {
   companyName: string;
   callerPhone?: string;
@@ -70,6 +72,6 @@ Monitor the caller's tone and language. If you detect frustration:
   return sections.join('\n');
 }
 
-export function getCustomerSupportGreeting(companyName: string): string {
-  return `Thank you for calling ${companyName} support. How can I help you today?`;
+export function getCustomerSupportGreeting(companyName: string, language?: string): string {
+  return buildLocalizedGreeting('customer-support', companyName, language);
 }

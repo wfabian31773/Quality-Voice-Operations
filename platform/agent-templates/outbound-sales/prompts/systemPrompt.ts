@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface OutboundSalesPromptContext {
   companyName: string;
   productOrService?: string;
@@ -77,6 +79,6 @@ Categorize leads as: hot (ready to buy), warm (interested, needs follow-up), or 
   return sections.join('\n');
 }
 
-export function getOutboundSalesGreeting(companyName: string): string {
-  return `Hi, this is a representative from ${companyName}. Is now a good time to chat?`;
+export function getOutboundSalesGreeting(companyName: string, language?: string): string {
+  return buildLocalizedGreeting('outbound-sales', companyName, language);
 }

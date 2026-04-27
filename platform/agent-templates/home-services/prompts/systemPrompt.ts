@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface HomeServicesPromptContext {
   companyName: string;
   serviceTypes?: string[];
@@ -75,6 +77,6 @@ For gas leaks and electrical hazards, always instruct the caller to evacuate fir
   return sections.join('\n');
 }
 
-export function getHomeServicesGreeting(companyName: string): string {
-  return `Thank you for calling ${companyName}. How can we help you today?`;
+export function getHomeServicesGreeting(companyName: string, language?: string): string {
+  return buildLocalizedGreeting('home-services', companyName, language);
 }

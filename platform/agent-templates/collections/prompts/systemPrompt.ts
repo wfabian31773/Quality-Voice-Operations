@@ -1,3 +1,5 @@
+import { buildLocalizedGreeting } from '../../greetingTranslations';
+
 export interface CollectionsPromptContext {
   companyName: string;
   callerPhone?: string;
@@ -87,6 +89,6 @@ You MUST comply with all provisions of the Fair Debt Collection Practices Act:
   return sections.join('\n');
 }
 
-export function getCollectionsGreeting(companyName: string): string {
-  return `Hello, this is a representative from ${companyName}. This is an attempt to collect a debt. Any information obtained will be used for that purpose. May I speak with the account holder?`;
+export function getCollectionsGreeting(companyName: string, language?: string): string {
+  return buildLocalizedGreeting('collections', companyName, language);
 }

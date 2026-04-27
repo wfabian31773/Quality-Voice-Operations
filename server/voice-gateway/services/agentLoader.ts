@@ -63,6 +63,7 @@ import {
   getAgentLanguageLabel,
   normalizeAgentLanguage,
 } from '../../../platform/agent-templates/agentLanguages';
+import { buildLocalizedGreeting } from '../../../platform/agent-templates/greetingTranslations';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -249,6 +250,7 @@ function buildTemplateConfig(
   ctx: AgentLoadContext,
   meta: Record<string, unknown>,
   dbTools: AgentToolDef[],
+  language: string,
 ): LoadedAgentConfigWithoutLanguage | null {
   const { tenantId, agentId, callerPhone, callerMemorySummary, dbAgent, toolOverrides } = ctx;
 
@@ -262,7 +264,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getDentalGreeting(practiceName),
+        greeting: (meta.greeting as string) ?? getDentalGreeting(practiceName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergeTools(DENTAL_TOOLS, dbTools), templateKey, toolOverrides),
@@ -280,7 +282,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getPropertyManagementGreeting(companyName),
+        greeting: (meta.greeting as string) ?? getPropertyManagementGreeting(companyName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergeTools(PROPERTY_MANAGEMENT_TOOLS, dbTools), templateKey, toolOverrides),
@@ -299,7 +301,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getHomeServicesGreeting(companyName),
+        greeting: (meta.greeting as string) ?? getHomeServicesGreeting(companyName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergeTools(HOME_SERVICES_TOOLS, dbTools), templateKey, toolOverrides),
@@ -318,7 +320,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getLegalGreeting(firmName),
+        greeting: (meta.greeting as string) ?? getLegalGreeting(firmName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergeTools(LEGAL_TOOLS, dbTools), templateKey, toolOverrides),
@@ -336,7 +338,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getCustomerSupportGreeting(companyName),
+        greeting: (meta.greeting as string) ?? getCustomerSupportGreeting(companyName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: mergeTools(CUSTOMER_SUPPORT_TOOLS, dbTools),
@@ -355,7 +357,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getOutboundSalesGreeting(companyName),
+        greeting: (meta.greeting as string) ?? getOutboundSalesGreeting(companyName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: mergeTools(OUTBOUND_SALES_TOOLS, dbTools),
@@ -374,7 +376,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getTechnicalSupportGreeting(companyName),
+        greeting: (meta.greeting as string) ?? getTechnicalSupportGreeting(companyName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: mergeTools(TECHNICAL_SUPPORT_TOOLS, dbTools),
@@ -392,7 +394,7 @@ function buildTemplateConfig(
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getCollectionsGreeting(companyName),
+        greeting: (meta.greeting as string) ?? getCollectionsGreeting(companyName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: mergeTools(COLLECTIONS_TOOLS, dbTools),
@@ -445,9 +447,11 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? (isAzulVision
-          ? `Thank you for calling Azul Vision Eye Center. How can I help you today?`
-          : `Thank you for calling ${practiceName}. How can I help you today?`),
+        greeting: (meta.greeting as string) ?? buildLocalizedGreeting(
+          'answering-service',
+          isAzulVision ? 'Azul Vision Eye Center' : practiceName,
+          language,
+        ),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
@@ -477,7 +481,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getAfterHoursGreeting(practiceName),
+        greeting: (meta.greeting as string) ?? getAfterHoursGreeting(practiceName, language),
         voice: dbAgent?.voice ?? 'sage',
         model: dbAgent?.model ?? 'gpt-4o-realtime-preview',
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
@@ -487,7 +491,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
     }
 
     default: {
-      const verticalConfig = buildTemplateConfig(templateKey, ctx, meta, dbTools);
+      const verticalConfig = buildTemplateConfig(templateKey, ctx, meta, dbTools, language);
       if (verticalConfig) return finalize(verticalConfig);
 
       if (dbAgent?.system_prompt) {
