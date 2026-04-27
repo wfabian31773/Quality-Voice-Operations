@@ -44,7 +44,7 @@ import {
   Ticket, UserPlus, Calendar, Send, Truck, Phone,
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
   RotateCcw, Eye, Trash2, Lightbulb, Check, XCircle, TrendingUp,
-  AlertTriangle,
+  AlertTriangle, Keyboard, Search,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 
@@ -230,7 +230,7 @@ function ConversationNode({ data, selected }: { data: Record<string, unknown>; s
   const prompt = (data.prompt as string) || '';
 
   return (
-    <div className={`rounded-xl border-2 ${colors.border} ${colors.bg} shadow-sm min-w-[200px] max-w-[260px] transition-shadow ${selected ? 'shadow-lg ring-2 ring-primary/30' : ''}`}>
+    <div className={`rounded-xl border-2 ${colors.border} ${colors.bg} shadow-sm min-w-[200px] max-w-[260px] transition-shadow ${selected ? 'shadow-lg ring-4 ring-primary ring-offset-2 ring-offset-surface-secondary' : ''}`}>
       <Handle type="target" position={Position.Top} className="!w-3 !h-3 !border-2 !border-white" style={{ background: colors.handle }} />
       <div className="px-3 py-2 border-b border-inherit">
         <div className={`flex items-center gap-2 ${colors.text} font-medium text-sm`}>
@@ -255,7 +255,7 @@ function LogicNode({ data, selected }: { data: Record<string, unknown>; selected
   const conditionField = (data.conditionField as string) || '';
 
   return (
-    <div className={`rounded-xl border-2 ${colors.border} ${colors.bg} shadow-sm min-w-[200px] max-w-[260px] transition-shadow ${selected ? 'shadow-lg ring-2 ring-primary/30' : ''}`}
+    <div className={`rounded-xl border-2 ${colors.border} ${colors.bg} shadow-sm min-w-[200px] max-w-[260px] transition-shadow ${selected ? 'shadow-lg ring-4 ring-primary ring-offset-2 ring-offset-surface-secondary' : ''}`}
       style={{ transform: 'rotate(0deg)' }}>
       <Handle type="target" position={Position.Top} className="!w-3 !h-3 !border-2 !border-white" style={{ background: colors.handle }} />
       <div className="px-3 py-2 border-b border-inherit">
@@ -282,7 +282,7 @@ function ActionNode({ data, selected }: { data: Record<string, unknown>; selecte
   const toolConfig = (data.toolConfig as string) || '';
 
   return (
-    <div className={`rounded-xl border-2 ${colors.border} ${colors.bg} shadow-sm min-w-[200px] max-w-[260px] transition-shadow ${selected ? 'shadow-lg ring-2 ring-primary/30' : ''}`}>
+    <div className={`rounded-xl border-2 ${colors.border} ${colors.bg} shadow-sm min-w-[200px] max-w-[260px] transition-shadow ${selected ? 'shadow-lg ring-4 ring-primary ring-offset-2 ring-offset-surface-secondary' : ''}`}>
       <Handle type="target" position={Position.Top} className="!w-3 !h-3 !border-2 !border-white" style={{ background: colors.handle }} />
       <div className="px-3 py-2 border-b border-inherit">
         <div className={`flex items-center gap-2 ${colors.text} font-medium text-sm`}>
@@ -1387,6 +1387,205 @@ function DeploymentPanel({
   );
 }
 
+interface CommandSuggestion {
+  id: string;
+  label: string;
+  hint?: string;
+  action: () => void;
+}
+
+function CommandBar({
+  isOpen,
+  onClose,
+  nodes,
+  onAddNode,
+  onConnectNodes,
+  onFocusNode,
+  t,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  nodes: Node[];
+  onAddNode: (nodeType: string) => void;
+  onConnectNodes: (sourceId: string, targetId: string) => void;
+  onFocusNode: (nodeId: string) => void;
+  t: BuilderT;
+}) {
+  const [query, setQuery] = useState('');
+  const [activeIdx, setActiveIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const library = useMemo(() => buildNodeLibrary(t), [t]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setQuery('');
+      setActiveIdx(0);
+      const id = window.setTimeout(() => inputRef.current?.focus(), 10);
+      return () => window.clearTimeout(id);
+    }
+  }, [isOpen]);
+
+  const suggestions = useMemo<CommandSuggestion[]>(() => {
+    const list: CommandSuggestion[] = [];
+    const raw = query.trim();
+    const q = raw.toLowerCase();
+
+    if (q.startsWith('connect')) {
+      const rest = raw.slice(7).trim();
+      const restLower = rest.toLowerCase();
+      const parts = restLower.split(/\s+to\s+/i);
+      let sourceQ = '';
+      let targetQ = '';
+      if (parts.length === 2 && parts[0]) {
+        sourceQ = parts[0].trim();
+        targetQ = parts[1].trim();
+      }
+
+      const labelOf = (n: Node) => (n.data.label as string) || getNodeLabel((n.data.nodeType as string) || '', t) || n.id;
+
+      for (const s of nodes) {
+        const sLabel = labelOf(s);
+        const sLower = sLabel.toLowerCase();
+        if (sourceQ && !sLower.includes(sourceQ)) continue;
+        for (const tgt of nodes) {
+          if (s.id === tgt.id) continue;
+          const tLabel = labelOf(tgt);
+          const tLower = tLabel.toLowerCase();
+          if (targetQ && !tLower.includes(targetQ)) continue;
+          if (!sourceQ && !targetQ && restLower && !sLower.includes(restLower) && !tLower.includes(restLower)) continue;
+          list.push({
+            id: `connect-${s.id}-${tgt.id}`,
+            label: t('cmdConnectNodes', { source: sLabel, target: tLabel }),
+            action: () => { onConnectNodes(s.id, tgt.id); onClose(); },
+          });
+          if (list.length >= 30) break;
+        }
+        if (list.length >= 30) break;
+      }
+    } else {
+      for (const cat of library) {
+        for (const node of cat.nodes) {
+          const label = t(node.labelKey);
+          if (!q || label.toLowerCase().includes(q) || cat.label.toLowerCase().includes(q)) {
+            list.push({
+              id: `add-${node.type}`,
+              label: t('cmdAddNode', { label }),
+              hint: cat.label,
+              action: () => { onAddNode(node.type); onClose(); },
+            });
+          }
+        }
+      }
+      for (const n of nodes) {
+        const label = (n.data.label as string) || getNodeLabel((n.data.nodeType as string) || '', t) || n.id;
+        if (!q || label.toLowerCase().includes(q)) {
+          list.push({
+            id: `focus-${n.id}`,
+            label: t('cmdFocusNode', { label }),
+            action: () => { onFocusNode(n.id); onClose(); },
+          });
+        }
+      }
+    }
+
+    return list.slice(0, 30);
+  }, [query, library, nodes, t, onAddNode, onConnectNodes, onFocusNode, onClose]);
+
+  useEffect(() => { setActiveIdx(0); }, [query]);
+
+  useEffect(() => {
+    const item = listRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`);
+    item?.scrollIntoView({ block: 'nearest' });
+  }, [activeIdx]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(i + 1, Math.max(suggestions.length - 1, 0)));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const sug = suggestions[activeIdx];
+      if (sug) sug.action();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-xl mx-4 bg-surface rounded-xl shadow-2xl border border-border overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('commandBarTitle')}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Search className="h-4 w-4 text-text-muted flex-shrink-0" aria-hidden="true" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="flex-1 bg-transparent text-text-primary text-sm placeholder:text-text-muted focus:outline-none"
+            placeholder={t('commandBarPlaceholder')}
+            aria-label={t('commandBarTitle')}
+            aria-controls="command-bar-listbox"
+            aria-activedescendant={suggestions[activeIdx] ? `cmd-opt-${suggestions[activeIdx].id}` : undefined}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <div
+          id="command-bar-listbox"
+          ref={listRef}
+          className="max-h-80 overflow-y-auto"
+          role="listbox"
+          aria-label={t('commandBarTitle')}
+        >
+          {suggestions.length === 0 ? (
+            <p className="px-4 py-6 text-center text-xs text-text-muted">{t('cmdNoMatches')}</p>
+          ) : (
+            suggestions.map((sug, idx) => (
+              <button
+                key={sug.id}
+                id={`cmd-opt-${sug.id}`}
+                data-idx={idx}
+                type="button"
+                role="option"
+                aria-selected={idx === activeIdx}
+                onMouseEnter={() => setActiveIdx(idx)}
+                onClick={() => sug.action()}
+                className={`w-full text-left px-4 py-2 flex items-center justify-between text-xs transition ${
+                  idx === activeIdx ? 'bg-primary/10 text-text-primary' : 'text-text-secondary hover:bg-surface-hover'
+                }`}
+              >
+                <span className="truncate">{sug.label}</span>
+                {sug.hint && <span className="text-[10px] text-text-muted ml-2 flex-shrink-0">{sug.hint}</span>}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="px-4 py-2 border-t border-border bg-surface-secondary space-y-0.5">
+          <p className="text-[10px] text-text-muted">{t('commandBarHint')}</p>
+          <p className="text-[10px] text-text-muted">{t('commandBarKeyboardHint')}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AgentBuilderInner() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1399,6 +1598,9 @@ function AgentBuilderInner() {
   const [rightPanel, setRightPanel] = useState<'none' | 'config' | 'voice' | 'test' | 'deploy' | 'improve'>('none');
   const [hasChanges, setHasChanges] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; tone: 'success' | 'error' } | null>(null);
+  const [commandBarOpen, setCommandBarOpen] = useState(false);
+  const nodesRef = useRef<Node[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
 
   const [agentSettings, setAgentSettings] = useState({
     voice: 'alloy',
@@ -1657,6 +1859,155 @@ function AgentBuilderInner() {
     [selectedNode, nodes],
   );
 
+  // Keep refs in sync so global keyboard handlers see the latest state
+  // without re-binding the listener on every change.
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
+  const addNodeFromCommand = useCallback(
+    (nodeType: string) => {
+      const category = getNodeCategory(nodeType);
+      const current = nodesRef.current;
+      const selected = current.find((n) => n.selected);
+      const basePos = selected
+        ? { x: selected.position.x, y: selected.position.y + 150 }
+        : { x: 250, y: 100 + current.length * 30 };
+      const newId = `node_${Date.now()}`;
+      const newNode: Node = {
+        id: newId,
+        type: category,
+        position: basePos,
+        data: { nodeType, label: getNodeLabel(nodeType, t) },
+        selected: true,
+      };
+      setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), newNode]);
+      setSelectedNode(newNode);
+      setRightPanel('config');
+      setHasChanges(true);
+    },
+    [setNodes, t],
+  );
+
+  const connectNodesById = useCallback(
+    (sourceId: string, targetId: string) => {
+      const current = nodesRef.current;
+      const sourceNode = current.find((n) => n.id === sourceId);
+      const targetNode = current.find((n) => n.id === targetId);
+      if (!sourceNode || !targetNode || sourceId === targetId) return;
+      const srcType = (sourceNode.data.nodeType as string) || '';
+      const tgtType = (targetNode.data.nodeType as string) || '';
+      if (!isValidConnection(srcType, tgtType)) {
+        setSaveMessage({
+          text: t('cannotConnect', {
+            source: getNodeLabel(srcType, t),
+            target: getNodeLabel(tgtType, t),
+          }),
+          tone: 'error',
+        });
+        setTimeout(() => setSaveMessage(null), 3000);
+        return;
+      }
+      // Avoid duplicate edges between the same two endpoints.
+      const exists = edgesRef.current.some(
+        (e) => e.source === sourceId && e.target === targetId,
+      );
+      if (exists) return;
+      setEdges((eds) =>
+        addEdge(
+          {
+            source: sourceId,
+            target: targetId,
+            sourceHandle: null,
+            targetHandle: null,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            style: { strokeWidth: 2 },
+          },
+          eds,
+        ),
+      );
+      setHasChanges(true);
+    },
+    [setEdges, t],
+  );
+
+  const focusNodeById = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === nodeId })));
+      const target = nodesRef.current.find((n) => n.id === nodeId);
+      if (target) {
+        setSelectedNode({ ...target, selected: true });
+        setRightPanel('config');
+      }
+    },
+    [setNodes],
+  );
+
+  // Global keyboard handlers for the builder canvas:
+  //   - Cmd/Ctrl+K or "/"  → open command palette
+  //   - Esc                → close command palette / right panel
+  //   - Arrow keys         → nudge currently selected node (Shift = larger step)
+  // We intentionally ignore key events when the user is typing in a form field
+  // so we don't fight inputs/textareas inside the side panels.
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (target.isContentEditable) return true;
+      return false;
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Open command palette
+      const isModK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
+      if (isModK) {
+        e.preventDefault();
+        setCommandBarOpen(true);
+        return;
+      }
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        setCommandBarOpen(true);
+        return;
+      }
+
+      // Esc: close command palette first, otherwise collapse the right panel.
+      // The palette has its own local Esc handler when its input has focus;
+      // this global one is the fallback when focus is elsewhere.
+      if (e.key === 'Escape' && !isEditableTarget(e.target)) {
+        setCommandBarOpen((open) => {
+          if (open) return false;
+          setRightPanel((panel) => (panel === 'none' ? panel : 'none'));
+          return open;
+        });
+        return;
+      }
+
+      if (isEditableTarget(e.target)) return;
+
+      // Move selected nodes with arrow keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        const selected = nodesRef.current.filter((n) => n.selected);
+        if (selected.length === 0) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 50 : 10;
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.selected
+              ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
+              : n,
+          ),
+        );
+        setHasChanges(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setNodes]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
@@ -1698,6 +2049,18 @@ function AgentBuilderInner() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCommandBarOpen(true)}
+            aria-label={t('commandBarOpen')}
+            title={t('commandBarOpen')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+          >
+            <Keyboard className="h-3.5 w-3.5" />
+            <span>{t('keyboardShortcutsLabel')}</span>
+            <kbd className="ml-1 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-surface-secondary text-[10px] font-mono text-text-muted">
+              ⌘K
+            </kbd>
+          </button>
           <div className="relative group">
             <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition">
               <Eye className="h-3.5 w-3.5" /> {t('templates')}
@@ -1883,6 +2246,15 @@ function AgentBuilderInner() {
           />
         )}
       </div>
+      <CommandBar
+        isOpen={commandBarOpen}
+        onClose={() => setCommandBarOpen(false)}
+        nodes={nodes}
+        onAddNode={addNodeFromCommand}
+        onConnectNodes={connectNodesById}
+        onFocusNode={focusNodeById}
+        t={t}
+      />
     </div>
   );
 }

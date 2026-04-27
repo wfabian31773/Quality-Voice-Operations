@@ -138,7 +138,17 @@ export type AgentBuilderTKey =
   | 'tplDental'
   | 'tplHvac'
   | 'tplLegal'
-  | 'tplSupport';
+  | 'tplSupport'
+  | 'commandBarTitle'
+  | 'commandBarPlaceholder'
+  | 'commandBarHint'
+  | 'commandBarKeyboardHint'
+  | 'commandBarOpen'
+  | 'cmdAddNode'
+  | 'cmdConnectNodes'
+  | 'cmdFocusNode'
+  | 'cmdNoMatches'
+  | 'keyboardShortcutsLabel';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -279,6 +289,16 @@ const EN: Record<AgentBuilderTKey, string> = {
   tplHvac: 'HVAC / Home Services',
   tplLegal: 'Legal Intake',
   tplSupport: 'Customer Support',
+  commandBarTitle: 'Command palette',
+  commandBarPlaceholder: 'Type to add a node, or "connect A to B"…',
+  commandBarHint: '↑↓ to navigate · Enter to run · Esc to close',
+  commandBarKeyboardHint: 'Tip: Arrow keys move the selected node · Hold Shift for bigger steps',
+  commandBarOpen: 'Open command palette',
+  cmdAddNode: 'Add node: {label}',
+  cmdConnectNodes: 'Connect {source} → {target}',
+  cmdFocusNode: 'Focus node: {label}',
+  cmdNoMatches: 'No matches. Try a node name like "Greeting" or "connect Greeting to Ask".',
+  keyboardShortcutsLabel: 'Keyboard',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -411,6 +431,16 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Servicios para el hogar',
   tplLegal: 'Recepción legal',
   tplSupport: 'Atención al cliente',
+  commandBarTitle: 'Paleta de comandos',
+  commandBarPlaceholder: 'Escribe para añadir un nodo o "connect A to B"…',
+  commandBarHint: '↑↓ para navegar · Enter para ejecutar · Esc para cerrar',
+  commandBarKeyboardHint: 'Sugerencia: las flechas mueven el nodo seleccionado · Mantén Shift para pasos grandes',
+  commandBarOpen: 'Abrir paleta de comandos',
+  cmdAddNode: 'Añadir nodo: {label}',
+  cmdConnectNodes: 'Conectar {source} → {target}',
+  cmdFocusNode: 'Enfocar nodo: {label}',
+  cmdNoMatches: 'Sin coincidencias. Prueba el nombre de un nodo como "Saludo" o "connect Saludo to Pregunta".',
+  keyboardShortcutsLabel: 'Teclado',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -543,6 +573,16 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'CVC / Services à domicile',
   tplLegal: "Accueil juridique",
   tplSupport: 'Support client',
+  commandBarTitle: 'Palette de commandes',
+  commandBarPlaceholder: 'Tapez pour ajouter un nœud ou "connect A to B"…',
+  commandBarHint: '↑↓ pour naviguer · Entrée pour exécuter · Échap pour fermer',
+  commandBarKeyboardHint: 'Astuce : les flèches déplacent le nœud sélectionné · Maintenez Maj pour de plus grands pas',
+  commandBarOpen: 'Ouvrir la palette de commandes',
+  cmdAddNode: 'Ajouter un nœud : {label}',
+  cmdConnectNodes: 'Connecter {source} → {target}',
+  cmdFocusNode: 'Cibler le nœud : {label}',
+  cmdNoMatches: 'Aucune correspondance. Essayez un nom comme "Salutation" ou "connect Salutation to Question".',
+  keyboardShortcutsLabel: 'Clavier',
 };
 
 const DE: Partial<Record<AgentBuilderTKey, string>> = {
@@ -675,6 +715,16 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Hausdienste',
   tplLegal: 'Rechtsannahme',
   tplSupport: 'Kundensupport',
+  commandBarTitle: 'Befehlspalette',
+  commandBarPlaceholder: 'Tippen, um einen Knoten hinzuzufügen, oder "connect A to B"…',
+  commandBarHint: '↑↓ navigieren · Enter ausführen · Esc schließen',
+  commandBarKeyboardHint: 'Tipp: Pfeiltasten verschieben den ausgewählten Knoten · Umschalt für größere Schritte',
+  commandBarOpen: 'Befehlspalette öffnen',
+  cmdAddNode: 'Knoten hinzufügen: {label}',
+  cmdConnectNodes: 'Verbinden {source} → {target}',
+  cmdFocusNode: 'Knoten fokussieren: {label}',
+  cmdNoMatches: 'Keine Treffer. Versuche einen Knotennamen wie "Begrüßung" oder "connect Begrüßung to Frage".',
+  keyboardShortcutsLabel: 'Tastatur',
 };
 
 const PT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -807,6 +857,16 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Serviços residenciais',
   tplLegal: 'Recepção jurídica',
   tplSupport: 'Atendimento ao cliente',
+  commandBarTitle: 'Paleta de comandos',
+  commandBarPlaceholder: 'Digite para adicionar um nó ou "connect A to B"…',
+  commandBarHint: '↑↓ para navegar · Enter para executar · Esc para fechar',
+  commandBarKeyboardHint: 'Dica: as setas movem o nó selecionado · Segure Shift para passos maiores',
+  commandBarOpen: 'Abrir paleta de comandos',
+  cmdAddNode: 'Adicionar nó: {label}',
+  cmdConnectNodes: 'Conectar {source} → {target}',
+  cmdFocusNode: 'Focar nó: {label}',
+  cmdNoMatches: 'Sem correspondências. Tente um nome como "Saudação" ou "connect Saudação to Pergunta".',
+  keyboardShortcutsLabel: 'Teclado',
 };
 
 const IT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -939,6 +999,16 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Servizi domestici',
   tplLegal: 'Accoglienza legale',
   tplSupport: 'Assistenza clienti',
+  commandBarTitle: 'Tavolozza dei comandi',
+  commandBarPlaceholder: 'Digita per aggiungere un nodo o "connect A to B"…',
+  commandBarHint: '↑↓ per navigare · Invio per eseguire · Esc per chiudere',
+  commandBarKeyboardHint: 'Suggerimento: le frecce spostano il nodo selezionato · Tieni premuto Shift per passi più grandi',
+  commandBarOpen: 'Apri tavolozza dei comandi',
+  cmdAddNode: 'Aggiungi nodo: {label}',
+  cmdConnectNodes: 'Collega {source} → {target}',
+  cmdFocusNode: 'Focalizza nodo: {label}',
+  cmdNoMatches: 'Nessuna corrispondenza. Prova un nome come "Saluto" o "connect Saluto to Domanda".',
+  keyboardShortcutsLabel: 'Tastiera',
 };
 
 const NL: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1071,6 +1141,16 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Huisdiensten',
   tplLegal: 'Juridische intake',
   tplSupport: 'Klantenservice',
+  commandBarTitle: 'Opdrachtenpalet',
+  commandBarPlaceholder: 'Typ om een knoop toe te voegen of "connect A to B"…',
+  commandBarHint: '↑↓ navigeren · Enter uitvoeren · Esc sluiten',
+  commandBarKeyboardHint: 'Tip: pijltoetsen verplaatsen de geselecteerde knoop · Houd Shift ingedrukt voor grotere stappen',
+  commandBarOpen: 'Opdrachtenpalet openen',
+  cmdAddNode: 'Knoop toevoegen: {label}',
+  cmdConnectNodes: 'Verbind {source} → {target}',
+  cmdFocusNode: 'Focus knoop: {label}',
+  cmdNoMatches: 'Geen overeenkomsten. Probeer een naam als "Begroeting" of "connect Begroeting to Vraag".',
+  keyboardShortcutsLabel: 'Toetsenbord',
 };
 
 const ZH: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1203,6 +1283,16 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: '暖通空调 / 家政服务',
   tplLegal: '法律咨询',
   tplSupport: '客户支持',
+  commandBarTitle: '命令面板',
+  commandBarPlaceholder: '输入以添加节点,或使用 "connect A to B"…',
+  commandBarHint: '↑↓ 导航 · Enter 执行 · Esc 关闭',
+  commandBarKeyboardHint: '提示:方向键移动选中节点 · 按住 Shift 进行更大幅度移动',
+  commandBarOpen: '打开命令面板',
+  cmdAddNode: '添加节点:{label}',
+  cmdConnectNodes: '连接 {source} → {target}',
+  cmdFocusNode: '聚焦节点:{label}',
+  cmdNoMatches: '没有匹配项。试试节点名称,例如 "问候" 或 "connect 问候 to 询问"。',
+  keyboardShortcutsLabel: '键盘',
 };
 
 const JA: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1335,6 +1425,16 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: '空調 / 住宅サービス',
   tplLegal: '法律相談受付',
   tplSupport: 'カスタマーサポート',
+  commandBarTitle: 'コマンドパレット',
+  commandBarPlaceholder: 'ノード名を入力するか、"connect A to B" と入力…',
+  commandBarHint: '↑↓ で移動 · Enter で実行 · Esc で閉じる',
+  commandBarKeyboardHint: 'ヒント:矢印キーで選択中のノードを移動 · Shift で大きく移動',
+  commandBarOpen: 'コマンドパレットを開く',
+  cmdAddNode: 'ノードを追加:{label}',
+  cmdConnectNodes: '接続 {source} → {target}',
+  cmdFocusNode: 'ノードにフォーカス:{label}',
+  cmdNoMatches: '一致なし。"挨拶" のようなノード名や "connect 挨拶 to 質問" を試してください。',
+  keyboardShortcutsLabel: 'キーボード',
 };
 
 const KO: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1467,6 +1567,16 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: '냉난방 / 가정 서비스',
   tplLegal: '법률 상담 접수',
   tplSupport: '고객 지원',
+  commandBarTitle: '명령 팔레트',
+  commandBarPlaceholder: '노드를 추가하려면 입력하거나 "connect A to B"…',
+  commandBarHint: '↑↓ 이동 · Enter 실행 · Esc 닫기',
+  commandBarKeyboardHint: '팁: 방향키로 선택한 노드를 이동 · Shift를 누르면 더 크게 이동',
+  commandBarOpen: '명령 팔레트 열기',
+  cmdAddNode: '노드 추가: {label}',
+  cmdConnectNodes: '연결 {source} → {target}',
+  cmdFocusNode: '노드 포커스: {label}',
+  cmdNoMatches: '일치 항목 없음. "인사" 같은 노드 이름이나 "connect 인사 to 질문"을 시도해 보세요.',
+  keyboardShortcutsLabel: '키보드',
 };
 
 const AR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1599,6 +1709,16 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'تكييف / خدمات منزلية',
   tplLegal: 'استقبال قانوني',
   tplSupport: 'دعم العملاء',
+  commandBarTitle: 'لوحة الأوامر',
+  commandBarPlaceholder: 'اكتب لإضافة عقدة، أو "connect A to B"…',
+  commandBarHint: '↑↓ للتنقل · Enter للتنفيذ · Esc للإغلاق',
+  commandBarKeyboardHint: 'تلميح: مفاتيح الأسهم تحرك العقدة المحددة · مع Shift للتحرك بخطوات أكبر',
+  commandBarOpen: 'فتح لوحة الأوامر',
+  cmdAddNode: 'إضافة عقدة: {label}',
+  cmdConnectNodes: 'اتصال {source} → {target}',
+  cmdFocusNode: 'تركيز العقدة: {label}',
+  cmdNoMatches: 'لا توجد نتائج. جرّب اسم عقدة مثل "تحية" أو "connect تحية to سؤال".',
+  keyboardShortcutsLabel: 'لوحة المفاتيح',
 };
 
 const HI: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1731,6 +1851,16 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / गृह सेवाएँ',
   tplLegal: 'कानूनी पंजीकरण',
   tplSupport: 'ग्राहक सहायता',
+  commandBarTitle: 'कमांड पैलेट',
+  commandBarPlaceholder: 'नोड जोड़ने के लिए टाइप करें, या "connect A to B"…',
+  commandBarHint: '↑↓ नेविगेट · Enter चलाएँ · Esc बंद करें',
+  commandBarKeyboardHint: 'सुझाव: तीर कुंजियाँ चयनित नोड को हिलाती हैं · बड़े कदमों के लिए Shift दबाएँ',
+  commandBarOpen: 'कमांड पैलेट खोलें',
+  cmdAddNode: 'नोड जोड़ें: {label}',
+  cmdConnectNodes: 'जोड़ें {source} → {target}',
+  cmdFocusNode: 'नोड पर फोकस: {label}',
+  cmdNoMatches: 'कोई मिलान नहीं। "अभिवादन" जैसे नोड नाम या "connect अभिवादन to प्रश्न" आज़माएँ।',
+  keyboardShortcutsLabel: 'कीबोर्ड',
 };
 
 const TRANSLATIONS: Record<string, Partial<Record<AgentBuilderTKey, string>>> = {
