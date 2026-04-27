@@ -202,15 +202,13 @@ export class SlackConnectorAdapter implements ConnectorAdapter {
     blocks: unknown[],
     fallbackText: string,
   ): Promise<ConnectorResult> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
     try {
       // BL-014 (Task #248): wrap the chat.postMessage call in retryFetch so
       // a transient 429 (Slack returns Retry-After) or 5xx is retried with
-      // 1s/4s/16s ±20% jitter. The outer controller/timeoutId on this
-      // method is now a no-op kept for source-stability; retryFetch's
-      // per-attempt fetcher creates a fresh timeout for each attempt.
+      // 1s/4s/16s ±20% jitter. retryFetch's per-attempt fetcher owns the
+      // request timeout (a fresh AbortController per attempt) and the
+      // helper enforces the 60s total dispatch budget; no outer timer is
+      // needed here.
       const res = await retryFetch(
         `${SLACK_API}/chat.postMessage`,
         {
@@ -234,8 +232,6 @@ export class SlackConnectorAdapter implements ConnectorAdapter {
           },
         },
       );
-
-      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -267,7 +263,6 @@ export class SlackConnectorAdapter implements ConnectorAdapter {
         meta: { messageTs: data.ts, channel, provider: 'slack' },
       };
     } catch (err) {
-      clearTimeout(timeoutId);
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Slack request failed', { tenantId, error });
       return { success: false, error };

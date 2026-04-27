@@ -315,4 +315,264 @@ describe('retryFetch', () => {
     expect(err.status).toBe(429);
     expect(err.retryAfterMs).toBe(5_000);
   });
+
+  test('does not retry on non-transient thrown errors (e.g. SsrfBlockedError)', async () => {
+    class SsrfBlockedError extends Error {
+      constructor() {
+        super('blocked');
+        this.name = 'SsrfBlockedError';
+      }
+    }
+    const fetcher = vi.fn().mockRejectedValue(new SsrfBlockedError());
+    const { sleep, delays } = fakeSleep();
+
+    await expect(
+      retryFetch('https://api.test/x', undefined, {
+        fetcher,
+        sleep,
+        jitter: noJitter,
+      }),
+    ).rejects.toThrow('blocked');
+
+    // No retries, no sleeps — domain errors are surfaced immediately.
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(delays).toEqual([]);
+  });
+
+  test('retries AbortError (per-attempt request timeout)', async () => {
+    const abort = new Error('aborted');
+    abort.name = 'AbortError';
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(abort)
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+    const { sleep } = fakeSleep();
+
+    const res = await retryFetch('https://api.test/x', undefined, {
+      fetcher,
+      sleep,
+      jitter: noJitter,
+    });
+
+    expect(res.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  test('honours an explicit shouldRetry override for synthetic errors', async () => {
+    class FakeTransient extends Error {
+      constructor() { super('transient'); this.name = 'FakeTransient'; }
+    }
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new FakeTransient())
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+    const { sleep } = fakeSleep();
+
+    const res = await retryFetch('https://api.test/x', undefined, {
+      fetcher,
+      sleep,
+      jitter: noJitter,
+      shouldRetry: (err) => err instanceof FakeTransient,
+    });
+
+    expect(res.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  test('caps Retry-After at the remaining per-dispatch deadline (maxTotalMs)', async () => {
+    // First 429 says Retry-After: 50. With a 5s budget we must NOT sleep
+    // 50s — the wait must be clipped to the remaining budget.
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('rate limited', {
+          status: 429,
+          headers: { 'Retry-After': '50' },
+        }),
+      )
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+    const { sleep, delays } = fakeSleep();
+
+    await retryFetch('https://api.test/x', undefined, {
+      fetcher,
+      sleep,
+      jitter: noJitter,
+      maxTotalMs: 5_000,
+      maxBackoffMs: 60_000, // intentionally larger than maxTotalMs
+    });
+
+    // Whatever we slept, it cannot exceed the 5s deadline.
+    expect(delays.length).toBe(1);
+    expect(delays[0]).toBeLessThanOrEqual(5_000);
+  });
+
+  test('a single hanging request is bounded by maxTotalMs (Promise.race against deadline)', async () => {
+    // Fetcher that NEVER resolves. Without the deadline race, retryFetch
+    // would hang forever (the per-attempt timeout lives inside the
+    // adapter's own fetcher and is bypassed by a stub fetcher like this).
+    // The internal deadline race must rescue us in <=maxTotalMs.
+    const fetcher = vi.fn(() => new Promise<Response>(() => { /* never */ }));
+    const startedAt = Date.now();
+    await expect(
+      retryFetch('https://api.test/x', undefined, {
+        fetcher,
+        sleep: async () => {},
+        jitter: noJitter,
+        maxTotalMs: 50, // very tight budget for a fast unit test
+      }),
+    ).rejects.toMatchObject({ name: 'RetryFetchDeadlineExceeded' });
+    const elapsed = Date.now() - startedAt;
+    // Generous upper bound to absorb CI scheduling jitter; the point is
+    // we returned in <<one attempt timeout>> instead of hanging forever.
+    expect(elapsed).toBeLessThan(2_000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  test('budget exhausted by transient thrown errors does not invoke fetcher again', async () => {
+    // First attempt throws a transient TypeError (network error). After
+    // the retry sleep "burns" the entire remaining budget, attempt 2
+    // must NOT call the fetcher — the attempt-boundary guard fires
+    // synchronously and the call surfaces the original transient error.
+    let virtualNow = 0;
+    const startWall = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => startWall + virtualNow);
+
+    try {
+      const fetcher = vi.fn(async () => {
+        virtualNow += 10;
+        throw new TypeError('fetch failed');
+      });
+      const sleep = vi.fn(async (ms: number) => {
+        virtualNow += ms;
+      });
+
+      // Once the budget is exhausted with no prior HTTP response, the
+      // attempt-boundary guard short-circuits with a dedicated
+      // RetryFetchDeadlineExceeded error so callers can distinguish a
+      // budget overrun from a true network failure.
+      await expect(
+        retryFetch('https://api.test/x', undefined, {
+          fetcher,
+          sleep,
+          jitter: noJitter,
+          // Tight budget: attempt1 (10ms) + sleep ≥ 100ms eats all of it.
+          maxTotalMs: 100,
+          baseDelaysMs: [200], // first retry sleep > remaining budget
+        }),
+      ).rejects.toMatchObject({ name: 'RetryFetchDeadlineExceeded' });
+
+      // Exactly one fetch invocation: the attempt-boundary guard caught
+      // attempt 2 before it could call out again.
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      (Date.now as unknown as { mockRestore?: () => void }).mockRestore?.();
+    }
+  });
+
+  test('hanging final attempt after prior 429 surfaces the prior response on deadline', async () => {
+    // First attempt: 429 (no Retry-After → use default schedule).
+    // Second attempt: hangs. Deadline trips → caller must receive the 429
+    // response, not a deadline error.
+    let call = 0;
+    const fetcher = vi.fn(() => {
+      call += 1;
+      if (call === 1) {
+        return Promise.resolve(new Response('rate limited', { status: 429 }));
+      }
+      return new Promise<Response>(() => { /* never */ });
+    });
+
+    const res = await retryFetch('https://api.test/x', undefined, {
+      fetcher,
+      sleep: async () => {}, // burn no time on retry-sleep
+      jitter: noJitter,
+      maxTotalMs: 50,
+    });
+    expect(res.status).toBe(429);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  test('worst-case wall-clock stays under maxTotalMs even with repeated 429 + huge Retry-After', async () => {
+    // Simulates a hostile upstream: every response is a 429 with
+    // Retry-After: 50s. We *must* bound total elapsed at maxTotalMs (5s
+    // here) regardless of how many attempts fit, by clipping every sleep
+    // to remainingMs() AND short-circuiting any attempt whose start time
+    // is past the deadline.
+    let virtualNow = 0;
+    const startWall = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => startWall + virtualNow);
+
+    try {
+      const fetcher = vi.fn(async () => {
+        // Each fetch "takes" 100ms of wall time.
+        virtualNow += 100;
+        return new Response('rate limited', {
+          status: 429,
+          headers: { 'Retry-After': '50' },
+        });
+      });
+      const sleep = vi.fn(async (ms: number) => {
+        virtualNow += ms;
+      });
+
+      const res = await retryFetch('https://api.test/x', undefined, {
+        fetcher,
+        sleep,
+        jitter: noJitter,
+        maxTotalMs: 5_000,
+        maxBackoffMs: 60_000,
+      });
+
+      // Even though Retry-After asked for 50s × 2, total wall time must
+      // stay inside the 5s budget (give or take the cheap final fetch).
+      expect(res.status).toBe(429);
+      expect(virtualNow).toBeLessThanOrEqual(5_500);
+      // We started at most 3 attempts, but the last one (if it ran) was
+      // a no-op short-circuit because remainingMs() was already 0.
+      // Total fetcher invocations therefore matches what fit in budget.
+      expect(fetcher.mock.calls.length).toBeLessThanOrEqual(3);
+    } finally {
+      (Date.now as unknown as { mockRestore?: () => void }).mockRestore?.();
+    }
+  });
+
+  test('refuses to retry once the per-dispatch deadline is exhausted', async () => {
+    // A real (non-injected) sleep would burn the budget; here we use a
+    // sleep stub that itself advances "wall time" so we can deterministically
+    // exhaust maxTotalMs after a single retry.
+    let virtualNow = 0;
+    const realDateNow = Date.now;
+    const startWall = realDateNow();
+    vi.spyOn(Date, 'now').mockImplementation(() => startWall + virtualNow);
+
+    try {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(new Response('boom', { status: 503 }));
+      const sleep = vi.fn(async (ms: number) => {
+        virtualNow += ms;
+      });
+
+      const res = await retryFetch('https://api.test/x', undefined, {
+        fetcher,
+        sleep,
+        jitter: noJitter,
+        maxTotalMs: 1_500, // only enough for one sleep at the 1s base delay
+      });
+
+      // Hit the cap quickly: attempt 1 fails, sleep 1s (within 1.5s), attempt 2
+      // fails, sleep would be 4s but remaining is 500ms → effective 500ms,
+      // total now 1.5s → shouldRetry on attempt 3 sees remaining=0 → stop.
+      expect(res.status).toBe(503);
+      expect(fetcher.mock.calls.length).toBeLessThanOrEqual(3);
+      // Second sleep, if any, must have been clipped to remaining budget.
+      const totalSlept = sleep.mock.calls.reduce<number>(
+        (a, [ms]) => a + (ms as number),
+        0,
+      );
+      expect(totalSlept).toBeLessThanOrEqual(1_500);
+    } finally {
+      (Date.now as unknown as { mockRestore?: () => void }).mockRestore?.();
+    }
+  });
 });

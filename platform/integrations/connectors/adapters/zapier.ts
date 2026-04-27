@@ -30,9 +30,6 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
       return { success: false, error: `Zapier adapter does not handle event: ${payload.type}` };
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
     const eventPayload = {
       event: payload.type,
       timestamp: new Date().toISOString(),
@@ -53,6 +50,8 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
       // BL-014 (Task #248): retry transient 429/5xx + network errors via
       // retryFetch, but plug `safeFetch` in as the fetcher so the SSRF guard
       // still runs on every attempt. Retry-After on a 429 is honoured.
+      // The 60s per-dispatch budget is enforced by retryFetch itself; the
+      // per-attempt AbortController owns the request timeout.
       const res = await retryFetch(
         webhookUrl,
         {
@@ -77,8 +76,6 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
         },
       );
 
-      clearTimeout(timeoutId);
-
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         logger.error('Zapier webhook failed', { tenantId, status: res.status });
@@ -100,7 +97,6 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
         meta: { event: payload.type, webhookUrl: this.redactUrl(webhookUrl), provider: 'zapier' },
       };
     } catch (err) {
-      clearTimeout(timeoutId);
       if (err instanceof SsrfBlockedError) {
         logger.error('Webhook URL blocked by SSRF policy', { tenantId, reason: err.reason });
         return { success: false, error: 'Webhook URL must be a public HTTPS URL' };
