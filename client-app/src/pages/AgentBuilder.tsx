@@ -22,7 +22,14 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { api } from '../lib/api';
-import { AGENT_LANGUAGES, DEFAULT_AGENT_LANGUAGE, normalizeAgentLanguage } from '../lib/agentLanguages';
+import {
+  AGENT_LANGUAGES,
+  DEFAULT_AGENT_LANGUAGE,
+  normalizeAgentLanguage,
+  getRecommendedVoicesForLanguage,
+  isVoiceRecommendedForLanguage,
+  getAgentLanguageLabel,
+} from '../lib/agentLanguages';
 import {
   ArrowLeft, Save, Play, Rocket, History, GripVertical,
   MessageSquare, HelpCircle, CheckCircle, GitBranch, Route,
@@ -751,13 +758,50 @@ function VoiceConfigPanel({
       <div className="p-3 space-y-4">
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">Voice</label>
-          <select
-            value={voice}
-            onChange={(e) => onChange('voice', e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
-          >
-            {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
+          {(() => {
+            const recommended = getRecommendedVoicesForLanguage(language);
+            const recommendedSet = new Set(recommended);
+            const others = VOICES.filter((v) => !recommendedSet.has(v));
+            const langLabel = getAgentLanguageLabel(language);
+            const isRecommended = isVoiceRecommendedForLanguage(voice, language);
+            return (
+              <>
+                <select
+                  value={voice}
+                  onChange={(e) => onChange('voice', e.target.value)}
+                  className={`w-full px-3 py-1.5 rounded-lg border bg-surface text-text-primary text-sm ${
+                    !isRecommended ? 'border-amber-400 dark:border-amber-600' : 'border-border'
+                  }`}
+                >
+                  <optgroup label={`Recommended for ${langLabel}`}>
+                    {recommended.map((v) => (
+                      <option key={v} value={v}>★ {v}</option>
+                    ))}
+                  </optgroup>
+                  {others.length > 0 && (
+                    <optgroup label="Other voices (may sound less natural)">
+                      {others.map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {!isRecommended ? (
+                  <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                      <span className="font-medium">{voice}</span> isn't tuned for {langLabel}. Quality may suffer — try{' '}
+                      <span className="font-medium">{recommended.slice(0, 3).join(', ')}</span> for a more natural sound.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Voices marked ★ sound most natural in {langLabel}.
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">Model</label>

@@ -35,5 +35,36 @@ export function normalizeAgentLanguage(value: unknown): string {
 }
 
 export function getAgentLanguageLabel(code: string): string {
-  return AGENT_LANGUAGES.find((l) => l.code === code)?.label ?? 'English';
+  const normalized = normalizeAgentLanguage(code);
+  return AGENT_LANGUAGES.find((l) => l.code === normalized)?.label ?? 'English';
+}
+
+export const RECOMMENDED_VOICES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse'],
+  es: ['coral', 'nova', 'shimmer', 'sage', 'alloy', 'verse'],
+  fr: ['nova', 'shimmer', 'sage', 'alloy', 'coral', 'verse'],
+  de: ['alloy', 'nova', 'sage', 'shimmer', 'verse'],
+  pt: ['nova', 'shimmer', 'alloy', 'coral', 'sage'],
+  it: ['nova', 'shimmer', 'sage', 'alloy', 'coral', 'verse'],
+  nl: ['alloy', 'nova', 'shimmer', 'sage'],
+  zh: ['alloy', 'nova', 'shimmer'],
+  ja: ['alloy', 'nova', 'shimmer'],
+  ko: ['alloy', 'nova', 'shimmer'],
+  ar: ['alloy', 'nova', 'shimmer'],
+  hi: ['alloy', 'nova', 'shimmer'],
+};
+
+export function getRecommendedVoicesForLanguage(languageCode: string): readonly string[] {
+  const normalized = normalizeAgentLanguage(languageCode);
+  return RECOMMENDED_VOICES_BY_LANGUAGE[normalized] ?? RECOMMENDED_VOICES_BY_LANGUAGE[DEFAULT_AGENT_LANGUAGE];
+}
+
+export function isVoiceRecommendedForLanguage(voice: string, languageCode: string): boolean {
+  if (!voice) return true;
+  return getRecommendedVoicesForLanguage(languageCode).includes(voice);
+}
+
+export function getDefaultVoiceForLanguage(languageCode: string): string {
+  const recommended = getRecommendedVoicesForLanguage(languageCode);
+  return recommended[0] ?? 'alloy';
 }
