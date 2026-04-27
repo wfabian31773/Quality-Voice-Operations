@@ -131,6 +131,10 @@ function ProvisionFlow({
       }>('/phone-numbers/provision', data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['phone-numbers'] });
+      // The TenantLayout's provisioning-status query caches phoneNumberCount
+      // for 5 minutes; without this invalidation a brand-new tenant who just
+      // bought their first number would be redirected back to /onboarding.
+      queryClient.invalidateQueries({ queryKey: ['tenant-provisioning-status'] });
       setProvisionedNumber(selectedNumber?.phoneNumber || '');
       setProvisionedId((data.phoneNumber?.id as string) || '');
       setStep('success');

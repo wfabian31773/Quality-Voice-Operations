@@ -14,14 +14,22 @@ interface TrialStatus {
 }
 
 export default function TrialBanner() {
+  // Trial status changes on the order of days (countdown decrements once per
+  // day, expiration is a single transition). There is no useful signal in
+  // re-fetching this every few minutes, and TrialBanner is mounted on every
+  // tenant page so any extra refetch fans out across the whole portal. Keep
+  // the data fresh for 30 minutes and disable every implicit refetch — the
+  // billing flow explicitly invalidates ['trial-status'] when the tenant
+  // upgrades or their plan changes.
   const { data } = useQuery({
     queryKey: ['trial-status'],
     queryFn: () => api.get<TrialStatus>('/tenants/me/trial-status'),
-    staleTime: 5 * 60_000,
-    gcTime: 10 * 60_000,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
+    refetchInterval: false,
     retry: false,
   });
 

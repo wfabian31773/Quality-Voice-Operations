@@ -103,6 +103,14 @@ export default function TenantLayout() {
   }, []);
 
   const isPlatformAdmin = !!user?.isPlatformAdmin;
+  // Provisioning status is essentially a one-shot signal: it transitions from
+  // pending -> provisioning -> ready exactly once, and once a tenant has a
+  // phone number the value is permanently stable. TenantLayout is the root of
+  // the entire portal, so any refetch fires on every page and on every focus
+  // change, which is what made this query the second-noisiest call in the
+  // tenant portal. Cache it for 30 minutes, disable every implicit refetch,
+  // and rely on explicit invalidation from Onboarding (post-poll) and
+  // PhoneNumbers (post-provision) to keep the data correct.
   const { data: provisioningData, isLoading: provisioningLoading, isError: provisioningError } = useQuery({
     queryKey: ['tenant-provisioning-status'],
     queryFn: () =>
@@ -110,11 +118,12 @@ export default function TenantLayout() {
         '/tenants/me/provisioning-status',
       ),
     enabled: !isPlatformAdmin,
-    staleTime: 5 * 60_000,
-    gcTime: 10 * 60_000,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
+    refetchInterval: false,
     retry: false,
   });
 

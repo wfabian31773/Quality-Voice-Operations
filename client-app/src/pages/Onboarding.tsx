@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, Sparkles } from 'lucide-react';
 
@@ -36,6 +37,7 @@ const AGENT_TEMPLATES = [
 export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [provisioningStatus, setProvisioningStatus] = useState<ProvisioningStatus | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState('answering-service');
@@ -110,24 +112,30 @@ export default function Onboarding() {
       const result = await api.post<{ status: string }>('/tenants/me/verify-checkout', { sessionId });
       if (result.status === 'ready') {
         setProvisioningStatus({ status: 'ready', agentCount: 1, phoneNumberCount: 0 });
+        // Invalidate the shared TenantLayout cache so it doesn't keep
+        // bouncing the user back to /onboarding on its 5-minute stale data.
+        queryClient.invalidateQueries({ queryKey: ['tenant-provisioning-status'] });
         advanceTo(2);
       }
     } catch {
       // Fall through to polling
     }
-  }, [searchParams, advanceTo]);
+  }, [searchParams, advanceTo, queryClient]);
 
   const pollStatus = useCallback(async () => {
     try {
       const data = await api.get<ProvisioningStatus>('/tenants/me/provisioning-status');
       setProvisioningStatus(data);
       if (data.status === 'ready') {
+        // Invalidate the shared TenantLayout cache so it picks up the fresh
+        // status instead of holding the 5-minute-stale "pending" snapshot.
+        queryClient.invalidateQueries({ queryKey: ['tenant-provisioning-status'] });
         advanceTo(2);
       }
     } catch {
       // Retry silently
     }
-  }, [advanceTo]);
+  }, [advanceTo, queryClient]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;

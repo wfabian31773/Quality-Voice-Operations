@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
@@ -131,7 +131,22 @@ function UsageBar({ label, icon: Icon, used, limit, color }: {
 export default function Billing() {
   const { user } = useAuth();
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
+  const queryClient = useQueryClient();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+
+  // Stripe Checkout redirects back to /billing?checkout=success after a
+  // successful upgrade. The trial-status query is cached aggressively
+  // (30 minutes, no implicit refetch) to keep the TrialBanner from spamming
+  // /tenants/me/trial-status across every tenant page, so we have to
+  // explicitly drop the cached "still on trial" snapshot whenever the user
+  // returns from a successful checkout.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') === 'success') {
+      queryClient.invalidateQueries({ queryKey: ['trial-status'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+    }
+  }, [queryClient]);
 
   const { data: subData, isLoading: subLoading, error: subError } = useQuery({
     queryKey: ['billing-subscription'],
