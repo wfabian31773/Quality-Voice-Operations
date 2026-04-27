@@ -1080,6 +1080,24 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
           [waitlistRows[0].id],
         );
       }
+
+      // Push the assigned technician (if any) that the appointment is cancelled.
+      if (booking.resource_id) {
+        void fireDispatchPush({
+          event: 'booking_cancelled',
+          tenantId,
+          resourceIds: [booking.resource_id as string],
+          booking: {
+            id: booking.id as string,
+            title: (booking.title as string | null) ?? null,
+            start_time: booking.start_time
+              ? (booking.start_time instanceof Date
+                  ? booking.start_time.toISOString()
+                  : String(booking.start_time))
+              : null,
+          },
+        });
+      }
     }
 
     await auditLog(pool, tenantId, id, action, booking.status, newStatus, req.user!.userId, { cancellation_reason }, override_reason || '');

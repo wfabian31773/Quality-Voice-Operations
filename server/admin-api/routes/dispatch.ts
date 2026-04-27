@@ -63,6 +63,7 @@ async function pushAssigneeForJob(
 const STATUS_TO_PUSH_EVENT: Record<string, DispatchPushEvent> = {
   en_route: 'job_status_en_route',
   on_site: 'job_status_on_site',
+  cancelled: 'job_cancelled',
 };
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {

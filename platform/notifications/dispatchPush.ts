@@ -7,7 +7,9 @@ export type DispatchPushEvent =
   | 'job_assigned'
   | 'job_status_en_route'
   | 'job_status_on_site'
-  | 'booking_rescheduled';
+  | 'job_cancelled'
+  | 'booking_rescheduled'
+  | 'booking_cancelled';
 
 export interface DispatchPushJob {
   id: string;
@@ -68,6 +70,16 @@ function copyForEvent(event: DispatchPushEvent, params: FireParams): { title: st
         body: `${formatJobTitle(job)}${job?.contact_name ? ` · ${job.contact_name}` : ''}`,
       };
     }
+    case 'job_cancelled': {
+      const parts = [formatJobTitle(job)];
+      if (job?.contact_name) parts.push(job.contact_name);
+      const loc = shortLocation(job?.address);
+      if (loc) parts.push(loc);
+      return {
+        title: 'Job cancelled',
+        body: parts.join(' · '),
+      };
+    }
     case 'booking_rescheduled': {
       const when = params.booking?.start_time
         ? new Date(params.booking.start_time).toLocaleString()
@@ -75,6 +87,16 @@ function copyForEvent(event: DispatchPushEvent, params: FireParams): { title: st
       return {
         title: 'Appointment rescheduled',
         body: `${params.booking?.title?.trim() || 'Appointment'} → ${when}`,
+      };
+    }
+    case 'booking_cancelled': {
+      const when = params.booking?.start_time
+        ? new Date(params.booking.start_time).toLocaleString()
+        : '';
+      const title = params.booking?.title?.trim() || 'Appointment';
+      return {
+        title: 'Appointment cancelled',
+        body: when ? `${title} · ${when}` : title,
       };
     }
   }

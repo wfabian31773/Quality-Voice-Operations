@@ -9,6 +9,7 @@ const STORAGE_RESOURCE_ID = 'voiceai.tech.resourceId';
 const STORAGE_RESOURCE_NAME = 'voiceai.tech.resourceName';
 const STORAGE_PUSH_TOKEN_KEY = 'voiceai.tech.pushToken';
 const STORAGE_PUSH_ENABLED_KEY = 'voiceai.tech.pushEnabled';
+const STORAGE_LAST_PUSH_HANDLED_KEY = 'voiceai.tech.lastPushHandled';
 
 export const STORAGE_KEYS = {
   baseUrl: STORAGE_BASE_URL_KEY,
@@ -17,6 +18,7 @@ export const STORAGE_KEYS = {
   resourceName: STORAGE_RESOURCE_NAME,
   pushToken: STORAGE_PUSH_TOKEN_KEY,
   pushEnabled: STORAGE_PUSH_ENABLED_KEY,
+  lastPushHandled: STORAGE_LAST_PUSH_HANDLED_KEY,
 };
 
 export interface DispatchJob {

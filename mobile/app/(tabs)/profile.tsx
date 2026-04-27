@@ -163,7 +163,8 @@ export default function ProfileScreen() {
             </Text>
             <Text style={[styles.helper, { color: colors.textMuted }]}>
               Get notified when a job is assigned to you, when its status moves
-              to en route or on site, or when an appointment is rescheduled.
+              to en route or on site, when a job is cancelled, or when an
+              appointment is rescheduled or cancelled.
             </Text>
           </View>
           <Switch

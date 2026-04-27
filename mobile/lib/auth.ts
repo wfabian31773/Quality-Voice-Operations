@@ -100,3 +100,11 @@ export async function updateStoredPushEnabled(
 ): Promise<void> {
   await write(STORAGE_KEYS.pushEnabled, enabled ? 'true' : 'false');
 }
+
+export async function readLastHandledPushId(): Promise<string | null> {
+  return read(STORAGE_KEYS.lastPushHandled);
+}
+
+export async function writeLastHandledPushId(id: string): Promise<void> {
+  await write(STORAGE_KEYS.lastPushHandled, id);
+}
