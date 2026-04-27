@@ -15,26 +15,29 @@ import {
   type GinBenchmarkStatus,
 } from '../../data/ginBenchmarks';
 
-const STATUS_COPY: Record<GinBenchmarkStatus, { label: string; tone: string }> = {
-  illustrative: {
-    label: 'Illustrative sample — live cohort coming soon',
-    tone: 'bg-amber-100 text-amber-900 border-amber-300',
-  },
-  preview: {
-    label: 'Preview cohort — early data, not yet published',
-    tone: 'bg-sky-100 text-sky-900 border-sky-300',
-  },
-  live: {
-    label: 'Live cohort',
-    tone: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-  },
+const STATUS_TONE: Record<GinBenchmarkStatus, string> = {
+  illustrative: 'bg-amber-100 text-amber-900 border-amber-300',
+  preview: 'bg-sky-100 text-sky-900 border-sky-300',
+  live: 'bg-emerald-100 text-emerald-900 border-emerald-300',
 };
 
-function formatSnapshotDate(snapshotAt: string | null): string | null {
+const STATUS_LABEL_KEY: Record<GinBenchmarkStatus, string> = {
+  illustrative: 'gin_page.benchmark.status_illustrative',
+  preview: 'gin_page.benchmark.status_preview',
+  live: 'gin_page.benchmark.status_live',
+};
+
+const STATUS_DISCLOSURE_KEY: Record<GinBenchmarkStatus, string> = {
+  illustrative: 'gin_page.benchmark.disclosure_illustrative',
+  preview: 'gin_page.benchmark.disclosure_preview',
+  live: 'gin_page.benchmark.disclosure_live',
+};
+
+function formatSnapshotDate(snapshotAt: string | null, locale: string): string | null {
   if (!snapshotAt) return null;
   const parsed = new Date(snapshotAt);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleDateString(undefined, {
+  return parsed.toLocaleDateString(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -50,7 +53,7 @@ type LabelItem = { label: string; desc: string };
 type BenchmarkExample = { vertical: string; metric: string };
 
 export default function GlobalIntelligenceNetwork() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [snapshot, setSnapshot] = useState<GinBenchmarkSnapshot>(ginBenchmarkFallback);
 
   useEffect(() => {
@@ -72,12 +75,7 @@ export default function GlobalIntelligenceNetwork() {
           refreshCadence: data.refreshCadence ?? ginBenchmarkFallback.refreshCadence,
           kAnonymity: data.kAnonymity ?? ginBenchmarkFallback.kAnonymity,
           source: data.source ?? 'industry_benchmarks',
-          disclosure:
-            data.status === 'live'
-              ? 'Cohort medians and top-quartile values aggregated from opted-in QVO tenants in each vertical. Rows below the k-anonymity threshold are suppressed.'
-              : data.status === 'preview'
-                ? 'Early cohort data — published in preview while we accumulate enough opted-in tenants per vertical for a stable benchmark.'
-                : ginBenchmarkFallback.disclosure,
+          disclosure: data.disclosure ?? '',
           rows,
         });
       })
@@ -90,7 +88,12 @@ export default function GlobalIntelligenceNetwork() {
   }, []);
 
   const status = snapshot.status;
-  const snapshotDateLabel = formatSnapshotDate(snapshot.snapshotAt);
+  const snapshotDateLabel = formatSnapshotDate(snapshot.snapshotAt, i18n.language);
+  const disclosureText = t(STATUS_DISCLOSURE_KEY[status]);
+  const cadenceText =
+    snapshot.refreshCadence === ginBenchmarkFallback.refreshCadence
+      ? t('gin_page.benchmark.refresh_cadence')
+      : snapshot.refreshCadence;
 
   const valueProps = t('gin_page.value_props.items', { returnObjects: true }) as TextItem[];
   const howItWorks = t('gin_page.how_it_works.items', { returnObjects: true }) as TextItem[];
@@ -160,30 +163,34 @@ export default function GlobalIntelligenceNetwork() {
             <div className="max-w-5xl mx-auto bg-white rounded-2xl border border-soft-steel/30 overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-soft-steel/20 bg-mist/40 flex flex-wrap items-center justify-between gap-3">
                 <span
-                  className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full border ${STATUS_COPY[status].tone}`}
+                  className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full border ${STATUS_TONE[status]}`}
                   data-testid="gin-benchmark-status"
                 >
                   <Info className="h-3.5 w-3.5" />
-                  {STATUS_COPY[status].label}
+                  {t(STATUS_LABEL_KEY[status])}
                 </span>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-ink/60 font-body">
                   <span data-testid="gin-benchmark-snapshot-date">
-                    {snapshotDateLabel
-                      ? <>Snapshot: <span className="font-semibold text-slate-ink/80">{snapshotDateLabel}</span></>
-                      : <>Snapshot: <span className="font-semibold text-slate-ink/80">pending first refresh</span></>}
+                    {t('gin_page.benchmark.snapshot_label')}{' '}
+                    <span className="font-semibold text-slate-ink/80">
+                      {snapshotDateLabel ?? t('gin_page.benchmark.snapshot_pending')}
+                    </span>
                   </span>
                   <span>
-                    k-anonymity: <span className="font-semibold text-slate-ink/80">≥ {snapshot.kAnonymity} tenants</span>
+                    {t('gin_page.benchmark.kanon_label')}{' '}
+                    <span className="font-semibold text-slate-ink/80">
+                      {t('gin_page.benchmark.kanon_value', { n: snapshot.kAnonymity })}
+                    </span>
                   </span>
                 </div>
               </div>
               <div className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-soft-steel/20 bg-mist/50 text-xs font-semibold uppercase tracking-wide text-slate-ink/55 font-display">
                 <div className="col-span-3">{t('gin_page.benchmark.col_vertical')}</div>
                 <div className="col-span-3">{t('gin_page.benchmark.col_metric')}</div>
-                <div className="col-span-2 text-right">Cohort avg</div>
+                <div className="col-span-2 text-right">{t('gin_page.benchmark.col_cohort_avg')}</div>
                 <div className="col-span-2 text-right">{t('gin_page.benchmark.col_median')}</div>
                 <div className="col-span-1 text-right">{t('gin_page.benchmark.col_top')}</div>
-                <div className="col-span-1 text-right">Cohort</div>
+                <div className="col-span-1 text-right">{t('gin_page.benchmark.col_cohort')}</div>
               </div>
               {snapshot.rows.map((row) => (
                 <div key={`${row.vertical}-${row.metric}`} className="grid grid-cols-12 gap-2 px-6 py-4 border-b last:border-b-0 border-soft-steel/20 items-center text-sm font-body">
@@ -193,12 +200,12 @@ export default function GlobalIntelligenceNetwork() {
                   <div className="col-span-2 text-right font-mono text-slate-ink/55">{row.median}</div>
                   <div className="col-span-1 text-right font-mono text-calm-green">{row.topQuartile}</div>
                   <div className="col-span-1 text-right font-mono text-slate-ink/45">
-                    {row.cohortSize > 0 ? `n=${row.cohortSize}` : '—'}
+                    {row.cohortSize > 0 ? t('gin_page.benchmark.cohort_size', { n: row.cohortSize }) : '—'}
                   </div>
                 </div>
               ))}
               <div className="px-6 py-3 bg-mist/40 text-xs text-slate-ink/55 font-body italic">
-                {t('gin_page.benchmark.footnote')} {snapshot.disclosure} Cohorts only render when ≥ {snapshot.kAnonymity} tenants of comparable size are participating. Refresh: {snapshot.refreshCadence}.
+                {t('gin_page.benchmark.footnote')} {disclosureText} {t('gin_page.benchmark.disclosure_suffix', { k: snapshot.kAnonymity, cadence: cadenceText })}
               </div>
             </div>
           </RevealSection>
