@@ -186,6 +186,12 @@ export async function getCampaignMetrics(tenantId: string, campaignId: string): 
       [tenantId, campaignId],
     );
 
+    const { rows: skipRows } = await client.query(
+      `SELECT COALESCE(quiet_hours_skips, 0)::bigint AS quiet_hours_skips
+       FROM campaigns WHERE id = $1 AND tenant_id = $2`,
+      [campaignId, tenantId],
+    );
+
     return {
       total: Object.values(counts).reduce((a, b) => a + b, 0),
       attempted: (attemptRows[0]?.attempted as number) ?? 0,
@@ -198,7 +204,32 @@ export async function getCampaignMetrics(tenantId: string, campaignId: string): 
       voicemail: counts.voicemail ?? 0,
       skipped: counts.skipped ?? 0,
       optedOut: counts.opted_out ?? 0,
+      quietHoursSkips: parseInt(String(skipRows[0]?.quiet_hours_skips ?? '0'), 10),
     };
+  });
+}
+
+/**
+ * Bump the persistent counter that tracks how many times the scheduler
+ * skipped a contact for quiet hours. Counts events, not unique contacts —
+ * a contact that keeps falling outside its window contributes one skip
+ * per poll until the window reopens. Surfaced via `quietHoursSkips` on
+ * `getCampaignMetrics` so admins can spot stalled campaigns.
+ */
+export async function incrementQuietHoursSkips(
+  tenantId: string,
+  campaignId: string,
+  delta = 1,
+): Promise<void> {
+  if (delta <= 0) return;
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      `UPDATE campaigns
+         SET quiet_hours_skips = COALESCE(quiet_hours_skips, 0) + $3,
+             updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2`,
+      [campaignId, tenantId, delta],
+    );
   });
 }
 

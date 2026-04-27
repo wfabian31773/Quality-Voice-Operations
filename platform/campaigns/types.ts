@@ -143,6 +143,13 @@ export interface CampaignMetrics {
   voicemail: number;
   skipped: number;
   optedOut: number;
+  /**
+   * How many times the scheduler reverted a contact to "pending" because
+   * it was outside that contact's local call window. Counts skip events,
+   * not unique contacts — the same contact can be skipped on every poll
+   * until it falls back inside its window.
+   */
+  quietHoursSkips: number;
 }
 
 export interface TypeSpecificMetrics {

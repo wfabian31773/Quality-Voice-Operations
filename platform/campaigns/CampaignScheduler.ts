@@ -9,6 +9,7 @@ import {
   getActiveDialingCount,
   getTenantActiveDialingCount,
   getTenantMaxConcurrent,
+  incrementQuietHoursSkips,
 } from './CampaignService';
 import { dialContact } from './OutboundDialer';
 import { isContactOnDnc } from './ComplianceService';
@@ -133,6 +134,7 @@ export class CampaignScheduler {
 
         let dispatched = 0;
         let consecutiveQuietHourSkips = 0;
+        let quietHourSkipsThisTick = 0;
         // Track contacts we already saw and skipped within this tick so the
         // SKIP LOCKED query doesn't immediately hand the same row back.
         const tickSkippedIds: string[] = [];
@@ -150,6 +152,7 @@ export class CampaignScheduler {
           if (!quietHours.allowed) {
             await revertContactToPending(campaign.tenantId, contact.id);
             tickSkippedIds.push(contact.id);
+            quietHourSkipsThisTick++;
             logger.debug('Contact skipped — outside quiet hours window', {
               tenantId: campaign.tenantId,
               campaignId: campaign.id,
@@ -254,6 +257,13 @@ export class CampaignScheduler {
         }
 
         tenantDialingCounts.set(campaign.tenantId, tenantActive + dispatched);
+        if (quietHourSkipsThisTick > 0) {
+          await incrementQuietHoursSkips(
+            campaign.tenantId,
+            campaign.id,
+            quietHourSkipsThisTick,
+          );
+        }
         await checkCampaignCompletion(campaign.tenantId, campaign.id);
       }
     } finally {

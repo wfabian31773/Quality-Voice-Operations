@@ -21,6 +21,7 @@ export {
   getActiveDialingCount,
   getTenantActiveDialingCount,
   getTenantMaxConcurrent,
+  incrementQuietHoursSkips,
 } from './CampaignService';
 export type { CallbackReconciliation } from './CampaignService';
 
