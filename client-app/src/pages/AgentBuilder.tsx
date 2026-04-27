@@ -864,13 +864,13 @@ function VoiceConfigPanel({
                     !isRecommended ? 'border-amber-400 dark:border-amber-600' : 'border-border'
                   }`}
                 >
-                  <optgroup label={`Recommended for ${langLabel}`}>
+                  <optgroup label={t('voiceRecommendedForLang', { language: langLabel })}>
                     {recommended.map((v) => (
                       <option key={v} value={v}>★ {v}</option>
                     ))}
                   </optgroup>
                   {others.length > 0 && (
-                    <optgroup label="Other voices (may sound less natural)">
+                    <optgroup label={t('voiceOtherGroupLabel')}>
                       {others.map((v) => (
                         <option key={v} value={v}>{v}</option>
                       ))}
@@ -881,13 +881,16 @@ function VoiceConfigPanel({
                   <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5">
                     <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                     <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
-                      <span className="font-medium">{voice}</span> isn't tuned for {langLabel}. Quality may suffer — try{' '}
-                      <span className="font-medium">{recommended.slice(0, 3).join(', ')}</span> for a more natural sound.
+                      {t('voiceMismatchWarning', {
+                        voice,
+                        language: langLabel,
+                        recommended: recommended.slice(0, 3).join(', '),
+                      })}
                     </p>
                   </div>
                 ) : (
                   <p className="text-[10px] text-text-muted mt-1">
-                    Voices marked ★ sound most natural in {langLabel}.
+                    {t('voiceRecommendedHint', { language: langLabel })}
                   </p>
                 )}
               </>
