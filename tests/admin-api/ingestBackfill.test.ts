@@ -126,12 +126,18 @@ function makeFakeClient() {
         return { rows: [{ id }], rowCount: 1 };
       }
       if (trimmed.startsWith('UPDATE call_sessions')) {
+        // Index map matches the production query:
+        //   $1 tenant_id, $2 external_id, $3 call_sid, $4 agent_id,
+        //   $5 lifecycle_state, $6 start_time, $7 end_time,
+        //   $8 duration_seconds, $9 total_cost_cents, $10 context,
+        //   $11 escalation_reason
         const v = values ?? [];
         const externalId = String(v[1]);
         const row = existingCallsByExternalId.get(externalId);
         if (row) {
-          row.total_cost_cents = Number(v[7]);
-          row.duration_seconds = Number(v[6]);
+          row.start_time = String(v[6]);
+          row.duration_seconds = Number(v[7]);
+          row.total_cost_cents = Number(v[8]);
         }
         return { rows: [{ id: row?.id ?? `call-${externalId}` }], rowCount: 1 };
       }
@@ -611,17 +617,19 @@ describe('POST /v1/ingest/calls/backfill', () => {
 });
 
 // --------------------------------------------------------------------------
-// Cross-day backfill correction → finance alert
+// Cross-day backfill correction → auto-rebalance + finance alert
 //
 // When a backfill correction shifts an existing call into a different
-// calendar day, finance has to manually rebalance the OLD day's
-// daily_org_usage / usage_metrics buckets. The ingest path must surface
-// that as a structured alert (operations_alerts, type
-// `billing_backfill_cross_day`) with the affected tenant, external_id,
-// old/new dates, and a runbook URL — not just a log line.
+// calendar day, the ingest pipeline now reverses the OLD day's
+// daily_org_usage / usage_metrics contribution and credits the NEW day in
+// the same transaction so finance no longer needs to run the manual
+// rebalance SQL. The structured alert (operations_alerts, type
+// `billing_backfill_cross_day`) still fires but is informational only —
+// severity `info`, metadata flags `auto_rebalanced: true`, and the message
+// directs the operator to verify rather than rebalance.
 // --------------------------------------------------------------------------
 
-describe('POST /v1/ingest/calls/backfill — cross-day correction finance alert', () => {
+describe('POST /v1/ingest/calls/backfill — cross-day auto-rebalance + alert', () => {
   function findOpsAlertInsert() {
     return allClients
       .flatMap((c) => c.query.mock.calls as Array<[string, unknown[] | undefined]>)
@@ -631,11 +639,44 @@ describe('POST /v1/ingest/calls/backfill — cross-day correction finance alert'
       );
   }
 
+  /**
+   * Filters the SQL captured during a single request down to the
+   * `usage_metrics` / `daily_org_usage` mutations and tags each one with the
+   * calendar day it targeted (read off the period_start / date arg). Used to
+   * assert that a cross-day shift produces both NEW-day credits and OLD-day
+   * debits — i.e. the auto-rebalance landed.
+   */
+  function collectUsageWrites(client: ReturnType<typeof makeFakeClient>) {
+    const writes: Array<{
+      table: 'usage_metrics_calls' | 'usage_metrics_minutes' | 'daily_org_usage';
+      day: string;
+      args: unknown[];
+    }> = [];
+    for (const [sql, values] of client.query.mock.calls as Array<[string, unknown[] | undefined]>) {
+      if (typeof sql !== 'string') continue;
+      const trimmed = sql.trimStart();
+      const args = (values ?? []) as unknown[];
+      if (trimmed.startsWith('INSERT INTO usage_metrics') && sql.includes('$2::usage_metric_type')) {
+        const periodStart = String(args[2]);
+        writes.push({ table: 'usage_metrics_calls', day: periodStart.slice(0, 10), args });
+      } else if (
+        trimmed.startsWith('INSERT INTO usage_metrics') &&
+        sql.includes("'ai_minutes'::usage_metric_type")
+      ) {
+        const periodStart = String(args[1]);
+        writes.push({ table: 'usage_metrics_minutes', day: periodStart.slice(0, 10), args });
+      } else if (trimmed.startsWith('INSERT INTO daily_org_usage')) {
+        writes.push({ table: 'daily_org_usage', day: String(args[1]), args });
+      }
+    }
+    return writes;
+  }
+
   // Pin "now" so events stamped 7-9 days ago land deterministically inside
   // the backfill window (>7d, <30d) regardless of when the test suite runs.
   const FROZEN_NOW = Date.UTC(2026, 3, 27, 12, 0, 0); // 2026-04-27T12:00:00Z
 
-  it('writes a billing_backfill_cross_day alert when a correction moves the call to a new day', async () => {
+  it('writes an informational billing_backfill_cross_day alert when a correction moves the call to a new day', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(FROZEN_NOW));
     try {
@@ -673,12 +714,16 @@ describe('POST /v1/ingest/calls/backfill — cross-day correction finance alert'
       // tenant_id, type, severity, message, metadata, call_session_id
       expect(args[0]).toBe('tenant-A');
       expect(args[1]).toBe('billing_backfill_cross_day');
-      expect(args[2]).toBe('warning');
+      // Severity dropped from 'warning' to 'info' now that the rebalance is
+      // automatic — the operator's only job is to verify.
+      expect(args[2]).toBe('info');
       const message = String(args[3]);
       expect(message).toContain(sharedExternalId);
       expect(message).toContain('2026-04-19');
       expect(message).toContain('2026-04-20');
       expect(message).toContain('docs/runbooks/billing-backfill-cross-day-rebalance.md');
+      expect(message).toMatch(/auto-rebalanced/i);
+      expect(message).toMatch(/verify only/i);
 
       const metadata = JSON.parse(String(args[4])) as Record<string, unknown>;
       expect(metadata).toMatchObject({
@@ -687,12 +732,341 @@ describe('POST /v1/ingest/calls/backfill — cross-day correction finance alert'
         old_date: '2026-04-19',
         new_date: '2026-04-20',
         source: 'remix-backfill',
+        auto_rebalanced: true,
         runbook_url: 'docs/runbooks/billing-backfill-cross-day-rebalance.md',
       });
 
       // call_session_id must point at the existing call, not be NULL — the
       // alert is useless if finance can't trace it back to the row.
       expect(args[5]).toBe(`call-${sharedExternalId}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debits the OLD day and credits the NEW day inside the same transaction on a cross-day shift', async () => {
+    // The original ingest credited 2026-04-19 with (+1 call, +2 ai_minutes,
+    // +17c total, +12c openai). The correction shifts the call onto
+    // 2026-04-20 AND restates duration/cost. The auto-rebalance must:
+    //   * credit 2026-04-20 with the FULL new amount (+1, +3, +25, +18)
+    //   * debit  2026-04-19 by the original amount (-1, -2, -17, -12)
+    // so that summing daily_org_usage across both days reflects the call
+    // exactly once at its restated values.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-rebalance';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-rebalance-orig',
+        duration_seconds: 120, // 2 ai minutes
+        costs: { twilio_cents: 5, openai_cents: 12, total_cents: 17, is_estimated: false },
+        backfill_attestation: baseAttestation(),
+      });
+      const correction = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:08:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-rebalance-correction',
+        duration_seconds: 180, // 3 ai minutes
+        costs: { twilio_cents: 7, openai_cents: 18, total_cents: 25, is_estimated: false },
+        backfill_attestation: baseAttestation({ reason: 'Cross-midnight correction.' }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      allClients.length = 0;
+      await request(app).post('/v1/ingest/calls/backfill').send(correction).expect(201);
+
+      // Find the persistence client. Each request opens TWO connections in
+      // sequence: an audit client (recordReceivedEvent) and the actual
+      // persist client (persistCallEvent). The cross-day rebalance writes
+      // run on the persist client — index 1 in the captured list.
+      const persistClient = allClients[1];
+      const writes = collectUsageWrites(persistClient);
+
+      // NEW day (2026-04-20) credit: full new amount, NOT a same-day delta.
+      const newDayCalls = writes.find(
+        (w) => w.table === 'usage_metrics_calls' && w.day === '2026-04-20',
+      );
+      expect(newDayCalls).toBeDefined();
+      // tenant, metricType, periodStart, periodEnd, callsDelta, totalCostDelta
+      expect(newDayCalls!.args[4]).toBe(1);
+      expect(newDayCalls!.args[5]).toBe(25);
+
+      const newDayMinutes = writes.find(
+        (w) => w.table === 'usage_metrics_minutes' && w.day === '2026-04-20',
+      );
+      expect(newDayMinutes).toBeDefined();
+      // tenant, periodStart, periodEnd, minutesDelta, openaiDelta, openaiDelta
+      expect(newDayMinutes!.args[3]).toBe(3);
+      expect(newDayMinutes!.args[4]).toBe(18);
+
+      const newDayDaily = writes.find(
+        (w) => w.table === 'daily_org_usage' && w.day === '2026-04-20',
+      );
+      expect(newDayDaily).toBeDefined();
+      // tenant, callDate, callsDelta, minutesDelta, totalCostDelta
+      expect(newDayDaily!.args[2]).toBe(1);
+      expect(newDayDaily!.args[3]).toBe(3);
+      expect(newDayDaily!.args[4]).toBe(25);
+
+      // OLD day (2026-04-19) debit: full original amount as negative deltas.
+      const oldDayCalls = writes.find(
+        (w) => w.table === 'usage_metrics_calls' && w.day === '2026-04-19',
+      );
+      expect(oldDayCalls).toBeDefined();
+      expect(oldDayCalls!.args[4]).toBe(-1);
+      expect(oldDayCalls!.args[5]).toBe(-17);
+
+      const oldDayMinutes = writes.find(
+        (w) => w.table === 'usage_metrics_minutes' && w.day === '2026-04-19',
+      );
+      expect(oldDayMinutes).toBeDefined();
+      expect(oldDayMinutes!.args[3]).toBe(-2);
+      expect(oldDayMinutes!.args[4]).toBe(-12);
+
+      const oldDayDaily = writes.find(
+        (w) => w.table === 'daily_org_usage' && w.day === '2026-04-19',
+      );
+      expect(oldDayDaily).toBeDefined();
+      expect(oldDayDaily!.args[2]).toBe(-1);
+      expect(oldDayDaily!.args[3]).toBe(-2);
+      expect(oldDayDaily!.args[4]).toBe(-17);
+
+      // The rebalance must run on the SAME client (= same transaction) as
+      // the call upsert — otherwise a partial failure could leave OLD-day
+      // debits applied without NEW-day credits, or vice versa.
+      const upsertSql = (persistClient.query.mock.calls as Array<[string, unknown[] | undefined]>)
+        .map(([sql]) => sql)
+        .filter((sql) => typeof sql === 'string') as string[];
+      expect(upsertSql.some((s) => s.trimStart().startsWith('UPDATE call_sessions'))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('replaying the same cross-day correction is idempotent (no second debit/credit)', async () => {
+    // The duplicate idempotency_key short-circuits at recordReceivedEvent
+    // and persistCallEvent never runs again, so the OLD/NEW day buckets are
+    // touched exactly once even when the operator hits "submit" twice.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-replay';
+      const correctionKey = 'idem-cross-replay-correction';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-cross-replay-orig',
+        backfill_attestation: baseAttestation(),
+      });
+      const correction = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:07:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: correctionKey,
+        backfill_attestation: baseAttestation({ reason: 'Cross-midnight idempotent replay.' }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      await request(app).post('/v1/ingest/calls/backfill').send(correction).expect(201);
+
+      // Second submission of the SAME correction must be rejected as a
+      // duplicate. Reset capture so we can prove no usage writes happened.
+      allClients.length = 0;
+      nextIngestInsertReturnsRow = false;
+      const replay = await request(app).post('/v1/ingest/calls/backfill').send(correction);
+      expect(replay.status).toBe(409);
+      expect(replay.body.idempotency_key).toBe(correctionKey);
+
+      // After a duplicate-key short-circuit the only SQL captured is the
+      // ingest_events insert (which collided) plus tx control. Critically,
+      // there must be NO usage_metrics / daily_org_usage / operations_alerts
+      // writes — replaying the correction must not double-debit the OLD day
+      // nor double-credit the NEW day.
+      const replayWrites = allClients.flatMap((c) => collectUsageWrites(c));
+      expect(replayWrites).toHaveLength(0);
+      expect(findOpsAlertInsert()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a follow-up same-day correction after a cross-day shift only deltas the NEW day', async () => {
+    // Regression guard: after a cross-day shift moves a call from day A to
+    // day B, the call_sessions row's start_time MUST reflect day B so any
+    // subsequent correction (with a fresh idempotency key) is treated as a
+    // same-day correction on day B — NOT as another cross-day shift back to
+    // day A. Without persisting start_time on UPDATE, every subsequent
+    // correction would re-run the OLD-day debit forever.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-then-sameday';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-multi-1-orig',
+        duration_seconds: 120,
+        costs: { twilio_cents: 5, openai_cents: 12, total_cents: 17, is_estimated: false },
+        backfill_attestation: baseAttestation(),
+      });
+      const crossDayCorrection = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:08:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-multi-2-crossday',
+        duration_seconds: 180,
+        costs: { twilio_cents: 7, openai_cents: 18, total_cents: 25, is_estimated: false },
+        backfill_attestation: baseAttestation({ reason: 'First correction crosses midnight.' }),
+      });
+      // Third request: same external_id, STILL on 2026-04-20, just a cost
+      // restate. Because the second request persisted start_time = day 20,
+      // this third one must be a same-day correction — no day-19 debit.
+      const sameDayCorrection = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:09:30.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-multi-3-sameday',
+        duration_seconds: 270,
+        costs: { twilio_cents: 9, openai_cents: 22, total_cents: 31, is_estimated: false },
+        backfill_attestation: baseAttestation({ reason: 'Second correction restates trailing audio.' }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      await request(app).post('/v1/ingest/calls/backfill').send(crossDayCorrection).expect(201);
+      // Reset captured clients so we only see queries from the third request.
+      allClients.length = 0;
+      await request(app).post('/v1/ingest/calls/backfill').send(sameDayCorrection).expect(201);
+
+      // The third request must NOT touch 2026-04-19 at all — that day was
+      // already balanced by the cross-day rebalance in the second request.
+      const persistClient = allClients[1];
+      const writes = collectUsageWrites(persistClient);
+      const day19Writes = writes.filter((w) => w.day === '2026-04-19');
+      expect(day19Writes).toHaveLength(0);
+
+      // Day-20 receives the same-day delta (call already counted there):
+      //   callsDelta = 0
+      //   minutesDelta = 5 - 3 = 2  (270s = 5min, prior was 180s = 3min)
+      //   totalCostDelta = 31 - 25 = 6
+      //   openaiDelta = 22 - 18 = 4
+      const day20Calls = writes.find(
+        (w) => w.table === 'usage_metrics_calls' && w.day === '2026-04-20',
+      );
+      expect(day20Calls).toBeDefined();
+      expect(day20Calls!.args[4]).toBe(0);
+      expect(day20Calls!.args[5]).toBe(6);
+
+      const day20Minutes = writes.find(
+        (w) => w.table === 'usage_metrics_minutes' && w.day === '2026-04-20',
+      );
+      expect(day20Minutes).toBeDefined();
+      expect(day20Minutes!.args[3]).toBe(2);
+      expect(day20Minutes!.args[4]).toBe(4);
+
+      const day20Daily = writes.find(
+        (w) => w.table === 'daily_org_usage' && w.day === '2026-04-20',
+      );
+      expect(day20Daily).toBeDefined();
+      expect(day20Daily!.args[2]).toBe(0);
+      expect(day20Daily!.args[3]).toBe(2);
+      expect(day20Daily!.args[4]).toBe(6);
+
+      // And no second cross-day alert fires — there was no shift this time.
+      expect(findOpsAlertInsert()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not double-count when the alert insert fails after a successful auto-rebalance', async () => {
+    // The OLD-day debit + NEW-day credit happen INSIDE the ingest txn (and
+    // thus commit atomically), while the alert insert is a best-effort
+    // post-commit write. If the alert insert blows up we must NOT undo the
+    // rebalance, and we must NOT re-apply it — the call upsert and the
+    // rebalance have already committed exactly once.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-alert-broken-rebalance-once';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-broken-alert-orig',
+        duration_seconds: 120,
+        costs: { twilio_cents: 5, openai_cents: 12, total_cents: 17, is_estimated: false },
+        backfill_attestation: baseAttestation(),
+      });
+      const correction = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:08:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-broken-alert-correction',
+        duration_seconds: 180,
+        costs: { twilio_cents: 7, openai_cents: 18, total_cents: 25, is_estimated: false },
+        backfill_attestation: baseAttestation({ reason: 'Auto-rebalance survives broken alert sink.' }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      allClients.length = 0;
+
+      // Patch every newly-created client so its operations_alerts insert
+      // throws — same trick as the broader best-effort test below.
+      const originalPush = allClients.push.bind(allClients);
+      const failOpsAlertInsert = (client: ReturnType<typeof makeFakeClient>) => {
+        const original = client.query;
+        client.query = vi.fn(async (sql: string, values?: unknown[]) => {
+          if (typeof sql === 'string' && sql.trimStart().startsWith('INSERT INTO operations_alerts')) {
+            throw new Error('simulated operations_alerts outage');
+          }
+          return original(sql, values);
+        }) as typeof client.query;
+      };
+      allClients.push = ((...items: ReturnType<typeof makeFakeClient>[]) => {
+        for (const c of items) failOpsAlertInsert(c);
+        return originalPush(...items);
+      }) as typeof allClients.push;
+
+      try {
+        const res = await request(app).post('/v1/ingest/calls/backfill').send(correction);
+        expect(res.status).toBe(201);
+
+        // The persistence client (allClients[1] — index 0 is the audit
+        // client used by recordReceivedEvent) should still show exactly
+        // one debit on 2026-04-19 and exactly one credit on 2026-04-20 in
+        // each of the three rollup tables — no duplication caused by the
+        // failing alert path.
+        const persistClient = allClients[1];
+        const writes = collectUsageWrites(persistClient);
+        const debits19 = writes.filter((w) => w.day === '2026-04-19');
+        const credits20 = writes.filter((w) => w.day === '2026-04-20');
+        expect(debits19.map((w) => w.table).sort()).toEqual([
+          'daily_org_usage',
+          'usage_metrics_calls',
+          'usage_metrics_minutes',
+        ]);
+        expect(credits20.map((w) => w.table).sort()).toEqual([
+          'daily_org_usage',
+          'usage_metrics_calls',
+          'usage_metrics_minutes',
+        ]);
+      } finally {
+        allClients.push = originalPush;
+      }
     } finally {
       vi.useRealTimers();
     }

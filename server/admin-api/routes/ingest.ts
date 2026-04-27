@@ -106,9 +106,12 @@ interface CrossDayShift {
 
 /**
  * Best-effort write of a finance-visible alert when a backfill correction
- * shifts an existing call into a different calendar day. The OLD day's
- * `daily_org_usage` bucket still counts the call, so finance has to manually
- * rebalance the per-day rollup or aggregates drift across month boundaries.
+ * shifts an existing call into a different calendar day.
+ *
+ * The ingest transaction now auto-rebalances the OLD-day buckets
+ * (`daily_org_usage` + `usage_metrics`) inline, so this alert is purely
+ * informational: finance verifies the auto-rebalance landed correctly but no
+ * longer has to run the manual SQL described in the historical runbook.
  *
  * Runs OUTSIDE the ingest transaction with its own connection so a failure
  * here never rolls back the actual call upsert. The runbook URL is included
@@ -126,16 +129,17 @@ async function recordBackfillCrossDayAlert(
       [
         tenantId,
         'billing_backfill_cross_day',
-        'warning',
+        'info',
         `Backfill correction moved call ${shift.externalId} from ${shift.oldDate} to ${shift.newDate}. ` +
-          `The old day's daily_org_usage bucket still counts this call — finance must manually rebalance ` +
-          `daily_org_usage and usage_metrics for both days. See runbook: ${BACKFILL_CROSS_DAY_RUNBOOK}.`,
+          `daily_org_usage and usage_metrics were auto-rebalanced (OLD-day debit + NEW-day credit) in the ` +
+          `same ingest transaction — verify only, no manual rebalance needed. See runbook: ${BACKFILL_CROSS_DAY_RUNBOOK}.`,
         JSON.stringify({
           tenant_id: tenantId,
           external_id: shift.externalId,
           old_date: shift.oldDate,
           new_date: shift.newDate,
           source: shift.source,
+          auto_rebalanced: true,
           runbook_url: BACKFILL_CROSS_DAY_RUNBOOK,
         }),
         shift.callSessionId,
@@ -246,17 +250,23 @@ async function persistCallEvent(
 
     let sessionRows: { id: unknown }[];
     if (existingCall) {
+      // Persist the corrected `start_time` too. Without this, a follow-up
+      // correction for the same external_id would still see the ORIGINAL
+      // start_time on the row and (a) keep being treated as cross-day
+      // forever, repeatedly debiting the original day each time, and
+      // (b) contradict the runbook claim that call_sessions reflects the
+      // post-correction temporal attribution.
       const updated = await client.query(
         `UPDATE call_sessions SET
           call_sid = $3, agent_id = COALESCE($4, agent_id),
           lifecycle_state = $5::call_lifecycle_state,
-          end_time = $6, duration_seconds = $7, total_cost_cents = $8,
-          context = $9, escalation_reason = $10, updated_at = NOW()
+          start_time = $6, end_time = $7, duration_seconds = $8, total_cost_cents = $9,
+          context = $10, escalation_reason = $11, updated_at = NOW()
         WHERE tenant_id = $1 AND external_id = $2
         RETURNING id`,
         [
           tenantId, event.external_id, event.twilio_sid ?? null, agentId,
-          lifecycleState, event.end_time, event.duration_seconds,
+          lifecycleState, event.start_time, event.end_time, event.duration_seconds,
           event.costs.total_cents, contextJson, event.escalation_reason ?? null,
         ],
       );
@@ -341,24 +351,35 @@ async function persistCallEvent(
     // -----------------------------------------------------------------------
     // Daily usage rollups — DELTA application
     // -----------------------------------------------------------------------
-    // For new calls: increment counts + minutes + cost by the full event.
-    // For corrections (same external_id re-issued with a fresh idempotency
-    // token): increment by the delta only — the call itself is not new, so
-    // `quantity` / `total_calls` get +0, and minutes/cost get
-    // (new − old). This is what makes the backfill endpoint safe for issuing
-    // restated figures without inflating billing aggregates.
+    // Three cases drive the per-day deltas applied to `usage_metrics` and
+    // `daily_org_usage`:
     //
-    // If a correction also moves the call to a different calendar day (rare
-    // but possible), aggregates can drift because the OLD day's bucket still
-    // counts the call. We log a warning so finance can investigate; we do not
-    // attempt cross-day rebalancing inline because it doubles the SQL load
-    // for what should be an exceptional case.
+    //   (1) Brand-new call (no prior session row): credit the NEW day with
+    //       the full event (+1 call, +new_minutes, +new_cost, +new_openai).
+    //
+    //   (2) Same-day correction (same external_id, same calendar day): the
+    //       call itself is not new, so `total_calls` / `quantity` get +0 and
+    //       minutes/cost get the (new − old) delta only. This is what makes
+    //       the backfill endpoint safe for issuing restated figures without
+    //       inflating billing aggregates.
+    //
+    //   (3) Cross-day shift (same external_id, different calendar day): the
+    //       NEW day is credited the full new amount AND the OLD day is fully
+    //       reversed in the same transaction (-1 call, -old_minutes,
+    //       -old_cost, -old_openai). This used to require a manual SQL
+    //       rebalance off a finance runbook; the alert is now informational
+    //       only. Because the work is in the same txn as the call upsert
+    //       there is no double-counting window, and replaying the same
+    //       correction is idempotent — the duplicate idempotency_key is
+    //       caught upstream in `recordReceivedEvent` and `persistCallEvent`
+    //       never runs a second time.
     const isCorrection = !!existingCall;
     const oldCallDate = existingCall ? existingCall.start_time.slice(0, 10) : null;
     const callDate = event.start_time.slice(0, 10);
+    const isCrossDayShift = isCorrection && oldCallDate !== null && oldCallDate !== callDate;
     let crossDayShift: CrossDayShift | null = null;
-    if (isCorrection && oldCallDate && oldCallDate !== callDate) {
-      logger.warn('Backfill correction shifted call across calendar days', {
+    if (isCrossDayShift) {
+      logger.info('Backfill correction shifted call across calendar days — auto-rebalancing buckets', {
         tenantId,
         externalId: event.external_id,
         oldDate: oldCallDate,
@@ -372,23 +393,36 @@ async function persistCallEvent(
       // insert errors. The actual insert happens after COMMIT below.
       crossDayShift = {
         externalId: event.external_id,
-        oldDate: oldCallDate,
+        oldDate: oldCallDate as string,
         newDate: callDate,
         callSessionId: callSessionId,
         source,
       };
     }
 
-    const callsDelta = isCorrection ? 0 : 1;
-    const totalCostDelta = isCorrection
-      ? event.costs.total_cents - Number(existingCall.total_cost_cents)
-      : event.costs.total_cents;
-    const minutesDelta = isCorrection
-      ? newAiMinutes - oldAiMinutes
-      : newAiMinutes;
-    const openaiDelta = isCorrection
-      ? event.costs.openai_cents - existingOpenaiCents
-      : event.costs.openai_cents;
+    let callsDelta: number;
+    let totalCostDelta: number;
+    let minutesDelta: number;
+    let openaiDelta: number;
+    if (!isCorrection) {
+      callsDelta = 1;
+      totalCostDelta = event.costs.total_cents;
+      minutesDelta = newAiMinutes;
+      openaiDelta = event.costs.openai_cents;
+    } else if (isCrossDayShift) {
+      // The OLD day is debited separately below; the NEW day must receive
+      // the FULL new amount (not the same-day delta) because none of this
+      // event's contribution has landed on the NEW day yet.
+      callsDelta = 1;
+      totalCostDelta = event.costs.total_cents;
+      minutesDelta = newAiMinutes;
+      openaiDelta = event.costs.openai_cents;
+    } else {
+      callsDelta = 0;
+      totalCostDelta = event.costs.total_cents - Number(existingCall.total_cost_cents);
+      minutesDelta = newAiMinutes - oldAiMinutes;
+      openaiDelta = event.costs.openai_cents - existingOpenaiCents;
+    }
 
     const metricType = event.direction === 'inbound' ? 'calls_inbound' : 'calls_outbound';
     const periodStart = `${callDate}T00:00:00Z`;
@@ -423,6 +457,49 @@ async function persistCallEvent(
          total_cost_cents = daily_org_usage.total_cost_cents + $5`,
       [tenantId, callDate, callsDelta, minutesDelta, totalCostDelta],
     );
+
+    if (isCrossDayShift && existingCall && oldCallDate) {
+      // OLD-day reversal — fully back out the original call's contribution
+      // from the day it used to be attributed to. We use the SAME upsert
+      // pattern as the credit branch above (negative deltas on conflict);
+      // the OLD-day rows must already exist because the original ingest
+      // wrote them, so the ON CONFLICT branch is the one that fires.
+      const oldDirection = String(existingCall.direction);
+      const oldMetricType = oldDirection === 'inbound' ? 'calls_inbound' : 'calls_outbound';
+      const oldPeriodStart = `${oldCallDate}T00:00:00Z`;
+      const oldPeriodEnd = `${oldCallDate}T23:59:59Z`;
+      const oldTotalCostCents = Number(existingCall.total_cost_cents);
+
+      await client.query(
+        `INSERT INTO usage_metrics (tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
+         VALUES ($1, $2::usage_metric_type, $3, $4, $5, $6, $6)
+         ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
+           quantity = usage_metrics.quantity + $5,
+           total_cost_cents = usage_metrics.total_cost_cents + $6,
+           updated_at = NOW()`,
+        [tenantId, oldMetricType, oldPeriodStart, oldPeriodEnd, -1, -oldTotalCostCents],
+      );
+
+      await client.query(
+        `INSERT INTO usage_metrics (tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
+         VALUES ($1, 'ai_minutes'::usage_metric_type, $2, $3, $4, $5, $6)
+         ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
+           quantity = usage_metrics.quantity + $4,
+           total_cost_cents = usage_metrics.total_cost_cents + $6,
+           updated_at = NOW()`,
+        [tenantId, oldPeriodStart, oldPeriodEnd, -oldAiMinutes, -existingOpenaiCents, -existingOpenaiCents],
+      );
+
+      await client.query(
+        `INSERT INTO daily_org_usage (tenant_id, date, total_calls, total_ai_minutes, total_cost_cents)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, date) DO UPDATE SET
+           total_calls = daily_org_usage.total_calls + $3,
+           total_ai_minutes = daily_org_usage.total_ai_minutes + $4,
+           total_cost_cents = daily_org_usage.total_cost_cents + $5`,
+        [tenantId, oldCallDate, -1, -oldAiMinutes, -oldTotalCostCents],
+      );
+    }
 
     if (agentId) {
       await client.query(
