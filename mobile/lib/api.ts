@@ -60,6 +60,32 @@ export interface JobEvent {
   to_status: string | null;
   notes: string | null;
   created_at: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface JobAttachment {
+  id: string;
+  job_id: string;
+  attachment_type:
+    | 'note'
+    | 'photo'
+    | 'document'
+    | 'signature'
+    | 'proof_of_service'
+    | 'proof_of_completion';
+  title: string;
+  content: string;
+  file_url: string | null;
+  object_path: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export interface UploadTicket {
+  uploadURL: string;
+  objectPath: string;
 }
 
 export interface DispatchResource {
@@ -237,7 +263,7 @@ export const api = {
   getJob(
     client: ApiClient,
     id: string,
-  ): Promise<{ job: DispatchJob; events: JobEvent[] }> {
+  ): Promise<{ job: DispatchJob; events: JobEvent[]; attachments: JobAttachment[] }> {
     return apiCall(client, `/api/v1/dispatch/jobs/${id}`);
   },
   transitionJob(
@@ -250,6 +276,53 @@ export const api = {
       method: 'POST',
       body: { status, notes },
     });
+  },
+  requestAttachmentUpload(
+    client: ApiClient,
+    args: { mime_type?: string; size_bytes?: number } = {},
+  ): Promise<UploadTicket> {
+    return apiCall(client, '/api/v1/dispatch/uploads/request-url', {
+      method: 'POST',
+      body: args,
+    });
+  },
+  async uploadAttachmentBinary(
+    ticket: UploadTicket,
+    file: { uri: string; mimeType?: string | null; sizeBytes?: number | null },
+  ): Promise<void> {
+    const fetchRes = await fetch(file.uri);
+    const blob = await fetchRes.blob();
+    const putRes = await fetch(ticket.uploadURL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.mimeType || blob.type || 'application/octet-stream',
+      },
+      body: blob,
+    });
+    if (!putRes.ok) {
+      throw new ApiError(putRes.status, 'Failed to upload file', null);
+    }
+  },
+  addAttachment(
+    client: ApiClient,
+    jobId: string,
+    body: {
+      attachment_type: JobAttachment['attachment_type'];
+      title?: string;
+      content?: string;
+      object_path?: string | null;
+      mime_type?: string | null;
+      file_size_bytes?: number | null;
+      completion_transition?: DispatchTransition | null;
+    },
+  ): Promise<{ attachment: JobAttachment; job?: DispatchJob | null }> {
+    return apiCall(client, `/api/v1/dispatch/jobs/${jobId}/attachments`, {
+      method: 'POST',
+      body,
+    });
+  },
+  buildAttachmentFileUrl(client: ApiClient, attachmentId: string): string {
+    return buildUrl(client.baseUrl, `/api/v1/dispatch/attachments/${attachmentId}/file`);
   },
   listResources(
     client: ApiClient,

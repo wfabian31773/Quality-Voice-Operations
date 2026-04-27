@@ -5,6 +5,10 @@ import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { fireDispatchPush, type DispatchPushEvent } from '../../../platform/notifications/dispatchPush';
+import {
+  ObjectStorageService,
+  ObjectNotFoundError,
+} from '../../replit_integrations/object_storage';
 
 const router = Router();
 const logger = createLogger('ADMIN_DISPATCH');
@@ -838,26 +842,220 @@ const resolveExceptionHandler: RequestHandler = async (req, res) => {
 
 // ============ ATTACHMENTS ============
 
-const addAttachmentHandler: RequestHandler = async (req, res) => {
-  const { tenantId, userId } = req.user!;
-  const { id } = req.params;
-  const { attachment_type, title, content, file_url } = req.body;
-  const pool = getPlatformPool();
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  'note',
+  'photo',
+  'document',
+  'signature',
+  'proof_of_service',
+  'proof_of_completion',
+]);
+
+const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf', 'video/'];
+
+function isAllowedMimeType(mime: string | null | undefined): boolean {
+  if (!mime) return true;
+  return ALLOWED_MIME_PREFIXES.some(p => mime.startsWith(p));
+}
+
+export const requestAttachmentUploadUrlHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { mime_type, size_bytes } = req.body || {};
+
+  if (mime_type && !isAllowedMimeType(mime_type)) {
+    return res.status(400).json({ error: 'Unsupported file type' });
+  }
+  if (typeof size_bytes === 'number' && size_bytes > 25 * 1024 * 1024) {
+    return res.status(400).json({ error: 'File exceeds 25 MB upload limit' });
+  }
 
   try {
-    if (!(await validateTenantRef(pool, 'dispatch_jobs', id, tenantId))) {
+    const storage = new ObjectStorageService();
+    const uploadURL = await storage.getObjectEntityUploadURL();
+    const objectPath = storage.normalizeObjectEntityPath(uploadURL);
+    return res.json({
+      uploadURL,
+      objectPath,
+      tenantId,
+    });
+  } catch (err) {
+    logger.error('Failed to issue attachment upload URL', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to prepare upload' });
+  }
+};
+
+export const addAttachmentHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const {
+    attachment_type,
+    title,
+    content,
+    file_url,
+    object_path,
+    mime_type,
+    file_size_bytes,
+    completion_transition,
+  } = req.body || {};
+  const pool = getPlatformPool();
+
+  const attachmentType = (attachment_type as string) || 'note';
+  if (!ALLOWED_ATTACHMENT_TYPES.has(attachmentType)) {
+    return res.status(400).json({ error: 'Invalid attachment_type' });
+  }
+
+  try {
+    const { rows: jobRows } = await pool.query(
+      `SELECT id, status FROM dispatch_jobs WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (jobRows.length === 0) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
+    let normalizedObjectPath: string | null = null;
+    let resolvedFileUrl: string | null = file_url || null;
+
+    if (object_path) {
+      const storage = new ObjectStorageService();
+      try {
+        normalizedObjectPath = await storage.trySetObjectEntityAclPolicy(
+          String(object_path),
+          { owner: `tenant:${tenantId}`, visibility: 'private' },
+        );
+      } catch (err) {
+        if (err instanceof ObjectNotFoundError) {
+          return res.status(400).json({
+            error: 'Uploaded object not found - upload to the presigned URL before attaching',
+          });
+        }
+        throw err;
+      }
+      resolvedFileUrl = normalizedObjectPath;
+    }
+
+    if (!resolvedFileUrl && !content && !title) {
+      return res.status(400).json({
+        error: 'Attachment must include a file (object_path) or note text (title/content)',
+      });
+    }
+
+    if (mime_type && !isAllowedMimeType(mime_type)) {
+      return res.status(400).json({ error: 'Unsupported file type' });
+    }
+
     const { rows } = await pool.query(
-      `INSERT INTO dispatch_job_attachments (job_id, tenant_id, attachment_type, title, content, file_url, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [id, tenantId, attachment_type || 'note', title || '', content || '', file_url || null, userId],
+      `INSERT INTO dispatch_job_attachments
+        (job_id, tenant_id, attachment_type, title, content, file_url,
+         object_path, mime_type, file_size_bytes, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [
+        id,
+        tenantId,
+        attachmentType,
+        title || '',
+        content || '',
+        resolvedFileUrl,
+        normalizedObjectPath,
+        mime_type || null,
+        typeof file_size_bytes === 'number' ? file_size_bytes : null,
+        userId,
+      ],
     );
-    return res.status(201).json({ attachment: rows[0] });
+
+    const attachment = rows[0];
+
+    // Link to dispatch_job_events so the activity timeline shows the upload.
+    const eventNote = title
+      ? `${attachmentType.replace(/_/g, ' ')}: ${title}`
+      : content
+        ? `${attachmentType.replace(/_/g, ' ')}: ${content.slice(0, 280)}`
+        : `${attachmentType.replace(/_/g, ' ')} added`;
+
+    await pool.query(
+      `INSERT INTO dispatch_job_events
+        (job_id, tenant_id, event_type, performed_by, notes, metadata)
+       VALUES ($1, $2, 'attachment_added', $3, $4, $5)`,
+      [
+        id,
+        tenantId,
+        userId,
+        eventNote,
+        JSON.stringify({
+          attachment_id: attachment.id,
+          attachment_type: attachmentType,
+          mime_type: mime_type || null,
+          object_path: normalizedObjectPath,
+          file_size_bytes: typeof file_size_bytes === 'number' ? file_size_bytes : null,
+        }),
+      ],
+    );
+
+    // Optional: mobile "complete with photos" flow can pass completion_transition
+    // to atomically move the job state once attachments are saved. We respect the
+    // existing transition rules.
+    let updatedJob = null;
+    if (completion_transition && typeof completion_transition === 'string') {
+      const currentStatus = jobRows[0].status as string;
+      const allowed = VALID_TRANSITIONS[currentStatus] || [];
+      if (allowed.includes(completion_transition)) {
+        const isCompleting =
+          (completion_transition === 'completed' || completion_transition === 'done') &&
+          currentStatus !== 'completed' && currentStatus !== 'done';
+        const { rows: u } = await pool.query(
+          `UPDATE dispatch_jobs
+             SET status = $3, ${isCompleting ? 'completed_at = NOW(),' : ''} updated_at = NOW()
+           WHERE id = $1 AND tenant_id = $2
+           RETURNING *`,
+          [id, tenantId, completion_transition],
+        );
+        updatedJob = u[0] || null;
+        await pool.query(
+          `INSERT INTO dispatch_job_events
+            (job_id, tenant_id, event_type, from_status, to_status, performed_by, notes)
+           VALUES ($1, $2, 'status_change', $3, $4, $5, $6)`,
+          [id, tenantId, currentStatus, completion_transition, userId, eventNote],
+        );
+        const trigger = STATUS_TO_TRIGGER[completion_transition];
+        if (trigger) fireNotifications(pool, tenantId, id, trigger);
+      }
+    }
+
+    return res.status(201).json({ attachment, job: updatedJob });
   } catch (err) {
     logger.error('Failed to add attachment', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to add attachment' });
+  }
+};
+
+export const getAttachmentFileHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { attachmentId } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, object_path, mime_type FROM dispatch_job_attachments
+       WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [attachmentId, tenantId],
+    );
+    if (rows.length === 0 || !rows[0].object_path) {
+      return res.status(404).json({ error: 'Attachment file not found' });
+    }
+    const storage = new ObjectStorageService();
+    const file = await storage.getObjectEntityFile(rows[0].object_path as string);
+    await storage.downloadObject(file, res, 60);
+    return;
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      return res.status(404).json({ error: 'File no longer available' });
+    }
+    logger.error('Failed to stream attachment', { tenantId, error: String(err) });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to fetch attachment file' });
+    }
+    return;
   }
 };
 
@@ -1513,6 +1711,8 @@ router.post('/dispatch/jobs/:id/follow-up', requireAuth, requireMiniSystemWrite,
 router.post('/dispatch/jobs/:id/exceptions', requireAuth, requireMiniSystemWrite, createExceptionHandler);
 router.put('/dispatch/exceptions/:exceptionId/resolve', requireAuth, requireMiniSystemWrite, resolveExceptionHandler);
 router.post('/dispatch/jobs/:id/attachments', requireAuth, requireMiniSystemWrite, addAttachmentHandler);
+router.post('/dispatch/uploads/request-url', requireAuth, requireMiniSystemWrite, requestAttachmentUploadUrlHandler);
+router.get('/dispatch/attachments/:attachmentId/file', requireAuth, getAttachmentFileHandler);
 router.post('/dispatch/jobs/batch', requireAuth, requireMiniSystemWrite, batchUpdateHandler);
 router.delete('/dispatch/jobs/:id', requireAuth, requireMiniSystemWrite, deleteJobHandler);
 

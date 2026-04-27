@@ -115,6 +115,7 @@ interface JobEvent {
   performed_by: string | null;
   notes: string;
   created_at: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface JobException {
@@ -132,6 +133,9 @@ interface JobAttachment {
   title: string;
   content: string;
   file_url: string | null;
+  object_path: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
   created_at: string;
 }
 
@@ -1804,19 +1808,34 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               {events.length === 0 ? <p className="text-sm text-muted text-center py-4">No events recorded</p> : (
                 <div className="relative">
                   <div className="absolute left-3 top-0 bottom-0 w-px bg-border" />
-                  {events.map(e => (
-                    <div key={e.id} className="relative pl-8 pb-4">
-                      <div className="absolute left-1.5 top-1 w-3 h-3 rounded-full bg-primary border-2 border-surface" />
-                      <div className="text-xs">
-                        <span className="font-medium text-heading capitalize">{e.event_type.replace(/_/g, ' ')}</span>
-                        {e.from_status && e.to_status && (
-                          <span className="text-muted ml-1">{e.from_status} <ArrowRight className="inline h-3 w-3" /> {e.to_status}</span>
-                        )}
-                        <p className="text-muted mt-0.5">{e.notes}</p>
-                        <p className="text-[10px] text-muted mt-0.5">{new Date(e.created_at).toLocaleString()}</p>
+                  {events.map(e => {
+                    const meta = (e.metadata ?? {}) as Record<string, unknown>;
+                    const attachmentId = e.event_type === 'attachment_added' && typeof meta.attachment_id === 'string' ? meta.attachment_id as string : null;
+                    const inlineAttachment = attachmentId ? attachments.find(a => a.id === attachmentId) : null;
+                    const showImage = inlineAttachment && (inlineAttachment.mime_type ?? '').startsWith('image/');
+                    return (
+                      <div key={e.id} className="relative pl-8 pb-4">
+                        <div className="absolute left-1.5 top-1 w-3 h-3 rounded-full bg-primary border-2 border-surface" />
+                        <div className="text-xs">
+                          <span className="font-medium text-heading capitalize">{e.event_type.replace(/_/g, ' ')}</span>
+                          {e.from_status && e.to_status && (
+                            <span className="text-muted ml-1">{e.from_status} <ArrowRight className="inline h-3 w-3" /> {e.to_status}</span>
+                          )}
+                          <p className="text-muted mt-0.5">{e.notes}</p>
+                          <p className="text-[10px] text-muted mt-0.5">{new Date(e.created_at).toLocaleString()}</p>
+                          {showImage && (
+                            <a href={`/api/dispatch/attachments/${inlineAttachment.id}/file`} target="_blank" rel="noreferrer" className="block mt-2">
+                              <img
+                                src={`/api/dispatch/attachments/${inlineAttachment.id}/file`}
+                                alt={inlineAttachment.title || 'Attachment'}
+                                className="rounded-lg border border-border max-h-40 object-cover"
+                              />
+                            </a>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1887,17 +1906,38 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                 </div>
               )}
               {attachments.length === 0 ? <p className="text-sm text-muted text-center py-4">No attachments</p> : (
-                attachments.map(a => (
-                  <div key={a.id} className="bg-surface-secondary border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-3.5 w-3.5 text-muted" />
-                      <span className="text-xs font-medium text-heading">{a.title || a.attachment_type.replace(/_/g, ' ')}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
+                attachments.map(a => {
+                  const isImage = (a.mime_type ?? '').startsWith('image/');
+                  const fileUrl = a.object_path ? `/api/dispatch/attachments/${a.id}/file` : a.file_url;
+                  return (
+                    <div key={a.id} className="bg-surface-secondary border border-border rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 text-muted" />
+                        <span className="text-xs font-medium text-heading">{a.title || a.attachment_type.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
+                        {a.file_size_bytes ? (
+                          <span className="text-[10px] text-muted">{Math.round(a.file_size_bytes / 1024)} KB</span>
+                        ) : null}
+                      </div>
+                      {a.content && <p className="text-xs text-muted mt-1 whitespace-pre-wrap">{a.content}</p>}
+                      {isImage && fileUrl && (
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="block mt-2">
+                          <img
+                            src={fileUrl}
+                            alt={a.title || 'Attachment'}
+                            className="rounded-lg border border-border max-h-56 object-cover"
+                          />
+                        </a>
+                      )}
+                      {!isImage && a.object_path && fileUrl && (
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 mt-2 inline-flex items-center gap-1">
+                          <FileText className="h-3 w-3" /> Download file
+                        </a>
+                      )}
+                      <p className="text-[10px] text-muted mt-1">{new Date(a.created_at).toLocaleString()}</p>
                     </div>
-                    {a.content && <p className="text-xs text-muted mt-1 whitespace-pre-wrap">{a.content}</p>}
-                    <p className="text-[10px] text-muted mt-1">{new Date(a.created_at).toLocaleString()}</p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}

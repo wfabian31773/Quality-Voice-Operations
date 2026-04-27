@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,12 +19,14 @@ import {
   ApiError,
   type DispatchJob,
   type DispatchTransition,
+  type JobAttachment,
 } from '@/lib/api';
 import { StatusPill } from '@/components/StatusPill';
 import { ContactRow } from '@/components/ContactRow';
 import { JobMapPreview } from '@/components/JobMapPreview';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
+import { CompletionSheet } from '@/components/CompletionSheet';
 import { formatDateTime, formatStatus } from '@/lib/formatters';
 import { openDirections } from '@/lib/maps';
 
@@ -77,6 +80,7 @@ export default function JobDetailScreen() {
   const qc = useQueryClient();
   const [pendingTransition, setPendingTransition] =
     useState<DispatchTransition | null>(null);
+  const [completionSheetOpen, setCompletionSheetOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ['job', id],
@@ -106,8 +110,47 @@ export default function JobDetailScreen() {
 
   const job = query.data?.job;
   const events = query.data?.events ?? [];
+  const attachments = query.data?.attachments ?? [];
+
+  const attachmentById = useMemo(() => {
+    const map = new Map<string, JobAttachment>();
+    for (const a of attachments) map.set(a.id, a);
+    return map;
+  }, [attachments]);
+
+  const photoAttachments = useMemo(
+    () =>
+      attachments.filter(
+        (a) =>
+          (a.attachment_type === 'photo' ||
+            a.attachment_type === 'proof_of_completion' ||
+            a.attachment_type === 'proof_of_service' ||
+            a.attachment_type === 'signature') &&
+          (a.mime_type ?? '').startsWith('image/'),
+      ),
+    [attachments],
+  );
+
+  const noteAttachments = useMemo(
+    () =>
+      attachments.filter(
+        (a) =>
+          a.attachment_type === 'note' || (!a.object_path && a.content),
+      ),
+    [attachments],
+  );
 
   const actions = useMemo(() => (job ? NEXT_STEPS[job.status] ?? [] : []), [job]);
+  const completionEnabledStatuses = new Set([
+    'assigned',
+    'scheduled',
+    'en_route',
+    'on_site',
+    'in_progress',
+  ]);
+  const showCompletionButton = job
+    ? completionEnabledStatuses.has(job.status)
+    : false;
 
   const runTransition = (next: DispatchTransition, confirm?: boolean) => {
     const go = () => transition.mutate(next);
@@ -237,11 +280,23 @@ export default function JobDetailScreen() {
         </View>
       ) : null}
 
-      {actions.length > 0 ? (
+      {actions.length > 0 || showCompletionButton ? (
         <View style={{ gap: 10 }}>
           <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
             Actions
           </Text>
+          {showCompletionButton ? (
+            <PrimaryButton
+              label={
+                job.status === 'in_progress'
+                  ? 'Complete with photos & notes'
+                  : 'Add photos & notes'
+              }
+              variant={job.status === 'in_progress' ? 'success' : 'primary'}
+              onPress={() => setCompletionSheetOpen(true)}
+              disabled={transition.isPending}
+            />
+          ) : null}
           {actions.map((a) => (
             <PrimaryButton
               key={a.next}
@@ -257,6 +312,67 @@ export default function JobDetailScreen() {
         </View>
       ) : null}
 
+      {photoAttachments.length > 0 ? (
+        <View
+          style={[
+            styles.notes,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+            Photos
+          </Text>
+          <View style={styles.photoStrip}>
+            {photoAttachments.map((a) => (
+              <Image
+                key={a.id}
+                source={{
+                  uri: api.buildAttachmentFileUrl(client!, a.id),
+                  headers: { Authorization: `Bearer ${client!.apiKey}` },
+                }}
+                style={[styles.photoThumb, { borderColor: colors.border }]}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {noteAttachments.length > 0 ? (
+        <View
+          style={[
+            styles.notes,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+            Field notes
+          </Text>
+          {noteAttachments.map((a) => (
+            <View key={a.id} style={{ gap: 4 }}>
+              {a.title ? (
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontWeight: '600',
+                    fontSize: 13,
+                  }}
+                >
+                  {a.title}
+                </Text>
+              ) : null}
+              {a.content ? (
+                <Text style={[styles.notesText, { color: colors.text }]}>
+                  {a.content}
+                </Text>
+              ) : null}
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                {formatDateTime(a.created_at)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {events.length > 0 ? (
         <View
           style={[
@@ -267,32 +383,75 @@ export default function JobDetailScreen() {
           <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
             Activity
           </Text>
-          {events.map((evt) => (
-            <View key={evt.id} style={styles.event}>
-              <View
-                style={[
-                  styles.eventDot,
-                  { backgroundColor: colors.primary },
-                ]}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.eventTitle, { color: colors.text }]}>
-                  {evt.from_status && evt.to_status
-                    ? `${formatStatus(evt.from_status)} → ${formatStatus(evt.to_status)}`
-                    : formatStatus(evt.event_type)}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  {formatDateTime(evt.created_at)}
-                </Text>
-                {evt.notes ? (
-                  <Text style={{ color: colors.textMuted, marginTop: 4 }}>
-                    {evt.notes}
+          {events.map((evt) => {
+            const meta = (evt.metadata ?? {}) as Record<string, unknown>;
+            const attachmentId =
+              evt.event_type === 'attachment_added' &&
+              typeof meta.attachment_id === 'string'
+                ? meta.attachment_id
+                : null;
+            const inlineAttachment = attachmentId
+              ? attachmentById.get(attachmentId)
+              : null;
+            const showInlinePhoto =
+              inlineAttachment &&
+              (inlineAttachment.mime_type ?? '').startsWith('image/');
+            return (
+              <View key={evt.id} style={styles.event}>
+                <View
+                  style={[
+                    styles.eventDot,
+                    { backgroundColor: colors.primary },
+                  ]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.eventTitle, { color: colors.text }]}>
+                    {evt.from_status && evt.to_status
+                      ? `${formatStatus(evt.from_status)} → ${formatStatus(evt.to_status)}`
+                      : formatStatus(evt.event_type)}
                   </Text>
-                ) : null}
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    {formatDateTime(evt.created_at)}
+                  </Text>
+                  {evt.notes ? (
+                    <Text style={{ color: colors.textMuted, marginTop: 4 }}>
+                      {evt.notes}
+                    </Text>
+                  ) : null}
+                  {showInlinePhoto ? (
+                    <Image
+                      source={{
+                        uri: api.buildAttachmentFileUrl(
+                          client!,
+                          inlineAttachment!.id,
+                        ),
+                        headers: {
+                          Authorization: `Bearer ${client!.apiKey}`,
+                        },
+                      }}
+                      style={[
+                        styles.eventPhoto,
+                        { borderColor: colors.border },
+                      ]}
+                    />
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
+      ) : null}
+      {job ? (
+        <CompletionSheet
+          visible={completionSheetOpen}
+          jobId={job.id}
+          jobStatus={job.status}
+          onClose={() => setCompletionSheetOpen(false)}
+          onCompleted={() => {
+            qc.invalidateQueries({ queryKey: ['job', id] });
+            qc.invalidateQueries({ queryKey: ['jobs'] });
+          }}
+        />
       ) : null}
     </ScrollView>
   );
@@ -390,6 +549,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   notesText: { fontSize: 14, lineHeight: 20 },
+  photoStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  photoThumb: {
+    width: 92,
+    height: 92,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  eventPhoto: {
+    marginTop: 8,
+    width: 160,
+    height: 160,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
   timeline: {
     padding: 16,
     borderRadius: 16,

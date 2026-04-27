@@ -11,6 +11,9 @@ import {
   getJobHandler,
   transitionJobHandler,
   listResourcesHandler,
+  addAttachmentHandler,
+  requestAttachmentUploadUrlHandler,
+  getAttachmentFileHandler,
 } from './dispatch';
 import {
   listBookingsHandler,
@@ -92,6 +95,27 @@ router.post(
   mobileLimiter,
   requireMobileWrite,
   transitionJobHandler,
+);
+router.post(
+  '/api/v1/dispatch/uploads/request-url',
+  apiKeyAuth,
+  mobileLimiter,
+  requireMobileWrite,
+  requestAttachmentUploadUrlHandler,
+);
+router.post(
+  '/api/v1/dispatch/jobs/:id/attachments',
+  apiKeyAuth,
+  mobileLimiter,
+  requireMobileWrite,
+  addAttachmentHandler,
+);
+router.get(
+  '/api/v1/dispatch/attachments/:attachmentId/file',
+  apiKeyAuth,
+  mobileLimiter,
+  requireApiKeyPermission('read-only'),
+  getAttachmentFileHandler,
 );
 
 // ── Scheduling (technician-facing) ──
