@@ -50,7 +50,14 @@ export function categoryForNotificationType(type: string | null | undefined): No
   if (t === 'integration_recovery') return 'integration_recovery';
   // Verified-caller expiry / revocation alerts share the integration
   // toggle — they're both "outbound infrastructure broke, go reconnect".
-  if (t === 'trusted_caller_expiry' || t === 'trusted_caller_revoked') return 'integration';
+  // The auto-sync "verified" success notification rides the same toggle
+  // so a tenant that silenced caller-id alerts also silences these.
+  if (
+    t === 'trusted_caller_expiry' ||
+    t === 'trusted_caller_revoked' ||
+    t === 'trusted_caller_verified'
+  )
+    return 'integration';
   if (t === 'integration_sms' || t === 'sms') return 'sms';
   if (t === 'campaign') return null; // not yet user-toggleable
   if (t === 'escalation') return 'escalation';

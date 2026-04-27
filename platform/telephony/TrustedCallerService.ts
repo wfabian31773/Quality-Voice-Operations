@@ -85,7 +85,12 @@ export interface VerifiedCallerSyncResult {
 }
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
-const VERIFICATION_TTL_MS = 10 * 60 * 1000; // Twilio validation codes are valid for 10 minutes.
+/**
+ * Twilio validation codes are valid for 10 minutes. After this window the
+ * background `VerifiedCallerSyncScheduler` will flip the row to `failed`
+ * automatically so admins don't see callers stranded in `pending` forever.
+ */
+export const VERIFICATION_TTL_MS = 10 * 60 * 1000;
 
 interface DbClient {
   query: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
@@ -864,6 +869,34 @@ export async function checkCallerHealth(
 }
 
 /**
+ * Cross-tenant list of callers still awaiting Twilio confirmation. The
+ * `VerifiedCallerSyncScheduler` calls this each tick to find rows it
+ * should poll. Includes both rows whose 10-minute validation window is
+ * still open AND rows that have already passed it — the scheduler
+ * relies on `syncCallerIdStatus` to flip the latter to `failed` (so we
+ * deliberately do NOT filter them out here).
+ *
+ * Uses `withPrivilegedClient` because the table has RLS enabled and the
+ * scheduler needs to read across every tenant. The actual updates are
+ * still scoped to the owning tenant via `syncCallerIdStatus` →
+ * `withTenant`, so RLS still protects writes.
+ */
+export async function listPendingCallersToSync(
+  limit: number = 100,
+): Promise<VerifiedCallerId[]> {
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM verified_caller_ids
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        LIMIT $1`,
+      [limit],
+    );
+    return rows.map(rowToCaller);
+  });
+}
+
+/**
  * Cross-tenant lookup of verified callers due for a health check. The
  * scheduler calls this at the top of each cycle to find rows that have
  * either never been health-checked, or whose last check was more than
@@ -930,6 +963,33 @@ export async function recordCallerHealth(
         result.demoteAttestation,
       ],
     );
+  });
+}
+
+/**
+ * Atomic claim of the one-shot success-notification slot for a caller
+ * that has just transitioned `pending → verified`. Returns true when we
+ * won the claim (so the caller should fan out the toast), false when
+ * another scheduler instance already sent the notification.
+ *
+ * Unlike `claimExpiryAlertSlot` this is a true one-shot — successful
+ * verification only happens once per caller row, so we guard on
+ * `verified_notification_sent_at IS NULL` rather than a sliding window.
+ */
+export async function claimVerifiedNotificationSlot(
+  callerId: string,
+  tenantId: string,
+): Promise<boolean> {
+  return withPrivilegedClient(async (client) => {
+    const result = await client.query(
+      `UPDATE verified_caller_ids
+          SET verified_notification_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1
+          AND tenant_id = $2
+          AND verified_notification_sent_at IS NULL`,
+      [callerId, tenantId],
+    );
+    return (result.rowCount ?? 0) === 1;
   });
 }
 

@@ -24,6 +24,7 @@ import { startDocsFeedbackReplyRetryScheduler, stopDocsFeedbackReplyRetrySchedul
 import { startSupportReplyRetryScheduler, stopSupportReplyRetryScheduler } from '../../platform/help/SupportReplyRetryScheduler';
 import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } from '../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
 import { startVerifiedCallerHealthScheduler, stopVerifiedCallerHealthScheduler } from '../../platform/telephony/VerifiedCallerHealthScheduler';
+import { startVerifiedCallerSyncScheduler, stopVerifiedCallerSyncScheduler } from '../../platform/telephony/VerifiedCallerSyncScheduler';
 import { startConnectorOutboxDrainScheduler, stopConnectorOutboxDrainScheduler } from '../../platform/integrations/connectors/ConnectorOutboxDrainScheduler';
 import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler } from '../../platform/integrations/connectors/SchedulingDriftAlertScheduler';
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler } from '../../platform/integrations/connectors';
@@ -95,6 +96,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startSupportReplyRetryScheduler();
   startConnectorAuthAlertScheduler();
   startVerifiedCallerHealthScheduler();
+  startVerifiedCallerSyncScheduler();
   startConnectorOutboxDrainScheduler();
   startSchedulingDriftAlertScheduler();
   startOAuthTokenRefreshScheduler();
@@ -123,6 +125,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopSupportReplyRetryScheduler();
   stopConnectorAuthAlertScheduler();
   stopVerifiedCallerHealthScheduler();
+  stopVerifiedCallerSyncScheduler();
   stopConnectorOutboxDrainScheduler();
   stopSchedulingDriftAlertScheduler();
   stopOAuthTokenRefreshScheduler();
