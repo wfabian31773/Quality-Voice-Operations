@@ -1,6 +1,6 @@
 # Frontend Bundle-Size Baseline
 
-This document records the baseline bundle measurements for the `client-app` frontend so future work (code splitting, dependency cleanup, lazy loading) can be measured against a known starting point.
+This document records the current bundle measurements for the `client-app` frontend so future work (code splitting, dependency cleanup, lazy loading) can be measured against a known starting point.
 
 > Source backlog item: `docs/audit/09-prioritized-backlog.md` — **BL-043**.
 
@@ -33,61 +33,109 @@ The numbers below were captured by running `npm run analyze` and re-computing gz
 
 | Group                         | Files | Raw bytes  | Raw KiB  | Gzip bytes | Gzip KiB |
 | ----------------------------- | ----- | ---------- | -------- | ---------- | -------- |
-| JavaScript chunks             | 172   | 3,100,090  | 3,027.4  | 857,825    | 837.7    |
-| CSS chunks                    | 2     | 228,892    | 223.5    | 30,633     | 29.9     |
-| `index.html`                  | 1     | 964        | 0.94     | 530        | 0.52     |
-| **Total JS + CSS + HTML**     | 175   | 3,329,946  | 3,251.9  | 888,988    | 868.2    |
+| JavaScript chunks             | 177   | 3,238,138  | 3,162.2  | 897,592    | 876.6    |
+| CSS chunks                    | 2     | 229,216    | 223.8    | 29,971     | 29.3     |
+| `index.html`                  | 1     | 1,296      | 1.27     | 612        | 0.60     |
+| **Total JS + CSS + HTML**     | 180   | 3,468,650  | 3,387.4  | 928,175    | 906.4    |
 
 > Static assets (avatars, hero imagery, OG images, etc.) are not counted above. The total `client-app/dist/` directory weighs ≈15 MB on disk including those non-code assets.
 
-The Vite build currently emits a chunk-size warning because the main entry exceeds the default 500 KiB threshold:
+The 500 KiB chunk-size warning Vite previously emitted for the entry chunk no longer appears: the largest emitted JS chunk is now ≈329 KiB raw (`BarChart.js`, the `recharts` shared chunk), well under Vite's default 500 KiB warning threshold.
 
-> `(!) Some chunks are larger than 500 kB after minification.`
-
-This is expected at the baseline and is what BL-043 will let us track over time.
-
-## Largest 25 JavaScript chunks
+## Largest 25 JavaScript / CSS chunks
 
 Sorted by raw size. Hashes change every build, so they are stripped here.
+
+| # | Chunk                  | Raw KiB | Gzip KiB |
+| - | ---------------------- | ------- | -------- |
+| 1 | `BarChart.js`          | 328.8   | 97.3     |
+| 2 | `index.js` (entry)     | 295.0   | 80.2     |
+| 3 | `AgentBuilder.js`      | 215.7   | 64.2     |
+| 4 | `index.css`            | 208.3   | 26.7     |
+| 5 | `react-vendor.js`      | 191.8   | 59.8     |
+| 6 | `PlatformAdmin.js`     | 118.5   | 22.8     |
+| 7 | `KnowledgeBase.js`     | 95.1    | 28.1     |
+| 8 | `Calls.js`             | 84.8    | 24.5     |
+| 9 | `Dispatch.js`          | 74.1    | 13.2     |
+| 10 | `Connectors.js`       | 73.0    | 17.5     |
+| 11 | `Scheduling.js`       | 63.7    | 11.4     |
+| 12 | `i18n-vendor.js`      | 56.1    | 18.3     |
+| 13 | `Governance.js`       | 54.9    | 11.1     |
+| 14 | `Landing.js`          | 51.0    | 12.9     |
+| 15 | `Campaigns.js`        | 48.9    | 10.1     |
+| 16 | `SmsInbox.js`         | 44.4    | 10.3     |
+| 17 | `Marketplace.js`      | 43.4    | 9.3      |
+| 18 | `Settings.js`         | 42.9    | 9.7      |
+| 19 | `query-vendor.js`     | 39.9    | 11.8     |
+| 20 | `AdminSalesInbox.js`  | 39.0    | 10.6     |
+| 21 | `Analytics.js`        | 37.1    | 10.6     |
+| 22 | `router-vendor.js`    | 36.8    | 13.3     |
+| 23 | `CallDebug.js`        | 35.2    | 7.1      |
+| 24 | `VerticalLanding.js`  | 34.9    | 10.7     |
+| 25 | `TicketAdmin.js`      | 32.5    | 5.2      |
+
+## CSS chunks
+
+| Chunk               | Raw KiB | Gzip KiB |
+| ------------------- | ------- | -------- |
+| `index.css`         | 208.3   | 26.7     |
+| `AgentBuilder.css`  | 15.5    | 2.6      |
+
+## Initial-load budget
+
+`client-app/index.html` references the entry chunk plus a small set of vendor chunks that are statically imported by `main.tsx` / `App.tsx` and therefore preloaded via `<link rel="modulepreload">`. The eager initial payload after this round of splitting is:
+
+| Asset                   | Gzip KiB |
+| ----------------------- | -------- |
+| `index.html`            | 0.6      |
+| `index.js`              | 80.2     |
+| `index.css`             | 26.7     |
+| `react-vendor.js`       | 59.8     |
+| `i18n-vendor.js`        | 18.3     |
+| `router-vendor.js`      | 13.3     |
+| `query-vendor.js`       | 11.8     |
+| **`index.js` + `index.css` (entry payload)** | **107.5** |
+| **Total eager (with vendor preloads)**       | **210.6** |
+
+`index.js` + `index.css` — the per-deploy churn that ships on every release — is now **107.5 KiB gzip** (down from 207.0 KiB at the previous baseline, a ≈48 % reduction). The vendor chunks are content-hashed and rarely change between deploys, so they stay warm in the browser cache across releases.
+
+`recharts` (`BarChart.js`, ≈97 KiB gzip) is **not** in the eager graph — it loads on demand the first time a chart route (Analytics, AdminAnalytics, AdminTenantAnalytics, CostOptimization, RevenueAnalytics) is visited. `@xyflow/react` ships only inside `AgentBuilder.js`, which is loaded on demand when the Agent Studio route is opened.
+
+Route-level chunks (everything else above) load on demand via `React.lazy` / dynamic imports.
+
+## How the splitting is configured
+
+`client-app/vite.config.ts` uses `build.rollupOptions.output.manualChunks` to peel a handful of always-imported vendor packages out of the entry chunk:
+
+| Manual chunk         | Packages                                                                 |
+| -------------------- | ------------------------------------------------------------------------ |
+| `react-vendor.js`    | `react`, `react-dom`, `react-is`, `scheduler`                            |
+| `router-vendor.js`   | `react-router`, `react-router-dom`, `@remix-run/router`                  |
+| `query-vendor.js`    | `@tanstack/*` (notably `@tanstack/react-query`)                          |
+| `i18n-vendor.js`     | `i18next`, `react-i18next`, `i18next-browser-languagedetector`           |
+
+Recharts, `@xyflow/react`, `@dnd-kit/*` and other heavy non-eager dependencies are intentionally **not** manually chunked; Vite's automatic chunking already places them into route-level or shared dynamic chunks (e.g. `BarChart.js`, `AgentBuilder.js`) so they are never preloaded by the entry HTML.
+
+## Previous baseline (2026-04-27, pre-split)
+
+Captured with the original `client-app/vite.config.ts` (no `manualChunks`) so the trend stays visible:
+
+| Group                         | Files | Raw KiB  | Gzip KiB |
+| ----------------------------- | ----- | -------- | -------- |
+| JavaScript chunks             | 172   | 3,027.4  | 837.7    |
+| CSS chunks                    | 2     | 223.5    | 29.9     |
+| `index.html`                  | 1     | 0.94     | 0.52     |
+| **Total JS + CSS + HTML**     | 175   | 3,251.9  | 868.2    |
+
+Top three chunks at the previous baseline:
 
 | # | Chunk                  | Raw KiB | Gzip KiB |
 | - | ---------------------- | ------- | -------- |
 | 1 | `index.js` (entry)     | 606.6   | 179.7    |
 | 2 | `BarChart.js`          | 330.9   | 98.1     |
 | 3 | `AgentBuilder.js`      | 215.6   | 64.3     |
-| 4 | `PlatformAdmin.js`     | 118.3   | 22.9     |
-| 5 | `Calls.js`             | 85.0    | 24.5     |
-| 6 | `Dispatch.js`          | 73.9    | 13.2     |
-| 7 | `Connectors.js`        | 72.9    | 17.4     |
-| 8 | `Scheduling.js`        | 63.6    | 11.4     |
-| 9 | `Governance.js`        | 54.7    | 11.1     |
-| 10 | `Landing.js`          | 50.9    | 12.9     |
-| 11 | `SmsInbox.js`         | 44.3    | 10.3     |
-| 12 | `Campaigns.js`        | 43.9    | 9.2      |
-| 13 | `Marketplace.js`      | 43.2    | 9.3      |
-| 14 | `Settings.js`         | 42.7    | 9.7      |
-| 15 | `AdminSalesInbox.js`  | 38.9    | 10.6     |
-| 16 | `Analytics.js`        | 37.0    | 10.6     |
-| 17 | `CallDebug.js`        | 35.0    | 7.1      |
-| 18 | `VerticalLanding.js`  | 34.7    | 10.7     |
-| 19 | `TicketAdmin.js`      | 32.3    | 5.2      |
-| 20 | `AreaChart.js`        | 31.9    | 9.2      |
-| 21 | `Autopilot.js`        | 31.4    | 6.3      |
-| 22 | `Product.js`          | 31.2    | 8.8      |
-| 23 | `Demo.js`             | 29.0    | 7.8      |
-| 24 | `Dashboard.js`        | 28.2    | 7.9      |
-| 25 | `TicketDetail.js`     | 27.0    | 6.3      |
 
-## CSS chunks
-
-| Chunk               | Raw KiB | Gzip KiB |
-| ------------------- | ------- | -------- |
-| `index.css`         | 208.0   | 27.3     |
-| `AgentBuilder.css`  | 15.5    | 2.6      |
-
-## Initial-load budget (informational)
-
-The Vite-emitted `index.html` references the entry chunk plus its preloaded CSS bundle. The eager initial payload at this baseline is therefore approximately:
+Previous initial-load budget:
 
 | Asset            | Gzip KiB |
 | ---------------- | -------- |
@@ -96,17 +144,8 @@ The Vite-emitted `index.html` references the entry chunk plus its preloaded CSS 
 | `index.css`      | 27.3     |
 | **Total eager**  | **207.5** |
 
-Route-level chunks (everything else above) load on demand via `React.lazy` / dynamic imports.
-
-## Suggested follow-up targets
-
-These are observations from the baseline, not action items for this task:
-
-- **`index.js` (≈607 KiB raw / 180 KiB gzip)** is the top candidate for further splitting. It bundles the router shell plus a number of always-imported utilities.
-- **`BarChart.js` (≈331 KiB raw / 98 KiB gzip)** is dominated by `recharts`. Worth checking if the chart shell can be lazy-loaded only on dashboards that actually need it.
-- **`AgentBuilder.js` (≈216 KiB raw / 64 KiB gzip)** ships `@xyflow/react`; only the agent builder route needs it, so we should confirm it is not pulled into the eager graph.
-- **`index.css` (≈208 KiB raw / 27 KiB gzip)** is a single Tailwind-generated stylesheet. Once the design system stabilizes, enabling Tailwind's content-aware purge per-route could shrink this.
+The previous build emitted Vite's "chunks larger than 500 kB after minification" warning for `index.js`; that warning is gone in the current build.
 
 ## Updating the baseline
 
-When you intentionally land a perf win (or regression), re-run `npm run analyze` and update the totals + top-25 table above with the new numbers, keeping the previous baseline in a "Previous baselines" section so the trend is visible.
+When you intentionally land a perf win (or regression), re-run `npm run analyze` and update the totals + top-25 table above with the new numbers. Move the existing "current" measurements into a new entry under "Previous baseline" so the trend stays visible.

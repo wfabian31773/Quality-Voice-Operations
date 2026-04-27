@@ -8,6 +8,41 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+
+          if (
+            id.includes('/react-router/') ||
+            id.includes('/react-router-dom/') ||
+            id.includes('/@remix-run/router/')
+          ) {
+            return 'router-vendor';
+          }
+          if (id.includes('/@tanstack/')) {
+            return 'query-vendor';
+          }
+          if (
+            id.includes('/i18next/') ||
+            id.includes('/react-i18next/') ||
+            id.includes('/i18next-browser-languagedetector/')
+          ) {
+            return 'i18n-vendor';
+          }
+          if (
+            /\/node_modules\/react\//.test(id) ||
+            /\/node_modules\/react-dom\//.test(id) ||
+            /\/node_modules\/react-is\//.test(id) ||
+            /\/node_modules\/scheduler\//.test(id)
+          ) {
+            return 'react-vendor';
+          }
+
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port: 5000,
