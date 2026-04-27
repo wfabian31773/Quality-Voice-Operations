@@ -971,7 +971,9 @@ export async function createRealtimeSession(
     audio: {
       input: {
         format: 'g711_ulaw' as const,
-        transcription: { model: 'gpt-4o-mini-transcribe' },
+        transcription: agentConfig.language && agentConfig.language !== 'en'
+          ? { model: 'gpt-4o-mini-transcribe', language: agentConfig.language }
+          : { model: 'gpt-4o-mini-transcribe' },
         turnDetection: {
           type: 'semantic_vad' as const,
           eagerness: 'medium' as const,
@@ -1493,7 +1495,9 @@ export async function createRealtimeSession(
       audio: {
         input: {
           format: 'g711_ulaw' as const,
-          transcription: { model: 'gpt-4o-mini-transcribe' },
+          transcription: newAgentConfig.language && newAgentConfig.language !== 'en'
+            ? { model: 'gpt-4o-mini-transcribe', language: newAgentConfig.language }
+            : { model: 'gpt-4o-mini-transcribe' },
           turnDetection: {
             type: 'semantic_vad' as const,
             eagerness: 'medium' as const,

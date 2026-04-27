@@ -452,6 +452,7 @@ export function attachWebSocket(server: HTTPServer): void {
                           greeting: result.targetAgentConfig.greeting ?? result.handoffGreeting ?? '',
                           voice: result.targetAgentConfig.voice,
                           model: result.targetAgentConfig.model,
+                          language: (result.targetAgentConfig as { language?: string }).language ?? 'en',
                           tools: result.targetAgentConfig.tools as import('../services/agentLoader').AgentToolDef[],
                           guardrails: result.targetAgentConfig.guardrails,
                           metadata: {},

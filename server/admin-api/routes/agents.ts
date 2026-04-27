@@ -5,6 +5,13 @@ import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { getTemplatePermissions, getAllKnownTools } from '../../../platform/agent-templates/toolPermissions';
+import {
+  AGENT_LANGUAGES,
+  DEFAULT_AGENT_LANGUAGE,
+  getAgentLanguageLabel,
+  isSupportedAgentLanguage,
+  normalizeAgentLanguage,
+} from '../../../platform/agent-templates/agentLanguages';
 import { recordActivationEvent } from '../../../platform/activation/ActivationService';
 
 const router = Router();
@@ -59,6 +66,13 @@ function validateAgentInput(body: Record<string, unknown>, isCreate: boolean): s
     if ((body.scheduling_provider as string).length > 60) return 'scheduling_provider exceeds maximum length of 60 characters';
   }
 
+  if (body.language !== undefined) {
+    if (!isSupportedAgentLanguage(body.language)) {
+      const codes = AGENT_LANGUAGES.map((l) => l.code).join(', ');
+      return `language must be one of: ${codes}`;
+    }
+  }
+
   return null;
 }
 
@@ -76,7 +90,7 @@ router.get('/agents', requireAuth, async (req, res) => {
       `SELECT id, tenant_id, name, type, status, voice, model, temperature,
               system_prompt, welcome_greeting, escalation_config, metadata,
               execution_mode, remote_system, remote_agent_id, last_sync_at,
-              scheduling_provider,
+              scheduling_provider, language,
               created_at, updated_at
        FROM agents WHERE tenant_id = $1
        ORDER BY created_at DESC
@@ -104,7 +118,8 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
   const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-4o-realtime-preview',
-          temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null } = body;
+          temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null,
+          language = DEFAULT_AGENT_LANGUAGE } = body;
 
   const validationError = validateAgentInput(body, true);
   if (validationError) return res.status(400).json({ error: validationError });
@@ -123,12 +138,12 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata, scheduling_provider)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata, scheduling_provider, language)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [tenantId, name, type, system_prompt ?? null, welcome_greeting ?? null, voice, model, temperature,
        JSON.stringify(tools), JSON.stringify(escalation_config), JSON.stringify(metadata),
-       scheduling_provider ?? null],
+       scheduling_provider ?? null, normalizeAgentLanguage(language)],
     );
     await client.query('COMMIT');
 
@@ -178,7 +193,7 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
   const validationError = validateAgentInput(body, false);
   if (validationError) return res.status(400).json({ error: validationError });
 
-  const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition', 'workflow_id', 'scheduling_provider'];
+  const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition', 'workflow_id', 'scheduling_provider', 'language'];
   const updates: string[] = ['updated_at = NOW()'];
   const values: unknown[] = [id, tenantId];
 
@@ -651,11 +666,25 @@ router.patch('/agents/:id/workflow', requireAuth, requireRole('manager'), async 
       }
     }
 
-    const { rows } = await client.query(
-      `UPDATE agents SET workflow_definition = $1, workflow_id = $2, updated_at = NOW()
-       WHERE id = $3 AND tenant_id = $4 RETURNING *`,
-      [JSON.stringify(workflow_definition), workflow_id ?? null, id, tenantId],
-    );
+    const wfSettings = (workflow_definition as Record<string, unknown> | undefined)?.settings as
+      | Record<string, unknown>
+      | undefined;
+    const settingsLanguage = wfSettings?.language;
+    const languageCode = settingsLanguage !== undefined
+      ? normalizeAgentLanguage(settingsLanguage)
+      : null;
+
+    const { rows } = languageCode
+      ? await client.query(
+          `UPDATE agents SET workflow_definition = $1, workflow_id = $2, language = $3, updated_at = NOW()
+           WHERE id = $4 AND tenant_id = $5 RETURNING *`,
+          [JSON.stringify(workflow_definition), workflow_id ?? null, languageCode, id, tenantId],
+        )
+      : await client.query(
+          `UPDATE agents SET workflow_definition = $1, workflow_id = $2, updated_at = NOW()
+           WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+          [JSON.stringify(workflow_definition), workflow_id ?? null, id, tenantId],
+        );
     await client.query('COMMIT');
 
     if (rows.length === 0) return res.status(404).json({ error: 'Agent not found' });
@@ -812,12 +841,16 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     const publishGreeting = (draftSettings.welcome_greeting as string) ?? agent.welcome_greeting ?? '';
     const publishName = (draftSettings.name as string) || agent.name;
     const basePrompt = (draftSettings.system_prompt as string) ?? agent.system_prompt ?? '';
-    const language = (draftSettings.language as string) || '';
+    const draftLanguageRaw = draftSettings.language as string | undefined;
+    const languageCode = draftLanguageRaw
+      ? normalizeAgentLanguage(draftLanguageRaw)
+      : (agent.language as string) || DEFAULT_AGENT_LANGUAGE;
+    const languageLabel = getAgentLanguageLabel(languageCode);
     const tone = (draftSettings.tone as string) || '';
 
     let compiledPrompt = basePrompt;
-    if (language && language !== 'English') {
-      compiledPrompt += `\n\nSpeak in ${language}.`;
+    if (languageCode && languageCode !== DEFAULT_AGENT_LANGUAGE) {
+      compiledPrompt += `\n\nRespond to the caller in ${languageLabel}. All spoken responses must be in ${languageLabel}.`;
     }
     if (tone) {
       compiledPrompt += `\nMaintain a ${tone.toLowerCase()} tone throughout the conversation.`;
@@ -855,14 +888,14 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     const existingMeta = agent.metadata
       ? (typeof agent.metadata === 'string' ? JSON.parse(agent.metadata) : agent.metadata)
       : {};
-    const mergedMeta = { ...existingMeta, language, tone, speakingRate: draftSettings.speakingRate || 1.0 };
+    const mergedMeta = { ...existingMeta, language: languageCode, tone, speakingRate: draftSettings.speakingRate || 1.0 };
 
     await client.query(
       `UPDATE agents SET name = $1, system_prompt = $2, voice = $3, model = $4, temperature = $5, welcome_greeting = $6, tools = $7,
-       published_workflow_definition = workflow_definition, published_version = $8, metadata = $9, updated_at = NOW()
-       WHERE id = $10 AND tenant_id = $11`,
+       published_workflow_definition = workflow_definition, published_version = $8, metadata = $9, language = $10, updated_at = NOW()
+       WHERE id = $11 AND tenant_id = $12`,
       [publishName, compiledPrompt, publishVoice, publishModel, publishTemp, publishGreeting, JSON.stringify(compiledTools),
-       nextVersion, JSON.stringify(mergedMeta), id, tenantId],
+       nextVersion, JSON.stringify(mergedMeta), languageCode, id, tenantId],
     );
 
     await client.query('COMMIT');
@@ -966,8 +999,11 @@ router.post('/agents/:id/rollback', requireAuth, requireRole('manager'), async (
       : {};
     const vSettings = (vWd.settings || {}) as Record<string, unknown>;
     const rollbackName = (vSettings.name as string) || null;
+    const rollbackLanguage = vSettings.language !== undefined
+      ? normalizeAgentLanguage(vSettings.language)
+      : null;
     const rollbackMeta = vSettings.language || vSettings.tone
-      ? JSON.stringify({ language: vSettings.language, tone: vSettings.tone, speakingRate: vSettings.speakingRate })
+      ? JSON.stringify({ language: rollbackLanguage ?? vSettings.language, tone: vSettings.tone, speakingRate: vSettings.speakingRate })
       : null;
 
     const updateFields = [
@@ -1002,6 +1038,10 @@ router.post('/agents/:id/rollback', requireAuth, requireRole('manager'), async (
     if (rollbackMeta) {
       updateValues.push(rollbackMeta);
       updateFields.push(`metadata = $${updateValues.length}`);
+    }
+    if (rollbackLanguage) {
+      updateValues.push(rollbackLanguage);
+      updateFields.push(`language = $${updateValues.length}`);
     }
 
     const { rows } = await client.query(

@@ -81,7 +81,7 @@ export async function getAgentConfig(tenantId: string, agentId: string) {
     const { rows } = await client.query(
       `SELECT id, name, type, system_prompt, voice, model, temperature,
               max_response_output_tokens, tools, knowledge_base,
-              escalation_config, metadata
+              escalation_config, metadata, language
        FROM agents WHERE id = $1`,
       [agentId],
     );

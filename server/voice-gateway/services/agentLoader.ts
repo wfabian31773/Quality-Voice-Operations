@@ -58,6 +58,11 @@ import {
 import { createLogger } from '../../../platform/core/logger';
 import type { TenantId } from '../../../platform/core/types';
 import { filterToolsByPermissions, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
+import {
+  DEFAULT_AGENT_LANGUAGE,
+  getAgentLanguageLabel,
+  normalizeAgentLanguage,
+} from '../../../platform/agent-templates/agentLanguages';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -68,6 +73,7 @@ export interface LoadedAgentConfig {
   greeting: string;
   voice: string;
   model: string;
+  language: string;
   tools: AgentToolDef[];
   guardrails: string[];
   metadata: Record<string, unknown>;
@@ -94,6 +100,7 @@ export interface AgentLoadContext {
     tools?: unknown;
     escalation_config?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
+    language?: string;
   };
 }
 
@@ -235,12 +242,14 @@ function resolveTemplateKey(agentType: string, agentId: string): string {
   return agentType || agentId;
 }
 
+type LoadedAgentConfigWithoutLanguage = Omit<LoadedAgentConfig, 'language'>;
+
 function buildTemplateConfig(
   templateKey: string,
   ctx: AgentLoadContext,
   meta: Record<string, unknown>,
   dbTools: AgentToolDef[],
-): LoadedAgentConfig | null {
+): LoadedAgentConfigWithoutLanguage | null {
   const { tenantId, agentId, callerPhone, callerMemorySummary, dbAgent, toolOverrides } = ctx;
 
   switch (templateKey) {
@@ -403,6 +412,18 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   const templateKey = resolveTemplateKey(agentType, agentId);
   const meta = (dbAgent?.metadata ?? {}) as Record<string, unknown>;
   const dbTools: AgentToolDef[] = Array.isArray(dbAgent?.tools) ? (dbAgent.tools as AgentToolDef[]) : [];
+  const language = normalizeAgentLanguage(dbAgent?.language ?? (meta as Record<string, unknown>).language);
+  const finalize = (cfg: LoadedAgentConfigWithoutLanguage): LoadedAgentConfig => {
+    let prompt = cfg.systemPrompt;
+    if (language && language !== DEFAULT_AGENT_LANGUAGE) {
+      const label = getAgentLanguageLabel(language);
+      const directive = `Respond to the caller in ${label}. All spoken responses must be in ${label}.`;
+      if (!prompt.includes(directive)) {
+        prompt = `${prompt}\n\n${directive}`.trim();
+      }
+    }
+    return { ...cfg, systemPrompt: prompt, language };
+  };
 
   switch (templateKey) {
     case 'answering-service': {
@@ -420,7 +441,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         ? [...ANSWERING_SERVICE_TOOLS, LOOKUP_SCHEDULE_TOOL]
         : ANSWERING_SERVICE_TOOLS;
       const mergedTools = mergeTools(baseTools, dbTools);
-      return {
+      return finalize({
         agentId,
         tenantId,
         systemPrompt,
@@ -432,7 +453,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
         guardrails: [],
         metadata: { practiceName },
-      };
+      });
     }
 
     case 'medical-after-hours': {
@@ -452,7 +473,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         ? [...AFTER_HOURS_TOOLS, LOOKUP_SCHEDULE_TOOL]
         : AFTER_HOURS_TOOLS;
       const mergedTools = mergeTools(baseTools, dbTools);
-      return {
+      return finalize({
         agentId,
         tenantId,
         systemPrompt,
@@ -462,16 +483,16 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
         guardrails: MEDICAL_SAFETY_GUARDRAILS,
         metadata: { practiceName, onCallTransferNumber: onCallNumber },
-      };
+      });
     }
 
     default: {
       const verticalConfig = buildTemplateConfig(templateKey, ctx, meta, dbTools);
-      if (verticalConfig) return verticalConfig;
+      if (verticalConfig) return finalize(verticalConfig);
 
       if (dbAgent?.system_prompt) {
         logger.info('Loading DB-configured agent (no matching template)', { tenantId, agentId, agentType });
-        return {
+        return finalize({
           agentId,
           tenantId,
           systemPrompt: dbAgent.system_prompt,
@@ -481,10 +502,10 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
           tools: filterToolsByPermissions(dbTools, templateKey, toolOverrides),
           guardrails: [],
           metadata: meta,
-        };
+        });
       }
       logger.warn('Unknown agent template and no DB prompt, using generic config', { tenantId, agentId, agentType });
-      return {
+      return finalize({
         agentId,
         tenantId,
         systemPrompt: `You are a helpful voice assistant. Be polite, clear, and concise.`,
@@ -494,7 +515,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tools: [],
         guardrails: [],
         metadata: {},
-      };
+      });
     }
   }
 }

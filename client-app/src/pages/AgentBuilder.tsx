@@ -22,6 +22,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { api } from '../lib/api';
+import { AGENT_LANGUAGES, DEFAULT_AGENT_LANGUAGE, normalizeAgentLanguage } from '../lib/agentLanguages';
 import {
   ArrowLeft, Save, Play, Rocket, History, GripVertical,
   MessageSquare, HelpCircle, CheckCircle, GitBranch, Route,
@@ -39,6 +40,7 @@ interface Agent {
   status: string;
   voice: string;
   model: string;
+  language: string;
   system_prompt: string;
   welcome_greeting: string;
   temperature: number;
@@ -709,7 +711,6 @@ function ImprovementSuggestionsPanel({
   );
 }
 
-const LANGUAGES = ['English', 'Spanish', 'French', 'German', 'Portuguese', 'Chinese', 'Japanese', 'Korean', 'Arabic', 'Hindi'];
 const TONE_OPTIONS = ['Professional', 'Friendly', 'Casual', 'Empathetic', 'Formal', 'Warm', 'Direct'];
 
 function VoiceConfigPanel({
@@ -775,8 +776,16 @@ function VoiceConfigPanel({
             onChange={(e) => onChange('language', e.target.value)}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
-            {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+            {AGENT_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+                {l.nativeLabel !== l.label ? ` (${l.nativeLabel})` : ''}
+              </option>
+            ))}
           </select>
+          <p className="text-[10px] text-text-muted mt-1">
+            Calls handled by this agent will be answered in the selected language.
+          </p>
         </div>
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">Tone / Personality</label>
@@ -1256,7 +1265,7 @@ function AgentBuilderInner() {
     system_prompt: '',
     welcome_greeting: '',
     name: '',
-    language: 'English',
+    language: DEFAULT_AGENT_LANGUAGE,
     tone: 'Professional',
     speakingRate: 1.0,
     workflow_id: '' as string,
@@ -1291,7 +1300,7 @@ function AgentBuilderInner() {
         system_prompt: (wdSettings?.system_prompt as string) ?? a.system_prompt ?? '',
         welcome_greeting: (wdSettings?.welcome_greeting as string) ?? a.welcome_greeting ?? '',
         name: (wdSettings?.name as string) || a.name || '',
-        language: (wdSettings?.language as string) || 'English',
+        language: normalizeAgentLanguage(a.language ?? wdSettings?.language),
         tone: (wdSettings?.tone as string) || 'Professional',
         speakingRate: (wdSettings?.speakingRate as number) || 1.0,
         workflow_id: ((a as unknown as Record<string, unknown>).workflow_id as string) || '',
