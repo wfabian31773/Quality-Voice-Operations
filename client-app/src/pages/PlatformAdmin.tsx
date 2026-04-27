@@ -16,7 +16,7 @@ import {
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
   AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
-  Clock, ArrowUpDown,
+  Clock, ArrowUpDown, Database,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -1396,6 +1396,333 @@ function ConnectorTokenHealthPanel({
   );
 }
 
+interface CallEventsRetentionRun {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: 'success' | 'failure';
+  retention_days: number;
+  ensured_partitions: string[];
+  dropped_partitions: string[];
+  error_message: string | null;
+}
+
+interface CallEventsRetentionPartition {
+  name: string;
+  lower_bound: string | null;
+  upper_bound: string | null;
+}
+
+interface CallEventsRetentionResponse {
+  retentionDays: number;
+  intervalMs: number;
+  staleAfterMs: number;
+  expected: {
+    currentMonthPartition: string;
+    nextMonthPartition: string;
+  };
+  partitions: CallEventsRetentionPartition[];
+  partitionsExist: {
+    currentMonth: boolean;
+    nextMonth: boolean;
+  };
+  lastRun: CallEventsRetentionRun | null;
+  lastSuccessfulRun: CallEventsRetentionRun | null;
+  recentRuns: CallEventsRetentionRun[];
+  status: {
+    healthy: boolean;
+    stale: boolean;
+    missingNextMonth: boolean;
+    lastRunFailed: boolean;
+    neverRan: boolean;
+    reasons: string[];
+  };
+}
+
+function formatPartitionDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatRunTimestamp(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
+function formatRelativeAge(iso: string | null): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms)) return 'unknown';
+  if (ms < 0) return 'just now';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function CallEventsRetentionPanel() {
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-call-events-retention'],
+    queryFn: () =>
+      api.get<CallEventsRetentionResponse>('/platform/call-events-retention'),
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-muted">
+        Loading call event retention status...
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+        Failed to load retention status: {error ? (error as Error).message : 'no data'}
+      </div>
+    );
+  }
+
+  const { status, lastRun, lastSuccessfulRun, recentRuns, partitions, expected, partitionsExist } = data;
+
+  const headerToneClass = status.healthy
+    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700/50'
+    : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700/50';
+  const headerIcon = status.healthy ? (
+    <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+  ) : (
+    <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+  );
+  const headerLabel = status.healthy
+    ? 'Retention worker is healthy'
+    : 'Retention worker needs attention';
+
+  return (
+    <div className="space-y-4">
+      <div className={`border rounded-xl p-4 flex items-start justify-between gap-4 ${headerToneClass}`}>
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="flex-shrink-0 mt-0.5">{headerIcon}</div>
+          <div className="min-w-0">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Database className="h-4 w-4" /> {headerLabel}
+            </h2>
+            <p className="text-xs text-muted mt-1">
+              Daily worker keeps the partitioned <code className="font-mono">call_events</code> table inside its{' '}
+              {data.retentionDays}-day retention window and pre-creates next month's partition.
+            </p>
+            {status.reasons.length > 0 && (
+              <ul className="mt-2 text-xs text-red-700 dark:text-red-300 list-disc list-inside space-y-0.5">
+                {status.reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground disabled:opacity-50 flex-shrink-0"
+          title="Refresh"
+        >
+          <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={Clock}
+          label="Last successful cycle"
+          value={lastSuccessfulRun ? formatRelativeAge(lastSuccessfulRun.finished_at ?? lastSuccessfulRun.started_at) : 'Never'}
+          sub={
+            lastSuccessfulRun
+              ? formatRunTimestamp(lastSuccessfulRun.finished_at ?? lastSuccessfulRun.started_at)
+              : 'No cycle on record'
+          }
+          tone={status.stale ? 'warning' : undefined}
+        />
+        <StatCard
+          icon={Database}
+          label="Partitions"
+          value={String(partitions.length)}
+          sub={`Retention window: ${data.retentionDays} days`}
+        />
+        <StatCard
+          icon={partitionsExist.currentMonth ? CheckCircle : AlertTriangle}
+          label="Current month partition"
+          value={partitionsExist.currentMonth ? 'Ready' : 'Missing'}
+          sub={expected.currentMonthPartition}
+          tone={partitionsExist.currentMonth ? undefined : 'warning'}
+        />
+        <StatCard
+          icon={partitionsExist.nextMonth ? CheckCircle : AlertTriangle}
+          label="Next month partition"
+          value={partitionsExist.nextMonth ? 'Ready' : 'Missing'}
+          sub={expected.nextMonthPartition}
+          tone={partitionsExist.nextMonth ? undefined : 'warning'}
+        />
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Current partitions</h3>
+          <span className="text-xs text-muted">{partitions.length} total</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Partition</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Range start</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Range end (exclusive)</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {partitions.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-muted">
+                    No partitions found. The scheduler may not have run yet.
+                  </td>
+                </tr>
+              ) : (
+                partitions.map((p) => {
+                  const role =
+                    p.name === expected.currentMonthPartition
+                      ? 'Current month'
+                      : p.name === expected.nextMonthPartition
+                        ? 'Next month'
+                        : '';
+                  return (
+                    <tr key={p.name} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2.5 font-mono text-xs">{p.name}</td>
+                      <td className="px-4 py-2.5 text-muted">{formatPartitionDate(p.lower_bound)}</td>
+                      <td className="px-4 py-2.5 text-muted">{formatPartitionDate(p.upper_bound)}</td>
+                      <td className="px-4 py-2.5">
+                        {role && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                            {role}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Recent retention cycles</h3>
+          <span className="text-xs text-muted">Showing last {recentRuns.length}</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Started</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Status</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Ensured</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Dropped</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentRuns.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-muted">
+                    No retention cycles have been recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                recentRuns.map((run) => (
+                  <tr key={run.id} className="border-b border-border last:border-0 align-top">
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <div>{formatRunTimestamp(run.started_at)}</div>
+                      <div className="text-xs text-muted">{formatRelativeAge(run.started_at)}</div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {run.status === 'success' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <CheckCircle className="h-3 w-3" /> Success
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                          <XCircle className="h-3 w-3" /> Failure
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {run.ensured_partitions.length === 0 ? (
+                        <span className="text-muted">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {run.ensured_partitions.map((p) => (
+                            <code
+                              key={p}
+                              className="text-xs font-mono px-2 py-0.5 rounded border bg-surface-hover border-border"
+                            >
+                              {p}
+                            </code>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {run.dropped_partitions.length === 0 ? (
+                        <span className="text-muted">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {run.dropped_partitions.map((p) => (
+                            <code
+                              key={p}
+                              className="text-xs font-mono px-2 py-0.5 rounded border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                            >
+                              {p}
+                            </code>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {run.error_message ? (
+                        <span className="text-red-600 dark:text-red-400 break-words">{run.error_message}</span>
+                      ) : (
+                        <span className="text-muted">{run.retention_days}d window</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {lastRun && lastRun.status === 'failure' && (
+          <div className="px-4 py-2.5 border-t border-border bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300">
+            Last cycle failed at {formatRunTimestamp(lastRun.started_at)}. Check server logs for{' '}
+            <code className="font-mono">CALL_EVENTS_RETENTION</code>.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface IntegrationProviderStatus {
   provider: string;
   label: string;
@@ -1561,7 +1888,7 @@ function IntegrationsStatusPanel() {
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support' | 'integrations' | 'connector-health'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support' | 'integrations' | 'connector-health' | 'retention'>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -1789,10 +2116,21 @@ export default function PlatformAdmin() {
         >
           <span className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Connector Health</span>
         </button>
+        <button
+          onClick={() => setActiveTab('retention')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'retention'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted hover:text-foreground'
+          }`}
+        >
+          <span className="flex items-center gap-2"><Database className="h-4 w-4" /> Call Event Retention</span>
+        </button>
       </div>
 
       {activeTab === 'integrations' && <IntegrationsStatusPanel />}
       {activeTab === 'connector-health' && <ConnectorHealthPanel />}
+      {activeTab === 'retention' && <CallEventsRetentionPanel />}
 
       {activeTab === 'tenants' && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
