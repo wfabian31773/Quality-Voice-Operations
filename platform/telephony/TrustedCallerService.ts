@@ -1,5 +1,6 @@
 import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
+import type { TrustHubSnapshot } from './TrustHubService';
 
 const logger = createLogger('TRUSTED_CALLER');
 
@@ -573,6 +574,95 @@ export async function resolveCampaignCallerId(
 ): Promise<VerifiedCallerId | null> {
   if (!verifiedCallerId) return null;
   return getVerifiedCallerById(tenantId, verifiedCallerId);
+}
+
+// ============================================================================
+// Trust Hub registration persistence
+// ============================================================================
+
+/**
+ * Persist the SIDs returned by the Twilio Trust Hub orchestrator onto an
+ * existing verified caller row, including a per-resource lifecycle
+ * snapshot under `metadata.trustHub` for the wizard badge.
+ */
+export async function attachTrustHubRegistration(
+  tenantId: string,
+  callerId: string,
+  snapshot: TrustHubSnapshot,
+  opts: { source?: 'submit' | 'sync' } = { source: 'submit' },
+): Promise<VerifiedCallerId> {
+  return withTenant(tenantId, async (client) => {
+    const existingRow = await client.query(
+      `SELECT * FROM verified_caller_ids WHERE id = $1 AND tenant_id = $2`,
+      [callerId, tenantId],
+    );
+    const prior = existingRow.rows[0] ? rowToCaller(existingRow.rows[0]) : null;
+    const priorSnapshot = prior ? readTrustHubSnapshot(prior) : null;
+
+    let brand = snapshot.brand
+      ?? (prior?.brandSid && priorSnapshot?.brand ? priorSnapshot.brand : null);
+    if (!brand && prior?.brandSid) {
+      brand = { sid: prior.brandSid, status: 'unknown', validUntil: null, failureReason: null };
+    }
+
+    const now = new Date().toISOString();
+    const trustHubMetadata = {
+      customerProfile: snapshot.customerProfile,
+      trustProduct: snapshot.trustProduct,
+      brand,
+      businessInfoEndUserSid: snapshot.businessInfoEndUserSid,
+      addressEndUserSid: snapshot.addressEndUserSid,
+      representativeEndUserSid: snapshot.representativeEndUserSid,
+      lastSubmittedAt: opts.source === 'sync'
+        ? priorSnapshot?.lastSubmittedAt ?? now
+        : now,
+      lastSyncedAt: now,
+    };
+
+    const { rows } = await client.query(
+      `UPDATE verified_caller_ids
+          SET trust_hub_profile_sid = $3,
+              trust_product_sid = $4,
+              brand_sid = COALESCE($5, brand_sid),
+              metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('trustHub', $6::jsonb),
+              updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2
+        RETURNING *`,
+      [
+        callerId,
+        tenantId,
+        snapshot.customerProfile.sid,
+        snapshot.trustProduct.sid,
+        snapshot.brand?.sid ?? null,
+        JSON.stringify(trustHubMetadata),
+      ],
+    );
+
+    if (rows.length === 0) {
+      throw new Error('Caller ID not found');
+    }
+
+    logger.info('Trust Hub registration attached to caller', {
+      tenantId,
+      callerId,
+      customerProfileSid: snapshot.customerProfile.sid,
+      trustProductSid: snapshot.trustProduct.sid,
+      brandSid: snapshot.brand?.sid ?? null,
+    });
+
+    return rowToCaller(rows[0]);
+  });
+}
+
+/**
+ * Read the persisted Trust Hub snapshot back from the row. Returns null
+ * when no Trust Hub registration has been attached yet.
+ */
+export function readTrustHubSnapshot(caller: VerifiedCallerId): TrustHubSnapshot | null {
+  const meta = (caller.metadata?.trustHub ?? null) as TrustHubSnapshot | null;
+  if (!meta) return null;
+  if (!meta.customerProfile || !meta.trustProduct) return null;
+  return meta;
 }
 
 // ============================================================================
