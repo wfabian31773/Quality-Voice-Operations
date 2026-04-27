@@ -376,9 +376,14 @@ export async function ensureFreshOAuthToken(
   const promise = (async (): Promise<ConnectorConfig> => {
     try {
       const result = await refresher(refreshToken, config.credentials);
+      const issuedAt = Date.now();
       const newCreds: Record<string, string> = {
         access_token: result.access_token,
-        token_expires_at: String(Date.now() + result.expires_in * 1000),
+        token_expires_at: String(issuedAt + result.expires_in * 1000),
+        // Persist when this access_token was issued so the proactive
+        // refresh sweep can reason about lifetime fraction (and avoid
+        // re-rotating a token we just minted).
+        token_issued_at: String(issuedAt),
         ...(result.refresh_token ? { refresh_token: result.refresh_token } : {}),
         ...(result.extra ?? {}),
       };

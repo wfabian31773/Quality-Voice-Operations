@@ -195,6 +195,7 @@ router.get('/connectors/oauth/hubspot/callback', async (req, res) => {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        token_issued_at: String(Date.now()),
       },
       isEnabled: true,
     });
@@ -301,6 +302,7 @@ router.get('/connectors/oauth/google/callback', async (req, res) => {
         client_id: clientId,
         client_secret: clientSecret,
         token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        token_issued_at: String(Date.now()),
       },
       isEnabled: true,
     });
@@ -411,6 +413,7 @@ router.get('/connectors/oauth/outlook/callback', async (req, res) => {
         client_id: clientId,
         client_secret: clientSecret,
         token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        token_issued_at: String(Date.now()),
       },
       isEnabled: true,
     });
@@ -646,6 +649,7 @@ router.get('/connectors/oauth/pipedrive/callback', async (req, res) => {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        token_issued_at: String(Date.now()),
         ...(companyDomain ? { company_domain: companyDomain } : {}),
       },
       isEnabled: true,
@@ -741,6 +745,7 @@ router.get('/connectors/oauth/salesforce/callback', async (req, res) => {
         refresh_token: tokens.refresh_token ?? '',
         instance_url: tokens.instance_url,
         token_expires_at: String(expiresAt),
+        token_issued_at: String(issuedAtMs),
         identity_url: tokens.id ?? '',
       },
       isEnabled: true,
@@ -853,6 +858,7 @@ router.get('/connectors/oauth/quickbooks/callback', async (req, res) => {
         realm_id: realmId,
         environment,
         token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        token_issued_at: String(Date.now()),
       },
       isEnabled: true,
     });
@@ -1021,6 +1027,7 @@ router.get('/connectors/oauth/zoho/callback', async (req, res) => {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: String(Date.now() + tokens.expires_in * 1000),
+        token_issued_at: String(Date.now()),
         ...(validatedApiDomain ? { api_domain: validatedApiDomain } : {}),
         accounts_server: accountsServer,
         ...(location ? { region: location } : {}),

@@ -10,7 +10,20 @@ const logger = createLogger('OAUTH_TOKEN_REFRESH_SCHEDULER');
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const INITIAL_DELAY_MS = 60 * 1000;
-const REFRESH_HORIZON_MS = 30 * 60 * 1000;
+// Per audit BL-022 / I-05: pre-refresh any token expiring within 24h. For
+// short-TTL providers (~1h) this still effectively means "every cycle", but
+// the lifetime-fraction guard below prevents us from hammering provider
+// token endpoints when a token was just refreshed.
+const REFRESH_HORIZON_MS = 24 * 60 * 60 * 1000;
+// Refresh once we have consumed at least this fraction of the original
+// token lifetime. Combined with the horizon check, this means short-TTL
+// (~1h) tokens get refreshed roughly halfway through their life and
+// long-TTL (>24h) tokens get refreshed when they enter the 24h window.
+const REFRESH_LIFETIME_FRACTION = 0.5;
+// Hard floor: always refresh when the token is closer to expiry than this,
+// regardless of the lifetime fraction (covers tokens with very short TTLs
+// or where token_issued_at was never persisted).
+const REFRESH_FLOOR_MS = 5 * 60 * 1000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let initialTimer: ReturnType<typeof setTimeout> | null = null;
@@ -44,7 +57,8 @@ export async function runOAuthTokenRefreshCycle(
 
   const configs = await listRefreshableConnectorConfigs(getRefreshableProviders());
   result.scanned = configs.length;
-  const cutoff = Date.now() + horizonMs;
+  const now = Date.now();
+  const cutoff = now + horizonMs;
 
   for (const config of configs) {
     if (!isRefreshableProvider(config.provider)) continue;
@@ -53,6 +67,27 @@ export async function runOAuthTokenRefreshCycle(
     const expiresAt = Number(expiresAtRaw);
     if (!Number.isFinite(expiresAt)) continue;
     if (expiresAt > cutoff) continue;
+
+    // If we know when this token was issued, only refresh once we've
+    // consumed at least half of its lifetime. This stops 24h-horizon
+    // sweeps from rotating short-TTL tokens on every cycle. Tokens
+    // without a persisted issued_at (legacy / pre-tracking) fall through
+    // to the simple horizon check.
+    const issuedAtRaw = config.credentials.token_issued_at;
+    if (issuedAtRaw) {
+      const issuedAt = Number(issuedAtRaw);
+      if (Number.isFinite(issuedAt) && issuedAt < expiresAt) {
+        const lifetime = expiresAt - issuedAt;
+        const remaining = expiresAt - now;
+        const consumedFraction = (lifetime - remaining) / lifetime;
+        if (
+          consumedFraction < REFRESH_LIFETIME_FRACTION
+          && remaining > REFRESH_FLOOR_MS
+        ) {
+          continue;
+        }
+      }
+    }
 
     result.expiringSoon += 1;
 
