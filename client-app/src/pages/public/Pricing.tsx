@@ -4,6 +4,7 @@ import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck } 
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
+import MinutesPricingCalculator from '../../components/MinutesPricingCalculator';
 import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 
@@ -248,6 +249,23 @@ export default function Pricing() {
                 </Link>
               </div>
             ))}
+          </div>
+          </RevealSection>
+
+          <RevealSection>
+          <div className="max-w-5xl mx-auto mb-20">
+            <div className="text-center mb-8">
+              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+                Per-minute calculator
+              </p>
+              <h2 className="font-display text-2xl font-bold text-harbor mb-3">
+                See your effective price per minute
+              </h2>
+              <p className="text-slate-ink/60 font-body max-w-2xl mx-auto">
+                Drag the slider to match your expected monthly volume. We'll show your estimated bill and effective per-minute rate on every plan, using the same rates billed by your usage meter.
+              </p>
+            </div>
+            <MinutesPricingCalculator />
           </div>
           </RevealSection>
 
