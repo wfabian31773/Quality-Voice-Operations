@@ -26,6 +26,246 @@ async function auditLog(
   );
 }
 
+// ─── SCHEDULE-OVERRIDE HELPERS ───
+//
+// `scheduling_overrides` rows can take four shapes (see migration 052):
+//
+//   1. `is_available = false`, no `start_time`/`end_time`
+//      → Full-day blackout (closed all day) for the matching scope.
+//   2. `is_available = false`, with `start_time` and `end_time`
+//      → Partial blackout (e.g. team meeting 12:00–13:00) — subtract the
+//        window from the otherwise available schedule blocks.
+//   3. `is_available = true`, with `start_time` and `end_time`
+//      → Special hours that REPLACE the regular weekly schedule for the date
+//        (e.g. holiday hours / one-off open day).
+//   4. `is_available = true`, no `start_time`/`end_time`
+//      → "All-day open" override; treated as 00:00–23:59 special hours so a
+//        normally-closed day becomes fully open.
+//
+// Overrides scoped to a specific provider take precedence over tenant-wide
+// overrides for the same date when both exist.
+
+export type ScheduleBlock = { start_time: string; end_time: string };
+export type ScheduleOverride = {
+  id?: string;
+  provider_id: string | null;
+  override_date: string | Date;
+  start_time: string | null;
+  end_time: string | null;
+  is_available: boolean;
+  reason?: string | null;
+};
+export type EffectiveSchedule =
+  | { blocked: true; reason: string; blocks: []; blackoutWindows: [] }
+  | { blocked: false; blocks: ScheduleBlock[]; blackoutWindows: ScheduleBlock[] };
+
+function normalizeTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  // Postgres TIME comes back as "HH:MM:SS"; HTML inputs send "HH:MM".
+  const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!m) return null;
+  return `${m[1]}:${m[2]}:${m[3] || '00'}`;
+}
+
+function timeToMinutes(value: string): number {
+  const [h, m] = value.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+function minutesToTime(mins: number): string {
+  const clamped = Math.max(0, Math.min(24 * 60, mins));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}
+
+function subtractWindow(
+  blocks: ScheduleBlock[],
+  blackout: { start: number; end: number },
+): ScheduleBlock[] {
+  const out: ScheduleBlock[] = [];
+  for (const blk of blocks) {
+    const bStart = timeToMinutes(blk.start_time);
+    const bEnd = timeToMinutes(blk.end_time);
+    if (blackout.end <= bStart || blackout.start >= bEnd) {
+      out.push(blk);
+      continue;
+    }
+    if (blackout.start > bStart) {
+      out.push({ start_time: blk.start_time, end_time: minutesToTime(blackout.start) });
+    }
+    if (blackout.end < bEnd) {
+      out.push({ start_time: minutesToTime(blackout.end), end_time: blk.end_time });
+    }
+  }
+  return out;
+}
+
+/**
+ * Combine a day's regular schedule blocks with any `scheduling_overrides`
+ * rows that apply to the same date+scope, returning the effective open
+ * windows (and the explicit blackout windows so callers can mark slots
+ * unavailable).
+ */
+export function applyOverridesToScheduleBlocks(
+  scheduleBlocks: ScheduleBlock[],
+  overrides: ScheduleOverride[],
+  providerId: string | null,
+): EffectiveSchedule {
+  // Provider-scoped overrides win over tenant-wide overrides for the same
+  // date; if any provider-specific override exists, ignore tenant-wide rows.
+  const providerScoped = overrides.filter((o) => providerId && o.provider_id === providerId);
+  const effectiveOverrides = providerScoped.length > 0
+    ? providerScoped
+    : overrides.filter((o) => o.provider_id === null);
+
+  // 1) Full-day blackout short-circuits everything.
+  const fullDayBlackout = effectiveOverrides.find(
+    (o) => !o.is_available && !o.start_time && !o.end_time,
+  );
+  if (fullDayBlackout) {
+    return {
+      blocked: true,
+      reason: fullDayBlackout.reason || 'Date is blocked',
+      blocks: [],
+      blackoutWindows: [],
+    };
+  }
+
+  // 2) "Available" overrides REPLACE the weekly schedule for this date.
+  const availableOverrides = effectiveOverrides.filter((o) => o.is_available);
+  let blocks: ScheduleBlock[];
+  if (availableOverrides.length > 0) {
+    blocks = availableOverrides.map((o) => ({
+      start_time: normalizeTime(o.start_time) || '00:00:00',
+      end_time: normalizeTime(o.end_time) || '23:59:00',
+    }));
+  } else {
+    blocks = scheduleBlocks.map((b) => ({
+      start_time: normalizeTime(b.start_time) || b.start_time,
+      end_time: normalizeTime(b.end_time) || b.end_time,
+    }));
+  }
+
+  // 3) Partial blackouts subtract from the open windows.
+  const partialBlackouts: ScheduleBlock[] = [];
+  for (const o of effectiveOverrides) {
+    if (o.is_available) continue;
+    const start = normalizeTime(o.start_time);
+    const end = normalizeTime(o.end_time);
+    if (!start || !end) continue;
+    partialBlackouts.push({ start_time: start, end_time: end });
+    blocks = subtractWindow(blocks, { start: timeToMinutes(start), end: timeToMinutes(end) });
+  }
+
+  // Drop any zero/negative-length blocks left behind.
+  blocks = blocks.filter((b) => timeToMinutes(b.end_time) > timeToMinutes(b.start_time));
+
+  return { blocked: false, blocks, blackoutWindows: partialBlackouts };
+}
+
+/**
+ * Returns the override row that blocks `[startISO, endISO)` for the given
+ * provider, or `null` if no override applies. Used to gate booking
+ * creation/updates so customers cannot be booked into a blocked window.
+ */
+export async function findBlockingOverride(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  startISO: string,
+  endISO: string,
+  providerId: string | null,
+): Promise<ScheduleOverride | null> {
+  const start = new Date(startISO);
+  const end = new Date(endISO);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  // The booking might span multiple calendar dates (rare but possible). Pull
+  // overrides for every date it touches.
+  const dates = new Set<string>();
+  const cursor = new Date(start);
+  cursor.setUTCHours(0, 0, 0, 0);
+  const lastDay = new Date(end.getTime() - 1);
+  lastDay.setUTCHours(0, 0, 0, 0);
+  while (cursor.getTime() <= lastDay.getTime()) {
+    dates.add(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  if (dates.size === 0) dates.add(start.toISOString().slice(0, 10));
+
+  const { rows } = await pool.query(
+    `SELECT id, provider_id, override_date, start_time, end_time, is_available, reason
+     FROM scheduling_overrides
+     WHERE tenant_id = $1
+       AND override_date = ANY($2::date[])
+       AND (provider_id = $3 OR provider_id IS NULL)
+       AND is_available = false`,
+    [tenantId, Array.from(dates), providerId || null],
+  );
+
+  for (const date of dates) {
+    const todays = rows.filter((r) => {
+      const od = r.override_date instanceof Date
+        ? r.override_date.toISOString().slice(0, 10)
+        : String(r.override_date).slice(0, 10);
+      return od === date;
+    });
+    if (todays.length === 0) continue;
+
+    // Provider-specific overrides win for this date.
+    const scoped = providerId ? todays.filter((r) => r.provider_id === providerId) : [];
+    const effective = scoped.length > 0 ? scoped : todays.filter((r) => r.provider_id === null);
+
+    for (const o of effective) {
+      // Full-day blackout always blocks.
+      if (!o.start_time && !o.end_time) return o;
+
+      const oStart = normalizeTime(o.start_time);
+      const oEnd = normalizeTime(o.end_time);
+      if (!oStart || !oEnd) continue;
+
+      // Compute the blackout window in real time on this date and compare
+      // against the booking interval. Treating the override's TIME values as
+      // local-to-the-date keeps behaviour consistent with the availability
+      // handler.
+      const blackoutStart = new Date(`${date}T${oStart}`);
+      const blackoutEnd = new Date(`${date}T${oEnd}`);
+      if (start < blackoutEnd && end > blackoutStart) return o;
+    }
+  }
+  return null;
+}
+
+/**
+ * Convenience wrapper used by booking endpoints: returns a JSON 409 payload
+ * if the requested window collides with a schedule override and `false`
+ * otherwise.
+ */
+export async function buildOverrideConflictResponse(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  startISO: string,
+  endISO: string,
+  providerId: string | null,
+): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  const blocker = await findBlockingOverride(pool, tenantId, startISO, endISO, providerId);
+  if (!blocker) return null;
+  return {
+    status: 409,
+    body: {
+      error: 'Time slot is blocked by a schedule override',
+      override: {
+        id: blocker.id,
+        provider_id: blocker.provider_id,
+        override_date: blocker.override_date,
+        start_time: blocker.start_time,
+        end_time: blocker.end_time,
+        reason: blocker.reason || '',
+      },
+    },
+  };
+}
+
 // ─── BOOKINGS CRUD ───
 
 export const listBookingsHandler: RequestHandler = async (req, res) => {
@@ -193,6 +433,13 @@ const createBookingHandler: RequestHandler = async (req, res) => {
           return res.status(409).json({ error: 'Time slot conflict detected', conflicts });
         }
       }
+
+      const overrideConflict = await buildOverrideConflictResponse(
+        pool, tenantId, start_time, end_time, provider_id || null,
+      );
+      if (overrideConflict) {
+        return res.status(overrideConflict.status).json(overrideConflict.body);
+      }
     }
 
     const { rows } = await pool.query(
@@ -233,7 +480,7 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
     const old = existing[0];
     const { title, description, start_time, end_time, status, contact_name, contact_phone,
       contact_email, agent_id, notes, provider_id, appointment_type_id, resource_id,
-      intake_data, timezone, location } = req.body;
+      intake_data, timezone, location, override_reason } = req.body;
 
     if (start_time && end_time && new Date(start_time) >= new Date(end_time)) {
       return res.status(400).json({ error: 'start_time must be before end_time' });
@@ -248,6 +495,15 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
       const conflicts = await checkConflicts(pool, tenantId, newStart, newEnd, newProviderId, newResourceId, id);
       if (conflicts.length > 0) {
         return res.status(409).json({ error: 'Time slot conflict detected', conflicts });
+      }
+
+      if (!override_reason) {
+        const overrideConflict = await buildOverrideConflictResponse(
+          pool, tenantId, newStart, newEnd, newProviderId || null,
+        );
+        if (overrideConflict) {
+          return res.status(overrideConflict.status).json(overrideConflict.body);
+        }
       }
     }
 
@@ -352,6 +608,14 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
       const conflicts = await checkConflicts(pool, tenantId, new_start_time, new_end_time, booking.provider_id, booking.resource_id, id);
       if (conflicts.length > 0 && !override_reason) {
         return res.status(409).json({ error: 'New time slot has conflicts', conflicts });
+      }
+      if (!override_reason) {
+        const overrideConflict = await buildOverrideConflictResponse(
+          pool, tenantId, new_start_time, new_end_time, booking.provider_id || null,
+        );
+        if (overrideConflict) {
+          return res.status(overrideConflict.status).json(overrideConflict.body);
+        }
       }
     }
 
@@ -1014,7 +1278,7 @@ const checkAvailabilityHandler: RequestHandler = async (req, res) => {
     const targetDate = new Date(date);
     const dayOfWeek = targetDate.getDay();
 
-    let scheduleBlocks: Array<{ start_time: string; end_time: string }> = [];
+    let scheduleBlocks: ScheduleBlock[] = [];
     if (provider_id) {
       const { rows } = await pool.query(
         `SELECT start_time, end_time FROM scheduling_provider_schedules
@@ -1029,16 +1293,42 @@ const checkAvailabilityHandler: RequestHandler = async (req, res) => {
     }
 
     const { rows: overrides } = await pool.query(
-      `SELECT * FROM scheduling_overrides
+      `SELECT id, provider_id, override_date, start_time, end_time, is_available, reason
+       FROM scheduling_overrides
        WHERE tenant_id = $1 AND override_date = $2::date
          AND (provider_id = $3 OR provider_id IS NULL)`,
       [tenantId, date, provider_id || null],
     );
 
-    const isBlocked = overrides.some(o => !o.is_available && !o.start_time);
-    if (isBlocked) {
-      return res.json({ available: false, slots: [], reason: 'Date is blocked' });
+    const effective = applyOverridesToScheduleBlocks(
+      scheduleBlocks,
+      overrides as ScheduleOverride[],
+      provider_id || null,
+    );
+
+    if (effective.blocked) {
+      return res.json({ available: false, slots: [], reason: effective.reason, date, provider_id });
     }
+
+    scheduleBlocks = effective.blocks;
+    if (scheduleBlocks.length === 0) {
+      return res.json({
+        available: false,
+        slots: [],
+        reason: 'No open windows after applying overrides',
+        date,
+        provider_id,
+      });
+    }
+
+    // Pre-compute blackout windows in epoch-ms so per-slot overlap checks are
+    // cheap. We share the same `${date}T${time}` parsing convention as the
+    // schedule blocks below so the comparison is apples-to-apples regardless
+    // of server timezone.
+    const blackoutWindows = effective.blackoutWindows.map((w) => ({
+      start: new Date(`${date}T${w.start_time}`).getTime(),
+      end: new Date(`${date}T${w.end_time}`).getTime(),
+    }));
 
     let duration = 30;
     let buffer = 0;
@@ -1077,11 +1367,14 @@ const checkAvailabilityHandler: RequestHandler = async (req, res) => {
           const bEnd = new Date(b.end_time).getTime();
           return current.getTime() < bEnd && slotEnd.getTime() > bStart;
         });
+        const inBlackout = blackoutWindows.some(
+          (w) => current.getTime() < w.end && slotEnd.getTime() > w.start,
+        );
 
         slots.push({
           start: current.toISOString(),
           end: slotEnd.toISOString(),
-          available: !hasConflict,
+          available: !hasConflict && !inBlackout,
         });
 
         current = new Date(current.getTime() + (duration + buffer) * 60000);
