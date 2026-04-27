@@ -70,6 +70,7 @@ export type AgentBuilderTKey =
   | 'voiceOtherGroupLabel'
   | 'voiceMismatchWarning'
   | 'voiceRecommendedHint'
+  | 'voiceSwitchToRecommended'
   | 'modelField'
   | 'languageField'
   | 'languageHelper'
@@ -224,6 +225,7 @@ const EN: Record<AgentBuilderTKey, string> = {
   voiceOtherGroupLabel: 'Other voices (may sound less natural)',
   voiceMismatchWarning: "{voice} isn't tuned for {language}. Quality may suffer — try {recommended} for a more natural sound.",
   voiceRecommendedHint: 'Voices marked ★ sound most natural in {language}.',
+  voiceSwitchToRecommended: 'Switch to {voice} (recommended)',
   modelField: 'Model',
   languageField: 'Language',
   languageHelper: 'Calls handled by this agent will be answered in the selected language.',
@@ -370,6 +372,7 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'Otras voces (pueden sonar menos naturales)',
   voiceMismatchWarning: '{voice} no está optimizada para {language}. La calidad puede verse afectada — prueba {recommended} para un sonido más natural.',
   voiceRecommendedHint: 'Las voces marcadas con ★ suenan más naturales en {language}.',
+  voiceSwitchToRecommended: 'Cambiar a {voice} (recomendada)',
   modelField: 'Modelo',
   languageField: 'Idioma',
   languageHelper: 'Las llamadas atendidas por este agente se responderán en el idioma seleccionado.',
@@ -516,6 +519,7 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'Autres voix (peuvent sembler moins naturelles)',
   voiceMismatchWarning: "{voice} n'est pas optimisée pour {language}. La qualité peut en pâtir — essayez {recommended} pour un rendu plus naturel.",
   voiceRecommendedHint: 'Les voix marquées ★ sonnent plus naturelles en {language}.',
+  voiceSwitchToRecommended: 'Passer à {voice} (recommandée)',
   modelField: 'Modèle',
   languageField: 'Langue',
   languageHelper: 'Les appels gérés par cet agent seront pris dans la langue sélectionnée.',
@@ -662,6 +666,7 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'Andere Stimmen (klingen möglicherweise weniger natürlich)',
   voiceMismatchWarning: '{voice} ist nicht für {language} optimiert. Die Qualität kann leiden — versuchen Sie {recommended} für einen natürlicheren Klang.',
   voiceRecommendedHint: 'Mit ★ markierte Stimmen klingen am natürlichsten in {language}.',
+  voiceSwitchToRecommended: 'Zu {voice} wechseln (empfohlen)',
   modelField: 'Modell',
   languageField: 'Sprache',
   languageHelper: 'Anrufe an diesen Agenten werden in der gewählten Sprache beantwortet.',
@@ -808,6 +813,7 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'Outras vozes (podem soar menos naturais)',
   voiceMismatchWarning: '{voice} não é otimizada para {language}. A qualidade pode ser afetada — experimente {recommended} para um som mais natural.',
   voiceRecommendedHint: 'Vozes marcadas com ★ soam mais naturais em {language}.',
+  voiceSwitchToRecommended: 'Mudar para {voice} (recomendada)',
   modelField: 'Modelo',
   languageField: 'Idioma',
   languageHelper: 'As chamadas atendidas por este agente serão respondidas no idioma selecionado.',
@@ -954,6 +960,7 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'Altre voci (potrebbero suonare meno naturali)',
   voiceMismatchWarning: '{voice} non è ottimizzata per {language}. La qualità potrebbe risentirne — prova {recommended} per un suono più naturale.',
   voiceRecommendedHint: 'Le voci contrassegnate con ★ suonano più naturali in {language}.',
+  voiceSwitchToRecommended: 'Passa a {voice} (consigliata)',
   modelField: 'Modello',
   languageField: 'Lingua',
   languageHelper: "Le chiamate gestite da questo agente saranno gestite nella lingua selezionata.",
@@ -1100,6 +1107,7 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'Andere stemmen (kunnen minder natuurlijk klinken)',
   voiceMismatchWarning: '{voice} is niet afgestemd op {language}. De kwaliteit kan minder zijn — probeer {recommended} voor een natuurlijker geluid.',
   voiceRecommendedHint: 'Stemmen met ★ klinken het natuurlijkst in {language}.',
+  voiceSwitchToRecommended: 'Wissel naar {voice} (aanbevolen)',
   modelField: 'Model',
   languageField: 'Taal',
   languageHelper: 'Oproepen die deze agent afhandelt worden in de geselecteerde taal beantwoord.',
@@ -1246,6 +1254,7 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: '其他语音(可能听起来不太自然)',
   voiceMismatchWarning: '{voice} 未针对{language}进行调优,音质可能受影响——请尝试 {recommended} 以获得更自然的声音。',
   voiceRecommendedHint: '标有 ★ 的语音在{language}中听起来最自然。',
+  voiceSwitchToRecommended: '切换到 {voice}（推荐）',
   modelField: '模型',
   languageField: '语言',
   languageHelper: '此智能体处理的呼叫将以所选语言进行回复。',
@@ -1392,6 +1401,7 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'その他の音声(自然に聞こえない場合があります)',
   voiceMismatchWarning: '{voice} は{language}向けに最適化されていません。品質が低下する可能性があります — より自然な音声には {recommended} をお試しください。',
   voiceRecommendedHint: '★ が付いた音声は{language}で最も自然に聞こえます。',
+  voiceSwitchToRecommended: '{voice}に切り替える（推奨）',
   modelField: 'モデル',
   languageField: '言語',
   languageHelper: 'このエージェントが受ける通話は選択した言語で応答されます。',
@@ -1538,6 +1548,7 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: '기타 음성 (자연스럽지 않을 수 있음)',
   voiceMismatchWarning: '{voice}는 {language}에 최적화되지 않았습니다. 품질이 저하될 수 있어요 — 더 자연스러운 소리를 원하시면 {recommended}를 시도해 보세요.',
   voiceRecommendedHint: '★ 표시가 있는 음성이 {language}에서 가장 자연스럽게 들립니다.',
+  voiceSwitchToRecommended: '{voice}(으)로 전환 (권장)',
   modelField: '모델',
   languageField: '언어',
   languageHelper: '이 에이전트가 처리하는 통화는 선택한 언어로 응답됩니다.',
@@ -1684,6 +1695,7 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'أصوات أخرى (قد تبدو أقل طبيعية)',
   voiceMismatchWarning: '{voice} غير مهيأ لـ {language}. قد تتأثر الجودة — جرّب {recommended} للحصول على صوت أكثر طبيعية.',
   voiceRecommendedHint: 'الأصوات المميزة بـ ★ تبدو أكثر طبيعية بـ {language}.',
+  voiceSwitchToRecommended: 'التبديل إلى {voice} (موصى به)',
   modelField: 'النموذج',
   languageField: 'اللغة',
   languageHelper: 'سيتم الرد على المكالمات التي يديرها هذا الوكيل باللغة المختارة.',
@@ -1830,6 +1842,7 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   voiceOtherGroupLabel: 'अन्य आवाज़ें (कम स्वाभाविक लग सकती हैं)',
   voiceMismatchWarning: '{voice} {language} के लिए अनुकूलित नहीं है। गुणवत्ता प्रभावित हो सकती है — अधिक स्वाभाविक ध्वनि के लिए {recommended} आज़माएँ।',
   voiceRecommendedHint: '★ चिह्नित आवाज़ें {language} में सबसे स्वाभाविक लगती हैं।',
+  voiceSwitchToRecommended: '{voice} पर स्विच करें (अनुशंसित)',
   modelField: 'मॉडल',
   languageField: 'भाषा',
   languageHelper: 'इस एजेंट द्वारा संभाली गई कॉल चयनित भाषा में उत्तर दी जाएँगी।',

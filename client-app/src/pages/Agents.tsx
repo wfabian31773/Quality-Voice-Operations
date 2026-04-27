@@ -7,6 +7,15 @@ import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import { EmptyState, SkeletonGrid } from '../components/state';
 import Modal from '../components/Modal';
+import {
+  AGENT_LANGUAGES,
+  DEFAULT_AGENT_LANGUAGE,
+  getAgentLanguageLabel,
+  getDefaultVoiceForLanguage,
+  getRecommendedVoicesForLanguage,
+  isVoiceRecommendedForLanguage,
+  normalizeAgentLanguage,
+} from '../lib/agentLanguages';
 
 interface Agent {
   id: string;
@@ -73,6 +82,7 @@ interface AgentFormData {
   type: string;
   voice: string;
   model: string;
+  language: string;
   system_prompt: string;
   welcome_greeting: string;
   temperature: number;
@@ -219,8 +229,9 @@ function AgentModal({
   const [form, setForm] = useState<AgentFormData>({
     name: '',
     type: 'general',
-    voice: 'alloy',
+    voice: getDefaultVoiceForLanguage(DEFAULT_AGENT_LANGUAGE),
     model: 'gpt-4o-realtime-preview',
+    language: DEFAULT_AGENT_LANGUAGE,
     system_prompt: '',
     welcome_greeting: '',
     temperature: 0.7,
@@ -231,13 +242,15 @@ function AgentModal({
 
   useEffect(() => {
     if (!agentId) return;
-    api.get<{ agent: Agent }>(`/agents/${agentId}`).then((res) => {
+    api.get<{ agent: Agent & { language?: string } }>(`/agents/${agentId}`).then((res) => {
       const a = res.agent;
+      const language = normalizeAgentLanguage(a.language);
       setForm({
         name: a.name ?? '',
         type: a.type ?? 'general',
-        voice: a.voice ?? 'alloy',
+        voice: a.voice ?? getDefaultVoiceForLanguage(language),
         model: a.model ?? 'gpt-4o-realtime-preview',
+        language,
         system_prompt: a.system_prompt ?? '',
         welcome_greeting: a.welcome_greeting ?? '',
         temperature: a.temperature ?? 0.7,
@@ -267,7 +280,25 @@ function AgentModal({
     },
   });
 
-  const set = (key: keyof AgentFormData, val: string | number) => setForm((f) => ({ ...f, [key]: val }));
+  const isNewAgent = !agentId;
+  const set = (key: keyof AgentFormData, val: string | number) =>
+    setForm((f) => {
+      if (key === 'language' && typeof val === 'string') {
+        const newLang = normalizeAgentLanguage(val);
+        const next = { ...f, language: newLang };
+        if (isNewAgent) {
+          next.voice = getDefaultVoiceForLanguage(newLang);
+        }
+        return next;
+      }
+      return { ...f, [key]: val };
+    });
+
+  const recommendedVoices = getRecommendedVoicesForLanguage(form.language);
+  const recommendedVoiceSet = new Set(recommendedVoices);
+  const otherVoices = VOICES.filter((v) => !recommendedVoiceSet.has(v));
+  const formLanguageLabel = getAgentLanguageLabel(form.language);
+  const voiceIsRecommended = isVoiceRecommendedForLanguage(form.voice, form.language);
 
   if (!loaded) {
     return (
@@ -321,7 +352,7 @@ function AgentModal({
               <input value={form.name} onChange={(e) => set('name', e.target.value)} required
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1">Type</label>
                 <select value={form.type} onChange={(e) => set('type', e.target.value)}
@@ -330,11 +361,50 @@ function AgentModal({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Voice</label>
-                <select value={form.voice} onChange={(e) => set('voice', e.target.value)}
+                <label className="block text-sm font-medium text-text-primary mb-1">Language</label>
+                <select value={form.language} onChange={(e) => set('language', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                  {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
+                  {AGENT_LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.label}{l.nativeLabel !== l.label ? ` (${l.nativeLabel})` : ''}
+                    </option>
+                  ))}
                 </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">Voice</label>
+                <select
+                  value={form.voice}
+                  onChange={(e) => set('voice', e.target.value)}
+                  className={`w-full px-3 py-2 rounded-lg border bg-surface text-text-primary text-sm ${
+                    voiceIsRecommended ? 'border-border' : 'border-amber-400 dark:border-amber-600'
+                  }`}
+                >
+                  <optgroup label={`Recommended for ${formLanguageLabel}`}>
+                    {recommendedVoices.map((v) => (
+                      <option key={v} value={v}>★ {v}</option>
+                    ))}
+                  </optgroup>
+                  {otherVoices.length > 0 && (
+                    <optgroup label="Other voices (may sound less natural)">
+                      {otherVoices.map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {!voiceIsRecommended && (
+                  <button
+                    type="button"
+                    onClick={() => set('voice', getDefaultVoiceForLanguage(form.language))}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline"
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    Switch to {getDefaultVoiceForLanguage(form.language)} for {formLanguageLabel}
+                  </button>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1">Model</label>

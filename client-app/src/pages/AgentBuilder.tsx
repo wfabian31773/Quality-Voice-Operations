@@ -878,15 +878,26 @@ function VoiceConfigPanel({
                   )}
                 </select>
                 {!isRecommended ? (
-                  <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
-                      {t('voiceMismatchWarning', {
-                        voice,
-                        language: langLabel,
-                        recommended: recommended.slice(0, 3).join(', '),
-                      })}
-                    </p>
+                  <div className="mt-1.5 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 space-y-1.5">
+                    <div className="flex items-start gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                        {t('voiceMismatchWarning', {
+                          voice,
+                          language: langLabel,
+                          recommended: recommended.slice(0, 3).join(', '),
+                        })}
+                      </p>
+                    </div>
+                    {recommended[0] && recommended[0] !== voice && (
+                      <button
+                        type="button"
+                        onClick={() => onChange('voice', recommended[0])}
+                        className="w-full text-[11px] font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 rounded px-2 py-1 transition"
+                      >
+                        {t('voiceSwitchToRecommended', { voice: recommended[0] })}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <p className="text-[10px] text-text-muted mt-1">
