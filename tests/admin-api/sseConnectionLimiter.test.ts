@@ -338,6 +338,30 @@ describe('source contract — SSE endpoints use the shared limiter and heartbeat
     const b = getTenantSseConnectionLimiter();
     expect(a).toBe(b);
   });
+
+  it('ackSseConnection scope check rejects mismatched scope and accepts matching scope', () => {
+    clearSseRegistry();
+    const ackA = vi.fn();
+    const ackB = vi.fn();
+    registerSseConnection('tenant-1', 'conn-A', ackA, { callId: 'call-A' });
+    registerSseConnection('tenant-1', 'conn-B', ackB, { callId: 'call-B' });
+
+    // Acking conn-A under callId=call-B must NOT fire ackA and must
+    // return false (404 in route layer).
+    expect(ackSseConnection('tenant-1', 'conn-A', { callId: 'call-B' })).toBe(false);
+    expect(ackA).not.toHaveBeenCalled();
+
+    // Correct scope succeeds.
+    expect(ackSseConnection('tenant-1', 'conn-A', { callId: 'call-A' })).toBe(true);
+    expect(ackA).toHaveBeenCalledTimes(1);
+
+    // No-scope ack still works for connections registered without scope
+    // (e.g. /calls/live).
+    const ackC = vi.fn();
+    registerSseConnection('tenant-1', 'conn-C', ackC);
+    expect(ackSseConnection('tenant-1', 'conn-C')).toBe(true);
+    expect(ackC).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('shared tenant SSE limiter — cross-route aggregate cap', () => {

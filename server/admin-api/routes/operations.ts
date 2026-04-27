@@ -379,7 +379,12 @@ router.get('/operations/calls/:callId/live', requireAuth, operationsCallLiveRate
     intervalMs: 15_000,
     idleTimeoutMs: 60_000,
   });
-  const unregister = registerSseConnection(tenantId, connectionId, detachHeartbeat.ack);
+  const unregister = registerSseConnection(
+    tenantId,
+    connectionId,
+    detachHeartbeat.ack,
+    { callId },
+  );
 
   req.on('close', () => {
     alive = false;
@@ -391,13 +396,18 @@ router.get('/operations/calls/:callId/live', requireAuth, operationsCallLiveRate
 
 router.post('/operations/calls/:callId/live/ack', requireAuth, (req, res) => {
   const { tenantId } = req.user!;
+  const { callId } = req.params;
   const connectionId =
     (req.body && typeof req.body === 'object' && (req.body as { connectionId?: unknown }).connectionId) ||
     req.query.connectionId;
   if (typeof connectionId !== 'string' || !connectionId) {
     return res.status(400).json({ error: 'connectionId required' });
   }
-  const ok = ackSseConnection(tenantId, connectionId);
+  // Require the registered connection to be scoped to this :callId so an
+  // ack request to /operations/calls/A/live/ack cannot refresh a stream
+  // that was opened against /operations/calls/B/live, even if the caller
+  // somehow obtained the other stream's connectionId.
+  const ok = ackSseConnection(tenantId, connectionId, { callId });
   if (!ok) return res.status(404).json({ error: 'unknown connectionId' });
   return res.status(204).end();
 });

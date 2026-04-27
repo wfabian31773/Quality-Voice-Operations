@@ -96,8 +96,16 @@ export function __resetTenantSseConnectionLimiterForTesting(
 }
 
 // Registry of active SSE connections keyed by (tenantId, connectionId), used
-// by the companion ack endpoint to refresh a stream's idle deadline.
-const sseRegistry = new Map<string, () => void>();
+// by the companion ack endpoint to refresh a stream's idle deadline. Each
+// entry can carry optional scope metadata (e.g. callId) that the ack
+// endpoint can require to match — preventing one tenant connection from
+// being acked through an unrelated route's ack endpoint.
+interface RegisteredSseConnection {
+  ack: () => void;
+  scope?: Record<string, string>;
+}
+
+const sseRegistry = new Map<string, RegisteredSseConnection>();
 const registryKey = (tenantId: string, connectionId: string) =>
   `${tenantId}:${connectionId}`;
 
@@ -105,18 +113,29 @@ export function registerSseConnection(
   tenantId: string,
   connectionId: string,
   ack: () => void,
+  scope?: Record<string, string>,
 ): () => void {
   const key = registryKey(tenantId, connectionId);
-  sseRegistry.set(key, ack);
+  const entry: RegisteredSseConnection = { ack, scope };
+  sseRegistry.set(key, entry);
   return () => {
-    if (sseRegistry.get(key) === ack) sseRegistry.delete(key);
+    if (sseRegistry.get(key) === entry) sseRegistry.delete(key);
   };
 }
 
-export function ackSseConnection(tenantId: string, connectionId: string): boolean {
-  const fn = sseRegistry.get(registryKey(tenantId, connectionId));
-  if (!fn) return false;
-  fn();
+export function ackSseConnection(
+  tenantId: string,
+  connectionId: string,
+  requiredScope?: Record<string, string>,
+): boolean {
+  const entry = sseRegistry.get(registryKey(tenantId, connectionId));
+  if (!entry) return false;
+  if (requiredScope) {
+    for (const [k, v] of Object.entries(requiredScope)) {
+      if (entry.scope?.[k] !== v) return false;
+    }
+  }
+  entry.ack();
   return true;
 }
 
