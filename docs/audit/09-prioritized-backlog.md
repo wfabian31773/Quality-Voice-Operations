@@ -235,10 +235,10 @@ Order within each priority is **execution order**: the higher item should be don
 - **Effort:** S
 - **Related task:** none
 
-### BL-031 — `RevenueAnalytics.tsx` deletion
+### BL-031 — ~~`RevenueAnalytics.tsx` deletion~~ — RESOLVED
 - **Source:** B-18
-- **Summary:** Delete the 534-LOC orphan; keep the redirect.
-- **Effort:** S
+- **Summary:** No longer an orphan. `Analytics.tsx` imports it and renders it as the embedded "Revenue & Sentiment" tab. The `/revenue-analytics` redirect is retained. Backlog item closed without code changes.
+- **Effort:** —
 - **Related task:** none
 
 ### BL-032 — `Settings` page route + remount fix

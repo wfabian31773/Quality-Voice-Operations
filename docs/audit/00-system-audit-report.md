@@ -106,7 +106,7 @@ Findings were grouped, deduped against the 48 PROPOSED tasks (#20, #64–#66, #2
 | `IntegrationDiagnostics.tsx` | `/ops/integration-diagnostics` | Audited | Outbox / sync errors. |
 | `CostOptimization.tsx` | `/ops/cost` | Audited | Cost dashboards. |
 | `DigitalTwin.tsx` | `/ops/digital-twin` | Audited | Simulation. |
-| `RevenueAnalytics.tsx` | (legacy redirect to `/analytics`) | Skipped | Redirect only. |
+| `RevenueAnalytics.tsx` | embedded in `/analytics` (Revenue & Sentiment tab) + `/revenue-analytics` legacy redirect | Audited | Rendered as a tab inside `Analytics.tsx` via the `embedded` prop. |
 | `Autopilot.tsx` | (no route in App.tsx) | **Skipped — orphan** | 952 LOC component is imported nowhere in App.tsx; backend routes exist (`/autopilot/*`). See 01-bug-list. |
 
 ### Public marketing (`client-app/src/pages/public/`)
@@ -218,7 +218,7 @@ Findings were grouped, deduped against the 48 PROPOSED tasks (#20, #64–#66, #2
 
 - **Audited:** 71 frontend pages, 54 admin-api routers, 4 voice-gateway routers, 9 connector adapters, all 13 background workers.
 - **Partial:** Stripe live-mode and OpenAI Realtime traffic patterns (no live calls in audit env), Supabase prod RLS (only dev DB available).
-- **Skipped:** `Autopilot.tsx` page (no route — flagged as orphan), `RevenueAnalytics.tsx` (legacy redirect), `Maintenance.tsx`, `ServerError.tsx` (only rendered by guards/boundaries).
+- **Skipped:** `Autopilot.tsx` page (no route — flagged as orphan), `Maintenance.tsx`, `ServerError.tsx` (only rendered by guards/boundaries).
 - **Out of scope:** Implementation of fixes (per task brief), penetration testing, load generation against production, marketing copy.
 
 Findings flow into the eight specialist reports next, then deduped into the prioritized backlog.

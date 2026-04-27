@@ -16,7 +16,7 @@ UI ↔ backend ↔ DB consistency. Findings here are about **rendered values tha
 
 ## D-03 — `Currency` formatting is inconsistent
 - `Billing.tsx` uses `Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })`.
-- `RevenueAnalytics.tsx` (orphan, but example) uses string `"$" + value.toFixed(2)`.
+- `RevenueAnalytics.tsx` (embedded in the Analytics → Revenue & Sentiment tab) uses string `"$" + value.toFixed(2)`.
 - `AdminAnalytics.tsx` uses `value / 100` (cents → dollars) for some Stripe-derived fields and full dollars for others.
 - Fix: centralise in a `formatCurrency(value, unit)` helper that takes `'cents'` or `'dollars'`.
 

@@ -142,12 +142,10 @@ Severity: **P0** = blocks usage / data loss / security; **P1** = breaks a primar
 - **Actual:** Default of 0.
 - **Suspected fix:** Set `staleTime: 5 * 60 * 1000`.
 
-### B-18 — `RevenueAnalytics.tsx` is a 534-LOC page imported nowhere, kept only because `Navigate to="/analytics"` redirects from `/revenue-analytics`
-- **Area:** `App.tsx`, `pages/RevenueAnalytics.tsx`.
-- **Repro:** Code search shows the import is gone from `App.tsx`, only the redirect remains. The 534-LOC component is dead code.
-- **Expected:** Remove the file or restore as a tab if still useful.
-- **Actual:** Compiles into the bundle; ~50 KB of dead JS.
-- **Suspected fix:** Delete the file.
+### B-18 — ~~`RevenueAnalytics.tsx` is a 534-LOC page imported nowhere~~ — RESOLVED
+- **Area:** `App.tsx`, `pages/RevenueAnalytics.tsx`, `pages/Analytics.tsx`.
+- **Status:** Resolved by option B from the original recommendation ("restore as a tab if still useful"). `Analytics.tsx` now imports `RevenueAnalytics` and renders it as the embedded "Revenue & Sentiment" tab via `<RevenueAnalytics embedded />`. The `/revenue-analytics` → `/analytics` redirect is retained for old links.
+- **Note:** The component now accepts an `embedded` prop and suppresses its own `<h1>` when embedded so it composes cleanly inside the Analytics page header.
 
 ### B-19 — `TenantLayout` keyboard handler swallows `?` even inside contenteditable elements
 - **Area:** `TenantLayout.tsx:useEffect` keydown handler.
