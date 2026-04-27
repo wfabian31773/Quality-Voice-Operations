@@ -3,6 +3,7 @@ export type { RateLimiterConfig } from './createRateLimiter';
 export {
   createSseConnectionLimiter,
   attachSseHeartbeat,
+  resolveLiveStreamCap,
 } from './sseConnectionLimiter';
 export type {
   SseConnectionLimiterConfig,

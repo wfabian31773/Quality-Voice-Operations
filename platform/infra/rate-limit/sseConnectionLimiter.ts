@@ -1,5 +1,24 @@
 import type { Request, Response } from 'express';
 
+/**
+ * Resolve the per-tenant live-stream cap from an env var with sane fallbacks.
+ * Centralized so all SSE routes share the same parsing rules and don't drift.
+ *
+ *   - missing or empty → fallback (default 20)
+ *   - non-numeric, NaN, Infinity → fallback
+ *   - < 1 → fallback
+ *   - otherwise → floor(value)
+ */
+export function resolveLiveStreamCap(
+  raw: string | undefined,
+  fallback = 20,
+): number {
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.floor(n);
+}
+
 export interface SseConnectionLimiterConfig {
   maxConcurrent: number;
   message?: string;
