@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
+import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
@@ -212,6 +213,27 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   done: [],
   cancelled: ['pending'],
 };
+
+// A job in one of these statuses is no longer "in the field", so the
+// technician's mobile app should have stopped sending location pings and
+// the live map should drop the marker.
+const TERMINAL_JOB_STATUSES = new Set([
+  'completed',
+  'cancelled',
+  'done',
+  'incomplete',
+]);
+
+// Cap how many history rows we keep per resource. The live map only needs
+// the most recent fix; the breadcrumb is a "last hour or so" replay tool.
+// 200 pings ≈ ~1.5 hours at the 30-second mobile cadence.
+const LOCATION_HISTORY_KEEP_PER_RESOURCE = 200;
+
+// Server-side guard: if a ping arrives but the most recent fix was less
+// than this many seconds ago, we still record it (mobile may legitimately
+// burst on resume) but we *do not* prune more than one history row per
+// burst to keep the indexed write cheap.
+const LOCATION_HISTORY_PRUNE_PROBABILITY = 0.1;
 
 // ============ JOBS ============
 
@@ -587,6 +609,29 @@ export const transitionJobHandler: RequestHandler = async (req, res) => {
     const pushEvent = STATUS_TO_PUSH_EVENT[status];
     if (pushEvent) {
       void pushAssigneeForJob(pool, tenantId, id, pushEvent);
+    }
+
+    // When a job hits a terminal status, the technician's mobile app stops
+    // sending pings. Clear the resource's "active_job_id" pointer so the
+    // dispatcher live map drops the marker immediately rather than waiting
+    // on the staleness window. We only touch rows whose active_job_id is
+    // still THIS job, so a tech who already moved on to another active job
+    // keeps that pointer.
+    if (TERMINAL_JOB_STATUSES.has(status)) {
+      try {
+        await pool.query(
+          `UPDATE dispatch_resource_locations
+              SET active_job_id = NULL,
+                  active_status = NULL
+            WHERE tenant_id = $1 AND active_job_id = $2`,
+          [tenantId, id],
+        );
+      } catch (clearErr) {
+        // Best-effort; the staleness filter on the map is the safety net.
+        logger.warn('Failed to clear resource location active job', {
+          tenantId, jobId: id, error: String(clearErr),
+        });
+      }
     }
 
     return res.json({ job: rows[0] });
@@ -1262,6 +1307,365 @@ const syncResourceSkillsHandler: RequestHandler = async (req, res) => {
   }
 };
 
+// ============ RESOURCE LOCATION (live map) ============
+
+/**
+ * Validate and parse a numeric body field that must fall in a closed range.
+ * Returns `null` if the field is missing/invalid (so callers can decide
+ * whether that's a hard error or a soft "skip this field" outcome).
+ */
+function parseFiniteNumber(
+  value: unknown,
+  opts: { min?: number; max?: number } = {},
+): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (opts.min !== undefined && value < opts.min) return null;
+  if (opts.max !== undefined && value > opts.max) return null;
+  return value;
+}
+
+// POST /dispatch/resources/:id/pairing-codes  (admin JWT only)
+// Issues a one-time pairing code; the plaintext is returned exactly
+// once and only the SHA-256 hash is persisted.
+export const issueResourcePairingCodeHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id: resourceId } = req.params;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  // Default 24h, max 7 days, min 5 minutes.
+  const ttlMinutesRaw = Number(body.ttl_minutes);
+  const ttlMinutes = Number.isFinite(ttlMinutesRaw) && ttlMinutesRaw > 0
+    ? Math.min(Math.max(Math.floor(ttlMinutesRaw), 5), 60 * 24 * 7)
+    : 60 * 24;
+
+  const pool = getPlatformPool();
+  try {
+    // Confirm the resource is in this tenant.
+    const { rows: rcheck } = await pool.query(
+      `SELECT id, name FROM dispatch_resources
+        WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [resourceId, tenantId],
+    );
+    if (rcheck.length === 0) {
+      res.status(404).json({ error: 'Resource not found' });
+      return;
+    }
+
+    // Generate an 8-char A-Z + 2-9 code (32^8 ≈ 1.1e12 keyspace,
+    // legibility chars 0/1/I/O removed). Re-roll on the (vanishingly
+    // small) chance of a hash collision with an unconsumed code.
+    const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const generateCode = (): string => {
+      const buf = crypto.randomBytes(8);
+      let out = '';
+      for (let i = 0; i < 8; i++) out += ALPHABET[buf[i] % ALPHABET.length];
+      return out;
+    };
+
+    let plaintext = '';
+    let codeHash = '';
+    let attempts = 0;
+    while (attempts < 5) {
+      plaintext = generateCode();
+      codeHash = crypto.createHash('sha256').update(plaintext).digest('hex');
+      const { rowCount } = await pool.query(
+        `SELECT 1 FROM dispatch_resource_pairing_codes
+          WHERE code_hash = $1 AND consumed_at IS NULL AND expires_at > NOW()`,
+        [codeHash],
+      );
+      if (rowCount === 0) break;
+      attempts++;
+    }
+    if (attempts >= 5) {
+      res.status(500).json({ error: 'Could not allocate pairing code; please retry' });
+      return;
+    }
+
+    const issuedBy = typeof userId === 'string' && !userId.startsWith('apikey:') ? userId : null;
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
+    const { rows } = await pool.query(
+      `INSERT INTO dispatch_resource_pairing_codes
+         (tenant_id, resource_id, code_hash, issued_by_user, expires_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, expires_at`,
+      [tenantId, resourceId, codeHash, issuedBy, expiresAt],
+    );
+
+    res.status(201).json({
+      pairing_code: plaintext,
+      resource_id: resourceId,
+      resource_name: rcheck[0].name,
+      expires_at: rows[0].expires_at,
+      id: rows[0].id,
+    });
+  } catch (err) {
+    logger.error('Failed to issue pairing code', { tenantId, resourceId, error: String(err) });
+    res.status(500).json({ error: 'Failed to issue pairing code' });
+  }
+};
+
+export const recordResourceLocationHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id: resourceId } = req.params;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const pool = getPlatformPool();
+
+  const latitude = parseFiniteNumber(body.latitude, { min: -90, max: 90 });
+  const longitude = parseFiniteNumber(body.longitude, { min: -180, max: 180 });
+  if (latitude === null || longitude === null) {
+    return res.status(400).json({
+      error: 'latitude and longitude are required and must be finite numbers in range',
+    });
+  }
+
+  const accuracy = parseFiniteNumber(body.accuracy_m, { min: 0, max: 100_000 });
+  const heading = parseFiniteNumber(body.heading_deg, { min: 0, max: 360 });
+  const speed = parseFiniteNumber(body.speed_mps, { min: 0, max: 200 });
+
+  let recordedAt: Date;
+  if (typeof body.recorded_at === 'string' && body.recorded_at) {
+    const parsed = new Date(body.recorded_at);
+    if (Number.isNaN(parsed.getTime())) {
+      return res.status(400).json({ error: 'recorded_at must be a valid ISO timestamp' });
+    }
+    // Reject pings claiming to be from the future or from before 2020 — both
+    // indicate a clock-mis-set device whose data would mislead the breadcrumb.
+    const now = Date.now();
+    const ts = parsed.getTime();
+    if (ts > now + 5 * 60_000 || ts < new Date('2020-01-01T00:00:00Z').getTime()) {
+      return res.status(400).json({ error: 'recorded_at is outside the acceptable range' });
+    }
+    recordedAt = parsed;
+  } else {
+    recordedAt = new Date();
+  }
+
+  // X-Device-Secret binds the caller to a specific resource_id (mobile
+  // API key is tenant-wide, so the URL :id alone is self-claimed).
+  const headerSecret = (() => {
+    const raw = req.header('x-device-secret');
+    return typeof raw === 'string' ? raw.trim() : '';
+  })();
+  if (!headerSecret) {
+    return res.status(401).json({
+      error: 'X-Device-Secret header is required for location updates',
+    });
+  }
+  const headerSecretHash = crypto
+    .createHash('sha256')
+    .update(headerSecret)
+    .digest('hex');
+
+  const requestedJobId =
+    typeof body.active_job_id === 'string' && body.active_job_id
+      ? body.active_job_id
+      : null;
+  if (!requestedJobId) {
+    return res.status(400).json({
+      error: 'active_job_id is required (location is only collected during an active job)',
+    });
+  }
+
+  try {
+    const { rows: drows } = await pool.query(
+      `SELECT resource_id
+         FROM user_devices
+        WHERE tenant_id = $1
+          AND device_secret_hash = $2
+        LIMIT 1`,
+      [tenantId, headerSecretHash],
+    );
+    if (drows.length === 0) {
+      return res.status(401).json({ error: 'Invalid device secret' });
+    }
+    const deviceResourceId = (drows[0].resource_id as string | null) ?? null;
+    if (!deviceResourceId || deviceResourceId !== resourceId) {
+      return res.status(403).json({
+        error: 'Device is not bound to this resource',
+      });
+    }
+
+    const { rows: rcheck } = await pool.query(
+      `SELECT id FROM dispatch_resources WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [resourceId, tenantId],
+    );
+    if (rcheck.length === 0) {
+      return res.status(404).json({ error: 'Resource not found in this tenant' });
+    }
+
+    const { rows: jrows } = await pool.query(
+      `SELECT id, status, resource_id
+         FROM dispatch_jobs
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [requestedJobId, tenantId],
+    );
+    if (jrows.length === 0) {
+      return res.status(404).json({ error: 'active_job_id not found in this tenant' });
+    }
+    const jobRow = jrows[0] as Record<string, unknown>;
+    const jobStatus = (jobRow.status as string | null) ?? null;
+    const jobResourceId = (jobRow.resource_id as string | null) ?? null;
+    if (!jobResourceId || jobResourceId !== resourceId) {
+      return res.status(403).json({
+        error: 'active_job_id is not assigned to this resource',
+      });
+    }
+    if (!jobStatus || TERMINAL_JOB_STATUSES.has(jobStatus)) {
+      // The job was completed/cancelled before this ping arrived. Wipe the
+      // current-location row so the dispatcher map immediately drops the
+      // marker, and instruct the client to stop tracking.
+      try {
+        await pool.query(
+          `DELETE FROM dispatch_resource_locations WHERE resource_id = $1 AND tenant_id = $2`,
+          [resourceId, tenantId],
+        );
+      } catch (delErr) {
+        logger.warn('Failed to clear stale resource location', {
+          tenantId, resourceId, error: String(delErr),
+        });
+      }
+      return res.status(409).json({
+        error: 'Job is no longer active; tracking should stop',
+        job_status: jobStatus,
+      });
+    }
+    const activeJobId = jobRow.id as string;
+    const activeStatus = jobStatus;
+
+    const { rows: upserted } = await pool.query(
+      `INSERT INTO dispatch_resource_locations (
+         resource_id, tenant_id, latitude, longitude,
+         accuracy_m, heading_deg, speed_mps,
+         active_job_id, active_status, recorded_at, received_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+       ON CONFLICT (resource_id) DO UPDATE SET
+         tenant_id     = EXCLUDED.tenant_id,
+         latitude      = EXCLUDED.latitude,
+         longitude     = EXCLUDED.longitude,
+         accuracy_m    = EXCLUDED.accuracy_m,
+         heading_deg   = EXCLUDED.heading_deg,
+         speed_mps     = EXCLUDED.speed_mps,
+         active_job_id = EXCLUDED.active_job_id,
+         active_status = EXCLUDED.active_status,
+         recorded_at   = EXCLUDED.recorded_at,
+         received_at   = NOW()
+       RETURNING resource_id, tenant_id, latitude, longitude, accuracy_m,
+                 heading_deg, speed_mps, active_job_id, active_status,
+                 recorded_at, received_at`,
+      [
+        resourceId, tenantId, latitude, longitude,
+        accuracy, heading, speed,
+        activeJobId, activeStatus, recordedAt,
+      ],
+    );
+
+    await pool.query(
+      `INSERT INTO dispatch_resource_location_history (
+         resource_id, tenant_id, latitude, longitude,
+         accuracy_m, heading_deg, speed_mps,
+         active_job_id, recorded_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        resourceId, tenantId, latitude, longitude,
+        accuracy, heading, speed, activeJobId, recordedAt,
+      ],
+    );
+
+    // Probabilistic pruning so we don't run a delete on every ping.
+    if (Math.random() < LOCATION_HISTORY_PRUNE_PROBABILITY) {
+      try {
+        await pool.query(
+          `DELETE FROM dispatch_resource_location_history
+            WHERE resource_id = $1
+              AND id NOT IN (
+                SELECT id FROM dispatch_resource_location_history
+                 WHERE resource_id = $1
+                 ORDER BY recorded_at DESC
+                 LIMIT $2
+              )`,
+          [resourceId, LOCATION_HISTORY_KEEP_PER_RESOURCE],
+        );
+      } catch (pruneErr) {
+        logger.warn('Failed to prune location history', {
+          tenantId, resourceId, error: String(pruneErr),
+        });
+      }
+    }
+
+    return res.json({ location: upserted[0] });
+  } catch (err) {
+    logger.error('Failed to record resource location', {
+      tenantId, resourceId, error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to record resource location' });
+  }
+};
+
+/**
+ * GET /dispatch/resource-locations
+ *
+ * Admin-facing read used by the dispatch board map view. Returns the latest
+ * fix for every resource in the tenant whose ping was received within
+ * `staleness_seconds` seconds (default 600 = 10 minutes). Each row is
+ * enriched with the resource's name and, when the location row points at
+ * an active job, the job's title / customer / status — that's what the
+ * UI uses to color the marker and label the popup.
+ */
+const listResourceLocationsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  const staleness = Math.min(
+    Math.max(parseInt(String(req.query.staleness_seconds ?? '600'), 10) || 600, 30),
+    24 * 60 * 60,
+  );
+
+  try {
+    // Only surface technicians who are currently on an active (non-terminal)
+    // job. The done criteria for the live map is "marker per active tech";
+    // techs who finished or cancelled their job should drop off immediately
+    // even if their last fix is still within the staleness window. The
+    // INNER JOIN to dispatch_jobs + the active_job_id filter + the explicit
+    // terminal-status exclusion together enforce that contract.
+    const terminalArr = Array.from(TERMINAL_JOB_STATUSES);
+    const { rows } = await pool.query(
+      `SELECT l.resource_id,
+              l.latitude,
+              l.longitude,
+              l.accuracy_m,
+              l.heading_deg,
+              l.speed_mps,
+              l.active_job_id,
+              l.active_status,
+              l.recorded_at,
+              l.received_at,
+              r.name        AS resource_name,
+              r.role        AS resource_role,
+              r.current_status AS resource_current_status,
+              j.title       AS job_title,
+              j.contact_name AS job_contact_name,
+              j.address     AS job_address,
+              j.status      AS job_status,
+              EXTRACT(EPOCH FROM (NOW() - l.received_at))::int AS age_seconds
+         FROM dispatch_resource_locations l
+         JOIN dispatch_resources r
+           ON r.id = l.resource_id AND r.tenant_id = l.tenant_id
+         JOIN dispatch_jobs j
+           ON j.id = l.active_job_id AND j.tenant_id = l.tenant_id
+        WHERE l.tenant_id = $1
+          AND l.active_job_id IS NOT NULL
+          AND NOT (j.status = ANY($3::text[]))
+          AND l.received_at > NOW() - ($2::int * INTERVAL '1 second')
+        ORDER BY l.received_at DESC`,
+      [tenantId, staleness, terminalArr],
+    );
+    return res.json({ locations: rows, staleness_seconds: staleness });
+  } catch (err) {
+    logger.error('Failed to list resource locations', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list resource locations' });
+  }
+};
+
 // ============ TERRITORIES ============
 
 const listTerritoriesHandler: RequestHandler = async (req, res) => {
@@ -1719,9 +2123,16 @@ router.delete('/dispatch/jobs/:id', requireAuth, requireMiniSystemWrite, deleteJ
 
 router.get('/dispatch/resources', requireAuth, listResourcesHandler);
 router.post('/dispatch/resources', requireAuth, requireMiniSystemWrite, createResourceHandler);
+router.post(
+  '/dispatch/resources/:id/pairing-codes',
+  requireAuth,
+  requireMiniSystemWrite,
+  issueResourcePairingCodeHandler,
+);
 router.put('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, updateResourceHandler);
 router.delete('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, deleteResourceHandler);
 router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite, syncResourceSkillsHandler);
+router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
 
 router.get('/dispatch/territories', requireAuth, listTerritoriesHandler);
 router.post('/dispatch/territories', requireAuth, requireMiniSystemWrite, createTerritoryHandler);

@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { queryClient } from '@/lib/queryClient';
 import { LoadingView } from '@/components/LoadingView';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { LocationTrackingGate } from '@/components/LocationTrackingGate';
 import { useColors } from '@/hooks/useColors';
 import {
   readLastHandledPushId,
@@ -95,6 +96,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <OfflineBanner />
+      {signedIn ? <LocationTrackingGate /> : null}
       {children}
     </View>
   );

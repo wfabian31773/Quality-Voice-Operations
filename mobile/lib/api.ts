@@ -10,6 +10,8 @@ const STORAGE_RESOURCE_NAME = 'voiceai.tech.resourceName';
 const STORAGE_PUSH_TOKEN_KEY = 'voiceai.tech.pushToken';
 const STORAGE_PUSH_ENABLED_KEY = 'voiceai.tech.pushEnabled';
 const STORAGE_LAST_PUSH_HANDLED_KEY = 'voiceai.tech.lastPushHandled';
+const STORAGE_DEVICE_SECRET_KEY = 'voiceai.tech.deviceSecret';
+const STORAGE_INSTALL_ID_KEY = 'voiceai.tech.installId';
 
 export const STORAGE_KEYS = {
   baseUrl: STORAGE_BASE_URL_KEY,
@@ -19,6 +21,8 @@ export const STORAGE_KEYS = {
   pushToken: STORAGE_PUSH_TOKEN_KEY,
   pushEnabled: STORAGE_PUSH_ENABLED_KEY,
   lastPushHandled: STORAGE_LAST_PUSH_HANDLED_KEY,
+  deviceSecret: STORAGE_DEVICE_SECRET_KEY,
+  installId: STORAGE_INSTALL_ID_KEY,
 };
 
 export interface DispatchJob {
@@ -165,6 +169,7 @@ interface ApiCallOptions {
   body?: unknown;
   signal?: AbortSignal;
   query?: Record<string, string | number | undefined | null>;
+  headers?: Record<string, string>;
 }
 
 export class ApiError extends Error {
@@ -237,6 +242,11 @@ export async function apiCall<T>(
   };
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
+  }
+  if (opts.headers) {
+    for (const [k, v] of Object.entries(opts.headers)) {
+      headers[k] = v;
+    }
   }
 
   const controller = new AbortController();
@@ -396,6 +406,30 @@ export const api = {
       query: { limit: 100 },
     });
   },
+  reportResourceLocation(
+    client: ApiClient,
+    resourceId: string,
+    body: {
+      latitude: number;
+      longitude: number;
+      accuracy_m?: number | null;
+      heading_deg?: number | null;
+      speed_mps?: number | null;
+      active_job_id?: string | null;
+      recorded_at?: string;
+    },
+    deviceSecret: string,
+  ): Promise<{ location: Record<string, unknown> }> {
+    return apiCall(
+      client,
+      `/api/v1/dispatch/resources/${encodeURIComponent(resourceId)}/location`,
+      {
+        method: 'POST',
+        body,
+        headers: { 'X-Device-Secret': deviceSecret },
+      },
+    );
+  },
   listBookings(
     client: ApiClient,
     params: {
@@ -445,6 +479,27 @@ export const api = {
     },
   ): Promise<{ device: RegisteredDevice }> {
     return apiCall(client, '/api/v1/mobile/devices', {
+      method: 'POST',
+      body,
+    });
+  },
+  // Swap a one-time, admin-issued pairing code for a per-device location
+  // secret bound to a specific dispatch_resource. The pairing code is the
+  // only proof of ownership the server has — see the security notes on
+  // enrollDeviceHandler in mobileApi.ts.
+  enrollDevice(
+    client: ApiClient,
+    body: {
+      pairing_code: string;
+      install_id: string;
+      platform?: 'expo' | 'ios' | 'android' | 'web';
+    },
+  ): Promise<{
+    device_secret: string;
+    resource_id: string;
+    resource_name: string;
+  }> {
+    return apiCall(client, '/api/v1/mobile/devices/enroll', {
       method: 'POST',
       body,
     });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -84,7 +84,7 @@ export default function JobDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const id = params.id;
-  const { client } = useAuth();
+  const { client, resourceId } = useAuth();
   const qc = useQueryClient();
   const [pendingTransition, setPendingTransition] =
     useState<DispatchTransition | null>(null);

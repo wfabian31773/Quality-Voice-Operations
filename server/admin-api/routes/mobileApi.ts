@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth';
 import { requireApiKeyOrJwt } from '../middleware/apiKeyAuth';
 import { requireApiKeyPermission } from '../middleware/apiKeyScope';
@@ -14,6 +15,7 @@ import {
   addAttachmentHandler,
   requestAttachmentUploadUrlHandler,
   getAttachmentFileHandler,
+  recordResourceLocationHandler,
 } from './dispatch';
 import {
   listBookingsHandler,
@@ -117,6 +119,14 @@ router.get(
   requireApiKeyPermission('read-only'),
   getAttachmentFileHandler,
 );
+// Live technician location ping (only during an active non-terminal job).
+router.post(
+  '/api/v1/dispatch/resources/:id/location',
+  apiKeyAuth,
+  mobileLimiter,
+  requireMobileWrite,
+  recordResourceLocationHandler,
+);
 
 // ── Scheduling (technician-facing) ──
 router.get(
@@ -141,13 +151,7 @@ router.post(
   transitionBookingHandler,
 );
 
-// ── Push device registration ──────────────────────────────────────────
-//
-// The technician app calls these to register / unregister its Expo push
-// token, and to flip the per-device "Notifications" switch in the Profile
-// tab. They run under the same API-key-or-JWT auth as the read endpoints
-// (read-only is sufficient — registering a token is a self-write that
-// only affects which device receives pushes for the current tenant).
+// ── Push device registration ─────────────────────────────────────────
 
 const EXPO_TOKEN_RE = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
 
@@ -194,6 +198,7 @@ const registerDeviceHandler = async (req: Request, res: Response): Promise<void>
       }
     }
 
+    // Does not mint device_secret — that is exclusive to enrollDeviceHandler.
     const { rows } = await pool.query(
       `INSERT INTO user_devices (
          tenant_id, resource_id, user_id, push_token, platform,
@@ -212,12 +217,140 @@ const registerDeviceHandler = async (req: Request, res: Response): Promise<void>
          updated_at   = NOW()
        RETURNING id, tenant_id, resource_id, user_id, push_token, platform,
                  push_enabled, device_label, app_version, last_seen_at`,
-      [tenantId, resourceId, realUserId, token, platform, pushEnabled, deviceLabel, appVersion],
+      [
+        tenantId,
+        resourceId,
+        realUserId,
+        token,
+        platform,
+        pushEnabled,
+        deviceLabel,
+        appVersion,
+      ],
     );
     res.status(200).json({ device: rows[0] });
   } catch (err) {
     logger.error('Failed to register push device', { tenantId, error: String(err) });
     res.status(500).json({ error: 'Failed to register device' });
+  }
+};
+
+// ── Device enrollment (live location) ────────────────────────────────
+// Consumes a one-time admin-issued pairing code and returns the
+// per-device secret used for X-Device-Secret on location pings.
+const PAIRING_CODE_RE = /^[A-Z2-9]{8}$/;
+
+const enrollDeviceHandler = async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req.user!;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const codeRaw = typeof body.pairing_code === 'string' ? body.pairing_code.trim().toUpperCase() : '';
+  if (!codeRaw || !PAIRING_CODE_RE.test(codeRaw)) {
+    res.status(400).json({ error: 'pairing_code must be 8 characters (A-Z, 2-9)' });
+    return;
+  }
+
+  const codeHash = crypto.createHash('sha256').update(codeRaw).digest('hex');
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Look up the code, lock the row to prevent two devices from
+    // racing to consume the same pairing code.
+    const { rows: codeRows } = await client.query(
+      `SELECT id, resource_id, expires_at, consumed_at
+         FROM dispatch_resource_pairing_codes
+        WHERE tenant_id = $1 AND code_hash = $2
+        FOR UPDATE`,
+      [tenantId, codeHash],
+    );
+    if (codeRows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Invalid pairing code' });
+      return;
+    }
+    const code = codeRows[0];
+    if (code.consumed_at) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'Pairing code has already been used' });
+      return;
+    }
+    if (new Date(code.expires_at).getTime() <= Date.now()) {
+      await client.query('ROLLBACK');
+      res.status(410).json({ error: 'Pairing code has expired' });
+      return;
+    }
+
+    // Verify the resource still exists in this tenant (defensive — the
+    // FK ON DELETE CASCADE should already have removed the code).
+    const { rows: rcheck } = await client.query(
+      `SELECT id, name FROM dispatch_resources
+        WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [code.resource_id, tenantId],
+    );
+    if (rcheck.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Resource no longer exists' });
+      return;
+    }
+
+    // Mint the per-device secret. The plaintext is returned exactly
+    // once; only the SHA-256 hash is persisted on user_devices.
+    const deviceSecret = crypto.randomBytes(32).toString('hex');
+    const deviceSecretHash = crypto.createHash('sha256').update(deviceSecret).digest('hex');
+
+    // The mobile client supplies a stable per-install device id (a UUID
+    // it generates once and stores in SecureStore). We use it as the
+    // synthetic push_token so we get a single user_devices row per
+    // install regardless of whether the OS has issued a real push token
+    // yet — pairing must succeed even when push permission is denied.
+    const installIdRaw = typeof body.install_id === 'string' ? body.install_id.trim() : '';
+    if (!installIdRaw || installIdRaw.length < 8 || installIdRaw.length > 128) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: 'install_id is required (8-128 chars)' });
+      return;
+    }
+    const platform = ((): string => {
+      const v = typeof body.platform === 'string' ? body.platform.toLowerCase() : 'expo';
+      return v === 'expo' || v === 'ios' || v === 'android' || v === 'web' ? v : 'expo';
+    })();
+    const syntheticToken = `enroll:${installIdRaw}`;
+
+    const { rows: devRows } = await client.query(
+      `INSERT INTO user_devices (
+         tenant_id, resource_id, push_token, platform,
+         push_enabled, last_seen_at, device_secret_hash
+       )
+       VALUES ($1, $2, $3, $4, false, NOW(), $5)
+       ON CONFLICT (tenant_id, push_token)
+       DO UPDATE SET
+         resource_id        = EXCLUDED.resource_id,
+         platform           = EXCLUDED.platform,
+         last_seen_at       = NOW(),
+         updated_at         = NOW(),
+         device_secret_hash = EXCLUDED.device_secret_hash
+       RETURNING id`,
+      [tenantId, code.resource_id, syntheticToken, platform, deviceSecretHash],
+    );
+
+    await client.query(
+      `UPDATE dispatch_resource_pairing_codes
+          SET consumed_at = NOW(), consumed_device = $1
+        WHERE id = $2`,
+      [devRows[0].id, code.id],
+    );
+    await client.query('COMMIT');
+
+    res.status(200).json({
+      device_secret: deviceSecret,
+      resource_id: code.resource_id,
+      resource_name: rcheck[0].name,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    logger.error('Failed to enroll device', { tenantId, error: String(err) });
+    res.status(500).json({ error: 'Failed to enroll device' });
+  } finally {
+    client.release();
   }
 };
 
@@ -304,6 +437,16 @@ router.post(
   mobileLimiter,
   requireApiKeyPermission('read-only'),
   registerDeviceHandler,
+);
+// Pairing code → device-secret swap. Read-only API-key scope is fine
+// here because the security gate is the pairing code itself (admin-
+// issued, single-use, time-bounded). See enrollDeviceHandler.
+router.post(
+  '/api/v1/mobile/devices/enroll',
+  apiKeyAuth,
+  mobileLimiter,
+  requireApiKeyPermission('read-only'),
+  enrollDeviceHandler,
 );
 router.patch(
   '/api/v1/mobile/devices/:token',

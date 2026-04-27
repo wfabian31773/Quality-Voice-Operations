@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -26,11 +27,17 @@ export default function ProfileScreen() {
     pushEnabled,
     pushSyncing,
     pushError,
+    deviceSecret,
     signOut,
     setResource,
     setPushEnabled,
+    pairDevice,
+    unpairDevice,
   } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const [pairingError, setPairingError] = useState<string | null>(null);
 
   const resourcesQuery = useQuery({
     queryKey: ['resources'],
@@ -58,6 +65,42 @@ export default function ProfileScreen() {
       await setResource(r.id, r.name);
     }
     setShowPicker(false);
+  };
+
+  const onPair = async () => {
+    setPairingError(null);
+    setPairingBusy(true);
+    try {
+      const result = await pairDevice(pairingCode);
+      setPairingCode('');
+      Alert.alert(
+        'Device paired',
+        `Live location will be shared with dispatch only while you have an active job for ${result.resourceName}.`,
+      );
+    } catch (err) {
+      setPairingError(
+        err instanceof Error ? err.message : 'Pairing failed. Check the code and try again.',
+      );
+    } finally {
+      setPairingBusy(false);
+    }
+  };
+
+  const onUnpair = () => {
+    Alert.alert(
+      'Stop sharing location?',
+      'You will need a new pairing code from your dispatcher to start sharing again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop sharing',
+          style: 'destructive',
+          onPress: () => {
+            void unpairDevice();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -145,6 +188,64 @@ export default function ProfileScreen() {
             )}
           </View>
         ) : null}
+      </View>
+
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+          Live location
+        </Text>
+        <Text style={[styles.cardValue, { color: colors.text }]}>
+          {deviceSecret ? 'Sharing enabled' : 'Not paired'}
+        </Text>
+        <Text style={[styles.helper, { color: colors.textMuted }]}>
+          Your dispatcher will issue a one-time pairing code. Once paired,
+          this device shares your live GPS location with dispatch only while
+          you have an active job (en route, on site, or in progress) — and
+          stops automatically when the job is completed or cancelled.
+        </Text>
+        {deviceSecret ? (
+          <PrimaryButton
+            label="Stop sharing location"
+            variant="danger"
+            onPress={onUnpair}
+            style={{ marginTop: 12 }}
+          />
+        ) : (
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <TextInput
+              value={pairingCode}
+              onChangeText={(v) => setPairingCode(v.toUpperCase())}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={8}
+              placeholder="XXXXXXXX"
+              placeholderTextColor={colors.textMuted}
+              style={[
+                styles.codeInput,
+                {
+                  borderColor: colors.border,
+                  color: colors.text,
+                  backgroundColor: colors.background,
+                },
+              ]}
+            />
+            <PrimaryButton
+              label={pairingBusy ? 'Pairing…' : 'Pair this device'}
+              onPress={onPair}
+              disabled={pairingBusy || pairingCode.trim().length !== 8}
+            />
+            {pairingError ? (
+              <Text style={[styles.helper, { color: colors.danger }]}>
+                {pairingError}
+              </Text>
+            ) : null}
+          </View>
+        )}
       </View>
 
       <View
@@ -276,6 +377,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   resourceName: { fontSize: 14, fontWeight: '600' },
+  codeInput: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 6,
+    textAlign: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    fontFamily: 'monospace',
+  },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

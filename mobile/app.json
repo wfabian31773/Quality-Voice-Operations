@@ -18,7 +18,10 @@
       "bundleIdentifier": "com.voiceai.tech",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "Voice AI Tech uses your location to show driving directions and an arrival ETA for your scheduled jobs."
+        "NSLocationWhenInUseUsageDescription": "Voice AI Tech uses your location during an active job so dispatchers can route the closest tech to emergencies and give your customer an accurate ETA. Tracking only runs while a job is en route, on site, or in progress.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Voice AI Tech keeps sharing your location with the dispatcher while a job is active even if the app is in the background, so they can confirm you are on your way and reroute help if you stop moving. It stops automatically when the job is completed or cancelled.",
+        "NSLocationAlwaysUsageDescription": "Voice AI Tech keeps sharing your location with the dispatcher while a job is active even if the app is in the background, so they can confirm you are on your way and reroute help if you stop moving. It stops automatically when the job is completed or cancelled.",
+        "UIBackgroundModes": ["location", "fetch"]
       }
     },
     "android": {
@@ -30,7 +33,10 @@
       "permissions": [
         "android.permission.CALL_PHONE",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -43,7 +49,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Voice AI Tech uses your location to show driving directions and an arrival ETA for your scheduled jobs."
+          "locationWhenInUsePermission": "Voice AI Tech uses your location during an active job so dispatchers can route the closest tech to emergencies and give your customer an accurate ETA. Tracking only runs while a job is en route, on site, or in progress.",
+          "locationAlwaysAndWhenInUsePermission": "Voice AI Tech keeps sharing your location with the dispatcher while a job is active even if the app is in the background, so they can confirm you are on your way and reroute help if you stop moving. It stops automatically when the job is completed or cancelled.",
+          "locationAlwaysPermission": "Voice AI Tech keeps sharing your location with the dispatcher while a job is active even if the app is in the background, so they can confirm you are on your way and reroute help if you stop moving. It stops automatically when the job is completed or cancelled.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

@@ -9,11 +9,14 @@ import {
   type ReactNode,
 } from 'react';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import {
   loadStoredCredentials,
   saveCredentials,
   clearCredentials,
+  getOrCreateInstallId,
   updateSelectedResource,
+  updateStoredDeviceSecret,
   updateStoredPushToken,
   updateStoredPushEnabled,
   type StoredCredentials,
@@ -36,10 +39,22 @@ interface AuthState {
   pushSyncing: boolean;
   pushError: string | null;
   client: ApiClient | null;
-  signIn: (creds: Omit<StoredCredentials, 'pushToken' | 'pushEnabled'>) => Promise<void>;
+  deviceSecret: string | null;
+  signIn: (
+    creds: Omit<StoredCredentials, 'pushToken' | 'pushEnabled' | 'deviceSecret'>,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   setResource: (id: string | null, name: string | null) => Promise<void>;
   setPushEnabled: (enabled: boolean) => Promise<void>;
+  /**
+   * Redeem an admin-issued pairing code with the server. On success the
+   * device receives a per-resource location secret which is persisted
+   * and exposed via `deviceSecret`. Throws on invalid/used/expired
+   * codes; the caller is responsible for surfacing the error message.
+   */
+  pairDevice: (code: string) => Promise<{ resourceId: string; resourceName: string }>;
+  /** Revoke the current pairing — clears the stored device secret. */
+  unpairDevice: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -78,11 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(
-    async (next: Omit<StoredCredentials, 'pushToken' | 'pushEnabled'>) => {
+    async (
+      next: Omit<StoredCredentials, 'pushToken' | 'pushEnabled' | 'deviceSecret'>,
+    ) => {
       const merged: StoredCredentials = {
         ...next,
         pushToken: null,
         pushEnabled: true,
+        deviceSecret: null,
       };
       await saveCredentials(merged);
       setCreds(merged);
@@ -127,6 +145,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const pairDevice = useCallback(
+    async (code: string): Promise<{ resourceId: string; resourceName: string }> => {
+      if (!creds) throw new Error('Sign in before pairing');
+      const client: ApiClient = { baseUrl: creds.baseUrl, apiKey: creds.apiKey };
+      const installId = await getOrCreateInstallId();
+      const platform: 'ios' | 'android' | 'web' | 'expo' =
+        Platform.OS === 'ios' || Platform.OS === 'android' || Platform.OS === 'web'
+          ? Platform.OS
+          : 'expo';
+      const reply = await api.enrollDevice(client, {
+        pairing_code: code.trim().toUpperCase(),
+        install_id: installId,
+        platform,
+      });
+      // Persist secret + bound resource. We deliberately overwrite the
+      // user-selected resource so jobs/list filters track the resource
+      // the device was paired for.
+      await updateStoredDeviceSecret(reply.device_secret);
+      await updateSelectedResource(reply.resource_id, reply.resource_name);
+      setCreds((prev) =>
+        prev
+          ? {
+              ...prev,
+              deviceSecret: reply.device_secret,
+              resourceId: reply.resource_id,
+              resourceName: reply.resource_name,
+            }
+          : prev,
+      );
+      lastSyncedKey.current = null;
+      return { resourceId: reply.resource_id, resourceName: reply.resource_name };
+    },
+    [creds],
+  );
+
+  const unpairDevice = useCallback(async () => {
+    await updateStoredDeviceSecret(null);
+    setCreds((prev) => (prev ? { ...prev, deviceSecret: null } : prev));
+  }, []);
+
   // Device registration / sync effect: runs whenever credentials, the
   // selected resource, or the push toggle changes. Registers an Expo push
   // token on enable, and POSTs/PATCHes the device record server-side so the
@@ -162,6 +220,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             );
             return;
           }
+          // Push registration is intentionally separate from the
+          // location-tracking secret. The latter is issued only by the
+          // pairing flow (see `pairDevice`); registering for push does
+          // NOT mint or rotate a device_secret. This ensures location
+          // tracking continues to work even when push permission is
+          // denied on the device, and prevents the tenant API key from
+          // being used to mint a secret for a self-claimed resource.
           await api.registerDevice(client, {
             token: reg.token,
             platform: reg.platform,
@@ -217,10 +282,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       pushSyncing,
       pushError,
       client,
+      deviceSecret: creds?.deviceSecret ?? null,
       signIn,
       signOut,
       setResource,
       setPushEnabled,
+      pairDevice,
+      unpairDevice,
     };
   }, [
     creds,
@@ -231,6 +299,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     setResource,
     setPushEnabled,
+    pairDevice,
+    unpairDevice,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

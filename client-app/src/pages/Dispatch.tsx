@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -203,7 +203,7 @@ function StatCard({ icon: Icon, label, value, sub }: { icon: React.ComponentType
 export default function Dispatch() {
   const { user } = useAuth();
   const isReadOnly = !['tenant_owner', 'operations_manager'].includes(user?.role ?? '');
-  const [activeTab, setActiveTab] = useState<'board' | 'queue' | 'resources' | 'reporting' | 'admin'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'queue' | 'map' | 'resources' | 'reporting' | 'admin'>('board');
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [resources, setResources] = useState<Resource[]>([]);
@@ -335,6 +335,7 @@ export default function Dispatch() {
   const tabs = [
     { key: 'board' as const, label: 'Board', icon: Layers },
     { key: 'queue' as const, label: 'Queue', icon: Clipboard },
+    { key: 'map' as const, label: 'Live Map', icon: MapPin },
     { key: 'resources' as const, label: 'Resources', icon: Users },
     { key: 'reporting' as const, label: 'Reporting', icon: BarChart3 },
     { key: 'admin' as const, label: 'Admin', icon: Settings },
@@ -397,6 +398,10 @@ export default function Dispatch() {
           transitionJob={transitionJob} openJobDetail={openJobDetail}
           setEditingJob={setEditingJob} setShowJobForm={setShowJobForm}
           selectedJobs={selectedJobs} setSelectedJobs={setSelectedJobs} batchUpdate={batchUpdate} />
+      )}
+
+      {activeTab === 'map' && (
+        <LiveMapView openJobDetail={openJobDetail} />
       )}
 
       {activeTab === 'resources' && (
@@ -610,6 +615,324 @@ function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }:
   );
 }
 
+// ============ LIVE MAP VIEW ============
+
+interface ResourceLocationRow {
+  resource_id: string;
+  latitude: number;
+  longitude: number;
+  accuracy_m: number | null;
+  heading_deg: number | null;
+  speed_mps: number | null;
+  active_job_id: string | null;
+  active_status: string | null;
+  recorded_at: string;
+  received_at: string;
+  age_seconds: number;
+  resource_name: string | null;
+  resource_role: string | null;
+  resource_current_status: string | null;
+  job_title: string | null;
+  job_contact_name: string | null;
+  job_address: string | null;
+  job_status: string | null;
+}
+
+const STATUS_HEX: Record<string, string> = {
+  pending: '#facc15',
+  assigned: '#60a5fa',
+  scheduled: '#818cf8',
+  en_route: '#22d3ee',
+  on_site: '#2dd4bf',
+  in_progress: '#fb923c',
+  completed: '#4ade80',
+  incomplete: '#f87171',
+  done: '#34d399',
+  cancelled: '#9ca3af',
+};
+
+interface LeafletMap {
+  setView(latlng: [number, number], zoom: number): LeafletMap;
+  fitBounds(bounds: [number, number][], opts?: { padding?: [number, number]; maxZoom?: number }): LeafletMap;
+  remove(): void;
+  invalidateSize(): void;
+}
+interface LeafletMarker {
+  bindPopup(html: string): LeafletMarker;
+  setLatLng(latlng: [number, number]): LeafletMarker;
+  setPopupContent(html: string): LeafletMarker;
+  setIcon(icon: unknown): LeafletMarker;
+  remove(): void;
+  on(evt: string, cb: () => void): LeafletMarker;
+  openPopup(): LeafletMarker;
+}
+interface LeafletNS {
+  map(el: HTMLElement, opts?: Record<string, unknown>): LeafletMap;
+  tileLayer(url: string, opts?: Record<string, unknown>): { addTo(m: LeafletMap): unknown };
+  marker(latlng: [number, number], opts?: { icon?: unknown }): LeafletMarker & { addTo(m: LeafletMap): LeafletMarker };
+  divIcon(opts: Record<string, unknown>): unknown;
+}
+
+declare global {
+  interface Window { L?: LeafletNS }
+}
+
+const LEAFLET_CSS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+const LEAFLET_JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+const LEAFLET_CSS_SRI = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H';
+const LEAFLET_JS_SRI = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH';
+
+let leafletLoadPromise: Promise<LeafletNS> | null = null;
+function loadLeaflet(): Promise<LeafletNS> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
+  if (window.L) return Promise.resolve(window.L);
+  if (leafletLoadPromise) return leafletLoadPromise;
+  leafletLoadPromise = new Promise((resolve, reject) => {
+    if (!document.querySelector(`link[data-leaflet]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = LEAFLET_CSS_URL;
+      link.integrity = LEAFLET_CSS_SRI;
+      link.crossOrigin = 'anonymous';
+      link.referrerPolicy = 'no-referrer';
+      link.setAttribute('data-leaflet', 'true');
+      document.head.appendChild(link);
+    }
+    const existing = document.querySelector<HTMLScriptElement>(`script[data-leaflet]`);
+    if (existing) {
+      existing.addEventListener('load', () => window.L ? resolve(window.L) : reject(new Error('Leaflet missing')));
+      existing.addEventListener('error', () => reject(new Error('Failed to load Leaflet')));
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = LEAFLET_JS_URL;
+    s.async = true;
+    s.integrity = LEAFLET_JS_SRI;
+    s.crossOrigin = 'anonymous';
+    s.referrerPolicy = 'no-referrer';
+    s.setAttribute('data-leaflet', 'true');
+    s.onload = () => window.L ? resolve(window.L) : reject(new Error('Leaflet missing'));
+    s.onerror = () => reject(new Error('Failed to load Leaflet'));
+    document.head.appendChild(s);
+  });
+  return leafletLoadPromise;
+}
+
+function formatAge(seconds: number): string {
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  return `${Math.round(seconds / 3600)}h ago`;
+}
+
+function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void }) {
+  const [locations, setLocations] = useState<ResourceLocationRow[]>([]);
+  const [staleness, setStaleness] = useState(600);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingMap, setLoadingMap] = useState(true);
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const markersRef = useRef<Map<string, LeafletMarker>>(new Map());
+  const fittedRef = useRef(false);
+
+  const fetchLocations = useCallback(async () => {
+    try {
+      const data = await api.get<{ locations: ResourceLocationRow[]; staleness_seconds: number }>(
+        `/dispatch/resource-locations?staleness_seconds=${staleness}`,
+      );
+      setLocations(data.locations || []);
+      setRefreshedAt(new Date());
+      setError(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load live locations');
+    }
+  }, [staleness]);
+
+  useEffect(() => {
+    fetchLocations();
+    const t = setInterval(fetchLocations, 15_000);
+    return () => clearInterval(t);
+  }, [fetchLocations]);
+
+  // Initialize the Leaflet map exactly once when the container mounts.
+  useEffect(() => {
+    let cancelled = false;
+    if (!containerRef.current) return;
+    loadLeaflet()
+      .then((L) => {
+        if (cancelled || !containerRef.current || mapRef.current) return;
+        const m = L.map(containerRef.current, { zoomControl: true }).setView([39.5, -98.35], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap',
+        }).addTo(m);
+        mapRef.current = m;
+        setLoadingMap(false);
+        // Recompute size after layout settles (tabs hide/show the container).
+        setTimeout(() => mapRef.current?.invalidateSize(), 50);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Could not load map library');
+          setLoadingMap(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+      markersRef.current.forEach((mk) => { try { mk.remove(); } catch { /* noop */ } });
+      markersRef.current.clear();
+      try { mapRef.current?.remove(); } catch { /* noop */ }
+      mapRef.current = null;
+      fittedRef.current = false;
+    };
+  }, []);
+
+  // Sync markers whenever the locations list changes.
+  useEffect(() => {
+    if (!mapRef.current || !window.L) return;
+    const L = window.L;
+    const seen = new Set<string>();
+    const bounds: [number, number][] = [];
+    for (const loc of locations) {
+      seen.add(loc.resource_id);
+      const color = STATUS_HEX[(loc.active_status || loc.job_status || 'pending').toLowerCase()] || '#9ca3af';
+      const initials = (loc.resource_name || '?')
+        .split(/\s+/)
+        .map((p) => p[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+      const html = `<div style="background:${color};color:#0b1220;border:2px solid #0b1220;border-radius:9999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,0.4)">${initials || '•'}</div>`;
+      const icon = L.divIcon({ html, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+      const popup = `
+        <div style="font-family:inherit;min-width:180px">
+          <div style="font-weight:600;margin-bottom:4px">${escapeHtml(loc.resource_name || 'Unknown tech')}</div>
+          ${loc.job_title ? `<div style="font-size:12px;margin-bottom:2px">${escapeHtml(loc.job_title)}</div>` : ''}
+          ${loc.job_contact_name ? `<div style="font-size:11px;color:#666;margin-bottom:2px">${escapeHtml(loc.job_contact_name)}</div>` : ''}
+          ${loc.job_address ? `<div style="font-size:11px;color:#666;margin-bottom:4px">${escapeHtml(loc.job_address)}</div>` : ''}
+          <div style="font-size:11px;color:#666">
+            ${loc.active_status ? `Status: <strong style="color:${color}">${escapeHtml(loc.active_status)}</strong> · ` : ''}Updated ${escapeHtml(formatAge(loc.age_seconds))}
+          </div>
+          ${loc.active_job_id ? `<div style="margin-top:6px"><a href="#" data-job-id="${escapeHtml(loc.active_job_id)}" class="dispatch-map-job-link" style="color:#2563eb;font-size:11px;font-weight:600">Open job →</a></div>` : ''}
+        </div>`;
+      const existing = markersRef.current.get(loc.resource_id);
+      if (existing) {
+        existing.setLatLng([loc.latitude, loc.longitude]);
+        existing.setIcon(icon);
+        existing.setPopupContent(popup);
+      } else {
+        const marker = L.marker([loc.latitude, loc.longitude], { icon }).addTo(mapRef.current);
+        marker.bindPopup(popup);
+        markersRef.current.set(loc.resource_id, marker);
+      }
+      bounds.push([loc.latitude, loc.longitude]);
+    }
+    // Drop markers that no longer have a fix.
+    for (const [id, marker] of markersRef.current.entries()) {
+      if (!seen.has(id)) {
+        try { marker.remove(); } catch { /* noop */ }
+        markersRef.current.delete(id);
+      }
+    }
+    if (bounds.length > 0 && !fittedRef.current) {
+      try {
+        if (bounds.length === 1) {
+          mapRef.current.setView(bounds[0], 13);
+        } else {
+          mapRef.current.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+        }
+        fittedRef.current = true;
+      } catch { /* noop */ }
+    }
+  }, [locations]);
+
+  // Delegate clicks on "Open job" anchors inside popups.
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const anchor = target.closest('a.dispatch-map-job-link') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const jobId = anchor.getAttribute('data-job-id');
+      if (jobId) {
+        e.preventDefault();
+        openJobDetail(jobId);
+      }
+    }
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, [openJobDetail]);
+
+  const activeCount = locations.filter((l) => l.active_job_id).length;
+  const idleCount = locations.length - activeCount;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 justify-between">
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-heading font-medium">{locations.length} tech{locations.length === 1 ? '' : 's'} reporting</span>
+          <span className="text-muted">· {activeCount} on a job · {idleCount} idle</span>
+          {refreshedAt && <span className="text-xs text-muted">Updated {refreshedAt.toLocaleTimeString()}</span>}
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <label className="text-muted">Show pings within</label>
+          <select value={staleness} onChange={(e) => { setStaleness(parseInt(e.target.value, 10)); fittedRef.current = false; }}
+            className="px-2 py-1 rounded border border-border bg-surface text-heading">
+            <option value={300}>5 min</option>
+            <option value={600}>10 min</option>
+            <option value={1800}>30 min</option>
+            <option value={3600}>1 hr</option>
+          </select>
+          <button onClick={fetchLocations} className="px-2 py-1 rounded border border-border bg-surface text-heading hover:bg-surface-secondary">Refresh</button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border overflow-hidden bg-surface">
+        <div ref={containerRef} style={{ height: 520, width: '100%' }}>
+          {loadingMap && (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted">Loading map…</div>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl p-3">
+        <div className="flex flex-wrap gap-3 items-center text-xs">
+          <span className="text-muted font-medium uppercase tracking-wide">Status legend</span>
+          {STATUS_FLOW.filter((s) => ['en_route', 'on_site', 'in_progress', 'assigned', 'scheduled'].includes(s.key)).map((s) => (
+            <span key={s.key} className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full" style={{ background: STATUS_HEX[s.key] }}></span>
+              <span className="text-heading">{s.label}</span>
+            </span>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted mt-2">
+          Locations come from the technician mobile app and are only collected while a job is en route, on site, or in progress.
+          Tracking stops automatically when the job is completed or cancelled.
+        </p>
+      </div>
+
+      {locations.length === 0 && !loadingMap && (
+        <div className="bg-surface border border-border rounded-xl p-6 text-center text-sm text-muted">
+          No live technician locations yet. Markers appear here as soon as a tech accepts a job and marks it en route.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c] as string));
+}
+
 // ============ QUEUE VIEW ============
 
 function QueueView({ jobs, statusCounts, filters, setFilters, territories, resources, isReadOnly,
@@ -743,6 +1066,29 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', role: 'field_worker', territory_id: '', shift_start: '08:00', shift_end: '17:00', max_concurrent_jobs: 3 });
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [pairingModal, setPairingModal] = useState<
+    | { resource: Resource; status: 'loading' }
+    | { resource: Resource; status: 'success'; code: string; expiresAt: string }
+    | { resource: Resource; status: 'error'; error: string }
+    | null
+  >(null);
+
+  const issuePairingCode = async (r: Resource) => {
+    setPairingModal({ resource: r, status: 'loading' });
+    try {
+      const resp = await api.post<{ pairing_code: string; expires_at: string }>(
+        `/dispatch/resources/${r.id}/pairing-codes`,
+        {},
+      );
+      setPairingModal({ resource: r, status: 'success', code: resp.pairing_code, expiresAt: resp.expires_at });
+    } catch (err) {
+      setPairingModal({
+        resource: r,
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Failed to issue pairing code',
+      });
+    }
+  };
 
   const openForm = (r?: Resource) => {
     if (r) {
@@ -851,9 +1197,9 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               )}
             </div>
             {!isReadOnly && (
-              <div className="flex gap-1.5 mt-3">
+              <div className="flex gap-1.5 mt-3 flex-wrap">
                 <select value={r.current_status} onChange={e => updateStatus(r.id, e.target.value)}
-                  className="text-[10px] px-2 py-1 rounded border border-border bg-surface flex-1">
+                  className="text-[10px] px-2 py-1 rounded border border-border bg-surface flex-1 min-w-[120px]">
                   <option value="available">Available</option>
                   <option value="busy">Busy</option>
                   <option value="on_break">On Break</option>
@@ -861,6 +1207,13 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
                   <option value="unavailable">Unavailable</option>
                 </select>
                 <button onClick={() => openForm(r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
+                <button
+                  onClick={() => issuePairingCode(r)}
+                  title="Generate a one-time code that pairs this technician's mobile device for live location sharing"
+                  className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  Pair device
+                </button>
               </div>
             )}
           </div>
@@ -958,6 +1311,54 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button onClick={saveResource} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
             </div>
+        </Modal>
+      )}
+
+      {pairingModal && (
+        <Modal
+          open
+          onClose={() => setPairingModal(null)}
+          ariaLabel="Pair Mobile Device"
+          panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4"
+        >
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <h3 className="font-semibold text-heading">Pair {pairingModal.resource.name}</h3>
+            <button onClick={() => setPairingModal(null)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+          </div>
+          <div className="p-4 space-y-3">
+            {pairingModal.status === 'loading' && (
+              <p className="text-sm text-muted">Generating pairing code…</p>
+            )}
+            {pairingModal.status === 'error' && (
+              <p className="text-sm text-red-600">{pairingModal.error}</p>
+            )}
+            {pairingModal.status === 'success' && (
+              <>
+                <p className="text-xs text-muted">
+                  Share this one-time code with the technician. They enter it once
+                  in the mobile app under Profile → Live location, and the device
+                  is then bound to <strong className="text-heading">{pairingModal.resource.name}</strong> for live
+                  GPS sharing during active jobs. The code can only be redeemed
+                  once and expires shortly.
+                </p>
+                <div className="bg-surface-secondary border border-border rounded-lg p-4 text-center">
+                  <div className="text-3xl font-mono font-bold tracking-[0.5em] text-heading select-all">
+                    {pairingModal.code}
+                  </div>
+                  <div className="text-[11px] text-muted mt-2">
+                    Expires {new Date(pairingModal.expiresAt).toLocaleString()}
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted">
+                  We only show the code once — copy it now or generate a new one
+                  if it gets lost.
+                </p>
+              </>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-border">
+            <button onClick={() => setPairingModal(null)} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Done</button>
+          </div>
         </Modal>
       )}
     </div>
