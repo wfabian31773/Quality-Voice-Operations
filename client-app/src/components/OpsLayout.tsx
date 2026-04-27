@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
   Radio, Bug, Plug2, Coins, ShieldCheck,
-  LogOut, Moon, Sun, Menu, X, Cpu,
+  LogOut, Moon, Sun, Menu, X, Cpu, Repeat,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -21,6 +21,7 @@ interface NavItem {
 const opsLinks: NavItem[] = [
   { to: '/ops/monitor', icon: Radio, label: 'Live Monitor' },
   { to: '/ops/reliability', icon: ShieldCheck, label: 'Reliability' },
+  { to: '/ops/backfill-calls', icon: Repeat, label: 'Backfill calls' },
   { to: '/ops/call-debug', icon: Bug, label: 'Debugger' },
   { to: '/ops/integration-diagnostics', icon: Plug2, label: 'Diagnostics' },
   { to: '/ops/cost', icon: Coins, label: 'Cost' },

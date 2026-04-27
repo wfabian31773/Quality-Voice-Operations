@@ -74,6 +74,15 @@ function makeFakeClient() {
       if (trimmed.startsWith('SELECT id FROM agents')) {
         return { rows: [{ id: 'agent-1' }], rowCount: 1 };
       }
+      if (trimmed.startsWith('SELECT external_id FROM call_sessions')) {
+        const v = values ?? [];
+        const candidates = (v[1] as string[]) ?? [];
+        const found = candidates.filter((id) => existingCallsByExternalId.has(id));
+        return {
+          rows: found.map((id) => ({ external_id: id })),
+          rowCount: found.length,
+        };
+      }
       if (trimmed.startsWith('SELECT id, total_cost_cents, duration_seconds')) {
         const externalId = String((values ?? [])[1]);
         const row = existingCallsByExternalId.get(externalId);
@@ -806,5 +815,81 @@ describe('POST /v1/ingest/calls/backfill — cross-day correction finance alert'
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// --------------------------------------------------------------------------
+// Preview-existing helper used by the admin "Backfill calls" console
+// --------------------------------------------------------------------------
+
+describe('POST /v1/ingest/calls/preview-existing', () => {
+  it('reports which external_ids already have a call_sessions row', async () => {
+    const app = await buildApp();
+
+    // Seed two existing calls under tenant-A by submitting them through the
+    // backfill endpoint first; this exercises the same persistence path as
+    // production and avoids hand-rolling fake state.
+    const seed = baseCallEvent({
+      external_id: 'ext-known-1',
+      idempotency_key: 'idem-seed-1',
+      start_time: isoDaysAgo(INGEST_FRESH_WINDOW_DAYS + 4),
+      end_time: isoDaysAgo(INGEST_FRESH_WINDOW_DAYS + 4),
+      backfill_attestation: baseAttestation(),
+    });
+    await request(app).post('/v1/ingest/calls/backfill').send(seed).expect(201);
+
+    const res = await request(app)
+      .post('/v1/ingest/calls/preview-existing')
+      .send({ external_ids: ['ext-known-1', 'ext-new-1', 'ext-new-2'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.tenant_id).toBe('tenant-A');
+    expect(res.body.checked).toBe(3);
+    expect(res.body.existing).toEqual(['ext-known-1']);
+  });
+
+  it('returns 422 when external_ids is missing or empty', async () => {
+    const app = await buildApp();
+
+    const empty = await request(app)
+      .post('/v1/ingest/calls/preview-existing')
+      .send({ external_ids: [] });
+    expect(empty.status).toBe(422);
+
+    const missing = await request(app)
+      .post('/v1/ingest/calls/preview-existing')
+      .send({});
+    expect(missing.status).toBe(422);
+  });
+
+  it('caps the lookup at 1000 ids per call', async () => {
+    const app = await buildApp();
+    const ids = Array.from({ length: 1001 }, (_, i) => `ext-${i}`);
+
+    const res = await request(app)
+      .post('/v1/ingest/calls/preview-existing')
+      .send({ external_ids: ids });
+
+    expect(res.status).toBe(422);
+  });
+
+  it('deduplicates duplicate external_ids in the input', async () => {
+    const app = await buildApp();
+    const seed = baseCallEvent({
+      external_id: 'ext-dup',
+      idempotency_key: 'idem-seed-dup',
+      start_time: isoDaysAgo(INGEST_FRESH_WINDOW_DAYS + 4),
+      end_time: isoDaysAgo(INGEST_FRESH_WINDOW_DAYS + 4),
+      backfill_attestation: baseAttestation(),
+    });
+    await request(app).post('/v1/ingest/calls/backfill').send(seed).expect(201);
+
+    const res = await request(app)
+      .post('/v1/ingest/calls/preview-existing')
+      .send({ external_ids: ['ext-dup', 'ext-dup', 'ext-dup'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.checked).toBe(1);
+    expect(res.body.existing).toEqual(['ext-dup']);
   });
 });

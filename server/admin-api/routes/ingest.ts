@@ -1152,4 +1152,66 @@ router.get(
   },
 );
 
+/**
+ * Read-only helper for the admin "Backfill calls" console (BL-041 follow-up).
+ *
+ * Given a list of `external_id`s, returns which of them already have a
+ * `call_sessions` row for the authenticated tenant. The frontend uses this to
+ * preview how many events in a paste/CSV would be NEW INSERTS vs CORRECTIONS
+ * before the operator clicks Submit. Tenant-scoped (RLS via
+ * `withTenantContext`), idempotent, and capped at 1000 ids per call so a
+ * runaway paste cannot stall the pool.
+ */
+const PreviewExistingSchema = z.object({
+  external_ids: z.array(z.string().min(1).max(255)).min(1).max(1000),
+});
+
+router.post(
+  '/v1/ingest/calls/preview-existing',
+  apiKeyAuth,
+  ingestLimiter,
+  requireApiKeyPermission('read-only'),
+  async (req: Request, res: Response) => {
+    req.skipAuditMutation = true;
+    const tenantId = req.user!.tenantId;
+
+    const parsed = PreviewExistingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(422).json({
+        error: 'Validation failed',
+        details: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const ids = Array.from(new Set(parsed.data.external_ids));
+
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
+
+      const { rows } = await client.query(
+        `SELECT external_id FROM call_sessions
+          WHERE tenant_id = $1 AND external_id = ANY($2::text[])`,
+        [tenantId, ids],
+      );
+      await client.query('COMMIT');
+
+      const existing = rows.map((r) => r.external_id as string);
+      return res.json({
+        tenant_id: tenantId,
+        checked: ids.length,
+        existing,
+      });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.error('Preview-existing lookup failed', { tenantId, error: String(err) });
+      return res.status(500).json({ error: 'Failed to look up existing call sessions' });
+    } finally {
+      client.release();
+    }
+  },
+);
+
 export default router;

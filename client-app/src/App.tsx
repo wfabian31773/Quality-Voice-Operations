@@ -53,6 +53,7 @@ const CallDebug = lazy(() => import('./pages/CallDebug'));
 const Compliance = lazy(() => import('./pages/Compliance'));
 const PlatformCompliance = lazy(() => import('./pages/admin/PlatformCompliance'));
 const IngestBackfill = lazy(() => import('./pages/admin/IngestBackfill'));
+const BackfillCalls = lazy(() => import('./pages/admin/BackfillCalls'));
 const Autopilot = lazy(() => import('./pages/Autopilot'));
 const IntegrationDiagnostics = lazy(() => import('./pages/IntegrationDiagnostics'));
 const Workflows = lazy(() => import('./pages/Workflows'));
@@ -253,6 +254,7 @@ export default function App() {
         <Route path="/ops/integration-diagnostics" element={<IntegrationDiagnostics />} />
         <Route path="/ops/cost" element={<CostOptimization />} />
         <Route path="/ops/reliability" element={<ToolHealth />} />
+        <Route path="/ops/backfill-calls" element={<BackfillCalls />} />
         <Route path="/ops/digital-twin" element={<DigitalTwin />} />
       </Route>
 
