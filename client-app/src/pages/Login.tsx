@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { api, setToken } from '../lib/api';
 import { LogIn, UserPlus } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import { safeRedirect } from '../lib/safeRedirect';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -27,8 +28,16 @@ export default function Login() {
     return '/dashboard';
   }
 
+  // BL-012: `redirectTo` is allowed but is sanitized so an attacker can't
+  // weaponize a phishing link like `/login?redirectTo=https://evil.com`.
+  // `safeRedirect` falls back to the role-aware landing path whenever the
+  // value isn't a same-origin relative path.
+  function destinationFor(u: { isPlatformAdmin?: boolean; role: string }) {
+    return safeRedirect(searchParams.get('redirectTo'), getLandingPath(u));
+  }
+
   if (user) {
-    return <Navigate to={getLandingPath(user)} replace />;
+    return <Navigate to={destinationFor(user)} replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -39,9 +48,9 @@ export default function Login() {
       await login(email, password);
       const currentUser = useAuth.getState().user;
       if (currentUser) {
-        navigate(getLandingPath(currentUser));
+        navigate(destinationFor(currentUser));
       } else {
-        navigate('/dashboard');
+        navigate(safeRedirect(searchParams.get('redirectTo'), '/dashboard'));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('auth.login_failed'));

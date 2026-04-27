@@ -1,8 +1,9 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, initialized } = useAuth();
+  const location = useLocation();
 
   if (!initialized || loading) {
     return (
@@ -13,6 +14,20 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    // BL-012: preserve the page the user was trying to reach so we can
+    // bring them back after they log in. Login.tsx sanitizes this value
+    // through `safeRedirect()`, but we ALSO build a same-origin relative
+    // path here so a malicious deep link can't poison it before it ever
+    // reaches the login page.
+    const target = `${location.pathname}${location.search}${location.hash}`;
+    const isSameOriginPath =
+      target.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\');
+    const loginUrl =
+      isSameOriginPath && target !== '/'
+        ? `/login?redirectTo=${encodeURIComponent(target)}`
+        : '/login';
+    return <Navigate to={loginUrl} replace />;
+  }
   return <>{children}</>;
 }
