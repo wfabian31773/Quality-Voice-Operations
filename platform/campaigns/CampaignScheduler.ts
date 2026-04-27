@@ -11,6 +11,7 @@ import {
 } from './CampaignService';
 import { dialContact } from './OutboundDialer';
 import { isOnDnc } from './DncService';
+import { resolveCampaignCallerId } from '../telephony/TrustedCallerService';
 
 const logger = createLogger('CAMPAIGN_SCHEDULER');
 
@@ -167,6 +168,30 @@ export class CampaignScheduler {
             continue;
           }
 
+          const verifiedCallerIdCfg = (campaign.config.verifiedCallerId as string | undefined) ?? null;
+          let fromNumber: string | undefined;
+          if (verifiedCallerIdCfg) {
+            const verified = await resolveCampaignCallerId(campaign.tenantId, verifiedCallerIdCfg);
+            if (!verified) {
+              logger.warn('Campaign references missing/unverified caller ID — pausing contact', {
+                tenantId: campaign.tenantId,
+                campaignId: campaign.id,
+                contactId: contact.id,
+                verifiedCallerId: verifiedCallerIdCfg,
+              });
+              await updateContactStatus(
+                campaign.tenantId,
+                contact.id,
+                'failed',
+                undefined,
+                'Verified caller ID is missing or no longer verified',
+                'failed',
+              );
+              continue;
+            }
+            fromNumber = verified.phoneNumber;
+          }
+
           const result = await dialContact({
             tenantId: campaign.tenantId,
             campaignId: campaign.id,
@@ -175,6 +200,7 @@ export class CampaignScheduler {
             phoneNumber: contact.phoneNumber,
             callbackUrl: `${this.config.outboundCallbackBaseUrl}/twilio/outbound`,
             statusCallbackUrl: this.config.statusCallbackUrl,
+            fromNumber,
           });
 
           if (!result.success) {

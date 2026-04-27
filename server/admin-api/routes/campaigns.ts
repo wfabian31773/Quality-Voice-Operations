@@ -22,6 +22,7 @@ import {
   isValidDisposition,
 } from '../../../platform/campaigns';
 import type { CampaignStatus } from '../../../platform/campaigns';
+import { getVerifiedCallerById } from '../../../platform/telephony/TrustedCallerService';
 
 function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
@@ -65,7 +66,11 @@ const VALID_TIMEZONES = getValidTimezones();
 
 function validateScheduleConfig(config?: Record<string, unknown>): string | null {
   if (!config) return null;
-  const { timezone, callWindowStart, callWindowEnd, daysOfWeek, maxConcurrentCalls, maxAttempts, retryDelayMinutes } = config;
+  const { timezone, callWindowStart, callWindowEnd, daysOfWeek, maxConcurrentCalls, maxAttempts, retryDelayMinutes, verifiedCallerId } = config;
+
+  if (verifiedCallerId !== undefined && verifiedCallerId !== null && typeof verifiedCallerId !== 'string') {
+    return 'config.verifiedCallerId must be a string id or null';
+  }
 
   if (timezone !== undefined) {
     if (typeof timezone !== 'string') return 'config.timezone must be a string';
@@ -289,6 +294,21 @@ router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, 
       return res.status(403).json({
         error: 'Phone verification required before activating outbound campaigns. Verify your phone number in Settings.',
       });
+    }
+
+    const existingCampaign = await getCampaign(tenantId, id);
+    const mergedConfig = {
+      ...(existingCampaign?.config ?? {}),
+      ...(config ?? {}),
+    } as Record<string, unknown>;
+    const verifiedCallerIdCfg = mergedConfig.verifiedCallerId;
+    if (typeof verifiedCallerIdCfg === 'string' && verifiedCallerIdCfg.length > 0) {
+      const verified = await getVerifiedCallerById(tenantId, verifiedCallerIdCfg);
+      if (!verified) {
+        return res.status(400).json({
+          error: 'The selected verified caller ID is missing or has not finished verification. Confirm verification from Trusted Callers.',
+        });
+      }
     }
   }
 

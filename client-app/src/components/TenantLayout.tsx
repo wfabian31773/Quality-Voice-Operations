@@ -7,6 +7,7 @@ import {
   LogOut, Moon, Sun, Menu, BarChart3, Settings2,
   Megaphone, BookOpen, Store, ChevronDown, Boxes, Wrench,
   MessageSquare, CalendarClock, ClipboardList, Truck, Pin, Zap,
+  ShieldCheck,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
@@ -52,6 +53,7 @@ export const configureLinks: NavItem[] = [
   { to: '/workflows', icon: Network, i18nKey: 'tenant_nav.workflows' },
   { to: '/connectors', icon: Plug, i18nKey: 'tenant_nav.integrations' },
   { to: '/knowledge-base', icon: BookOpen, i18nKey: 'tenant_nav.knowledge' },
+  { to: '/trusted-callers', icon: ShieldCheck, i18nKey: 'tenant_nav.trusted_callers' },
   { to: '/marketplace', icon: Store, i18nKey: 'tenant_nav.marketplace' },
 ];
 

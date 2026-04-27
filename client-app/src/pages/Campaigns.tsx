@@ -103,6 +103,14 @@ interface DncEntry {
   createdAt: string;
 }
 
+interface TrustedCallerSummary {
+  id: string;
+  phoneNumber: string;
+  friendlyName: string | null;
+  status: 'pending' | 'verified' | 'failed' | 'rotated';
+  attestationLevel: 'A' | 'B' | 'C' | null;
+}
+
 const STATUS_COLORS: Record<CampaignStatus, string> = {
   draft: 'bg-text-muted/10 text-text-muted',
   scheduled: 'bg-warning/10 text-warning',
@@ -273,6 +281,12 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
   });
   const campaignTypes = typesData?.types ?? [];
 
+  const { data: callersData } = useQuery({
+    queryKey: ['trusted-callers'],
+    queryFn: () => api.get<{ callers: TrustedCallerSummary[] }>('/trusted-callers'),
+  });
+  const verifiedCallers = (callersData?.callers ?? []).filter((c) => c.status === 'verified');
+
   const [step, setStep] = useState<'type' | 'config'>('type');
   const [form, setForm] = useState({
     name: '',
@@ -285,6 +299,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
     maxConcurrentCalls: 5,
     maxAttempts: 3,
     retryDelayMinutes: 30,
+    verifiedCallerId: '',
   });
   const [typeConfig, setTypeConfig] = useState<Record<string, unknown>>({});
   const [error, setError] = useState('');
@@ -309,6 +324,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
           maxConcurrentCalls: form.maxConcurrentCalls,
           maxAttempts: form.maxAttempts,
           retryDelayMinutes: form.retryDelayMinutes,
+          verifiedCallerId: form.verifiedCallerId || null,
           ...typeConfig,
         },
       }),
@@ -413,6 +429,31 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                 />
               </div>
             )}
+
+            <div className="border-t border-border pt-4">
+              <label className="block text-sm font-medium text-text-primary mb-1">Verified Caller ID</label>
+              <select
+                value={form.verifiedCallerId}
+                onChange={(e) => setForm((f) => ({ ...f, verifiedCallerId: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Use default outbound number</option>
+                {verifiedCallers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.friendlyName ? `${c.friendlyName} — ${c.phoneNumber}` : c.phoneNumber}
+                    {c.attestationLevel ? ` (Attestation ${c.attestationLevel})` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-text-muted mt-1">
+                Required to activate the campaign once you have any verified callers. Carriers attest A when the number is registered with a Trust Hub product.
+              </p>
+              {verifiedCallers.length === 0 && (
+                <p className="text-xs text-warning mt-1">
+                  No verified caller IDs yet. Register one under Trusted Callers before going live.
+                </p>
+              )}
+            </div>
 
             <div className="border-t border-border pt-4">
               <h3 className="text-sm font-medium text-text-primary mb-3">Schedule Settings</h3>

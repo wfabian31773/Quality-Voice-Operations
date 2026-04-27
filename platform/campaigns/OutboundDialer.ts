@@ -13,6 +13,13 @@ export interface DialParams {
   phoneNumber: string;
   callbackUrl: string;
   statusCallbackUrl: string;
+  /**
+   * Verified caller ID phone number to use as the `From` of the outbound
+   * call. When provided this overrides the `TWILIO_OUTBOUND_NUMBER` env
+   * fallback, ensuring carriers see a number we own + (where Trust Hub is
+   * configured) attest A under STIR/SHAKEN.
+   */
+  fromNumber?: string;
 }
 
 export interface DialResult {
@@ -21,16 +28,18 @@ export interface DialResult {
   error?: string;
 }
 
-function getTwilioClient() {
+function getTwilioClient(fromOverride?: string) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_OUTBOUND_NUMBER;
+  const fromNumber = fromOverride ?? process.env.TWILIO_OUTBOUND_NUMBER;
 
   if (!accountSid || !authToken) {
     return null;
   }
   if (!fromNumber) {
-    throw new Error('TWILIO_OUTBOUND_NUMBER is not set — required for outbound calls');
+    throw new Error(
+      'No outbound caller ID configured — register a verified caller ID for the campaign or set TWILIO_OUTBOUND_NUMBER',
+    );
   }
   return { accountSid, authToken, fromNumber };
 }
@@ -48,7 +57,14 @@ export async function dialContact(params: DialParams): Promise<DialResult> {
     return { success: false, error: 'DNC list match' };
   }
 
-  const twilio = getTwilioClient();
+  let twilio: ReturnType<typeof getTwilioClient>;
+  try {
+    twilio = getTwilioClient(params.fromNumber);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Outbound caller ID unavailable', { tenantId: params.tenantId, error: message });
+    return { success: false, error: message };
+  }
   if (!twilio) {
     logger.warn('Twilio credentials not configured — cannot dial outbound calls', {
       tenantId: params.tenantId,

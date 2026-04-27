@@ -17,6 +17,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Agents = lazy(() => import('./pages/Agents'));
 const PhoneNumbers = lazy(() => import('./pages/PhoneNumbers'));
+const TrustedCallers = lazy(() => import('./pages/TrustedCallers'));
 const Calls = lazy(() => import('./pages/Calls'));
 const Connectors = lazy(() => import('./pages/Connectors'));
 const UsersPage = lazy(() => import('./pages/Users'));
@@ -195,6 +196,7 @@ export default function App() {
         <Route path="/settings/api-keys" element={<Settings />} />
         <Route path="/settings/privacy" element={<Settings />} />
         <Route path="/phone-numbers" element={<PhoneNumbers />} />
+        <Route path="/trusted-callers" element={<RoleGuard minRole="operator"><TrustedCallers /></RoleGuard>} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/quality" element={<Quality />} />
