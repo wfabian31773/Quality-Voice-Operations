@@ -125,7 +125,8 @@
     "marketplace": "Marketplace",
     "billing": "Faturamento",
     "security": "Segurança",
-    "governance": "Governança"
+    "governance": "Governança",
+    "backfill": "Reprocessar chamadas"
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Traga seu próprio agente de voz",

@@ -125,7 +125,8 @@
     "marketplace": "Marketplace",
     "billing": "Abrechnung",
     "security": "Sicherheit",
-    "governance": "Governance"
+    "governance": "Governance",
+    "backfill": "Anrufe nachladen"
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Bringen Sie Ihren eigenen Sprachagenten mit",

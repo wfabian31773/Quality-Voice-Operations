@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
   Building2, BarChart3, Store, CreditCard, Shield,
-  LogOut, Moon, Sun, Menu, X, Compass, Inbox,
+  LogOut, Moon, Sun, Menu, X, Compass, Inbox, History,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -28,6 +28,7 @@ const adminLinks: NavItem[] = [
   { to: '/admin/billing', icon: CreditCard, i18nKey: 'admin_nav.billing' },
   { to: '/admin/security', icon: Shield, i18nKey: 'admin_nav.security' },
   { to: '/admin/governance', icon: Compass, i18nKey: 'admin_nav.governance' },
+  { to: '/admin/ingest-backfill', icon: History, i18nKey: 'admin_nav.backfill' },
 ];
 
 export default function AdminLayout() {

@@ -52,6 +52,7 @@ const CostOptimization = lazy(() => import('./pages/CostOptimization'));
 const CallDebug = lazy(() => import('./pages/CallDebug'));
 const Compliance = lazy(() => import('./pages/Compliance'));
 const PlatformCompliance = lazy(() => import('./pages/admin/PlatformCompliance'));
+const IngestBackfill = lazy(() => import('./pages/admin/IngestBackfill'));
 const Autopilot = lazy(() => import('./pages/Autopilot'));
 const IntegrationDiagnostics = lazy(() => import('./pages/IntegrationDiagnostics'));
 const Workflows = lazy(() => import('./pages/Workflows'));
@@ -234,6 +235,7 @@ export default function App() {
         <Route path="/admin/evolution" element={<Navigate to="/admin/governance?tab=evolution" replace />} />
         <Route path="/admin/conversion" element={<Navigate to="/admin/governance?tab=funnel" replace />} />
         <Route path="/admin/intelligence" element={<Navigate to="/admin/governance?tab=intelligence" replace />} />
+        <Route path="/admin/ingest-backfill" element={<IngestBackfill />} />
       </Route>
 
       {/* Operations Console */}

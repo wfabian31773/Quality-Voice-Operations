@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { requireApiKeyOrJwt } from '../middleware/apiKeyAuth';
 import { requireApiKeyPermission } from '../middleware/apiKeyScope';
@@ -630,6 +631,258 @@ router.post(
       });
     }
     return res.status(result.status).json(result.body);
+  },
+);
+
+/**
+ * Batch helper for the admin console: processes a single already-validated
+ * backfill event end-to-end and returns a coarse outcome that maps cleanly
+ * to a per-row result in the batch response.
+ */
+async function processOneBackfillEvent(
+  tenantId: string,
+  event: CallBackfillEventV1,
+): Promise<
+  | { outcome: 'inserted' }
+  | { outcome: 'duplicate' }
+  | { outcome: 'failed'; error: string }
+> {
+  const recorded = await recordReceivedEvent(tenantId, event, 'remix-backfill');
+  if (!recorded.ok) {
+    return { outcome: 'failed', error: recorded.error };
+  }
+  if (recorded.duplicate) {
+    return { outcome: 'duplicate' };
+  }
+  const result = await persistCallEvent(tenantId, event, 'remix-backfill');
+  if (result.status === 201) {
+    return { outcome: 'inserted' };
+  }
+  const errMsg =
+    typeof (result.body as { error?: unknown }).error === 'string'
+      ? ((result.body as { error: string }).error)
+      : 'persist failed';
+  return { outcome: 'failed', error: errMsg };
+}
+
+const BackfillBatchAttestationSchema = z.object({
+  reason: z.string().min(8).max(500),
+  attested_by: z.string().min(1).max(120),
+  original_system: z.string().min(1).max(120).optional(),
+  attested_at: z.string().datetime().optional(),
+});
+
+/**
+ * Batch backfill schema. Each `rows[i]` is a partial call event. The tool
+ * fills in `tenant_id`, `version`, `event_type`, `backfill_attestation`, and
+ * a default `timestamp` so the operator only has to supply the per-call
+ * payload itself.
+ */
+const BackfillBatchRequestSchema = z.object({
+  tenant_id: z.string().min(1).optional(),
+  attestation: BackfillBatchAttestationSchema,
+  rows: z.array(z.record(z.unknown())).min(1).max(500),
+  concurrency: z.number().int().min(1).max(8).optional(),
+});
+
+const BACKFILL_BATCH_MAX_ROWS = 500;
+const BACKFILL_BATCH_DEFAULT_CONCURRENCY = 4;
+
+interface BackfillBatchRowResult {
+  row_index: number;
+  idempotency_key: string | null;
+  external_id: string | null;
+  status: 'inserted' | 'duplicate' | 'window_rejected' | 'validation_failed' | 'failed';
+  age_days?: number;
+  error?: string;
+}
+
+/**
+ * Admin-console batch helper for the federated call backfill endpoint.
+ * Accepts an array of row payloads + a single attestation block + optional
+ * `tenant_id`, then fans out to the same per-event pipeline used by the
+ * single-event `/v1/ingest/calls/backfill` endpoint with bounded concurrency.
+ *
+ * Authorisation:
+ *  - JWT only (admin console tool, never used with API keys).
+ *  - Platform admins may target any tenant via `tenant_id`.
+ *  - Tenant operators (tenant_owner / operations_manager) may only replay
+ *    calls for their own tenant; `tenant_id`, when provided, must match.
+ *
+ * Idempotency keys come from the rows verbatim, so re-running the same CSV
+ * after a partial failure yields `duplicate` for already-processed rows
+ * and inserts the rest, making the tool safely resumable.
+ */
+router.post(
+  '/v1/ingest/calls/backfill/batch',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    req.skipAuditMutation = true;
+
+    const userTenantId = req.user!.tenantId;
+    const isPlatformAdmin = req.user!.isPlatformAdmin;
+    const role = req.user!.role;
+
+    if (!isPlatformAdmin && role !== 'tenant_owner' && role !== 'operations_manager') {
+      return res.status(403).json({
+        error: 'Owner, operations manager, or platform admin role required',
+      });
+    }
+
+    const parsed = BackfillBatchRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: parsed.error.flatten(),
+      });
+    }
+    const { rows, attestation } = parsed.data;
+    const targetTenant = parsed.data.tenant_id ?? userTenantId;
+    if (targetTenant !== userTenantId && !isPlatformAdmin) {
+      return res.status(403).json({
+        error: 'Cannot replay calls for another tenant',
+      });
+    }
+    if (rows.length > BACKFILL_BATCH_MAX_ROWS) {
+      return res.status(400).json({
+        error: `Batch size exceeds maximum of ${BACKFILL_BATCH_MAX_ROWS} rows`,
+      });
+    }
+
+    const concurrency = parsed.data.concurrency ?? BACKFILL_BATCH_DEFAULT_CONCURRENCY;
+
+    const results: BackfillBatchRowResult[] = new Array(rows.length);
+    const summary = {
+      total: rows.length,
+      inserted: 0,
+      duplicate: 0,
+      window_rejected: 0,
+      validation_failed: 0,
+      failed: 0,
+    };
+
+    let cursor = 0;
+    const worker = async () => {
+      while (true) {
+        const i = cursor;
+        cursor += 1;
+        if (i >= rows.length) return;
+
+        const raw = rows[i] as Record<string, unknown>;
+        const rawIdem = typeof raw.idempotency_key === 'string' ? raw.idempotency_key : null;
+        const rawExt = typeof raw.external_id === 'string' ? raw.external_id : null;
+
+        const candidate: Record<string, unknown> = {
+          version: 'v1',
+          event_type: 'call.completed',
+          timestamp: typeof raw.timestamp === 'string' ? raw.timestamp : new Date().toISOString(),
+          ...raw,
+          tenant_id: targetTenant,
+          backfill_attestation: attestation,
+        };
+
+        const validated = CallBackfillEventV1Schema.safeParse(candidate);
+        if (!validated.success) {
+          summary.validation_failed += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: rawIdem,
+            external_id: rawExt,
+            status: 'validation_failed',
+            error: JSON.stringify(validated.error.flatten().fieldErrors),
+          };
+          continue;
+        }
+
+        const event = validated.data;
+        const age = ageInDays(event.start_time);
+        const ageRounded = Math.round(age * 100) / 100;
+
+        if (age > INGEST_BACKFILL_WINDOW_DAYS) {
+          summary.window_rejected += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: event.idempotency_key,
+            external_id: event.external_id,
+            status: 'window_rejected',
+            age_days: ageRounded,
+            error: `Older than backfill window (${INGEST_BACKFILL_WINDOW_DAYS} days)`,
+          };
+          continue;
+        }
+        if (age <= INGEST_FRESH_WINDOW_DAYS) {
+          summary.window_rejected += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: event.idempotency_key,
+            external_id: event.external_id,
+            status: 'window_rejected',
+            age_days: ageRounded,
+            error: 'Inside live window — use /v1/ingest/calls instead',
+          };
+          continue;
+        }
+        if (age < -1) {
+          summary.window_rejected += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: event.idempotency_key,
+            external_id: event.external_id,
+            status: 'window_rejected',
+            age_days: ageRounded,
+            error: 'Event start_time is in the future',
+          };
+          continue;
+        }
+
+        const outcome = await processOneBackfillEvent(targetTenant, event);
+        if (outcome.outcome === 'inserted') {
+          summary.inserted += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: event.idempotency_key,
+            external_id: event.external_id,
+            status: 'inserted',
+            age_days: ageRounded,
+          };
+        } else if (outcome.outcome === 'duplicate') {
+          summary.duplicate += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: event.idempotency_key,
+            external_id: event.external_id,
+            status: 'duplicate',
+            age_days: ageRounded,
+          };
+        } else {
+          summary.failed += 1;
+          results[i] = {
+            row_index: i,
+            idempotency_key: event.idempotency_key,
+            external_id: event.external_id,
+            status: 'failed',
+            age_days: ageRounded,
+            error: outcome.error,
+          };
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, rows.length) }, () => worker()),
+    );
+
+    logger.info('Call backfill batch completed', {
+      tenantId: targetTenant,
+      requestedBy: req.user!.userId,
+      summary,
+    });
+
+    return res.status(200).json({
+      tenant_id: targetTenant,
+      summary,
+      results,
+    });
   },
 );
 

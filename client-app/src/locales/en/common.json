@@ -176,7 +176,8 @@
     "marketplace": "Marketplace",
     "billing": "Billing",
     "security": "Security",
-    "governance": "Governance"
+    "governance": "Governance",
+    "backfill": "Backfill calls"
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Bring Your Own Voice Agent",

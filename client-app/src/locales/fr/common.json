@@ -547,6 +547,7 @@
     "marketplace": "Marketplace",
     "billing": "Facturation",
     "security": "Sécurité",
-    "governance": "Gouvernance"
+    "governance": "Gouvernance",
+    "backfill": "Rejouer les appels"
   }
 }
