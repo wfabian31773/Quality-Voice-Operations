@@ -80,6 +80,9 @@ const BlogArticle = lazy(() => import('./pages/public/BlogArticle'));
 const Resources = lazy(() => import('./pages/public/Resources'));
 const GuideDetail = lazy(() => import('./pages/public/GuideDetail'));
 const VerticalLanding = lazy(() => import('./pages/public/VerticalLanding'));
+const VerticalAgents = lazy(() => import('./pages/public/VerticalAgents'));
+const FederatedIngest = lazy(() => import('./pages/public/FederatedIngest'));
+const GlobalIntelligenceNetwork = lazy(() => import('./pages/public/GlobalIntelligenceNetwork'));
 const CaseStudies = lazy(() => import('./pages/public/CaseStudies'));
 const BookDemo = lazy(() => import('./pages/public/BookDemo'));
 const Terms = lazy(() => import('./pages/public/Terms'));
@@ -112,6 +115,8 @@ export default function App() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/product" element={<Product />} />
+        <Route path="/product/federated-ingest" element={<FederatedIngest />} />
+        <Route path="/product/global-intelligence-network" element={<GlobalIntelligenceNetwork />} />
         <Route path="/features" element={<Features />} />
         <Route path="/ai-agents" element={<AgentsShowcase />} />
         <Route path="/pricing" element={<Pricing />} />
@@ -126,6 +131,7 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/blog" element={<Blog />} />
         <Route path="/blog/:slug" element={<BlogArticle />} />
+        <Route path="/industries/vertical-agents" element={<VerticalAgents />} />
         <Route path="/industries/:vertical" element={<VerticalLanding />} />
         <Route path="/case-studies" element={<CaseStudies />} />
         <Route path="/case-studies/:slug" element={<CaseStudies />} />

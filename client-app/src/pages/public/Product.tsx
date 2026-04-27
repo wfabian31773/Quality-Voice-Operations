@@ -586,6 +586,65 @@ export default function Product() {
       <IntegrationsSection />
       <SecuritySection />
 
+      <section className="py-20 lg:py-24 bg-white">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+          <RevealSection>
+            <div className="text-center mb-10">
+              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+                Go deeper
+              </p>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+                Three product surfaces worth a closer look
+              </h2>
+              <p className="text-slate-ink/60 font-body leading-relaxed max-w-2xl mx-auto">
+                Federated Ingest brings external agents under one roof, the Global Intelligence Network benchmarks you against your peers, and Vertical Agents skip the blank prompt entirely.
+              </p>
+            </div>
+          </RevealSection>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                to: '/product/federated-ingest',
+                eyebrow: 'For developers',
+                title: 'Federated Ingest',
+                desc: 'Post calls from any external voice agent into QVO over HTTPS and inherit analytics, billing, and the tool engine.',
+                cta: 'Read the developer pitch',
+              },
+              {
+                to: '/product/global-intelligence-network',
+                eyebrow: 'For operators',
+                title: 'Global Intelligence Network',
+                desc: 'Opt-in, anonymized cross-tenant benchmarks for your vertical — and prompt patterns the top quartile uses.',
+                cta: 'See how GIN works',
+              },
+              {
+                to: '/industries/vertical-agents',
+                eyebrow: 'For practices and crews',
+                title: 'Vertical Agents',
+                desc: 'Native agents like Azul Vision plus templates for medical, dental, field service, legal, and real estate.',
+                cta: 'Browse the catalog',
+              },
+            ].map((card) => (
+              <RevealSection key={card.to}>
+                <Link
+                  to={card.to}
+                  className="block bg-mist rounded-2xl border border-soft-steel/30 p-7 h-full hover:shadow-lg hover:border-teal/30 transition-all group"
+                  onClick={() => trackCTAClick(card.title, '/product', 'go-deeper')}
+                >
+                  <p className="text-xs font-semibold text-teal uppercase tracking-wide mb-2">{card.eyebrow}</p>
+                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{card.title}</h3>
+                  <p className="text-sm text-slate-ink/65 font-body leading-relaxed mb-4">{card.desc}</p>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal group-hover:text-teal-hover">
+                    {card.cta}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                </Link>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="bg-mist py-20 lg:py-24">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-3xl font-bold text-harbor mb-4">

@@ -159,6 +159,8 @@ export default function PublicLayout() {
                 <li><Link to="/ai-agents" className="text-sm hover:text-white transition-colors">{t('public_nav.agents')}</Link></li>
                 <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">{t('public_nav.pricing')}</Link></li>
                 <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">{t('public_nav.integrations')}</Link></li>
+                <li><Link to="/product/federated-ingest" className="text-sm hover:text-white transition-colors">{t('footer.federated_ingest')}</Link></li>
+                <li><Link to="/product/global-intelligence-network" className="text-sm hover:text-white transition-colors">{t('footer.gin')}</Link></li>
                 <li><Link to="/demo" className="text-sm hover:text-white transition-colors">{t('footer.live_demo')}</Link></li>
                 <li><Link to="/book-demo" className="text-sm hover:text-white transition-colors">{t('actions.book_demo')}</Link></li>
               </ul>
@@ -167,6 +169,7 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_solutions')}</h4>
               <ul className="space-y-2.5">
+                <li><Link to="/industries/vertical-agents" className="text-sm hover:text-white transition-colors">{t('footer.vertical_agents')}</Link></li>
                 <li><Link to="/industries/healthcare" className="text-sm hover:text-white transition-colors">{t('footer.healthcare')}</Link></li>
                 <li><Link to="/industries/dental" className="text-sm hover:text-white transition-colors">{t('footer.dental')}</Link></li>
                 <li><Link to="/industries/legal" className="text-sm hover:text-white transition-colors">{t('footer.legal')}</Link></li>
