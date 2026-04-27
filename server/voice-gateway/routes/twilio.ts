@@ -22,7 +22,8 @@ import {
 import type { ContactStatus, ContactOutcome } from '../../../platform/campaigns';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { createRateLimitChecker } from '../../../platform/infra/rate-limit/createRateLimiter';
-import { getPlatformPool } from '../../../platform/db';
+import { getPlatformPool, withPrivilegedClient } from '../../../platform/db';
+import { extractStirTelemetry } from '../../../platform/telephony/stirAttestation';
 import crypto from 'crypto';
 import { recordDemoAnalyticsEvent, scheduleDemoDataCleanup } from '../../admin-api/routes/demo';
 import {
@@ -319,6 +320,42 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
   const callDuration = parseInt(req.body.CallDuration as string, 10) || 0;
 
   logger.info('Twilio status callback', { callSid, callStatus });
+
+  // Capture STIR/SHAKEN attestation telemetry from the carrier as soon as
+  // we see it. Twilio sends `StirStatus` / `StirVerstat` on the same status
+  // callbacks as the call lifecycle transitions, but they may arrive on
+  // any of the in-progress / completed callbacks depending on how quickly
+  // the terminating carrier reports back. We persist whatever is present
+  // each time the callback fires so the Calls UI can warn on downgraded
+  // attestation (B / C / failed) without waiting for `completed`.
+  if (callSid) {
+    const stir = extractStirTelemetry(req.body as Record<string, unknown>);
+    if (stir) {
+      try {
+        await withPrivilegedClient(async (client) => {
+          await client.query(
+            `UPDATE call_sessions
+                SET stir_status = COALESCE($2, stir_status),
+                    stir_verstat = COALESCE($3, stir_verstat),
+                    stir_attestation = COALESCE($4, stir_attestation),
+                    updated_at = NOW()
+              WHERE call_sid = $1`,
+            [callSid, stir.status, stir.verstat, stir.attestation],
+          );
+        });
+        logger.info('Recorded STIR telemetry for outbound call', {
+          callSid,
+          stirStatus: stir.status,
+          stirAttestation: stir.attestation,
+        });
+      } catch (err) {
+        logger.warn('Failed to persist STIR telemetry from status callback', {
+          callSid,
+          error: String(err),
+        });
+      }
+    }
+  }
 
   tenantCoordinators.forEach((coordinator) => {
     coordinator.handleTwilioStatusCallback(callSid, callStatus);

@@ -75,6 +75,7 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
               cs.agent_id, cs.direction, cs.lifecycle_state,
               cs.start_time, cs.end_time, cs.duration_seconds,
               cs.total_cost_cents, cs.environment, cs.created_at,
+              cs.stir_status, cs.stir_verstat, cs.stir_attestation,
               a.name AS agent_name,
               EXISTS (
                 SELECT 1 FROM call_transcripts ct

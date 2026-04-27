@@ -68,6 +68,9 @@ interface Call {
   agent_name: string | null;
   duration_seconds: number | null;
   failed_tool_count?: number;
+  stir_status?: string | null;
+  stir_verstat?: string | null;
+  stir_attestation?: 'A' | 'B' | 'C' | null;
 }
 
 interface TranscriptEntry {
@@ -309,6 +312,59 @@ function CrmRecordsSection({ events }: { events: CallEvent[] }) {
   );
 }
 
+// NOTE: this predicate intentionally mirrors `isStirAttestationDegraded`
+// in `platform/telephony/stirAttestation.ts`. Keep the two in sync —
+// changing one without the other will desync the badge from the
+// server-side telemetry classifier.
+function isStirDegraded(call: Pick<Call, 'stir_status' | 'stir_verstat' | 'stir_attestation'>): boolean {
+  if (call.stir_attestation === 'B' || call.stir_attestation === 'C') return true;
+  const status = call.stir_status?.toLowerCase() ?? null;
+  if (status === 'failed' || status === 'not-signed') return true;
+  const verstat = call.stir_verstat?.toUpperCase() ?? null;
+  if (verstat && /TN-VALIDATION-FAILED/.test(verstat)) return true;
+  return false;
+}
+
+function StirAttestationBadge({
+  call,
+}: {
+  call: Pick<Call, 'stir_status' | 'stir_verstat' | 'stir_attestation'>;
+}) {
+  const hasAnyStir =
+    Boolean(call.stir_attestation) ||
+    Boolean(call.stir_status) ||
+    Boolean(call.stir_verstat);
+  if (!hasAnyStir) return null;
+
+  const degraded = isStirDegraded(call);
+  const attestation = call.stir_attestation ?? null;
+  const label = attestation
+    ? `STIR ${attestation}`
+    : call.stir_status
+      ? `STIR ${call.stir_status}`
+      : 'STIR unverified';
+  const tooltipParts: string[] = [];
+  if (attestation) tooltipParts.push(`Attestation level ${attestation}`);
+  if (call.stir_status) tooltipParts.push(`Status: ${call.stir_status}`);
+  if (call.stir_verstat) tooltipParts.push(`Verstat: ${call.stir_verstat}`);
+  if (degraded && !attestation) tooltipParts.push('Carrier did not validate the caller ID');
+
+  const cls = degraded
+    ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+    : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-300 dark:border-green-800';
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}`}
+      title={tooltipParts.join(' · ')}
+      data-testid="stir-attestation-badge"
+    >
+      {degraded && <AlertTriangle className="h-3 w-3" aria-hidden />}
+      {label}
+    </span>
+  );
+}
+
 function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => void }) {
   const currency = useTenantCurrency();
   const formatCents = (cents: number | null | undefined) => formatCentsHelper(cents, { currency });
@@ -351,7 +407,11 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
         {call && (
           <div className="px-5 py-4 border-b border-border space-y-2">
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-text-secondary">From:</span> <span className="font-mono text-xs">{call.caller_number}</span></div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-text-secondary">From:</span>
+                <span className="font-mono text-xs">{call.caller_number}</span>
+                <StirAttestationBadge call={call} />
+              </div>
               <div><span className="text-text-secondary">To:</span> <span className="font-mono text-xs">{call.called_number}</span></div>
               <div><span className="text-text-secondary">Direction:</span> {call.direction}</div>
               <div><span className="text-text-secondary">Status:</span> {call.lifecycle_state}</div>
