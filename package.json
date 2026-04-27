@@ -9,6 +9,7 @@
     "test:e2e:sales-inbox-filters": "tsx tests/e2e/salesInboxFilters.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\"",
     "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs",
+    "check:design-tokens": "node scripts/check-design-tokens-sync.mjs",
     "dev": "bash scripts/start-platform-dev.sh",
     "start": "npx tsx server/admin-api/start.ts",
     "db:migrate": "tsx scripts/run-migrations.ts",

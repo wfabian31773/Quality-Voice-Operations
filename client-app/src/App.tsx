@@ -66,6 +66,7 @@ const TicketAdmin = lazy(() => import('./pages/TicketAdmin'));
 const Dispatch = lazy(() => import('./pages/Dispatch'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const Changelog = lazy(() => import('./pages/Changelog'));
+const DesignDirections = lazy(() => import('./pages/DesignDirections'));
 
 const Landing = lazy(() => import('./pages/public/Landing'));
 const Product = lazy(() => import('./pages/public/Product'));
@@ -115,6 +116,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/auth/verify-email" element={<VerifyEmail />} />
+      <Route path="/internal/design-directions" element={<DesignDirections />} />
 
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
