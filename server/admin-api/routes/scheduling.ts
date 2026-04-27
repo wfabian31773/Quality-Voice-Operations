@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { fireDispatchPush } from '../../../platform/notifications/dispatchPush';
 
 const router = Router();
 const logger = createLogger('ADMIN_SCHEDULING');
@@ -848,6 +849,27 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
       );
 
       await auditLog(pool, tenantId, id, 'rescheduled', booking.status, 'rescheduled', req.user!.userId, { new_booking_id: newBookingRows[0]?.id, new_start_time, new_end_time }, override_reason || '');
+
+      // Notify the assigned technician (if any) that the booking has been
+      // moved into a new slot — this is one of the "rescheduled into the
+      // technician's day" cases the mobile push spec calls out.
+      const newBooking = newBookingRows[0];
+      if (newBooking?.resource_id) {
+        void fireDispatchPush({
+          event: 'booking_rescheduled',
+          tenantId,
+          resourceIds: [newBooking.resource_id as string],
+          booking: {
+            id: newBooking.id as string,
+            title: (newBooking.title as string | null) ?? null,
+            start_time: newBooking.start_time
+              ? (newBooking.start_time instanceof Date
+                  ? newBooking.start_time.toISOString()
+                  : String(newBooking.start_time))
+              : null,
+          },
+        });
+      }
 
       return res.json({ booking: newBookingRows[0], previous_booking_id: id });
     }

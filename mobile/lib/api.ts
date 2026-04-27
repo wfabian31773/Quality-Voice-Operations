@@ -4,12 +4,16 @@ const STORAGE_BASE_URL_KEY = 'voiceai.tech.baseUrl';
 const STORAGE_API_KEY = 'voiceai.tech.apiKey';
 const STORAGE_RESOURCE_ID = 'voiceai.tech.resourceId';
 const STORAGE_RESOURCE_NAME = 'voiceai.tech.resourceName';
+const STORAGE_PUSH_TOKEN_KEY = 'voiceai.tech.pushToken';
+const STORAGE_PUSH_ENABLED_KEY = 'voiceai.tech.pushEnabled';
 
 export const STORAGE_KEYS = {
   baseUrl: STORAGE_BASE_URL_KEY,
   apiKey: STORAGE_API_KEY,
   resourceId: STORAGE_RESOURCE_ID,
   resourceName: STORAGE_RESOURCE_NAME,
+  pushToken: STORAGE_PUSH_TOKEN_KEY,
+  pushEnabled: STORAGE_PUSH_ENABLED_KEY,
 };
 
 export interface DispatchJob {
@@ -126,7 +130,7 @@ export interface ApiClient {
 }
 
 interface ApiCallOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
   query?: Record<string, string | number | undefined | null>;
@@ -291,4 +295,54 @@ export const api = {
       body: { action, ...extra },
     });
   },
+  registerDevice(
+    client: ApiClient,
+    body: {
+      token: string;
+      resource_id?: string | null;
+      platform?: 'expo' | 'ios' | 'android' | 'web';
+      device_label?: string;
+      app_version?: string;
+      push_enabled?: boolean;
+    },
+  ): Promise<{ device: RegisteredDevice }> {
+    return apiCall(client, '/api/v1/mobile/devices', {
+      method: 'POST',
+      body,
+    });
+  },
+  updateDevice(
+    client: ApiClient,
+    token: string,
+    body: { push_enabled?: boolean; resource_id?: string | null },
+  ): Promise<{ device: RegisteredDevice }> {
+    return apiCall(
+      client,
+      `/api/v1/mobile/devices/${encodeURIComponent(token)}`,
+      { method: 'PATCH', body },
+    );
+  },
+  deleteDevice(
+    client: ApiClient,
+    token: string,
+  ): Promise<{ success: boolean; removed: number }> {
+    return apiCall(
+      client,
+      `/api/v1/mobile/devices/${encodeURIComponent(token)}`,
+      { method: 'DELETE' },
+    );
+  },
 };
+
+export interface RegisteredDevice {
+  id: string;
+  tenant_id: string;
+  resource_id: string | null;
+  user_id: string | null;
+  push_token: string;
+  platform: string;
+  push_enabled: boolean;
+  device_label: string;
+  app_version: string;
+  last_seen_at: string;
+}

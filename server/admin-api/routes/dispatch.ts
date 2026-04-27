@@ -4,9 +4,62 @@ import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { fireDispatchPush, type DispatchPushEvent } from '../../../platform/notifications/dispatchPush';
 
 const router = Router();
 const logger = createLogger('ADMIN_DISPATCH');
+
+/**
+ * Fire-and-forget push to the assigned technician for a dispatch lifecycle
+ * event. Looks up the job's resource_id (and assignee_user_id) and routes
+ * the push through PushDispatcher. Errors are swallowed so the surrounding
+ * state-machine never depends on Expo or the notifications table being up.
+ */
+async function pushAssigneeForJob(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  jobId: string,
+  event: DispatchPushEvent,
+): Promise<void> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, status, contact_name, address, scheduled_at, eta_start,
+              resource_id, assignee_user_id
+         FROM dispatch_jobs
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [jobId, tenantId],
+    );
+    if (rows.length === 0) return;
+    const job = rows[0] as Record<string, unknown>;
+    const resourceId = (job.resource_id as string | null) || null;
+    const assigneeUserId = (job.assignee_user_id as string | null) || null;
+    if (!resourceId && !assigneeUserId) return;
+
+    await fireDispatchPush({
+      event,
+      tenantId,
+      resourceIds: resourceId ? [resourceId] : undefined,
+      userIds: assigneeUserId ? [assigneeUserId] : undefined,
+      job: {
+        id: job.id as string,
+        title: (job.title as string | null) ?? null,
+        status: (job.status as string | null) ?? null,
+        contact_name: (job.contact_name as string | null) ?? null,
+        address: (job.address as string | null) ?? null,
+        scheduled_at: job.scheduled_at ? String(job.scheduled_at) : null,
+        eta_start: job.eta_start ? String(job.eta_start) : null,
+      },
+    });
+  } catch (err) {
+    logger.warn('pushAssigneeForJob failed', { tenantId, jobId, event, error: String(err) });
+  }
+}
+
+const STATUS_TO_PUSH_EVENT: Record<string, DispatchPushEvent> = {
+  en_route: 'job_status_en_route',
+  on_site: 'job_status_on_site',
+};
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {
   const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 200);
@@ -336,6 +389,13 @@ const createJobHandler: RequestHandler = async (req, res) => {
       [rows[0].id, tenantId, jobStatus, userId],
     );
 
+    // If the job is being created already-assigned to a tech, fire the
+    // "new job assigned" push so they don't have to refresh the app to
+    // see it.
+    if (rows[0].resource_id || rows[0].assignee_user_id) {
+      void pushAssigneeForJob(pool, tenantId, rows[0].id as string, 'job_assigned');
+    }
+
     return res.status(201).json({ job: rows[0] });
   } catch (err) {
     logger.error('Failed to create dispatch job', { tenantId, error: String(err) });
@@ -443,7 +503,15 @@ const updateJobHandler: RequestHandler = async (req, res) => {
       if (trigger) {
         fireNotifications(pool, tenantId, id, trigger);
       }
+      const pushEvent = STATUS_TO_PUSH_EVENT[status];
+      if (pushEvent) {
+        void pushAssigneeForJob(pool, tenantId, id, pushEvent);
+      }
     }
+
+    const assignmentChanged =
+      (assignee_user_id !== undefined && assignee_user_id !== existing[0].assignee_user_id) ||
+      (resource_id !== undefined && resource_id !== existing[0].resource_id);
 
     if (assignee_user_id && assignee_user_id !== existing[0].assignee_user_id) {
       await pool.query(
@@ -451,6 +519,13 @@ const updateJobHandler: RequestHandler = async (req, res) => {
          VALUES ($1, $2, 'assignment', $3, 'Job assigned')`,
         [id, tenantId, userId],
       );
+    }
+
+    // Fire the "new job assigned" push when a job lands on a tech for the
+    // first time (or moves to a new tech). We use the row we just wrote so
+    // the push reflects the post-update resource_id / assignee.
+    if (assignmentChanged && (rows[0].resource_id || rows[0].assignee_user_id)) {
+      void pushAssigneeForJob(pool, tenantId, id, 'job_assigned');
     }
 
     return res.json({ job: rows[0] });
@@ -502,6 +577,11 @@ export const transitionJobHandler: RequestHandler = async (req, res) => {
     const trigger = STATUS_TO_TRIGGER[status];
     if (trigger) {
       fireNotifications(pool, tenantId, id, trigger);
+    }
+
+    const pushEvent = STATUS_TO_PUSH_EVENT[status];
+    if (pushEvent) {
+      void pushAssigneeForJob(pool, tenantId, id, pushEvent);
     }
 
     return res.json({ job: rows[0] });
@@ -585,6 +665,17 @@ const batchUpdateHandler: RequestHandler = async (req, res) => {
         );
       }
 
+      const pushEvent = STATUS_TO_PUSH_EVENT[status];
+      if (pushEvent || resource_id || assignee_user_id) {
+        for (const j of currentJobs) {
+          if (resource_id || assignee_user_id) {
+            void pushAssigneeForJob(pool, tenantId, j.id as string, 'job_assigned');
+          } else if (pushEvent) {
+            void pushAssigneeForJob(pool, tenantId, j.id as string, pushEvent);
+          }
+        }
+      }
+
       return res.json({ updated: rowCount, ids: rows.map(r => r.id) });
     } else {
       const updates: string[] = ['updated_at = NOW()'];
@@ -604,6 +695,12 @@ const batchUpdateHandler: RequestHandler = async (req, res) => {
          WHERE tenant_id = $1 AND id = ANY($2) RETURNING id`,
         values,
       );
+
+      if (resource_id || assignee_user_id) {
+        for (const r of rows) {
+          void pushAssigneeForJob(pool, tenantId, r.id as string, 'job_assigned');
+        }
+      }
 
       return res.json({ updated: rowCount, ids: rows.map(r => r.id) });
     }

@@ -45,8 +45,17 @@
         {
           "locationWhenInUsePermission": "Voice AI Tech uses your location to show driving directions and an arrival ETA for your scheduled jobs."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0F172A"
+        }
       ]
     ],
+    "notification": {
+      "iosDisplayInForeground": true
+    },
     "experiments": {
       "typedRoutes": true
     },

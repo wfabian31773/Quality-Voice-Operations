@@ -5,6 +5,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -17,8 +18,18 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 
 export default function ProfileScreen() {
   const colors = useColors();
-  const { client, baseUrl, resourceId, resourceName, signOut, setResource } =
-    useAuth();
+  const {
+    client,
+    baseUrl,
+    resourceId,
+    resourceName,
+    pushEnabled,
+    pushSyncing,
+    pushError,
+    signOut,
+    setResource,
+    setPushEnabled,
+  } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
 
   const resourcesQuery = useQuery({
@@ -136,6 +147,50 @@ export default function ProfileScreen() {
         ) : null}
       </View>
 
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <View style={styles.toggleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+              Notifications
+            </Text>
+            <Text style={[styles.cardValue, { color: colors.text }]}>
+              Push alerts
+            </Text>
+            <Text style={[styles.helper, { color: colors.textMuted }]}>
+              Get notified when a job is assigned to you, when its status moves
+              to en route or on site, or when an appointment is rescheduled.
+            </Text>
+          </View>
+          <Switch
+            value={pushEnabled}
+            onValueChange={(v) => {
+              void setPushEnabled(v);
+            }}
+            disabled={pushSyncing}
+          />
+        </View>
+        {pushSyncing ? (
+          <View style={styles.statusRow}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.helper, { color: colors.textMuted }]}>
+              Syncing device…
+            </Text>
+          </View>
+        ) : null}
+        {pushError ? (
+          <Text
+            style={[styles.helper, { color: colors.danger, marginTop: 8 }]}
+          >
+            {pushError}
+          </Text>
+        ) : null}
+      </View>
+
       <PrimaryButton
         label="Sign out"
         variant="danger"
@@ -220,4 +275,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   resourceName: { fontSize: 14, fontWeight: '600' },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  statusRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
 });

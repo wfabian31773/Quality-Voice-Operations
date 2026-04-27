@@ -353,6 +353,165 @@ describe('Mobile API: JWT write authorization', () => {
   });
 });
 
+describe('Mobile API: push device registration', () => {
+  const TOKEN = 'ExponentPushToken[abcDEF1234567890_xyz-TOKEN]';
+
+  it('rejects requests without auth', async () => {
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/v1/mobile/devices')
+      .send({ token: TOKEN });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects bodies with missing or malformed Expo push tokens', async () => {
+    const app = await buildApp();
+
+    const missing = await request(app)
+      .post('/api/v1/mobile/devices')
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({});
+    expect(missing.status).toBe(400);
+    expect(missing.body.error).toMatch(/token is required/);
+
+    const bad = await request(app)
+      .post('/api/v1/mobile/devices')
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({ token: 'not-an-expo-token' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(/Expo push token/);
+  });
+
+  it('upserts a device row scoped to the API key tenant', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'res-1' }] }) // resource_id check
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'dev-1',
+            tenant_id: 'tenant-A',
+            resource_id: 'res-1',
+            user_id: null,
+            push_token: TOKEN,
+            platform: 'ios',
+            push_enabled: true,
+            device_label: 'iPhone 15',
+            app_version: '1.0.0',
+            last_seen_at: '2026-04-27T00:00:00.000Z',
+          },
+        ],
+      });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/v1/mobile/devices')
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({
+        token: TOKEN,
+        platform: 'ios',
+        resource_id: 'res-1',
+        device_label: 'iPhone 15',
+        app_version: '1.0.0',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.device.id).toBe('dev-1');
+
+    const upsertCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO user_devices'),
+    );
+    expect(upsertCall).toBeTruthy();
+    const params = upsertCall![1] as unknown[];
+    // params: [tenantId, resourceId, userId(null for apiKey), token, platform, pushEnabled, label, appVersion]
+    expect(params[0]).toBe('tenant-A');
+    expect(params[2]).toBeNull();
+    expect(params[3]).toBe(TOKEN);
+  });
+
+  it('rejects a resource_id that belongs to a different tenant', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }); // no row for resource lookup
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/v1/mobile/devices')
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({ token: TOKEN, resource_id: 'res-other-tenant' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/does not belong to this tenant/);
+  });
+
+  it('flips push_enabled via PATCH and scopes by tenant', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'dev-1',
+          tenant_id: 'tenant-A',
+          push_token: TOKEN,
+          push_enabled: false,
+        },
+      ],
+    });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .patch(`/api/v1/mobile/devices/${encodeURIComponent(TOKEN)}`)
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({ push_enabled: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.device.push_enabled).toBe(false);
+
+    const updateCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('UPDATE user_devices'),
+    );
+    expect(updateCall).toBeTruthy();
+    const params = updateCall![1] as unknown[];
+    // last two params are token + tenantId
+    expect(params[params.length - 1]).toBe('tenant-A');
+    expect(params[params.length - 2]).toBe(TOKEN);
+  });
+
+  it('returns 404 when PATCHing an unknown device', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .patch(`/api/v1/mobile/devices/${encodeURIComponent(TOKEN)}`)
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({ push_enabled: true });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH with no updatable fields returns 400', async () => {
+    const app = await buildApp();
+    const res = await request(app)
+      .patch(`/api/v1/mobile/devices/${encodeURIComponent(TOKEN)}`)
+      .set('Authorization', `Bearer ${READ_KEY}`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('DELETE removes the device for the caller tenant only', async () => {
+    queryMock.mockResolvedValueOnce({ rowCount: 1 });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .delete(`/api/v1/mobile/devices/${encodeURIComponent(TOKEN)}`)
+      .set('Authorization', `Bearer ${READ_KEY}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.removed).toBe(1);
+
+    const params = queryMock.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe(TOKEN);
+    expect(params[1]).toBe('tenant-A');
+  });
+});
+
 describe('Mobile API: dispatch resources', () => {
   it('lists technicians (resources) for a read-only API key', async () => {
     // Handler emits 2 queries: the row fetch + a COUNT(*) total query.
