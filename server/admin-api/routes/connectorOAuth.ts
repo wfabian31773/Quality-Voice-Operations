@@ -1,9 +1,10 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { upsertConnector } from '../../../platform/integrations/connectors';
 import { resolveZohoAccountsServer, resolveZohoApiDomain } from '../../../platform/integrations/connectors/zohoRegion';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
+import { oauthStateCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
@@ -103,6 +104,50 @@ function verifyState(state: string, expectedProvider: string): { tenantId: strin
   }
 }
 
+/**
+ * Per-provider state cookie name. We scope by provider so concurrent OAuth
+ * flows for different connectors don't trample each other.
+ */
+function stateCookieName(provider: string): string {
+  return `oauth_state_${provider}`;
+}
+
+/**
+ * Sets the OAuth state cookie alongside the URL `state` parameter on init.
+ * The callback re-checks the cookie value against the URL parameter for
+ * defense-in-depth CSRF protection (BL-027 / RFC 9700 §4.7). Cookie
+ * attributes (`HttpOnly`, `Secure` in prod, `SameSite=Lax`, `Max-Age=600`)
+ * come from `oauthStateCookieOptions()`.
+ */
+function setStateCookie(res: Response, provider: string, state: string): void {
+  res.cookie(stateCookieName(provider), state, oauthStateCookieOptions());
+}
+
+/**
+ * Verifies that the per-provider state cookie equals the `state` query
+ * parameter. We always clear the cookie afterwards (regardless of outcome)
+ * so a leaked state value cannot be replayed against a stale cookie.
+ *
+ * Returns `true` only when the cookie is present and matches the supplied
+ * state in constant time. A missing cookie or mismatch fails closed.
+ */
+function consumeStateCookie(req: Request, res: Response, provider: string, state: string): boolean {
+  const cookieName = stateCookieName(provider);
+  const cookieValue = req.cookies?.[cookieName];
+  // Always clear the cookie so it cannot be replayed.
+  res.clearCookie(cookieName, oauthStateCookieOptions({ maxAge: undefined }));
+  if (typeof cookieValue !== 'string' || cookieValue.length === 0) return false;
+  if (cookieValue.length !== state.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(cookieValue), Buffer.from(state));
+  } catch {
+    return false;
+  }
+}
+
+const OAUTH_INVALID_STATE_HTML =
+  '<html><body><script>window.close();</script>Invalid or expired state</body></html>';
+
 function getAppOrigin(req: { headers: Record<string, string | string[] | undefined> }): string {
   const proto = req.headers['x-forwarded-proto'] ?? 'https';
   const host = req.headers['x-forwarded-host'] ?? req.headers.host ?? 'localhost:5000';
@@ -127,6 +172,7 @@ router.get('/connectors/oauth/hubspot/init', requireAuth, requireRole('manager')
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/hubspot/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'hubspot' });
+  setStateCookie(res, 'hubspot', state);
 
   const scopes = [
     'crm.objects.contacts.read',
@@ -155,10 +201,14 @@ router.get('/connectors/oauth/hubspot/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>HubSpot OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'hubspot', state)) {
+    logger.warn('HubSpot OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'hubspot');
   if (!parsed) {
     logger.warn('HubSpot OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -235,6 +285,7 @@ router.get('/connectors/oauth/google/init', requireAuth, requireRole('manager'),
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/google/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'google' });
+  setStateCookie(res, 'google', state);
 
   const scopes = [
     'https://www.googleapis.com/auth/calendar',
@@ -260,10 +311,14 @@ router.get('/connectors/oauth/google/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>Google OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'google', state)) {
+    logger.warn('Google OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'google');
   if (!parsed) {
     logger.warn('Google OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -342,6 +397,7 @@ router.get('/connectors/oauth/outlook/init', requireAuth, requireRole('manager')
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/outlook/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'outlook' });
+  setStateCookie(res, 'outlook', state);
   const tenant = process.env.MICROSOFT_TENANT_ID || 'common';
 
   const scopes = [
@@ -369,10 +425,14 @@ router.get('/connectors/oauth/outlook/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>Microsoft OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'outlook', state)) {
+    logger.warn('Outlook OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'outlook');
   if (!parsed) {
     logger.warn('Outlook OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -453,6 +513,7 @@ router.get('/connectors/oauth/slack/init', requireAuth, requireRole('manager'), 
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/slack/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'slack' });
+  setStateCookie(res, 'slack', state);
 
   const scopes = [
     'chat:write',
@@ -479,10 +540,14 @@ router.get('/connectors/oauth/slack/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>Slack OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'slack', state)) {
+    logger.warn('Slack OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'slack');
   if (!parsed) {
     logger.warn('Slack OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -560,6 +625,7 @@ router.get('/connectors/oauth/pipedrive/init', requireAuth, requireRole('manager
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/pipedrive/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'pipedrive' });
+  setStateCookie(res, 'pipedrive', state);
 
   const authUrl = `https://oauth.pipedrive.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 
@@ -581,6 +647,7 @@ router.get('/connectors/oauth/salesforce/init', requireAuth, requireRole('manage
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/salesforce/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'salesforce' });
+  setStateCookie(res, 'salesforce', state);
 
   const scopes = ['api', 'refresh_token', 'offline_access', 'id'].join(' ');
 
@@ -603,10 +670,14 @@ router.get('/connectors/oauth/pipedrive/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>Pipedrive OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'pipedrive', state)) {
+    logger.warn('Pipedrive OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'pipedrive');
   if (!parsed) {
     logger.warn('Pipedrive OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -691,10 +762,14 @@ router.get('/connectors/oauth/salesforce/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>Salesforce OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'salesforce', state)) {
+    logger.warn('Salesforce OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'salesforce');
   if (!parsed) {
     logger.warn('Salesforce OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -786,6 +861,7 @@ router.get('/connectors/oauth/quickbooks/init', requireAuth, requireRole('manage
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/quickbooks/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'quickbooks' });
+  setStateCookie(res, 'quickbooks', state);
 
   const scopes = ['com.intuit.quickbooks.accounting'].join(' ');
 
@@ -813,10 +889,14 @@ router.get('/connectors/oauth/quickbooks/callback', async (req, res) => {
     return res.status(400).send('<html><body><script>window.close();</script>QuickBooks OAuth failed: missing realmId</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'quickbooks', state)) {
+    logger.warn('QuickBooks OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'quickbooks');
   if (!parsed) {
     logger.warn('QuickBooks OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   try {
@@ -910,6 +990,7 @@ router.get('/connectors/oauth/zoho/init', requireAuth, requireRole('manager'), (
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/connectors/oauth/zoho/callback`;
   const state = signState({ tenantId: req.user!.tenantId, userId: req.user!.userId, provider: 'zoho' });
+  setStateCookie(res, 'zoho', state);
 
   const scopes = [
     'ZohoCRM.modules.ALL',
@@ -950,10 +1031,14 @@ router.get('/connectors/oauth/zoho/callback', async (req, res) => {
     return res.status(500).send('<html><body><script>window.close();</script>Zoho OAuth not configured</body></html>');
   }
 
+  if (!consumeStateCookie(req, res, 'zoho', state)) {
+    logger.warn('Zoho OAuth callback: state cookie missing or mismatched');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
+  }
   const parsed = verifyState(state, 'zoho');
   if (!parsed) {
     logger.warn('Zoho OAuth callback: invalid or expired state');
-    return res.status(400).send('<html><body><script>window.close();</script>Invalid or expired state</body></html>');
+    return res.status(400).send(OAUTH_INVALID_STATE_HTML);
   }
 
   // Zoho returns the user's region via the `accounts-server` query param on

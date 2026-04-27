@@ -32,6 +32,7 @@ export function isProductionLike(): boolean {
 }
 
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
+const OAUTH_STATE_TTL_MS = 600 * 1000;
 
 /**
  * Returns the canonical options for the `auth_token` session cookie.
@@ -48,6 +49,38 @@ export function authCookieOptions(overrides: Partial<CookieOptions> = {}): Cooki
     sameSite: 'lax',
     path: '/',
     maxAge: EIGHT_HOURS_MS,
+    ...overrides,
+  };
+}
+
+/**
+ * Returns the canonical options for the per-provider OAuth `state` cookie used
+ * by `connectorOAuth.ts` (BL-027).
+ *
+ * The `state` query parameter is also HMAC-signed, but we bind it to a cookie
+ * for defense-in-depth per RFC 9700 §4.7 (OAuth 2.0 Security BCP). The
+ * callback verifies the cookie equals the `state` query param before doing the
+ * token exchange, which means a `state` value leaked via referer / browser
+ * history / server logs cannot be replayed without the user's cookie jar.
+ *
+ * Attributes (all four are required for BL-027):
+ * - `HttpOnly`: blocks JS reads (defense vs XSS exfil).
+ * - `Secure`: HTTPS-only in prod-like envs (cleared in dev so localhost still
+ *   works over plain HTTP).
+ * - `SameSite=Lax`: still sent on the top-level OAuth-provider redirect back
+ *   to our callback, but blocked from cross-site sub-requests.
+ * - `Max-Age=600s`: matches the 600s age check in `verifyState`.
+ *
+ * `path: '/connectors/oauth'` scopes the cookie so it is only sent to the
+ * OAuth init/callback routes and never leaks onto unrelated endpoints.
+ */
+export function oauthStateCookieOptions(overrides: Partial<CookieOptions> = {}): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: isProductionLike(),
+    sameSite: 'lax',
+    path: '/connectors/oauth',
+    maxAge: OAUTH_STATE_TTL_MS,
     ...overrides,
   };
 }
