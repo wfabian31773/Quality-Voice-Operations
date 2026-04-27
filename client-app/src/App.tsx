@@ -51,6 +51,7 @@ const ToolHealth = lazy(() => import('./pages/ToolHealth'));
 const CostOptimization = lazy(() => import('./pages/CostOptimization'));
 const CallDebug = lazy(() => import('./pages/CallDebug'));
 const Compliance = lazy(() => import('./pages/Compliance'));
+const PlatformCompliance = lazy(() => import('./pages/admin/PlatformCompliance'));
 const Autopilot = lazy(() => import('./pages/Autopilot'));
 const IntegrationDiagnostics = lazy(() => import('./pages/IntegrationDiagnostics'));
 const Workflows = lazy(() => import('./pages/Workflows'));
@@ -228,7 +229,7 @@ export default function App() {
         <Route path="/admin/marketplace" element={<AdminMarketplace />} />
         <Route path="/admin/sales-inbox" element={<AdminSalesInbox />} />
         <Route path="/admin/billing" element={<Billing />} />
-        <Route path="/admin/security" element={<Compliance />} />
+        <Route path="/admin/security" element={<PlatformCompliance />} />
         <Route path="/admin/governance" element={<Governance />} />
         <Route path="/admin/evolution" element={<Navigate to="/admin/governance?tab=evolution" replace />} />
         <Route path="/admin/conversion" element={<Navigate to="/admin/governance?tab=funnel" replace />} />
