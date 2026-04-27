@@ -189,12 +189,7 @@ export default function App() {
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/settings" element={<SettingsRedirect />} />
-        <Route path="/settings/general" element={<Settings />} />
-        <Route path="/settings/notifications" element={<Settings />} />
-        <Route path="/settings/roles" element={<Settings />} />
-        <Route path="/settings/security" element={<Settings />} />
-        <Route path="/settings/api-keys" element={<Settings />} />
-        <Route path="/settings/privacy" element={<Settings />} />
+        <Route path="/settings/:tab" element={<Settings />} />
         <Route path="/phone-numbers" element={<PhoneNumbers />} />
         <Route path="/trusted-callers" element={<RoleGuard minRole="operator"><TrustedCallers /></RoleGuard>} />
         <Route path="/users" element={<UsersPage />} />

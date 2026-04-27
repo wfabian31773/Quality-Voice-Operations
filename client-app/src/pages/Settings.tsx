@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
@@ -1292,11 +1292,16 @@ function NotificationCategoryMatrix({
 }
 
 export default function Settings() {
-  const location = useLocation();
   const navigate = useNavigate();
+  const params = useParams<{ tab?: string }>();
+  const rawTab = params.tab ?? 'general';
+  const isValidTab = TABS.some((t) => t.key === rawTab);
 
-  const pathSegment = location.pathname.replace('/settings/', '').replace('/settings', '') as Tab;
-  const tab: Tab = TABS.some((t) => t.key === pathSegment) ? pathSegment : 'general';
+  if (!isValidTab) {
+    return <Navigate to="/settings/general" replace />;
+  }
+
+  const tab = rawTab as Tab;
 
   const setTab = (t: Tab) => {
     navigate(`/settings/${t}`, { replace: true });
