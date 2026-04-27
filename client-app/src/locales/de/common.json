@@ -126,5 +126,427 @@
     "billing": "Abrechnung",
     "security": "Sicherheit",
     "governance": "Governance"
+  },
+  "federated_ingest_page": {
+    "seo_title": "Federated Ingest — Bringen Sie Ihren eigenen Sprachagenten mit",
+    "seo_description": "Federated Ingest erlaubt externen Sprachagenten, Anrufe, Transkripte und Tool-Ereignisse über eine einfache HTTPS-API in QVO einzuspielen — und Analytik, Qualitäts-Scoring, Abrechnung sowie Tool-Ausführung zu erben.",
+    "hero": {
+      "eyebrow": "Für Entwickler und Plattform-Partner",
+      "title": "Federated Ingest. Bringen Sie Ihren eigenen Sprachagenten mit — behalten Sie eine Operations-Oberfläche.",
+      "description": "Betreiben Sie einen beliebigen Sprachagenten — eigenentwickelt, vom Partner gebaut oder ein älteres IVR — und leiten Sie dessen Anrufe über eine einfache HTTPS-API an QVO weiter. Erben Sie Analytik, Qualitäts-Scoring, Abrechnung, die Tool-Ausführungs-Engine und den Rest der Plattform, ohne etwas neu aufzubauen, das Sie bereits ausgeliefert haben.",
+      "cta_primary": "API-Dokumentation lesen",
+      "cta_secondary": "Mit einem Plattform-Engineer sprechen",
+      "chip_endpoint": "Ein einziger HTTPS-Endpunkt",
+      "chip_keys": "Mandantenbezogene API-Schlüssel",
+      "chip_idempotent": "Idempotente Wiederholungen"
+    },
+    "use_cases": {
+      "heading": "Drei Gründe, warum Teams Federated Ingest nutzen",
+      "subheading": "Sie haben bereits einen Sprachagenten gebaut — oder gekauft — und das Letzte, was Sie wollen, ist, ihn rauszureißen. Ingest verbindet Ihren bestehenden Stack mit der QVO-Operations-Schicht.",
+      "items": [
+        {
+          "title": "Betreiben Sie Ihren eigenen Voice-Stack",
+          "desc": "Sie betreiben einen eigenen Sprachagenten (eigene STT/TTS, interne Orchestrierung, On-Prem-GPU). Schicken Sie Anruf-Sessions und Ereignisse an QVO und erben Sie Analytik, Abrechnung, Ticketing und Disposition, ohne etwas neu zu schreiben."
+        },
+        {
+          "title": "Bringen Sie Partner-Agenten unter ein Dach",
+          "desc": "Liefern Sie einen branchenspezifischen Sprachagenten an Ihre Kunden? Leiten Sie Anrufdaten über QVO Ingest weiter, damit jeder Kunde einen einheitlichen Posteingang neben jedem anderen nativen QVO-Agenten sieht, den er nutzt."
+        },
+        {
+          "title": "Verbinden Sie Legacy-IVRs mit KI",
+          "desc": "Streamen Sie Ereignisse aus einer bestehenden Contact-Center-Plattform, damit QVO Qualität bewerten, Evolutions-Vorschläge anzeigen und Metriken in dieselben Dashboards rollen kann wie neuer KI-Verkehr."
+        }
+      ]
+    },
+    "ingest_steps": {
+      "eyebrow": "So funktioniert es",
+      "heading": "Vier Schritte vom externen Anruf zu vereinheitlichten Operations",
+      "step_label": "Schritt {{n}}",
+      "code_caption": "Ein POST pro Anruf. Idempotenz-Schlüssel machen Wiederholungen standardmäßig sicher.",
+      "items": [
+        {
+          "title": "Erstellen Sie einen föderierten API-Schlüssel",
+          "desc": "Jeder externe Agent erhält einen mandantenbezogenen Schlüssel aus dem Entwicklerportal. Schlüssel sind widerrufbar, auf /ingest/* beschränkt und auf Wunsch rotierbar."
+        },
+        {
+          "title": "POSTen Sie Ereignisse an /ingest/*",
+          "desc": "Senden Sie Anruf-Sessions, Transkripte, Tool-Aufrufe und Outcome-Metadaten. Sie liefern Ihr eigenes Idempotenz-Token pro Anfrage — unabhängig von external_id — sodass sichere Wiederholungen und explizite Korrekturen beide erstklassig behandelt werden."
+        },
+        {
+          "title": "Erben Sie das QVO-Datenmodell",
+          "desc": "Eingespielte Anrufe fließen in dieselben call_session-, transcript- und usage-Tabellen wie native QVO-Anrufe — Analytik, Exporte und Stripe-Abrechnung „funktionieren einfach“."
+        },
+        {
+          "title": "Anbindung an den Rest der Plattform",
+          "desc": "Externe Anrufe erscheinen in Dashboards, Qualitäts-Scoring, Ticket-System, Dispositions-Übergaben, GIN-Benchmarks und der Evolutions-Engine — neben dem nativen Verkehr."
+        }
+      ]
+    },
+    "platform_benefits": {
+      "pill": "Was Sie erben",
+      "heading": "Die gesamte QVO-Plattform — ohne eine zweite Integration zu schreiben",
+      "subheading": "Föderierte Anrufe werden zu vollwertigen Bürgern. Jede Produktoberfläche behandelt sie genau so wie einen Anruf, der durch das Voice-Gateway von QVO geroutet wurde.",
+      "items": [
+        {
+          "title": "Vereinheitlichte Analytik",
+          "desc": "Externe Anrufe fließen in dieselben Volumen-, Conversion- und Qualitätsdiagramme wie native QVO-Anrufe. Kein zweites Dashboard, das gepflegt werden muss."
+        },
+        {
+          "title": "Qualitäts-Scoring out of the box",
+          "desc": "Jedes eingespielte Transkript wird von der QVO-QA-Engine bewertet. Vergleichen Sie Ihre Prompt-Revisionen im A/B-Test mit Ihren Mitbewerbern in derselben Branche."
+        },
+        {
+          "title": "Vorschläge der Evolutions-Engine",
+          "desc": "QVO durchsucht eingespielte Transkripte nach Prompt-Verbesserungen und stellt sie Ihrem Team als vorgeschlagene Änderungen zur Annahme oder Ablehnung bereit."
+        },
+        {
+          "title": "Eine einzige Abrechnungsoberfläche",
+          "desc": "Föderierte Minuten werden über Stripe zusammen mit nativer Nutzung abgerechnet. Kunden erhalten eine einzige Rechnung, unabhängig davon, wie die Anrufe abgewickelt wurden."
+        },
+        {
+          "title": "Tool-Ausführungs-Brücke",
+          "desc": "Übergeben Sie mitten im Anruf von Ihrem Agenten an QVO-verwaltete Tools (Terminplanung, Ticketing, SMS, Disposition), ohne den Kunden hin und her zu schicken."
+        },
+        {
+          "title": "Compliance-Vererbung",
+          "desc": "Mandanten-RLS, Audit-Log, PHI-Schwärzung in Transkripten und DSAR-Exporte decken eingespielte Daten genauso ab wie native Anrufe."
+        }
+      ]
+    },
+    "security_section": {
+      "eyebrow": "Für ernsthaften Verkehr gebaut",
+      "heading": "Sicherheit, Idempotenz und Rotation im Protokoll verankert",
+      "items": [
+        {
+          "title": "Mandantenbezogene API-Schlüssel",
+          "desc": "Föderierte Schlüssel werden bei der Ausstellung an einen einzigen Mandanten gebunden und können nicht über Mandanten hinweg wiederverwendet werden — selbst bei einem Leck."
+        },
+        {
+          "title": "Widerrufbar + Rotations-Erinnerungen",
+          "desc": "Schlüssel können sofort über das Entwicklerportal widerrufen werden. Rotations-Erinnerungen erscheinen alle 90 Tage im Audit-Log."
+        },
+        {
+          "title": "Vom Aufrufer gelieferte Idempotenz-Tokens",
+          "desc": "Idempotenz wird über (tenant_id, idempotency_key) verschlüsselt — entkoppelt von external_id — sodass Wiederholungen sicher sind und ein neues Token eine explizite Korrektur für denselben Anruf erneut ausstellen kann."
+        },
+        {
+          "title": "Backfill-Endpunkt mit Attestierung",
+          "desc": "Live-`/v1/ingest/calls` akzeptiert Ereignisse der letzten 7 Tage; älterer Verkehr (bis zu 30 Tage) läuft über `/v1/ingest/calls/backfill` mit einem signierten Attestierungs-Block, der protokolliert, wer das nachträgliche Einspielen autorisiert hat und warum."
+        }
+      ],
+      "compliance_eyebrow": "Compliance-Status",
+      "compliance_text": "Federated Ingest erbt dieselben SOC-2-Kontrollen, die Audit-Log-Abdeckung, RLS-Isolation und DSAR-Exporte wie nativer QVO-Verkehr.",
+      "compliance_followup": "Haben Sie zusätzliche branchenspezifische Anforderungen (HIPAA BAA, regionale Residenz)? Unser Sicherheitsteam definiert das während des Onboardings.",
+      "compliance_security_link": "Sicherheits-Übersicht",
+      "compliance_posture_link": "Live-Sicherheitslage"
+    },
+    "bottom_cta": {
+      "title": "Bereit, Ihren Agenten an QVO anzubinden?",
+      "subtitle": "Erstellen Sie einen föderierten Schlüssel, posten Sie Ihren ersten Anruf und sehen Sie ihn in denselben Dashboards landen wie der Rest Ihrer Operations — meist in unter einem Nachmittag.",
+      "cta_primary": "API-Dokumentation lesen",
+      "cta_secondary": "Plattform-Demo buchen"
+    }
+  },
+  "gin_page": {
+    "seo_title": "Global Intelligence Network — Mandantenübergreifende Voice-Benchmarks",
+    "seo_description": "Das Global Intelligence Network (GIN) bietet QVO-Mandanten opt-in, anonymisierte Benchmarks gegenüber Branchen-Peers und versorgt die Evolutions-Engine mit Prompt-Mustern, die nachweislich etwas bewegen.",
+    "hero": {
+      "eyebrow": "Global Intelligence Network",
+      "title": "Vergleichen Sie Ihre Voice-Operations mit dem Rest Ihrer Branche — ohne ein einziges Transkript zu teilen.",
+      "description": "GIN ist die opt-in mandantenübergreifende Benchmark-Schicht von QVO. Sehen Sie, wo Ihre Antwortrate, Buchungs-Conversion, Dispositionslatenz und Qualitäts-Scores im Vergleich zu einer anonymisierten Kohorte von Peers in Ihrer Branche stehen — und übernehmen Sie die Prompt-Muster, die das obere Quartil vor Sie bringen.",
+      "cta_primary": "GIN in einer Demo sehen",
+      "cta_secondary": "Datenschutzmodell lesen",
+      "chip_optin": "Nur opt-in",
+      "chip_kanon": "k-anonyme Kohorten",
+      "chip_transcripts": "Transkripte verlassen niemals Ihren Mandanten"
+    },
+    "benchmark": {
+      "heading": "So sieht ein GIN-Benchmark aus",
+      "subheading": "Beispielvergleiche aus dem Live-Netzwerk. Die Zahlen werden in einem täglichen Rolling-Window aktualisiert, sodass Sie immer mit aktuellem Verhalten vergleichen.",
+      "col_vertical": "Branche",
+      "col_metric": "Metrik",
+      "col_you": "Sie",
+      "col_median": "Median",
+      "col_top": "Top 25 %",
+      "footnote": "Kohorten werden nur angezeigt, wenn ≥ k Mandanten vergleichbarer Größe teilnehmen.",
+      "examples": [
+        {
+          "vertical": "Gesundheitswesen",
+          "metric": "Antwortrate außerhalb der Geschäftszeiten"
+        },
+        {
+          "vertical": "Zahnmedizin",
+          "metric": "Buchungs-Conversion"
+        },
+        {
+          "vertical": "Außendienst",
+          "metric": "Dispositions-Annahmezeit"
+        },
+        {
+          "vertical": "Immobilien",
+          "metric": "Lead-zu-Besichtigung-Rate"
+        }
+      ]
+    },
+    "value_props": {
+      "eyebrow": "Warum Teams es einschalten",
+      "heading": "Eine Lernschleife, kein Leaderboard",
+      "items": [
+        {
+          "title": "Sehen Sie, wo Sie stehen",
+          "desc": "Vergleichen Sie Antwortrate, Conversion, Dispositionslatenz, No-Show-Rate und Qualitäts-Scores Ihrer Agenten mit einer anonymisierten Kohorte von QVO-Mandanten in derselben Branche und Größenklasse."
+        },
+        {
+          "title": "Lernen Sie vom oberen Quartil",
+          "desc": "Wenn Top-Performer eine Metrik dominieren, mit der Sie kämpfen, zeigt GIN konkrete Prompt- und Konfigurationsmuster, die die Kohorte verwendet — niemals deren Identitäten."
+        },
+        {
+          "title": "Versorgen Sie die Evolutions-Engine",
+          "desc": "GIN speist den Closed-Loop-Prompt-Evolver: Er schlägt Prompt-Änderungen vor, die anderswo in Ihrer Branche messbar etwas bewegt haben, und testet sie dann im A/B-Verfahren auf Ihrem Verkehr, bevor sie ausgerollt werden."
+        }
+      ]
+    },
+    "how_it_works": {
+      "pill": "So funktioniert es",
+      "heading": "Datenschutz von Grund auf",
+      "subheading": "GIN wurde so entworfen, dass Teilen sicher ist und deshalb stattfindet. Die Standardeinstellungen tendieren zur Unterdrückung, nicht zur Offenlegung.",
+      "items": [
+        {
+          "title": "Opt-in pro Workspace",
+          "desc": "GIN ist standardmäßig opt-in. Aktivieren Sie es unter Governance → Global Intelligence. Sie können sich jederzeit abmelden, und Ihre Daten werden aus zukünftigen Kohorten entfernt."
+        },
+        {
+          "title": "k-anonyme Aggregation",
+          "desc": "Metriken werden nach Branche und Mandantengröße gruppiert. Kohorten enthalten immer mindestens k Mandanten — Ihre Zahlen sind niemals identifizierbar, auch nicht durch Inferenz."
+        },
+        {
+          "title": "Keine Transkripte verlassen das System",
+          "desc": "Nur numerische Metriken, strukturierte Tags und Prompt-Form-Fingerabdrücke fließen in GIN ein. Rohe Transkripte, PHI und Kunden-IDs bleiben in Ihrem Mandanten."
+        },
+        {
+          "title": "In einem Rolling-Window aktualisiert",
+          "desc": "Kohorten-Baselines aktualisieren sich in einem täglichen Rolling-Window, sodass der Benchmark, mit dem Sie sich vergleichen, das aktuelle Verhalten widerspiegelt — nicht das letzte Quartal."
+        }
+      ]
+    },
+    "control_plane": {
+      "eyebrow": "In Ihrer Steuerungsebene",
+      "heading": "Sechs Dinge, die Sie unter Governance → Global Intelligence sehen",
+      "benefits": [
+        {
+          "label": "Branchenspezifische Benchmarks",
+          "desc": "Gesundheitswesen, Zahnmedizin, Recht, Immobilien, Haushaltsdienstleistungen, Hotellerie."
+        },
+        {
+          "label": "Quartils-Rankings",
+          "desc": "Wo stehen Sie bei jeder Metrik — unten, in der Mitte oder oben?"
+        },
+        {
+          "label": "Verbesserungsziele",
+          "desc": "Sehen Sie, wie viel Anstieg Sie ein Quartil nach oben bringen würde, mit Aufwandsabschätzungen."
+        },
+        {
+          "label": "Hinweise zu Prompt-Mustern",
+          "desc": "Muster, die Top-Quartils-Peers verwenden — niemals deren Wortlaut oder Identität."
+        },
+        {
+          "label": "Kohorten-Matching",
+          "desc": "Verglichen mit Mandanten in Ihrer Branche und Ihrer Anrufvolumen-Klasse — nicht mit dem gesamten Netzwerk."
+        },
+        {
+          "label": "Single-Source-of-Truth-Metriken",
+          "desc": "Aus demselben Warehouse gezogen, das Ihre Mandanten-Analytik antreibt — keine doppelten Definitionen."
+        }
+      ],
+      "privacy_eyebrow": "Datenschutz-Kontrollen",
+      "privacy_heading": "Gebaut für Käufer, die zu Datenweitergabe „Nein“ sagen",
+      "privacy_controls": [
+        "Nur opt-in — für neue Workspaces standardmäßig deaktiviert.",
+        "Jederzeit abmeldbar; Ihre Daten werden vom nächsten Refresh ausgeschlossen und innerhalb von 24 Stunden aus zwischengespeicherten Kohorten entfernt.",
+        "Pro Branche und Größe müssen Kohorten mindestens k Mandanten enthalten, bevor ein Benchmark gerendert wird. Unter k wird das Diagramm unterdrückt.",
+        "Nur aggregierte Metriken, Prompt-Form-Fingerabdrücke und getaggte Outcomes fließen ein. Rohe Transkripte und Identifikatoren verlassen niemals Ihren Mandanten.",
+        "Das Audit-Log protokolliert jeden GIN-Lesezugriff, jedes Opt-in/Opt-out und jeden Prompt-Vorschlag, der aus einer Peer-Kohorte übernommen wurde.",
+        "GIN-Daten sind von Ihren DSAR-Exporten ausgeschlossen, weil sie nie persönliche Daten enthalten haben — die Audit-Log-Einträge sind jedoch enthalten."
+      ],
+      "security_link": "Sicherheits-Übersicht",
+      "privacy_link": "Datenschutzerklärung"
+    },
+    "evolution_card": {
+      "heading": "Die Evolutions-Engine, aber smarter",
+      "desc": "Für sich allein testet die QVO-Evolutions-Engine Prompt-Revisionen im A/B-Verfahren auf Ihrem Verkehr. Mit aktiviertem GIN startet sie diese Experimente aus einer Kandidatenmenge, die anderswo in Ihrer Branche bereits Conversion oder Qualität nachweislich gesteigert hat — Sie überspringen die Erkundungsphase und gehen direkt zu den Gewinnen.",
+      "cta": "Plattform erkunden"
+    },
+    "bottom_cta": {
+      "title": "Möchten Sie Ihre Zahlen im Kontext sehen?",
+      "subtitle": "Buchen Sie eine Demo, und wir führen Sie durch ein Beispiel-GIN-Benchmark für Ihre Branche — und zeigen Ihnen genau, was geteilt wird (und was nie geteilt wird).",
+      "cta_primary": "Demo buchen",
+      "cta_secondary": "Kostenlose Testversion starten"
+    }
+  },
+  "vertical_agents_page": {
+    "seo_title": "Branchen-Agenten — Vorgefertigte KI-Sprachagenten nach Branche",
+    "seo_description": "Der Katalog branchenspezifischer KI-Sprachagenten von QVO — von nativen Augenheilkunde-Agenten wie Azul Vision bis zu Vorlagen für Medizin, Zahnmedizin, Außendienst, Recht und Immobilien. Wählen Sie eine Vorlage, passen Sie sie an, gehen Sie live.",
+    "hero": {
+      "eyebrow": "Branchen-Agenten",
+      "title": "Vorgefertigte Sprachagenten für die Branchen, in denen Sie tatsächlich arbeiten.",
+      "description": "QVO liefert native und Vorlagen-Agenten, die auf die tatsächliche Arbeitsweise von Praxen und Teams abgestimmt sind — Augenheilkunde, Hausarztpraxis, Zahnmedizin, HVAC, Sanitär, Recht und Immobilien — sodass Sie mit einem funktionierenden Agenten starten und nicht mit einem leeren Prompt.",
+      "cta_primary": "Branchen-Agent ausprobieren",
+      "cta_secondary": "Demo buchen",
+      "chip_verticals": "6+ Branchen heute abgedeckt",
+      "chip_native": "Native + Partner-Agenten",
+      "chip_compliance": "Compliance-Standardwerte pro Branche"
+    },
+    "catalog": {
+      "heading": "Der aktuelle Katalog",
+      "subheading": "Native Agenten sind schlüsselfertig. Vorlagen sind Ausgangspunkte, die Sie im QVO Agent Builder für Ihre Praxis oder Ihr Team anpassen.",
+      "industry_link": "Branchen-Übersicht",
+      "demo_link": "Demo ausprobieren",
+      "agents": [
+        {
+          "name": "Azul Vision",
+          "vertical": "Augenheilkunde",
+          "summary": "Ein nativer Augenheilkunde-Agent, der Patientenanrufe für Katarakt-, LASIK-, Netzhaut- und Glaukom-Praxen End-to-End abwickelt. Von einem klinischen Team gebaut, in QVO bereitgestellt.",
+          "capabilities": [
+            "Triage von Augenerkrankungen mit Eskalation an die Bereitschaft",
+            "Prä-/postoperative Anweisungs-Anrufe und Bestätigungen",
+            "Versicherungsprüfung mit EHR-Rückschreiben",
+            "Mehrstandort-Operationsplanung"
+          ],
+          "source": "Nativer QVO-Agent — läuft im Voice-Gateway mit PHI-Schwärzung."
+        },
+        {
+          "name": "Medizinischer Empfang",
+          "vertical": "Hausarzt- & Facharztpraxen",
+          "summary": "Patiententerminplanung, Aufnahme, Rezeptverlängerungen und Triage außerhalb der Geschäftszeiten für Hausarztpraxen, Notfallambulanzen und Facharztpraxen.",
+          "capabilities": [
+            "Patiententerminplanung und -umplanung",
+            "Strukturierte Aufnahme und Versicherungsdaten",
+            "Triage von Rezeptverlängerungen",
+            "Klassifizierung der Dringlichkeit außerhalb der Geschäftszeiten"
+          ],
+          "source": "Vorlage — passen Sie Prompts, Tools und Routing für Ihre Praxis an."
+        },
+        {
+          "name": "Zahnarztpraxis-Agent",
+          "vertical": "Zahnmedizin",
+          "summary": "Bucht Reinigungen, bestätigt Hygienetermine, übernimmt die Versicherungsprüfung und reduziert No-Shows für allgemeine und ästhetische Zahnarztpraxen.",
+          "capabilities": [
+            "Behandlungszimmerbewusste Terminplanung",
+            "Routing zwischen Hygieniker und Zahnarzt",
+            "Prüfung von Versicherungsleistungen",
+            "Rückrufe zur No-Show-Wiederherstellung"
+          ],
+          "source": "Vorlage — vorabgestimmt für Dentrix, Open Dental und Eaglesoft."
+        },
+        {
+          "name": "Außendienst-Disponent",
+          "vertical": "HVAC, Sanitär, Elektrik",
+          "summary": "Beantwortet Notfall-Service-Anrufe, priorisiert nach Dringlichkeit und disponiert Techniker mit Live-ETA-SMS an den Kunden.",
+          "capabilities": [
+            "Notfall-Triage außerhalb der Geschäftszeiten",
+            "Techniker-Matching nach Skill und Standort",
+            "Echtzeit-ETA-SMS an den Kunden",
+            "Upsell-Prompts für Wartungsverträge"
+          ],
+          "source": "Vorlage — bindet sich ab Werk in die Dispositions- und SMS-Systeme von QVO ein."
+        },
+        {
+          "name": "Rechtsaufnahme-Agent",
+          "vertical": "Anwaltskanzleien",
+          "summary": "Führt professionelle Mandantenaufnahmen durch — erfasst Sachverhalte, prüft Konflikte und bucht Beratungstermine im Kalender des passenden Anwalts.",
+          "capabilities": [
+            "Strukturierte Mandantenaufnahme",
+            "Interessenskonflikt-Prüfungen",
+            "Routing nach Rechtsgebiet",
+            "Beratungstermin-Buchung mit Honorar-Infos"
+          ],
+          "source": "Vorlage — entwickelt mit Input von Personenschäden-, Familien- und Einwanderungs-Kanzleien."
+        },
+        {
+          "name": "Immobilien-Lead-Agent",
+          "vertical": "Maklerbüros und Teams",
+          "summary": "Reagiert in Sekunden auf eingehende Käufer- und Verkäufer-Leads, qualifiziert sie nach Budget und Zeitplan und bucht Besichtigungen im Kalender der Makler.",
+          "capabilities": [
+            "Lead-Antwort in unter 30 Sekunden",
+            "Budget- und Vorabgenehmigungs-Qualifikation",
+            "MLS-Suche für Fragen zu Objekten",
+            "Besichtigungsplanung mit Bestätigungen"
+          ],
+          "source": "Vorlage — integriert mit HubSpot, Follow Up Boss und großen MLS-Feeds."
+        }
+      ]
+    },
+    "what_you_get": {
+      "pill": "Was in jedem Branchen-Agenten steckt",
+      "heading": "Sechs Dinge, die Sie nicht selbst bauen müssen",
+      "items": [
+        {
+          "title": "Branchenspezifische Prompts",
+          "desc": "Jeder Agent kommt mit Prompts, die von Menschen geschrieben wurden, die tatsächlich in dieser Branche arbeiten — keine generische „Arzthelferin“-Vorlage, die quer über Fachgebiete angewandt wird."
+        },
+        {
+          "title": "Vorverdrahtete Tools",
+          "desc": "Jede Vorlage ist mit den richtigen Terminplanungs-, EHR-, MLS-, Dispositions- und CRM-Tools vorverdrahtet. Keine Tool-für-Tool-Verkabelung am ersten Tag."
+        },
+        {
+          "title": "Branchen-Wissenspakete",
+          "desc": "Glossare, Aufnahme-Schemata und FAQ-Bibliotheken sind auf die Branche abgestimmt, sodass der Agent ab dem ersten Anruf richtig antwortet."
+        },
+        {
+          "title": "Compliance-Standardwerte",
+          "desc": "PHI-Schwärzung für das Gesundheitswesen, Konfliktprüfung für Recht, TCPA-Ruhezeiten für ausgehende Anrufe — die Defaults passen zur Branche, nicht nur zur Plattform."
+        },
+        {
+          "title": "Branchen-KPIs in Ihrem Dashboard",
+          "desc": "Jede Vorlage zeigt die Metriken, die für diese Branche zählen (No-Show-Rate, Lead-zu-Besichtigung, Dispositions-Annahmezeit), statt generischer Anrufzahlen."
+        },
+        {
+          "title": "Bereit für die Evolutions-Engine",
+          "desc": "Jede Vorlage bindet sich an die QVO-Evolutions-Engine an und (optional) an das Global Intelligence Network für branchenbewusste Prompt-Vorschläge."
+        }
+      ]
+    },
+    "deploy_steps": {
+      "eyebrow": "Bringen Sie einen Branchen-Agenten live",
+      "heading": "Vier Schritte vom Katalog zum ersten Live-Anruf",
+      "items": [
+        {
+          "title": "1. Vorlage auswählen",
+          "desc": "Stöbern Sie im obigen Katalog und wählen Sie den Agenten, der zu Ihrer Branche passt. Native Agenten wie Azul Vision sind schlüsselfertig; Vorlagen sind ein Ausgangspunkt, den Sie anpassen."
+        },
+        {
+          "title": "2. Im Agent Builder anpassen",
+          "desc": "Passen Sie Prompts an, fügen Sie Ihre Wissensdokumente hinzu, verbinden Sie Ihr CRM/EHR und legen Sie Routing-Regeln fest — alles im visuellen Agent Builder."
+        },
+        {
+          "title": "3. In der Live-Demo testen",
+          "desc": "Rufen Sie den Agenten selbst über die Demo-Konsole an, bewerten Sie das Gespräch und iterieren Sie, bevor Sie echte Nummern darauf richten."
+        },
+        {
+          "title": "4. Live gehen und lernen",
+          "desc": "Routen Sie eine Telefonnummer auf den Agenten. Qualitäts-Scoring, Evolutions-Vorschläge und (opt-in) GIN-Benchmarks greifen sofort."
+        }
+      ]
+    },
+    "spotlight": {
+      "eyebrow": "Im Fokus",
+      "heading": "Azul Vision: ein nativer, branchentiefer Agent",
+      "desc": "Azul Vision ist ein Augenheilkunde-Agent, der von Klinikern gebaut und in das QVO-Voice-Gateway portiert wurde — kein Drittagent, der Ereignisse weiterleitet. Das bedeutet, dass die QVO-Voice-AI-Laufzeit, die Tool-Engine und die PHI-Schwärzung End-to-End auf jeden Anruf angewendet werden.",
+      "bullets": [
+        "Prä- und postoperative Patientenaufklärungs-Anrufe",
+        "Operationsplanung über mehrere ASC-Standorte hinweg",
+        "Triage für Netzhaut-, Glaukom- und postoperative Anliegen"
+      ],
+      "partner_heading": "Möchten Sie einen branchentiefen Agenten für Ihr Fachgebiet?",
+      "partner_desc": "QVO arbeitet mit Branchenexperten zusammen, um native Agenten für neue Fachgebiete auszuliefern. Wenn Ihr Team die klinische oder operative Expertise hat und wir die Laufzeit, können wir gemeinsam einen Branchen-Agenten für Ihre Domäne aufbauen.",
+      "partner_cta": "Mit QVO partnern",
+      "partner_alt": "Oder Federated Ingest verwenden"
+    },
+    "bottom_cta": {
+      "title": "Lassen Sie den leeren Prompt aus. Starten Sie mit einem Branchen-Agenten.",
+      "subtitle": "Spinnen Sie einen Agenten hoch, der Ihre Branche bereits kennt. Passen Sie an, was für Ihre Praxis spezifisch ist, lassen Sie den Rest auf den Standardwerten und gehen Sie in Tagen live, nicht in Monaten.",
+      "cta_primary": "Kostenlose Testversion starten",
+      "cta_secondary": "Anwendungsfälle ansehen"
+    }
   }
 }

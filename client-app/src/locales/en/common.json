@@ -177,5 +177,427 @@
     "billing": "Billing",
     "security": "Security",
     "governance": "Governance"
+  },
+  "federated_ingest_page": {
+    "seo_title": "Federated Ingest — Bring Your Own Voice Agent",
+    "seo_description": "Federated Ingest lets external voice agents post calls, transcripts, and tool events into QVO over a simple HTTPS API — and inherit analytics, quality scoring, billing, and tool execution.",
+    "hero": {
+      "eyebrow": "For developers and platform partners",
+      "title": "Federated Ingest. Bring your own voice agent — keep one operations surface.",
+      "description": "Run any voice agent — proprietary, partner-built, or a legacy IVR — and forward its calls into QVO over a simple HTTPS API. Inherit analytics, quality scoring, billing, the tool execution engine, and the rest of the platform, without rebuilding anything you already shipped.",
+      "cta_primary": "Read the API docs",
+      "cta_secondary": "Talk to a platform engineer",
+      "chip_endpoint": "Single HTTPS endpoint",
+      "chip_keys": "Tenant-scoped API keys",
+      "chip_idempotent": "Idempotent retries"
+    },
+    "use_cases": {
+      "heading": "Three reasons teams use Federated Ingest",
+      "subheading": "You already built a voice agent — or bought one — and the last thing you want is to rip it out. Ingest plugs your existing stack into the QVO operations layer.",
+      "items": [
+        {
+          "title": "Run your own voice stack",
+          "desc": "You operate a custom voice agent (proprietary STT/TTS, in-house orchestration, on-prem GPU). Post call sessions and events into QVO and inherit the analytics, billing, ticketing, and dispatch layers without rewriting anything."
+        },
+        {
+          "title": "Bring partner agents under one roof",
+          "desc": "Shipping a vertical voice agent to your customers? Forward call data through QVO ingest so each customer sees a unified inbox alongside any other QVO-native agents they run."
+        },
+        {
+          "title": "Bridge legacy IVRs into AI",
+          "desc": "Stream events from an existing contact-center platform so QVO can score quality, surface evolution suggestions, and roll metrics up to the same dashboards as new AI traffic."
+        }
+      ]
+    },
+    "ingest_steps": {
+      "eyebrow": "How it works",
+      "heading": "Four steps from external call to unified operations",
+      "step_label": "Step {{n}}",
+      "code_caption": "One POST per call. Idempotency keys make retries safe by default.",
+      "items": [
+        {
+          "title": "Mint a federated API key",
+          "desc": "Each external agent gets a tenant-scoped key from the developer portal. Keys are revocable, scoped to /ingest/* only, and rotate on demand."
+        },
+        {
+          "title": "POST events to /ingest/*",
+          "desc": "Send call sessions, transcripts, tool calls, and outcome metadata. You supply your own idempotency token per request — independent of external_id — so safe retries and explicit corrections are both first-class."
+        },
+        {
+          "title": "Inherit the QVO data model",
+          "desc": "Ingested calls flow into the same call_session, transcript, and usage tables as native QVO calls — so analytics, exports, and Stripe metering “just work.”"
+        },
+        {
+          "title": "Plug into the rest of the platform",
+          "desc": "External calls show up in dashboards, Quality scoring, the ticket system, dispatch handoffs, GIN benchmarks, and the evolution engine alongside native traffic."
+        }
+      ]
+    },
+    "platform_benefits": {
+      "pill": "What you inherit",
+      "heading": "The whole QVO platform — without writing a second integration",
+      "subheading": "Federated calls become first-class citizens. Every product surface treats them exactly like a call routed through QVO's voice gateway.",
+      "items": [
+        {
+          "title": "Unified analytics",
+          "desc": "External calls roll into the same volume, conversion, and quality charts as native QVO calls. No second dashboard to maintain."
+        },
+        {
+          "title": "Quality scoring out of the box",
+          "desc": "Every ingested transcript is scored by the QVO QA engine. Compare your prompt revisions A/B against your peers in the same vertical."
+        },
+        {
+          "title": "Evolution engine suggestions",
+          "desc": "QVO mines ingested transcripts for prompt improvements and surfaces them as proposed changes for your team to accept or reject."
+        },
+        {
+          "title": "One billing surface",
+          "desc": "Federated minutes meter through Stripe alongside native usage. Customers get a single invoice, however the calls were delivered."
+        },
+        {
+          "title": "Tool execution bridge",
+          "desc": "Hand off from your agent to QVO-managed tools (scheduling, ticketing, SMS, dispatch) in mid-call without round-tripping the customer."
+        },
+        {
+          "title": "Compliance inheritance",
+          "desc": "Tenant RLS, audit log, PHI redaction in transcripts, and DSAR exports cover ingested data the same way they cover native calls."
+        }
+      ]
+    },
+    "security_section": {
+      "eyebrow": "Built for serious traffic",
+      "heading": "Security, idempotency, and rotation built into the protocol",
+      "items": [
+        {
+          "title": "Tenant-scoped API keys",
+          "desc": "Federated keys are bound to a single tenant at issuance and cannot be reused across tenants — even if leaked."
+        },
+        {
+          "title": "Revocable + rotation reminders",
+          "desc": "Keys can be revoked instantly from the developer portal. Rotation reminders surface in the audit log every 90 days."
+        },
+        {
+          "title": "Caller-supplied idempotency tokens",
+          "desc": "Idempotency is keyed on (tenant_id, idempotency_key) — decoupled from external_id — so retries are safe and a fresh token can re-issue an explicit correction for the same call."
+        },
+        {
+          "title": "Backfill endpoint with attestation",
+          "desc": "Live `/v1/ingest/calls` accepts events from the last 7 days; older traffic (up to 30 days) goes through `/v1/ingest/calls/backfill` with a signed attestation block recording who authorized the late ingest and why."
+        }
+      ],
+      "compliance_eyebrow": "Compliance status",
+      "compliance_text": "Federated ingest inherits the same SOC 2 controls, audit log coverage, RLS isolation, and DSAR exports as native QVO traffic.",
+      "compliance_followup": "Have additional vertical requirements (HIPAA BAA, regional residency)? Our security team will scope it during onboarding.",
+      "compliance_security_link": "Security overview",
+      "compliance_posture_link": "Live security posture"
+    },
+    "bottom_cta": {
+      "title": "Ready to wire your agent into QVO?",
+      "subtitle": "Mint a federated key, post your first call, and watch it land in the same dashboards as the rest of your operations — usually in under an afternoon.",
+      "cta_primary": "Read the API docs",
+      "cta_secondary": "Book a platform demo"
+    }
+  },
+  "gin_page": {
+    "seo_title": "Global Intelligence Network — Cross-tenant Voice Benchmarks",
+    "seo_description": "The Global Intelligence Network (GIN) gives QVO tenants opt-in, anonymized benchmarks against vertical peers, and feeds the evolution engine with prompt patterns that demonstrably move the needle.",
+    "hero": {
+      "eyebrow": "Global Intelligence Network",
+      "title": "Benchmark your voice operations against the rest of your industry — without sharing a single transcript.",
+      "description": "GIN is QVO's opt-in cross-tenant benchmark layer. See where your answer rate, booking conversion, dispatch latency, and quality scores sit against an anonymized cohort of peers in your vertical — and pull in the prompt patterns that put the top quartile ahead of you.",
+      "cta_primary": "See GIN in a demo",
+      "cta_secondary": "Read the privacy model",
+      "chip_optin": "Opt-in only",
+      "chip_kanon": "k-anonymous cohorts",
+      "chip_transcripts": "Transcripts never leave your tenant"
+    },
+    "benchmark": {
+      "heading": "What a GIN benchmark looks like",
+      "subheading": "Sample comparisons from the live network. Numbers update on a daily rolling window so you're always comparing against current behavior.",
+      "col_vertical": "Vertical",
+      "col_metric": "Metric",
+      "col_you": "You",
+      "col_median": "Median",
+      "col_top": "Top 25%",
+      "footnote": "Cohorts shown only when ≥ k tenants of comparable size are participating.",
+      "examples": [
+        {
+          "vertical": "Healthcare",
+          "metric": "After-hours answer rate"
+        },
+        {
+          "vertical": "Dental",
+          "metric": "Booking conversion"
+        },
+        {
+          "vertical": "Field service",
+          "metric": "Dispatch acceptance time"
+        },
+        {
+          "vertical": "Real estate",
+          "metric": "Lead-to-tour rate"
+        }
+      ]
+    },
+    "value_props": {
+      "eyebrow": "Why teams turn it on",
+      "heading": "A learning loop, not a leaderboard",
+      "items": [
+        {
+          "title": "See where you stand",
+          "desc": "Compare your agents’ answer rate, conversion, dispatch latency, no-show rate, and quality scores against an anonymized cohort of QVO tenants in the same vertical and size band."
+        },
+        {
+          "title": "Learn from the top quartile",
+          "desc": "When peer top performers crush a metric you struggle on, GIN surfaces concrete prompt and configuration patterns the cohort uses — never their identities."
+        },
+        {
+          "title": "Power the evolution engine",
+          "desc": "GIN feeds the closed-loop prompt evolver: it proposes prompt changes that have measurably moved the needle elsewhere in your vertical, then A/B tests them on your traffic before promoting."
+        }
+      ]
+    },
+    "how_it_works": {
+      "pill": "How it works",
+      "heading": "Privacy-first by construction",
+      "subheading": "GIN was designed to make sharing safe so that sharing happens. The defaults err on the side of suppression, not exposure.",
+      "items": [
+        {
+          "title": "Opt in per workspace",
+          "desc": "GIN is opt-in by default. Toggle it on from Governance → Global Intelligence. You can opt out at any time and your data is removed from future cohorts."
+        },
+        {
+          "title": "k-anonymous aggregation",
+          "desc": "Metrics are bucketed by vertical and tenant size. Cohorts always contain at least k tenants — your numbers are never identifiable, even by inference."
+        },
+        {
+          "title": "No transcripts ever leave",
+          "desc": "Only numeric metrics, structured tags, and prompt-shape fingerprints contribute to GIN. Raw transcripts, PHI, and customer identifiers stay inside your tenant."
+        },
+        {
+          "title": "Refreshed on a rolling window",
+          "desc": "Cohort baselines update on a daily rolling window so the benchmark you compare against reflects current behavior, not last quarter."
+        }
+      ]
+    },
+    "control_plane": {
+      "eyebrow": "In your control plane",
+      "heading": "Six things you'll see in Governance → Global Intelligence",
+      "benefits": [
+        {
+          "label": "Vertical-aware benchmarks",
+          "desc": "Healthcare, dental, legal, real estate, home services, hospitality."
+        },
+        {
+          "label": "Quartile rankings",
+          "desc": "Where do you sit on each metric — bottom, middle, top?"
+        },
+        {
+          "label": "Improvement targets",
+          "desc": "See how much lift would move you up a quartile, with effort estimates."
+        },
+        {
+          "label": "Prompt-pattern hints",
+          "desc": "Patterns top quartile peers use, never their wording or identity."
+        },
+        {
+          "label": "Cohort matching",
+          "desc": "Compared against tenants in your vertical and call-volume tier — not the whole network."
+        },
+        {
+          "label": "Source-of-truth metrics",
+          "desc": "Pulled from the same warehouse that powers your tenant analytics — no duplicate definitions."
+        }
+      ],
+      "privacy_eyebrow": "Privacy controls",
+      "privacy_heading": "Built for buyers who say \"no\" to data sharing",
+      "privacy_controls": [
+        "Opt-in only — disabled by default for new workspaces.",
+        "Opt out at any time; your data is excluded from the next refresh and dropped from cached cohorts within 24 hours.",
+        "Per-vertical, per-size cohorts must contain at least k tenants before a benchmark renders. Below k, the chart is suppressed.",
+        "Only aggregate metrics, prompt-shape fingerprints, and tagged outcomes contribute. Raw transcripts and identifiers never leave your tenant.",
+        "Audit log records every GIN read, every opt-in/opt-out, and every prompt suggestion accepted from a peer cohort.",
+        "GIN data is excluded from your DSAR exports because it never contained personal data — but the audit log entries are included."
+      ],
+      "security_link": "Security overview",
+      "privacy_link": "Privacy policy"
+    },
+    "evolution_card": {
+      "heading": "The evolution engine, but smarter",
+      "desc": "On its own, the QVO evolution engine A/B tests prompt revisions on your traffic. With GIN turned on, it starts those experiments from a candidate set already shown to lift conversion or quality elsewhere in your vertical — so you skip the exploration step and head straight for the gains.",
+      "cta": "Explore the platform"
+    },
+    "bottom_cta": {
+      "title": "Want to see your numbers in context?",
+      "subtitle": "Book a demo and we'll walk you through a sample GIN benchmark for your vertical — and show you exactly what gets shared (and what never does).",
+      "cta_primary": "Book a demo",
+      "cta_secondary": "Start free trial"
+    }
+  },
+  "vertical_agents_page": {
+    "seo_title": "Vertical Agents — Pre-built AI Voice Agents by Industry",
+    "seo_description": "QVO's catalog of vertical AI voice agents — from native ophthalmology agents like Azul Vision to medical, dental, field-service, legal, and real-estate templates. Pick a template, customize it, ship it.",
+    "hero": {
+      "eyebrow": "Vertical Agents",
+      "title": "Pre-built voice agents for the verticals you actually work in.",
+      "description": "QVO ships native and template agents tuned to the way real practices and crews operate — ophthalmology, primary care, dental, HVAC, plumbing, law, and real estate — so you start from a working agent, not a blank prompt.",
+      "cta_primary": "Try a vertical agent",
+      "cta_secondary": "Book a demo",
+      "chip_verticals": "6+ verticals covered today",
+      "chip_native": "Native + partner agents",
+      "chip_compliance": "Compliance defaults per vertical"
+    },
+    "catalog": {
+      "heading": "The current catalog",
+      "subheading": "Native agents are turn-key. Templates are starting points you customize for your practice or crew in the QVO Agent Builder.",
+      "industry_link": "Industry overview",
+      "demo_link": "Try the demo",
+      "agents": [
+        {
+          "name": "Azul Vision",
+          "vertical": "Ophthalmology",
+          "summary": "A native ophthalmology agent that handles patient calls for cataract, LASIK, retina, and glaucoma practices end-to-end. Built by a clinical team, deployed inside QVO.",
+          "capabilities": [
+            "Eye-condition triage with on-call escalation",
+            "Pre/post-op instruction calls and confirmations",
+            "Insurance verification with EHR write-back",
+            "Multi-location surgery scheduling"
+          ],
+          "source": "Native QVO agent — runs inside the voice gateway with PHI redaction."
+        },
+        {
+          "name": "Medical Front Desk",
+          "vertical": "Primary care & specialty clinics",
+          "summary": "Patient scheduling, intake, prescription refills, and after-hours triage for primary care, urgent care, and specialty practices.",
+          "capabilities": [
+            "Patient scheduling and rescheduling",
+            "Structured intake and insurance capture",
+            "Prescription refill triage",
+            "After-hours urgency classification"
+          ],
+          "source": "Template — customize prompts, tools, and routing for your clinic."
+        },
+        {
+          "name": "Dental Practice Agent",
+          "vertical": "Dental",
+          "summary": "Books cleanings, confirms hygiene appointments, handles insurance verification, and reduces no-shows for general and cosmetic dental practices.",
+          "capabilities": [
+            "Operatory-aware scheduling",
+            "Hygienist vs. dentist routing",
+            "Insurance benefit verification",
+            "No-show recovery callbacks"
+          ],
+          "source": "Template — pre-tuned for Dentrix, Open Dental, and Eaglesoft."
+        },
+        {
+          "name": "Field Service Dispatcher",
+          "vertical": "HVAC, plumbing, electrical",
+          "summary": "Answers emergency service calls, prioritizes by urgency, and dispatches technicians with live ETA SMS to the customer.",
+          "capabilities": [
+            "After-hours emergency triage",
+            "Technician matching by skill and location",
+            "Real-time ETA SMS to customer",
+            "Maintenance contract upsell prompts"
+          ],
+          "source": "Template — wires into the QVO dispatch and SMS systems out of the box."
+        },
+        {
+          "name": "Legal Intake Agent",
+          "vertical": "Law firms",
+          "summary": "Conducts professional case intake — captures facts, runs conflict checks, and books consultations on the right attorney's calendar.",
+          "capabilities": [
+            "Structured case intake",
+            "Conflict-of-interest checks",
+            "Practice-area routing",
+            "Consultation booking with retainer info"
+          ],
+          "source": "Template — designed with input from PI, family, and immigration firms."
+        },
+        {
+          "name": "Real Estate Lead Agent",
+          "vertical": "Brokerages and teams",
+          "summary": "Responds to inbound buyer and seller leads in seconds, qualifies them by budget and timeline, and books showings on agent calendars.",
+          "capabilities": [
+            "Sub-30s lead response",
+            "Budget and pre-approval qualification",
+            "MLS lookup for property questions",
+            "Showing scheduling with confirmations"
+          ],
+          "source": "Template — integrates with HubSpot, Follow Up Boss, and major MLS feeds."
+        }
+      ]
+    },
+    "what_you_get": {
+      "pill": "What's in every vertical agent",
+      "heading": "Six things you don't have to build yourself",
+      "items": [
+        {
+          "title": "Vertical-specific prompts",
+          "desc": "Each agent ships with prompts written by people who actually work in that vertical — not a generic “medical receptionist” template applied across specialties."
+        },
+        {
+          "title": "Pre-wired tools",
+          "desc": "Each template comes pre-wired to the right scheduling, EHR, MLS, dispatch, and CRM tools. No tool-by-tool plumbing on day one."
+        },
+        {
+          "title": "Vertical knowledge packs",
+          "desc": "Glossaries, intake schemas, and FAQ libraries tuned to the vertical so the agent answers correctly from the first call."
+        },
+        {
+          "title": "Compliance defaults",
+          "desc": "PHI redaction for healthcare, conflict-check for legal, TCPA quiet-hours for outbound — defaults match the vertical, not just the platform."
+        },
+        {
+          "title": "Vertical KPIs in your dashboard",
+          "desc": "Each template surfaces the metrics that matter for that vertical (no-show rate, lead-to-tour, dispatch acceptance time) instead of generic call counts."
+        },
+        {
+          "title": "Evolution-engine ready",
+          "desc": "Every template plugs into the QVO evolution engine and (optionally) the Global Intelligence Network for vertical-aware prompt suggestions."
+        }
+      ]
+    },
+    "deploy_steps": {
+      "eyebrow": "Get a vertical agent live",
+      "heading": "Four steps from catalog to first live call",
+      "items": [
+        {
+          "title": "1. Pick a template",
+          "desc": "Browse the catalog above and choose the agent that matches your vertical. Native agents like Azul Vision are turn-key; templates are a starting point you customize."
+        },
+        {
+          "title": "2. Customize in the Agent Builder",
+          "desc": "Adjust prompts, add your knowledge documents, wire in your CRM/EHR, and set routing rules — all from the visual Agent Builder."
+        },
+        {
+          "title": "3. Test on the live demo",
+          "desc": "Call the agent yourself from the demo console, score the conversation, and iterate before pointing real numbers at it."
+        },
+        {
+          "title": "4. Go live and learn",
+          "desc": "Route a phone number to the agent. Quality scoring, evolution suggestions, and (opt-in) GIN benchmarks kick in immediately."
+        }
+      ]
+    },
+    "spotlight": {
+      "eyebrow": "Spotlight",
+      "heading": "Azul Vision: a native, vertical-deep agent",
+      "desc": "Azul Vision is an ophthalmology agent built by clinicians and ported to run inside the QVO voice gateway — not a third-party agent forwarding events. That means the QVO Voice AI runtime, tool engine, and PHI redaction apply end-to-end to every call.",
+      "bullets": [
+        "Pre-op and post-op patient education calls",
+        "Surgical scheduling across multi-location ASCs",
+        "Triage for retina, glaucoma, and post-op concerns"
+      ],
+      "partner_heading": "Want a vertical-deep agent for your specialty?",
+      "partner_desc": "QVO partners with vertical experts to ship native agents for new specialties. If your team has the clinical or operational expertise and we have the runtime, we can co-build a Vertical Agent for your domain.",
+      "partner_cta": "Partner with QVO",
+      "partner_alt": "Or use Federated Ingest"
+    },
+    "bottom_cta": {
+      "title": "Skip the blank prompt. Start with a vertical agent.",
+      "subtitle": "Spin up an agent that already knows your vertical. Customize what's specific to your practice, leave the rest as defaults, and go live in days, not months.",
+      "cta_primary": "Start free trial",
+      "cta_secondary": "See use cases"
+    }
   }
 }

@@ -116,6 +116,428 @@
     "settings": "Paramètres",
     "whats_new": "Nouveautés"
   },
+  "federated_ingest_page": {
+    "seo_title": "Federated Ingest — Apportez votre propre agent vocal",
+    "seo_description": "Federated Ingest permet aux agents vocaux externes d'envoyer appels, transcriptions et événements d'outils dans QVO via une API HTTPS simple, et d'hériter de l'analytique, du scoring qualité, de la facturation et de l'exécution d'outils.",
+    "hero": {
+      "eyebrow": "Pour les développeurs et les partenaires plateforme",
+      "title": "Federated Ingest. Apportez votre propre agent vocal — gardez une seule surface d'opérations.",
+      "description": "Faites tourner n'importe quel agent vocal — propriétaire, conçu par un partenaire ou un IVR existant — et transférez ses appels dans QVO via une API HTTPS simple. Héritez de l'analytique, du scoring qualité, de la facturation, du moteur d'exécution d'outils et du reste de la plateforme, sans reconstruire ce que vous avez déjà livré.",
+      "cta_primary": "Lire la documentation API",
+      "cta_secondary": "Parler à un ingénieur plateforme",
+      "chip_endpoint": "Un seul endpoint HTTPS",
+      "chip_keys": "Clés API à portée du tenant",
+      "chip_idempotent": "Reprises idempotentes"
+    },
+    "use_cases": {
+      "heading": "Trois raisons pour lesquelles les équipes utilisent Federated Ingest",
+      "subheading": "Vous avez déjà construit un agent vocal — ou acheté un — et la dernière chose que vous voulez, c'est l'arracher. Ingest branche votre stack existant sur la couche d'opérations QVO.",
+      "items": [
+        {
+          "title": "Faites tourner votre propre stack vocal",
+          "desc": "Vous opérez un agent vocal personnalisé (STT/TTS propriétaire, orchestration interne, GPU on-prem). Postez les sessions d'appels et les événements dans QVO et héritez des couches analytique, facturation, ticketing et dispatch sans rien réécrire."
+        },
+        {
+          "title": "Réunissez des agents partenaires sous un même toit",
+          "desc": "Vous livrez un agent vocal vertical à vos clients ? Transférez les données d'appel via QVO Ingest pour que chaque client voie une boîte de réception unifiée aux côtés de tout autre agent natif QVO qu'il utilise."
+        },
+        {
+          "title": "Reliez les IVR existants à l'IA",
+          "desc": "Streamez les événements depuis une plateforme de centre de contact existante pour que QVO puisse noter la qualité, suggérer des évolutions et consolider les métriques dans les mêmes tableaux de bord que le nouveau trafic IA."
+        }
+      ]
+    },
+    "ingest_steps": {
+      "eyebrow": "Comment ça marche",
+      "heading": "Quatre étapes de l'appel externe aux opérations unifiées",
+      "step_label": "Étape {{n}}",
+      "code_caption": "Un POST par appel. Les clés d'idempotence rendent les reprises sûres par défaut.",
+      "items": [
+        {
+          "title": "Générez une clé API fédérée",
+          "desc": "Chaque agent externe reçoit une clé limitée au tenant depuis le portail développeur. Les clés sont révocables, limitées à /ingest/* uniquement et rotables à la demande."
+        },
+        {
+          "title": "POSTez les événements vers /ingest/*",
+          "desc": "Envoyez les sessions d'appels, les transcriptions, les appels d'outils et les métadonnées de résultat. Vous fournissez votre propre token d'idempotence par requête — indépendant d'external_id — pour que les reprises sûres et les corrections explicites soient toutes deux traitées en première classe."
+        },
+        {
+          "title": "Héritez du modèle de données QVO",
+          "desc": "Les appels ingérés alimentent les mêmes tables call_session, transcript et usage que les appels natifs QVO — l'analytique, les exports et la facturation Stripe « marchent juste »."
+        },
+        {
+          "title": "Branchez-vous au reste de la plateforme",
+          "desc": "Les appels externes apparaissent dans les tableaux de bord, le scoring qualité, le système de tickets, les transferts de dispatch, les benchmarks GIN et le moteur d'évolution, aux côtés du trafic natif."
+        }
+      ]
+    },
+    "platform_benefits": {
+      "pill": "Ce dont vous héritez",
+      "heading": "Toute la plateforme QVO — sans écrire une seconde intégration",
+      "subheading": "Les appels fédérés deviennent des citoyens de première classe. Chaque surface produit les traite exactement comme un appel routé via la passerelle vocale de QVO.",
+      "items": [
+        {
+          "title": "Analytique unifiée",
+          "desc": "Les appels externes alimentent les mêmes graphiques de volume, de conversion et de qualité que les appels natifs QVO. Pas de second tableau de bord à entretenir."
+        },
+        {
+          "title": "Scoring qualité prêt à l'emploi",
+          "desc": "Chaque transcription ingérée est notée par le moteur QA de QVO. Comparez vos révisions de prompt en A/B avec vos pairs du même secteur."
+        },
+        {
+          "title": "Suggestions du moteur d'évolution",
+          "desc": "QVO analyse les transcriptions ingérées à la recherche d'améliorations de prompt et les présente comme des modifications proposées que votre équipe accepte ou refuse."
+        },
+        {
+          "title": "Une seule surface de facturation",
+          "desc": "Les minutes fédérées sont mesurées via Stripe en parallèle de l'usage natif. Les clients reçoivent une seule facture, peu importe comment les appels ont été délivrés."
+        },
+        {
+          "title": "Pont d'exécution d'outils",
+          "desc": "Transférez la main de votre agent vers les outils gérés par QVO (planification, ticketing, SMS, dispatch) en plein appel sans faire transiter le client."
+        },
+        {
+          "title": "Héritage de conformité",
+          "desc": "RLS du tenant, journal d'audit, expurgation PHI dans les transcriptions et exports DSAR couvrent les données ingérées de la même manière que les appels natifs."
+        }
+      ]
+    },
+    "security_section": {
+      "eyebrow": "Conçu pour du trafic sérieux",
+      "heading": "Sécurité, idempotence et rotation intégrées au protocole",
+      "items": [
+        {
+          "title": "Clés API à portée du tenant",
+          "desc": "Les clés fédérées sont liées à un seul tenant à l'émission et ne peuvent pas être réutilisées entre tenants — même en cas de fuite."
+        },
+        {
+          "title": "Révocables + rappels de rotation",
+          "desc": "Les clés peuvent être révoquées instantanément depuis le portail développeur. Les rappels de rotation apparaissent dans le journal d'audit tous les 90 jours."
+        },
+        {
+          "title": "Tokens d'idempotence fournis par l'appelant",
+          "desc": "L'idempotence est indexée sur (tenant_id, idempotency_key) — découplée d'external_id — pour que les reprises soient sûres et qu'un nouveau token puisse réémettre une correction explicite pour le même appel."
+        },
+        {
+          "title": "Endpoint de backfill avec attestation",
+          "desc": "Le `/v1/ingest/calls` en direct accepte les événements des 7 derniers jours ; le trafic plus ancien (jusqu'à 30 jours) passe par `/v1/ingest/calls/backfill` avec un bloc d'attestation signé qui consigne qui a autorisé l'ingestion tardive et pourquoi."
+        }
+      ],
+      "compliance_eyebrow": "Statut de conformité",
+      "compliance_text": "L'ingestion fédérée hérite des mêmes contrôles SOC 2, de la couverture du journal d'audit, de l'isolation RLS et des exports DSAR que le trafic QVO natif.",
+      "compliance_followup": "Vous avez des exigences sectorielles supplémentaires (HIPAA BAA, résidence régionale) ? Notre équipe sécurité les cadrera lors de l'onboarding.",
+      "compliance_security_link": "Aperçu de la sécurité",
+      "compliance_posture_link": "Posture de sécurité en direct"
+    },
+    "bottom_cta": {
+      "title": "Prêt à brancher votre agent dans QVO ?",
+      "subtitle": "Générez une clé fédérée, postez votre premier appel et regardez-le atterrir dans les mêmes tableaux de bord que le reste de vos opérations — généralement en moins d'un après-midi.",
+      "cta_primary": "Lire la documentation API",
+      "cta_secondary": "Réserver une démo plateforme"
+    }
+  },
+  "gin_page": {
+    "seo_title": "Global Intelligence Network — Benchmarks vocaux inter-tenants",
+    "seo_description": "Le Global Intelligence Network (GIN) offre aux tenants QVO des benchmarks anonymisés et opt-in face à leurs pairs sectoriels, et alimente le moteur d'évolution avec des modèles de prompt qui font bouger l'aiguille de manière mesurable.",
+    "hero": {
+      "eyebrow": "Global Intelligence Network",
+      "title": "Comparez vos opérations vocales au reste de votre secteur — sans partager une seule transcription.",
+      "description": "GIN est la couche de benchmark inter-tenants opt-in de QVO. Voyez où se situent votre taux de réponse, votre conversion de réservation, votre latence de dispatch et vos scores de qualité face à une cohorte anonymisée de pairs de votre secteur — et adoptez les modèles de prompt qui mettent le quartile supérieur devant vous.",
+      "cta_primary": "Voir GIN dans une démo",
+      "cta_secondary": "Lire le modèle de confidentialité",
+      "chip_optin": "Opt-in uniquement",
+      "chip_kanon": "Cohortes k-anonymes",
+      "chip_transcripts": "Les transcriptions ne quittent jamais votre tenant"
+    },
+    "benchmark": {
+      "heading": "À quoi ressemble un benchmark GIN",
+      "subheading": "Comparaisons d'exemple du réseau en direct. Les chiffres se mettent à jour sur une fenêtre glissante quotidienne, vous comparez donc toujours avec le comportement actuel.",
+      "col_vertical": "Secteur",
+      "col_metric": "Métrique",
+      "col_you": "Vous",
+      "col_median": "Médiane",
+      "col_top": "Top 25 %",
+      "footnote": "Les cohortes ne s'affichent que lorsque ≥ k tenants de taille comparable participent.",
+      "examples": [
+        {
+          "vertical": "Santé",
+          "metric": "Taux de réponse hors horaires"
+        },
+        {
+          "vertical": "Dentaire",
+          "metric": "Conversion de réservation"
+        },
+        {
+          "vertical": "Service terrain",
+          "metric": "Temps d'acceptation du dispatch"
+        },
+        {
+          "vertical": "Immobilier",
+          "metric": "Taux de lead-vers-visite"
+        }
+      ]
+    },
+    "value_props": {
+      "eyebrow": "Pourquoi les équipes l'activent",
+      "heading": "Une boucle d'apprentissage, pas un classement",
+      "items": [
+        {
+          "title": "Voyez où vous vous situez",
+          "desc": "Comparez le taux de réponse, la conversion, la latence de dispatch, le taux de no-show et les scores de qualité de vos agents face à une cohorte anonymisée de tenants QVO du même secteur et de la même tranche de taille."
+        },
+        {
+          "title": "Apprenez du quartile supérieur",
+          "desc": "Quand des pairs très performants écrasent une métrique sur laquelle vous galérez, GIN fait remonter des modèles de prompt et de configuration concrets que la cohorte utilise — jamais leur identité."
+        },
+        {
+          "title": "Alimentez le moteur d'évolution",
+          "desc": "GIN nourrit l'évolueur de prompts en boucle fermée : il propose des changements de prompt qui ont fait bouger l'aiguille de façon mesurable ailleurs dans votre secteur, puis les teste en A/B sur votre trafic avant de les promouvoir."
+        }
+      ]
+    },
+    "how_it_works": {
+      "pill": "Comment ça marche",
+      "heading": "Confidentialité par construction",
+      "subheading": "GIN a été conçu pour rendre le partage sûr afin que le partage ait lieu. Les valeurs par défaut penchent du côté de la suppression, pas de l'exposition.",
+      "items": [
+        {
+          "title": "Opt-in par espace de travail",
+          "desc": "GIN est en opt-in par défaut. Activez-le depuis Gouvernance → Global Intelligence. Vous pouvez vous désinscrire à tout moment et vos données sont retirées des cohortes futures."
+        },
+        {
+          "title": "Agrégation k-anonyme",
+          "desc": "Les métriques sont regroupées par secteur et taille de tenant. Les cohortes contiennent toujours au moins k tenants — vos chiffres ne sont jamais identifiables, même par inférence."
+        },
+        {
+          "title": "Aucune transcription ne sort",
+          "desc": "Seules les métriques numériques, les tags structurés et les empreintes de forme de prompt contribuent à GIN. Les transcriptions brutes, les PHI et les identifiants clients restent dans votre tenant."
+        },
+        {
+          "title": "Rafraîchi sur une fenêtre glissante",
+          "desc": "Les références de cohorte se mettent à jour sur une fenêtre glissante quotidienne, le benchmark auquel vous vous comparez reflète donc le comportement actuel, pas celui du dernier trimestre."
+        }
+      ]
+    },
+    "control_plane": {
+      "eyebrow": "Dans votre plan de contrôle",
+      "heading": "Six choses que vous verrez dans Gouvernance → Global Intelligence",
+      "benefits": [
+        {
+          "label": "Benchmarks par secteur",
+          "desc": "Santé, dentaire, juridique, immobilier, services à domicile, hôtellerie."
+        },
+        {
+          "label": "Classements par quartile",
+          "desc": "Où vous situez-vous sur chaque métrique — bas, milieu, haut ?"
+        },
+        {
+          "label": "Objectifs d'amélioration",
+          "desc": "Voyez de combien il faudrait progresser pour passer un quartile, avec des estimations d'effort."
+        },
+        {
+          "label": "Indices de modèles de prompt",
+          "desc": "Modèles utilisés par les pairs du quartile supérieur, jamais leur formulation ni leur identité."
+        },
+        {
+          "label": "Appariement de cohorte",
+          "desc": "Comparé à des tenants de votre secteur et de votre tranche de volume d'appels — pas au réseau entier."
+        },
+        {
+          "label": "Métriques source de vérité",
+          "desc": "Tirées du même entrepôt qui alimente votre analytique tenant — pas de définitions en double."
+        }
+      ],
+      "privacy_eyebrow": "Contrôles de confidentialité",
+      "privacy_heading": "Conçu pour les acheteurs qui disent « non » au partage de données",
+      "privacy_controls": [
+        "Opt-in uniquement — désactivé par défaut pour les nouveaux espaces de travail.",
+        "Désinscrivez-vous à tout moment ; vos données sont exclues du prochain rafraîchissement et retirées des cohortes en cache en moins de 24 heures.",
+        "Les cohortes par secteur et par taille doivent contenir au moins k tenants avant qu'un benchmark s'affiche. En dessous de k, le graphique est masqué.",
+        "Seules les métriques agrégées, les empreintes de forme de prompt et les résultats taggés contribuent. Les transcriptions brutes et les identifiants ne quittent jamais votre tenant.",
+        "Le journal d'audit consigne chaque lecture de GIN, chaque opt-in/opt-out et chaque suggestion de prompt acceptée d'une cohorte de pairs.",
+        "Les données GIN sont exclues de vos exports DSAR car elles n'ont jamais contenu de données personnelles — mais les entrées du journal d'audit sont incluses."
+      ],
+      "security_link": "Aperçu de la sécurité",
+      "privacy_link": "Politique de confidentialité"
+    },
+    "evolution_card": {
+      "heading": "Le moteur d'évolution, mais en plus malin",
+      "desc": "Seul, le moteur d'évolution QVO teste en A/B des révisions de prompt sur votre trafic. Avec GIN activé, il démarre ces expériences à partir d'un ensemble de candidats déjà démontrés comme augmentant la conversion ou la qualité ailleurs dans votre secteur — vous sautez l'étape d'exploration et allez droit aux gains.",
+      "cta": "Explorer la plateforme"
+    },
+    "bottom_cta": {
+      "title": "Vous voulez voir vos chiffres en contexte ?",
+      "subtitle": "Réservez une démo et nous vous guiderons à travers un benchmark GIN d'exemple pour votre secteur — et nous vous montrerons exactement ce qui est partagé (et ce qui ne l'est jamais).",
+      "cta_primary": "Réserver une démo",
+      "cta_secondary": "Démarrer l'essai gratuit"
+    }
+  },
+  "vertical_agents_page": {
+    "seo_title": "Agents verticaux — Agents vocaux IA préconçus par secteur",
+    "seo_description": "Le catalogue d'agents vocaux IA verticaux de QVO — depuis les agents natifs d'ophtalmologie comme Azul Vision jusqu'aux modèles pour la médecine, le dentaire, le service terrain, le juridique et l'immobilier. Choisissez un modèle, personnalisez-le, lancez-le.",
+    "hero": {
+      "eyebrow": "Agents verticaux",
+      "title": "Des agents vocaux préconçus pour les secteurs dans lesquels vous travaillez réellement.",
+      "description": "QVO livre des agents natifs et des modèles ajustés à la façon dont opèrent les vraies pratiques et équipes — ophtalmologie, médecine générale, dentaire, CVC, plomberie, droit et immobilier — pour que vous démarriez à partir d'un agent qui fonctionne, pas d'un prompt vide.",
+      "cta_primary": "Essayer un agent vertical",
+      "cta_secondary": "Réserver une démo",
+      "chip_verticals": "6+ secteurs couverts aujourd'hui",
+      "chip_native": "Agents natifs + partenaires",
+      "chip_compliance": "Conformité par défaut par secteur"
+    },
+    "catalog": {
+      "heading": "Le catalogue actuel",
+      "subheading": "Les agents natifs sont clé en main. Les modèles sont des points de départ que vous personnalisez pour votre cabinet ou votre équipe dans le QVO Agent Builder.",
+      "industry_link": "Aperçu du secteur",
+      "demo_link": "Essayer la démo",
+      "agents": [
+        {
+          "name": "Azul Vision",
+          "vertical": "Ophtalmologie",
+          "summary": "Un agent natif d'ophtalmologie qui gère les appels patients pour les cabinets de cataracte, LASIK, rétine et glaucome de bout en bout. Construit par une équipe clinique, déployé à l'intérieur de QVO.",
+          "capabilities": [
+            "Triage des affections oculaires avec escalade vers la garde",
+            "Appels d'instructions pré/post-opératoires et confirmations",
+            "Vérification d'assurance avec écriture de retour à l'EHR",
+            "Planification chirurgicale multi-sites"
+          ],
+          "source": "Agent natif QVO — tourne dans la passerelle vocale avec expurgation des PHI."
+        },
+        {
+          "name": "Accueil Médical",
+          "vertical": "Médecine générale & cabinets de spécialité",
+          "summary": "Planification des patients, accueil, renouvellements d'ordonnances et triage hors horaires pour la médecine générale, les soins urgents et les cabinets de spécialité.",
+          "capabilities": [
+            "Planification et reprogrammation de patients",
+            "Accueil structuré et capture d'assurance",
+            "Triage des renouvellements d'ordonnances",
+            "Classification de l'urgence hors horaires"
+          ],
+          "source": "Modèle — personnalisez prompts, outils et routage pour votre cabinet."
+        },
+        {
+          "name": "Agent de Cabinet Dentaire",
+          "vertical": "Dentaire",
+          "summary": "Réserve les détartrages, confirme les rendez-vous d'hygiène, gère la vérification d'assurance et réduit les no-shows pour les cabinets dentaires généraux et esthétiques.",
+          "capabilities": [
+            "Planification consciente des fauteuils",
+            "Routage entre hygiéniste et dentiste",
+            "Vérification des prestations d'assurance",
+            "Rappels de récupération de no-show"
+          ],
+          "source": "Modèle — préréglé pour Dentrix, Open Dental et Eaglesoft."
+        },
+        {
+          "name": "Régulateur de Service Terrain",
+          "vertical": "CVC, plomberie, électricité",
+          "summary": "Répond aux appels de service d'urgence, priorise par urgence et dispatche les techniciens avec un SMS d'ETA en direct au client.",
+          "capabilities": [
+            "Triage d'urgence hors horaires",
+            "Appariement de technicien par compétence et localisation",
+            "SMS d'ETA en temps réel au client",
+            "Prompts d'upsell pour les contrats de maintenance"
+          ],
+          "source": "Modèle — se branche dès le départ aux systèmes de dispatch et SMS de QVO."
+        },
+        {
+          "name": "Agent d’Accueil Juridique",
+          "vertical": "Cabinets d'avocats",
+          "summary": "Effectue un accueil professionnel des dossiers — capture les faits, exécute les vérifications de conflit et réserve les consultations dans l'agenda du bon avocat.",
+          "capabilities": [
+            "Accueil de dossier structuré",
+            "Vérifications de conflit d'intérêts",
+            "Routage par domaine de pratique",
+            "Réservation de consultation avec infos d'honoraires"
+          ],
+          "source": "Modèle — conçu avec l'apport de cabinets de dommages corporels, de famille et d'immigration."
+        },
+        {
+          "name": "Agent de Leads Immobiliers",
+          "vertical": "Agences et équipes",
+          "summary": "Répond aux leads acheteurs et vendeurs entrants en quelques secondes, les qualifie par budget et calendrier, et réserve les visites dans l'agenda des agents.",
+          "capabilities": [
+            "Réponse aux leads en moins de 30 secondes",
+            "Qualification budget et préapprobation",
+            "Recherche MLS pour les questions sur les biens",
+            "Planification des visites avec confirmations"
+          ],
+          "source": "Modèle — s'intègre avec HubSpot, Follow Up Boss et les principaux flux MLS."
+        }
+      ]
+    },
+    "what_you_get": {
+      "pill": "Ce qui se trouve dans chaque agent vertical",
+      "heading": "Six choses que vous n'avez pas à construire vous-même",
+      "items": [
+        {
+          "title": "Prompts spécifiques au secteur",
+          "desc": "Chaque agent est livré avec des prompts écrits par des personnes qui travaillent réellement dans ce secteur — pas un modèle générique de « réceptionniste médicale » appliqué à toutes les spécialités."
+        },
+        {
+          "title": "Outils précâblés",
+          "desc": "Chaque modèle est précâblé aux bons outils de planification, EHR, MLS, dispatch et CRM. Pas de plomberie outil par outil le premier jour."
+        },
+        {
+          "title": "Packs de connaissances sectorielles",
+          "desc": "Glossaires, schémas d'accueil et bibliothèques de FAQ ajustés au secteur pour que l'agent réponde correctement dès le premier appel."
+        },
+        {
+          "title": "Conformité par défaut",
+          "desc": "Expurgation PHI pour la santé, vérification de conflit pour le juridique, heures calmes TCPA pour les appels sortants — les valeurs par défaut correspondent au secteur, pas seulement à la plateforme."
+        },
+        {
+          "title": "KPI sectoriels dans votre tableau de bord",
+          "desc": "Chaque modèle fait remonter les métriques qui comptent pour ce secteur (taux de no-show, lead-vers-visite, temps d'acceptation du dispatch) plutôt que des comptages d'appels génériques."
+        },
+        {
+          "title": "Prêt pour le moteur d'évolution",
+          "desc": "Chaque modèle se branche au moteur d'évolution QVO et (en option) au Global Intelligence Network pour des suggestions de prompt conscientes du secteur."
+        }
+      ]
+    },
+    "deploy_steps": {
+      "eyebrow": "Mettez un agent vertical en production",
+      "heading": "Quatre étapes du catalogue au premier appel en direct",
+      "items": [
+        {
+          "title": "1. Choisissez un modèle",
+          "desc": "Parcourez le catalogue ci-dessus et choisissez l'agent qui correspond à votre secteur. Les agents natifs comme Azul Vision sont clé en main ; les modèles sont un point de départ que vous personnalisez."
+        },
+        {
+          "title": "2. Personnalisez dans l'Agent Builder",
+          "desc": "Ajustez les prompts, ajoutez vos documents de connaissance, branchez votre CRM/EHR et définissez les règles de routage — le tout depuis l'Agent Builder visuel."
+        },
+        {
+          "title": "3. Testez sur la démo en direct",
+          "desc": "Appelez vous-même l'agent depuis la console de démo, notez la conversation et itérez avant de pointer de vrais numéros vers lui."
+        },
+        {
+          "title": "4. Passez en production et apprenez",
+          "desc": "Routez un numéro de téléphone vers l'agent. Le scoring qualité, les suggestions d'évolution et (en opt-in) les benchmarks GIN entrent en jeu immédiatement."
+        }
+      ]
+    },
+    "spotlight": {
+      "eyebrow": "Gros plan",
+      "heading": "Azul Vision : un agent natif et profondément vertical",
+      "desc": "Azul Vision est un agent d'ophtalmologie construit par des cliniciens et porté pour tourner à l'intérieur de la passerelle vocale QVO — pas un agent tiers qui transfère des événements. Cela signifie que le runtime Voice AI, le moteur d'outils et l'expurgation PHI de QVO s'appliquent de bout en bout à chaque appel.",
+      "bullets": [
+        "Appels d'éducation pré et postopératoires aux patients",
+        "Planification chirurgicale entre ASC multi-sites",
+        "Triage pour les questions de rétine, de glaucome et postopératoires"
+      ],
+      "partner_heading": "Vous voulez un agent profondément vertical pour votre spécialité ?",
+      "partner_desc": "QVO s'associe à des experts verticaux pour livrer des agents natifs pour de nouvelles spécialités. Si votre équipe a l'expertise clinique ou opérationnelle et que nous avons le runtime, nous pouvons co-construire un Agent Vertical pour votre domaine.",
+      "partner_cta": "Devenir partenaire de QVO",
+      "partner_alt": "Ou utilisez Federated Ingest"
+    },
+    "bottom_cta": {
+      "title": "Sautez le prompt vide. Démarrez avec un agent vertical.",
+      "subtitle": "Lancez un agent qui connaît déjà votre secteur. Personnalisez ce qui est spécifique à votre cabinet, laissez le reste par défaut et passez en production en jours, pas en mois.",
+      "cta_primary": "Démarrer l'essai gratuit",
+      "cta_secondary": "Voir les cas d'usage"
+    }
+  },
   "admin_nav": {
     "console": "Console d'administration de la plateforme",
     "badge": "Admin plateforme",

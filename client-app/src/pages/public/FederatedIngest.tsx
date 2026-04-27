@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight, Code2, Server, Webhook, ShieldCheck, KeyRound, Activity,
   Layers, Database, BarChart3, Plug, Workflow, RefreshCw, Lock,
@@ -9,46 +10,10 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackFeatureView } from '../../lib/analytics';
 
-const useCases = [
-  {
-    icon: Server,
-    title: 'Run your own voice stack',
-    desc: 'You operate a custom voice agent (proprietary STT/TTS, in-house orchestration, on-prem GPU). Post call sessions and events into QVO and inherit the analytics, billing, ticketing, and dispatch layers without rewriting anything.',
-  },
-  {
-    icon: Layers,
-    title: 'Bring partner agents under one roof',
-    desc: 'Shipping a vertical voice agent to your customers? Forward call data through QVO ingest so each customer sees a unified inbox alongside any other QVO-native agents they run.',
-  },
-  {
-    icon: Workflow,
-    title: 'Bridge legacy IVRs into AI',
-    desc: 'Stream events from an existing contact-center platform so QVO can score quality, surface evolution suggestions, and roll metrics up to the same dashboards as new AI traffic.',
-  },
-];
-
-const ingestSteps = [
-  {
-    icon: KeyRound,
-    title: 'Mint a federated API key',
-    desc: 'Each external agent gets a tenant-scoped key from the developer portal. Keys are revocable, scoped to /ingest/* only, and rotate on demand.',
-  },
-  {
-    icon: Webhook,
-    title: 'POST events to /ingest/*',
-    desc: 'Send call sessions, transcripts, tool calls, and outcome metadata. You supply your own idempotency token per request — independent of external_id — so safe retries and explicit corrections are both first-class.',
-  },
-  {
-    icon: Database,
-    title: 'Inherit the QVO data model',
-    desc: 'Ingested calls flow into the same call_session, transcript, and usage tables as native QVO calls — so analytics, exports, and Stripe metering “just work.”',
-  },
-  {
-    icon: BarChart3,
-    title: 'Plug into the rest of the platform',
-    desc: 'External calls show up in dashboards, Quality scoring, the ticket system, dispatch handoffs, GIN benchmarks, and the evolution engine alongside native traffic.',
-  },
-];
+const useCaseIcons = [Server, Layers, Workflow];
+const ingestStepIcons = [KeyRound, Webhook, Database, BarChart3];
+const platformBenefitIcons = [BarChart3, Activity, GitBranch, Plug, Zap, ShieldCheck];
+const securityIcons = [KeyRound, RefreshCw, Lock, AlertTriangle];
 
 const sampleRequest = `POST /ingest/calls HTTP/1.1
 Host: api.qvo.ai
@@ -74,72 +39,25 @@ Idempotency-Key: ext_call_8f02a7c1
   "metadata": { "vertical": "ophthalmology", "language": "en-US" }
 }`;
 
-const platformBenefits = [
-  {
-    icon: BarChart3,
-    title: 'Unified analytics',
-    desc: 'External calls roll into the same volume, conversion, and quality charts as native QVO calls. No second dashboard to maintain.',
-  },
-  {
-    icon: Activity,
-    title: 'Quality scoring out of the box',
-    desc: 'Every ingested transcript is scored by the QVO QA engine. Compare your prompt revisions A/B against your peers in the same vertical.',
-  },
-  {
-    icon: GitBranch,
-    title: 'Evolution engine suggestions',
-    desc: 'QVO mines ingested transcripts for prompt improvements and surfaces them as proposed changes for your team to accept or reject.',
-  },
-  {
-    icon: Plug,
-    title: 'One billing surface',
-    desc: 'Federated minutes meter through Stripe alongside native usage. Customers get a single invoice, however the calls were delivered.',
-  },
-  {
-    icon: Zap,
-    title: 'Tool execution bridge',
-    desc: 'Hand off from your agent to QVO-managed tools (scheduling, ticketing, SMS, dispatch) in mid-call without round-tripping the customer.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Compliance inheritance',
-    desc: 'Tenant RLS, audit log, PHI redaction in transcripts, and DSAR exports cover ingested data the same way they cover native calls.',
-  },
-];
-
-const security = [
-  {
-    icon: KeyRound,
-    title: 'Tenant-scoped API keys',
-    desc: 'Federated keys are bound to a single tenant at issuance and cannot be reused across tenants — even if leaked.',
-  },
-  {
-    icon: RefreshCw,
-    title: 'Revocable + rotation reminders',
-    desc: 'Keys can be revoked instantly from the developer portal. Rotation reminders surface in the audit log every 90 days.',
-  },
-  {
-    icon: Lock,
-    title: 'Caller-supplied idempotency tokens',
-    desc: 'Idempotency is keyed on (tenant_id, idempotency_key) — decoupled from external_id — so retries are safe and a fresh token can re-issue an explicit correction for the same call.',
-  },
-  {
-    icon: AlertTriangle,
-    title: 'Backfill endpoint with attestation',
-    desc: 'Live `/v1/ingest/calls` accepts events from the last 7 days; older traffic (up to 30 days) goes through `/v1/ingest/calls/backfill` with a signed attestation block recording who authorized the late ingest and why.',
-  },
-];
+type TextItem = { title: string; desc: string };
 
 export default function FederatedIngest() {
+  const { t } = useTranslation();
+
   useEffect(() => {
     trackPageView('/product/federated-ingest');
   }, []);
 
+  const useCases = t('federated_ingest_page.use_cases.items', { returnObjects: true }) as TextItem[];
+  const ingestSteps = t('federated_ingest_page.ingest_steps.items', { returnObjects: true }) as TextItem[];
+  const platformBenefits = t('federated_ingest_page.platform_benefits.items', { returnObjects: true }) as TextItem[];
+  const security = t('federated_ingest_page.security_section.items', { returnObjects: true }) as TextItem[];
+
   return (
     <div>
       <SEO
-        title="Federated Ingest — Bring Your Own Voice Agent"
-        description="Federated Ingest lets external voice agents post calls, transcripts, and tool events into QVO over a simple HTTPS API — and inherit analytics, quality scoring, billing, and tool execution."
+        title={t('federated_ingest_page.seo_title')}
+        description={t('federated_ingest_page.seo_description')}
         canonicalPath="/product/federated-ingest"
       />
 
@@ -147,16 +65,13 @@ export default function FederatedIngest() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
-              For developers and platform partners
+              {t('federated_ingest_page.hero.eyebrow')}
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
-              Federated Ingest. Bring your own voice agent — keep one operations surface.
+              {t('federated_ingest_page.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl mb-8">
-              Run any voice agent — proprietary, partner-built, or a legacy IVR — and forward its
-              calls into QVO over a simple HTTPS API. Inherit analytics, quality scoring, billing,
-              the tool execution engine, and the rest of the platform, without rebuilding anything
-              you already shipped.
+              {t('federated_ingest_page.hero.description')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
@@ -164,7 +79,7 @@ export default function FederatedIngest() {
                 className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25"
                 onClick={() => trackCTAClick('Read the API docs', '/product/federated-ingest', 'hero')}
               >
-                Read the API docs
+                {t('federated_ingest_page.hero.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -172,13 +87,13 @@ export default function FederatedIngest() {
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
                 onClick={() => trackCTAClick('Talk to a platform engineer', '/product/federated-ingest', 'hero')}
               >
-                Talk to a platform engineer
+                {t('federated_ingest_page.hero.cta_secondary')}
               </Link>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/60">
-              <span className="inline-flex items-center gap-2"><Code2 className="h-4 w-4 text-teal" />Single HTTPS endpoint</span>
-              <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-teal" />Tenant-scoped API keys</span>
-              <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4 text-teal" />Idempotent retries</span>
+              <span className="inline-flex items-center gap-2"><Code2 className="h-4 w-4 text-teal" />{t('federated_ingest_page.hero.chip_endpoint')}</span>
+              <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-teal" />{t('federated_ingest_page.hero.chip_keys')}</span>
+              <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4 text-teal" />{t('federated_ingest_page.hero.chip_idempotent')}</span>
             </div>
           </div>
         </div>
@@ -189,29 +104,31 @@ export default function FederatedIngest() {
           <RevealSection>
             <div className="text-center mb-14">
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
-                Three reasons teams use Federated Ingest
+                {t('federated_ingest_page.use_cases.heading')}
               </h2>
               <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
-                You already built a voice agent — or bought one — and the last thing you want is to
-                rip it out. Ingest plugs your existing stack into the QVO operations layer.
+                {t('federated_ingest_page.use_cases.subheading')}
               </p>
             </div>
           </RevealSection>
           <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {useCases.map((useCase, i) => (
-              <RevealSection key={useCase.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div
-                  className="bg-white rounded-2xl border border-soft-steel/30 p-7 h-full hover:shadow-lg transition-shadow"
-                  onMouseEnter={() => trackFeatureView(`federated-ingest:${useCase.title}`)}
-                >
-                  <div className="w-11 h-11 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
-                    <useCase.icon className="h-5 w-5 text-teal" />
+            {useCases.map((useCase, i) => {
+              const Icon = useCaseIcons[i] || Server;
+              return (
+                <RevealSection key={useCase.title} delay={`scroll-delay-${(i % 3) + 1}`}>
+                  <div
+                    className="bg-white rounded-2xl border border-soft-steel/30 p-7 h-full hover:shadow-lg transition-shadow"
+                    onMouseEnter={() => trackFeatureView(`federated-ingest:${useCase.title}`)}
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
+                      <Icon className="h-5 w-5 text-teal" />
+                    </div>
+                    <h3 className="font-display text-lg font-semibold text-harbor mb-2">{useCase.title}</h3>
+                    <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{useCase.desc}</p>
                   </div>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{useCase.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{useCase.desc}</p>
-                </div>
-              </RevealSection>
-            ))}
+                </RevealSection>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -221,30 +138,35 @@ export default function FederatedIngest() {
           <RevealSection>
             <div className="text-center mb-14">
               <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                How it works
+                {t('federated_ingest_page.ingest_steps.eyebrow')}
               </p>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
-                Four steps from external call to unified operations
+                {t('federated_ingest_page.ingest_steps.heading')}
               </h2>
             </div>
           </RevealSection>
 
           <div className="grid lg:grid-cols-2 gap-12 items-start max-w-6xl mx-auto">
             <div className="space-y-6">
-              {ingestSteps.map((step, i) => (
-                <RevealSection key={step.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                  <div className="bg-mist rounded-2xl border border-soft-steel/30 p-6 flex gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-harbor/10 flex items-center justify-center shrink-0">
-                      <step.icon className="h-5 w-5 text-harbor" />
+              {ingestSteps.map((step, i) => {
+                const Icon = ingestStepIcons[i] || KeyRound;
+                return (
+                  <RevealSection key={step.title} delay={`scroll-delay-${(i % 3) + 1}`}>
+                    <div className="bg-mist rounded-2xl border border-soft-steel/30 p-6 flex gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-harbor/10 flex items-center justify-center shrink-0">
+                        <Icon className="h-5 w-5 text-harbor" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-teal mb-1">
+                          {t('federated_ingest_page.ingest_steps.step_label', { n: i + 1 })}
+                        </p>
+                        <h3 className="font-display text-lg font-semibold text-harbor mb-1.5">{step.title}</h3>
+                        <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{step.desc}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-teal mb-1">Step {i + 1}</p>
-                      <h3 className="font-display text-lg font-semibold text-harbor mb-1.5">{step.title}</h3>
-                      <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{step.desc}</p>
-                    </div>
-                  </div>
-                </RevealSection>
-              ))}
+                  </RevealSection>
+                );
+              })}
             </div>
 
             <RevealSection>
@@ -265,7 +187,7 @@ export default function FederatedIngest() {
                 </pre>
               </div>
               <p className="text-xs text-slate-ink/50 mt-3 font-body text-center">
-                One POST per call. Idempotency keys make retries safe by default.
+                {t('federated_ingest_page.ingest_steps.code_caption')}
               </p>
             </RevealSection>
           </div>
@@ -277,30 +199,32 @@ export default function FederatedIngest() {
           <RevealSection>
             <div className="text-center mb-14">
               <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">
-                What you inherit
+                {t('federated_ingest_page.platform_benefits.pill')}
               </span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
-                The whole QVO platform — without writing a second integration
+                {t('federated_ingest_page.platform_benefits.heading')}
               </h2>
               <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
-                Federated calls become first-class citizens. Every product surface treats them
-                exactly like a call routed through QVO's voice gateway.
+                {t('federated_ingest_page.platform_benefits.subheading')}
               </p>
             </div>
           </RevealSection>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {platformBenefits.map((benefit, i) => (
-              <RevealSection key={benefit.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className="bg-white rounded-2xl border border-soft-steel/30 p-6 h-full hover:shadow-lg transition-shadow">
-                  <div className="w-10 h-10 rounded-lg bg-teal/10 flex items-center justify-center mb-4">
-                    <benefit.icon className="h-5 w-5 text-teal" />
+            {platformBenefits.map((benefit, i) => {
+              const Icon = platformBenefitIcons[i] || BarChart3;
+              return (
+                <RevealSection key={benefit.title} delay={`scroll-delay-${(i % 3) + 1}`}>
+                  <div className="bg-white rounded-2xl border border-soft-steel/30 p-6 h-full hover:shadow-lg transition-shadow">
+                    <div className="w-10 h-10 rounded-lg bg-teal/10 flex items-center justify-center mb-4">
+                      <Icon className="h-5 w-5 text-teal" />
+                    </div>
+                    <h3 className="font-display text-base font-semibold text-harbor mb-1.5">{benefit.title}</h3>
+                    <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{benefit.desc}</p>
                   </div>
-                  <h3 className="font-display text-base font-semibold text-harbor mb-1.5">{benefit.title}</h3>
-                  <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{benefit.desc}</p>
-                </div>
-              </RevealSection>
-            ))}
+                </RevealSection>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -310,27 +234,30 @@ export default function FederatedIngest() {
           <RevealSection>
             <div className="text-center mb-14">
               <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                Built for serious traffic
+                {t('federated_ingest_page.security_section.eyebrow')}
               </p>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
-                Security, idempotency, and rotation built into the protocol
+                {t('federated_ingest_page.security_section.heading')}
               </h2>
             </div>
           </RevealSection>
           <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            {security.map((item) => (
-              <RevealSection key={item.title}>
-                <div className="bg-mist rounded-2xl border border-soft-steel/30 p-6 flex gap-4 h-full">
-                  <div className="w-10 h-10 rounded-lg bg-controlled-red/10 flex items-center justify-center shrink-0">
-                    <item.icon className="h-5 w-5 text-controlled-red" />
+            {security.map((item, i) => {
+              const Icon = securityIcons[i] || KeyRound;
+              return (
+                <RevealSection key={item.title}>
+                  <div className="bg-mist rounded-2xl border border-soft-steel/30 p-6 flex gap-4 h-full">
+                    <div className="w-10 h-10 rounded-lg bg-controlled-red/10 flex items-center justify-center shrink-0">
+                      <Icon className="h-5 w-5 text-controlled-red" />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-base font-semibold text-harbor mb-1.5">{item.title}</h3>
+                      <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{item.desc}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-display text-base font-semibold text-harbor mb-1.5">{item.title}</h3>
-                    <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{item.desc}</p>
-                  </div>
-                </div>
-              </RevealSection>
-            ))}
+                </RevealSection>
+              );
+            })}
           </div>
 
           <RevealSection>
@@ -338,29 +265,27 @@ export default function FederatedIngest() {
               <div className="flex items-center gap-3 mb-3">
                 <CheckCircle2 className="h-5 w-5 text-teal" />
                 <p className="font-display text-sm font-semibold tracking-wide uppercase text-teal">
-                  Compliance status
+                  {t('federated_ingest_page.security_section.compliance_eyebrow')}
                 </p>
               </div>
               <p className="font-display text-xl text-white/90 leading-relaxed mb-2">
-                Federated ingest inherits the same SOC 2 controls, audit log coverage, RLS
-                isolation, and DSAR exports as native QVO traffic.
+                {t('federated_ingest_page.security_section.compliance_text')}
               </p>
               <p className="text-sm text-white/60 font-body">
-                Have additional vertical requirements (HIPAA BAA, regional residency)? Our security
-                team will scope it during onboarding.
+                {t('federated_ingest_page.security_section.compliance_followup')}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   to="/security"
                   className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
                 >
-                  Security overview
+                  {t('federated_ingest_page.security_section.compliance_security_link')}
                 </Link>
                 <Link
                   to="/security/posture"
                   className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
                 >
-                  Live security posture
+                  {t('federated_ingest_page.security_section.compliance_posture_link')}
                 </Link>
               </div>
             </div>
@@ -377,11 +302,10 @@ export default function FederatedIngest() {
         <RevealSection>
           <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="font-display text-3xl lg:text-4xl font-bold text-white mb-4">
-              Ready to wire your agent into QVO?
+              {t('federated_ingest_page.bottom_cta.title')}
             </h2>
             <p className="text-lg text-white/65 font-body mb-10 max-w-xl mx-auto">
-              Mint a federated key, post your first call, and watch it land in the same dashboards
-              as the rest of your operations — usually in under an afternoon.
+              {t('federated_ingest_page.bottom_cta.subtitle')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
@@ -389,7 +313,7 @@ export default function FederatedIngest() {
                 className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30"
                 onClick={() => trackCTAClick('Read the API docs', '/product/federated-ingest', 'bottom-cta')}
               >
-                Read the API docs
+                {t('federated_ingest_page.bottom_cta.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -397,7 +321,7 @@ export default function FederatedIngest() {
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
                 onClick={() => trackCTAClick('Book a platform demo', '/product/federated-ingest', 'bottom-cta')}
               >
-                Book a platform demo
+                {t('federated_ingest_page.bottom_cta.cta_secondary')}
               </Link>
             </div>
           </div>
