@@ -31,6 +31,35 @@ export interface CampaignScheduleConfig {
   maxConcurrentCalls: number;
   retryDelayMinutes: number;
   maxAttempts: number;
+  /**
+   * When true (default), quiet hours are evaluated in the called party's
+   * local timezone (resolved from the NANP area code) instead of the
+   * campaign owner's timezone. Required for TCPA compliance.
+   */
+  respectContactTimezone: boolean;
+  /** Optional per-area-code timezone overrides. */
+  areaCodeTimezones: Record<string, string>;
+  /** Optional multi-window schedule. Takes precedence over single window. */
+  callWindows: Array<{ start: string; end: string; days: number[] }>;
+}
+
+export interface CampaignComplianceMatch {
+  contactId: string;
+  phoneRedacted: string;
+  contactName: string | null;
+}
+
+export interface CampaignComplianceReport {
+  ok: boolean;
+  totalContacts: number;
+  dncMatches: CampaignComplianceMatch[];
+  dncMatchCount: number;
+  optedOutCount: number;
+  unknownTimezoneCount: number;
+  hasQuietHoursConfig: boolean;
+  respectsContactTimezone: boolean;
+  complianceScore: number;
+  recommendations: string[];
 }
 
 export interface AppointmentReminderConfig {

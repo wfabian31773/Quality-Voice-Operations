@@ -20,6 +20,7 @@ import {
   getAllCampaignTypes,
   getValidCampaignTypes,
   isValidDisposition,
+  checkCampaignCompliance,
 } from '../../../platform/campaigns';
 import type { CampaignStatus } from '../../../platform/campaigns';
 import { getVerifiedCallerById } from '../../../platform/telephony/TrustedCallerService';
@@ -66,7 +67,11 @@ const VALID_TIMEZONES = getValidTimezones();
 
 function validateScheduleConfig(config?: Record<string, unknown>): string | null {
   if (!config) return null;
-  const { timezone, callWindowStart, callWindowEnd, daysOfWeek, maxConcurrentCalls, maxAttempts, retryDelayMinutes, verifiedCallerId } = config;
+  const {
+    timezone, callWindowStart, callWindowEnd, daysOfWeek,
+    maxConcurrentCalls, maxAttempts, retryDelayMinutes,
+    respectContactTimezone, areaCodeTimezones, verifiedCallerId,
+  } = config;
 
   if (verifiedCallerId !== undefined && verifiedCallerId !== null && typeof verifiedCallerId !== 'string') {
     return 'config.verifiedCallerId must be a string id or null';
@@ -104,6 +109,21 @@ function validateScheduleConfig(config?: Record<string, unknown>): string | null
   }
   if (retryDelayMinutes !== undefined && (typeof retryDelayMinutes !== 'number' || retryDelayMinutes < 1)) {
     return 'config.retryDelayMinutes must be a positive number';
+  }
+  if (respectContactTimezone !== undefined && typeof respectContactTimezone !== 'boolean') {
+    return 'config.respectContactTimezone must be a boolean';
+  }
+  if (areaCodeTimezones !== undefined) {
+    if (typeof areaCodeTimezones !== 'object' || areaCodeTimezones === null || Array.isArray(areaCodeTimezones)) {
+      return 'config.areaCodeTimezones must be an object mapping area codes to timezones';
+    }
+    for (const [area, tz] of Object.entries(areaCodeTimezones)) {
+      if (!/^\d{3}$/.test(area)) return `config.areaCodeTimezones key "${area}" must be a 3-digit area code`;
+      if (typeof tz !== 'string') return `config.areaCodeTimezones["${area}"] must be a string`;
+      if (VALID_TIMEZONES.length > 0 && !VALID_TIMEZONES.includes(tz)) {
+        return `config.areaCodeTimezones["${area}"] is not a recognized timezone`;
+      }
+    }
   }
 
   return null;
@@ -317,6 +337,47 @@ router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, 
     return res.status(400).json({ error: configErrors });
   }
 
+  // TCPA compliance pre-flight: block any transition that would put the
+  // campaign into the dialer queue while DNC-listed numbers are still in the
+  // contact list. We pull the existing campaign so the merged config (current
+  // + incoming patch) reflects whatever quiet-hours settings the caller is
+  // saving in this same request.
+  if (status === 'running' || status === 'scheduled') {
+    const existing = await getCampaign(tenantId, id);
+    if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+    const mergedConfig = { ...existing.config, ...(config ?? {}) };
+    const compliance = await checkCampaignCompliance(tenantId, id, { config: mergedConfig });
+    if (!compliance.ok) {
+      logger.warn('Campaign launch blocked by compliance check', {
+        tenantId,
+        campaignId: id,
+        dncMatches: compliance.dncMatchCount,
+        score: compliance.complianceScore,
+      });
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: req.user!.role,
+        action: 'campaign.launch_blocked',
+        resourceType: 'campaign',
+        resourceId: id,
+        severity: 'warning',
+        afterState: {
+          dncMatchCount: compliance.dncMatchCount,
+          complianceScore: compliance.complianceScore,
+        },
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+      return res.status(409).json({
+        error: compliance.dncMatchCount > 0
+          ? `Cannot launch — ${compliance.dncMatchCount} contact${compliance.dncMatchCount === 1 ? '' : 's'} on do-not-call list. Remove the listed numbers and try again.`
+          : 'Cannot launch — campaign has no contacts to dial.',
+        compliance,
+      });
+    }
+  }
+
   try {
     const campaign = await updateCampaign(tenantId, id, {
       name,
@@ -373,6 +434,21 @@ export const getCampaignMetricsHandler: import('express').RequestHandler = async
 };
 
 router.get('/campaigns/:id/metrics', requireAuth, getCampaignMetricsHandler);
+
+router.get('/campaigns/:id/compliance', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+
+  try {
+    const campaign = await getCampaign(tenantId, id);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    const compliance = await checkCampaignCompliance(tenantId, id, { config: campaign.config });
+    return res.json({ campaignId: id, compliance });
+  } catch (err) {
+    logger.error('Failed to compute campaign compliance', { tenantId, campaignId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to compute compliance report' });
+  }
+});
 
 export const addContactsHandler: import('express').RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;

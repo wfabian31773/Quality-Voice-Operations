@@ -316,8 +316,15 @@ export async function getNextPendingContact(
   campaignId: string,
   maxAttempts = 3,
   retryDelayMinutes = 30,
+  excludeIds: string[] = [],
 ): Promise<CampaignContact | null> {
   return withTenant(tenantId, async (client) => {
+    const params: unknown[] = [campaignId, tenantId, maxAttempts, retryDelayMinutes];
+    let excludeClause = '';
+    if (excludeIds.length > 0) {
+      params.push(excludeIds);
+      excludeClause = `AND id <> ALL($${params.length}::uuid[])`;
+    }
     const { rows } = await client.query(
       `UPDATE campaign_contacts
        SET status = 'dialing', attempt_count = attempt_count + 1,
@@ -325,6 +332,7 @@ export async function getNextPendingContact(
        WHERE id = (
          SELECT id FROM campaign_contacts
          WHERE campaign_id = $1 AND tenant_id = $2
+           ${excludeClause}
            AND (
              status = 'pending'
              OR (
@@ -335,14 +343,42 @@ export async function getNextPendingContact(
            )
          ORDER BY
            CASE WHEN status = 'pending' THEN 0 ELSE 1 END,
+           last_attempted_at ASC NULLS FIRST,
            created_at ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED
        )
        RETURNING *`,
-      [campaignId, tenantId, maxAttempts, retryDelayMinutes],
+      params,
     );
     return rows.length > 0 ? rowToContact(rows[0]) : null;
+  });
+}
+
+/**
+ * Roll a contact back to `pending` after we picked it via
+ * getNextPendingContact but had to skip dialing (e.g. quiet hours block).
+ * Decrements the attempt counter so the skip doesn't burn a retry budget.
+ *
+ * We deliberately keep `last_attempted_at = NOW()` here so the
+ * "ORDER BY last_attempted_at NULLS FIRST" pick logic in
+ * `getNextPendingContact` rotates this contact to the back of the queue —
+ * otherwise the same blocked contact would be re-selected on every poll
+ * and starve other dialable contacts in the same campaign.
+ */
+export async function revertContactToPending(
+  tenantId: string,
+  contactId: string,
+): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      `UPDATE campaign_contacts
+       SET status = 'pending',
+           attempt_count = GREATEST(attempt_count - 1, 0),
+           updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND status = 'dialing'`,
+      [contactId, tenantId],
+    );
   });
 }
 

@@ -3,6 +3,7 @@ import {
   getRunningCampaigns,
   getNextPendingContact,
   updateContactStatus,
+  revertContactToPending,
   checkCampaignCompletion,
   registerCallSid,
   getActiveDialingCount,
@@ -10,7 +11,8 @@ import {
   getTenantMaxConcurrent,
 } from './CampaignService';
 import { dialContact } from './OutboundDialer';
-import { isOnDnc } from './DncService';
+import { isContactOnDnc } from './ComplianceService';
+import { evaluateQuietHours, type QuietHoursConfig } from './QuietHours';
 import { resolveCampaignCallerId } from '../telephony/TrustedCallerService';
 
 const logger = createLogger('CAMPAIGN_SCHEDULER');
@@ -24,41 +26,18 @@ export interface CampaignSchedulerConfig {
   statusCallbackUrl: string;
 }
 
-function isWithinCallWindow(config: Record<string, unknown>): boolean {
-  const timezone = (config.timezone as string) || 'America/Chicago';
-
-  try {
-    const now = new Date();
-    const localStr = now.toLocaleString('en-US', { timeZone: timezone });
-    const localDate = new Date(localStr);
-    const dayOfWeek = localDate.getDay();
-    const hours = localDate.getHours();
-    const minutes = localDate.getMinutes();
-    const currentMinutes = hours * 60 + minutes;
-
-    const callWindows = config.callWindows as Array<{ start: string; end: string; days: number[] }> | undefined;
-    if (callWindows && Array.isArray(callWindows) && callWindows.length > 0) {
-      return callWindows.some((w) => {
-        if (!w.days.includes(dayOfWeek)) return false;
-        const [startH, startM] = w.start.split(':').map(Number);
-        const [endH, endM] = w.end.split(':').map(Number);
-        return currentMinutes >= startH * 60 + startM && currentMinutes < endH * 60 + endM;
-      });
-    }
-
-    const windowStart = (config.callWindowStart as string) || '09:00';
-    const windowEnd = (config.callWindowEnd as string) || '18:00';
-    const daysOfWeek = (config.daysOfWeek as number[]) || [1, 2, 3, 4, 5];
-
-    if (!daysOfWeek.includes(dayOfWeek)) return false;
-
-    const [startH, startM] = windowStart.split(':').map(Number);
-    const [endH, endM] = windowEnd.split(':').map(Number);
-    return currentMinutes >= startH * 60 + startM && currentMinutes < endH * 60 + endM;
-  } catch (err) {
-    logger.warn('Failed to check call window timezone', { timezone, error: String(err) });
-    return true;
-  }
+/**
+ * Coarse pre-check used to skip scheduling work entirely when *no* contact
+ * could possibly be dialable (e.g. it is 3am in every US timezone). When the
+ * campaign has `respectContactTimezone` enabled (the default) we cannot
+ * answer that question without a contact, so we always return true and let
+ * the per-contact check inside the dial loop do the real work.
+ */
+function couldAnyContactBeInWindow(config: Record<string, unknown>): boolean {
+  const respectContact = (config as { respectContactTimezone?: boolean }).respectContactTimezone !== false;
+  if (respectContact) return true;
+  const decision = evaluateQuietHours('', config as QuietHoursConfig);
+  return decision.allowed;
 }
 
 export class CampaignScheduler {
@@ -106,7 +85,7 @@ export class CampaignScheduler {
       const tenantMaxConcurrentCache = new Map<string, number>();
 
       for (const campaign of campaigns) {
-        if (!isWithinCallWindow(campaign.config)) {
+        if (!couldAnyContactBeInWindow(campaign.config)) {
           logger.debug('Campaign outside call window — skipping', {
             campaignId: campaign.id,
             tenantId: campaign.tenantId,
@@ -153,11 +132,44 @@ export class CampaignScheduler {
         }
 
         let dispatched = 0;
+        let consecutiveQuietHourSkips = 0;
+        // Track contacts we already saw and skipped within this tick so the
+        // SKIP LOCKED query doesn't immediately hand the same row back.
+        const tickSkippedIds: string[] = [];
         for (let slot = 0; slot < availableSlots; slot++) {
-          const contact = await getNextPendingContact(campaign.tenantId, campaign.id, maxAttempts, retryDelayMinutes);
+          const contact = await getNextPendingContact(
+            campaign.tenantId,
+            campaign.id,
+            maxAttempts,
+            retryDelayMinutes,
+            tickSkippedIds,
+          );
           if (!contact) break;
 
-          const onDnc = await isOnDnc(campaign.tenantId, contact.phoneNumber);
+          const quietHours = evaluateQuietHours(contact.phoneNumber, campaign.config as QuietHoursConfig);
+          if (!quietHours.allowed) {
+            await revertContactToPending(campaign.tenantId, contact.id);
+            tickSkippedIds.push(contact.id);
+            logger.debug('Contact skipped — outside quiet hours window', {
+              tenantId: campaign.tenantId,
+              campaignId: campaign.id,
+              contactId: contact.id,
+              timezone: quietHours.timezone,
+              reason: quietHours.reason,
+            });
+            consecutiveQuietHourSkips++;
+            // Stop after a streak of skips so we don't scan the whole
+            // campaign roster in a single tick when the entire batch happens
+            // to share an off-hours timezone.
+            if (consecutiveQuietHourSkips >= 5) break;
+            // Re-attempt this slot; we deliberately don't increment `slot`
+            // here because the skipped contact never consumed a dial budget.
+            slot--;
+            continue;
+          }
+          consecutiveQuietHourSkips = 0;
+
+          const onDnc = await isContactOnDnc(campaign.tenantId, contact.phoneNumber);
           if (onDnc) {
             await updateContactStatus(campaign.tenantId, contact.id, 'opted_out', undefined, 'DNC list match');
             logger.info('Contact skipped — on DNC list', {

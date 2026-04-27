@@ -7,7 +7,7 @@ import {
   Megaphone, Users, ShieldOff, AlertCircle,
   ChevronLeft, ChevronRight,
   Calendar, UserPlus, Star, RefreshCw, TrendingUp, Phone,
-  Info, CheckCircle2,
+  Info, CheckCircle2, ShieldCheck,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 
@@ -93,6 +93,19 @@ interface Agent {
   name: string;
   type: string;
   status: string;
+}
+
+interface ComplianceReport {
+  ok: boolean;
+  totalContacts: number;
+  scannedContacts?: number;
+  optedOutCount: number;
+  dncMatchCount: number;
+  dncMatches: Array<{ contactId: string; phoneRedacted: string; contactName: string | null }>;
+  complianceScore: number;
+  recommendations: string[];
+  preflightTruncated?: boolean;
+  generatedAt?: string;
 }
 
 interface DncEntry {
@@ -296,6 +309,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
     callWindowStart: '09:00',
     callWindowEnd: '17:00',
     daysOfWeek: [1, 2, 3, 4, 5] as number[],
+    respectContactTimezone: true,
     maxConcurrentCalls: 5,
     maxAttempts: 3,
     retryDelayMinutes: 30,
@@ -321,6 +335,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
           callWindowStart: form.callWindowStart,
           callWindowEnd: form.callWindowEnd,
           daysOfWeek: form.daysOfWeek,
+          respectContactTimezone: form.respectContactTimezone,
           maxConcurrentCalls: form.maxConcurrentCalls,
           maxAttempts: form.maxAttempts,
           retryDelayMinutes: form.retryDelayMinutes,
@@ -498,6 +513,19 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                     ))}
                   </div>
                 </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.respectContactTimezone}
+                    onChange={(e) => setForm((f) => ({ ...f, respectContactTimezone: e.target.checked }))}
+                    className="mt-0.5 rounded border-border text-primary focus:ring-primary/30"
+                  />
+                  <span className="text-sm text-text-secondary">
+                    Apply quiet hours in each contact's local time (TCPA-friendly).
+                    When off, the campaign timezone above is used for everyone.
+                  </span>
+                </label>
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
@@ -758,6 +786,101 @@ function CampaignListPrimaryRate({ campaignId, campaignType }: { campaignId: str
   );
 }
 
+function CompliancePanel({ campaignId }: { campaignId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['campaign-compliance', campaignId],
+    queryFn: () => api.get<{ compliance: ComplianceReport }>(`/campaigns/${campaignId}/compliance`),
+    refetchInterval: 60000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-lg p-4 flex items-center gap-3">
+        <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+        <span className="text-sm text-text-muted">Checking TCPA compliance…</span>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-lg p-4 flex items-center gap-2 text-text-muted">
+        <AlertCircle className="h-4 w-4" />
+        <span className="text-sm">Compliance report unavailable.</span>
+      </div>
+    );
+  }
+
+  const report = data.compliance;
+  const score = report.complianceScore;
+  const scoreColor = score >= 85 ? 'text-success' : score >= 60 ? 'text-warning' : 'text-danger';
+  const ringColor = score >= 85 ? 'bg-success/10' : score >= 60 ? 'bg-warning/10' : 'bg-danger/10';
+
+  return (
+    <div className="bg-surface border border-border rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" />
+          TCPA Compliance
+        </h3>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+          report.ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+        }`}>
+          {report.ok ? 'Ready to launch' : 'Action required'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3">
+        <div className={`rounded-lg p-3 text-center ${ringColor}`}>
+          <p className={`text-2xl font-bold ${scoreColor}`}>{score}</p>
+          <p className="text-xs text-text-muted mt-0.5">Score</p>
+        </div>
+        <div className="rounded-lg p-3 text-center bg-surface-hover">
+          <p className="text-2xl font-bold text-text-primary">{report.totalContacts.toLocaleString()}</p>
+          <p className="text-xs text-text-muted mt-0.5">Contacts</p>
+        </div>
+        <div className="rounded-lg p-3 text-center bg-surface-hover">
+          <p className={`text-2xl font-bold ${report.dncMatchCount > 0 ? 'text-danger' : 'text-text-primary'}`}>
+            {report.dncMatchCount}
+          </p>
+          <p className="text-xs text-text-muted mt-0.5">DNC matches</p>
+        </div>
+        <div className="rounded-lg p-3 text-center bg-surface-hover">
+          <p className="text-2xl font-bold text-text-muted">{report.optedOutCount}</p>
+          <p className="text-xs text-text-muted mt-0.5">Opted out</p>
+        </div>
+      </div>
+
+      {report.dncMatches.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-medium text-text-secondary mb-2">
+            DNC matches{report.dncMatchCount > report.dncMatches.length ? ` (showing first ${report.dncMatches.length})` : ''}
+          </p>
+          <div className="bg-surface-hover rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
+            {report.dncMatches.map((m) => (
+              <div key={m.contactId} className="flex items-center justify-between px-3 py-2">
+                <span className="text-sm text-text-primary font-mono">{m.phoneRedacted ?? '•••'}</span>
+                <span className="text-xs text-text-muted">{m.contactName ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.recommendations.length > 0 && (
+        <ul className="mt-4 space-y-1.5">
+          {report.recommendations.map((r, i) => (
+            <li key={i} className="text-xs text-text-secondary flex items-start gap-1.5">
+              <Info className="h-3.5 w-3.5 mt-0.5 text-text-muted flex-shrink-0" />
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: () => void }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'overview' | 'contacts' | 'dnc'>('overview');
@@ -789,9 +912,23 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
     queryFn: () => api.get<{ types: CampaignTypeDefinition[] }>('/campaigns/types'),
   });
 
+  const [launchBlock, setLaunchBlock] = useState<{ message: string; report: ComplianceReport } | null>(null);
+
   const statusMutation = useMutation({
     mutationFn: (status: string) => api.patch(`/campaigns/${campaignId}`, { status }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['campaign', campaignId] }); queryClient.invalidateQueries({ queryKey: ['campaigns'] }); },
+    onSuccess: () => {
+      setLaunchBlock(null);
+      queryClient.invalidateQueries({ queryKey: ['campaign', campaignId] });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['campaign-compliance', campaignId] });
+    },
+    onError: async (err: Error & { status?: number; body?: { error?: string; compliance?: ComplianceReport } }) => {
+      const body = err.body;
+      if (err.status === 409 && body?.compliance) {
+        setLaunchBlock({ message: body.error ?? 'Compliance check failed', report: body.compliance });
+        queryClient.setQueryData(['campaign-compliance', campaignId], { compliance: body.compliance });
+      }
+    },
   });
 
   if (loadingCampaign) return <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
@@ -868,6 +1005,25 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               Failed to load metrics: {metricsError.message}
             </div>
           )}
+
+          {launchBlock && (
+            <div className="bg-danger/10 border border-danger/30 text-danger text-sm px-4 py-3 rounded-lg">
+              <div className="flex items-start gap-2">
+                <ShieldOff className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Launch blocked: {launchBlock.message}</p>
+                  <p className="text-xs mt-1 text-danger/80">
+                    {launchBlock.report.dncMatchCount} contact{launchBlock.report.dncMatchCount === 1 ? '' : 's'} on the Do-Not-Call list. Remove or scrub them, then try again.
+                  </p>
+                </div>
+                <button onClick={() => setLaunchBlock(null)} className="text-danger/70 hover:text-danger">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <CompliancePanel campaignId={campaignId} />
 
           {isTypedCampaign && (
             <TypeMetricsPanel campaignId={campaignId} campaignType={campaign.type} />

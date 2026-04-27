@@ -1,6 +1,6 @@
 import { createLogger } from '../core/logger';
 import { redactPHI } from '../core/phi/redact';
-import { isOnDnc } from './DncService';
+import { isContactOnDnc } from './ComplianceService';
 import { updateContactStatus } from './CampaignService';
 
 const logger = createLogger('OUTBOUND_DIALER');
@@ -45,7 +45,7 @@ function getTwilioClient(fromOverride?: string) {
 }
 
 export async function dialContact(params: DialParams): Promise<DialResult> {
-  const onDnc = await isOnDnc(params.tenantId, params.phoneNumber);
+  const onDnc = await isContactOnDnc(params.tenantId, params.phoneNumber);
   if (onDnc) {
     logger.info('Dial blocked — number on DNC list', {
       tenantId: params.tenantId,
