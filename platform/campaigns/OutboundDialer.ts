@@ -1,6 +1,6 @@
 import { createLogger } from '../core/logger';
 import { redactPHI } from '../core/phi/redact';
-import { isContactOnDnc } from './ComplianceService';
+import { isContactOnDnc, writeFederalDncBlockAuditLog } from './ComplianceService';
 import { updateContactStatus } from './CampaignService';
 
 const logger = createLogger('OUTBOUND_DIALER');
@@ -45,16 +45,30 @@ function getTwilioClient(fromOverride?: string) {
 }
 
 export async function dialContact(params: DialParams): Promise<DialResult> {
-  const onDnc = await isContactOnDnc(params.tenantId, params.phoneNumber);
-  if (onDnc) {
+  const dncCheck = await isContactOnDnc(params.tenantId, params.phoneNumber);
+  if (dncCheck.onDnc) {
+    const reason = dncCheck.source === 'federal'
+      ? 'Federal DNC registry match'
+      : 'DNC list match';
     logger.info('Dial blocked — number on DNC list', {
       tenantId: params.tenantId,
       campaignId: params.campaignId,
       contactId: params.contactId,
       phone: redactPHI(params.phoneNumber),
+      dncSource: dncCheck.source,
+      registryVersion: dncCheck.registryVersion,
     });
-    await updateContactStatus(params.tenantId, params.contactId, 'opted_out', undefined, 'DNC list match');
-    return { success: false, error: 'DNC list match' };
+    await updateContactStatus(params.tenantId, params.contactId, 'opted_out', undefined, reason);
+    if (dncCheck.source === 'federal') {
+      await writeFederalDncBlockAuditLog({
+        tenantId: params.tenantId,
+        campaignId: params.campaignId,
+        contactId: params.contactId,
+        registryVersion: dncCheck.registryVersion,
+        stage: 'dialer',
+      });
+    }
+    return { success: false, error: reason };
   }
 
   let twilio: ReturnType<typeof getTwilioClient>;

@@ -2,7 +2,13 @@ import { getPlatformPool, withTenantContext } from '../db';
 import { decryptSensitiveField } from '../security/FieldEncryption';
 import { redactPHI } from '../core/phi/redact';
 import { createLogger } from '../core/logger';
+import { writeAuditLog } from '../audit/AuditService';
 import { extractAreaCode } from './AreaCodeTimezone';
+import {
+  findFederalDncMatches,
+  getCurrentFederalDncVersion,
+  isOnFederalDnc,
+} from './FederalDncService';
 import type { Campaign } from './types';
 
 const logger = createLogger('CAMPAIGN_COMPLIANCE');
@@ -32,6 +38,17 @@ export interface DncMatch {
   contactId: string;
   phoneRedacted: string;
   contactName: string | null;
+  /**
+   * Where the match came from:
+   *   * `tenant`  — the tenant's own `dnc_list` (manually added or
+   *                 auto-added on opt-out).
+   *   * `federal` — the FTC National Do Not Call Registry snapshot loaded
+   *                 by `FederalDncSyncScheduler`.
+   * Surfaced in the compliance UI so operators understand whether the
+   * block came from their own list or a regulatory list they can't
+   * remove from.
+   */
+  source: 'tenant' | 'federal';
 }
 
 export interface ComplianceCheck {
@@ -40,6 +57,22 @@ export interface ComplianceCheck {
   scannedContacts: number;
   dncMatches: DncMatch[];
   dncMatchCount: number;
+  /**
+   * Subtotal of dncMatchCount attributed to the tenant's own DNC list.
+   * Tenant takes priority on overlap, so `tenantDncMatchCount + federalDncMatchCount === dncMatchCount`.
+   */
+  tenantDncMatchCount: number;
+  /**
+   * Subtotal of dncMatchCount attributed to the federal DNC registry only
+   * (i.e. numbers that are NOT also on the tenant's own list).
+   */
+  federalDncMatchCount: number;
+  /**
+   * Registry version (snapshot identifier) of the federal DNC dataset
+   * consulted during this check, or `null` if the platform has never
+   * successfully synced the federal registry.
+   */
+  federalDncRegistryVersion: string | null;
   optedOutCount: number;
   unknownTimezoneCount: number;
   hasQuietHoursConfig: boolean;
@@ -96,12 +129,13 @@ export async function checkCampaignCompliance(
   campaignId: string,
   campaign: Pick<Campaign, 'config'> | null,
 ): Promise<ComplianceCheck> {
+  const federalDncRegistryVersion = await getCurrentFederalDncVersion();
   return withTenant(tenantId, async (client) => {
     const { rows: dncRows } = await client.query(
       `SELECT phone_number FROM dnc_list WHERE tenant_id = $1`,
       [tenantId],
     );
-    const dncSet = new Set<string>(dncRows.map((r) => String(r.phone_number)));
+    const tenantDncSet = new Set<string>(dncRows.map((r) => String(r.phone_number)));
 
     const { rows: countRows } = await client.query(
       `SELECT COUNT(*)::int AS total,
@@ -113,6 +147,8 @@ export async function checkCampaignCompliance(
     const optedOutCount = (countRows[0]?.opted_out as number) ?? 0;
 
     const dncMatches: DncMatch[] = [];
+    let tenantDncMatchCount = 0;
+    let federalDncMatchCount = 0;
     let unknownTimezoneCount = 0;
     let scannedContacts = 0;
     let preflightTruncated = false;
@@ -140,13 +176,37 @@ export async function checkCampaignCompliance(
       );
       if (batch.length === 0) break;
 
-      for (const row of batch) {
-        const decrypted = await safeDecryptPhone(tenantId, String(row.phone_number));
-        if (dncSet.has(decrypted)) {
+      // Decrypt every phone in the batch up-front so we can do a single
+      // batch lookup against the federal DNC table (one round trip per
+      // 1k-row batch instead of one per contact).
+      const decryptedBatch = await Promise.all(
+        batch.map(async (row) => ({
+          row,
+          decrypted: await safeDecryptPhone(tenantId, String(row.phone_number)),
+        })),
+      );
+      const federalMatchSet = await findFederalDncMatches(
+        client,
+        decryptedBatch.map((d) => d.decrypted),
+      );
+
+      for (const { row, decrypted } of decryptedBatch) {
+        const onTenantDnc = tenantDncSet.has(decrypted);
+        const onFederalDnc = federalMatchSet.has(decrypted);
+        if (onTenantDnc || onFederalDnc) {
+          // Tenant DNC takes priority for the displayed source: an operator
+          // who manually added a number should see their own list as the
+          // cause, not "Federal DNC". The subtotals follow the same priority
+          // so they always add up to dncMatchCount (no double-counting on
+          // overlap).
+          const source: 'tenant' | 'federal' = onTenantDnc ? 'tenant' : 'federal';
+          if (source === 'tenant') tenantDncMatchCount++;
+          else federalDncMatchCount++;
           dncMatches.push({
             contactId: String(row.id),
             phoneRedacted: redactPHI(decrypted),
             contactName: (row.name as string | null) ?? null,
+            source,
           });
         }
         if (!extractAreaCode(decrypted)) {
@@ -177,8 +237,20 @@ export async function checkCampaignCompliance(
 
     if (dncMatches.length > 0) {
       score = Math.min(score, 30 - Math.min(30, dncMatches.length));
+      // Build a recommendation that distinguishes tenant vs federal blocks
+      // so the operator knows which list they need to scrub against.
+      // Federal-only matches can't be removed by adding to dnc_list — they
+      // need to come off the campaign roster (or the operator needs to
+      // confirm they have an existing-business-relationship exemption).
+      const parts: string[] = [];
+      if (tenantDncMatchCount > 0) {
+        parts.push(`${tenantDncMatchCount} on your tenant DNC list`);
+      }
+      if (federalDncMatchCount > 0) {
+        parts.push(`${federalDncMatchCount} on the federal DNC registry`);
+      }
       recommendations.push(
-        `${dncMatches.length} contact${dncMatches.length === 1 ? ' is' : 's are'} on the do-not-call list. Remove them before launching.`,
+        `${dncMatches.length} contact${dncMatches.length === 1 ? ' is' : 's are'} blocked by do-not-call rules (${parts.join(', ')}). Remove them before launching.`,
       );
     }
     if (totalContacts > 0 && optedOutCount > 0) {
@@ -217,6 +289,9 @@ export async function checkCampaignCompliance(
       scannedContacts,
       dncMatches: dncMatches.slice(0, 25),
       dncMatchCount: dncMatches.length,
+      tenantDncMatchCount,
+      federalDncMatchCount,
+      federalDncRegistryVersion,
       optedOutCount,
       unknownTimezoneCount,
       hasQuietHoursConfig,
@@ -230,10 +305,11 @@ export async function checkCampaignCompliance(
 
 /**
  * Scan every (or up to MAX_PREFLIGHT_CONTACTS) campaign contact and return
- * the IDs of those whose decrypted phone is on the tenant's DNC list. This
- * powers the "Scrub DNC matches" admin action — unlike `checkCampaignCompliance`
- * which slices the displayed match list to 25 for the UI, this returns the
- * full set so the caller can flip every match to `opted_out` in one shot.
+ * the IDs of those whose decrypted phone is on EITHER the tenant's DNC list
+ * OR the federal DNC registry. This powers the "Scrub DNC matches" admin
+ * action — unlike `checkCampaignCompliance` which slices the displayed
+ * match list to 25 for the UI, this returns the full set so the caller can
+ * flip every match to `opted_out` in one shot.
  *
  * `truncated` is true when we hit the pre-flight ceiling and there are still
  * more contacts to scan beyond it. Callers should surface this so the operator
@@ -248,7 +324,7 @@ export async function findDncMatchingContactIds(
       `SELECT phone_number FROM dnc_list WHERE tenant_id = $1`,
       [tenantId],
     );
-    const dncSet = new Set<string>(dncRows.map((r) => String(r.phone_number)));
+    const tenantDncSet = new Set<string>(dncRows.map((r) => String(r.phone_number)));
 
     const matches: string[] = [];
     let scanned = 0;
@@ -275,9 +351,19 @@ export async function findDncMatchingContactIds(
       );
       if (batch.length === 0) break;
 
-      for (const row of batch) {
-        const decrypted = await safeDecryptPhone(tenantId, String(row.phone_number));
-        if (dncSet.has(decrypted)) {
+      const decryptedBatch = await Promise.all(
+        batch.map(async (row) => ({
+          row,
+          decrypted: await safeDecryptPhone(tenantId, String(row.phone_number)),
+        })),
+      );
+      const federalMatchSet = await findFederalDncMatches(
+        client,
+        decryptedBatch.map((d) => d.decrypted),
+      );
+
+      for (const { row, decrypted } of decryptedBatch) {
+        if (tenantDncSet.has(decrypted) || federalMatchSet.has(decrypted)) {
           matches.push(String(row.id));
         }
         scanned++;
@@ -305,20 +391,91 @@ export async function findDncMatchingContactIds(
   });
 }
 
+export interface DncMembershipResult {
+  onDnc: boolean;
+  source: 'tenant' | 'federal' | null;
+  /**
+   * Federal registry version that produced the match. Only populated when
+   * `source === 'federal'` — used by the dial-time block path so the audit
+   * log captures which snapshot was responsible.
+   */
+  registryVersion: string | null;
+}
+
 /**
  * Lightweight DNC membership check that handles encrypted contact phones.
- * Used by the scheduler at dial-time as a defense-in-depth fallback.
+ * Used by the scheduler and the outbound dialer at dial-time as a defense-
+ * in-depth fallback (the pre-flight already scanned the roster, but a
+ * number could have been added to either the tenant or federal list in the
+ * intervening minutes).
+ *
+ * Returns the *source* of the match so callers can record which list
+ * triggered the block in the audit trail.
  */
 export async function isContactOnDnc(
   tenantId: string,
   encryptedOrPlaintextPhone: string,
-): Promise<boolean> {
+): Promise<DncMembershipResult> {
   const decrypted = await safeDecryptPhone(tenantId, encryptedOrPlaintextPhone);
-  return withTenant(tenantId, async (client) => {
+  const onTenantDnc = await withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
       `SELECT 1 FROM dnc_list WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1`,
       [tenantId, decrypted],
     );
     return rows.length > 0;
   });
+  if (onTenantDnc) {
+    return { onDnc: true, source: 'tenant', registryVersion: null };
+  }
+  const federal = await isOnFederalDnc(decrypted);
+  if (federal.onDnc) {
+    return { onDnc: true, source: 'federal', registryVersion: federal.registryVersion };
+  }
+  return { onDnc: false, source: null, registryVersion: null };
+}
+
+/**
+ * Record a federal-DNC block in the tenant audit log so compliance teams
+ * can prove (a) which campaign the block prevented from dialing, (b) which
+ * federal registry snapshot was responsible, and (c) when it happened.
+ *
+ * Called from both the campaign scheduler and the outbound dialer (the two
+ * dial-time chokepoints) — `stage` distinguishes which one fired so a
+ * defense-in-depth double-block doesn't look like duplicate audit noise.
+ *
+ * Never throws: a missing audit row is bad but it's strictly worse to crash
+ * the dialer over it. `writeAuditLog` already logs internally on failure.
+ */
+export async function writeFederalDncBlockAuditLog(params: {
+  tenantId: string;
+  campaignId: string;
+  contactId: string;
+  registryVersion: string | null;
+  stage: 'scheduler' | 'dialer';
+}): Promise<void> {
+  try {
+    await writeAuditLog({
+      tenantId: params.tenantId,
+      actorUserId: 'system',
+      actorRole: 'system',
+      action: 'campaign.federal_dnc_block',
+      resourceType: 'campaign_contact',
+      resourceId: params.contactId,
+      severity: 'warning',
+      afterState: {
+        campaignId: params.campaignId,
+        contactId: params.contactId,
+        registryVersion: params.registryVersion ?? 'unknown',
+        stage: params.stage,
+        source: 'federal',
+      },
+    });
+  } catch (err) {
+    logger.warn('Failed to write federal DNC block audit log', {
+      tenantId: params.tenantId,
+      campaignId: params.campaignId,
+      contactId: params.contactId,
+      error: String(err),
+    });
+  }
 }

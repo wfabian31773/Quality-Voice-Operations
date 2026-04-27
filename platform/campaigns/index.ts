@@ -32,8 +32,27 @@ export type { CallClassificationInput } from './OutcomeClassifier';
 export { CampaignScheduler, startCampaignScheduler, stopCampaignScheduler } from './CampaignScheduler';
 export { addToDnc, isOnDnc, listDnc, removeFromDnc, detectOptOutInTranscript, isSmsOptOut } from './DncService';
 export type { DncEntry } from './DncService';
-export { checkCampaignCompliance, findDncMatchingContactIds, isContactOnDnc } from './ComplianceService';
-export type { ComplianceCheck, DncMatch } from './ComplianceService';
+export {
+  checkCampaignCompliance,
+  findDncMatchingContactIds,
+  isContactOnDnc,
+  writeFederalDncBlockAuditLog,
+} from './ComplianceService';
+export type { ComplianceCheck, DncMatch, DncMembershipResult } from './ComplianceService';
+export {
+  getCurrentFederalDncVersion,
+  findFederalDncMatches,
+  isOnFederalDnc,
+  getFederalDncSyncState,
+  syncFederalDncRegistry,
+  normalizeFederalDncNumber,
+} from './FederalDncService';
+export type { FederalDncSyncState, FederalDncSyncResult } from './FederalDncService';
+export {
+  startFederalDncSyncScheduler,
+  stopFederalDncSyncScheduler,
+  runFederalDncSyncCycle,
+} from './FederalDncSyncScheduler';
 export { evaluateQuietHours, resolveTimezoneForContact } from './QuietHours';
 export type { QuietHoursConfig, QuietHoursDecision } from './QuietHours';
 export { extractAreaCode, getTimezoneForPhone, NANP_AREA_CODE_TIMEZONES } from './AreaCodeTimezone';

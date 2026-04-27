@@ -3,7 +3,12 @@ import app from './app';
 import { closePlatformPool } from '../../platform/db';
 import { createLogger } from '../../platform/core/logger';
 import { startUsageMeteringWorker, stopUsageMeteringWorker } from '../../platform/billing/stripe/usage';
-import { startCampaignScheduler, stopCampaignScheduler } from '../../platform/campaigns';
+import {
+  startCampaignScheduler,
+  stopCampaignScheduler,
+  startFederalDncSyncScheduler,
+  stopFederalDncSyncScheduler,
+} from '../../platform/campaigns';
 import { startMetricsRollup, stopMetricsRollup, startSystemMetricsWriter, stopSystemMetricsWriter, logError } from '../../platform/core/observability';
 import { validateBillingConfig } from '../../platform/billing/stripe/plans';
 import { validateEnvironment, validateDatabaseConnection } from '../../scripts/validate-env';
@@ -103,6 +108,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startOAuthTokenRefreshScheduler();
   startCallEventsRetentionScheduler();
   startTenantIsolationScheduler();
+  startFederalDncSyncScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
 
@@ -133,6 +139,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopOAuthTokenRefreshScheduler();
   stopCallEventsRetentionScheduler();
   stopTenantIsolationScheduler();
+  stopFederalDncSyncScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
 

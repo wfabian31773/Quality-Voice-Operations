@@ -102,7 +102,15 @@ interface ComplianceReport {
   scannedContacts?: number;
   optedOutCount: number;
   dncMatchCount: number;
-  dncMatches: Array<{ contactId: string; phoneRedacted: string; contactName: string | null }>;
+  tenantDncMatchCount?: number;
+  federalDncMatchCount?: number;
+  federalDncRegistryVersion?: string | null;
+  dncMatches: Array<{
+    contactId: string;
+    phoneRedacted: string;
+    contactName: string | null;
+    source?: 'tenant' | 'federal';
+  }>;
   complianceScore: number;
   recommendations: string[];
   preflightTruncated?: boolean;
@@ -851,12 +859,23 @@ function CompliancePanel({
             {report.dncMatchCount}
           </p>
           <p className="text-xs text-text-muted mt-0.5">DNC matches</p>
+          {((report.tenantDncMatchCount ?? 0) > 0 || (report.federalDncMatchCount ?? 0) > 0) && (
+            <p className="text-[10px] text-text-muted mt-0.5">
+              {report.tenantDncMatchCount ?? 0} tenant · {report.federalDncMatchCount ?? 0} federal
+            </p>
+          )}
         </div>
         <div className="rounded-lg p-3 text-center bg-surface-hover">
           <p className="text-2xl font-bold text-text-muted">{report.optedOutCount}</p>
           <p className="text-xs text-text-muted mt-0.5">Opted out</p>
         </div>
       </div>
+
+      {report.federalDncRegistryVersion && (
+        <p className="mt-2 text-[11px] text-text-muted">
+          Federal DNC registry version: <span className="font-mono">{report.federalDncRegistryVersion}</span>
+        </p>
+      )}
 
       {report.dncMatches.length > 0 && (
         <div className="mt-4">
@@ -882,9 +901,29 @@ function CompliancePanel({
           </div>
           <div className="bg-surface-hover rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
             {report.dncMatches.map((m) => (
-              <div key={m.contactId} className="flex items-center justify-between px-3 py-2">
-                <span className="text-sm text-text-primary font-mono">{m.phoneRedacted ?? '•••'}</span>
-                <span className="text-xs text-text-muted">{m.contactName ?? '—'}</span>
+              <div key={m.contactId} className="flex items-center justify-between px-3 py-2 gap-2">
+                <span className="text-sm text-text-primary font-mono truncate">{m.phoneRedacted ?? '•••'}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/*
+                    Source badge: distinguish "Tenant DNC" (something this
+                    tenant explicitly added or that an opt-out flow recorded)
+                    from "Federal DNC" (FTC National Registry snapshot).
+                    Operators care about the difference because federal
+                    matches can't be removed by editing dnc_list — they need
+                    to either drop the contact or rely on a documented
+                    EBR/express-consent exemption.
+                  */}
+                  {m.source === 'federal' ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning whitespace-nowrap">
+                      Federal DNC
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface text-text-secondary whitespace-nowrap">
+                      Tenant DNC
+                    </span>
+                  )}
+                  <span className="text-xs text-text-muted truncate max-w-[120px]">{m.contactName ?? '—'}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -1071,7 +1110,11 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                   <p className="font-medium">Launch blocked: {launchBlock.message}</p>
                   {launchBlock.report.dncMatchCount > 0 && (
                     <p className="text-xs mt-1 text-danger/80">
-                      {launchBlock.report.dncMatchCount} contact{launchBlock.report.dncMatchCount === 1 ? '' : 's'} on the Do-Not-Call list. Scrub them to opt-out and retry the launch in one step.
+                      {launchBlock.report.dncMatchCount} contact{launchBlock.report.dncMatchCount === 1 ? '' : 's'} on the Do-Not-Call list
+                      {((launchBlock.report.tenantDncMatchCount ?? 0) > 0 || (launchBlock.report.federalDncMatchCount ?? 0) > 0) && (
+                        <> ({launchBlock.report.tenantDncMatchCount ?? 0} tenant, {launchBlock.report.federalDncMatchCount ?? 0} federal)</>
+                      )}
+                      . Scrub them to opt-out and retry the launch in one step.
                     </p>
                   )}
                   {isManager && launchBlock.report.dncMatchCount > 0 && (

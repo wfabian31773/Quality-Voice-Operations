@@ -356,6 +356,60 @@ describe('CampaignScheduler quiet-hours skip telemetry', () => {
     vi.useRealTimers();
   });
 
+  it('marks contacts as opted_out when the dialer reports a federal DNC block', async () => {
+    // Regression for task #603 follow-up: the dialer's defense-in-depth
+    // check can return either `'DNC list match'` (tenant DNC) or
+    // `'Federal DNC registry match'` (federal DNC). Both must be classified
+    // as DNC blocks by the scheduler so the contact is set to `opted_out`,
+    // not `failed` — otherwise a transient retry would dial the federally
+    // protected number again.
+    const fixedNow = new Date(Date.UTC(2026, 3, 27, 16, 0, 0)); // 12:00 Eastern, in window
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+
+    const ids = ['contact-1'];
+    const world: FakeWorld = {
+      contacts: new Map(ids.map((id) => [id, makeContact(id, '212')])),
+      pendingOrder: ids.slice(),
+      quietHoursSkips: 0,
+    };
+    const baseDispatcher = makeQueryDispatcher(world);
+    const statusUpdates: { id: string; status: string; outcome: string | null }[] = [];
+    queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      // Capture updateContactStatus() — the parameterized form, distinct
+      // from the literal 'dialing'/'pending' UPDATEs the base dispatcher
+      // already handles.
+      if (/^UPDATE campaign_contacts SET status = \$1/.test(sql)) {
+        const status = String(values?.[0] ?? '');
+        const id = String(values?.[1] ?? '');
+        const outcome = values && values.length >= 4 ? String(values[3]) : null;
+        statusUpdates.push({ id, status, outcome });
+        const row = world.contacts.get(id);
+        if (row) row.status = status;
+        return { rows: [], rowCount: 1 };
+      }
+      return baseDispatcher(sql, values);
+    });
+
+    isContactOnDncMock.mockResolvedValue({ onDnc: false, source: null, registryVersion: null });
+    dialContactMock.mockResolvedValueOnce({ success: false, error: 'Federal DNC registry match' });
+
+    const scheduler = new CampaignScheduler({
+      outboundCallbackBaseUrl: 'https://example.test',
+      statusCallbackUrl: 'https://example.test/status',
+    });
+    await (scheduler as unknown as { tick: () => Promise<void> }).tick();
+
+    expect(dialContactMock).toHaveBeenCalledTimes(1);
+    const c1Update = statusUpdates.find((u) => u.id === 'contact-1');
+    expect(c1Update).toBeDefined();
+    expect(c1Update?.status).toBe('opted_out');
+    // outcome is undefined for DNC blocks (so the row isn't tagged 'failed').
+    expect(c1Update?.outcome).toBeNull();
+
+    vi.useRealTimers();
+  });
+
   it('returns quietHoursSkips through the GET /campaigns/:id/metrics admin route', async () => {
     const fixedNow = new Date(Date.UTC(2026, 3, 27, 11, 0, 0));
     vi.useFakeTimers();

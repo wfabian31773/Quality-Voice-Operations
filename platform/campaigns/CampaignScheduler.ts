@@ -12,7 +12,7 @@ import {
   incrementQuietHoursSkips,
 } from './CampaignService';
 import { dialContact } from './OutboundDialer';
-import { isContactOnDnc } from './ComplianceService';
+import { isContactOnDnc, writeFederalDncBlockAuditLog } from './ComplianceService';
 import { evaluateQuietHours, type QuietHoursConfig } from './QuietHours';
 import { resolveCampaignCallerId } from '../telephony/TrustedCallerService';
 
@@ -172,14 +172,28 @@ export class CampaignScheduler {
           }
           consecutiveQuietHourSkips = 0;
 
-          const onDnc = await isContactOnDnc(campaign.tenantId, contact.phoneNumber);
-          if (onDnc) {
-            await updateContactStatus(campaign.tenantId, contact.id, 'opted_out', undefined, 'DNC list match');
+          const dncCheck = await isContactOnDnc(campaign.tenantId, contact.phoneNumber);
+          if (dncCheck.onDnc) {
+            const reason = dncCheck.source === 'federal'
+              ? 'Federal DNC registry match'
+              : 'DNC list match';
+            await updateContactStatus(campaign.tenantId, contact.id, 'opted_out', undefined, reason);
             logger.info('Contact skipped — on DNC list', {
               tenantId: campaign.tenantId,
               campaignId: campaign.id,
               contactId: contact.id,
+              dncSource: dncCheck.source,
+              registryVersion: dncCheck.registryVersion,
             });
+            if (dncCheck.source === 'federal') {
+              await writeFederalDncBlockAuditLog({
+                tenantId: campaign.tenantId,
+                campaignId: campaign.id,
+                contactId: contact.id,
+                registryVersion: dncCheck.registryVersion,
+                stage: 'scheduler',
+              });
+            }
             continue;
           }
 
@@ -219,7 +233,13 @@ export class CampaignScheduler {
           });
 
           if (!result.success) {
-            const isDncBlock = result.error === 'DNC list match';
+            // Both tenant- and federal-DNC matches from the dialer's
+            // defense-in-depth check should mark the contact as opted_out
+            // (not 'failed') so a transient retry doesn't dial them again.
+            // The dialer returns one of two error strings; checking both
+            // here keeps the two layers in sync.
+            const isDncBlock = result.error === 'DNC list match'
+              || result.error === 'Federal DNC registry match';
             await updateContactStatus(
               campaign.tenantId,
               contact.id,

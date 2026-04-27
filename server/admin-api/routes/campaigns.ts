@@ -354,6 +354,9 @@ router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, 
         tenantId,
         campaignId: id,
         dncMatches: compliance.dncMatchCount,
+        tenantDncMatches: compliance.tenantDncMatchCount,
+        federalDncMatches: compliance.federalDncMatchCount,
+        federalDncRegistryVersion: compliance.federalDncRegistryVersion,
         score: compliance.complianceScore,
       });
       await writeAuditLog({
@@ -366,15 +369,32 @@ router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, 
         severity: 'warning',
         afterState: {
           dncMatchCount: compliance.dncMatchCount,
+          tenantDncMatchCount: compliance.tenantDncMatchCount,
+          federalDncMatchCount: compliance.federalDncMatchCount,
+          federalDncRegistryVersion: compliance.federalDncRegistryVersion,
           complianceScore: compliance.complianceScore,
         },
         ipAddress: extractIp(req),
         userAgent: req.headers['user-agent'],
       });
+      // Build a launch-blocked message that distinguishes tenant vs federal
+      // matches so the operator immediately knows whether they need to
+      // remove from their own DNC list, or scrub against the FTC registry.
+      let launchBlockedMessage: string;
+      if (compliance.dncMatchCount > 0) {
+        const fragments: string[] = [];
+        if (compliance.tenantDncMatchCount > 0) {
+          fragments.push(`${compliance.tenantDncMatchCount} on tenant DNC`);
+        }
+        if (compliance.federalDncMatchCount > 0) {
+          fragments.push(`${compliance.federalDncMatchCount} on federal DNC registry`);
+        }
+        launchBlockedMessage = `Cannot launch — ${compliance.dncMatchCount} contact${compliance.dncMatchCount === 1 ? '' : 's'} on do-not-call lists (${fragments.join(', ')}). Remove the listed numbers and try again.`;
+      } else {
+        launchBlockedMessage = 'Cannot launch — campaign has no contacts to dial.';
+      }
       return res.status(409).json({
-        error: compliance.dncMatchCount > 0
-          ? `Cannot launch — ${compliance.dncMatchCount} contact${compliance.dncMatchCount === 1 ? '' : 's'} on do-not-call list. Remove the listed numbers and try again.`
-          : 'Cannot launch — campaign has no contacts to dial.',
+        error: launchBlockedMessage,
         compliance,
       });
     }
