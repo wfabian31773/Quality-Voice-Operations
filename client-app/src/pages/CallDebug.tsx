@@ -762,6 +762,7 @@ export default function CallDebug() {
                 value={filters.search}
                 onChange={(e) => setFilter('search', e.target.value)}
                 placeholder="Search by call ID, agent name..."
+                aria-label="Search calls"
                 className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm placeholder:text-text-muted"
               />
             </div>

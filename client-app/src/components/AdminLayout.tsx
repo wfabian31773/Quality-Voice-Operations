@@ -113,8 +113,13 @@ export default function AdminLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-4 py-2 bg-purple-900/20 border-b border-purple-500/20">
           <div className="flex items-center gap-3">
-            <button className="lg:hidden" onClick={() => setMobileOpen(true)}>
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            <button
+              className="lg:hidden"
+              onClick={() => setMobileOpen(true)}
+              aria-label={t('actions.open_menu')}
+              aria-expanded={mobileOpen}
+            >
+              {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
             </button>
             <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">{t('admin_nav.console')}</span>
           </div>

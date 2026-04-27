@@ -2812,6 +2812,7 @@ export default function Connectors() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search integrations"
+                  aria-label="Search integrations"
                   className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>

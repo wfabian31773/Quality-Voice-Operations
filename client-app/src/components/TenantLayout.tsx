@@ -89,7 +89,7 @@ export default function TenantLayout() {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
           e.preventDefault();
-          setShortcutsOpen(true);
+          setShortcutsOpen((v) => !v);
         }
       }
     };
@@ -433,6 +433,7 @@ interface NavGroupProps {
 function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef, onLinkClick }: NavGroupProps) {
   const { t } = useTranslation();
   const isActiveGroup = links.some((l) => location.pathname.startsWith(l.to));
+  const panelId = `nav-group-${label.replace(/\s+/g, '-').toLowerCase()}`;
   return (
     <div className="pt-2" ref={groupRef}>
       <button
@@ -445,6 +446,8 @@ function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef,
             }, 50);
           }
         }}
+        aria-expanded={open}
+        aria-controls={panelId}
         className={clsx(
           'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
           isActiveGroup
@@ -461,11 +464,17 @@ function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef,
             'h-3.5 w-3.5 transition-transform',
             open && 'rotate-180',
           )}
+          aria-hidden="true"
         />
       </button>
 
       {open && (
-        <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
+        <div
+          id={panelId}
+          role="region"
+          aria-label={label}
+          className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5"
+        >
           {links.map((link) => (
             <NavLink
               key={link.to}

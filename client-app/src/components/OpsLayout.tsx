@@ -108,8 +108,13 @@ export default function OpsLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-4 py-2 bg-emerald-900/20 border-b border-emerald-500/20">
           <div className="flex items-center gap-3">
-            <button className="lg:hidden" onClick={() => setMobileOpen(true)}>
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            <button
+              className="lg:hidden"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileOpen}
+            >
+              {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
             </button>
             <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Operations Console</span>
           </div>

@@ -1114,7 +1114,7 @@ export default function Scheduling() {
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="relative">
                   <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
-                  <input type="text" placeholder="Search..." value={searchQuery}
+                  <input type="text" placeholder="Search..." aria-label="Search scheduling" value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="pl-7 pr-3 py-1.5 text-xs rounded-lg border border-border bg-surface text-heading w-36 focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>

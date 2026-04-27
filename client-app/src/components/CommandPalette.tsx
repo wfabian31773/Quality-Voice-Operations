@@ -5,6 +5,7 @@ import {
   MessageSquare, CalendarClock, ClipboardList, Truck, Network, Plug,
   BookOpen, Store, Settings2, Phone, FileText, HelpCircle, Plus, Zap, type LucideIcon,
 } from 'lucide-react';
+import Modal from './Modal';
 
 interface Command {
   id: string;
@@ -70,25 +71,19 @@ export default function CommandPalette({
 
   useEffect(() => { setActive(0); }, [query, open]);
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setTimeout(() => inputRef.current?.focus(), 30);
-    }
+    if (open) setQuery('');
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return; }
       if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(filtered.length - 1, i + 1)); }
       if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
       if (e.key === 'Enter') { e.preventDefault(); filtered[active]?.run(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, filtered, active, onClose]);
-
-  if (!open) return null;
+  }, [open, filtered, active]);
 
   const groups = filtered.reduce<Record<string, Command[]>>((acc, cmd) => {
     (acc[cmd.group] ??= []).push(cmd);
@@ -98,59 +93,61 @@ export default function CommandPalette({
   let runningIndex = 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-          <Search className="h-4 w-4 text-text-muted shrink-0" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search commands, pages, actions..."
-            className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
-          />
-          <kbd className="text-[10px] font-medium text-text-muted bg-surface-hover border border-border px-1.5 py-0.5 rounded">ESC</kbd>
-        </div>
-
-        <div className="max-h-[55vh] overflow-y-auto py-1">
-          {filtered.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-8">No matches</p>
-          ) : (
-            Object.entries(groups).map(([group, items]) => (
-              <div key={group} className="py-1">
-                <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">{group}</p>
-                {items.map((cmd) => {
-                  const idx = runningIndex++;
-                  const Icon = cmd.icon;
-                  const isActive = idx === active;
-                  return (
-                    <button
-                      key={cmd.id}
-                      onMouseEnter={() => setActive(idx)}
-                      onClick={() => cmd.run()}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors ${
-                        isActive ? 'bg-primary/10 text-primary' : 'text-text-primary hover:bg-surface-hover'
-                      }`}
-                    >
-                      <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-text-muted'}`} />
-                      <span className="flex-1 truncate">{cmd.label}</span>
-                      {isActive && <span className="text-[10px] text-text-muted">↵</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            ))
-          )}
-        </div>
-        <div className="px-3 py-2 border-t border-border bg-surface-secondary text-[11px] text-text-muted flex items-center justify-between">
-          <span>Navigate with ↑ ↓</span>
-          <span>Open anytime with <kbd className="px-1 py-0.5 bg-surface border border-border rounded">⌘K</kbd> / <kbd className="px-1 py-0.5 bg-surface border border-border rounded">Ctrl K</kbd></span>
-        </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel="Command palette"
+      initialFocusRef={inputRef}
+      containerClassName="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4"
+      panelClassName="relative w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden"
+    >
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+        <Search className="h-4 w-4 text-text-muted shrink-0" aria-hidden="true" />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search commands, pages, actions..."
+          aria-label="Search commands and pages"
+          className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
+        />
+        <kbd className="text-[10px] font-medium text-text-muted bg-surface-hover border border-border px-1.5 py-0.5 rounded">ESC</kbd>
       </div>
-    </div>
+
+      <div className="max-h-[55vh] overflow-y-auto py-1">
+        {filtered.length === 0 ? (
+          <p className="text-sm text-text-muted text-center py-8">No matches</p>
+        ) : (
+          Object.entries(groups).map(([group, items]) => (
+            <div key={group} className="py-1">
+              <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">{group}</p>
+              {items.map((cmd) => {
+                const idx = runningIndex++;
+                const Icon = cmd.icon;
+                const isActive = idx === active;
+                return (
+                  <button
+                    key={cmd.id}
+                    onMouseEnter={() => setActive(idx)}
+                    onClick={() => cmd.run()}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors ${
+                      isActive ? 'bg-primary/10 text-primary' : 'text-text-primary hover:bg-surface-hover'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-text-muted'}`} aria-hidden="true" />
+                    <span className="flex-1 truncate">{cmd.label}</span>
+                    {isActive && <span className="text-[10px] text-text-muted">↵</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="px-3 py-2 border-t border-border bg-surface-secondary text-[11px] text-text-muted flex items-center justify-between">
+        <span>Navigate with ↑ ↓</span>
+        <span>Open anytime with <kbd className="px-1 py-0.5 bg-surface border border-border rounded">⌘K</kbd> / <kbd className="px-1 py-0.5 bg-surface border border-border rounded">Ctrl K</kbd></span>
+      </div>
+    </Modal>
   );
 }

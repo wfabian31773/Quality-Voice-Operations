@@ -46,6 +46,7 @@ export default function Docs() {
             <input
               type="search"
               placeholder="Search the docs..."
+              aria-label="Search the docs"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal/50 focus:border-teal/50"

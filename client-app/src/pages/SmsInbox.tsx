@@ -503,6 +503,7 @@ function InboxView({
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search conversations..."
+              aria-label="Search SMS conversations"
               className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>

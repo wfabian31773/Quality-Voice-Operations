@@ -482,7 +482,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted" />
               <input type="text" value={filters.search} onChange={e => { const v = e.target.value; setFilters(prev => ({ ...prev, search: v })); }}
-                placeholder="Search jobs..." className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                placeholder="Search jobs..." aria-label="Search dispatch jobs" className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           </div>
           <div className="min-w-[120px]">

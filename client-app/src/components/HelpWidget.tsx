@@ -159,6 +159,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search docs..."
+                    aria-label="Search docs"
                     className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
                   />
                 </div>
