@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import {
   PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
@@ -585,16 +586,17 @@ function ToolExecutionFeed({ tools, agentFilter, onAgentFilterChange }: {
   );
 }
 
-function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledgeAll }: {
+function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledgeAll, highlightType }: {
   alerts: OperationsAlert[];
   unacknowledgedCount: number;
   onAcknowledge: (id: string) => void;
   onAcknowledgeAll: () => void;
+  highlightType?: string | null;
 }) {
   const [showHistory, setShowHistory] = useState(false);
 
   return (
-    <div className="bg-surface border border-border rounded-xl shadow-sm">
+    <div id="alerts-panel" className="bg-surface border border-border rounded-xl shadow-sm scroll-mt-20">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
           <Bell className="h-4 w-4 text-text-secondary" />
@@ -635,8 +637,16 @@ function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledge
         <div className="divide-y divide-border max-h-64 overflow-y-auto">
           {alerts.map((alert) => {
             const SeverityIcon = severityIcon(alert.severity);
+            const isHighlighted = !!highlightType && alert.type === highlightType;
             return (
-              <div key={alert.id} className="px-5 py-3 flex items-start gap-3">
+              <div
+                key={alert.id}
+                className={`px-5 py-3 flex items-start gap-3 ${
+                  isHighlighted
+                    ? 'bg-amber-50 dark:bg-amber-500/10 ring-1 ring-inset ring-amber-400/40'
+                    : ''
+                }`}
+              >
                 <div className={`p-1.5 rounded-lg mt-0.5 ${severityColor(alert.severity)}`}>
                   <SeverityIcon className="h-3.5 w-3.5" />
                 </div>
@@ -722,9 +732,24 @@ export default function Operations() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState('');
   const [showAlertHistory, setShowAlertHistory] = useState(false);
+  const [searchParams] = useSearchParams();
+  const highlightAlertType = searchParams.get('alertType');
 
   const { activeCalls, connected } = useSSEActiveCalls();
   const { transcript, tools, callState } = useCallSSE(selectedCallId);
+
+  // When linked here from the dashboard banner with ?alertType=…, scroll the
+  // alerts panel into view once it has rendered. We delay until after the
+  // first paint so the layout is stable.
+  useEffect(() => {
+    if (!highlightAlertType) return;
+    const id = window.requestAnimationFrame(() => {
+      document
+        .getElementById('alerts-panel')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [highlightAlertType]);
 
   const { data: metrics } = useQuery({
     queryKey: ['operations-metrics', timeRange],
@@ -874,6 +899,7 @@ export default function Operations() {
             unacknowledgedCount={alertsData?.unacknowledgedCount ?? 0}
             onAcknowledge={(id) => acknowledgeMutation.mutate(id)}
             onAcknowledgeAll={() => acknowledgeAllMutation.mutate()}
+            highlightType={highlightAlertType}
           />
 
           <ToolExecutionFeed

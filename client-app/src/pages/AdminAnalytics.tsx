@@ -9,6 +9,7 @@ import { Inbox } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import BillingBackfillAlertsBanner from '../components/BillingBackfillAlertsBanner';
 import { EmptyState, Skeleton, SkeletonRows } from '../components/state';
 
 interface PlatformStats {
@@ -196,6 +197,8 @@ export default function AdminAnalytics() {
       </div>
 
       <GlobalScopeBanner />
+
+      <BillingBackfillAlertsBanner />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard

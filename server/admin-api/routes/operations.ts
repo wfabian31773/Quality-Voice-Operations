@@ -150,22 +150,49 @@ router.get('/operations/alerts', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const acknowledged = req.query.acknowledged === 'true';
   const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 200);
+  // Optional alert-type filter. Used by surfaces that only care about a single
+  // alert kind (e.g. the dashboard "billing needs attention" banner) so the
+  // returned `unacknowledgedCount` is exact for that type instead of being
+  // capped by the listing `limit`.
+  const typeFilter =
+    typeof req.query.type === 'string' && req.query.type.trim().length > 0
+      ? req.query.type.trim()
+      : null;
 
   const pool = getPlatformPool();
   try {
+    const listParams: Array<string | boolean | number> = [tenantId, acknowledged];
+    let typeSql = '';
+    if (typeFilter) {
+      listParams.push(typeFilter);
+      typeSql = ` AND type = $${listParams.length}`;
+    }
+    listParams.push(limit);
+    const limitParam = `$${listParams.length}`;
+
     const { rows } = await pool.query(
       `SELECT id, type, severity, message, metadata, call_session_id, agent_id,
               acknowledged, acknowledged_at, created_at
        FROM operations_alerts
-       WHERE tenant_id = $1 AND acknowledged = $2
+       WHERE tenant_id = $1 AND acknowledged = $2${typeSql}
        ORDER BY created_at DESC
-       LIMIT $3`,
-      [tenantId, acknowledged, limit],
+       LIMIT ${limitParam}`,
+      listParams,
     );
 
+    // The unack count must match the same type scope as the listing so the
+    // banner / badge can trust it as a true total (not capped by `limit`).
+    const countParams: Array<string> = [tenantId];
+    let countTypeSql = '';
+    if (typeFilter) {
+      countParams.push(typeFilter);
+      countTypeSql = ` AND type = $${countParams.length}`;
+    }
     const { rows: [{ count }] } = await pool.query(
-      `SELECT COUNT(*)::int AS count FROM operations_alerts WHERE tenant_id = $1 AND acknowledged = false`,
-      [tenantId],
+      `SELECT COUNT(*)::int AS count
+         FROM operations_alerts
+        WHERE tenant_id = $1 AND acknowledged = false${countTypeSql}`,
+      countParams,
     );
 
     res.json({ alerts: rows, unacknowledgedCount: count });
