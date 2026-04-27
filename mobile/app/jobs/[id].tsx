@@ -1,0 +1,359 @@
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
+import { useColors } from '@/hooks/useColors';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  api,
+  ApiError,
+  type DispatchJob,
+  type DispatchTransition,
+} from '@/lib/api';
+import { StatusPill } from '@/components/StatusPill';
+import { ContactRow } from '@/components/ContactRow';
+import { PrimaryButton } from '@/components/PrimaryButton';
+import { EmptyState } from '@/components/EmptyState';
+import { formatDateTime, formatStatus } from '@/lib/formatters';
+
+const NEXT_STEPS: Record<
+  DispatchJob['status'],
+  Array<{
+    label: string;
+    next: DispatchTransition;
+    variant: 'primary' | 'secondary' | 'success' | 'danger';
+    confirm?: boolean;
+  }>
+> = {
+  pending: [
+    { label: 'Accept', next: 'assigned', variant: 'primary' },
+    { label: 'Decline', next: 'cancelled', variant: 'danger', confirm: true },
+  ],
+  assigned: [
+    { label: 'Start travel (En route)', next: 'en_route', variant: 'primary' },
+    { label: 'Decline', next: 'pending', variant: 'secondary', confirm: true },
+    { label: 'Cancel job', next: 'cancelled', variant: 'danger', confirm: true },
+  ],
+  scheduled: [
+    { label: 'Start travel (En route)', next: 'en_route', variant: 'primary' },
+    { label: 'Cancel job', next: 'cancelled', variant: 'danger', confirm: true },
+  ],
+  en_route: [
+    { label: 'Mark On site', next: 'on_site', variant: 'primary' },
+    { label: 'Cancel job', next: 'cancelled', variant: 'danger', confirm: true },
+  ],
+  on_site: [
+    { label: 'Start work', next: 'in_progress', variant: 'primary' },
+    { label: 'Cancel job', next: 'cancelled', variant: 'danger', confirm: true },
+  ],
+  in_progress: [
+    { label: 'Complete', next: 'completed', variant: 'success' },
+    { label: 'Mark incomplete', next: 'incomplete', variant: 'secondary', confirm: true },
+    { label: 'Cancel job', next: 'cancelled', variant: 'danger', confirm: true },
+  ],
+  completed: [],
+  incomplete: [],
+  cancelled: [],
+  done: [],
+};
+
+export default function JobDetailScreen() {
+  const colors = useColors();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = params.id;
+  const { client } = useAuth();
+  const qc = useQueryClient();
+  const [pendingTransition, setPendingTransition] =
+    useState<DispatchTransition | null>(null);
+
+  const query = useQuery({
+    queryKey: ['job', id],
+    enabled: client !== null && Boolean(id),
+    queryFn: () => api.getJob(client!, id!),
+  });
+
+  const transition = useMutation({
+    mutationFn: (next: DispatchTransition) =>
+      api.transitionJob(client!, id!, next),
+    onMutate: (next) => {
+      setPendingTransition(next);
+    },
+    onSettled: () => {
+      setPendingTransition(null);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['job', id] });
+      qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (err) => {
+      const message =
+        err instanceof ApiError ? err.message : 'Could not update the job.';
+      Alert.alert('Update failed', message);
+    },
+  });
+
+  const job = query.data?.job;
+  const events = query.data?.events ?? [];
+
+  const actions = useMemo(() => (job ? NEXT_STEPS[job.status] ?? [] : []), [job]);
+
+  const runTransition = (next: DispatchTransition, confirm?: boolean) => {
+    const go = () => transition.mutate(next);
+    if (confirm) {
+      Alert.alert(
+        `${formatStatus(next)}?`,
+        'This action will update the job for everyone on the team.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Confirm', style: 'destructive', onPress: go },
+        ],
+      );
+    } else {
+      go();
+    }
+  };
+
+  if (query.isLoading || !id) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (query.isError || !job) {
+    return (
+      <View style={[styles.flex, { backgroundColor: colors.background }]}>
+        <EmptyState
+          title="Job not found"
+          description={
+            query.error instanceof ApiError
+              ? query.error.message
+              : 'The job may have been reassigned or removed.'
+          }
+        />
+        <PrimaryButton
+          label="Back"
+          variant="secondary"
+          onPress={() => router.back()}
+          style={{ margin: 16 }}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={styles.container}
+    >
+      <View style={styles.titleRow}>
+        <StatusPill status={job.status} />
+        <Text style={[styles.priority, { color: colors.textMuted }]}>
+          {formatStatus(job.priority)} priority
+        </Text>
+      </View>
+
+      <Text style={[styles.title, { color: colors.text }]}>{job.title}</Text>
+      {job.description ? (
+        <Text style={[styles.description, { color: colors.textMuted }]}>
+          {job.description}
+        </Text>
+      ) : null}
+
+      <View
+        style={[
+          styles.metaCard,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <MetaRow icon="time-outline" label="Scheduled" value={formatDateTime(job.scheduled_at)} />
+        {job.eta_start ? (
+          <MetaRow
+            icon="speedometer-outline"
+            label="ETA"
+            value={`${formatDateTime(job.eta_start)}${job.eta_end ? ` – ${formatDateTime(job.eta_end)}` : ''}`}
+          />
+        ) : null}
+        {job.address ? (
+          <MetaRow icon="location-outline" label="Address" value={job.address} />
+        ) : null}
+        {job.job_type ? (
+          <MetaRow icon="construct-outline" label="Type" value={job.job_type} />
+        ) : null}
+        {job.resource_name ? (
+          <MetaRow icon="person-outline" label="Technician" value={job.resource_name} />
+        ) : null}
+        {job.estimated_duration_minutes ? (
+          <MetaRow
+            icon="hourglass-outline"
+            label="Est. duration"
+            value={`${job.estimated_duration_minutes} min`}
+          />
+        ) : null}
+      </View>
+
+      <ContactRow
+        name={job.contact_name}
+        phone={job.contact_phone}
+        email={job.contact_email}
+      />
+
+      {job.notes ? (
+        <View
+          style={[
+            styles.notes,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+            Notes
+          </Text>
+          <Text style={[styles.notesText, { color: colors.text }]}>
+            {job.notes}
+          </Text>
+        </View>
+      ) : null}
+
+      {actions.length > 0 ? (
+        <View style={{ gap: 10 }}>
+          <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+            Actions
+          </Text>
+          {actions.map((a) => (
+            <PrimaryButton
+              key={a.next}
+              label={a.label}
+              variant={a.variant}
+              loading={
+                transition.isPending && pendingTransition === a.next
+              }
+              disabled={transition.isPending}
+              onPress={() => runTransition(a.next, a.confirm)}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {events.length > 0 ? (
+        <View
+          style={[
+            styles.timeline,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+            Activity
+          </Text>
+          {events.map((evt) => (
+            <View key={evt.id} style={styles.event}>
+              <View
+                style={[
+                  styles.eventDot,
+                  { backgroundColor: colors.primary },
+                ]}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.eventTitle, { color: colors.text }]}>
+                  {evt.from_status && evt.to_status
+                    ? `${formatStatus(evt.from_status)} → ${formatStatus(evt.to_status)}`
+                    : formatStatus(evt.event_type)}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                  {formatDateTime(evt.created_at)}
+                </Text>
+                {evt.notes ? (
+                  <Text style={{ color: colors.textMuted, marginTop: 4 }}>
+                    {evt.notes}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+function MetaRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.metaRow}>
+      <Ionicons name={icon} size={16} color={colors.textMuted} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.metaLabel, { color: colors.textMuted }]}>
+          {label}
+        </Text>
+        <Text style={[styles.metaValue, { color: colors.text }]}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  container: { padding: 16, gap: 16, paddingBottom: 32 },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  priority: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  title: { fontSize: 22, fontWeight: '800', lineHeight: 28 },
+  description: { fontSize: 15, lineHeight: 21 },
+  metaCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  metaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  metaLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  metaValue: { fontSize: 14, fontWeight: '600', marginTop: 2 },
+  notes: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+  },
+  cardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  notesText: { fontSize: 14, lineHeight: 20 },
+  timeline: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  event: { flexDirection: 'row', gap: 10 },
+  eventDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 6,
+  },
+  eventTitle: { fontWeight: '600', fontSize: 14 },
+});

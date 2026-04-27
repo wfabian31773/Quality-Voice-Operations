@@ -1,0 +1,223 @@
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
+import { useColors } from '@/hooks/useColors';
+import { useAuth } from '@/hooks/useAuth';
+import { api, type DispatchResource } from '@/lib/api';
+import { PrimaryButton } from '@/components/PrimaryButton';
+
+export default function ProfileScreen() {
+  const colors = useColors();
+  const { client, baseUrl, resourceId, resourceName, signOut, setResource } =
+    useAuth();
+  const [showPicker, setShowPicker] = useState(false);
+
+  const resourcesQuery = useQuery({
+    queryKey: ['resources'],
+    enabled: client !== null,
+    queryFn: () => api.listResources(client!),
+  });
+
+  const onSignOut = () => {
+    Alert.alert('Sign out?', 'You will need to enter your API key again.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          signOut();
+        },
+      },
+    ]);
+  };
+
+  const onSelectResource = async (r: DispatchResource | null) => {
+    if (r === null) {
+      await setResource(null, null);
+    } else {
+      await setResource(r.id, r.name);
+    }
+    setShowPicker(false);
+  };
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={styles.container}
+    >
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+          Server
+        </Text>
+        <Text
+          style={[styles.cardValue, { color: colors.text }]}
+          numberOfLines={2}
+        >
+          {baseUrl ?? '—'}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.cardLabel, { color: colors.textMuted }]}>
+          Technician (resource)
+        </Text>
+        <Text
+          style={[styles.cardValue, { color: colors.text }]}
+          numberOfLines={2}
+        >
+          {resourceName ?? 'All technicians'}
+        </Text>
+        <Text style={[styles.helper, { color: colors.textMuted }]}>
+          Filters jobs and appointments to a specific technician.
+        </Text>
+        <Pressable
+          onPress={() => setShowPicker((v) => !v)}
+          style={({ pressed }) => [
+            styles.linkBtn,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Ionicons name="people-outline" size={16} color={colors.primary} />
+          <Text style={[styles.linkText, { color: colors.primary }]}>
+            {showPicker ? 'Hide list' : 'Change technician'}
+          </Text>
+        </Pressable>
+
+        {showPicker ? (
+          <View style={styles.picker}>
+            {resourcesQuery.isLoading ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : resourcesQuery.isError ? (
+              <Text style={{ color: colors.danger }}>
+                {resourcesQuery.error instanceof Error
+                  ? resourcesQuery.error.message
+                  : 'Failed to load technicians.'}
+              </Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                <ResourceRow
+                  label="All technicians"
+                  selected={resourceId === null}
+                  onPress={() => onSelectResource(null)}
+                />
+                {(resourcesQuery.data?.resources ?? [])
+                  .filter((r) => r.status === 'active')
+                  .map((r) => (
+                    <ResourceRow
+                      key={r.id}
+                      label={r.name}
+                      sublabel={r.email ?? r.role ?? undefined}
+                      selected={resourceId === r.id}
+                      onPress={() => onSelectResource(r)}
+                    />
+                  ))}
+              </View>
+            )}
+          </View>
+        ) : null}
+      </View>
+
+      <PrimaryButton
+        label="Sign out"
+        variant="danger"
+        onPress={onSignOut}
+        style={{ marginTop: 12 }}
+      />
+    </ScrollView>
+  );
+}
+
+function ResourceRow({
+  label,
+  sublabel,
+  selected,
+  onPress,
+}: {
+  label: string;
+  sublabel?: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.resourceRow,
+        {
+          backgroundColor: selected ? colors.primaryMuted : 'transparent',
+          borderColor: selected ? colors.primary : colors.border,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.resourceName, { color: colors.text }]}>
+          {label}
+        </Text>
+        {sublabel ? (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            {sublabel}
+          </Text>
+        ) : null}
+      </View>
+      {selected ? (
+        <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+      ) : null}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { padding: 16, gap: 16 },
+  card: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 4,
+  },
+  cardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  cardValue: { fontSize: 16, fontWeight: '600', marginTop: 4 },
+  helper: { fontSize: 12, marginTop: 4 },
+  linkBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  linkText: { fontWeight: '600' },
+  picker: { marginTop: 12 },
+  resourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  resourceName: { fontSize: 14, fontWeight: '600' },
+});

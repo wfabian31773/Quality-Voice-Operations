@@ -26,6 +26,7 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Frontend/Backend Communication:** Utilizes an API proxy for routing and Server-Sent Events (SSE) for real-time data updates.
 - **Federated Ingest API:** Supports federated agent ingestion via REST API, enabling external voice agent systems to push call completion and ticket creation events into QVO. Endpoints are authenticated via API key, rate-limited, and use atomic idempotency.
 - **Native Agent Porting (Azul Vision):** Supports running Azul Vision's production agents natively inside QVO's WebSocket-based voice gateway, including integrations for ticketing and schedule lookups.
+- **Technician Mobile App (`mobile/`):** A standalone Expo (React Native) app for field technicians built on `expo-router` + `@tanstack/react-query` + `expo-secure-store`. It authenticates with a tenant API key (prefix `vai_`) against `/api/v1/dispatch/*` and `/api/v1/scheduling/*` (mounted in `server/admin-api/routes/mobileApi.ts`) so a technician can view assigned jobs, accept/decline, drive the dispatch state machine (`assigned → en_route → on_site → in_progress → completed`), see upcoming appointments, check in / complete bookings, and one-tap call/SMS/email the customer. Builds for iOS + Android via EAS profiles defined in `mobile/eas.json` (bundle id / package `com.voiceai.tech`).
 
 ## External Dependencies
 - **Database:** PostgreSQL (Supabase for production).

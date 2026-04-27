@@ -89,7 +89,7 @@ export const listBookingsHandler: RequestHandler = async (req, res) => {
   }
 };
 
-const getBookingHandler: RequestHandler = async (req, res) => {
+export const getBookingHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
@@ -292,7 +292,7 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
 
 // ─── LIFECYCLE ACTIONS ───
 
-const transitionBookingHandler: RequestHandler = async (req, res) => {
+export const transitionBookingHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const { action, cancellation_reason, override_reason, new_start_time, new_end_time } = req.body;

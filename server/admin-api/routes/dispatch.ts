@@ -232,7 +232,7 @@ const getStatusCountsHandler: RequestHandler = async (req, res) => {
   }
 };
 
-const getJobHandler: RequestHandler = async (req, res) => {
+export const getJobHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
@@ -460,7 +460,7 @@ const updateJobHandler: RequestHandler = async (req, res) => {
   }
 };
 
-const transitionJobHandler: RequestHandler = async (req, res) => {
+export const transitionJobHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
   const { status, notes } = req.body;
@@ -766,7 +766,7 @@ const addAttachmentHandler: RequestHandler = async (req, res) => {
 
 // ============ RESOURCES ============
 
-const listResourcesHandler: RequestHandler = async (req, res) => {
+export const listResourcesHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
   const { status: resStatus, territory_id } = req.query as Record<string, string>;
