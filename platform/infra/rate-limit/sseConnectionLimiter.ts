@@ -75,6 +75,26 @@ export function createSseConnectionLimiter(config: SseConnectionLimiterConfig): 
   };
 }
 
+// Single shared per-tenant SSE concurrency limiter. Both /calls/live and
+// /operations/calls/:callId/live share this instance so the cap is tenant-
+// wide across all live-stream surfaces, not per-route.
+let sharedTenantSseLimiter: SseConnectionLimiter | null = null;
+
+export function getTenantSseConnectionLimiter(): SseConnectionLimiter {
+  if (!sharedTenantSseLimiter) {
+    sharedTenantSseLimiter = createSseConnectionLimiter({
+      maxConcurrent: resolveLiveStreamCap(process.env.TENANT_LIVE_STREAM_CAP),
+    });
+  }
+  return sharedTenantSseLimiter;
+}
+
+export function __resetTenantSseConnectionLimiterForTesting(
+  next: SseConnectionLimiter | null = null,
+): void {
+  sharedTenantSseLimiter = next;
+}
+
 // Registry of active SSE connections keyed by (tenantId, connectionId), used
 // by the companion ack endpoint to refresh a stream's idle deadline.
 const sseRegistry = new Map<string, () => void>();

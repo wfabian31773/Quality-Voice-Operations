@@ -14,6 +14,8 @@ import {
   registerSseConnection,
   ackSseConnection,
   clearSseRegistry,
+  getTenantSseConnectionLimiter,
+  __resetTenantSseConnectionLimiterForTesting,
 } from '../../platform/infra/rate-limit/sseConnectionLimiter';
 
 function makeReq(tenantId = 'tenant-a'): Request & EventEmitter {
@@ -262,39 +264,61 @@ describe('attachSseHeartbeat', () => {
   });
 });
 
-describe('source contract — SSE endpoints use the limiter and heartbeat helper', () => {
-  it('callsLive route reuses createRateLimiter (per task spec) AND the concurrency limiter', () => {
+describe('source contract — SSE endpoints use the shared limiter and heartbeat helper', () => {
+  it('callsLive route uses the shared tenant SSE limiter and createRateLimiter', () => {
     const src = readFileSync(
       join(process.cwd(), 'server/admin-api/routes/callsLive.ts'),
       'utf-8',
     );
     expect(src).toMatch(/import\s*\{\s*createRateLimiter\s*\}\s*from\s*['"][^'"]*createRateLimiter['"]/);
     expect(src).toMatch(/createRateLimiter\(\s*\{[\s\S]*?keyGenerator[\s\S]*?\.user\?\.tenantId/);
-    expect(src).toMatch(/createSseConnectionLimiter/);
+    expect(src).toMatch(/getTenantSseConnectionLimiter/);
     expect(src).toMatch(/attachSseHeartbeat/);
-    expect(src).toMatch(/callsLiveSseLimiter\.acquire\(req,\s*res\)/);
+    expect(src).toMatch(/getTenantSseConnectionLimiter\(\)\.acquire\(req,\s*res\)/);
     expect(src).toMatch(/router\.get\(\s*['"]\/calls\/live['"][\s\S]*?callsLiveRateLimiter/);
-    const acquireIdx = src.indexOf('callsLiveSseLimiter.acquire');
+    // Must NOT create its own per-route concurrency limiter — that would
+    // allow a tenant to exceed the cap by opening connections on each
+    // route independently.
+    expect(src).not.toMatch(/createSseConnectionLimiter\(/);
+    const acquireIdx = src.indexOf('getTenantSseConnectionLimiter().acquire');
     const writeHeadIdx = src.indexOf('res.writeHead(200');
     expect(acquireIdx).toBeGreaterThan(0);
     expect(writeHeadIdx).toBeGreaterThan(acquireIdx);
   });
 
-  it('operations route reuses createRateLimiter (per task spec) AND the concurrency limiter', () => {
+  it('operations route uses the shared tenant SSE limiter and createRateLimiter', () => {
     const src = readFileSync(
       join(process.cwd(), 'server/admin-api/routes/operations.ts'),
       'utf-8',
     );
     expect(src).toMatch(/import\s*\{\s*createRateLimiter\s*\}\s*from\s*['"][^'"]*createRateLimiter['"]/);
     expect(src).toMatch(/createRateLimiter\(\s*\{[\s\S]*?keyGenerator[\s\S]*?\.user\?\.tenantId/);
-    expect(src).toMatch(/createSseConnectionLimiter/);
+    expect(src).toMatch(/getTenantSseConnectionLimiter/);
     expect(src).toMatch(/attachSseHeartbeat/);
-    expect(src).toMatch(/operationsCallLiveSseLimiter\.acquire\(req,\s*res\)/);
+    expect(src).toMatch(/getTenantSseConnectionLimiter\(\)\.acquire\(req,\s*res\)/);
     expect(src).toMatch(/router\.get\(\s*['"]\/operations\/calls\/:callId\/live['"][\s\S]*?operationsCallLiveRateLimiter/);
-    const acquireIdx = src.indexOf('operationsCallLiveSseLimiter.acquire');
+    expect(src).not.toMatch(/createSseConnectionLimiter\(/);
+    const acquireIdx = src.indexOf('getTenantSseConnectionLimiter().acquire');
     const writeHeadIdx = src.indexOf('res.writeHead(200', acquireIdx);
     expect(acquireIdx).toBeGreaterThan(0);
     expect(writeHeadIdx).toBeGreaterThan(acquireIdx);
+  });
+
+  it('both SSE routes import the shared limiter from the same module', () => {
+    const callsLive = readFileSync(
+      join(process.cwd(), 'server/admin-api/routes/callsLive.ts'),
+      'utf-8',
+    );
+    const ops = readFileSync(
+      join(process.cwd(), 'server/admin-api/routes/operations.ts'),
+      'utf-8',
+    );
+    const importPattern =
+      /from\s*['"][^'"]*platform\/infra\/rate-limit\/sseConnectionLimiter['"]/;
+    expect(callsLive).toMatch(importPattern);
+    expect(ops).toMatch(importPattern);
+    expect(callsLive).toMatch(/getTenantSseConnectionLimiter/);
+    expect(ops).toMatch(/getTenantSseConnectionLimiter/);
   });
 
   it('resolveLiveStreamCap sanitizes env values', () => {
@@ -306,6 +330,139 @@ describe('source contract — SSE endpoints use the limiter and heartbeat helper
     expect(resolveLiveStreamCap('Infinity')).toBe(20);
     expect(resolveLiveStreamCap('50')).toBe(50);
     expect(resolveLiveStreamCap('25.7')).toBe(25);
+  });
+
+  it('getTenantSseConnectionLimiter returns the same singleton across calls', () => {
+    __resetTenantSseConnectionLimiterForTesting();
+    const a = getTenantSseConnectionLimiter();
+    const b = getTenantSseConnectionLimiter();
+    expect(a).toBe(b);
+  });
+});
+
+describe('shared tenant SSE limiter — cross-route aggregate cap', () => {
+  afterEach(() => {
+    __resetTenantSseConnectionLimiterForTesting();
+  });
+
+  it('a single tenant cannot exceed the cap by spreading connections across routes', () => {
+    // Simulate the cap = 3.
+    __resetTenantSseConnectionLimiterForTesting(
+      createSseConnectionLimiter({ maxConcurrent: 3 }),
+    );
+
+    // Route A (mimics /calls/live): 2 connections.
+    const a1 = getTenantSseConnectionLimiter().acquire(makeReq('tenant-x'), makeRes());
+    const a2 = getTenantSseConnectionLimiter().acquire(makeReq('tenant-x'), makeRes());
+    // Route B (mimics /operations/calls/:callId/live): 1 connection.
+    const b1 = getTenantSseConnectionLimiter().acquire(makeReq('tenant-x'), makeRes());
+    expect([a1, a2, b1]).toEqual([true, true, true]);
+
+    // Tenant has now filled the cap across both routes. The 4th — on
+    // either route — must be rejected.
+    const res4a = makeRes();
+    const denied4a = getTenantSseConnectionLimiter().acquire(makeReq('tenant-x'), res4a);
+    expect(denied4a).toBe(false);
+    expect(res4a.__statusCode).toBe(429);
+
+    const res4b = makeRes();
+    const denied4b = getTenantSseConnectionLimiter().acquire(makeReq('tenant-x'), res4b);
+    expect(denied4b).toBe(false);
+    expect(res4b.__statusCode).toBe(429);
+
+    // A different tenant is unaffected.
+    const other = getTenantSseConnectionLimiter().acquire(makeReq('tenant-y'), makeRes());
+    expect(other).toBe(true);
+  });
+
+  it('route-level integration: shared limiter caps a tenant across two SSE routes', async () => {
+    __resetTenantSseConnectionLimiterForTesting(
+      createSseConnectionLimiter({ maxConcurrent: 2 }),
+    );
+
+    const app = express();
+    const stubAuth = (req: Request, _res: Response, next: NextFunction) => {
+      (req as Request & { user?: { tenantId: string } }).user = {
+        tenantId: 'tenant-int',
+      };
+      next();
+    };
+
+    // Two distinct SSE-style routes that share the singleton limiter. We
+    // hold each accepted connection open via the response so the slot
+    // stays reserved until the test releases it.
+    const heldResponses: Response[] = [];
+    const stubSseHandler = (_req: Request, res: Response) => {
+      if (
+        !getTenantSseConnectionLimiter().acquire(_req as unknown as Request, res)
+      ) {
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('event: ok\ndata: {}\n\n');
+      heldResponses.push(res);
+    };
+
+    app.get('/route-a/live', stubAuth, stubSseHandler);
+    app.get('/route-b/live', stubAuth, stubSseHandler);
+
+    const server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    const port = (server.address() as AddressInfo).port;
+
+    const openSse = (path: string) =>
+      new Promise<{ status: number; req: http.ClientRequest }>((resolve, reject) => {
+        const req = http.get(
+          { host: '127.0.0.1', port, path, headers: { Accept: 'text/event-stream' } },
+          (res) => {
+            res.on('data', () => {
+              if (!resolved) {
+                resolved = true;
+                resolve({ status: res.statusCode ?? 0, req });
+              }
+            });
+            res.on('end', () => {
+              if (!resolved) {
+                resolved = true;
+                resolve({ status: res.statusCode ?? 0, req });
+              }
+            });
+          },
+        );
+        let resolved = false;
+        req.on('error', (err) => {
+          if (!resolved) {
+            resolved = true;
+            reject(err);
+          }
+        });
+      });
+
+    const a = await openSse('/route-a/live');
+    const b = await openSse('/route-b/live');
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+
+    // Cap is 2; the next request — on either route — must be 429.
+    const denied = await new Promise<number>((resolve, reject) => {
+      http
+        .get(
+          { host: '127.0.0.1', port, path: '/route-a/live' },
+          (res) => {
+            res.resume();
+            res.on('end', () => resolve(res.statusCode ?? 0));
+          },
+        )
+        .on('error', reject);
+    });
+    expect(denied).toBe(429);
+
+    a.req.destroy();
+    b.req.destroy();
+    for (const r of heldResponses) {
+      try { r.end(); } catch { /* already ended */ }
+    }
+    await new Promise<void>((r) => server.close(() => r()));
   });
 
   it('neither SSE route uses the old inline 15-second heartbeat setInterval pattern', () => {

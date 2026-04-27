@@ -7,7 +7,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireOpsRole } from '../middleware/rbac';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import {
-  createSseConnectionLimiter,
+  getTenantSseConnectionLimiter,
   attachSseHeartbeat,
   resolveLiveStreamCap,
   registerSseConnection,
@@ -25,10 +25,6 @@ export const operationsCallLiveRateLimiter = createRateLimiter({
   keyGenerator: (req: Request) =>
     (req as Request & { user?: { tenantId?: string } }).user?.tenantId ?? 'platform',
   message: 'Too many live-stream connection attempts for this tenant.',
-});
-
-export const operationsCallLiveSseLimiter = createSseConnectionLimiter({
-  maxConcurrent: TENANT_LIVE_STREAM_CAP,
 });
 
 router.get('/operations/realtime', requireAuth, async (req, res) => {
@@ -245,7 +241,7 @@ router.get('/operations/calls/:callId/live', requireAuth, operationsCallLiveRate
     return;
   }
 
-  if (!operationsCallLiveSseLimiter.acquire(req, res)) {
+  if (!getTenantSseConnectionLimiter().acquire(req, res)) {
     logger.warn('Rejected ops live-stream connection — tenant cap reached', {
       tenantId,
       callId,

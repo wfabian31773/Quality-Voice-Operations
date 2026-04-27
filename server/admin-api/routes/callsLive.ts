@@ -5,7 +5,7 @@ import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import {
-  createSseConnectionLimiter,
+  getTenantSseConnectionLimiter,
   attachSseHeartbeat,
   resolveLiveStreamCap,
   registerSseConnection,
@@ -26,10 +26,6 @@ export const callsLiveRateLimiter = createRateLimiter({
   message: 'Too many live-stream connection attempts for this tenant.',
 });
 
-export const callsLiveSseLimiter = createSseConnectionLimiter({
-  maxConcurrent: TENANT_LIVE_STREAM_CAP,
-});
-
 interface CallRow {
   id: string;
   direction: string;
@@ -46,7 +42,7 @@ interface CallRow {
 router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) => {
   const { tenantId } = req.user!;
 
-  if (!callsLiveSseLimiter.acquire(req, res)) {
+  if (!getTenantSseConnectionLimiter().acquire(req, res)) {
     logger.warn('Rejected live-stream connection — tenant concurrency cap reached', {
       tenantId,
       cap: TENANT_LIVE_STREAM_CAP,
