@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import { Skeleton, SkeletonRows } from '../components/state';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 
@@ -375,7 +376,12 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-text-secondary">Loading...</div>
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
         ) : data ? (
           <div className="p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -578,7 +584,7 @@ export default function KnowledgeBase() {
 
       {activeView === 'documents' ? (
         documentsLoading ? (
-          <div className="text-center py-12 text-text-secondary">Loading...</div>
+          <SkeletonRows count={5} rowClassName="h-14" />
         ) : filteredDocuments.length === 0 ? (
           <div className="bg-surface border border-border rounded-xl">
             {documents.length === 0 ? (
@@ -692,7 +698,7 @@ export default function KnowledgeBase() {
         )
       ) : (
         articlesLoading ? (
-          <div className="text-center py-12 text-text-secondary">Loading...</div>
+          <SkeletonRows count={5} rowClassName="h-14" />
         ) : filteredArticles.length === 0 ? (
           <div className="bg-surface border border-border rounded-xl">
             {articles.length === 0 ? (

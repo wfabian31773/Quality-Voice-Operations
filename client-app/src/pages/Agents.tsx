@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertTriangle } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
+import { EmptyState, SkeletonGrid } from '../components/state';
 
 interface Agent {
   id: string;
@@ -457,11 +458,19 @@ export default function Agents() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-text-secondary">Loading...</div>
+        <SkeletonGrid count={6} />
       ) : agents.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl p-12 text-center">
-          <Bot className="h-12 w-12 text-text-muted mx-auto mb-3" />
-          <p className="text-text-secondary">No agents yet. Create your first agent to get started.</p>
+        <div className="bg-surface border border-border rounded-xl">
+          <EmptyState
+            icon={Bot}
+            title="No agents yet"
+            description="Create your first agent to start handling calls."
+            primaryAction={{
+              label: 'New Agent',
+              icon: Plus,
+              onClick: () => setEditingId('new'),
+            }}
+          />
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -7,6 +7,7 @@ import {
   PhoneOff, UserPlus, Mail, ChevronDown, ChevronUp,
   Workflow as WorkflowIcon,
 } from 'lucide-react';
+import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
 
 interface WorkflowStep {
   id: string;
@@ -425,7 +426,7 @@ export default function Workflows() {
   const [view, setView] = useState<'list' | 'builder'>('list');
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | undefined>();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['workflows'],
     queryFn: () => api.get<{ workflows: Workflow[]; total: number }>('/workflows?limit=100'),
   });
@@ -468,11 +469,28 @@ export default function Workflows() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-text-secondary">Loading...</div>
+        <SkeletonGrid count={6} />
+      ) : error ? (
+        <ErrorState
+          title="Failed to load workflows"
+          error={error}
+          onRetry={() => refetch()}
+        />
       ) : workflows.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl p-12 text-center">
-          <WorkflowIcon className="h-12 w-12 text-text-muted mx-auto mb-3" />
-          <p className="text-text-secondary">No workflows yet. Create your first workflow to automate call handling.</p>
+        <div className="bg-surface border border-border rounded-xl">
+          <EmptyState
+            icon={WorkflowIcon}
+            title="No workflows yet"
+            description="Create your first workflow to automate call routing, lead qualification, and escalation."
+            primaryAction={{
+              label: 'New Workflow',
+              icon: Plus,
+              onClick: () => {
+                setEditingWorkflow(undefined);
+                setView('builder');
+              },
+            }}
+          />
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

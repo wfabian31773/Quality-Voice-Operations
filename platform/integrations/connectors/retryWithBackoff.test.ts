@@ -293,6 +293,65 @@ describe('retryFetch', () => {
     expect(safe).toHaveBeenCalledTimes(1);
   });
 
+  // BL-014 (Task #248) regression: custom fetchers wrapping `safeFetch`
+  // (Zapier path) MUST return a real `Response` so retryFetch can call
+  // `headers.get(...)` and `clone().text()` on retryable statuses. This test
+  // simulates the SafeFetchResponse → Response wrap pattern used in
+  // adapters/zapier.ts and verifies Retry-After is honoured end-to-end.
+  test('Zapier-style fetcher (SafeFetchResponse wrapped into Response) honours Retry-After on 429', async () => {
+    interface SafeLike {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      headers: Record<string, string>;
+      text: () => Promise<string>;
+      json: () => Promise<unknown>;
+    }
+    const safeLikeResponses: SafeLike[] = [
+      {
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'retry-after': '7', 'content-type': 'text/plain' },
+        text: async () => 'rate limited',
+        json: async () => ({}),
+      },
+      {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/json' },
+        text: async () => '{"id":"abc"}',
+        json: async () => ({ id: 'abc' }),
+      },
+    ];
+    let callIdx = 0;
+
+    const wrappedFetcher = vi.fn(async () => {
+      const safe = safeLikeResponses[callIdx++]!;
+      // Mirror adapters/zapier.ts: read body once, build a real Response.
+      const body = await safe.text();
+      return new Response(body, {
+        status: safe.status,
+        statusText: safe.statusText,
+        headers: safe.headers,
+      });
+    });
+
+    const { sleep, delays } = fakeSleep();
+    const res = await retryFetch('https://hooks.zapier.com/x', undefined, {
+      fetcher: wrappedFetcher,
+      sleep,
+      jitter: noJitter,
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'abc' });
+    expect(wrappedFetcher).toHaveBeenCalledTimes(2);
+    // Retry-After: 7 → ~7000ms used instead of base 1000ms.
+    expect(delays).toEqual([7_000]);
+  });
+
   test('total backoff for 3 attempts of 503 stays under 60s budget', async () => {
     const fetcher = vi
       .fn()

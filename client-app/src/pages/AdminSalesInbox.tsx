@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import { ErrorState, Skeleton } from '../components/state';
 
 type LeadSource = 'book_demo' | 'roi_calculator' | 'contact';
 type LeadStatus = 'new' | 'contacted' | 'closed';
@@ -579,9 +580,12 @@ export default function AdminSalesInbox() {
       </div>
 
       {isError && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-rose-200 text-sm">
-          Failed to load leads: {error instanceof Error ? error.message : 'Unknown error'}
-        </div>
+        <ErrorState
+          variant="inline"
+          title="Failed to load leads"
+          error={error}
+          onRetry={() => refetch()}
+        />
       )}
 
       <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 overflow-hidden">
@@ -617,7 +621,7 @@ export default function AdminSalesInbox() {
           </thead>
           <tbody className="divide-y divide-slate-800">
             {isLoading && (
-              <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">Loading leads…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-3"><Skeleton className="h-10 w-full" /></td></tr>
             )}
             {!isLoading && data && data.leads.length === 0 && (
               <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">
@@ -1388,11 +1392,19 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-5 space-y-5">
-          {isLoading && <p className="text-sm text-slate-400">Loading settings…</p>}
-          {isError && (
-            <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
-              Failed to load settings: {error instanceof Error ? error.message : 'Unknown error'}
+          {isLoading && (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-3/4" />
             </div>
+          )}
+          {isError && (
+            <ErrorState
+              variant="inline"
+              title="Failed to load settings"
+              error={error}
+            />
           )}
           {draft && data && (
             <>
@@ -1565,13 +1577,11 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
 function TestAlertBanner({ result, error }: { result: TestAlertResponse | null; error: string | null }) {
   if (error) {
     return (
-      <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm flex items-start gap-2">
-        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Test alert request failed</div>
-          <div className="text-rose-300/90 mt-0.5 break-words">{error}</div>
-        </div>
-      </div>
+      <ErrorState
+        variant="inline"
+        title="Test alert request failed"
+        error={error}
+      />
     );
   }
   if (!result) return null;

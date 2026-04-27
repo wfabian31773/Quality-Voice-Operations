@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { api } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import { Skeleton, SkeletonRows } from '../components/state';
 
 interface PlatformStats {
   active_tenants: string | number;
@@ -220,7 +221,7 @@ export default function AdminAnalytics() {
           Platform Call Volume <span className="text-xs font-normal text-text-secondary ml-2">all tenants &middot; last 30 days</span>
         </h2>
         {monitoringLoading ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>
+          <Skeleton className="h-64 w-full" rounded="lg" />
         ) : !trendData.length ? (
           <div className="h-64 flex items-center justify-center text-muted-foreground">No data</div>
         ) : (
@@ -249,7 +250,7 @@ export default function AdminAnalytics() {
             Platform Economics <span className="text-xs font-normal text-text-secondary ml-2">monthly &middot; all tenants</span>
           </h2>
           {monitoringLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <SkeletonRows count={7} rowClassName="h-5" gap="sm" />
           ) : !mon ? (
             <div className="text-muted-foreground">No data</div>
           ) : (
@@ -272,7 +273,7 @@ export default function AdminAnalytics() {
             Trial Conversion <span className="text-xs font-normal text-text-secondary ml-2">all accounts</span>
           </h2>
           {monitoringLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <SkeletonRows count={4} rowClassName="h-5" gap="sm" />
           ) : !mon ? (
             <div className="text-muted-foreground">No data</div>
           ) : (
@@ -308,7 +309,7 @@ export default function AdminAnalytics() {
           </div>
         </div>
         {tenantsLoading ? (
-          <div className="text-muted-foreground">Loading...</div>
+          <SkeletonRows count={6} rowClassName="h-10" />
         ) : !tenants.length ? (
           <div className="text-muted-foreground">No tenants on the platform</div>
         ) : !filteredSortedTenants.length ? (
@@ -383,7 +384,7 @@ export default function AdminAnalytics() {
           <span className="text-xs text-text-secondary">aggregated install &amp; usage metrics</span>
         </div>
         {templatesLoading ? (
-          <div className="text-muted-foreground">Loading...</div>
+          <SkeletonRows count={5} rowClassName="h-10" />
         ) : !templates.length ? (
           <div className="text-muted-foreground">No templates published</div>
         ) : (

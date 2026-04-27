@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical, ExternalLink, ArrowRightLeft, UserPlus, Building2, Briefcase, ClipboardCheck, Cloud } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
+import { SkeletonRows } from '../components/state';
 import {
   DndContext,
   PointerSensor,
@@ -1279,7 +1280,7 @@ export default function Calls() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-12 text-text-secondary">Loading...</div>
+        <SkeletonRows count={6} rowClassName="h-16" />
       ) : calls.length === 0 ? (
         <div className="bg-surface border border-border rounded-xl">
           {activeFilterCount > 0 ? (

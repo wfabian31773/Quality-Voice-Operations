@@ -5,6 +5,7 @@ import {
   Shield, Download, Key, Users, Lock, CheckCircle2, AlertCircle,
   ChevronLeft, ChevronRight, FileText, Trash2, RefreshCw, RotateCcw,
 } from 'lucide-react';
+import { ErrorState, Skeleton, SkeletonRows } from '../components/state';
 
 type Tab = 'audit' | 'api-keys' | 'roles' | 'encryption' | 'soc2' | 'gdpr';
 
@@ -196,7 +197,7 @@ function AuditLogTab() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-muted">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
               ) : !data?.events.length ? (
                 <tr><td colSpan={7} className="text-center py-12 text-muted">No audit events found</td></tr>
               ) : (
@@ -351,7 +352,7 @@ function ApiKeysTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-8 text-muted">Loading...</td></tr>
+              <tr><td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !data?.keys.length ? (
               <tr><td colSpan={6} className="text-center py-8 text-muted">No API keys</td></tr>
             ) : (
@@ -448,7 +449,7 @@ function RolesTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="text-center py-8 text-muted">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !data?.roles.length ? (
               <tr><td colSpan={5} className="text-center py-8 text-muted">No role assignments</td></tr>
             ) : (
@@ -543,7 +544,7 @@ function EncryptionTab() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['compliance-encryption'] }),
   });
 
-  if (isLoading) return <div className="text-center py-12 text-muted">Loading encryption status...</div>;
+  if (isLoading) return <SkeletonRows count={3} rowClassName="h-24" />;
 
   return (
     <div className="space-y-6">
@@ -625,7 +626,7 @@ function Soc2Tab() {
     queryFn: () => api.get<{ checklist: ChecklistItem[] }>('/compliance/soc2-checklist'),
   });
 
-  if (isLoading) return <div className="text-center py-12 text-muted">Loading checklist...</div>;
+  if (isLoading) return <SkeletonRows count={5} rowClassName="h-16" />;
 
   const categories = [...new Set(data?.checklist.map((c) => c.category) ?? [])];
   const implemented = data?.checklist.filter((c) => c.status === 'implemented').length ?? 0;
@@ -742,7 +743,14 @@ function GdprTab() {
             </button>
           </div>
           {exportMutation.isError && (
-            <p className="text-sm text-red-500 mt-2">Failed to export data</p>
+            <div className="mt-3">
+              <ErrorState
+                variant="inline"
+                title="Failed to export data"
+                error={exportMutation.error}
+                onRetry={() => exportMutation.mutate(exportEmail)}
+              />
+            </div>
           )}
         </div>
 
@@ -773,7 +781,13 @@ function GdprTab() {
             </button>
           </div>
           {eraseMutation.isError && (
-            <p className="text-sm text-red-500 mt-2">Failed to erase data</p>
+            <div className="mt-3">
+              <ErrorState
+                variant="inline"
+                title="Failed to erase data"
+                error={eraseMutation.error}
+              />
+            </div>
           )}
           {eraseMutation.isSuccess && (
             <p className="text-sm text-green-600 mt-2">User data has been erased</p>
@@ -797,7 +811,7 @@ function GdprTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="text-center py-8 text-muted">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !requestsData?.requests.length ? (
               <tr><td colSpan={5} className="text-center py-8 text-muted">No GDPR requests</td></tr>
             ) : (

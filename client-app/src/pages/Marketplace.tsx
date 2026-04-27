@@ -5,10 +5,11 @@ import { api } from '../lib/api';
 import {
   Search, Store, ArrowLeft, Download, CheckCircle, Phone, MessageSquare,
   Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, Shield,
-  AlertCircle, BookOpen, MessageCircle, PlayCircle, Star, DollarSign,
+  BookOpen, MessageCircle, PlayCircle, Star, DollarSign,
   Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
   ShoppingCart, Filter,
 } from 'lucide-react';
+import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
 
 interface TemplateCategory {
   name: string;
@@ -1249,7 +1250,7 @@ interface PhoneNumberAssignment {
 }
 
 function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => void }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace-installations'],
     queryFn: () => api.get<{ installations: Installation[] }>('/marketplace/installations'),
   });
@@ -1263,29 +1264,27 @@ function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
   const installations = data?.installations ?? [];
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <SkeletonGrid count={4} className="grid gap-4" cardClassName="h-32" />;
   }
 
   if (error) {
     return (
-      <div className="bg-surface border border-danger/30 rounded-xl p-12 text-center">
-        <AlertCircle className="h-12 w-12 text-danger mx-auto mb-3" />
-        <p className="text-text-primary font-medium">Failed to load installations</p>
-        <p className="text-sm text-text-secondary mt-1">{(error as Error).message}</p>
-      </div>
+      <ErrorState
+        title="Failed to load installations"
+        error={error}
+        onRetry={() => refetch()}
+      />
     );
   }
 
   if (installations.length === 0) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-12 text-center">
-        <Download className="h-12 w-12 text-text-muted mx-auto mb-3" />
-        <p className="text-text-secondary">No installed templates yet.</p>
-        <p className="text-sm text-text-muted mt-1">Browse the marketplace to find and install agent templates.</p>
+      <div className="bg-surface border border-border rounded-xl">
+        <EmptyState
+          icon={Download}
+          title="No installed templates yet"
+          description="Browse the marketplace to find and install agent templates."
+        />
       </div>
     );
   }
@@ -1404,7 +1403,7 @@ export default function Marketplace() {
   const [selectedMktCategory, setSelectedMktCategory] = useState('');
   const [sortBy, setSortBy] = useState('');
 
-  const { data: templatesData, isLoading: loadingTemplates, error: templatesError } = useQuery({
+  const { data: templatesData, isLoading: loadingTemplates, error: templatesError, refetch: refetchTemplates } = useQuery({
     queryKey: ['marketplace-templates', search, selectedCategory, selectedMktCategory, sortBy],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -1593,22 +1592,24 @@ export default function Marketplace() {
           )}
 
           {loadingTemplates ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-            </div>
+            <SkeletonGrid count={6} />
           ) : templatesError ? (
-            <div className="bg-surface border border-danger/30 rounded-xl p-12 text-center">
-              <AlertCircle className="h-12 w-12 text-danger mx-auto mb-3" />
-              <p className="text-text-primary font-medium">Failed to load templates</p>
-              <p className="text-sm text-text-secondary mt-1">{(templatesError as Error).message}</p>
-            </div>
+            <ErrorState
+              title="Failed to load templates"
+              error={templatesError}
+              onRetry={() => refetchTemplates()}
+            />
           ) : templates.length === 0 ? (
-            <div className="bg-surface border border-border rounded-xl p-12 text-center">
-              <Store className="h-12 w-12 text-text-muted mx-auto mb-3" />
-              <p className="text-text-secondary">No packages found.</p>
-              {(search || selectedCategory || selectedMktCategory) && (
-                <p className="text-sm text-text-muted mt-1">Try adjusting your search or filters.</p>
-              )}
+            <div className="bg-surface border border-border rounded-xl">
+              <EmptyState
+                icon={Store}
+                title="No packages found"
+                description={
+                  search || selectedCategory || selectedMktCategory
+                    ? 'Try adjusting your search or filters.'
+                    : 'Check back soon for new agent packages.'
+                }
+              />
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

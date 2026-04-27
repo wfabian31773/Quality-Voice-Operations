@@ -52,6 +52,11 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
       // still runs on every attempt. Retry-After on a 429 is honoured.
       // The 60s per-dispatch budget is enforced by retryFetch itself; the
       // per-attempt AbortController owns the request timeout.
+      //
+      // `safeFetch` returns a custom `SafeFetchResponse` shape (plain headers
+      // record, no `.clone()`); `retryFetch` expects the standard `Response`
+      // contract. We adapt the response here so retry/backoff logic works
+      // (Retry-After parsing via `Headers.get`, body draining via `.clone()`).
       const res = await retryFetch(
         webhookUrl,
         {
@@ -65,9 +70,22 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
             const c = new AbortController();
             const t = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS);
             try {
-              return await safeFetch(typeof input === 'string' ? input : String(input), {
-                ...opts,
+              // Narrow RequestInit → SafeFetchInit. retryFetch always invokes
+              // its fetcher with the init we passed above, so we know body is
+              // a string and headers is a plain record here.
+              const safe = await safeFetch(typeof input === 'string' ? input : String(input), {
+                method: opts?.method,
+                headers: opts?.headers as Record<string, string> | undefined,
+                body: typeof opts?.body === 'string' ? opts.body : undefined,
                 signal: c.signal,
+              });
+              // Read the body once; `Response` is consumable + clonable so
+              // downstream `.json()`/`.text()`/`.clone()` calls work normally.
+              const bodyText = await safe.text();
+              return new Response(bodyText, {
+                status: safe.status,
+                statusText: safe.statusText,
+                headers: safe.headers,
               });
             } finally {
               clearTimeout(t);
