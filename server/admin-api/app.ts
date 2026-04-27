@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
 import { auditMutation } from '../../platform/audit/auditMutation';
+import { createLogger } from '../../platform/core/logger';
 import { corsOptions, securityHeaders } from './middleware/security';
 import { attachSpaFallback, isProductionBoot } from './spaFallback';
 import healthRoutes from './routes/health';
@@ -60,6 +61,7 @@ import supportRoutes from './routes/support';
 import productionEssentialsRoutes from './routes/productionEssentials';
 
 const app = express();
+const reqLogger = createLogger('REQ');
 
 app.use(cors(corsOptions()));
 app.use(cookieParser());
@@ -80,7 +82,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(securityHeaders());
 app.use((req, _res, next) => {
   if (req.method !== 'GET' || req.path.includes('auth')) {
-    console.log(`[REQ] ${req.method} ${req.path} from ${req.ip}`);
+    reqLogger.info(`${req.method} ${req.path}`, {
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+    });
   }
   next();
 });
