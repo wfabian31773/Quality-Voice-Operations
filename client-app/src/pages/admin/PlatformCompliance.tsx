@@ -1,12 +1,42 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
   Shield, Download, Lock, FileText, Building2, Users, Trash2,
   CheckCircle2, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight,
-  Plus, Server, Activity, KeyRound, Globe, Mail, Zap,
+  Plus, Server, Activity, KeyRound, Globe, Mail, Zap, ArrowUpRight,
 } from 'lucide-react';
 import { EmptyState, Skeleton } from '../../components/state';
+
+function TenantLink({
+  tenantId,
+  name,
+  slug,
+  compact = false,
+}: {
+  tenantId: string;
+  name: string | null;
+  slug: string | null;
+  compact?: boolean;
+}) {
+  const displayName = name ?? slug ?? tenantId.slice(0, 8);
+  const displaySlug = slug ?? tenantId.slice(0, 8);
+  return (
+    <Link
+      to={`/admin/analytics/tenants/${tenantId}`}
+      className="group inline-flex flex-col gap-0.5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+      title={`View ${displayName}`}
+      aria-label={`View ${displayName} tenant analytics`}
+    >
+      <span className={`inline-flex items-center gap-1 font-medium ${compact ? 'text-xs' : ''}`}>
+        <span className="group-hover:underline">{displayName}</span>
+        <ArrowUpRight className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} opacity-0 group-hover:opacity-100 transition-opacity`} />
+      </span>
+      <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-muted font-mono`}>{displaySlug}</span>
+    </Link>
+  );
+}
 
 type Tab =
   | 'overview'
@@ -441,8 +471,7 @@ function PlatformAuditTab() {
                   <tr key={e.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                     <td className="px-4 py-3 whitespace-nowrap text-muted text-xs">{formatDate(e.occurred_at)}</td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-xs">{e.tenant_name ?? '—'}</div>
-                      <div className="text-[10px] text-muted font-mono">{e.tenant_slug ?? e.tenant_id.slice(0, 8)}</div>
+                      <TenantLink tenantId={e.tenant_id} name={e.tenant_name} slug={e.tenant_slug} compact />
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-xs">{e.actor_email ?? 'System'}</div>
@@ -700,8 +729,7 @@ function EncryptionTab() {
                       }`}
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium">{t.tenant_name}</div>
-                        <div className="text-[11px] text-muted font-mono">{t.tenant_slug}</div>
+                        <TenantLink tenantId={t.tenant_id} name={t.tenant_name} slug={t.tenant_slug} />
                       </td>
                       <td className="px-4 py-3 text-xs text-muted capitalize">{t.plan}</td>
                       <td className="px-4 py-3">
@@ -1027,8 +1055,7 @@ function DeletionRequestsTab() {
                 data.requests.map((r) => (
                   <tr key={r.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3">
-                      <div className="font-medium">{r.tenant_name}</div>
-                      <div className="text-[11px] text-muted font-mono">{r.tenant_slug}</div>
+                      <TenantLink tenantId={r.tenant_id} name={r.tenant_name} slug={r.tenant_slug} />
                     </td>
                     <td className="px-4 py-3 text-xs">{r.requested_by_email ?? r.requested_by.slice(0, 8)}</td>
                     <td className="px-4 py-3 text-xs text-muted">{formatDate(r.requested_at)}</td>
