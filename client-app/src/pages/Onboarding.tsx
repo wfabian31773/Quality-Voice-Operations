@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, Sparkles } from 'lucide-react';
+import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
 
 interface ProvisioningStatus {
   status: 'pending' | 'provisioning' | 'ready';
@@ -80,8 +80,23 @@ export default function Onboarding() {
     [persistStep],
   );
 
+  // Explicit user-initiated back navigation. Unlike `advanceTo`, this is
+  // allowed to move the wizard backwards so users can revisit and change
+  // earlier answers (e.g. their template choice).
+  const goBack = useCallback(() => {
+    setStep((current) => {
+      const target = Math.max(1, current - 1);
+      if (target !== current) {
+        void persistStep(target);
+      }
+      return target;
+    });
+  }, [persistStep]);
+
   // Load saved progress before doing anything else so we don't overwrite
-  // a higher saved step with the default `1`.
+  // a higher saved step with the default `1`. Also pre-load the current
+  // agent's template so revisiting step 2 reflects the user's existing
+  // choice rather than the default radio selection.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -97,6 +112,18 @@ export default function Onboarding() {
         // If we can't load preferences, fall back to starting at step 1.
       } finally {
         if (!cancelled) setPreferencesLoaded(true);
+      }
+    })();
+    (async () => {
+      try {
+        const agents = await api.get<{ agents: Array<{ type?: string }> }>('/agents');
+        if (cancelled) return;
+        const currentType = agents.agents[0]?.type;
+        if (currentType && AGENT_TEMPLATES.some((t) => t.value === currentType)) {
+          setSelectedTemplate(currentType);
+        }
+      } catch {
+        // Fall back to the default selection.
       }
     })();
     return () => {
@@ -271,21 +298,31 @@ export default function Onboarding() {
                 ))}
               </div>
 
-              <button
-                onClick={handleTemplateConfirm}
-                disabled={updatingAgent}
-                className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {updatingAgent ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Updating...
-                  </>
-                ) : (
-                  <>
-                    Continue <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={goBack}
+                  disabled={updatingAgent}
+                  className="bg-surface hover:bg-surface-secondary text-text-primary font-medium py-2.5 px-4 rounded-lg text-sm transition-colors border border-border disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </button>
+                <button
+                  onClick={handleTemplateConfirm}
+                  disabled={updatingAgent}
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {updatingAgent ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Updating...
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
@@ -311,6 +348,13 @@ export default function Onboarding() {
                   className="w-full bg-surface hover:bg-surface-secondary text-text-primary font-medium py-2.5 px-4 rounded-lg text-sm transition-colors border border-border"
                 >
                   Skip for Now — Go to Dashboard
+                </button>
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="w-full text-text-secondary hover:text-text-primary font-medium py-2 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Back to template
                 </button>
               </div>
             </div>
