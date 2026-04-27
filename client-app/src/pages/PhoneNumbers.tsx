@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Plus, Trash2, Phone, X, Search, Sparkles, ArrowRight,
   RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot, Calendar, AlertTriangle,
@@ -104,6 +105,8 @@ function ProvisionFlow({
   const [provisionedNumber, setProvisionedNumber] = useState<string>('');
   const [provisionedId, setProvisionedId] = useState<string>('');
   const isFree = !hasUsedFreeNumber;
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
 
   const searchQuery = useQuery({
     queryKey: ['available-numbers', areaCode],
@@ -206,7 +209,7 @@ function ProvisionFlow({
               <p className="text-sm text-white/70">
                 {isFree
                   ? 'Your first number is on us — completely free!'
-                  : `Additional numbers are ${formatCentsHelper(200)}/month`}
+                  : `Additional numbers are ${formatCents(200)}/month`}
               </p>
               {isFree && (
                 <div className="mt-3 inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-full">
@@ -633,6 +636,8 @@ export default function PhoneNumbers() {
   const queryClient = useQueryClient();
   const { isManager } = useRole();
   const navigate = useNavigate();
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
 
   const { data, isLoading } = useQuery({
     queryKey: ['phone-numbers'],
@@ -834,7 +839,7 @@ export default function PhoneNumbers() {
                         </span>
                       ) : (
                         <span className="text-text-secondary text-xs">
-                          {formatCentsHelper(pn.monthly_cost_cents || 200)}/mo
+                          {formatCents(pn.monthly_cost_cents || 200)}/mo
                         </span>
                       )}
                     </td>

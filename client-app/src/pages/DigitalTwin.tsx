@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Cpu, Plus, Play, BarChart3, TrendingUp, Clock, ChevronDown, ChevronRight,
   Layers, Zap, AlertTriangle, CheckCircle, ArrowUpRight, ArrowDownRight,
@@ -640,6 +641,7 @@ function ResultsView({
 function ResultDetail({ result }: { result: SimulationResult }) {
   const m = result.metrics;
   const b = result.comparisonBaseline;
+  const currency = useTenantCurrency();
 
   const comparisons = [
     {
@@ -663,7 +665,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
       baseline: b.projectedRevenuePerDayCents,
       simulated: m.projectedRevenuePerDayCents,
       delta: m.revenueDeltaCents,
-      format: (v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      format: (v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       icon: DollarSign,
     },
     {
@@ -671,7 +673,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
       baseline: b.projectedMonthlyRevenueCents,
       simulated: m.projectedMonthlyRevenueCents,
       delta: m.projectedMonthlyRevenueCents - b.projectedMonthlyRevenueCents,
-      format: (v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      format: (v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       icon: TrendingUp,
     },
     {
@@ -872,6 +874,7 @@ function ForecastsView({
 
 function ForecastCard({ forecast }: { forecast: ForecastModel }) {
   const [expanded, setExpanded] = useState(false);
+  const currency = useTenantCurrency();
   const p = forecast.projections;
   const typeLabels: Record<string, string> = {
     call_volume: 'Call Volume Forecast',
@@ -887,7 +890,7 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
 
   const formatValue = (v: number) => {
     if (forecast.forecastType === 'booking_rate') return `${(v * 100).toFixed(1)}%`;
-    if (forecast.forecastType === 'revenue') return formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    if (forecast.forecastType === 'revenue') return formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
     return String(Math.round(v));
   };
 

@@ -8,6 +8,7 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 
 interface TenantInfo {
@@ -63,13 +64,10 @@ interface TenantAnalyticsResponse {
   calls: CallAnalytics;
   campaigns: { campaigns: CampaignRow[] };
   costs: CostAnalytics;
+  currency?: string;
 }
 
 const RANGES = ['7d', '30d', '90d'] as const;
-
-function formatCents(cents: number): string {
-  return formatCentsHelper(cents);
-}
 
 export default function AdminTenantAnalytics() {
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -82,6 +80,9 @@ export default function AdminTenantAnalytics() {
     enabled: !!tenantId,
     refetchInterval: 120_000,
   });
+
+  const currency = useTenantCurrency(data?.currency);
+  const formatCents = (cents: number): string => formatCentsHelper(cents, { currency });
 
   const tenant = data?.tenant;
   const calls = data?.calls;

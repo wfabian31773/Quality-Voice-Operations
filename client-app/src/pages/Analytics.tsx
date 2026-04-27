@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
@@ -139,9 +140,11 @@ export default function Analytics() {
 
   const { data: costs, isLoading: costsLoading } = useQuery({
     queryKey: ['analytics-costs', range],
-    queryFn: () => api.get<CostAnalytics>(`/analytics/costs?range=${range}`),
+    queryFn: () => api.get<CostAnalytics & { currency?: string }>(`/analytics/costs?range=${range}`),
     refetchInterval: 120_000,
   });
+
+  const currency = useTenantCurrency(costs?.currency);
 
   const { data: toolHealth, isLoading: healthLoading } = useQuery({
     queryKey: ['tool-health-summary', range],
@@ -151,7 +154,7 @@ export default function Analytics() {
 
   const navigate = useNavigate();
 
-  const formatCents = (cents: number) => formatCentsHelper(cents);
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
 
   return (
     <div className="space-y-6">

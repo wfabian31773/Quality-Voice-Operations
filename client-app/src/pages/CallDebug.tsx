@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Search, Filter, PhoneCall, ChevronLeft, ChevronRight, X, Clock,
   AlertTriangle, TrendingUp, Zap, ArrowRight, ChevronDown, ChevronUp,
@@ -181,6 +182,8 @@ function traceColor(type: string): string {
 }
 
 function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void }) {
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
   const { data, isLoading, error } = useQuery({
     queryKey: ['call-replay', callId],
     queryFn: () => api.get<ReplayData>(`/calls/${callId}/replay`),
@@ -274,7 +277,7 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
           <div><span className="text-text-secondary block text-xs mb-0.5">Duration</span><span className="font-medium">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Start</span><span className="text-xs">{call.start_time ? format(new Date(call.start_time as string), 'PPp') : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">End</span><span className="text-xs">{call.end_time ? format(new Date(call.end_time as string), 'PPp') : '--'}</span></div>
-          <div><span className="text-text-secondary block text-xs mb-0.5">Cost</span><span className="font-medium">{call.total_cost_cents != null ? formatCentsHelper(call.total_cost_cents as number) : '--'}</span></div>
+          <div><span className="text-text-secondary block text-xs mb-0.5">Cost</span><span className="font-medium">{call.total_cost_cents != null ? formatCents(call.total_cost_cents as number) : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Sentiment</span><span className="font-medium">{call.sentiment_score != null ? (call.sentiment_score as number).toFixed(2) : '--'}</span></div>
         </div>
       </div>
@@ -480,6 +483,8 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
 }
 
 function LiveOperationsBoard() {
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
   const { data, isLoading } = useQuery({
     queryKey: ['live-board'],
     queryFn: () => api.get<{
@@ -631,6 +636,8 @@ export default function CallDebug() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(searchParams.get('callId'));
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
   const [filters, setFilters] = useState({
     agent_id: '',
     agent_template: '',
@@ -929,7 +936,7 @@ export default function CallDebug() {
                           }`}>{call.lifecycle_state}</span>
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</td>
-                        <td className="px-4 py-3 text-text-secondary text-xs">{call.total_cost_cents != null ? formatCentsHelper(call.total_cost_cents) : '--'}</td>
+                        <td className="px-4 py-3 text-text-secondary text-xs">{call.total_cost_cents != null ? formatCents(call.total_cost_cents) : '--'}</td>
                         <td className="px-4 py-3">
                           {call.sentiment_score != null ? (
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${

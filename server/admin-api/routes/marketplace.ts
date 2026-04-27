@@ -1703,6 +1703,7 @@ router.get('/platform/marketplace/revenue', requireAuth, requirePlatformAdmin, a
         byTemplate: stats.byTemplate,
         recentEvents: stats.recentEvents,
       },
+      currency: 'usd',
     });
   } catch (err) {
     logger.error('Failed to get revenue stats', { error: String(err) });

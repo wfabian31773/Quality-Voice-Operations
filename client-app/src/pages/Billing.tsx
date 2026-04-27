@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
-import { formatCents, formatCurrency } from '../lib/formatCurrency';
+import { formatCents as formatCentsHelper, formatCurrency } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
@@ -133,6 +134,8 @@ export default function Billing() {
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const queryClient = useQueryClient();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number | string | bigint | null | undefined) => formatCentsHelper(cents, { currency });
 
   // Stripe Checkout redirects back to /billing?checkout=success after a
   // successful upgrade. The trial-status query is cached aggressively

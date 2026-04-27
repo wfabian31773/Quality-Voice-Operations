@@ -10,6 +10,7 @@ import {
   getRoutingDistribution,
   getConversationCost,
 } from '../../../platform/billing/cost';
+import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 
 const logger = createLogger('COST_OPTIMIZATION_API');
 const router = Router();
@@ -49,8 +50,11 @@ router.get('/cost-optimization/analytics', requireAuth, async (req, res) => {
   }
 
   try {
-    const result = await getCostOptimizationAnalytics(tenantId, dateRange.from, dateRange.to);
-    return res.json(result);
+    const [result, currency] = await Promise.all([
+      getCostOptimizationAnalytics(tenantId, dateRange.from, dateRange.to),
+      getTenantBillingCurrency(tenantId),
+    ]);
+    return res.json({ ...result, currency });
   } catch (err) {
     logger.error('Failed to fetch cost optimization analytics', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch cost analytics' });
@@ -68,8 +72,11 @@ router.get('/cost-optimization/conversations', requireAuth, async (req, res) => 
   const offset = parseInt(String(req.query.offset ?? '0'), 10);
 
   try {
-    const result = await getConversationCosts(tenantId, dateRange.from, dateRange.to, limit, offset);
-    return res.json(result);
+    const [result, currency] = await Promise.all([
+      getConversationCosts(tenantId, dateRange.from, dateRange.to, limit, offset),
+      getTenantBillingCurrency(tenantId),
+    ]);
+    return res.json({ ...result, currency });
   } catch (err) {
     logger.error('Failed to fetch conversation costs', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch conversation costs' });
@@ -81,11 +88,14 @@ router.get('/cost-optimization/conversation/:sessionId', requireAuth, async (req
   const { sessionId } = req.params;
 
   try {
-    const result = await getConversationCost(tenantId, sessionId);
+    const [result, currency] = await Promise.all([
+      getConversationCost(tenantId, sessionId),
+      getTenantBillingCurrency(tenantId),
+    ]);
     if (!result) {
       return res.status(404).json({ error: 'Cost record not found' });
     }
-    return res.json(result);
+    return res.json({ ...result, currency });
   } catch (err) {
     logger.error('Failed to fetch conversation cost', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch conversation cost' });

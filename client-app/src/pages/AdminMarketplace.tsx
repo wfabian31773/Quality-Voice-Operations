@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 
 interface RegistryTemplate {
@@ -690,9 +691,11 @@ function ReviewModal({
 function RevenueTab() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-marketplace-revenue'],
-    queryFn: () => api.get<{ revenue: RevenueStats }>('/platform/marketplace/revenue'),
+    queryFn: () => api.get<{ revenue: RevenueStats; currency?: string }>('/platform/marketplace/revenue'),
   });
 
+  const currency = useTenantCurrency(data?.currency);
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
   const revenue = data?.revenue;
 
   if (isLoading) return <Loading />;
@@ -704,7 +707,7 @@ function RevenueTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Stat
           label="Total Marketplace Revenue"
-          value={formatCentsHelper(revenue.totalRevenueCents)}
+          value={formatCents(revenue.totalRevenueCents)}
           icon={DollarSign}
         />
         <Stat
@@ -716,7 +719,7 @@ function RevenueTab() {
           label="Avg Revenue / Purchase"
           value={
             revenue.totalPurchases > 0
-              ? formatCentsHelper(revenue.totalRevenueCents / revenue.totalPurchases)
+              ? formatCents(revenue.totalRevenueCents / revenue.totalPurchases)
               : '—'
           }
           icon={ArrowUpCircle}
@@ -745,7 +748,7 @@ function RevenueTab() {
                     <td className="px-4 py-3 text-text-primary">{row.templateName}</td>
                     <td className="px-4 py-3 text-right">{row.purchaseCount.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-medium">
-                      {formatCentsHelper(row.revenueCents)}
+                      {formatCents(row.revenueCents)}
                     </td>
                   </tr>
                 ))}

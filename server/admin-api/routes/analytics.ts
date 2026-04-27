@@ -15,6 +15,7 @@ import {
   getConversionTrends,
   getQualityAnalytics,
 } from '../../../platform/analytics';
+import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 
 const logger = createLogger('ANALYTICS_API');
 const router = Router();
@@ -102,8 +103,11 @@ router.get('/analytics/costs', requireAuth, async (req, res) => {
   }
 
   try {
-    const result = await getCostAnalytics(tenantId, dateRange.from, dateRange.to);
-    return res.json(result);
+    const [result, currency] = await Promise.all([
+      getCostAnalytics(tenantId, dateRange.from, dateRange.to),
+      getTenantBillingCurrency(tenantId),
+    ]);
+    return res.json({ ...result, currency });
   } catch (err) {
     logger.error('Failed to fetch cost analytics', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch cost analytics' });
@@ -121,8 +125,11 @@ router.get('/analytics/revenue', requireAuth, async (req, res) => {
   const avgTicketValueCents = Number.isFinite(rawTicketValue) && rawTicketValue > 0 ? rawTicketValue : 15000;
 
   try {
-    const result = await getRevenueAttribution(tenantId, dateRange.from, dateRange.to, avgTicketValueCents);
-    return res.json(result);
+    const [result, currency] = await Promise.all([
+      getRevenueAttribution(tenantId, dateRange.from, dateRange.to, avgTicketValueCents),
+      getTenantBillingCurrency(tenantId),
+    ]);
+    return res.json({ ...result, currency });
   } catch (err) {
     logger.error('Failed to fetch revenue attribution', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch revenue attribution' });

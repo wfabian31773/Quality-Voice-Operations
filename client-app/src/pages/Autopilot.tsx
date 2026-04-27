@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Zap, Brain, Shield, ShieldCheck, ShieldAlert, ShieldOff,
   CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Loader2,
@@ -91,11 +92,6 @@ interface AutopilotRun {
 
 type TabType = 'overview' | 'recommendations' | 'actions' | 'insights' | 'policies' | 'notifications';
 
-function formatCents(cents: number): string {
-  if (cents >= 100000) return formatCentsHelper(cents, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  return formatCentsHelper(cents);
-}
-
 function severityColor(severity: string): string {
   if (severity === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   if (severity === 'warning') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
@@ -151,6 +147,11 @@ export default function Autopilot() {
   const [expandedRec, setExpandedRec] = useState<string | null>(null);
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
   const [recStatusFilter, setRecStatusFilter] = useState('pending');
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => {
+    if (cents >= 100000) return formatCentsHelper(cents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return formatCentsHelper(cents, { currency });
+  };
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['autopilot-summary'],

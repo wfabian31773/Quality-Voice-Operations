@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Dna, TrendingUp, Lightbulb, FlaskConical, BarChart3,
   CheckCircle, XCircle, Clock, ChevronRight, Play,
@@ -150,10 +151,6 @@ const STATE_COLORS: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 };
 
-function formatCents(cents: number): string {
-  return formatCentsHelper(cents, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-
 function ScoreBar({ score, max = 10, label }: { score: number; max?: number; label: string }) {
   const pct = Math.min((score / max) * 100, 100);
   return (
@@ -180,6 +177,8 @@ export default function EvolutionEngine() {
   const [showNewExperiment, setShowNewExperiment] = useState(false);
   const [newExp, setNewExp] = useState({ experimentName: '', experimentType: 'prompt_pack', hypothesis: '', description: '' });
   const queryClient = useQueryClient();
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   const { data: dashboardData, isLoading: dashLoading } = useQuery<{ dashboard: DashboardData }>({
     queryKey: ['evolution-dashboard'],

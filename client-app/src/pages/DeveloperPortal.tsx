@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Code2, Package, Upload, CheckCircle, XCircle, Clock,
   BarChart3, Star, Download, DollarSign, ChevronRight,
@@ -537,6 +538,8 @@ type DeveloperView = 'dashboard' | 'submit' | 'docs';
 export default function DeveloperPortal() {
   const queryClient = useQueryClient();
   const [activeView, setActiveView] = useState<DeveloperView>('dashboard');
+  const currency = useTenantCurrency();
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
 
   const { data: stats } = useQuery({
     queryKey: ['developer-stats'],
@@ -584,7 +587,7 @@ export default function DeveloperPortal() {
               <StatCard
                 icon={DollarSign}
                 label="Total Revenue"
-                value={formatCentsHelper(stats.totalRevenue)}
+                value={formatCents(stats.totalRevenue)}
               />
             </div>
           )}

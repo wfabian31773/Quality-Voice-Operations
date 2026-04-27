@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, FileText, ListOrde
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 
 interface TenantInfo {
@@ -126,10 +127,13 @@ function AdminCallDetailDrawer({
   const { data: callData } = useQuery({
     queryKey: ['admin-tenant-call', tenantId, callId],
     queryFn: () =>
-      api.get<{ tenant: TenantInfo; call: CallDetail; costBreakdown: CostBreakdown | null }>(
+      api.get<{ tenant: TenantInfo; call: CallDetail; costBreakdown: CostBreakdown | null; currency?: string }>(
         `/platform/tenants/${tenantId}/calls/${callId}`,
       ),
   });
+
+  const currency = useTenantCurrency(callData?.currency);
+  const formatCents = (cents: number) => formatCentsHelper(cents, { currency });
 
   const { data: transcriptData, isLoading: transcriptLoading } = useQuery({
     queryKey: ['admin-tenant-call-transcript', tenantId, callId],
@@ -199,12 +203,12 @@ function AdminCallDetailDrawer({
           <div className="px-5 py-4 border-b border-border">
             <h3 className="text-sm font-semibold text-text-primary mb-3">Cost Breakdown</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-text-secondary">STT:</span> {formatCentsHelper(costBreakdown.sttCostCents)}</div>
-              <div><span className="text-text-secondary">LLM:</span> {formatCentsHelper(costBreakdown.llmCostCents)}</div>
-              <div><span className="text-text-secondary">TTS:</span> {formatCentsHelper(costBreakdown.ttsCostCents)}</div>
-              <div><span className="text-text-secondary">Infra:</span> {formatCentsHelper(costBreakdown.infraCostCents)}</div>
+              <div><span className="text-text-secondary">STT:</span> {formatCents(costBreakdown.sttCostCents)}</div>
+              <div><span className="text-text-secondary">LLM:</span> {formatCents(costBreakdown.llmCostCents)}</div>
+              <div><span className="text-text-secondary">TTS:</span> {formatCents(costBreakdown.ttsCostCents)}</div>
+              <div><span className="text-text-secondary">Infra:</span> {formatCents(costBreakdown.infraCostCents)}</div>
               <div className="col-span-2 font-semibold border-t border-border pt-1 mt-1">
-                <span className="text-text-secondary">Total:</span> {formatCentsHelper(costBreakdown.totalCostCents)}
+                <span className="text-text-secondary">Total:</span> {formatCents(costBreakdown.totalCostCents)}
               </div>
               <div><span className="text-text-secondary">Model:</span> {costBreakdown.modelUsed}</div>
               <div><span className="text-text-secondary">Tier:</span> <span className="capitalize">{costBreakdown.modelTier}</span></div>

@@ -12,6 +12,7 @@ import {
 import { getCampaign, getCampaignMetrics, listContacts } from '../../../platform/campaigns/CampaignService';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { getConversationCost } from '../../../platform/billing/cost';
+import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 import { PLAN_MONTHLY_PRICE_CENTS, type PlanTier } from '../../../platform/billing/stripe/plans';
 import { listToolExecutions } from '../../../platform/tools/ToolExecutionService';
 import {
@@ -98,17 +99,19 @@ router.get('/platform/tenants/:id/analytics', requireAuth, requirePlatformAdmin,
   try {
     const tenant = await withPrivilegedClient(async (client) => {
       const { rows } = await client.query(
-        `SELECT id, name, slug, status, plan FROM tenants WHERE id = $1`,
+        `SELECT id, name, slug, status, plan, COALESCE(billing_currency, 'usd') AS billing_currency
+         FROM tenants WHERE id = $1`,
         [id],
       );
       return rows[0] ?? null;
     });
     if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
 
-    const [calls, campaigns, costs] = await Promise.all([
+    const [calls, campaigns, costs, currency] = await Promise.all([
       getCallAnalytics(id, from, to),
       getCampaignAnalytics(id, from, to),
       getCostAnalytics(id, from, to),
+      getTenantBillingCurrency(id),
     ]);
 
     logger.info('Platform admin viewed tenant analytics', {
@@ -117,7 +120,7 @@ router.get('/platform/tenants/:id/analytics', requireAuth, requirePlatformAdmin,
       range,
     });
 
-    return res.json({ tenant, range, calls, campaigns, costs });
+    return res.json({ tenant, range, calls, campaigns, costs, currency });
   } catch (err) {
     logger.error('Failed to fetch per-tenant analytics for admin', { tenantId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch tenant analytics' });
@@ -236,7 +239,9 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
       limit,
     });
 
-    return res.json({ tenant: tenantExists, calls, total: result.total, limit, offset });
+    const currency = await getTenantBillingCurrency(id);
+
+    return res.json({ tenant: tenantExists, calls, total: result.total, limit, offset, currency });
   } catch (err) {
     logger.error('Failed to list tenant calls for admin', { tenantId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to list tenant calls' });
@@ -296,6 +301,7 @@ router.get('/platform/tenants/:id/calls/:callId', requireAuth, requirePlatformAd
     try {
       costBreakdown = await getConversationCost(id, callId);
     } catch {}
+    const currency = await getTenantBillingCurrency(id);
 
     logger.info('Platform admin viewed tenant call detail', {
       tenantId: id,
@@ -303,7 +309,7 @@ router.get('/platform/tenants/:id/calls/:callId', requireAuth, requirePlatformAd
       adminUserId: req.user!.userId,
     });
 
-    return res.json({ tenant: result.tenant, call, costBreakdown });
+    return res.json({ tenant: result.tenant, call, costBreakdown, currency });
   } catch (err) {
     logger.error('Failed to fetch tenant call for admin', { tenantId: id, callId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch tenant call' });

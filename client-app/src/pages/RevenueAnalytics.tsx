@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import { useState } from 'react';
 import clsx from 'clsx';
 import {
@@ -107,9 +108,11 @@ const STAGE_LABELS: Record<string, string> = {
   confirmed: 'Confirmed',
 };
 
-function formatCents(cents: number): string {
-  if (cents >= 100000) return formatCentsHelper(cents, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  return formatCentsHelper(cents);
+function makeFormatCents(currency: string): (cents: number) => string {
+  return (cents: number) => {
+    if (cents >= 100000) return formatCentsHelper(cents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return formatCentsHelper(cents, { currency });
+  };
 }
 
 function formatTopicLabel(topic: string): string {
@@ -133,9 +136,12 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
 
   const { data: revenue, isLoading: revenueLoading } = useQuery({
     queryKey: ['analytics-revenue', range],
-    queryFn: () => api.get<RevenueData>(`/analytics/revenue?range=${range}`),
+    queryFn: () => api.get<RevenueData & { currency?: string }>(`/analytics/revenue?range=${range}`),
     refetchInterval: 120_000,
   });
+
+  const currency = useTenantCurrency(revenue?.currency);
+  const formatCents = makeFormatCents(currency);
 
   const { data: sentiment, isLoading: sentimentLoading } = useQuery({
     queryKey: ['analytics-sentiment', range],
@@ -253,7 +259,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
             <AreaChart data={revenue.dailyRevenue}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #333)" />
               <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
-              <YAxis tickFormatter={(v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
+              <YAxis tickFormatter={(v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
               <Tooltip
                 formatter={(value: number | undefined) => [formatCents(value ?? 0), 'Revenue']}
                 contentStyle={tooltipStyle}
@@ -412,7 +418,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={revenue.revenueByAgent.filter((a) => a.callsHandled > 0)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #333)" />
-                <XAxis type="number" tickFormatter={(v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
+                <XAxis type="number" tickFormatter={(v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
                 <YAxis type="category" dataKey="agentName" width={120} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
                 <Tooltip
                   formatter={(value: number | undefined) => [formatCents(value ?? 0), 'Revenue']}

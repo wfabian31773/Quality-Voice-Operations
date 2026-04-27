@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   DollarSign, TrendingDown, Database,
   ArrowDown, ArrowUp, Settings2, Save, Loader2, BarChart3,
@@ -96,8 +97,8 @@ const TIER_COLORS: Record<string, string> = {
   premium: '#f59e0b',
 };
 
-function formatCents(cents: number): string {
-  return formatCentsHelper(cents);
+function makeFormatCents(currency: string): (cents: number) => string {
+  return (cents: number) => formatCentsHelper(cents, { currency });
 }
 
 function KpiCard({ title, value, subtitle, icon: Icon, trend, color }: {
@@ -137,8 +138,11 @@ export default function CostOptimization() {
 
   const { data: analytics, isLoading } = useQuery({
     queryKey: ['cost-optimization-analytics', range],
-    queryFn: () => api.get<CostAnalytics>(`/cost-optimization/analytics?range=${range}`),
+    queryFn: () => api.get<CostAnalytics & { currency?: string }>(`/cost-optimization/analytics?range=${range}`),
   });
+
+  const currency = useTenantCurrency(analytics?.currency);
+  const formatCents = makeFormatCents(currency);
 
   const { data: budget } = useQuery({
     queryKey: ['cost-optimization-budget'],
@@ -275,7 +279,7 @@ export default function CostOptimization() {
               <YAxis
                 tick={{ fontSize: 11 }}
                 stroke="#71717a"
-                tickFormatter={(v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                tickFormatter={(v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               />
               <Tooltip
                 formatter={(value: unknown) => [formatCents(Number(value)), 'Cost']}
@@ -352,7 +356,7 @@ export default function CostOptimization() {
                 <YAxis
                   tick={{ fontSize: 10 }}
                   stroke="#71717a"
-                  tickFormatter={(v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  tickFormatter={(v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 />
                 <Tooltip formatter={(value: unknown) => formatCents(Number(value))} />
                 <Bar dataKey="totalCostCents" fill="#6366f1" radius={[4, 4, 0, 0]} name="Total Cost" />

@@ -28,6 +28,7 @@ router.get('/tenants/me', requireAuth, async (req, res) => {
     const { rows } = await client.query(
       `SELECT id, name, slug, domain, status, plan, settings, feature_flags,
               COALESCE(sms_alerts_disabled, FALSE) AS sms_alerts_disabled,
+              COALESCE(billing_currency, 'usd') AS billing_currency,
               created_at, updated_at
        FROM tenants WHERE id = $1`,
       [tenantId],

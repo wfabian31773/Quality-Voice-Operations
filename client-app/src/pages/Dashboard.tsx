@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   PhoneCall, Bot, TrendingUp, AlertTriangle, Wifi, WifiOff,
   ArrowRight, Zap, BarChart3, Phone, Plus, CheckCircle2,
@@ -337,10 +338,12 @@ export default function Dashboard() {
 
   const { data: revenueData } = useQuery({
     queryKey: ['analytics', 'revenue-30d'],
-    queryFn: () => api.get<{ totalRevenueCents: number }>('/analytics/revenue?range=30d'),
+    queryFn: () => api.get<{ totalRevenueCents: number; currency?: string }>('/analytics/revenue?range=30d'),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
+
+  const currency = useTenantCurrency(revenueData?.currency);
 
   const calls = callsData?.calls ?? [];
   const agents = agentsData?.agents ?? [];
@@ -371,8 +374,8 @@ export default function Dashboard() {
   const bookingsToday = bookingsData?.total ?? 0;
   const revenueCents = revenueData?.totalRevenueCents ?? 0;
   const revenueDisplay = revenueCents > 0
-    ? formatCentsHelper(revenueCents, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-    : '$0';
+    ? formatCentsHelper(revenueCents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    : formatCentsHelper(0, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   return (
     <div className="space-y-6">
