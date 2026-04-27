@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,9 +21,11 @@ import {
 } from '@/lib/api';
 import { StatusPill } from '@/components/StatusPill';
 import { ContactRow } from '@/components/ContactRow';
+import { JobMapPreview } from '@/components/JobMapPreview';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
 import { formatDateTime, formatStatus } from '@/lib/formatters';
+import { openDirections } from '@/lib/maps';
 
 const NEXT_STEPS: Record<
   DispatchJob['status'],
@@ -185,7 +188,15 @@ export default function JobDetailScreen() {
           />
         ) : null}
         {job.address ? (
-          <MetaRow icon="location-outline" label="Address" value={job.address} />
+          <MetaRow
+            icon="location-outline"
+            label="Address"
+            value={job.address}
+            onPress={() => {
+              void openDirections(job.address!);
+            }}
+            actionHint="Tap for directions"
+          />
         ) : null}
         {job.job_type ? (
           <MetaRow icon="construct-outline" label="Type" value={job.job_type} />
@@ -201,6 +212,8 @@ export default function JobDetailScreen() {
           />
         ) : null}
       </View>
+
+      {job.address ? <JobMapPreview address={job.address} /> : null}
 
       <ContactRow
         name={job.contact_name}
@@ -289,23 +302,57 @@ function MetaRow({
   icon,
   label,
   value,
+  onPress,
+  actionHint,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string;
+  onPress?: () => void;
+  actionHint?: string;
 }) {
   const colors = useColors();
-  return (
-    <View style={styles.metaRow}>
+  const content = (
+    <>
       <Ionicons name={icon} size={16} color={colors.textMuted} />
       <View style={{ flex: 1 }}>
         <Text style={[styles.metaLabel, { color: colors.textMuted }]}>
           {label}
         </Text>
-        <Text style={[styles.metaValue, { color: colors.text }]}>{value}</Text>
+        <Text
+          style={[
+            styles.metaValue,
+            { color: onPress ? colors.primary : colors.text },
+          ]}
+        >
+          {value}
+        </Text>
+        {onPress && actionHint ? (
+          <Text style={[styles.metaHint, { color: colors.textMuted }]}>
+            {actionHint}
+          </Text>
+        ) : null}
       </View>
-    </View>
+      {onPress ? (
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      ) : null}
+    </>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="link"
+        accessibilityLabel={`${label}: ${value}. ${actionHint ?? ''}`.trim()}
+        style={({ pressed }) => [styles.metaRow, { opacity: pressed ? 0.6 : 1 }]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <View style={styles.metaRow}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -329,6 +376,7 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   metaLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   metaValue: { fontSize: 14, fontWeight: '600', marginTop: 2 },
+  metaHint: { fontSize: 11, marginTop: 2 },
   notes: {
     padding: 16,
     borderRadius: 16,
