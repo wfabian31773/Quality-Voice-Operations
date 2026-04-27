@@ -36,7 +36,7 @@ const ingestSteps = [
   {
     icon: Webhook,
     title: 'POST events to /ingest/*',
-    desc: 'Send call sessions, transcripts, tool calls, and outcome metadata. Idempotency keys are derived from (tenant_id, external_id) so retries are safe.',
+    desc: 'Send call sessions, transcripts, tool calls, and outcome metadata. You supply your own idempotency token per request — independent of external_id — so safe retries and explicit corrections are both first-class.',
   },
   {
     icon: Database,
@@ -120,13 +120,13 @@ const security = [
   },
   {
     icon: Lock,
-    title: 'Idempotency built in',
-    desc: 'Idempotency keys on (tenant_id, external_id) make safe retries the default — partial writes never produce duplicate calls.',
+    title: 'Caller-supplied idempotency tokens',
+    desc: 'Idempotency is keyed on (tenant_id, idempotency_key) — decoupled from external_id — so retries are safe and a fresh token can re-issue an explicit correction for the same call.',
   },
   {
     icon: AlertTriangle,
-    title: 'Backfill window guardrails',
-    desc: 'Events accept an `occurred_at` window so out-of-order or replayed traffic is rejected at the edge instead of silently mutating history.',
+    title: 'Backfill endpoint with attestation',
+    desc: 'Live `/v1/ingest/calls` accepts events from the last 7 days; older traffic (up to 30 days) goes through `/v1/ingest/calls/backfill` with a signed attestation block recording who authorized the late ingest and why.',
   },
 ];
 
