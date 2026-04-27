@@ -87,6 +87,25 @@ const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   hi: 'स्पष्ट और प्राकृतिक हिंदी में बोलें, गर्मजोशी और पेशेवर फोन एजेंट के स्वर में।',
 };
 
+const DEFAULT_SAMPLE_GREETINGS: Record<string, string> = {
+  en: 'Hi, this is your AI receptionist. How can I help you today?',
+  es: 'Hola, soy tu recepcionista virtual. ¿En qué puedo ayudarte hoy?',
+  fr: 'Bonjour, je suis votre réceptionniste virtuel. Comment puis-je vous aider aujourd\'hui ?',
+  de: 'Hallo, ich bin Ihre KI-Empfangsmitarbeiterin. Wie kann ich Ihnen heute helfen?',
+  pt: 'Olá, sou sua recepcionista virtual. Como posso ajudar você hoje?',
+  it: 'Ciao, sono la tua receptionist virtuale. Come posso aiutarti oggi?',
+  nl: 'Hallo, ik ben uw virtuele receptionist. Hoe kan ik u vandaag helpen?',
+  zh: '您好,我是您的 AI 接待员。今天我能为您做些什么?',
+  ja: 'こんにちは、AI受付係です。本日はどのようなご用件でしょうか?',
+  ko: '안녕하세요, 저는 AI 안내원입니다. 오늘 무엇을 도와드릴까요?',
+  ar: 'مرحبًا، أنا موظف الاستقبال الافتراضي. كيف يمكنني مساعدتك اليوم؟',
+  hi: 'नमस्ते, मैं आपकी एआई रिसेप्शनिस्ट हूँ। आज मैं आपकी कैसे मदद कर सकती हूँ?',
+};
+
+function defaultSampleFor(language: string): string {
+  return DEFAULT_SAMPLE_GREETINGS[language] ?? DEFAULT_SAMPLE_GREETINGS.en;
+}
+
 function trimGreeting(greeting: string): string {
   const trimmed = greeting.trim().replace(/\s+/g, ' ');
   if (trimmed.length <= MAX_GREETING_CHARS) return trimmed;
@@ -120,11 +139,12 @@ router.post('/agents/voice-preview', requireAuth, async (req: Request, res: Resp
   if (!SUPPORTED_LANGUAGES.has(language)) {
     return res.status(400).json({ error: 'Unsupported language' });
   }
-  if (!greetingRaw.trim()) {
-    return res.status(400).json({ error: 'greeting is required' });
-  }
 
-  const greeting = trimGreeting(greetingRaw);
+  // When the caller hasn't provided a greeting yet (e.g. brand-new agent or
+  // they just cleared the field), fall back to a short language-aware sample
+  // so they can still hear what each voice sounds like.
+  const greetingSource = greetingRaw.trim() ? greetingRaw : defaultSampleFor(language);
+  const greeting = trimGreeting(greetingSource);
 
   const rateKey = `${tenantId}:${userId}`;
   if (!checkRate(rateKey)) {

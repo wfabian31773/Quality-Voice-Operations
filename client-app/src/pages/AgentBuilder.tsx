@@ -835,7 +835,7 @@ function VoicePicker({
   const [errorVoice, setErrorVoice] = useState<string | null>(null);
 
   const greetingTrimmed = welcomeGreeting.trim();
-  const canPreview = greetingTrimmed.length > 0;
+  const usingDefaultSample = greetingTrimmed.length === 0;
 
   const stopPlayback = useCallback(() => {
     const audio = audioRef.current;
@@ -961,9 +961,9 @@ function VoicePicker({
           <button
             type="button"
             onClick={() => playPreview(v)}
-            disabled={!canPreview || (loadingVoice !== null && loadingVoice !== v)}
+            disabled={loadingVoice !== null && loadingVoice !== v}
             aria-label={previewLabel}
-            title={canPreview ? previewLabel : t('voicePreviewNeedsGreeting')}
+            title={previewLabel}
             className={`flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-md border transition ${
               hasError
                 ? 'border-red-300 text-red-500 dark:border-red-700'
@@ -1025,9 +1025,9 @@ function VoicePicker({
           <Loader2 className="h-3 w-3 animate-spin" /> {t('voicePreviewLoading')}
         </p>
       )}
-      {!canPreview && (
+      {usingDefaultSample && (
         <p className="mt-1.5 text-[10px] text-text-muted">
-          {t('voicePreviewNeedsGreeting')}
+          {t('voicePreviewDefaultSample')}
         </p>
       )}
       {!isRecommended ? (
