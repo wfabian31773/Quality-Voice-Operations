@@ -885,6 +885,7 @@ export async function createRealtimeSession(
     direction: ctx.direction ?? 'inbound',
     callerNumber,
     calledNumber,
+    language: agentConfig.language,
   });
 
   if (reasoningEngine) {

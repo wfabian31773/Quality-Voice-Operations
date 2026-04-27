@@ -193,6 +193,9 @@ router.get('/platform/tenants/:id/calls', requireAuth, requirePlatformAdmin, asy
                 cs.caller_number, cs.called_number,
                 cs.start_time, cs.end_time, cs.duration_seconds,
                 cs.total_cost_cents, cs.environment, cs.created_at,
+                -- Snapshot wins; fall back to agents.language for legacy rows
+                -- that pre-date migration 082_call_sessions_language.
+                COALESCE(cs.language, a.language) AS language,
                 a.name AS agent_name,
                 EXISTS (
                   SELECT 1 FROM call_transcripts ct
@@ -281,7 +284,12 @@ router.get('/platform/tenants/:id/calls/:callId', requireAuth, requirePlatformAd
       );
       if (!tenantRows[0]) return { tenant: null, call: null };
       const { rows } = await client.query(
-        `SELECT cs.*, a.name AS agent_name
+        `SELECT cs.*,
+                -- Same fallback as the list endpoint above so the language
+                -- shows up consistently between the table and the detail
+                -- view, even for calls created before migration 082.
+                COALESCE(cs.language, a.language) AS language,
+                a.name AS agent_name
          FROM call_sessions cs
          LEFT JOIN agents a ON a.id = cs.agent_id
          WHERE cs.id = $1 AND cs.tenant_id = $2`,

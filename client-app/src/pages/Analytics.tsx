@@ -18,6 +18,7 @@ import {
   type DashboardSection,
   type VerticalDashboard,
 } from './analytics/dashboards';
+import { getAgentLanguageLabel } from '../lib/agentLanguages';
 
 interface ToolHealthMetric {
   toolName: string;
@@ -55,6 +56,10 @@ interface CallAnalytics {
     avgDuration: number;
     inbound: number;
     outbound: number;
+  }>;
+  languageBreakdown?: Array<{
+    language: string | null;
+    calls: number;
   }>;
 }
 
@@ -475,6 +480,67 @@ function PerformanceTab({
       </div>
 
       {sections.map((section) => sectionRenderers[section]())}
+
+      <LanguageBreakdownCard calls={calls} loading={callsLoading} />
+    </div>
+  );
+}
+
+function LanguageBreakdownCard({
+  calls,
+  loading,
+}: {
+  calls: CallAnalytics | undefined;
+  loading: boolean;
+}) {
+  // Render the language breakdown unconditionally for every vertical: showing
+  // multilingual coverage (or the lack of it) is broadly useful and lets admins
+  // catch agents whose configured language doesn't match the calls they're
+  // actually handling — which was the whole motivation for capturing the
+  // language on call_sessions in migration 082.
+  const breakdown = calls?.languageBreakdown ?? [];
+  const total = breakdown.reduce((sum, row) => sum + row.calls, 0);
+
+  return (
+    <div
+      key="languageBreakdown"
+      data-testid="analytics-language-breakdown"
+      className="bg-surface border border-border rounded-xl p-6"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Calls by Language</h2>
+        <span className="text-xs text-text-secondary">
+          Based on each agent&apos;s configured language at call time
+        </span>
+      </div>
+      {loading ? (
+        <div className="text-text-secondary">Loading...</div>
+      ) : breakdown.length === 0 || total === 0 ? (
+        <div className="text-text-secondary">No calls in this period</div>
+      ) : (
+        <div className="space-y-3">
+          {breakdown.map((row) => {
+            const label = row.language ? getAgentLanguageLabel(row.language) : 'Unknown';
+            const pct = total > 0 ? (row.calls / total) * 100 : 0;
+            return (
+              <div key={row.language ?? '__unknown__'} className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-secondary">{label}</span>
+                  <span className="font-medium">
+                    {row.calls} ({pct.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

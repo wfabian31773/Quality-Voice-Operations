@@ -30,6 +30,15 @@ export interface CreateCallSessionParams {
   callerNumber: string;
   calledNumber: string;
   environment?: string;
+  /**
+   * BCP-47 / ISO-639-1 language code the agent was configured with at the
+   * time the call started. Snapshotted onto the row so historical reports
+   * remain correct even if the agent's language is later changed. Optional
+   * because some legacy call paths don't have a loaded agent config to read
+   * from; in that case we leave the column NULL so analytics can show
+   * "Unknown" rather than misattributing the call.
+   */
+  language?: string | null;
 }
 
 interface DbClient {
@@ -63,12 +72,17 @@ export async function createCallSession(
     ? await encryptSensitiveField(params.tenantId, params.callerNumber)
     : null;
 
+  const language = typeof params.language === 'string' && params.language.trim()
+    ? params.language.trim().slice(0, 8)
+    : null;
+
   await withTenant(params.tenantId, async (client) => {
     await client.query(
       `INSERT INTO call_sessions
          (id, tenant_id, agent_id, call_sid, session_id, direction,
-          caller_number, called_number, lifecycle_state, start_time, environment)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)`,
+          caller_number, called_number, lifecycle_state, start_time, environment,
+          language)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11)`,
       [
         id,
         params.tenantId,
@@ -80,6 +94,7 @@ export async function createCallSession(
         params.calledNumber,
         'CALL_RECEIVED' as LifecycleState,
         params.environment ?? process.env.APP_ENV ?? 'development',
+        language,
       ],
     );
   });

@@ -18,6 +18,19 @@ export interface CallAnalyticsResult {
     inbound: number;
     outbound: number;
   }>;
+  /**
+   * Volume of handled calls grouped by the language the agent was configured
+   * with at call time. The `language` field uses the same code list as
+   * `client-app/src/lib/agentLanguages.ts` (e.g. 'en', 'es', 'fr', ...).
+   * Calls created before migration 082 fall back to the agent's current
+   * language; rows where neither is known are bucketed under `null` so the
+   * UI can render an explicit "Unknown" entry rather than silently
+   * misattributing them to English.
+   */
+  languageBreakdown: Array<{
+    language: string | null;
+    calls: number;
+  }>;
 }
 
 export interface CampaignAnalyticsResult {
@@ -110,6 +123,25 @@ export async function getCallAnalytics(
       [tenantId, from, to],
     );
 
+    // Group calls by the language captured at call time; for legacy rows that
+    // pre-date migration 082 we fall back to the agent's currently configured
+    // language so the breakdown still reflects what those calls were almost
+    // certainly handled in. Calls with neither value bucket under NULL so the
+    // UI can show an explicit "Unknown" slice rather than over-counting English.
+    const { rows: languageRows } = await client.query(
+      `SELECT
+         COALESCE(cs.language, a.language) AS language,
+         COUNT(*)::int AS calls
+       FROM call_sessions cs
+       LEFT JOIN agents a ON a.id = cs.agent_id AND a.tenant_id = cs.tenant_id
+       WHERE cs.tenant_id = $1
+         AND cs.created_at >= $2
+         AND cs.created_at < $3
+       GROUP BY COALESCE(cs.language, a.language)
+       ORDER BY calls DESC`,
+      [tenantId, from, to],
+    );
+
     await client.query('COMMIT');
 
     const s = summary[0];
@@ -136,6 +168,11 @@ export async function getCallAnalytics(
         avgDuration: parseFloat(String(r.avg_duration)),
         inbound: r.inbound as number,
         outbound: r.outbound as number,
+      })),
+      languageBreakdown: languageRows.map((r) => ({
+        language:
+          typeof r.language === 'string' && r.language.trim() ? r.language : null,
+        calls: (r.calls as number) ?? 0,
       })),
     };
   } catch (err) {

@@ -76,6 +76,11 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
               cs.start_time, cs.end_time, cs.duration_seconds,
               cs.total_cost_cents, cs.environment, cs.created_at,
               cs.stir_status, cs.stir_verstat, cs.stir_attestation,
+              -- Prefer the language snapshot taken at call-creation time so
+              -- historical reports survive an agent's language being changed
+              -- after the fact. Fall back to the agent's current language for
+              -- legacy rows that pre-date migration 082.
+              COALESCE(cs.language, a.language) AS language,
               a.name AS agent_name,
               EXISTS (
                 SELECT 1 FROM call_transcripts ct
@@ -141,7 +146,12 @@ export const getCallHandler: RequestHandler = async (req, res) => {
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `SELECT cs.*, a.name AS agent_name
+      `SELECT cs.*,
+              -- Same COALESCE pattern as the list endpoint: snapshot wins,
+              -- agent's current language is a fallback for legacy rows that
+              -- pre-date migration 082.
+              COALESCE(cs.language, a.language) AS language,
+              a.name AS agent_name
        FROM call_sessions cs
        LEFT JOIN agents a ON a.id = cs.agent_id
        WHERE cs.id = $1 AND cs.tenant_id = $2`,

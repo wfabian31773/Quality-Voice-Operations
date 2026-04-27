@@ -8,6 +8,7 @@ import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import Modal from '../components/Modal';
+import { getAgentLanguageLabel } from '../lib/agentLanguages';
 
 interface TenantInfo {
   id: string;
@@ -27,6 +28,7 @@ interface CallRow {
   end_time: string | null;
   duration_seconds: number | null;
   total_cost_cents: number | null;
+  language?: string | null;
   has_transcript?: boolean;
   has_events?: boolean;
   tool_count?: number;
@@ -195,6 +197,7 @@ function AdminCallDetailDrawer({
               <div><span className="text-text-secondary">Direction:</span> {call.direction}</div>
               <div><span className="text-text-secondary">Status:</span> {call.lifecycle_state}</div>
               <div><span className="text-text-secondary">Agent:</span> {call.agent_name || '--'}</div>
+              <div data-testid="admin-call-detail-language"><span className="text-text-secondary">Language:</span> {call.language ? getAgentLanguageLabel(call.language) : 'Unknown'}</div>
               <div><span className="text-text-secondary">Duration:</span> {call.duration_seconds ? `${call.duration_seconds}s` : '--'}</div>
               <div><span className="text-text-secondary">Started:</span> {call.start_time ? format(new Date(call.start_time), 'PPp') : '--'}</div>
               <div><span className="text-text-secondary">Ended:</span> {call.end_time ? format(new Date(call.end_time), 'PPp') : '--'}</div>
@@ -633,6 +636,7 @@ export default function AdminTenantCalls() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-5 py-3 text-text-secondary font-medium">Agent</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">Language</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Direction</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Status</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">Caller</th>
@@ -649,6 +653,7 @@ export default function AdminTenantCalls() {
                     className="border-b border-border last:border-0 hover:bg-surface-hover cursor-pointer transition-colors"
                   >
                     <td className="px-5 py-3 text-text-primary">{c.agent_name || '--'}</td>
+                    <td className="px-5 py-3 text-text-secondary">{c.language ? getAgentLanguageLabel(c.language) : '--'}</td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${c.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                         {c.direction}
