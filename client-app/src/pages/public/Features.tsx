@@ -149,7 +149,7 @@ export default function Features() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 to="/demo"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Try Live Demo', '/features', 'hero')}
               >
                 Try Live Demo
@@ -289,7 +289,7 @@ export default function Features() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Start Free Trial', '/features', 'bottom-cta')}
               >
                 Start Free Trial

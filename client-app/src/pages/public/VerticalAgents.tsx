@@ -108,7 +108,7 @@ export default function VerticalAgents() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 to="/demo"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Try a vertical agent', '/industries/vertical-agents', 'hero')}
               >
                 {t('vertical_agents_page.hero.cta_primary')}
@@ -337,7 +337,7 @@ export default function VerticalAgents() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Start free trial', '/industries/vertical-agents', 'bottom-cta')}
               >
                 {t('vertical_agents_page.bottom_cta.cta_primary')}

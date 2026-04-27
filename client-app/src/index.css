@@ -447,12 +447,67 @@ body {
   --color-sidebar-active: #3DB3A6;
   --color-sidebar-hover: #11293A;
 
+  /* Legacy palette — remapped so untouched marketing pages adapt to dark */
+  --color-harbor: #07151E;
+  --color-harbor-light: #11293A;
+  --color-teal: #3DB3A6;
+  --color-teal-hover: #4FC9BB;
+  --color-teal-light: #143A52;
+  --color-mist: #0A1C28;
+  --color-slate-ink: #E8EFF2;
+  --color-soft-steel: #2C5168;
+  --color-calm-green: #4FB97A;
+  --color-warm-amber: #EDB872;
+  --color-controlled-red: #D17070;
+  --color-frost-blue: #14202C;
+  --color-mineral-sand: #1B2026;
+
   --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.40);
   --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.30);
   --elevation-3: 0 24px 48px rgba(0, 0, 0, 0.55), 0 6px 14px rgba(0, 0, 0, 0.35);
   --elevation-glow: 0 0 0 4px rgba(61, 179, 166, 0.24);
 
   --focus-ring-color: #3DB3A6;
+}
+
+/* =================================================================
+ * PUBLIC MARKETING SURFACE — DARK MODE ADAPTERS
+ * Scoped to `.public-surface` so dark mode in marketing chrome doesn't
+ * leak into in-app surfaces. Adapts Tailwind built-ins (bg-white,
+ * text-white opacity variants used inside content cards) that don't
+ * resolve to design tokens.
+ * ================================================================= */
+.dark .public-surface .bg-white { background-color: var(--color-surface); }
+.dark .public-surface .bg-white\/50 { background-color: rgba(255, 255, 255, 0.04); }
+.dark .public-surface .bg-white\/60 { background-color: rgba(255, 255, 255, 0.05); }
+.dark .public-surface .bg-white\/70 { background-color: rgba(255, 255, 255, 0.06); }
+.dark .public-surface .bg-white\/80 { background-color: var(--color-surface); }
+.dark .public-surface .bg-white\/90 { background-color: var(--color-surface); }
+.dark .public-surface .bg-white\/95 { background-color: var(--color-surface); }
+
+/* Card hover surfaces inside marketing content sections */
+.dark .public-surface .hover\:bg-mist:hover { background-color: var(--color-surface-hover); }
+.dark .public-surface .hover\:bg-white:hover { background-color: var(--color-surface-hover); }
+
+/* Light borders inside marketing cards */
+.dark .public-surface .border-soft-steel\/15,
+.dark .public-surface .border-soft-steel\/20,
+.dark .public-surface .border-soft-steel\/30,
+.dark .public-surface .border-soft-steel\/40,
+.dark .public-surface .border-soft-steel\/50,
+.dark .public-surface .border-soft-steel\/60 { border-color: var(--color-border); }
+
+/* Frost-blue tinted accent backgrounds become subtle info tint in dark */
+.dark .public-surface .bg-frost-blue\/40,
+.dark .public-surface .bg-frost-blue\/50,
+.dark .public-surface .bg-frost-blue\/60 { background-color: var(--color-info-light); }
+
+/* Primary CTA glow on harbor sections — keeps brand presence in dark */
+.public-surface .btn-primary-glow {
+  box-shadow: 0 4px 16px rgba(31, 142, 131, 0.25);
+}
+.dark .public-surface .btn-primary-glow {
+  box-shadow: 0 4px 18px rgba(61, 179, 166, 0.32);
 }
 
 /* Global a11y: visible focus ring on every focusable element */

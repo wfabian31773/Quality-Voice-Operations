@@ -412,7 +412,7 @@ export default function VerticalLanding() {
                 <Link
                   to="/signup"
                   onClick={() => { trackCTAClick('Start Free Trial', `industry-${data.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup' }); }}
-                  className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-6 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-teal/25"
+                  className="btn-primary-glow inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-on-primary px-6 py-3 rounded-xl font-medium transition-colors duration-[var(--motion-base)] min-h-[44px]"
                 >
                   Start Free Trial <ArrowRight className="h-4 w-4" />
                 </Link>

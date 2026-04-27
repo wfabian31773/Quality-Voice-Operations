@@ -1,10 +1,11 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Menu, X, Phone, ChevronDown } from 'lucide-react';
+import { Menu, X, Phone, ChevronDown, Moon, Sun } from 'lucide-react';
 import WebsiteSalesWidget from './WebsiteSalesWidget';
 import CookieConsent from './CookieConsent';
 import LanguageSwitcher from './LanguageSwitcher';
+import { useTheme } from '../lib/theme';
 
 type SimpleLink = { kind: 'link'; to: string; i18nKey: string };
 type DropdownLink = {
@@ -27,6 +28,7 @@ export default function PublicLayout() {
   const location = useLocation();
   const { t } = useTranslation();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { dark, toggle: toggleTheme } = useTheme();
 
   // Close dropdowns when route changes.
   useEffect(() => {
@@ -137,8 +139,11 @@ export default function PublicLayout() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-mist font-body text-slate-ink">
-      <header className="bg-harbor text-white sticky top-0 z-50">
+    <div className="public-surface min-h-screen flex flex-col bg-mist font-body text-slate-ink">
+      <header
+        className="bg-harbor text-white sticky top-0 z-50 border-b border-white/5"
+        style={{ boxShadow: 'var(--elevation-1)' }}
+      >
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2.5 shrink-0">
@@ -193,12 +198,18 @@ export default function PublicLayout() {
                         onMouseLeave={() => setOpenDropdown(null)}
                         className="absolute left-0 top-full pt-2 z-50"
                       >
-                        <div className="w-[28rem] bg-white text-slate-ink rounded-xl shadow-2xl border border-soft-steel/40 overflow-hidden">
+                        <div
+                          className="w-[28rem] bg-surface text-text-primary border border-border overflow-hidden"
+                          style={{
+                            borderRadius: 'var(--radius-xl)',
+                            boxShadow: 'var(--elevation-3)',
+                          }}
+                        >
                           <div className="p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {item.groups.map((group, gi) => (
                               <div key={gi}>
                                 {group.label && (
-                                  <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-ink/50">
+                                  <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
                                     {group.label}
                                   </p>
                                 )}
@@ -208,24 +219,24 @@ export default function PublicLayout() {
                                       <Link
                                         to={sub.to}
                                         onClick={() => setOpenDropdown(null)}
-                                        className={`block px-2.5 py-2 rounded-lg transition-colors group ${
+                                        className={`block px-2.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)] group ${
                                           location.pathname === sub.to
-                                            ? 'bg-harbor/5'
-                                            : 'hover:bg-mist'
+                                            ? 'bg-primary-light'
+                                            : 'hover:bg-surface-hover'
                                         }`}
                                       >
                                         <div className="flex items-center gap-2">
-                                          <span className="text-sm font-semibold text-harbor group-hover:text-teal transition-colors">
+                                          <span className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">
                                             {sub.label}
                                           </span>
                                           {sub.isNew && (
-                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-teal bg-teal/10 px-1.5 py-0.5 rounded">
+                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-primary bg-primary-light px-1.5 py-0.5 rounded">
                                               {t('public_nav.new_badge')}
                                             </span>
                                           )}
                                         </div>
                                         {sub.description && (
-                                          <p className="text-xs text-slate-ink/55 leading-snug mt-0.5 line-clamp-2">
+                                          <p className="text-xs text-text-secondary leading-snug mt-0.5 line-clamp-2">
                                             {sub.description}
                                           </p>
                                         )}
@@ -246,33 +257,54 @@ export default function PublicLayout() {
 
             <div className="hidden lg:flex items-center gap-2">
               <LanguageSwitcher variant="header" className="mr-1" />
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-pressed={dark}
+                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors duration-[var(--motion-fast)]"
+              >
+                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
               <Link
                 to="/login"
-                className="text-sm font-medium text-white/80 hover:text-white transition-colors px-3 py-2"
+                className="text-sm font-medium text-white/80 hover:text-white transition-colors duration-[var(--motion-fast)] px-3 py-2 rounded-lg"
               >
                 {t('actions.sign_in')}
               </Link>
               <Link
                 to="/book-demo"
-                className="text-sm font-medium text-white/90 hover:text-white border border-white/20 hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors"
+                className="text-sm font-medium text-white/90 hover:text-white border border-white/20 hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
               >
                 {t('actions.book_demo')}
               </Link>
               <Link
                 to="/signup"
-                className="text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2 rounded-lg transition-colors"
+                className="btn-primary-glow text-sm font-medium bg-primary hover:bg-primary-hover text-on-primary px-4 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
               >
                 {t('actions.start_trial')}
               </Link>
             </div>
 
-            <button
-              className="lg:hidden p-2 text-white/80 hover:text-white"
-              onClick={() => setMobileOpen(!mobileOpen)}
-              aria-label={t('actions.open_menu')}
-            >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
+            <div className="lg:hidden flex items-center gap-1">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-pressed={dark}
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
+              <button
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                onClick={() => setMobileOpen(!mobileOpen)}
+                aria-label={t('actions.open_menu')}
+                aria-expanded={mobileOpen}
+              >
+                {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -374,7 +406,7 @@ export default function PublicLayout() {
                 <Link
                   to="/signup"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-center text-sm font-medium bg-teal hover:bg-teal-hover text-white px-4 py-2.5 rounded-lg"
+                  className="btn-primary-glow block text-center text-sm font-medium bg-primary hover:bg-primary-hover text-on-primary px-4 py-2.5 rounded-lg transition-colors"
                 >
                   {t('actions.start_trial')}
                 </Link>

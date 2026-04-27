@@ -123,7 +123,7 @@ export default function GlobalIntelligenceNetwork() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('See GIN in a demo', '/product/global-intelligence-network', 'hero')}
               >
                 {t('gin_page.hero.cta_primary')}
@@ -390,7 +390,7 @@ export default function GlobalIntelligenceNetwork() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Book a demo', '/product/global-intelligence-network', 'bottom-cta')}
               >
                 {t('gin_page.bottom_cta.cta_primary')}

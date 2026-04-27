@@ -265,7 +265,7 @@ export default function Landing() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link
                   to="/demo"
-                  className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25 hover:shadow-teal/40"
+                  className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                   onClick={() => trackCTAClick('Try Live Demo', '/', 'hero')}
                 >
                   Try Live Demo
@@ -273,7 +273,7 @@ export default function Landing() {
                 </Link>
                 <Link
                   to="/product"
-                  className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                  className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
                   onClick={() => trackCTAClick('See How It Works', '/', 'hero')}
                 >
                   See How It Works
@@ -628,7 +628,7 @@ export default function Landing() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/30 hover:shadow-teal/50"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Start Free Trial', '/', 'bottom-cta')}
               >
                 Start Free Trial
@@ -636,14 +636,14 @@ export default function Landing() {
               </Link>
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/15"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
                 onClick={() => trackCTAClick('Book a Demo', '/', 'bottom-cta')}
               >
                 Book a Demo
               </Link>
               <Link
                 to="/demo"
-                className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3.5 rounded-xl transition-all text-sm"
+                className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3.5 rounded-xl transition-colors duration-[var(--motion-fast)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Try the Live Demo', '/', 'bottom-cta')}
               >
                 Try the Live Demo

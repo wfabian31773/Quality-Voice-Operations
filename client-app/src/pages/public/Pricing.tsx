@@ -251,10 +251,10 @@ export default function Pricing() {
                 </div>
                 <Link
                   to={`/signup?plan=${tier.key}`}
-                  className={`block text-center font-semibold py-3.5 px-4 rounded-lg text-sm transition-all duration-300 ${
+                  className={`block text-center font-semibold py-3.5 px-4 rounded-lg text-sm transition-colors duration-[var(--motion-base)] min-h-[44px] ${
                     tier.popular
-                      ? 'bg-teal hover:bg-teal-hover text-white shadow-sm hover:shadow-md'
-                      : 'bg-harbor/5 hover:bg-harbor/10 text-harbor group-hover:bg-teal group-hover:text-white'
+                      ? 'btn-primary-glow bg-primary hover:bg-primary-hover text-on-primary'
+                      : 'bg-surface-hover hover:bg-primary text-text-primary hover:text-on-primary'
                   }`}
                   onClick={() => trackCTAClick('start_free_trial', 'pricing_card', tier.key)}
                 >
@@ -401,7 +401,7 @@ export default function Pricing() {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               to="/book-demo"
-              className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] min-h-[44px]"
               onClick={() => trackCTAClick('book_demo', 'pricing_bottom')}
             >
               Book a demo
@@ -409,7 +409,7 @@ export default function Pricing() {
             </Link>
             <Link
               to="/signup"
-              className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] border border-white/15 hover:border-white/25 min-h-[44px]"
               onClick={() => trackCTAClick('start_free_trial', 'pricing_bottom')}
             >
               Start free trial

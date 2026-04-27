@@ -135,7 +135,7 @@ export default function Integrations() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 to="/demo"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-teal/25"
+                className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Try Live Demo', '/integrations', 'hero')}
               >
                 Try Live Demo
