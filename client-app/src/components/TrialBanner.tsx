@@ -17,7 +17,11 @@ export default function TrialBanner() {
   const { data } = useQuery({
     queryKey: ['trial-status'],
     queryFn: () => api.get<TrialStatus>('/tenants/me/trial-status'),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
     retry: false,
   });
 

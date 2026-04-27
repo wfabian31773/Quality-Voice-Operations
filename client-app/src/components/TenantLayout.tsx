@@ -72,7 +72,6 @@ export default function TenantLayout() {
   const [configureOpen, setConfigureOpen] = useState(() =>
     configureLinks.some((l) => location.pathname.startsWith(l.to)),
   );
-  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -101,6 +100,39 @@ export default function TenantLayout() {
     };
   }, []);
 
+  const isPlatformAdmin = !!user?.isPlatformAdmin;
+  const { data: provisioningData, isLoading: provisioningLoading, isError: provisioningError } = useQuery({
+    queryKey: ['tenant-provisioning-status'],
+    queryFn: () =>
+      api.get<{ status: string; phoneNumberCount: number; tenantCreatedAt: string | null }>(
+        '/tenants/me/provisioning-status',
+      ),
+    enabled: !isPlatformAdmin,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+  let needsOnboarding: boolean | null;
+  if (isPlatformAdmin) {
+    needsOnboarding = false;
+  } else if (provisioningLoading) {
+    needsOnboarding = null;
+  } else if (provisioningError || !provisioningData) {
+    needsOnboarding = false;
+  } else if (provisioningData.status !== 'ready') {
+    needsOnboarding = true;
+  } else if (provisioningData.phoneNumberCount === 0 && provisioningData.tenantCreatedAt) {
+    const createdAt = new Date(provisioningData.tenantCreatedAt).getTime();
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    needsOnboarding = createdAt > oneDayAgo;
+  } else {
+    needsOnboarding = false;
+  }
+
   useEffect(() => {
     // Only auto-launch the dashboard tour when the user is actually on the
     // dashboard. Without this gate, a brand-new tenant who lands on /autopilot
@@ -115,38 +147,6 @@ export default function TenantLayout() {
       return () => clearTimeout(t);
     }
   }, [needsOnboarding, location.pathname]);
-
-  useEffect(() => {
-    if (user?.isPlatformAdmin) {
-      setNeedsOnboarding(false);
-      return;
-    }
-    let cancelled = false;
-    api
-      .get<{ status: string; phoneNumberCount: number; tenantCreatedAt: string | null }>(
-        '/tenants/me/provisioning-status',
-      )
-      .then((data) => {
-        if (cancelled) return;
-        if (data.status !== 'ready') {
-          setNeedsOnboarding(true);
-          return;
-        }
-        if (data.phoneNumberCount === 0 && data.tenantCreatedAt) {
-          const createdAt = new Date(data.tenantCreatedAt).getTime();
-          const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-          if (createdAt > oneDayAgo) {
-            setNeedsOnboarding(true);
-            return;
-          }
-        }
-        setNeedsOnboarding(false);
-      })
-      .catch(() => {
-        if (!cancelled) setNeedsOnboarding(false);
-      });
-    return () => { cancelled = true; };
-  }, [location.pathname, user?.isPlatformAdmin]);
 
   if (needsOnboarding === null) {
     return (
