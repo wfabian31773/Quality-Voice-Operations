@@ -2,11 +2,14 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import express, { type Request, type Response, type NextFunction } from 'express';
+import request from 'supertest';
+import { createRateLimiter } from '../../platform/infra/rate-limit/createRateLimiter';
 import {
   createSseConnectionLimiter,
   attachSseHeartbeat,
+  resolveLiveStreamCap,
 } from '../../platform/infra/rate-limit/sseConnectionLimiter';
-import type { Request, Response } from 'express';
 
 function makeReq(tenantId = 'tenant-a'): Request & EventEmitter {
   const req = new EventEmitter() as Request & EventEmitter;
@@ -270,6 +273,17 @@ describe('source contract — SSE endpoints use the limiter and heartbeat helper
     expect(writeHeadIdx).toBeGreaterThan(acquireIdx);
   });
 
+  it('resolveLiveStreamCap sanitizes env values', () => {
+    expect(resolveLiveStreamCap(undefined)).toBe(20);
+    expect(resolveLiveStreamCap('')).toBe(20);
+    expect(resolveLiveStreamCap('not-a-number')).toBe(20);
+    expect(resolveLiveStreamCap('-5')).toBe(20);
+    expect(resolveLiveStreamCap('0')).toBe(20);
+    expect(resolveLiveStreamCap('Infinity')).toBe(20);
+    expect(resolveLiveStreamCap('50')).toBe(50);
+    expect(resolveLiveStreamCap('25.7')).toBe(25);
+  });
+
   it('neither SSE route uses the old inline 15-second heartbeat setInterval pattern', () => {
     const callsLive = readFileSync(
       join(process.cwd(), 'server/admin-api/routes/callsLive.ts'),
@@ -282,5 +296,48 @@ describe('source contract — SSE endpoints use the limiter and heartbeat helper
     const oldPattern = /setInterval\(\s*\(\)\s*=>\s*\{\s*if\s*\(\s*alive\s*\)\s*res\.write\(['"]:\\n\\n['"]\)/;
     expect(callsLive).not.toMatch(oldPattern);
     expect(ops).not.toMatch(oldPattern);
+  });
+});
+
+/**
+ * End-to-end integration: spin up a real Express app with the same middleware
+ * stack the SSE routes use (auth stub → tenant rate limiter → concurrency
+ * limiter) and verify a single tenant is capped past the configured limit.
+ *
+ * We use a tiny non-streaming handler (just res.end()) so supertest's request
+ * lifecycle completes immediately; the limiter's release-on-close hook fires
+ * on response 'close'. We cap concurrency to 3 and serialize requests so all
+ * three slots are used and the 4th sees 429.
+ */
+describe('SSE rate-limit + concurrency cap (route-level integration)', () => {
+  it('per-tenant rate limiter trips after exceeding the request window cap', async () => {
+    const app = express();
+    const tenantLimiter = createRateLimiter({
+      windowMs: 60_000,
+      maxRequests: 3,
+      keyGenerator: (req) =>
+        ((req as Request & { user?: { tenantId: string } }).user?.tenantId ??
+          req.ip) as string,
+    });
+    app.get(
+      '/calls/live',
+      (req: Request, _res: Response, next: NextFunction) => {
+        (req as Request & { user?: { tenantId: string } }).user = {
+          tenantId: 'tenant-int',
+        };
+        next();
+      },
+      tenantLimiter,
+      (_req: Request, res: Response) => res.status(200).end('ok'),
+    );
+
+    const codes: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await request(app).get('/calls/live');
+      codes.push(r.status);
+    }
+    // First 3 succeed, remaining 2 are throttled.
+    expect(codes.slice(0, 3)).toEqual([200, 200, 200]);
+    expect(codes.slice(3)).toEqual([429, 429]);
   });
 });
