@@ -9,6 +9,7 @@ import {
   Lock, Download, Trash2, Bell, BellOff, Mail,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
+import { VOICES } from '../components/VoicePicker';
 
 interface Tenant {
   id: string;
@@ -25,10 +26,6 @@ interface Tenant {
 const VOICE_MODELS = [
   { value: 'gpt-4o-realtime-preview', label: 'GPT-4o Realtime' },
   { value: 'gpt-4o-mini-realtime-preview', label: 'GPT-4o Mini Realtime' },
-];
-
-const VOICES = [
-  'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse',
 ];
 
 const ALL_TIMEZONES = (() => {

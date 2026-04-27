@@ -7,13 +7,11 @@ import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import { EmptyState, SkeletonGrid } from '../components/state';
 import Modal from '../components/Modal';
+import VoicePicker from '../components/VoicePicker';
 import {
   AGENT_LANGUAGES,
   DEFAULT_AGENT_LANGUAGE,
-  getAgentLanguageLabel,
   getDefaultVoiceForLanguage,
-  getRecommendedVoicesForLanguage,
-  isVoiceRecommendedForLanguage,
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 
@@ -58,7 +56,6 @@ interface AgentToolsResponse {
   templatePermissions: { allowedTools: string[]; deniedTools: string[] };
 }
 
-const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse'];
 const MODELS = ['gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview'];
 const AGENT_TYPES = [
   'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
@@ -294,12 +291,6 @@ function AgentModal({
       return { ...f, [key]: val };
     });
 
-  const recommendedVoices = getRecommendedVoicesForLanguage(form.language);
-  const recommendedVoiceSet = new Set(recommendedVoices);
-  const otherVoices = VOICES.filter((v) => !recommendedVoiceSet.has(v));
-  const formLanguageLabel = getAgentLanguageLabel(form.language);
-  const voiceIsRecommended = isVoiceRecommendedForLanguage(form.voice, form.language);
-
   if (!loaded) {
     return (
       <Modal open onClose={onClose} ariaLabel="Loading agent" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-8 text-center text-text-secondary">
@@ -372,47 +363,12 @@ function AgentModal({
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Voice</label>
-                <select
-                  value={form.voice}
-                  onChange={(e) => set('voice', e.target.value)}
-                  className={`w-full px-3 py-2 rounded-lg border bg-surface text-text-primary text-sm ${
-                    voiceIsRecommended ? 'border-border' : 'border-amber-400 dark:border-amber-600'
-                  }`}
-                >
-                  <optgroup label={`Recommended for ${formLanguageLabel}`}>
-                    {recommendedVoices.map((v) => (
-                      <option key={v} value={v}>★ {v}</option>
-                    ))}
-                  </optgroup>
-                  {otherVoices.length > 0 && (
-                    <optgroup label="Other voices (may sound less natural)">
-                      {otherVoices.map((v) => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-                {!voiceIsRecommended && (
-                  <button
-                    type="button"
-                    onClick={() => set('voice', getDefaultVoiceForLanguage(form.language))}
-                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline"
-                  >
-                    <AlertTriangle className="h-3 w-3" />
-                    Switch to {getDefaultVoiceForLanguage(form.language)} for {formLanguageLabel}
-                  </button>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Model</label>
-                <select value={form.model} onChange={(e) => set('model', e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                  {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1">Model</label>
+              <select value={form.model} onChange={(e) => set('model', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
+                {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1">System Prompt</label>
@@ -424,6 +380,13 @@ function AgentModal({
               <input value={form.welcome_greeting} onChange={(e) => set('welcome_greeting', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
+            <VoicePicker
+              voice={form.voice}
+              language={form.language}
+              welcomeGreeting={form.welcome_greeting}
+              onChange={(next) => set('voice', next)}
+              labelClassName="block text-sm font-medium text-text-primary mb-1"
+            />
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1">Temperature: {form.temperature}</label>
               <input type="range" min="0" max="1" step="0.1" value={form.temperature}
