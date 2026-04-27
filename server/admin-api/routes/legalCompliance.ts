@@ -87,6 +87,181 @@ router.get('/public/subprocessors', async (_req, res) => {
   }
 });
 
+// ---------- Public: security posture ----------
+// Schema for the public security posture document. Validated on every request
+// so the response we ship matches the contract advertised on /security/posture.
+const postureFrameworkSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  status: z.enum(['compliant', 'in_progress', 'available', 'roadmap', 'not_applicable']),
+  status_label: z.string(),
+  scope: z.string(),
+  description: z.string(),
+  evidence_url: z.string().nullable(),
+  last_reviewed: z.string(),
+});
+
+const postureSubprocessorSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  purpose: z.string(),
+  data_types: z.string(),
+  location: z.string(),
+  website: z.string().nullable(),
+});
+
+const postureSchema = z.object({
+  version: z.literal(1),
+  generated_at: z.string(),
+  organization: z.object({
+    name: z.string(),
+    contact_security: z.string(),
+    contact_privacy: z.string(),
+  }),
+  frameworks: z.array(postureFrameworkSchema).min(1),
+  baa: z.object({
+    available: z.boolean(),
+    plans: z.array(z.string()),
+    contact: z.string(),
+    notes: z.string(),
+  }),
+  data_residency: z.object({
+    primary_region: z.string(),
+    description: z.string(),
+  }),
+  subprocessors: z.array(postureSubprocessorSchema),
+  documents: z.array(
+    z.object({ name: z.string(), url: z.string(), kind: z.enum(['dpa', 'list', 'page']) }),
+  ),
+});
+
+export type SecurityPosture = z.infer<typeof postureSchema>;
+
+router.get('/public/posture', async (_req, res) => {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    const { rows: subprocessorRows } = await client.query(
+      `SELECT id, name, purpose, data_types, location, website
+       FROM subprocessors WHERE is_active = TRUE
+       ORDER BY display_order ASC, name ASC`,
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    const payload = {
+      version: 1 as const,
+      generated_at: new Date().toISOString(),
+      organization: {
+        name: 'QVO — Quality Voice Operations',
+        contact_security: 'security@qvo.example',
+        contact_privacy: 'privacy@qvo.example',
+      },
+      frameworks: [
+        {
+          key: 'soc2',
+          name: 'SOC 2 Type II',
+          status: 'in_progress' as const,
+          status_label: 'In progress',
+          scope: 'Security & Availability — target Q4 2026',
+          description:
+            'Trust services criteria audit covering security and availability. Pre-audit readiness assessment complete; observation window in progress.',
+          evidence_url: null,
+          last_reviewed: today,
+        },
+        {
+          key: 'hipaa',
+          name: 'HIPAA',
+          status: 'available' as const,
+          status_label: 'Available with BAA',
+          scope: 'Pro & Enterprise plans',
+          description:
+            'Business Associate Agreement available for healthcare customers. PHI safeguards (encryption at rest/in transit, access controls, audit logging, optional PHI-redacted logging) in place.',
+          evidence_url: '/legal/dpa',
+          last_reviewed: today,
+        },
+        {
+          key: 'gdpr',
+          name: 'GDPR',
+          status: 'compliant' as const,
+          status_label: 'Compliant',
+          scope: 'EU/UK customers',
+          description:
+            'Standard Contractual Clauses (2021/914) incorporated by reference in our DPA. Data Subject Rights workflows (export, deletion) self-service from Settings → Privacy.',
+          evidence_url: '/legal/dpa',
+          last_reviewed: today,
+        },
+        {
+          key: 'ccpa',
+          name: 'CCPA / CPRA',
+          status: 'compliant' as const,
+          status_label: 'Compliant',
+          scope: 'California residents',
+          description:
+            'Disclosure, deletion, and opt-out rights honored via Settings → Privacy. We do not sell personal information.',
+          evidence_url: '/privacy',
+          last_reviewed: today,
+        },
+        {
+          key: 'iso27001',
+          name: 'ISO 27001',
+          status: 'roadmap' as const,
+          status_label: 'Roadmap',
+          scope: 'Targeted 2027',
+          description:
+            'Information Security Management System certification on roadmap following SOC 2 attestation.',
+          evidence_url: null,
+          last_reviewed: today,
+        },
+      ],
+      baa: {
+        available: true,
+        plans: ['Pro', 'Enterprise'],
+        contact: 'privacy@qvo.example',
+        notes:
+          'BAA is countersigned on request for Pro and Enterprise customers. Starter plans cannot store or process PHI.',
+      },
+      data_residency: {
+        primary_region: 'United States',
+        description:
+          'Primary processing region is the United States (us-east). Voice recordings, transcripts, and tenant data remain in-region. EU residency available on Enterprise on request.',
+      },
+      subprocessors: subprocessorRows.map((r) => ({
+        id: String(r.id),
+        name: String(r.name),
+        purpose: String(r.purpose),
+        data_types: String(r.data_types),
+        location: String(r.location),
+        website: r.website ? String(r.website) : null,
+      })),
+      documents: [
+        { name: 'Data Processing Addendum (template)', url: '/legal/dpa', kind: 'dpa' as const },
+        { name: 'Sub-processor list', url: '/subprocessors', kind: 'list' as const },
+        { name: 'Privacy policy', url: '/privacy', kind: 'page' as const },
+        { name: 'Security overview', url: '/security', kind: 'page' as const },
+      ],
+    };
+
+    // Validate the response against the schema before sending so any drift in
+    // the payload shape (e.g. a future code change that drops a field) fails
+    // loudly here instead of silently shipping an invalid contract.
+    const parsed = postureSchema.safeParse(payload);
+    if (!parsed.success) {
+      logger.error('Security posture payload failed schema validation', {
+        issues: parsed.error.issues,
+      });
+      return res.status(500).json({ error: 'Posture payload failed validation' });
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.json(parsed.data);
+  } catch (err) {
+    logger.error('Failed to build security posture', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to build security posture' });
+  } finally {
+    client.release();
+  }
+});
+
 // ---------- Admin: manage sub-processors ----------
 router.get('/admin/subprocessors', requireAuth, requirePlatformAdmin, async (_req, res) => {
   const pool = getPlatformPool();

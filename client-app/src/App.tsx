@@ -85,6 +85,7 @@ const BookDemo = lazy(() => import('./pages/public/BookDemo'));
 const Terms = lazy(() => import('./pages/public/Terms'));
 const Privacy = lazy(() => import('./pages/public/Privacy'));
 const Security = lazy(() => import('./pages/public/Security'));
+const SecurityPosture = lazy(() => import('./pages/public/SecurityPosture'));
 const Subprocessors = lazy(() => import('./pages/public/Subprocessors'));
 
 const SETTINGS_TABS = ['general', 'notifications', 'roles', 'security', 'api-keys', 'privacy'];
@@ -132,6 +133,7 @@ export default function App() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/security" element={<Security />} />
+        <Route path="/security/posture" element={<SecurityPosture />} />
         <Route path="/subprocessors" element={<Subprocessors />} />
       </Route>
 
