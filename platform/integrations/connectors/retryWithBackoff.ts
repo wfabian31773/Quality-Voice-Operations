@@ -36,6 +36,13 @@ export interface RetryOptions {
   label?: string;
 }
 
+// BL-014 schedule: 3 total attempts means we only sleep TWICE between
+// them (1s and 4s). The 16s delay is the cap that would apply if a
+// caller raised `maxAttempts` to 4 — keeping it in the array preserves
+// the documented schedule. With the per-attempt 15s adapter timeout and
+// the default 60s `maxTotalMs` budget, 3 attempts is the *highest*
+// number that still fits the 60s envelope (3×15s + 1s + 4s = 50s).
+// Going to 4 would push worst-case to 81s.
 const DEFAULT_DELAYS_MS = [1_000, 4_000, 16_000];
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MAX_BACKOFF_MS = 30_000;
