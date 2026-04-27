@@ -1,3 +1,23 @@
+/**
+ * Connector OAuth init/callback routes.
+ *
+ * This router is the single backend OAuth surface for **both** the Platform
+ * Admin console and the tenant portal (the React `client-app`). The tenant
+ * portal does not expose its own OAuth endpoints — `client-app/src/pages/
+ * Connectors.tsx` calls `/connectors/oauth/<provider>/init` here directly and
+ * then renders the provider's authorize URL in a popup. Sharing one router
+ * means the BL-027 state-cookie protection (per RFC 9700 §4.7) automatically
+ * applies to tenant-portal users as well as admin users.
+ *
+ * If a future endpoint needs to start an OAuth flow from a different surface,
+ * add it here (or factor a helper out of `setStateCookie` /
+ * `consumeStateCookie`) so a parallel uncovered surface is never created.
+ * The shared cookie-attribute helper lives in
+ * `server/admin-api/middleware/security.ts` (`oauthStateCookieOptions`).
+ *
+ * Per-provider regression coverage for the cookie attributes lives in
+ * `tests/security/tenantPortalConnectorOAuthStateCookie.test.ts`.
+ */
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { upsertConnector } from '../../../platform/integrations/connectors';
