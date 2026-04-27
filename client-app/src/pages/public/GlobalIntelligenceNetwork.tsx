@@ -1,21 +1,45 @@
 import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowRight, Globe, BarChart3, ShieldCheck, Lock, EyeOff,
   TrendingUp, Users, Target, Sparkles, CheckCircle2, ToggleRight,
-  Layers, Activity, GitBranch, Database, Award,
+  Layers, Activity, GitBranch, Database, Award, Info,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackFeatureView } from '../../lib/analytics';
+import {
+  ginBenchmarkFallback,
+  type GinBenchmarkSnapshot,
+  type GinBenchmarkStatus,
+} from '../../data/ginBenchmarks';
 
-const benchmarkRows = [
-  { you: '92%', median: '78%', topQuartile: '94%' },
-  { you: '63%', median: '54%', topQuartile: '71%' },
-  { you: '4m 12s', median: '7m 30s', topQuartile: '3m 10s' },
-  { you: '38%', median: '29%', topQuartile: '46%' },
-];
+const STATUS_COPY: Record<GinBenchmarkStatus, { label: string; tone: string }> = {
+  illustrative: {
+    label: 'Illustrative sample — live cohort coming soon',
+    tone: 'bg-amber-100 text-amber-900 border-amber-300',
+  },
+  preview: {
+    label: 'Preview cohort — early data, not yet published',
+    tone: 'bg-sky-100 text-sky-900 border-sky-300',
+  },
+  live: {
+    label: 'Live cohort',
+    tone: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+  },
+};
+
+function formatSnapshotDate(snapshotAt: string | null): string | null {
+  if (!snapshotAt) return null;
+  const parsed = new Date(snapshotAt);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
 
 const valuePropIcons = [Globe, TrendingUp, Sparkles];
 const howItWorksIcons = [ToggleRight, EyeOff, Lock, Activity];
@@ -27,12 +51,47 @@ type BenchmarkExample = { vertical: string; metric: string };
 
 export default function GlobalIntelligenceNetwork() {
   const { t } = useTranslation();
+  const [snapshot, setSnapshot] = useState<GinBenchmarkSnapshot>(ginBenchmarkFallback);
 
   useEffect(() => {
     trackPageView('/product/global-intelligence-network');
   }, []);
 
-  const benchmarkExamples = t('gin_page.benchmark.examples', { returnObjects: true }) as BenchmarkExample[];
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/gin/benchmarks', { credentials: 'omit' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as Partial<GinBenchmarkSnapshot> & { rows?: GinBenchmarkSnapshot['rows'] };
+        if (cancelled) return;
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        if (rows.length === 0) return;
+        setSnapshot({
+          status: (data.status as GinBenchmarkStatus) ?? 'preview',
+          snapshotAt: data.snapshotAt ?? null,
+          refreshCadence: data.refreshCadence ?? ginBenchmarkFallback.refreshCadence,
+          kAnonymity: data.kAnonymity ?? ginBenchmarkFallback.kAnonymity,
+          source: data.source ?? 'industry_benchmarks',
+          disclosure:
+            data.status === 'live'
+              ? 'Cohort medians and top-quartile values aggregated from opted-in QVO tenants in each vertical. Rows below the k-anonymity threshold are suppressed.'
+              : data.status === 'preview'
+                ? 'Early cohort data — published in preview while we accumulate enough opted-in tenants per vertical for a stable benchmark.'
+                : ginBenchmarkFallback.disclosure,
+          rows,
+        });
+      })
+      .catch(() => {
+        // Keep fallback snapshot — pipeline not reachable or no data yet.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const status = snapshot.status;
+  const snapshotDateLabel = formatSnapshotDate(snapshot.snapshotAt);
+
   const valueProps = t('gin_page.value_props.items', { returnObjects: true }) as TextItem[];
   const howItWorks = t('gin_page.how_it_works.items', { returnObjects: true }) as TextItem[];
   const benefits = t('gin_page.control_plane.benefits', { returnObjects: true }) as LabelItem[];
@@ -99,27 +158,47 @@ export default function GlobalIntelligenceNetwork() {
 
           <RevealSection>
             <div className="max-w-5xl mx-auto bg-white rounded-2xl border border-soft-steel/30 overflow-hidden shadow-sm">
+              <div className="px-6 py-4 border-b border-soft-steel/20 bg-mist/40 flex flex-wrap items-center justify-between gap-3">
+                <span
+                  className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full border ${STATUS_COPY[status].tone}`}
+                  data-testid="gin-benchmark-status"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                  {STATUS_COPY[status].label}
+                </span>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-ink/60 font-body">
+                  <span data-testid="gin-benchmark-snapshot-date">
+                    {snapshotDateLabel
+                      ? <>Snapshot: <span className="font-semibold text-slate-ink/80">{snapshotDateLabel}</span></>
+                      : <>Snapshot: <span className="font-semibold text-slate-ink/80">pending first refresh</span></>}
+                  </span>
+                  <span>
+                    k-anonymity: <span className="font-semibold text-slate-ink/80">≥ {snapshot.kAnonymity} tenants</span>
+                  </span>
+                </div>
+              </div>
               <div className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-soft-steel/20 bg-mist/50 text-xs font-semibold uppercase tracking-wide text-slate-ink/55 font-display">
                 <div className="col-span-3">{t('gin_page.benchmark.col_vertical')}</div>
-                <div className="col-span-4">{t('gin_page.benchmark.col_metric')}</div>
-                <div className="col-span-2 text-right">{t('gin_page.benchmark.col_you')}</div>
+                <div className="col-span-3">{t('gin_page.benchmark.col_metric')}</div>
+                <div className="col-span-2 text-right">Cohort avg</div>
                 <div className="col-span-2 text-right">{t('gin_page.benchmark.col_median')}</div>
                 <div className="col-span-1 text-right">{t('gin_page.benchmark.col_top')}</div>
+                <div className="col-span-1 text-right">Cohort</div>
               </div>
-              {benchmarkExamples.map((row, i) => {
-                const numbers = benchmarkRows[i] || benchmarkRows[0];
-                return (
-                  <div key={`${row.vertical}-${row.metric}`} className="grid grid-cols-12 gap-2 px-6 py-4 border-b last:border-b-0 border-soft-steel/20 items-center text-sm font-body">
-                    <div className="col-span-3 font-display text-harbor font-semibold">{row.vertical}</div>
-                    <div className="col-span-4 text-slate-ink/70">{row.metric}</div>
-                    <div className="col-span-2 text-right font-mono font-semibold text-teal">{numbers.you}</div>
-                    <div className="col-span-2 text-right font-mono text-slate-ink/55">{numbers.median}</div>
-                    <div className="col-span-1 text-right font-mono text-calm-green">{numbers.topQuartile}</div>
+              {snapshot.rows.map((row) => (
+                <div key={`${row.vertical}-${row.metric}`} className="grid grid-cols-12 gap-2 px-6 py-4 border-b last:border-b-0 border-soft-steel/20 items-center text-sm font-body">
+                  <div className="col-span-3 font-display text-harbor font-semibold">{row.vertical}</div>
+                  <div className="col-span-3 text-slate-ink/70">{row.metric}</div>
+                  <div className="col-span-2 text-right font-mono font-semibold text-teal">{row.cohortAvg}</div>
+                  <div className="col-span-2 text-right font-mono text-slate-ink/55">{row.median}</div>
+                  <div className="col-span-1 text-right font-mono text-calm-green">{row.topQuartile}</div>
+                  <div className="col-span-1 text-right font-mono text-slate-ink/45">
+                    {row.cohortSize > 0 ? `n=${row.cohortSize}` : '—'}
                   </div>
-                );
-              })}
-              <div className="px-6 py-3 bg-mist/40 text-xs text-slate-ink/50 font-body italic">
-                {t('gin_page.benchmark.footnote')}
+                </div>
+              ))}
+              <div className="px-6 py-3 bg-mist/40 text-xs text-slate-ink/55 font-body italic">
+                {t('gin_page.benchmark.footnote')} {snapshot.disclosure} Cohorts only render when ≥ {snapshot.kAnonymity} tenants of comparable size are participating. Refresh: {snapshot.refreshCadence}.
               </div>
             </div>
           </RevealSection>
