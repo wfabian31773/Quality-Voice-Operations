@@ -701,3 +701,36 @@ export function deletionExecutedEmail(params: {
 
   return { subject: `Account permanently deleted: ${org}`, html, text };
 }
+
+export function encryptionInitializationReminderEmail(params: {
+  tenantName?: string;
+  ownerName?: string | null;
+  initializeUrl: string;
+  senderName?: string | null;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const greeting = params.ownerName ? `Hi ${params.ownerName},` : 'Hi,';
+  const sender = params.senderName ?? 'The Quality Voice Operations team';
+  const subject = `Action recommended: enable data encryption for ${org}`;
+
+  const html = baseLayout(`
+    <p>${greeting}</p>
+    <p>We noticed that <strong>${org}</strong> has not yet initialized a data encryption key. Quality Voice Operations encrypts sensitive tenant data — connector credentials, caller PII, and integration secrets — with a per-tenant AES-256-GCM key. Until you turn on encryption, those fields are stored without that extra protection layer.</p>
+    <div class="alert-warn">
+      <p style="margin:0"><strong>Why this matters</strong></p>
+      <p style="margin:4px 0 0">Activating encryption is a one-click action that takes effect immediately. New writes are encrypted automatically, and your security posture report will reflect the change.</p>
+    </div>
+    <p>You can enable encryption from the Compliance &amp; Security view:</p>
+    <p><a href="${params.initializeUrl}" class="btn">Initialize Encryption</a></p>
+    <p class="muted">If you have questions or would like us to enable it on your behalf, just reply to this email.</p>
+    <p class="muted">— ${sender}</p>
+  `);
+
+  const text = `${greeting}\n\n` +
+    `We noticed that ${org} has not yet initialized a data encryption key. Quality Voice Operations encrypts sensitive tenant data with a per-tenant AES-256-GCM key. Until you turn on encryption, those fields are stored without that extra protection layer.\n\n` +
+    `Activating encryption is a one-click action that takes effect immediately.\n\n` +
+    `Initialize encryption: ${params.initializeUrl}\n\n` +
+    `If you have questions or would like us to enable it on your behalf, just reply to this email.\n\n— ${sender}`;
+
+  return { subject, html, text };
+}

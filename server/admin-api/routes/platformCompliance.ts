@@ -4,10 +4,23 @@ import { requirePlatformAdmin } from '../middleware/rbac';
 import { withPrivilegedClient } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { runAllIsolationTests } from '../../../platform/security/TenantIsolationService';
+import { getOrCreateTenantDEK } from '../../../platform/security/EncryptionService';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import { sendEmail } from '../../../platform/email/EmailService';
+import { encryptionInitializationReminderEmail } from '../../../platform/email/templates';
 
 const router = Router();
 const logger = createLogger('PLATFORM_COMPLIANCE');
+
+const ENCRYPTION_REMINDER_ACTION = 'platform.encryption.reminder_sent';
+const ENCRYPTION_INITIALIZE_ACTION = 'platform.encryption.initialized_by_admin';
+
+function getAppBaseUrl(): string {
+  return (
+    process.env.APP_URL ??
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : '')
+  );
+}
 
 // ---------- Overview KPIs ----------
 router.get('/platform/compliance/overview', requireAuth, requirePlatformAdmin, async (_req, res) => {
@@ -236,7 +249,8 @@ router.get('/platform/compliance/audit-log/export', requireAuth, requirePlatform
 router.get('/platform/compliance/encryption', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
     const tenants = await withPrivilegedClient(async (client) => {
-      const { rows } = await client.query(`
+      const { rows } = await client.query(
+        `
         SELECT
           t.id AS tenant_id,
           t.name AS tenant_name,
@@ -248,7 +262,13 @@ router.get('/platform/compliance/encryption', requireAuth, requirePlatformAdmin,
           k.last_key_created_at,
           k.last_rotation_at,
           COALESCE(f.encrypted_field_count, 0)::int AS encrypted_field_count,
-          COALESCE(f.tables, ARRAY[]::text[]) AS encrypted_tables
+          COALESCE(f.tables, ARRAY[]::text[]) AS encrypted_tables,
+          o.owner_user_id,
+          o.owner_email,
+          o.owner_first_name,
+          o.owner_last_name,
+          r.last_reminded_at,
+          r.last_reminded_by_email
         FROM tenants t
         LEFT JOIN (
           SELECT tenant_id,
@@ -266,16 +286,261 @@ router.get('/platform/compliance/encryption', requireAuth, requirePlatformAdmin,
           FROM encrypted_fields
           GROUP BY tenant_id
         ) f ON f.tenant_id = t.id
-        ORDER BY t.created_at DESC
-      `);
+        LEFT JOIN LATERAL (
+          SELECT ur.user_id AS owner_user_id,
+                 u.email AS owner_email,
+                 u.first_name AS owner_first_name,
+                 u.last_name AS owner_last_name
+          FROM user_roles ur
+          JOIN users u ON u.id = ur.user_id
+          WHERE ur.tenant_id = t.id
+            AND ur.role = 'tenant_owner'
+            AND u.is_active = TRUE
+          ORDER BY ur.created_at ASC
+          LIMIT 1
+        ) o ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT MAX(a.occurred_at) AS last_reminded_at,
+                 (ARRAY_AGG(au.email ORDER BY a.occurred_at DESC))[1] AS last_reminded_by_email
+          FROM audit_logs a
+          LEFT JOIN users au ON au.id = a.actor_user_id
+          WHERE a.tenant_id = t.id AND a.action = $1
+        ) r ON TRUE
+        ORDER BY
+          (COALESCE(k.active_keys, 0) = 0) DESC,
+          t.created_at DESC
+      `,
+        [ENCRYPTION_REMINDER_ACTION],
+      );
       return rows;
     });
-    return res.json({ tenants });
+
+    const summary = tenants.reduce<{
+      total: number;
+      needs_initialization: number;
+      with_active_keys: number;
+    }>(
+      (acc, t) => {
+        acc.total += 1;
+        if (((t.active_keys as number) ?? 0) === 0) acc.needs_initialization += 1;
+        else acc.with_active_keys += 1;
+        return acc;
+      },
+      { total: 0, needs_initialization: 0, with_active_keys: 0 },
+    );
+
+    return res.json({ tenants, summary });
   } catch (err) {
     logger.error('Failed to query encryption status', { error: String(err) });
     return res.status(500).json({ error: 'Failed to query encryption status' });
   }
 });
+
+// ---------- Send templated reminder to a tenant owner ----------
+router.post(
+  '/platform/compliance/encryption/remind/:tenantId',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const targetTenantId = String(req.params.tenantId ?? '').trim();
+    if (!targetTenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    try {
+      const context = await withPrivilegedClient(async (client) => {
+        const { rows: tenantRows } = await client.query(
+          `SELECT id, name, slug FROM tenants WHERE id = $1`,
+          [targetTenantId],
+        );
+        if (tenantRows.length === 0) return null;
+
+        const { rows: keyRows } = await client.query(
+          `SELECT COUNT(*)::int AS active_keys
+           FROM encryption_keys
+           WHERE tenant_id = $1 AND is_active = TRUE`,
+          [targetTenantId],
+        );
+
+        const { rows: ownerRows } = await client.query(
+          `SELECT u.id, u.email, u.first_name, u.last_name
+           FROM user_roles ur
+           JOIN users u ON u.id = ur.user_id
+           WHERE ur.tenant_id = $1 AND ur.role = 'tenant_owner' AND u.is_active = TRUE
+           ORDER BY ur.created_at ASC
+           LIMIT 1`,
+          [targetTenantId],
+        );
+
+        return {
+          tenant: tenantRows[0],
+          activeKeys: (keyRows[0]?.active_keys as number) ?? 0,
+          owner: ownerRows[0] ?? null,
+        };
+      });
+
+      if (!context) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+      if (context.activeKeys > 0) {
+        return res.status(409).json({
+          error: 'Tenant already has an active encryption key — no reminder needed.',
+        });
+      }
+      if (!context.owner || !context.owner.email) {
+        return res.status(409).json({
+          error: 'No active tenant owner is on file for this tenant — cannot send a reminder.',
+        });
+      }
+
+      const tenantName = (context.tenant.name as string) ?? 'your organization';
+      const ownerEmail = context.owner.email as string;
+      const ownerFirst = (context.owner.first_name as string | null) ?? null;
+      const ownerLast = (context.owner.last_name as string | null) ?? null;
+      const ownerDisplay = [ownerFirst, ownerLast].filter(Boolean).join(' ').trim() || null;
+
+      const baseUrl = getAppBaseUrl();
+      if (!baseUrl) {
+        logger.error('Cannot send encryption reminder: no absolute app URL configured', {
+          targetTenantId,
+        });
+        return res.status(500).json({
+          error:
+            'Server is missing APP_URL (or REPLIT_DEV_DOMAIN). Configure one before sending reminder emails so the link is clickable.',
+        });
+      }
+      const initializeUrl = `${baseUrl.replace(/\/$/, '')}/compliance`;
+
+      const senderName = req.user?.email ?? 'The Quality Voice Operations team';
+
+      const message = encryptionInitializationReminderEmail({
+        tenantName,
+        ownerName: ownerDisplay,
+        initializeUrl,
+        senderName,
+      });
+
+      const result = await sendEmail({
+        to: ownerEmail,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+      });
+
+      if (!result.success) {
+        logger.error('Failed to deliver encryption reminder email', {
+          targetTenantId,
+          ownerEmail,
+          error: result.error,
+        });
+        return res.status(502).json({
+          error: result.error ?? 'Failed to deliver reminder email',
+        });
+      }
+
+      await writeAuditLog({
+        tenantId: targetTenantId,
+        actorUserId: req.user!.userId,
+        actorRole: req.user!.role,
+        action: ENCRYPTION_REMINDER_ACTION,
+        resourceType: 'tenant',
+        resourceId: targetTenantId,
+        severity: 'info',
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+        changes: {
+          ownerEmail,
+          ownerUserId: context.owner.id as string,
+          tenantName,
+          messageId: result.messageId ?? null,
+          sentBy: req.user?.email ?? null,
+        },
+      });
+
+      return res.json({
+        sent: true,
+        ownerEmail,
+        sentAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.error('Failed to send encryption reminder', {
+        targetTenantId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to send encryption reminder' });
+    }
+  },
+);
+
+// ---------- Initialize encryption on a tenant's behalf ----------
+router.post(
+  '/platform/compliance/encryption/initialize/:tenantId',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const targetTenantId = String(req.params.tenantId ?? '').trim();
+    if (!targetTenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    try {
+      const tenant = await withPrivilegedClient(async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, name, slug FROM tenants WHERE id = $1`,
+          [targetTenantId],
+        );
+        return rows[0] ?? null;
+      });
+
+      if (!tenant) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+
+      const existing = await withPrivilegedClient(async (client) => {
+        const { rows } = await client.query(
+          `SELECT COUNT(*)::int AS active_keys
+           FROM encryption_keys
+           WHERE tenant_id = $1 AND is_active = TRUE`,
+          [targetTenantId],
+        );
+        return (rows[0]?.active_keys as number) ?? 0;
+      });
+
+      if (existing > 0) {
+        return res.status(409).json({
+          error: 'Tenant already has an active encryption key.',
+        });
+      }
+
+      const { keyId } = await getOrCreateTenantDEK(targetTenantId);
+
+      await writeAuditLog({
+        tenantId: targetTenantId,
+        actorUserId: req.user!.userId,
+        actorRole: req.user!.role,
+        action: ENCRYPTION_INITIALIZE_ACTION,
+        resourceType: 'encryption_key',
+        resourceId: keyId,
+        severity: 'critical',
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+        changes: {
+          initiatedByPlatformAdmin: true,
+          adminEmail: req.user?.email ?? null,
+          tenantName: tenant.name as string,
+        },
+      });
+
+      return res.json({ keyId, status: 'initialized' });
+    } catch (err) {
+      logger.error('Failed to initialize encryption for tenant', {
+        targetTenantId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to initialize encryption' });
+    }
+  },
+);
 
 // ---------- Tenant deletion requests across all tenants ----------
 router.get('/platform/compliance/deletion-requests', requireAuth, requirePlatformAdmin, async (req, res) => {

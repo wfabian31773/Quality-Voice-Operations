@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import {
   Shield, Download, Lock, FileText, Building2, Users, Trash2,
   CheckCircle2, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight,
-  Plus, Server, Activity, KeyRound, Globe,
+  Plus, Server, Activity, KeyRound, Globe, Mail, Zap,
 } from 'lucide-react';
 import { EmptyState, Skeleton } from '../../components/state';
 
@@ -58,6 +58,21 @@ interface EncryptionRow {
   last_rotation_at: string | null;
   encrypted_field_count: number;
   encrypted_tables: string[];
+  owner_user_id: string | null;
+  owner_email: string | null;
+  owner_first_name: string | null;
+  owner_last_name: string | null;
+  last_reminded_at: string | null;
+  last_reminded_by_email: string | null;
+}
+
+interface EncryptionResponse {
+  tenants: EncryptionRow[];
+  summary: {
+    total: number;
+    needs_initialization: number;
+    with_active_keys: number;
+  };
 }
 
 interface Subprocessor {
@@ -449,16 +464,166 @@ function PlatformAuditTab() {
 }
 
 function EncryptionTab() {
+  const queryClient = useQueryClient();
+  const [onlyGaps, setOnlyGaps] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{
+    kind: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [pendingTenant, setPendingTenant] = useState<{
+    action: 'remind' | 'initialize';
+    tenantId: string;
+  } | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ['platform-compliance-encryption'],
-    queryFn: () => api.get<{ tenants: EncryptionRow[] }>('/platform/compliance/encryption'),
+    queryFn: () => api.get<EncryptionResponse>('/platform/compliance/encryption'),
   });
+
+  const remindMutation = useMutation({
+    mutationFn: (tenantId: string) =>
+      api.post<{ sent: boolean; ownerEmail: string; sentAt: string }>(
+        `/platform/compliance/encryption/remind/${tenantId}`,
+      ),
+    onMutate: (tenantId) => {
+      setActionMessage(null);
+      setPendingTenant({ action: 'remind', tenantId });
+    },
+    onSuccess: (result) => {
+      setActionMessage({
+        kind: 'success',
+        text: `Reminder sent to ${result.ownerEmail}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['platform-compliance-encryption'] });
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : 'Failed to send reminder.';
+      setActionMessage({ kind: 'error', text: message });
+    },
+    onSettled: () => setPendingTenant(null),
+  });
+
+  const initializeMutation = useMutation({
+    mutationFn: (tenantId: string) =>
+      api.post<{ keyId: string; status: string }>(
+        `/platform/compliance/encryption/initialize/${tenantId}`,
+      ),
+    onMutate: (tenantId) => {
+      setActionMessage(null);
+      setPendingTenant({ action: 'initialize', tenantId });
+    },
+    onSuccess: () => {
+      setActionMessage({
+        kind: 'success',
+        text: 'Encryption initialized. The tenant now has an active data encryption key.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['platform-compliance-encryption'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-compliance-overview'] });
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : 'Failed to initialize encryption.';
+      setActionMessage({ kind: 'error', text: message });
+    },
+    onSettled: () => setPendingTenant(null),
+  });
+
+  const summary = data?.summary;
+  const allTenants = data?.tenants ?? [];
+  const filteredTenants = onlyGaps
+    ? allTenants.filter((t) => t.active_keys === 0)
+    : allTenants;
+
+  const needsInit = summary?.needs_initialization ?? 0;
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
         Per-tenant data encryption keys (DEKs) wrapped by the platform key. Keys are AES-256-GCM and rotated on demand from the tenant Compliance view.
       </p>
+
+      {summary && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            icon={Building2}
+            label="Tenants tracked"
+            value={summary.total}
+            hint="Includes active and suspended"
+          />
+          <StatCard
+            icon={KeyRound}
+            label="With active key"
+            value={summary.with_active_keys}
+            hint="Encryption already enabled"
+            tone={summary.with_active_keys > 0 ? 'success' : 'default'}
+          />
+          <StatCard
+            icon={AlertTriangle}
+            label="Needs initialization"
+            value={summary.needs_initialization}
+            hint={summary.needs_initialization > 0 ? 'Action required' : 'All tenants encrypted'}
+            tone={summary.needs_initialization > 0 ? 'warn' : 'success'}
+          />
+        </div>
+      )}
+
+      {needsInit > 0 && (
+        <div className="rounded-xl border border-yellow-300 dark:border-yellow-700/60 bg-yellow-50 dark:bg-yellow-900/10 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
+          <div className="flex-1 text-sm">
+            <div className="font-semibold text-yellow-900 dark:text-yellow-200">
+              {needsInit === 1
+                ? '1 tenant has not enabled encryption yet'
+                : `${needsInit} tenants have not enabled encryption yet`}
+            </div>
+            <p className="text-yellow-800/90 dark:text-yellow-200/80 mt-1">
+              These tenants are running without an active data encryption key. Send the owner a templated reminder, or initialize encryption on their behalf where policy allows. Both actions are written to the platform audit log.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <input
+            type="checkbox"
+            checked={onlyGaps}
+            onChange={(e) => setOnlyGaps(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          Only show tenants needing initialization
+        </label>
+        {!isLoading && (
+          <span className="text-xs text-muted">
+            Showing {filteredTenants.length} of {allTenants.length}
+          </span>
+        )}
+      </div>
+
+      {actionMessage && (
+        <div
+          className={`rounded-lg border p-3 text-sm flex items-start gap-2 ${
+            actionMessage.kind === 'success'
+              ? 'border-green-300 dark:border-green-700/60 bg-green-50 dark:bg-green-900/10 text-green-800 dark:text-green-200'
+              : 'border-red-300 dark:border-red-700/60 bg-red-50 dark:bg-red-900/10 text-red-800 dark:text-red-200'
+          }`}
+        >
+          {actionMessage.kind === 'success' ? (
+            <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          )}
+          <div className="flex-1">{actionMessage.text}</div>
+          <button
+            onClick={() => setActionMessage(null)}
+            className="text-xs underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -468,56 +633,151 @@ function EncryptionTab() {
                 <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
                 <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-muted">Active keys</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Owner</th>
                 <th className="text-left px-4 py-3 font-medium text-muted">Encrypted fields</th>
                 <th className="text-left px-4 py-3 font-medium text-muted">Last rotation</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">First key</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Last reminder</th>
+                <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
-              ) : !data?.tenants.length ? (
-                <tr><td colSpan={7} className="p-0"><EmptyState icon={Lock} title="No tenants" variant="compact" /></td></tr>
+                <tr><td colSpan={9} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
+              ) : !filteredTenants.length ? (
+                <tr>
+                  <td colSpan={9} className="p-0">
+                    <EmptyState
+                      icon={onlyGaps ? CheckCircle2 : Lock}
+                      title={onlyGaps ? 'All tenants have an active encryption key' : 'No tenants'}
+                      variant="compact"
+                    />
+                  </td>
+                </tr>
               ) : (
-                data.tenants.map((t) => (
-                  <tr key={t.tenant_id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{t.tenant_name}</div>
-                      <div className="text-[11px] text-muted font-mono">{t.tenant_slug}</div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted capitalize">{t.plan}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                        t.tenant_status === 'active'
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                          : 'bg-surface-hover text-text-secondary'
-                      }`}>
-                        {t.tenant_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {t.active_keys > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium">
-                          <KeyRound className="h-3.5 w-3.5" /> {t.active_keys}
+                filteredTenants.map((t) => {
+                  const needsInitialization = t.active_keys === 0;
+                  const ownerName = [t.owner_first_name, t.owner_last_name]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim();
+                  const isRemindingThis =
+                    pendingTenant?.action === 'remind' && pendingTenant.tenantId === t.tenant_id;
+                  const isInitializingThis =
+                    pendingTenant?.action === 'initialize' && pendingTenant.tenantId === t.tenant_id;
+
+                  return (
+                    <tr
+                      key={t.tenant_id}
+                      className={`border-b border-border last:border-0 ${
+                        needsInitialization
+                          ? 'bg-yellow-50/50 dark:bg-yellow-900/5'
+                          : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{t.tenant_name}</div>
+                        <div className="text-[11px] text-muted font-mono">{t.tenant_slug}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted capitalize">{t.plan}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          t.tenant_status === 'active'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                            : 'bg-surface-hover text-text-secondary'
+                        }`}>
+                          {t.tenant_status}
                         </span>
-                      ) : (
-                        <span className="text-xs text-muted">Not initialized</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {t.encrypted_field_count > 0 ? (
-                        <div>
-                          <div className="font-medium">{t.encrypted_field_count.toLocaleString()}</div>
-                          <div className="text-[11px] text-muted">{t.encrypted_tables.join(', ')}</div>
-                        </div>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted">{formatDateOnly(t.last_rotation_at)}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{formatDateOnly(t.last_key_created_at)}</td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3">
+                        {t.active_keys > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium">
+                            <KeyRound className="h-3.5 w-3.5" /> {t.active_keys}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-[11px] font-medium">
+                            <AlertTriangle className="h-3 w-3" /> Not initialized
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {t.owner_email ? (
+                          <div>
+                            {ownerName && <div className="font-medium">{ownerName}</div>}
+                            <div className="text-[11px] text-muted break-all">{t.owner_email}</div>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted italic">No active owner</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {t.encrypted_field_count > 0 ? (
+                          <div>
+                            <div className="font-medium">{t.encrypted_field_count.toLocaleString()}</div>
+                            <div className="text-[11px] text-muted">{t.encrypted_tables.join(', ')}</div>
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted">{formatDateOnly(t.last_rotation_at)}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {t.last_reminded_at ? (
+                          <div>
+                            <div className="text-muted">{formatDate(t.last_reminded_at)}</div>
+                            {t.last_reminded_by_email && (
+                              <div className="text-[10px] text-muted">by {t.last_reminded_by_email}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {needsInitialization ? (
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={() => remindMutation.mutate(t.tenant_id)}
+                              disabled={
+                                !t.owner_email ||
+                                isRemindingThis ||
+                                isInitializingThis
+                              }
+                              title={
+                                t.owner_email
+                                  ? `Send a templated reminder to ${t.owner_email}`
+                                  : 'No active owner email on file'
+                              }
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                              {isRemindingThis ? 'Sending…' : 'Send reminder'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Initialize encryption for ${t.tenant_name} on their behalf? This will create an active per-tenant DEK and is recorded in the audit log.`,
+                                  )
+                                ) {
+                                  initializeMutation.mutate(t.tenant_id);
+                                }
+                              }}
+                              disabled={isRemindingThis || isInitializingThis}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Zap className="h-3.5 w-3.5" />
+                              {isInitializingThis ? 'Initializing…' : 'Initialize now'}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Compliant
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
