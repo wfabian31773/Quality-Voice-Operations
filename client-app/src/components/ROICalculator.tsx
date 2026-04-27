@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, Calculator, DollarSign, TrendingUp, Clock, Mail, CheckCircle2, Loader2 } from 'lucide-react';
 import { trackCTAClick, trackConversionEvent } from '../lib/analytics';
+import { formatDollars } from '../lib/formatCurrency';
 
 interface ROICalculatorProps {
   vertical?: string;
@@ -88,9 +89,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
-  };
+  const formatCurrency = (value: number) => formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   const steps = [
     {

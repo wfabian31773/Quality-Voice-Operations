@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
+import { formatCents, formatCurrency } from '../lib/formatCurrency';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
@@ -74,10 +75,6 @@ const COST_RATES = {
 function formatDate(d: string | null): string {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 const INVOICE_STATUS_STYLES: Record<string, string> = {
@@ -392,7 +389,7 @@ export default function Billing() {
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="text-sm font-semibold text-text-primary">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency || 'usd' }).format(inv.amount_cents / 100)}
+                          {formatCurrency(inv.amount_cents, { unit: 'cents', currency: (inv.currency || 'usd').toUpperCase() })}
                         </span>
                         {inv.invoice_pdf && (
                           <a

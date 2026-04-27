@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from '
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical, ExternalLink, ArrowRightLeft, UserPlus, Building2, Briefcase, ClipboardCheck, Cloud } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
@@ -364,12 +365,12 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
           <div className="px-5 py-4 border-b border-border">
             <h3 className="text-sm font-semibold text-text-primary mb-3">Cost Breakdown</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-text-secondary">STT:</span> ${(costBreakdown.sttCostCents / 100).toFixed(2)}</div>
-              <div><span className="text-text-secondary">LLM:</span> ${(costBreakdown.llmCostCents / 100).toFixed(2)}</div>
-              <div><span className="text-text-secondary">TTS:</span> ${(costBreakdown.ttsCostCents / 100).toFixed(2)}</div>
-              <div><span className="text-text-secondary">Infra:</span> ${(costBreakdown.infraCostCents / 100).toFixed(2)}</div>
+              <div><span className="text-text-secondary">STT:</span> {formatCentsHelper(costBreakdown.sttCostCents)}</div>
+              <div><span className="text-text-secondary">LLM:</span> {formatCentsHelper(costBreakdown.llmCostCents)}</div>
+              <div><span className="text-text-secondary">TTS:</span> {formatCentsHelper(costBreakdown.ttsCostCents)}</div>
+              <div><span className="text-text-secondary">Infra:</span> {formatCentsHelper(costBreakdown.infraCostCents)}</div>
               <div className="col-span-2 font-semibold border-t border-border pt-1 mt-1">
-                <span className="text-text-secondary">Total:</span> ${(costBreakdown.totalCostCents / 100).toFixed(2)}
+                <span className="text-text-secondary">Total:</span> {formatCentsHelper(costBreakdown.totalCostCents)}
               </div>
               <div><span className="text-text-secondary">Model:</span> {costBreakdown.modelUsed}</div>
               <div><span className="text-text-secondary">Tier:</span> <span className="capitalize">{costBreakdown.modelTier}</span></div>

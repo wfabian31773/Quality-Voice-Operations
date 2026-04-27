@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   Search, Filter, PhoneCall, ChevronLeft, ChevronRight, X, Clock,
   AlertTriangle, TrendingUp, Zap, ArrowRight, ChevronDown, ChevronUp,
@@ -273,7 +274,7 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
           <div><span className="text-text-secondary block text-xs mb-0.5">Duration</span><span className="font-medium">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Start</span><span className="text-xs">{call.start_time ? format(new Date(call.start_time as string), 'PPp') : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">End</span><span className="text-xs">{call.end_time ? format(new Date(call.end_time as string), 'PPp') : '--'}</span></div>
-          <div><span className="text-text-secondary block text-xs mb-0.5">Cost</span><span className="font-medium">{call.total_cost_cents != null ? `$${((call.total_cost_cents as number) / 100).toFixed(2)}` : '--'}</span></div>
+          <div><span className="text-text-secondary block text-xs mb-0.5">Cost</span><span className="font-medium">{call.total_cost_cents != null ? formatCentsHelper(call.total_cost_cents as number) : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Sentiment</span><span className="font-medium">{call.sentiment_score != null ? (call.sentiment_score as number).toFixed(2) : '--'}</span></div>
         </div>
       </div>
@@ -927,7 +928,7 @@ export default function CallDebug() {
                           }`}>{call.lifecycle_state}</span>
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</td>
-                        <td className="px-4 py-3 text-text-secondary text-xs">{call.total_cost_cents != null ? `$${(call.total_cost_cents / 100).toFixed(2)}` : '--'}</td>
+                        <td className="px-4 py-3 text-text-secondary text-xs">{call.total_cost_cents != null ? formatCentsHelper(call.total_cost_cents) : '--'}</td>
                         <td className="px-4 py-3">
                           {call.sentiment_score != null ? (
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${

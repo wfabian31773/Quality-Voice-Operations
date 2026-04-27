@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   Plus, Trash2, Phone, X, Search, Sparkles, ArrowRight,
   RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot, Calendar, AlertTriangle,
@@ -200,7 +201,7 @@ function ProvisionFlow({
               <p className="text-sm text-white/70">
                 {isFree
                   ? 'Your first number is on us — completely free!'
-                  : `Additional numbers are $${(200 / 100).toFixed(2)}/month`}
+                  : `Additional numbers are ${formatCentsHelper(200)}/month`}
               </p>
               {isFree && (
                 <div className="mt-3 inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-full">
@@ -826,7 +827,7 @@ export default function PhoneNumbers() {
                         </span>
                       ) : (
                         <span className="text-text-secondary text-xs">
-                          ${((pn.monthly_cost_cents || 200) / 100).toFixed(2)}/mo
+                          {formatCentsHelper(pn.monthly_cost_cents || 200)}/mo
                         </span>
                       )}
                     </td>

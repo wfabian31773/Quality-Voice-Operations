@@ -6,6 +6,7 @@ import {
   ArrowUpCircle, X, History, ListOrdered,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 
 interface RegistryTemplate {
@@ -703,7 +704,7 @@ function RevenueTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Stat
           label="Total Marketplace Revenue"
-          value={`$${(revenue.totalRevenueCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+          value={formatCentsHelper(revenue.totalRevenueCents)}
           icon={DollarSign}
         />
         <Stat
@@ -715,7 +716,7 @@ function RevenueTab() {
           label="Avg Revenue / Purchase"
           value={
             revenue.totalPurchases > 0
-              ? `$${(revenue.totalRevenueCents / revenue.totalPurchases / 100).toFixed(2)}`
+              ? formatCentsHelper(revenue.totalRevenueCents / revenue.totalPurchases)
               : '—'
           }
           icon={ArrowUpCircle}
@@ -744,7 +745,7 @@ function RevenueTab() {
                     <td className="px-4 py-3 text-text-primary">{row.templateName}</td>
                     <td className="px-4 py-3 text-right">{row.purchaseCount.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-medium">
-                      ${(row.revenueCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {formatCentsHelper(row.revenueCents)}
                     </td>
                   </tr>
                 ))}

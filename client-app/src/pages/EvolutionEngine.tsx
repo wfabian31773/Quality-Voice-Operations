@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   Dna, TrendingUp, Lightbulb, FlaskConical, BarChart3,
   CheckCircle, XCircle, Clock, ChevronRight, Play,
@@ -150,7 +151,7 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return formatCentsHelper(cents, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function ScoreBar({ score, max = 10, label }: { score: number; max?: number; label: string }) {

@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 
 interface TenantInfo {
@@ -67,7 +68,7 @@ interface TenantAnalyticsResponse {
 const RANGES = ['7d', '30d', '90d'] as const;
 
 function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatCentsHelper(cents);
 }
 
 export default function AdminTenantAnalytics() {

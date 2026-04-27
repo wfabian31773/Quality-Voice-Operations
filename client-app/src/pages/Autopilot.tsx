@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   Zap, Brain, Shield, ShieldCheck, ShieldAlert, ShieldOff,
   CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Loader2,
@@ -91,8 +92,8 @@ interface AutopilotRun {
 type TabType = 'overview' | 'recommendations' | 'actions' | 'insights' | 'policies' | 'notifications';
 
 function formatCents(cents: number): string {
-  if (cents >= 100000) return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  return `$${(cents / 100).toFixed(2)}`;
+  if (cents >= 100000) return formatCentsHelper(cents, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return formatCentsHelper(cents);
 }
 
 function severityColor(severity: string): string {

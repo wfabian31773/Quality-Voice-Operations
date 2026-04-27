@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   isHardBounce,
   isPermanentSmtpError,
@@ -269,7 +270,7 @@ interface ValidationResult {
 }
 
 function formatCents(cents: string | number): string {
-  return `$${(Number(cents) / 100).toFixed(2)}`;
+  return formatCentsHelper(cents);
 }
 
 /**

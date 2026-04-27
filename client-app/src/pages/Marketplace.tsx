@@ -10,6 +10,7 @@ import {
   ShoppingCart, Filter,
 } from 'lucide-react';
 import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 
 interface TemplateCategory {
   name: string;
@@ -208,10 +209,10 @@ const SORT_OPTIONS = [
 
 function formatPrice(priceCents: number, priceModel: string): string {
   if (priceModel === 'free' || priceCents === 0) return 'Free';
-  const dollars = (priceCents / 100).toFixed(2);
-  if (priceModel === 'monthly_subscription') return `$${dollars}/mo`;
-  if (priceModel === 'usage_based') return `From $${dollars}`;
-  return `$${dollars}`;
+  const formatted = formatCentsHelper(priceCents);
+  if (priceModel === 'monthly_subscription') return `${formatted}/mo`;
+  if (priceModel === 'usage_based') return `From ${formatted}`;
+  return formatted;
 }
 
 function PriceBadge({ priceCents, priceModel }: { priceCents: number; priceModel: string }) {

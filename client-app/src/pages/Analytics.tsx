@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
@@ -150,7 +151,7 @@ export default function Analytics() {
 
   const navigate = useNavigate();
 
-  const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  const formatCents = (cents: number) => formatCentsHelper(cents);
 
   return (
     <div className="space-y-6">

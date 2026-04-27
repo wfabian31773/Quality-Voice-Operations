@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { Inbox } from 'lucide-react';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import { EmptyState, Skeleton, SkeletonRows } from '../components/state';
 
@@ -88,7 +89,7 @@ function toNum(value: string | number | null | undefined): number {
 }
 
 function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatCentsHelper(cents);
 }
 
 type TenantSortKey = 'plan' | 'status' | 'calls_last_30d' | 'total_calls' | 'last_call_at';

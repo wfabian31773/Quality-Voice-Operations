@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   Code2, Package, Upload, CheckCircle, XCircle, Clock,
   BarChart3, Star, Download, DollarSign, ChevronRight,
@@ -583,7 +584,7 @@ export default function DeveloperPortal() {
               <StatCard
                 icon={DollarSign}
                 label="Total Revenue"
-                value={`$${(stats.totalRevenue / 100).toFixed(2)}`}
+                value={formatCentsHelper(stats.totalRevenue)}
               />
             </div>
           )}

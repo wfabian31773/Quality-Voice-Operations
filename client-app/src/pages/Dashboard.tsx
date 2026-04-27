@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   PhoneCall, Bot, TrendingUp, AlertTriangle, Wifi, WifiOff,
   ArrowRight, Zap, BarChart3, Phone, Plus, CheckCircle2,
@@ -370,7 +371,7 @@ export default function Dashboard() {
   const bookingsToday = bookingsData?.total ?? 0;
   const revenueCents = revenueData?.totalRevenueCents ?? 0;
   const revenueDisplay = revenueCents > 0
-    ? `$${(revenueCents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+    ? formatCentsHelper(revenueCents, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
     : '$0';
 
   return (

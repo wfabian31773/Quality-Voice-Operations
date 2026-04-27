@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   Cpu, Plus, Play, BarChart3, TrendingUp, Clock, ChevronDown, ChevronRight,
   Layers, Zap, AlertTriangle, CheckCircle, ArrowUpRight, ArrowDownRight,
@@ -662,7 +663,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
       baseline: b.projectedRevenuePerDayCents,
       simulated: m.projectedRevenuePerDayCents,
       delta: m.revenueDeltaCents,
-      format: (v: number) => `$${(v / 100).toFixed(0)}`,
+      format: (v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       icon: DollarSign,
     },
     {
@@ -670,7 +671,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
       baseline: b.projectedMonthlyRevenueCents,
       simulated: m.projectedMonthlyRevenueCents,
       delta: m.projectedMonthlyRevenueCents - b.projectedMonthlyRevenueCents,
-      format: (v: number) => `$${(v / 100).toLocaleString()}`,
+      format: (v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       icon: TrendingUp,
     },
     {
@@ -886,7 +887,7 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
 
   const formatValue = (v: number) => {
     if (forecast.forecastType === 'booking_rate') return `${(v * 100).toFixed(1)}%`;
-    if (forecast.forecastType === 'revenue') return `$${(v / 100).toLocaleString()}`;
+    if (forecast.forecastType === 'revenue') return formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     return String(Math.round(v));
   };
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import {
   DollarSign, TrendingDown, Database,
   ArrowDown, ArrowUp, Settings2, Save, Loader2, BarChart3,
@@ -96,7 +97,7 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+  return formatCentsHelper(cents);
 }
 
 function KpiCard({ title, value, subtitle, icon: Icon, trend, color }: {
@@ -274,7 +275,7 @@ export default function CostOptimization() {
               <YAxis
                 tick={{ fontSize: 11 }}
                 stroke="#71717a"
-                tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`}
+                tickFormatter={(v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               />
               <Tooltip
                 formatter={(value: unknown) => [formatCents(Number(value)), 'Cost']}
@@ -351,7 +352,7 @@ export default function CostOptimization() {
                 <YAxis
                   tick={{ fontSize: 10 }}
                   stroke="#71717a"
-                  tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`}
+                  tickFormatter={(v: number) => formatCentsHelper(v, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 />
                 <Tooltip formatter={(value: unknown) => formatCents(Number(value))} />
                 <Bar dataKey="totalCostCents" fill="#6366f1" radius={[4, 4, 0, 0]} name="Total Cost" />
@@ -401,6 +402,7 @@ export default function CostOptimization() {
                 step="0.01"
                 min="0"
                 value={(currentBudget.maxCostPerConversationCents / 100).toFixed(2)}
+                /* numeric input value: dollars with 2 decimals, never displayed as currency */
                 onChange={(e) =>
                   setBudgetForm({
                     ...currentBudget,
