@@ -650,9 +650,37 @@ function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledge
                     </span>
                   </div>
                   <p className="text-sm text-text-primary mt-0.5 line-clamp-2">{alert.message}</p>
-                  <p className="text-[10px] text-text-secondary mt-0.5">
-                    {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-[10px] text-text-secondary">
+                      {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
+                    </p>
+                    {typeof alert.metadata?.runbook_url === 'string' && alert.metadata.runbook_url && (
+                      <span className="text-[10px] text-text-secondary">
+                        ·{' '}
+                        {/^https?:\/\//i.test(alert.metadata.runbook_url) ? (
+                          <a
+                            href={String(alert.metadata.runbook_url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono text-accent-primary hover:underline"
+                          >
+                            {String(alert.metadata.runbook_url)}
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(String(alert.metadata!.runbook_url));
+                            }}
+                            className="font-mono text-accent-primary hover:underline cursor-pointer"
+                            title="Copy runbook path to clipboard"
+                          >
+                            {String(alert.metadata.runbook_url)}
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {!alert.acknowledged && (
                   <button

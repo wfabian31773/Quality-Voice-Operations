@@ -148,12 +148,22 @@ function makeFakeClient() {
 
 const allClients: ReturnType<typeof makeFakeClient>[] = [];
 
+// `pool.query` exists on the real pg.Pool and is used by best-effort writes
+// (e.g. the post-commit `recordBackfillCrossDayAlert` finance alert) that
+// don't want to manage their own transaction. The test mock pipes those
+// calls through a fresh fake client so test assertions keep working with the
+// existing `allClients.flatMap(c => c.query.mock.calls)` pattern.
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({
     connect: async () => {
       const c = makeFakeClient();
       allClients.push(c);
       return c;
+    },
+    query: async (sql: string, values?: unknown[]) => {
+      const c = makeFakeClient();
+      allClients.push(c);
+      return c.query(sql, values);
     },
   }),
   withTenantContext: vi.fn(async (_client, _tenantId, fn) => {
@@ -588,5 +598,213 @@ describe('POST /v1/ingest/calls/backfill', () => {
     expect(dailyArgs[2]).toBe(0);   // total_calls delta — no new call
     expect(dailyArgs[3]).toBe(1);   // total_ai_minutes delta = 1
     expect(dailyArgs[4]).toBe(8);   // total_cost_cents delta = 8
+  });
+});
+
+// --------------------------------------------------------------------------
+// Cross-day backfill correction → finance alert
+//
+// When a backfill correction shifts an existing call into a different
+// calendar day, finance has to manually rebalance the OLD day's
+// daily_org_usage / usage_metrics buckets. The ingest path must surface
+// that as a structured alert (operations_alerts, type
+// `billing_backfill_cross_day`) with the affected tenant, external_id,
+// old/new dates, and a runbook URL — not just a log line.
+// --------------------------------------------------------------------------
+
+describe('POST /v1/ingest/calls/backfill — cross-day correction finance alert', () => {
+  function findOpsAlertInsert() {
+    return allClients
+      .flatMap((c) => c.query.mock.calls as Array<[string, unknown[] | undefined]>)
+      .find(([sql]) =>
+        typeof sql === 'string' &&
+        sql.trimStart().startsWith('INSERT INTO operations_alerts'),
+      );
+  }
+
+  // Pin "now" so events stamped 7-9 days ago land deterministically inside
+  // the backfill window (>7d, <30d) regardless of when the test suite runs.
+  const FROZEN_NOW = Date.UTC(2026, 3, 27, 12, 0, 0); // 2026-04-27T12:00:00Z
+
+  it('writes a billing_backfill_cross_day alert when a correction moves the call to a new day', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-shift';
+
+      // Original ingest pinned to 2026-04-19 (~8 days old → backfill window).
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-cross-orig',
+        backfill_attestation: baseAttestation(),
+      });
+      // Correction moves it to 2026-04-20 (different calendar day).
+      const correction = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:07:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-cross-correction',
+        backfill_attestation: baseAttestation({
+          reason: 'Recover dropped call: clock-skew correction crossed midnight.',
+        }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      // Reset captured clients so we only see queries from the correction.
+      allClients.length = 0;
+      await request(app).post('/v1/ingest/calls/backfill').send(correction).expect(201);
+
+      const alertInsert = findOpsAlertInsert();
+      expect(alertInsert).toBeDefined();
+
+      const args = alertInsert![1] as unknown[];
+      // tenant_id, type, severity, message, metadata, call_session_id
+      expect(args[0]).toBe('tenant-A');
+      expect(args[1]).toBe('billing_backfill_cross_day');
+      expect(args[2]).toBe('warning');
+      const message = String(args[3]);
+      expect(message).toContain(sharedExternalId);
+      expect(message).toContain('2026-04-19');
+      expect(message).toContain('2026-04-20');
+      expect(message).toContain('docs/runbooks/billing-backfill-cross-day-rebalance.md');
+
+      const metadata = JSON.parse(String(args[4])) as Record<string, unknown>;
+      expect(metadata).toMatchObject({
+        tenant_id: 'tenant-A',
+        external_id: sharedExternalId,
+        old_date: '2026-04-19',
+        new_date: '2026-04-20',
+        source: 'remix-backfill',
+        runbook_url: 'docs/runbooks/billing-backfill-cross-day-rebalance.md',
+      });
+
+      // call_session_id must point at the existing call, not be NULL — the
+      // alert is useless if finance can't trace it back to the row.
+      expect(args[5]).toBe(`call-${sharedExternalId}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not write an alert for a same-day correction', async () => {
+    // Same external_id, same calendar day, just a duration/cost correction —
+    // the rebalancing problem only exists when the day changes, so noisy
+    // alerts on every restated cost would be useless.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-same-day-correction';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T10:00:00.000Z',
+        end_time: '2026-04-19T10:02:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-sameday-orig',
+        backfill_attestation: baseAttestation(),
+      });
+      const correction = baseCallEvent({
+        start_time: '2026-04-19T10:00:00.000Z',
+        end_time: '2026-04-19T10:03:30.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-sameday-correction',
+        duration_seconds: 210,
+        costs: { twilio_cents: 7, openai_cents: 18, total_cents: 25, is_estimated: false },
+        backfill_attestation: baseAttestation({ reason: 'Restate trailing audio segment.' }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      allClients.length = 0;
+      await request(app).post('/v1/ingest/calls/backfill').send(correction).expect(201);
+
+      expect(findOpsAlertInsert()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not write an alert for a brand-new call (no prior session row)', async () => {
+    // A first-time ingest is not a correction at all — there's no OLD day
+    // bucket to rebalance, so the alert must not fire.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const event = baseCallEvent({
+        start_time: '2026-04-19T12:00:00.000Z',
+        end_time: '2026-04-19T12:02:00.000Z',
+        external_id: 'ext-brand-new-no-alert',
+        idempotency_key: 'idem-brand-new',
+        backfill_attestation: baseAttestation(),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(event).expect(201);
+
+      expect(findOpsAlertInsert()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still returns 201 when the alert insert itself fails (best-effort)', async () => {
+    // The alert insert must NEVER fail the ingest — if operations_alerts is
+    // unavailable, finance loses the signal but the call data still lands.
+    // Patch the fake-client factory so any pool.connect() created after we
+    // flip the flag returns a client whose operations_alerts insert throws.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-alert-failure';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-alertfail-orig',
+        backfill_attestation: baseAttestation(),
+      });
+      const correction = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:07:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-alertfail-correction',
+        backfill_attestation: baseAttestation({ reason: 'Cross-day correction with broken alert sink.' }),
+      });
+
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      allClients.length = 0;
+
+      // Wrap allClients.push to monkey-patch every newly-created client so
+      // its operations_alerts insert throws — this catches the post-commit
+      // helper which connects on a fresh client.
+      const originalPush = allClients.push.bind(allClients);
+      const failOpsAlertInsert = (client: ReturnType<typeof makeFakeClient>) => {
+        const original = client.query;
+        client.query = vi.fn(async (sql: string, values?: unknown[]) => {
+          if (typeof sql === 'string' && sql.trimStart().startsWith('INSERT INTO operations_alerts')) {
+            throw new Error('simulated operations_alerts outage');
+          }
+          return original(sql, values);
+        }) as typeof client.query;
+      };
+      allClients.push = ((...items: ReturnType<typeof makeFakeClient>[]) => {
+        for (const c of items) failOpsAlertInsert(c);
+        return originalPush(...items);
+      }) as typeof allClients.push;
+
+      try {
+        const res = await request(app).post('/v1/ingest/calls/backfill').send(correction);
+        expect(res.status).toBe(201);
+        expect(res.body.status).toBe('processed');
+      } finally {
+        allClients.push = originalPush;
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

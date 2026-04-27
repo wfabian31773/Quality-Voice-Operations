@@ -88,6 +88,71 @@ async function resolveAgentByRemoteId(
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
+ * Path to the manual rebalancing runbook surfaced to finance/ops in every
+ * cross-day backfill alert. Stored as a constant so the route handler, the
+ * Operations dashboard, and the test suite all reference the same canonical
+ * location instead of drifting copy-pasted strings.
+ */
+export const BACKFILL_CROSS_DAY_RUNBOOK =
+  'docs/runbooks/billing-backfill-cross-day-rebalance.md';
+
+interface CrossDayShift {
+  externalId: string;
+  oldDate: string;
+  newDate: string;
+  callSessionId: string;
+  source: 'remix' | 'remix-backfill';
+}
+
+/**
+ * Best-effort write of a finance-visible alert when a backfill correction
+ * shifts an existing call into a different calendar day. The OLD day's
+ * `daily_org_usage` bucket still counts the call, so finance has to manually
+ * rebalance the per-day rollup or aggregates drift across month boundaries.
+ *
+ * Runs OUTSIDE the ingest transaction with its own connection so a failure
+ * here never rolls back the actual call upsert. The runbook URL is included
+ * in `metadata.runbook_url` for the Operations alerts UI to link to.
+ */
+async function recordBackfillCrossDayAlert(
+  tenantId: string,
+  shift: CrossDayShift,
+): Promise<void> {
+  const pool = getPlatformPool();
+  try {
+    await pool.query(
+      `INSERT INTO operations_alerts (tenant_id, type, severity, message, metadata, call_session_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        tenantId,
+        'billing_backfill_cross_day',
+        'warning',
+        `Backfill correction moved call ${shift.externalId} from ${shift.oldDate} to ${shift.newDate}. ` +
+          `The old day's daily_org_usage bucket still counts this call — finance must manually rebalance ` +
+          `daily_org_usage and usage_metrics for both days. See runbook: ${BACKFILL_CROSS_DAY_RUNBOOK}.`,
+        JSON.stringify({
+          tenant_id: tenantId,
+          external_id: shift.externalId,
+          old_date: shift.oldDate,
+          new_date: shift.newDate,
+          source: shift.source,
+          runbook_url: BACKFILL_CROSS_DAY_RUNBOOK,
+        }),
+        shift.callSessionId,
+      ],
+    );
+  } catch (err) {
+    logger.warn('Failed to insert finance alert for cross-day backfill shift', {
+      tenantId,
+      externalId: shift.externalId,
+      oldDate: shift.oldDate,
+      newDate: shift.newDate,
+      error: String(err),
+    });
+  }
+}
+
+/**
  * Returns the age (in whole days) of `startTimeIso` relative to `now`. Returns
  * a negative number when the timestamp is in the future, which we always
  * reject.
@@ -291,6 +356,7 @@ async function persistCallEvent(
     const isCorrection = !!existingCall;
     const oldCallDate = existingCall ? existingCall.start_time.slice(0, 10) : null;
     const callDate = event.start_time.slice(0, 10);
+    let crossDayShift: CrossDayShift | null = null;
     if (isCorrection && oldCallDate && oldCallDate !== callDate) {
       logger.warn('Backfill correction shifted call across calendar days', {
         tenantId,
@@ -299,6 +365,18 @@ async function persistCallEvent(
         newDate: callDate,
         source,
       });
+      // Capture for the post-commit finance alert. We do not insert the
+      // operations_alerts row here because (a) it must survive a rollback of
+      // the ingest txn — finance still needs to know if the upsert later
+      // succeeded — and (b) it should not fail the ingest if the alert
+      // insert errors. The actual insert happens after COMMIT below.
+      crossDayShift = {
+        externalId: event.external_id,
+        oldDate: oldCallDate,
+        newDate: callDate,
+        callSessionId: callSessionId,
+        source,
+      };
     }
 
     const callsDelta = isCorrection ? 0 : 1;
@@ -364,6 +442,10 @@ async function persistCallEvent(
       agentRemoteId: event.agent_remote_id,
       source,
     });
+
+    if (crossDayShift) {
+      await recordBackfillCrossDayAlert(tenantId, crossDayShift);
+    }
 
     return {
       status: 201,
