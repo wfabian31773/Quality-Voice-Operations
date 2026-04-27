@@ -31,6 +31,14 @@ import {
   getAgentLanguageLabel,
 } from '../lib/agentLanguages';
 import {
+  type AgentBuilderTKey,
+  makeBuilderT,
+  getDefaultWelcomeGreeting,
+  getDefaultSystemPrompt,
+  isDefaultGreeting,
+  isDefaultSystemPrompt,
+} from '../lib/agentBuilderI18n';
+import {
   ArrowLeft, Save, Play, Rocket, History, GripVertical,
   MessageSquare, HelpCircle, CheckCircle, GitBranch, Route,
   Ticket, UserPlus, Calendar, Send, Truck, Phone,
@@ -39,6 +47,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
+
+type BuilderT = (key: AgentBuilderTKey, params?: Record<string, string | number>) => string;
 
 interface Agent {
   id: string;
@@ -103,40 +113,77 @@ const MODELS = ['gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview'];
 
 interface NodeCategory {
   label: string;
+  categoryKey: AgentBuilderTKey;
   icon: React.ReactNode;
-  nodes: { type: string; label: string; icon: React.ReactNode; description: string }[];
+  nodes: {
+    type: string;
+    labelKey: AgentBuilderTKey;
+    descKey: AgentBuilderTKey;
+    icon: React.ReactNode;
+  }[];
 }
 
-const NODE_LIBRARY: NodeCategory[] = [
-  {
-    label: 'Conversation',
-    icon: <MessageSquare className="h-4 w-4" />,
-    nodes: [
-      { type: 'greeting', label: 'Greeting', icon: <Phone className="h-4 w-4" />, description: 'Welcome the caller' },
-      { type: 'askQuestion', label: 'Ask Question', icon: <HelpCircle className="h-4 w-4" />, description: 'Collect information' },
-      { type: 'confirmInfo', label: 'Confirm Info', icon: <CheckCircle className="h-4 w-4" />, description: 'Verify collected data' },
-    ],
-  },
-  {
-    label: 'Logic',
-    icon: <GitBranch className="h-4 w-4" />,
-    nodes: [
-      { type: 'condition', label: 'Condition / If', icon: <GitBranch className="h-4 w-4" />, description: 'Branch on condition' },
-      { type: 'routeDecision', label: 'Route Decision', icon: <Route className="h-4 w-4" />, description: 'Route to department' },
-    ],
-  },
-  {
-    label: 'Action',
-    icon: <Zap className="h-4 w-4" />,
-    nodes: [
-      { type: 'createTicket', label: 'Create Ticket', icon: <Ticket className="h-4 w-4" />, description: 'Create service ticket' },
-      { type: 'createContact', label: 'Create Contact', icon: <UserPlus className="h-4 w-4" />, description: 'Add to CRM' },
-      { type: 'scheduleAppt', label: 'Schedule Appointment', icon: <Calendar className="h-4 w-4" />, description: 'Book appointment' },
-      { type: 'sendSms', label: 'Send SMS', icon: <Send className="h-4 w-4" />, description: 'Send text message' },
-      { type: 'dispatchJob', label: 'Dispatch Job', icon: <Truck className="h-4 w-4" />, description: 'Assign dispatch job' },
-    ],
-  },
-];
+const NODE_TYPE_TO_LABEL_KEY: Record<string, AgentBuilderTKey> = {
+  greeting: 'nodeGreeting',
+  askQuestion: 'nodeAskQuestion',
+  confirmInfo: 'nodeConfirmInfo',
+  condition: 'nodeCondition',
+  routeDecision: 'nodeRouteDecision',
+  createTicket: 'nodeCreateTicket',
+  createContact: 'nodeCreateContact',
+  scheduleAppt: 'nodeScheduleAppt',
+  sendSms: 'nodeSendSms',
+  dispatchJob: 'nodeDispatchJob',
+};
+
+const NODE_TYPE_TO_ICON: Record<string, React.ReactNode> = {
+  greeting: <Phone className="h-4 w-4" />,
+  askQuestion: <HelpCircle className="h-4 w-4" />,
+  confirmInfo: <CheckCircle className="h-4 w-4" />,
+  condition: <GitBranch className="h-4 w-4" />,
+  routeDecision: <Route className="h-4 w-4" />,
+  createTicket: <Ticket className="h-4 w-4" />,
+  createContact: <UserPlus className="h-4 w-4" />,
+  scheduleAppt: <Calendar className="h-4 w-4" />,
+  sendSms: <Send className="h-4 w-4" />,
+  dispatchJob: <Truck className="h-4 w-4" />,
+};
+
+function buildNodeLibrary(t: BuilderT): NodeCategory[] {
+  return [
+    {
+      label: t('categoryConversation'),
+      categoryKey: 'categoryConversation',
+      icon: <MessageSquare className="h-4 w-4" />,
+      nodes: [
+        { type: 'greeting', labelKey: 'nodeGreeting', descKey: 'descGreeting', icon: NODE_TYPE_TO_ICON.greeting },
+        { type: 'askQuestion', labelKey: 'nodeAskQuestion', descKey: 'descAskQuestion', icon: NODE_TYPE_TO_ICON.askQuestion },
+        { type: 'confirmInfo', labelKey: 'nodeConfirmInfo', descKey: 'descConfirmInfo', icon: NODE_TYPE_TO_ICON.confirmInfo },
+      ],
+    },
+    {
+      label: t('categoryLogic'),
+      categoryKey: 'categoryLogic',
+      icon: <GitBranch className="h-4 w-4" />,
+      nodes: [
+        { type: 'condition', labelKey: 'nodeCondition', descKey: 'descCondition', icon: NODE_TYPE_TO_ICON.condition },
+        { type: 'routeDecision', labelKey: 'nodeRouteDecision', descKey: 'descRouteDecision', icon: NODE_TYPE_TO_ICON.routeDecision },
+      ],
+    },
+    {
+      label: t('categoryAction'),
+      categoryKey: 'categoryAction',
+      icon: <Zap className="h-4 w-4" />,
+      nodes: [
+        { type: 'createTicket', labelKey: 'nodeCreateTicket', descKey: 'descCreateTicket', icon: NODE_TYPE_TO_ICON.createTicket },
+        { type: 'createContact', labelKey: 'nodeCreateContact', descKey: 'descCreateContact', icon: NODE_TYPE_TO_ICON.createContact },
+        { type: 'scheduleAppt', labelKey: 'nodeScheduleAppt', descKey: 'descScheduleAppt', icon: NODE_TYPE_TO_ICON.scheduleAppt },
+        { type: 'sendSms', labelKey: 'nodeSendSms', descKey: 'descSendSms', icon: NODE_TYPE_TO_ICON.sendSms },
+        { type: 'dispatchJob', labelKey: 'nodeDispatchJob', descKey: 'descDispatchJob', icon: NODE_TYPE_TO_ICON.dispatchJob },
+      ],
+    },
+  ];
+}
 
 const NODE_COLORS: Record<string, { bg: string; border: string; text: string; handle: string }> = {
   greeting: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', border: 'border-emerald-300 dark:border-emerald-700', text: 'text-emerald-700 dark:text-emerald-300', handle: '#10b981' },
@@ -154,21 +201,26 @@ const NODE_COLORS: Record<string, { bg: string; border: string; text: string; ha
 const DEFAULT_COLORS = { bg: 'bg-surface-hover', border: 'border-border', text: 'text-text-primary', handle: '#6b7280' };
 
 function getNodeIcon(type: string) {
-  for (const cat of NODE_LIBRARY) {
-    for (const n of cat.nodes) {
-      if (n.type === type) return n.icon;
-    }
-  }
-  return <MessageSquare className="h-4 w-4" />;
+  return NODE_TYPE_TO_ICON[type] ?? <MessageSquare className="h-4 w-4" />;
 }
 
-function getNodeLabel(type: string) {
-  for (const cat of NODE_LIBRARY) {
-    for (const n of cat.nodes) {
-      if (n.type === type) return n.label;
-    }
-  }
-  return type;
+function getNodeLabel(type: string, t?: BuilderT) {
+  const key = NODE_TYPE_TO_LABEL_KEY[type];
+  if (key && t) return t(key);
+  // Fallback English labels (used when no translator is available, e.g. logging contexts).
+  const fallbackEn: Record<string, string> = {
+    greeting: 'Greeting',
+    askQuestion: 'Ask Question',
+    confirmInfo: 'Confirm Info',
+    condition: 'Condition / If',
+    routeDecision: 'Route Decision',
+    createTicket: 'Create Ticket',
+    createContact: 'Create Contact',
+    scheduleAppt: 'Schedule Appointment',
+    sendSms: 'Send SMS',
+    dispatchJob: 'Dispatch Job',
+  };
+  return fallbackEn[type] ?? type;
 }
 
 function ConversationNode({ data, selected }: { data: Record<string, unknown>; selected: boolean }) {
@@ -281,9 +333,17 @@ function isValidConnection(sourceNodeType: string, targetNodeType: string): bool
   return allowed.includes(targetNodeType);
 }
 
-const INDUSTRY_TEMPLATES: { label: string; key: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] }[] = [
+interface IndustryTemplate {
+  label: string;
+  labelKey: AgentBuilderTKey;
+  key: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
+const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] }[] = [
   {
-    label: 'Medical After-Hours',
+    labelKey: 'tplMedical',
     key: 'medical',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Patient Greeting', prompt: 'Warmly greet the patient. Identify yourself as the after-hours service.' } },
@@ -303,7 +363,7 @@ const INDUSTRY_TEMPLATES: { label: string; key: string; nodes: WorkflowNode[]; e
     ],
   },
   {
-    label: 'Dental Office',
+    labelKey: 'tplDental',
     key: 'dental',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Welcome', prompt: 'Welcome the patient to the dental office.' } },
@@ -320,7 +380,7 @@ const INDUSTRY_TEMPLATES: { label: string; key: string; nodes: WorkflowNode[]; e
     ],
   },
   {
-    label: 'HVAC / Home Services',
+    labelKey: 'tplHvac',
     key: 'hvac',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Service Call', prompt: 'Answer the service call professionally.' } },
@@ -340,7 +400,7 @@ const INDUSTRY_TEMPLATES: { label: string; key: string; nodes: WorkflowNode[]; e
     ],
   },
   {
-    label: 'Legal Intake',
+    labelKey: 'tplLegal',
     key: 'legal',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Caller Greeting', prompt: 'Professional legal intake greeting.' } },
@@ -357,7 +417,7 @@ const INDUSTRY_TEMPLATES: { label: string; key: string; nodes: WorkflowNode[]; e
     ],
   },
   {
-    label: 'Customer Support',
+    labelKey: 'tplSupport',
     key: 'support',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Customer Welcome', prompt: 'Greet the customer and identify their account.' } },
@@ -375,26 +435,41 @@ const INDUSTRY_TEMPLATES: { label: string; key: string; nodes: WorkflowNode[]; e
   },
 ];
 
-function NodeLibrarySidebar({ onDragStart }: { onDragStart: (type: string, nodeType: string) => void }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ Conversation: true, Logic: true, Action: true });
+function buildIndustryTemplates(t: BuilderT): IndustryTemplate[] {
+  return INDUSTRY_TEMPLATES_RAW.map((tpl) => ({
+    label: t(tpl.labelKey),
+    labelKey: tpl.labelKey,
+    key: tpl.key,
+    nodes: tpl.nodes,
+    edges: tpl.edges,
+  }));
+}
+
+function NodeLibrarySidebar({ onDragStart, t }: { onDragStart: (type: string, nodeType: string) => void; t: BuilderT }) {
+  const library = buildNodeLibrary(t);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    categoryConversation: true,
+    categoryLogic: true,
+    categoryAction: true,
+  });
 
   return (
     <div className="w-60 border-r border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="p-3 border-b border-border">
-        <h3 className="text-sm font-semibold text-text-primary">Node Library</h3>
-        <p className="text-xs text-text-secondary mt-0.5">Drag nodes onto the canvas</p>
+        <h3 className="text-sm font-semibold text-text-primary">{t('nodeLibrary')}</h3>
+        <p className="text-xs text-text-secondary mt-0.5">{t('nodeLibraryHelper')}</p>
       </div>
-      {NODE_LIBRARY.map((cat) => (
-        <div key={cat.label}>
+      {library.map((cat) => (
+        <div key={cat.categoryKey}>
           <button
-            onClick={() => setExpanded((e) => ({ ...e, [cat.label]: !e[cat.label] }))}
+            onClick={() => setExpanded((e) => ({ ...e, [cat.categoryKey]: !e[cat.categoryKey] }))}
             className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider hover:bg-surface-hover transition"
           >
-            {expanded[cat.label] ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            {expanded[cat.categoryKey] ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             {cat.icon}
             {cat.label}
           </button>
-          {expanded[cat.label] && (
+          {expanded[cat.categoryKey] && (
             <div className="px-2 pb-2 space-y-1">
               {cat.nodes.map((node) => (
                 <div
@@ -411,8 +486,8 @@ function NodeLibrarySidebar({ onDragStart }: { onDragStart: (type: string, nodeT
                   <GripVertical className="h-3 w-3 text-text-muted flex-shrink-0" />
                   <span className={NODE_COLORS[node.type]?.text || 'text-text-primary'}>{node.icon}</span>
                   <div className="min-w-0">
-                    <p className="text-text-primary font-medium text-xs">{node.label}</p>
-                    <p className="text-text-muted text-[10px] truncate">{node.description}</p>
+                    <p className="text-text-primary font-medium text-xs">{t(node.labelKey)}</p>
+                    <p className="text-text-muted text-[10px] truncate">{t(node.descKey)}</p>
                   </div>
                 </div>
               ))}
@@ -429,11 +504,13 @@ function NodeConfigPanel({
   onUpdate,
   onDelete,
   onClose,
+  t,
 }: {
   node: Node;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  t: BuilderT;
 }) {
   const nodeType = (node.data.nodeType as string) || '';
   const category = getNodeCategory(nodeType);
@@ -441,12 +518,12 @@ function NodeConfigPanel({
   return (
     <div className="w-80 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
-        <h3 className="text-sm font-semibold text-text-primary">Node Configuration</h3>
-        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+        <h3 className="text-sm font-semibold text-text-primary">{t('nodeConfiguration')}</h3>
+        <button onClick={onClose} aria-label={t('close')} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
       <div className="p-3 space-y-4">
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Label</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('label')}</label>
           <input
             value={(node.data.label as string) || ''}
             onChange={(e) => onUpdate(node.id, { ...node.data, label: e.target.value })}
@@ -456,28 +533,28 @@ function NodeConfigPanel({
 
         {category === 'conversation' && (
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Prompt / Instructions</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1">{t('promptInstructions')}</label>
             <textarea
               value={(node.data.prompt as string) || ''}
               onChange={(e) => onUpdate(node.id, { ...node.data, prompt: e.target.value })}
               rows={6}
               className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
-              placeholder="What should the agent say or ask at this step?"
+              placeholder={t('promptPlaceholder')}
             />
           </div>
         )}
 
         {category === 'logic' && (
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Condition Expression</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1">{t('conditionExpression')}</label>
             <input
               value={(node.data.conditionField as string) || ''}
               onChange={(e) => onUpdate(node.id, { ...node.data, conditionField: e.target.value })}
               className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder='e.g., urgency === "high"'
+              placeholder={t('conditionPlaceholder')}
             />
             <p className="text-[10px] text-text-muted mt-1">
-              Yes exits from left handle, No exits from right handle.
+              {t('conditionHelper')}
             </p>
           </div>
         )}
@@ -485,19 +562,19 @@ function NodeConfigPanel({
         {category === 'action' && (
           <>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Tool</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{t('tool')}</label>
               <div className="px-3 py-1.5 rounded-lg border border-border bg-surface-hover text-text-primary text-sm">
-                {getNodeLabel(nodeType)}
+                {getNodeLabel(nodeType, t)}
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Configuration</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{t('configuration')}</label>
               <textarea
                 value={(node.data.toolConfig as string) || ''}
                 onChange={(e) => onUpdate(node.id, { ...node.data, toolConfig: e.target.value })}
                 rows={4}
                 className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
-                placeholder="Tool-specific configuration..."
+                placeholder={t('toolConfigPlaceholder')}
               />
             </div>
           </>
@@ -508,7 +585,7 @@ function NodeConfigPanel({
             onClick={() => onDelete(node.id)}
             className="flex items-center gap-1.5 text-xs font-medium text-danger hover:text-red-700 transition"
           >
-            <Trash2 className="h-3.5 w-3.5" /> Delete Node
+            <Trash2 className="h-3.5 w-3.5" /> {t('deleteNode')}
           </button>
         </div>
       </div>
@@ -559,9 +636,11 @@ function categoryColor(cat: string): string {
 function ImprovementSuggestionsPanel({
   agentId,
   onClose,
+  t,
 }: {
   agentId: string;
   onClose: () => void;
+  t: BuilderT;
 }) {
   const [suggestions, setSuggestions] = useState<ImprovementSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -600,9 +679,9 @@ function ImprovementSuggestionsPanel({
     <div className="w-96 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-          <Lightbulb className="h-4 w-4 text-amber-500" /> Improvement Suggestions
+          <Lightbulb className="h-4 w-4 text-amber-500" /> {t('improvementSuggestions')}
         </h3>
-        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary">
+        <button onClick={onClose} aria-label={t('close')} className="text-text-secondary hover:text-text-primary">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -615,15 +694,17 @@ function ImprovementSuggestionsPanel({
         ) : suggestions.length === 0 ? (
           <div className="text-center py-8">
             <Lightbulb className="h-8 w-8 text-text-muted mx-auto mb-2" />
-            <p className="text-sm text-text-secondary">No pending suggestions</p>
+            <p className="text-sm text-text-secondary">{t('noPendingSuggestions')}</p>
             <p className="text-xs text-text-muted mt-1">
-              Suggestions are generated automatically when low-scoring calls are detected.
+              {t('suggestionsHelper')}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-text-secondary">
-              {suggestions.length} pending suggestion{suggestions.length !== 1 ? 's' : ''}
+              {suggestions.length === 1
+                ? t('pendingSuggestion', { count: suggestions.length })
+                : t('pendingSuggestions', { count: suggestions.length })}
             </p>
             {suggestions.map((s) => (
               <div key={s.id} className="border border-border rounded-lg overflow-hidden">
@@ -652,35 +733,35 @@ function ImprovementSuggestionsPanel({
                   <div className="px-3 pb-3 border-t border-border">
                     <div className="mt-2 space-y-2">
                       <div>
-                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Current</p>
+                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('current')}</p>
                         <pre className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
                           {s.currentPromptSection}
                         </pre>
                       </div>
                       <div>
-                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Suggested</p>
+                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('suggested')}</p>
                         <pre className="text-[11px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/10 rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
                           {s.suggestedPromptSection}
                         </pre>
                       </div>
                       <div>
-                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Rationale</p>
+                        <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('rationale')}</p>
                         <p className="text-xs text-text-secondary">{s.rationale}</p>
                       </div>
 
                       {s.simulationScoreBefore != null && s.simulationScoreAfter != null && (
                         <div className="flex items-center gap-3 bg-surface-secondary rounded-lg p-2">
                           <div className="text-center">
-                            <p className="text-[10px] text-text-muted">Before</p>
+                            <p className="text-[10px] text-text-muted">{t('before')}</p>
                             <p className="text-sm font-bold text-red-500">{s.simulationScoreBefore.toFixed(1)}</p>
                           </div>
                           <TrendingUp className="h-4 w-4 text-green-500" />
                           <div className="text-center">
-                            <p className="text-[10px] text-text-muted">After</p>
+                            <p className="text-[10px] text-text-muted">{t('after')}</p>
                             <p className="text-sm font-bold text-green-500">{s.simulationScoreAfter.toFixed(1)}</p>
                           </div>
                           <div className="ml-auto text-center">
-                            <p className="text-[10px] text-text-muted">Delta</p>
+                            <p className="text-[10px] text-text-muted">{t('delta')}</p>
                             <p className="text-sm font-bold text-green-500">
                               +{(s.simulationScoreAfter - s.simulationScoreBefore).toFixed(1)}
                             </p>
@@ -695,7 +776,7 @@ function ImprovementSuggestionsPanel({
                           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:opacity-50"
                         >
                           <Check className="h-3 w-3" />
-                          {actionLoading === s.id ? 'Applying...' : 'Apply'}
+                          {actionLoading === s.id ? t('applying') : t('apply')}
                         </button>
                         <button
                           onClick={() => handleDismiss(s.id)}
@@ -703,7 +784,7 @@ function ImprovementSuggestionsPanel({
                           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border text-text-secondary rounded-lg hover:bg-surface-hover transition disabled:opacity-50"
                         >
                           <XCircle className="h-3 w-3" />
-                          Dismiss
+                          {t('dismiss')}
                         </button>
                       </div>
                     </div>
@@ -718,7 +799,15 @@ function ImprovementSuggestionsPanel({
   );
 }
 
-const TONE_OPTIONS = ['Professional', 'Friendly', 'Casual', 'Empathetic', 'Formal', 'Warm', 'Direct'];
+const TONE_OPTIONS: { value: string; labelKey: AgentBuilderTKey }[] = [
+  { value: 'Professional', labelKey: 'tonePro' },
+  { value: 'Friendly', labelKey: 'toneFriendly' },
+  { value: 'Casual', labelKey: 'toneCasual' },
+  { value: 'Empathetic', labelKey: 'toneEmpathetic' },
+  { value: 'Formal', labelKey: 'toneFormal' },
+  { value: 'Warm', labelKey: 'toneWarm' },
+  { value: 'Direct', labelKey: 'toneDirect' },
+];
 
 function VoiceConfigPanel({
   voice,
@@ -733,6 +822,7 @@ function VoiceConfigPanel({
   workflows,
   onChange,
   onClose,
+  t,
 }: {
   voice: string;
   model: string;
@@ -746,18 +836,19 @@ function VoiceConfigPanel({
   workflows: { id: string; name: string; description: string | null }[];
   onChange: (key: string, value: string | number) => void;
   onClose: () => void;
+  t: BuilderT;
 }) {
   return (
     <div className="w-80 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-          <Mic className="h-4 w-4" /> Voice & Agent Config
+          <Mic className="h-4 w-4" /> {t('voiceAgentConfig')}
         </h3>
-        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} aria-label={t('close')} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
       <div className="p-3 space-y-4">
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Voice</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('voiceField')}</label>
           {(() => {
             const recommended = getRecommendedVoicesForLanguage(language);
             const recommendedSet = new Set(recommended);
@@ -804,7 +895,7 @@ function VoiceConfigPanel({
           })()}
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Model</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('modelField')}</label>
           <select
             value={model}
             onChange={(e) => onChange('model', e.target.value)}
@@ -814,7 +905,7 @@ function VoiceConfigPanel({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Language</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('languageField')}</label>
           <select
             value={language}
             onChange={(e) => onChange('language', e.target.value)}
@@ -828,80 +919,80 @@ function VoiceConfigPanel({
             ))}
           </select>
           <p className="text-[10px] text-text-muted mt-1">
-            Calls handled by this agent will be answered in the selected language.
+            {t('languageHelper')}
           </p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Tone / Personality</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('tonePersonality')}</label>
           <select
             value={tone}
             onChange={(e) => onChange('tone', e.target.value)}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
-            {TONE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            {TONE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Temperature: {temperature}</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('temperatureField')}: {temperature}</label>
           <input
             type="range" min="0" max="1" step="0.1" value={temperature}
             onChange={(e) => onChange('temperature', parseFloat(e.target.value))}
             className="w-full"
           />
           <div className="flex justify-between text-[10px] text-text-muted mt-0.5">
-            <span>Precise</span>
-            <span>Creative</span>
+            <span>{t('precise')}</span>
+            <span>{t('creative')}</span>
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Speaking Rate: {speakingRate}x</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('speakingRate')}: {speakingRate}x</label>
           <input
             type="range" min="0.5" max="2.0" step="0.1" value={speakingRate}
             onChange={(e) => onChange('speakingRate', parseFloat(e.target.value))}
             className="w-full"
           />
           <div className="flex justify-between text-[10px] text-text-muted mt-0.5">
-            <span>Slower</span>
-            <span>Faster</span>
+            <span>{t('slower')}</span>
+            <span>{t('faster')}</span>
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">Welcome Greeting</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('welcomeGreeting')}</label>
           <textarea
             value={welcomeGreeting}
             onChange={(e) => onChange('welcome_greeting', e.target.value)}
             rows={3}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
-            placeholder="First thing the agent says..."
+            placeholder={t('welcomeGreetingPlaceholder')}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1">System Prompt</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('systemPrompt')}</label>
           <textarea
             value={systemPrompt}
             onChange={(e) => onChange('system_prompt', e.target.value)}
             rows={10}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
-            placeholder="Agent personality, instructions, and rules..."
+            placeholder={t('systemPromptPlaceholder')}
           />
           <p className="text-[10px] text-text-muted mt-1">
-            On publish, the workflow steps will be appended to this prompt automatically.
+            {t('systemPromptHelper')}
           </p>
         </div>
         <div className="pt-2 border-t border-border">
-          <label className="block text-xs font-medium text-text-secondary mb-1">Assigned Workflow</label>
+          <label className="block text-xs font-medium text-text-secondary mb-1">{t('assignedWorkflow')}</label>
           <select
             value={workflowId}
             onChange={(e) => onChange('workflow_id', e.target.value)}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
-            <option value="">None</option>
+            <option value="">{t('none')}</option>
             {workflows.map((w) => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}
           </select>
           <p className="text-[10px] text-text-muted mt-1">
-            Link a saved workflow to this agent for call routing and escalation logic.
+            {t('workflowHelper')}
           </p>
         </div>
       </div>
@@ -912,15 +1003,19 @@ function VoiceConfigPanel({
 function TestConsolePanel({
   agentName,
   welcomeGreeting,
+  language,
   nodes,
   edges,
   onClose,
+  t,
 }: {
   agentName: string;
   welcomeGreeting: string;
+  language: string;
   nodes: Node[];
   edges: Edge[];
   onClose: () => void;
+  t: BuilderT;
 }) {
   const [messages, setMessages] = useState<{ role: string; text: string; nodeId?: string }[]>([]);
   const [input, setInput] = useState('');
@@ -948,54 +1043,55 @@ function TestConsolePanel({
 
   const simulateNode = useCallback((node: Node) => {
     const nodeType = (node.data.nodeType as string) || '';
-    const label = (node.data.label as string) || getNodeLabel(nodeType);
+    const label = (node.data.label as string) || getNodeLabel(nodeType, t);
     const category = getNodeCategory(nodeType);
 
     setCurrentNodeId(node.id);
 
     if (category === 'conversation') {
       const prompt = (node.data.prompt as string) || '';
-      const agentText = prompt || `[${label}] — Agent step executing...`;
+      const agentText = prompt || t('agentStepExecuting', { label });
       setMessages((prev) => [...prev, { role: 'agent', text: agentText, nodeId: node.id }]);
     } else if (category === 'logic') {
       const field = (node.data.conditionField as string) || 'condition';
-      setMessages((prev) => [...prev, { role: 'system', text: `Evaluating: ${field}`, nodeId: node.id }]);
+      setMessages((prev) => [...prev, { role: 'system', text: t('evaluating', { field }), nodeId: node.id }]);
       setTimeout(() => {
         const yesPath = getNextNodes(node.id, 'yes');
         if (yesPath.length > 0 && yesPath[0].node) {
-          setMessages((prev) => [...prev, { role: 'system', text: `Branch: ${yesPath[0].label || 'Yes'}` }]);
+          setMessages((prev) => [...prev, { role: 'system', text: t('branch', { label: String(yesPath[0].label || 'Yes') }) }]);
           simulateNode(yesPath[0].node);
         }
       }, 800);
     } else if (category === 'action') {
       const config = (node.data.toolConfig as string) || '';
-      setMessages((prev) => [...prev, { role: 'system', text: `Executing: ${label}${config ? ` — ${config}` : ''}`, nodeId: node.id }]);
+      const execText = config ? `${t('executing', { label })} — ${config}` : t('executing', { label });
+      setMessages((prev) => [...prev, { role: 'system', text: execText, nodeId: node.id }]);
       setTimeout(() => {
-        setMessages((prev) => [...prev, { role: 'system', text: `${label} completed successfully` }]);
+        setMessages((prev) => [...prev, { role: 'system', text: t('completedSuccessfully', { label }) }]);
         const next = getNextNodes(node.id);
         if (next.length > 0 && next[0].node) {
           simulateNode(next[0].node);
         } else {
           setSimStatus('complete');
-          setMessages((prev) => [...prev, { role: 'system', text: 'Workflow simulation complete.' }]);
+          setMessages((prev) => [...prev, { role: 'system', text: t('workflowSimComplete') }]);
         }
       }, 1000);
     }
-  }, [getNextNodes]);
+  }, [getNextNodes, t]);
 
   const startSimulation = useCallback(() => {
     setIsSimulating(true);
     setSimStatus('running');
     setMessages([]);
 
-    const greeting = welcomeGreeting || `Hello! This is ${agentName}. How can I help you today?`;
+    const greeting = welcomeGreeting || getDefaultWelcomeGreeting(language);
     setMessages([{ role: 'agent', text: greeting }]);
 
     const startNode = findStartNode();
     if (startNode) {
       setTimeout(() => simulateNode(startNode), 500);
     }
-  }, [agentName, welcomeGreeting, findStartNode, simulateNode]);
+  }, [agentName, welcomeGreeting, language, findStartNode, simulateNode]);
 
   const sendMessage = () => {
     if (!input.trim()) return;
@@ -1009,7 +1105,7 @@ function TestConsolePanel({
         setTimeout(() => simulateNode(next[0].node!), 600);
       } else {
         setSimStatus('complete');
-        setMessages((prev) => [...prev, { role: 'system', text: 'End of workflow. No further steps defined.' }]);
+        setMessages((prev) => [...prev, { role: 'system', text: t('endOfWorkflow') }]);
       }
     }
   };
@@ -1025,32 +1121,32 @@ function TestConsolePanel({
     <div className="w-80 border-l border-border bg-surface flex flex-col flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-          <Play className="h-4 w-4" /> Test Console
+          <Play className="h-4 w-4" /> {t('testConsole')}
         </h3>
         <div className="flex items-center gap-1">
           {isSimulating && (
             <button onClick={resetSimulation} className="text-text-secondary hover:text-primary text-xs px-1.5 py-0.5 rounded hover:bg-surface-hover transition">
-              Reset
+              {t('reset')}
             </button>
           )}
-          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label={t('close')} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
         </div>
       </div>
       {nodes.length === 0 ? (
         <div className="flex-1 flex items-center justify-center p-4">
-          <p className="text-xs text-text-muted text-center">Add nodes to the workflow to test the agent flow.</p>
+          <p className="text-xs text-text-muted text-center">{t('addNodesToTest')}</p>
         </div>
       ) : !isSimulating ? (
         <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3">
-          <p className="text-xs text-text-secondary text-center">Preview the call flow by walking through your workflow nodes step by step.</p>
+          <p className="text-xs text-text-secondary text-center">{t('previewHelper')}</p>
           <button
             onClick={startSimulation}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition text-sm font-medium"
           >
-            <Play className="h-4 w-4" /> Preview Workflow
+            <Play className="h-4 w-4" /> {t('previewWorkflow')}
           </button>
           <p className="text-[10px] text-text-muted text-center mt-1">
-            For a live voice test, publish the agent, assign a phone number, and call it.
+            {t('liveTestHelper')}
           </p>
         </div>
       ) : (
@@ -1059,14 +1155,14 @@ function TestConsolePanel({
             {simStatus === 'running' && (
               <div className="text-center">
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium">
-                  Simulating call
+                  {t('simulating')}
                 </span>
               </div>
             )}
             {simStatus === 'complete' && (
               <div className="text-center">
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
-                  Simulation complete
+                  {t('simComplete')}
                 </span>
               </div>
             )}
@@ -1092,9 +1188,9 @@ function TestConsolePanel({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
                 className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder="Type a caller response..."
+                placeholder={t('callerResponsePlaceholder')}
               />
-              <button onClick={sendMessage} aria-label="Send message" className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-hover transition">
+              <button onClick={sendMessage} aria-label={t('sendMessage')} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-hover transition">
                 <Send className="h-4 w-4" />
               </button>
             </div>
@@ -1113,6 +1209,7 @@ function DeploymentPanel({
   onRollback,
   isPublishing,
   onClose,
+  t,
 }: {
   agentId: string;
   publishedVersion: number | null;
@@ -1121,6 +1218,7 @@ function DeploymentPanel({
   onRollback: (version: number) => void;
   isPublishing: boolean;
   onClose: () => void;
+  t: BuilderT;
 }) {
   const navigate = useNavigate();
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
@@ -1144,7 +1242,7 @@ function DeploymentPanel({
       const data = await api.get<{ phoneNumbers: PhoneNumber[] }>('/phone-numbers');
       setPhoneNumbers(data.phoneNumbers || []);
     } catch (err) {
-      setPhoneError(`Failed to assign: ${(err as Error).message}`);
+      setPhoneError(t('failedAssign', { message: (err as Error).message }));
     }
     setAssigningPhone(false);
   };
@@ -1157,7 +1255,7 @@ function DeploymentPanel({
       const data = await api.get<{ phoneNumbers: PhoneNumber[] }>('/phone-numbers');
       setPhoneNumbers(data.phoneNumbers || []);
     } catch (err) {
-      setPhoneError(`Failed to unassign: ${(err as Error).message}`);
+      setPhoneError(t('failedUnassign', { message: (err as Error).message }));
     }
     setAssigningPhone(false);
   };
@@ -1166,9 +1264,9 @@ function DeploymentPanel({
     <div className="w-80 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-          <Rocket className="h-4 w-4" /> Deployment
+          <Rocket className="h-4 w-4" /> {t('deployment')}
         </h3>
-        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} aria-label={t('close')} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
       <div className="p-3 space-y-4">
         <div>
@@ -1178,21 +1276,21 @@ function DeploymentPanel({
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary-hover transition text-sm font-medium disabled:opacity-50"
           >
             <Rocket className="h-4 w-4" />
-            {isPublishing ? 'Publishing...' : 'Publish Agent'}
+            {isPublishing ? t('publishing') : t('publishAgent')}
           </button>
           <p className="text-[10px] text-text-muted mt-1.5 text-center">
-            Promotes the current draft to a live published version.
+            {t('publishHelper')}
           </p>
           {publishedVersion && (
             <p className="text-[10px] text-text-secondary text-center mt-1">
-              Current live version: v{publishedVersion}
+              {t('currentLiveVersion', { version: publishedVersion })}
             </p>
           )}
         </div>
 
         <div className="border-t border-border pt-3">
           <h4 className="text-xs font-semibold text-text-secondary mb-2 flex items-center gap-1.5">
-            <Phone className="h-3.5 w-3.5" /> Phone Numbers
+            <Phone className="h-3.5 w-3.5" /> {t('phoneNumbers')}
           </h4>
           {assignedNumbers.length > 0 ? (
             <div className="space-y-1.5 mb-2">
@@ -1207,13 +1305,13 @@ function DeploymentPanel({
                     disabled={assigningPhone}
                     className="text-[10px] text-red-500 hover:text-red-700 font-medium disabled:opacity-50"
                   >
-                    Remove
+                    {t('remove')}
                   </button>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-text-muted py-1 mb-2">No phone numbers assigned. Assign a number to receive calls.</p>
+            <p className="text-xs text-text-muted py-1 mb-2">{t('noNumbersAssigned')}</p>
           )}
           {phoneError && (
             <p className="text-xs text-red-500 py-1 mb-2">{phoneError}</p>
@@ -1225,7 +1323,7 @@ function DeploymentPanel({
               className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-xs disabled:opacity-50"
               defaultValue=""
             >
-              <option value="" disabled>Assign a phone number...</option>
+              <option value="" disabled>{t('assignNumberPlaceholder')}</option>
               {availableNumbers.map((p) => (
                 <option key={p.id} value={p.id}>{p.friendly_name || p.phone_number}</option>
               ))}
@@ -1235,10 +1333,10 @@ function DeploymentPanel({
 
         <div className="border-t border-border pt-3">
           <h4 className="text-xs font-semibold text-text-secondary mb-2 flex items-center gap-1.5">
-            <History className="h-3.5 w-3.5" /> Version History
+            <History className="h-3.5 w-3.5" /> {t('versionHistory')}
           </h4>
           {versions.length === 0 ? (
-            <p className="text-xs text-text-muted py-2">No published versions yet.</p>
+            <p className="text-xs text-text-muted py-2">{t('noPublishedVersions')}</p>
           ) : (
             <div className="space-y-2">
               {versions.map((v) => (
@@ -1252,7 +1350,7 @@ function DeploymentPanel({
                   <div className="flex items-center gap-1.5">
                     {publishedVersion === v.version && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                        live
+                        {t('liveBadge')}
                       </span>
                     )}
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -1265,7 +1363,7 @@ function DeploymentPanel({
                     <button
                       onClick={() => onRollback(v.version)}
                       className="p-1 text-text-secondary hover:text-primary transition"
-                      title="Rollback to this version"
+                      title={t('rollbackTitle')}
                     >
                       <RotateCcw className="h-3 w-3" />
                     </button>
@@ -1281,7 +1379,7 @@ function DeploymentPanel({
             onClick={() => navigate(`/analytics?agentId=${agentId}`)}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-text-secondary border border-border rounded-lg hover:bg-surface-hover hover:text-text-primary transition"
           >
-            <Eye className="h-3.5 w-3.5" /> View Agent Analytics
+            <Eye className="h-3.5 w-3.5" /> {t('viewAnalytics')}
           </button>
         </div>
       </div>
@@ -1300,7 +1398,7 @@ function AgentBuilderInner() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [rightPanel, setRightPanel] = useState<'none' | 'config' | 'voice' | 'test' | 'deploy' | 'improve'>('none');
   const [hasChanges, setHasChanges] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{ text: string; tone: 'success' | 'error' } | null>(null);
 
   const [agentSettings, setAgentSettings] = useState({
     voice: 'alloy',
@@ -1337,15 +1435,20 @@ function AgentBuilderInner() {
     if (agentData?.agent) {
       const a = agentData.agent;
       const wdSettings = (a.workflow_definition as unknown as Record<string, unknown>)?.settings as Record<string, unknown> | undefined;
+      const lang = normalizeAgentLanguage(a.language ?? wdSettings?.language);
+      const name = (wdSettings?.name as string) || a.name || '';
+      const tone = (wdSettings?.tone as string) || 'Professional';
+      const rawGreeting = (wdSettings?.welcome_greeting as string) ?? a.welcome_greeting ?? '';
+      const rawPrompt = (wdSettings?.system_prompt as string) ?? a.system_prompt ?? '';
       setAgentSettings({
         voice: (wdSettings?.voice as string) || a.voice || 'alloy',
         model: (wdSettings?.model as string) || a.model || 'gpt-4o-realtime-preview',
         temperature: (wdSettings?.temperature as number) ?? a.temperature ?? 0.7,
-        system_prompt: (wdSettings?.system_prompt as string) ?? a.system_prompt ?? '',
-        welcome_greeting: (wdSettings?.welcome_greeting as string) ?? a.welcome_greeting ?? '',
-        name: (wdSettings?.name as string) || a.name || '',
-        language: normalizeAgentLanguage(a.language ?? wdSettings?.language),
-        tone: (wdSettings?.tone as string) || 'Professional',
+        system_prompt: rawPrompt || getDefaultSystemPrompt(lang),
+        welcome_greeting: rawGreeting || getDefaultWelcomeGreeting(lang),
+        name,
+        language: lang,
+        tone,
         speakingRate: (wdSettings?.speakingRate as number) || 1.0,
         workflow_id: ((a as unknown as Record<string, unknown>).workflow_id as string) || '',
       });
@@ -1371,7 +1474,13 @@ function AgentBuilderInner() {
         const srcType = (sourceNode.data.nodeType as string) || '';
         const tgtType = (targetNode.data.nodeType as string) || '';
         if (!isValidConnection(srcType, tgtType)) {
-          setSaveMessage(`Cannot connect ${getNodeLabel(srcType)} to ${getNodeLabel(tgtType)}`);
+          setSaveMessage({
+            text: makeBuilderT(agentSettings.language)('cannotConnect', {
+              source: getNodeLabel(srcType, makeBuilderT(agentSettings.language)),
+              target: getNodeLabel(tgtType, makeBuilderT(agentSettings.language)),
+            }),
+            tone: 'error',
+          });
           setTimeout(() => setSaveMessage(null), 3000);
           return;
         }
@@ -1385,7 +1494,7 @@ function AgentBuilderInner() {
       );
       setHasChanges(true);
     },
-    [setEdges, nodes],
+    [setEdges, nodes, agentSettings.language],
   );
 
   const onDrop = useCallback(
@@ -1407,12 +1516,12 @@ function AgentBuilderInner() {
         id: `node_${Date.now()}`,
         type,
         position,
-        data: { nodeType, label: getNodeLabel(nodeType) },
+        data: { nodeType, label: getNodeLabel(nodeType, makeBuilderT(agentSettings.language)) },
       };
       setNodes((nds) => [...nds, newNode]);
       setHasChanges(true);
     },
-    [setNodes],
+    [setNodes, agentSettings.language],
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -1475,12 +1584,15 @@ function AgentBuilderInner() {
     },
     onSuccess: () => {
       setHasChanges(false);
-      setSaveMessage('Saved');
+      setSaveMessage({ text: makeBuilderT(agentSettings.language)('saved'), tone: 'success' });
       queryClient.invalidateQueries({ queryKey: ['agent', id] });
       setTimeout(() => setSaveMessage(null), 2000);
     },
     onError: (err) => {
-      setSaveMessage(`Error: ${(err as Error).message}`);
+      setSaveMessage({
+        text: makeBuilderT(agentSettings.language)('saveError', { message: (err as Error).message }),
+        tone: 'error',
+      });
       setTimeout(() => setSaveMessage(null), 3000);
     },
   });
@@ -1489,7 +1601,7 @@ function AgentBuilderInner() {
     mutationFn: () => api.post(`/agents/${id}/publish`),
     onSuccess: () => {
       refetchVersions();
-      setSaveMessage('Published!');
+      setSaveMessage({ text: makeBuilderT(agentSettings.language)('published'), tone: 'success' });
       setTimeout(() => setSaveMessage(null), 2000);
     },
   });
@@ -1499,18 +1611,34 @@ function AgentBuilderInner() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent', id] });
       refetchVersions();
-      setSaveMessage('Rolled back successfully');
+      setSaveMessage({ text: makeBuilderT(agentSettings.language)('rolledBack'), tone: 'success' });
       setTimeout(() => setSaveMessage(null), 2000);
     },
   });
 
   const handleSettingChange = useCallback((key: string, value: string | number) => {
-    setAgentSettings((prev) => ({ ...prev, [key]: value }));
+    setAgentSettings((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'language' && typeof value === 'string') {
+        const newLang = value;
+        if (!prev.welcome_greeting || isDefaultGreeting(prev.welcome_greeting)) {
+          next.welcome_greeting = getDefaultWelcomeGreeting(newLang);
+        }
+        if (!prev.system_prompt || isDefaultSystemPrompt(prev.system_prompt)) {
+          next.system_prompt = getDefaultSystemPrompt(newLang);
+        }
+      }
+      return next;
+    });
     setHasChanges(true);
   }, []);
 
+  const t = useMemo(() => makeBuilderT(agentSettings.language), [agentSettings.language]);
+
+  const industryTemplates = useMemo(() => buildIndustryTemplates(t), [t]);
+
   const loadTemplate = useCallback(
-    (template: typeof INDUSTRY_TEMPLATES[0]) => {
+    (template: IndustryTemplate) => {
       setNodes(template.nodes);
       setEdges(
         template.edges.map((e) => ({
@@ -1532,7 +1660,7 @@ function AgentBuilderInner() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-text-secondary">Loading agent...</div>
+        <div className="text-text-secondary">{t('loadingAgent')}</div>
       </div>
     );
   }
@@ -1545,7 +1673,7 @@ function AgentBuilderInner() {
             onClick={() => navigate('/dashboard')}
             className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition"
           >
-            <ArrowLeft className="h-4 w-4" /> Back
+            <ArrowLeft className="h-4 w-4" /> {t('back')}
           </button>
           <div className="h-5 w-px bg-border" />
           <div>
@@ -1553,35 +1681,35 @@ function AgentBuilderInner() {
               value={agentSettings.name}
               onChange={(e) => handleSettingChange('name', e.target.value)}
               className="text-sm font-semibold text-text-primary bg-transparent border-none focus:outline-none focus:ring-0 px-0"
-              placeholder="Agent Name"
+              placeholder={t('agentNamePlaceholder')}
             />
           </div>
           {hasChanges && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
-              Unsaved
+              {t('unsaved')}
             </span>
           )}
           {saveMessage && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              saveMessage.startsWith('Error') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              saveMessage.tone === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
             }`}>
-              {saveMessage}
+              {saveMessage.text}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative group">
             <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition">
-              <Eye className="h-3.5 w-3.5" /> Templates
+              <Eye className="h-3.5 w-3.5" /> {t('templates')}
             </button>
             <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 hidden group-hover:block">
-              {INDUSTRY_TEMPLATES.map((t) => (
+              {industryTemplates.map((tpl) => (
                 <button
-                  key={t.key}
-                  onClick={() => loadTemplate(t)}
+                  key={tpl.key}
+                  onClick={() => loadTemplate(tpl)}
                   className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition first:rounded-t-lg last:rounded-b-lg"
                 >
-                  {t.label}
+                  {tpl.label}
                 </button>
               ))}
             </div>
@@ -1592,7 +1720,7 @@ function AgentBuilderInner() {
               rightPanel === 'voice' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
             }`}
           >
-            <Settings2 className="h-3.5 w-3.5" /> Voice
+            <Settings2 className="h-3.5 w-3.5" /> {t('voice')}
           </button>
           <button
             onClick={() => setRightPanel(rightPanel === 'test' ? 'none' : 'test')}
@@ -1600,7 +1728,7 @@ function AgentBuilderInner() {
               rightPanel === 'test' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
             }`}
           >
-            <Play className="h-3.5 w-3.5" /> Test
+            <Play className="h-3.5 w-3.5" /> {t('test')}
           </button>
           <button
             onClick={() => setRightPanel(rightPanel === 'improve' ? 'none' : 'improve')}
@@ -1608,12 +1736,12 @@ function AgentBuilderInner() {
               rightPanel === 'improve' ? 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
             }`}
           >
-            <Lightbulb className="h-3.5 w-3.5" /> Improve
+            <Lightbulb className="h-3.5 w-3.5" /> {t('improve')}
           </button>
           <TooltipWalkthrough
             tooltipKey="builder-deploy"
-            title="Deploy Your Agent"
-            description="When your workflow is ready, click Deploy to publish your agent. Published agents go live immediately and can start handling calls."
+            title={t('deployTooltipTitle')}
+            description={t('deployTooltipDesc')}
             position="bottom"
           >
             <button
@@ -1625,7 +1753,7 @@ function AgentBuilderInner() {
                 rightPanel === 'deploy' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
               }`}
             >
-              <Rocket className="h-3.5 w-3.5" /> Deploy
+              <Rocket className="h-3.5 w-3.5" /> {t('deploy')}
             </button>
           </TooltipWalkthrough>
           <button
@@ -1634,13 +1762,13 @@ function AgentBuilderInner() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50"
           >
             <Save className="h-3.5 w-3.5" />
-            {saveMutation.isPending ? 'Saving...' : 'Save'}
+            {saveMutation.isPending ? t('saving') : t('save')}
           </button>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <NodeLibrarySidebar onDragStart={() => {}} />
+        <NodeLibrarySidebar onDragStart={() => {}} t={t} />
 
         <div className="flex-1 relative" ref={reactFlowWrapper}>
           <ReactFlow
@@ -1673,18 +1801,18 @@ function AgentBuilderInner() {
             {nodes.length === 0 && (
               <Panel position="top-center">
                 <div className="bg-surface border border-border rounded-xl shadow-sm px-6 py-4 text-center mt-20">
-                  <p className="text-sm text-text-primary font-medium mb-1">Start building your agent workflow</p>
+                  <p className="text-sm text-text-primary font-medium mb-1">{t('startBuilding')}</p>
                   <p className="text-xs text-text-secondary mb-3">
-                    Drag nodes from the library, or start from a template.
+                    {t('startBuildingHelper')}
                   </p>
                   <div className="flex flex-wrap gap-2 justify-center">
-                    {INDUSTRY_TEMPLATES.map((t) => (
+                    {industryTemplates.map((tpl) => (
                       <button
-                        key={t.key}
-                        onClick={() => loadTemplate(t)}
+                        key={tpl.key}
+                        onClick={() => loadTemplate(tpl)}
                         className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary"
                       >
-                        {t.label}
+                        {tpl.label}
                       </button>
                     ))}
                   </div>
@@ -1700,6 +1828,7 @@ function AgentBuilderInner() {
             onUpdate={updateNodeData}
             onDelete={deleteNode}
             onClose={() => { setRightPanel('none'); setSelectedNode(null); }}
+            t={t}
           />
         )}
         {rightPanel === 'voice' && (
@@ -1716,15 +1845,18 @@ function AgentBuilderInner() {
             workflows={workflowsData?.workflows ?? []}
             onChange={handleSettingChange}
             onClose={() => setRightPanel('none')}
+            t={t}
           />
         )}
         {rightPanel === 'test' && (
           <TestConsolePanel
             agentName={agentSettings.name}
             welcomeGreeting={agentSettings.welcome_greeting}
+            language={agentSettings.language}
             nodes={nodes}
             edges={edges}
             onClose={() => setRightPanel('none')}
+            t={t}
           />
         )}
         {rightPanel === 'deploy' && (
@@ -1734,18 +1866,20 @@ function AgentBuilderInner() {
             versions={versionsData?.versions || []}
             onPublish={() => publishMutation.mutate()}
             onRollback={(version) => {
-              if (confirm(`Rollback to version ${version}? This will overwrite the current draft and set it as the live version.`)) {
+              if (confirm(t('rollbackConfirm', { version }))) {
                 rollbackMutation.mutate(version);
               }
             }}
             isPublishing={publishMutation.isPending}
             onClose={() => setRightPanel('none')}
+            t={t}
           />
         )}
         {rightPanel === 'improve' && (
           <ImprovementSuggestionsPanel
             agentId={id || ''}
             onClose={() => setRightPanel('none')}
+            t={t}
           />
         )}
       </div>
