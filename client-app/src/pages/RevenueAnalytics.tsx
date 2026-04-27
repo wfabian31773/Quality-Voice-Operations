@@ -463,7 +463,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                       value={sentimentAgent ? `${sentimentAgent.avgScore > 0 ? '+' : ''}${sentimentAgent.avgScore.toFixed(2)}` : '—'}
                       valueClass={sentimentAgent ? sentimentColor(sentimentAgent.avgScore) : ''}
                     />
-                    <MetricItem label="Revenue" value={revenueAgent ? formatCents(revenueAgent.revenueCents) : '$0.00'} />
+                    <MetricItem label="Revenue" value={formatCents(revenueAgent?.revenueCents ?? 0)} />
                   </div>
                 </div>
               );
