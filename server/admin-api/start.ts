@@ -29,6 +29,7 @@ import { startConnectorOutboxDrainScheduler, stopConnectorOutboxDrainScheduler }
 import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler } from '../../platform/integrations/connectors/SchedulingDriftAlertScheduler';
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler } from '../../platform/integrations/connectors';
 import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler } from '../../platform/billing/CallEventsRetentionScheduler';
+import { startTenantIsolationScheduler, stopTenantIsolationScheduler } from '../../platform/security/TenantIsolationScheduler';
 
 const logger = createLogger('ADMIN_API');
 
@@ -101,6 +102,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startSchedulingDriftAlertScheduler();
   startOAuthTokenRefreshScheduler();
   startCallEventsRetentionScheduler();
+  startTenantIsolationScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
 
@@ -130,6 +132,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopSchedulingDriftAlertScheduler();
   stopOAuthTokenRefreshScheduler();
   stopCallEventsRetentionScheduler();
+  stopTenantIsolationScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
 

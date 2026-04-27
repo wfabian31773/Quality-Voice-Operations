@@ -5,6 +5,7 @@ import { withPrivilegedClient } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { runAllIsolationTests } from '../../../platform/security/TenantIsolationService';
 import { getOrCreateTenantDEK } from '../../../platform/security/EncryptionService';
+import { getTenantIsolationSchedulerStatus } from '../../../platform/security/TenantIsolationScheduler';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { sendEmail } from '../../../platform/email/EmailService';
 import { encryptionInitializationReminderEmail } from '../../../platform/email/templates';
@@ -582,7 +583,8 @@ router.get('/platform/compliance/isolation-tests', requireAuth, requirePlatformA
   try {
     const data = await withPrivilegedClient(async (client) => {
       const { rows: latest } = await client.query(`
-        SELECT id, test_name, test_result, details, run_at
+        SELECT id, test_name, test_result, details, run_at,
+               COALESCE(source, 'manual') AS source, run_id
         FROM tenant_isolation_tests
         ORDER BY run_at DESC
         LIMIT 100
@@ -598,14 +600,87 @@ router.get('/platform/compliance/isolation-tests', requireAuth, requirePlatformA
       `);
 
       const { rows: lastRun } = await client.query(`
-        SELECT id, test_name, test_result, details, run_at
-        FROM tenant_isolation_tests
-        WHERE run_at = (SELECT MAX(run_at) FROM tenant_isolation_tests)
+        WITH last_marker AS (
+          SELECT run_id, run_at
+          FROM tenant_isolation_tests
+          ORDER BY run_at DESC
+          LIMIT 1
+        )
+        SELECT t.id, t.test_name, t.test_result, t.details, t.run_at,
+               COALESCE(t.source, 'manual') AS source, t.run_id
+        FROM tenant_isolation_tests t
+        JOIN last_marker l ON
+          (l.run_id IS NOT NULL AND t.run_id = l.run_id)
+          OR (l.run_id IS NULL AND t.run_at = l.run_at)
+        ORDER BY t.run_at DESC
       `);
 
-      return { recent: latest, summary: summary[0], lastRun };
+      const { rows: lastBySource } = await client.query(`
+        SELECT
+          MAX(run_at) FILTER (WHERE COALESCE(source, 'manual') = 'scheduled') AS last_scheduled_run_at,
+          MAX(run_at) FILTER (WHERE COALESCE(source, 'manual') = 'manual') AS last_manual_run_at
+        FROM tenant_isolation_tests
+      `);
+
+      const { rows: lastScheduledRun } = await client.query(`
+        WITH last_marker AS (
+          SELECT run_id, run_at
+          FROM tenant_isolation_tests
+          WHERE COALESCE(source, 'manual') = 'scheduled'
+          ORDER BY run_at DESC
+          LIMIT 1
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE t.test_result = 'pass')::int AS passed,
+          COUNT(*) FILTER (WHERE t.test_result = 'fail')::int AS failed,
+          MAX(t.run_at) AS run_at,
+          l.run_id AS run_id
+        FROM tenant_isolation_tests t
+        JOIN last_marker l ON
+          (l.run_id IS NOT NULL AND t.run_id = l.run_id)
+          OR (l.run_id IS NULL AND t.run_at = l.run_at)
+        WHERE COALESCE(t.source, 'manual') = 'scheduled'
+        GROUP BY l.run_id
+      `);
+
+      const { rows: lastManualRun } = await client.query(`
+        WITH last_marker AS (
+          SELECT run_id, run_at
+          FROM tenant_isolation_tests
+          WHERE COALESCE(source, 'manual') = 'manual'
+          ORDER BY run_at DESC
+          LIMIT 1
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE t.test_result = 'pass')::int AS passed,
+          COUNT(*) FILTER (WHERE t.test_result = 'fail')::int AS failed,
+          MAX(t.run_at) AS run_at,
+          l.run_id AS run_id
+        FROM tenant_isolation_tests t
+        JOIN last_marker l ON
+          (l.run_id IS NOT NULL AND t.run_id = l.run_id)
+          OR (l.run_id IS NULL AND t.run_at = l.run_at)
+        WHERE COALESCE(t.source, 'manual') = 'manual'
+        GROUP BY l.run_id
+      `);
+
+      return {
+        recent: latest,
+        summary: summary[0],
+        lastRun,
+        lastScheduledRunAt: lastBySource[0]?.last_scheduled_run_at ?? null,
+        lastManualRunAt: lastBySource[0]?.last_manual_run_at ?? null,
+        lastScheduledRunSummary: lastScheduledRun[0] ?? null,
+        lastManualRunSummary: lastManualRun[0] ?? null,
+      };
     });
-    return res.json(data);
+
+    const schedulerStatus = getTenantIsolationSchedulerStatus();
+
+    return res.json({
+      ...data,
+      scheduler: schedulerStatus,
+    });
   } catch (err) {
     logger.error('Failed to load isolation tests', { error: String(err) });
     return res.status(500).json({ error: 'Failed to load isolation tests' });
@@ -615,7 +690,7 @@ router.get('/platform/compliance/isolation-tests', requireAuth, requirePlatformA
 router.post('/platform/compliance/isolation-tests/run', requireAuth, requirePlatformAdmin, async (req, res) => {
   try {
     const { tenantId } = req.user!;
-    const result = await runAllIsolationTests(tenantId);
+    const result = await runAllIsolationTests(tenantId, { source: 'manual' });
 
     await writeAuditLog({
       tenantId,

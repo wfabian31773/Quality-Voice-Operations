@@ -1,12 +1,55 @@
+import { randomUUID } from 'node:crypto';
 import { getPlatformPool, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('TENANT_ISOLATION');
 
+export type IsolationTestSource = 'manual' | 'scheduled';
+
 export interface IsolationTestResult {
   testName: string;
   passed: boolean;
   details: string;
+}
+
+export interface RunAllIsolationTestsOptions {
+  /**
+   * Tag the run as scheduled (background sweep) vs manual (admin-triggered
+   * from the Platform Compliance UI). Persisted on every row so the UI can
+   * show the most recent automated and manual runs side-by-side.
+   */
+  source?: IsolationTestSource;
+}
+
+export interface RunAllIsolationTestsResult {
+  passed: number;
+  failed: number;
+  results: IsolationTestResult[];
+  runId: string;
+  source: IsolationTestSource;
+}
+
+/**
+ * Pick an active tenant id to use as the "self" perspective when running
+ * cross-tenant access tests. Returns null when no active tenant exists,
+ * in which case the cross-tenant suite is skipped (RLS-enabled checks
+ * still run since they don't need a tenant context).
+ */
+export async function pickActiveTenantForIsolationTest(): Promise<string | null> {
+  const pool = getPlatformPool();
+  try {
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM tenants
+        WHERE status = 'active'
+        ORDER BY created_at ASC
+        LIMIT 1`,
+    );
+    if (rows.length === 0) return null;
+    return rows[0].id;
+  } catch (err) {
+    logger.warn('Failed to pick active tenant for isolation test', { error: String(err) });
+    return null;
+  }
 }
 
 const RLS_TABLES = [
@@ -128,11 +171,13 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
   return results;
 }
 
-export async function runAllIsolationTests(tenantId: string): Promise<{
-  passed: number;
-  failed: number;
-  results: IsolationTestResult[];
-}> {
+export async function runAllIsolationTests(
+  tenantId: string,
+  options: RunAllIsolationTestsOptions = {},
+): Promise<RunAllIsolationTestsResult> {
+  const source: IsolationTestSource = options.source ?? 'manual';
+  const runId = randomUUID();
+
   const rlsResults = await verifyRLSEnabled();
 
   const crossTenantResults = await verifyCrossTenantAccessBlocked(tenantId);
@@ -145,16 +190,22 @@ export async function runAllIsolationTests(tenantId: string): Promise<{
   for (const result of allResults) {
     try {
       await pool.query(
-        `INSERT INTO tenant_isolation_tests (test_name, test_result, details)
-         VALUES ($1, $2, $3)`,
-        [result.testName, result.passed ? 'pass' : 'fail', JSON.stringify({ details: result.details })],
+        `INSERT INTO tenant_isolation_tests (test_name, test_result, details, source, run_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          result.testName,
+          result.passed ? 'pass' : 'fail',
+          JSON.stringify({ details: result.details, source, runId }),
+          source,
+          runId,
+        ],
       );
     } catch (err) {
       logger.error('Failed to record isolation test', { error: String(err) });
     }
   }
 
-  return { passed, failed, results: allResults };
+  return { passed, failed, results: allResults, runId, source };
 }
 
 export function getTenantIdFromRequest(req: { user?: { tenantId: string } }): string | null {

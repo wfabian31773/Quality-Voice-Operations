@@ -110,12 +110,37 @@ interface IsolationTest {
   test_result: 'pass' | 'fail';
   details: { details?: string } | Record<string, unknown>;
   run_at: string;
+  source?: 'manual' | 'scheduled';
+  run_id?: string | null;
+}
+
+interface IsolationRunSummary {
+  passed: number;
+  failed: number;
+  run_at: string | null;
+  run_id: string | null;
+}
+
+interface IsolationSchedulerStatus {
+  intervalMs: number;
+  isRunning: boolean;
+  lastRunStartedAt: string | null;
+  lastRunFinishedAt: string | null;
+  nextRunAt: string | null;
+  lastRunFailed: number;
+  lastRunPassed: number;
+  lastRunId: string | null;
 }
 
 interface IsolationData {
   recent: IsolationTest[];
   summary: { passed: number; failed: number; last_run_at: string | null };
   lastRun: IsolationTest[];
+  lastScheduledRunAt: string | null;
+  lastManualRunAt: string | null;
+  lastScheduledRunSummary: IsolationRunSummary | null;
+  lastManualRunSummary: IsolationRunSummary | null;
+  scheduler: IsolationSchedulerStatus;
 }
 
 interface PlatformAdmin {
@@ -1040,12 +1065,23 @@ function DeletionRequestsTab() {
   );
 }
 
+function formatInterval(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '—';
+  const hours = Math.round(ms / (60 * 60 * 1000));
+  if (hours >= 24 && hours % 24 === 0) {
+    const days = hours / 24;
+    return days === 1 ? 'every day' : `every ${days} days`;
+  }
+  return hours === 1 ? 'every hour' : `every ${hours} hours`;
+}
+
 function IsolationTab() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['platform-isolation-tests'],
     queryFn: () => api.get<IsolationData>('/platform/compliance/isolation-tests'),
+    refetchInterval: 60_000,
   });
 
   const runMutation = useMutation({
@@ -1056,16 +1092,21 @@ function IsolationTab() {
   const summary = data?.summary;
   const total = (summary?.passed ?? 0) + (summary?.failed ?? 0);
   const passRate = total > 0 ? Math.round(((summary?.passed ?? 0) / total) * 100) : null;
+  const scheduler = data?.scheduler;
+  const lastScheduled = data?.lastScheduledRunSummary;
+  const lastManual = data?.lastManualRunSummary;
 
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <p className="text-sm text-muted">
-            Verifies that Row-Level Security is enabled on tenant-scoped tables and that one tenant cannot read another tenant's data. Re-run the suite anytime.
+            Verifies that Row-Level Security is enabled on tenant-scoped tables and that one tenant cannot read another tenant's data.
+            A background job runs the full suite {scheduler ? formatInterval(scheduler.intervalMs) : 'every day'} and pages
+            platform admins on any failure. You can also re-run it on demand.
           </p>
           {summary?.last_run_at && (
-            <p className="text-xs text-muted mt-1">Last run {formatDate(summary.last_run_at)}</p>
+            <p className="text-xs text-muted mt-1">Most recent run {formatDate(summary.last_run_at)}</p>
           )}
         </div>
         <button
@@ -1076,6 +1117,48 @@ function IsolationTab() {
           <RefreshCw className={`h-4 w-4 ${runMutation.isPending ? 'animate-spin' : ''}`} />
           {runMutation.isPending ? 'Running…' : 'Run isolation tests'}
         </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-border bg-surface p-4 space-y-1">
+          <div className="text-xs uppercase tracking-wide text-muted font-medium flex items-center gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" /> Last automated run
+          </div>
+          <div className="text-sm font-semibold">
+            {lastScheduled?.run_at ? formatDate(lastScheduled.run_at) : 'Not yet'}
+          </div>
+          {lastScheduled && lastScheduled.run_at && (
+            <div className="text-[11px] text-muted">
+              {lastScheduled.passed} passed · {lastScheduled.failed} failed
+            </div>
+          )}
+        </div>
+        <div className="rounded-xl border border-border bg-surface p-4 space-y-1">
+          <div className="text-xs uppercase tracking-wide text-muted font-medium flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5" /> Last manual run
+          </div>
+          <div className="text-sm font-semibold">
+            {lastManual?.run_at ? formatDate(lastManual.run_at) : 'Not yet'}
+          </div>
+          {lastManual && lastManual.run_at && (
+            <div className="text-[11px] text-muted">
+              {lastManual.passed} passed · {lastManual.failed} failed
+            </div>
+          )}
+        </div>
+        <div className="rounded-xl border border-border bg-surface p-4 space-y-1">
+          <div className="text-xs uppercase tracking-wide text-muted font-medium flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5" /> Next scheduled run
+          </div>
+          <div className="text-sm font-semibold">
+            {scheduler?.nextRunAt ? formatDate(scheduler.nextRunAt) : 'Scheduler not running'}
+          </div>
+          <div className="text-[11px] text-muted">
+            {scheduler?.isRunning
+              ? `Background job runs ${formatInterval(scheduler.intervalMs)}`
+              : 'Background job is not active in this environment'}
+          </div>
+        </div>
       </div>
 
       {summary && (
@@ -1103,7 +1186,18 @@ function IsolationTab() {
 
       {data?.lastRun && data.lastRun.length > 0 && (
         <div className="bg-surface border border-border rounded-xl p-4 space-y-2">
-          <h3 className="text-sm font-semibold">Latest run details</h3>
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            Latest run details
+            {data.lastRun[0]?.source && (
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ${
+                data.lastRun[0].source === 'scheduled'
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-surface-hover text-text-secondary'
+              }`}>
+                {data.lastRun[0].source === 'scheduled' ? 'automated' : 'manual'}
+              </span>
+            )}
+          </h3>
           <ul className="space-y-1.5 text-sm">
             {data.lastRun.map((r) => (
               <li key={r.id} className="flex items-start gap-2">
@@ -1129,6 +1223,7 @@ function IsolationTab() {
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
               <th className="text-left px-4 py-3 font-medium text-muted">Run at</th>
+              <th className="text-left px-4 py-3 font-medium text-muted">Source</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Test</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Result</th>
               <th className="text-left px-4 py-3 font-medium text-muted">Details</th>
@@ -1136,13 +1231,22 @@ function IsolationTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={4} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
+              <tr><td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !data?.recent.length ? (
-              <tr><td colSpan={4} className="p-0"><EmptyState icon={Server} title="No isolation tests recorded yet" variant="compact" /></td></tr>
+              <tr><td colSpan={5} className="p-0"><EmptyState icon={Server} title="No isolation tests recorded yet" variant="compact" /></td></tr>
             ) : (
               data.recent.map((r) => (
                 <tr key={r.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 text-xs text-muted whitespace-nowrap">{formatDate(r.run_at)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ${
+                      r.source === 'scheduled'
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-surface-hover text-text-secondary'
+                    }`}>
+                      {r.source === 'scheduled' ? 'automated' : 'manual'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-xs font-medium">{r.test_name}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
