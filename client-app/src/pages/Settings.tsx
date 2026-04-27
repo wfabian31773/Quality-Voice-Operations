@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type ComponentType } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -1291,17 +1291,38 @@ function NotificationCategoryMatrix({
   );
 }
 
+const TAB_COMPONENTS: Record<Tab, ComponentType> = {
+  general: GeneralSettings,
+  notifications: NotificationSettings,
+  roles: RolesPermissions,
+  security: SecuritySettings,
+  'api-keys': ApiKeys,
+  privacy: PrivacySettings,
+};
+
 export default function Settings() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
   const rawTab = params.tab ?? 'general';
   const isValidTab = TABS.some((t) => t.key === rawTab);
+  const tab = (isValidTab ? rawTab : 'general') as Tab;
+
+  // Track which tab panels have been opened so far. Once a tab has been
+  // visited we keep it mounted (just visually hidden) so unsaved edits in its
+  // form fields survive switching to another tab and back.
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([tab]));
+  useEffect(() => {
+    setVisited((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
+  }, [tab]);
 
   if (!isValidTab) {
     return <Navigate to="/settings/general" replace />;
   }
-
-  const tab = rawTab as Tab;
 
   const setTab = (t: Tab) => {
     navigate(`/settings/${t}`, { replace: true });
@@ -1331,12 +1352,21 @@ export default function Settings() {
         ))}
       </div>
 
-      {tab === 'general' && <GeneralSettings />}
-      {tab === 'notifications' && <NotificationSettings />}
-      {tab === 'roles' && <RolesPermissions />}
-      {tab === 'security' && <SecuritySettings />}
-      {tab === 'api-keys' && <ApiKeys />}
-      {tab === 'privacy' && <PrivacySettings />}
+      {TABS.map(({ key }) => {
+        if (!visited.has(key)) return null;
+        const Panel = TAB_COMPONENTS[key];
+        const isActive = tab === key;
+        return (
+          <div
+            key={key}
+            role="tabpanel"
+            aria-hidden={!isActive}
+            hidden={!isActive}
+          >
+            <Panel />
+          </div>
+        );
+      })}
     </div>
   );
 }
