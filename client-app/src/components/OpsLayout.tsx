@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
+import NotificationsCenter from './NotificationsCenter';
 
 interface NavItem {
   to: string;
@@ -112,7 +113,9 @@ export default function OpsLayout() {
             </button>
             <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Operations Console</span>
           </div>
-          <div className="w-5 lg:hidden" />
+          <div className="flex items-center gap-1">
+            <NotificationsCenter />
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-8">
