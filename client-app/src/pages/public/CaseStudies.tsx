@@ -4,6 +4,7 @@ import { BarChart3, Clock, DollarSign, Phone, TrendingUp, Users, ArrowRight, Sta
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { formatDollars } from '../../lib/formatCurrency';
 
 interface CaseStudyMetrics {
   totalCalls: number;
@@ -118,7 +119,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
             <MetricCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} color="bg-blue-50 text-blue-700" />
             <MetricCard icon={TrendingUp} label="Automation rate" value={`${Math.round(m.automationRate * 100)}%`} color="bg-emerald-50 text-emerald-700" />
-            <MetricCard icon={DollarSign} label="Monthly savings" value={`$${m.monthlySavings.toLocaleString()}`} color="bg-purple-50 text-purple-700" />
+            <MetricCard icon={DollarSign} label="Monthly savings" value={formatDollars(m.monthlySavings, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} color="bg-purple-50 text-purple-700" />
             <MetricCard icon={Star} label="Satisfaction" value={`${m.satisfactionScore}/5.0`} color="bg-amber-50 text-amber-700" />
           </div>
           <div className="grid md:grid-cols-2 gap-6">
@@ -133,7 +134,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
             <div className="bg-slate-50 rounded-xl p-6">
               <h3 className="font-display font-semibold text-harbor mb-3">Business Impact</h3>
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Annual savings</span><span className="font-medium text-emerald-600">${(m.monthlySavings * 12).toLocaleString()}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-600">Annual savings</span><span className="font-medium text-emerald-600">{formatDollars(m.monthlySavings * 12, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-slate-600">Total calls automated</span><span className="font-medium">{Math.round(m.totalCalls * m.automationRate).toLocaleString()}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-slate-600">Company size</span><span className="font-medium capitalize">{study.companySize}</span></div>
               </div>

@@ -181,7 +181,7 @@ Order within each priority is **execution order**: the higher item should be don
 - **Summary:** Centralise currency formatting; migrate `usage_metrics` and `cost_optimization` columns to integer cents; rewrite the analytics rollups to match.
 - **Acceptance:** All currency values pass through `formatCurrency`; analytics costs stop being off by 100×.
 - **Effort:** M
-- **Related task:** none
+- **Related task:** **#256** — last manual `Intl.NumberFormat`/raw `cents/100` call sites (MinutesPricingCalculator, public CaseStudies page, BudgetGuardService, CaseStudyService.generateSummary, OperationalSimulator) routed through `formatCurrency`/`formatDollars`/`formatCents`; rollup unit (cents) for `usage_metrics` + `conversation_costs` reconfirmed by `costAnalyticsRollup` regression test. Closed.
 
 ### BL-024 — Twilio webhook + STIR/SHAKEN attestation prep
 - **Source:** I-03 (separate from BL-002) + C-20

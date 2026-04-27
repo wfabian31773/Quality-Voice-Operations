@@ -1,5 +1,6 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
+import { formatCents } from '../core/formatCurrency';
 import {
   createSimulationRun as createSimEngineRun,
   executeSimulationRun as execSimEngineRun,
@@ -839,7 +840,7 @@ function generateSummary(
   }
   if (simulated.revenueDeltaCents !== 0) {
     const dir = simulated.revenueDeltaCents > 0 ? 'increase' : 'decrease';
-    parts.push(`Daily revenue ${dir} of $${(Math.abs(simulated.revenueDeltaCents) / 100).toFixed(0)}`);
+    parts.push(`Daily revenue ${dir} of ${formatCents(Math.abs(simulated.revenueDeltaCents), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`);
   }
   if (conversationQuality?.comparison) {
     const cq = conversationQuality.comparison;

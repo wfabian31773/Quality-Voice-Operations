@@ -1,5 +1,6 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
+import { formatDollars } from '../core/formatCurrency';
 
 const logger = createLogger('CASE_STUDY');
 
@@ -406,7 +407,7 @@ function generateSummary(industry: string, _milestone: MilestoneThreshold, metri
   const parts: string[] = [];
   parts.push(`A ${industry} business deployed QVO AI voice agents and achieved measurable results.`);
   parts.push(`After ${metrics.daysActive} days of operation, the system handled ${metrics.totalCalls.toLocaleString()} calls with a ${Math.round(metrics.automationRate * 100)}% automation rate.`);
-  parts.push(`Average response time dropped to ${metrics.avgResponseTime} seconds, while monthly costs decreased by ${metrics.costSavingsPercent}%, saving approximately $${metrics.monthlySavings.toLocaleString()} per month.`);
+  parts.push(`Average response time dropped to ${metrics.avgResponseTime} seconds, while monthly costs decreased by ${metrics.costSavingsPercent}%, saving approximately ${formatDollars(metrics.monthlySavings, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} per month.`);
   parts.push(`Customer satisfaction reached ${metrics.satisfactionScore}/5.0.`);
   return parts.join(' ');
 }

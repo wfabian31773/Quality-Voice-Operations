@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Calculator, Sparkles } from 'lucide-react';
+import { formatDollars } from '../lib/formatCurrency';
 
 interface CalculatorTier {
   key: 'starter' | 'pro' | 'enterprise';
@@ -20,22 +21,12 @@ const MIN_MINUTES = 100;
 const MAX_MINUTES = 25_000;
 const STEP_MINUTES = 100;
 
-function formatCurrency(value: number, opts: Intl.NumberFormatOptions = {}): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-    ...opts,
-  }).format(value);
+function formatCurrency(value: number): string {
+  return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function formatPerMinute(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(value);
+  return formatDollars(value, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 export function calculateMonthlyCost(tier: Pick<CalculatorTier, 'basePrice' | 'includedMinutes' | 'overageRate'>, minutes: number): number {

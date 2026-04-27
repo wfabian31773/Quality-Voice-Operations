@@ -1,4 +1,5 @@
 import { createLogger } from '../../core/logger';
+import { formatCents } from '../../core/formatCurrency';
 import type { BudgetStatus } from './types';
 import type { TenantId } from '../../core/types';
 import { checkBudget, type BudgetCheckResult } from './checkBudget';
@@ -26,7 +27,7 @@ export class BudgetGuardService {
     this.warningThreshold = options?.warningThreshold ?? DEFAULT_WARNING_THRESHOLD;
     logger.info(`Budget initialized`, {
       tenantId,
-      budget: `$${(this.dailyBudgetCents / 100).toFixed(2)}`,
+      budget: formatCents(this.dailyBudgetCents),
       warningAt: `${(this.warningThreshold * 100).toFixed(0)}%`,
     });
   }
@@ -52,16 +53,16 @@ export class BudgetGuardService {
       logger.warn(`Daily spend warning`, {
         tenantId: this.tenantId,
         percentUsed: `${(percentUsed * 100).toFixed(1)}%`,
-        spend: `$${(todaySpendCents / 100).toFixed(2)}`,
-        budget: `$${(this.dailyBudgetCents / 100).toFixed(2)}`,
+        spend: formatCents(todaySpendCents),
+        budget: formatCents(this.dailyBudgetCents),
       });
     }
 
     if (isOverBudget) {
       logger.warn(`Daily budget exceeded`, {
         tenantId: this.tenantId,
-        spend: `$${(todaySpendCents / 100).toFixed(2)}`,
-        budget: `$${(this.dailyBudgetCents / 100).toFixed(2)}`,
+        spend: formatCents(todaySpendCents),
+        budget: formatCents(this.dailyBudgetCents),
       });
     }
 
@@ -86,7 +87,7 @@ export class BudgetGuardService {
     if (status.isOverBudget) {
       return {
         allowed: false,
-        reason: `Daily budget exceeded ($${(status.todaySpendCents / 100).toFixed(2)} / $${(status.dailyBudgetCents / 100).toFixed(2)}). Outbound paused until tomorrow.`,
+        reason: `Daily budget exceeded (${formatCents(status.todaySpendCents)} / ${formatCents(status.dailyBudgetCents)}). Outbound paused until tomorrow.`,
       };
     }
     return { allowed: true };
@@ -94,7 +95,7 @@ export class BudgetGuardService {
 
   setDailyBudget(cents: number): void {
     this.dailyBudgetCents = cents;
-    logger.info(`Budget updated`, { tenantId: this.tenantId, budget: `$${(cents / 100).toFixed(2)}` });
+    logger.info(`Budget updated`, { tenantId: this.tenantId, budget: formatCents(cents) });
   }
 
   getDailyBudgetCents(): number {
