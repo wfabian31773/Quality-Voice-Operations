@@ -45,7 +45,7 @@ export default function AdminLayout() {
 
   const sidebar = (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-5 border-b border-purple-500/20">
+      <div className="px-6 py-5 border-b border-white/10">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-bold text-white tracking-tight font-display">{t('brand.name')}</h1>
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wider">{t('admin_nav.badge')}</span>
@@ -64,8 +64,8 @@ export default function AdminLayout() {
               clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-purple-600/30 text-white'
-                  : 'text-sidebar-text hover:bg-purple-600/10 hover:text-white',
+                  ? 'bg-purple-600 text-white'
+                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
               )
             }
           >
@@ -75,19 +75,19 @@ export default function AdminLayout() {
         ))}
       </nav>
 
-      <div className="px-3 py-4 border-t border-purple-500/20 space-y-1">
+      <div className="px-3 py-4 border-t border-white/10 space-y-1">
         <PortalSwitcher />
         <LanguageSwitcher variant="sidebar" />
         <button
           onClick={toggle}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-purple-600/10 hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
         >
           {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
           {dark ? t('theme.light') : t('theme.dark')}
         </button>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-purple-600/10 hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
         >
           <LogOut className="h-4.5 w-4.5" />
           {t('actions.sign_out')}
@@ -98,12 +98,12 @@ export default function AdminLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className="hidden lg:flex w-64 shrink-0 bg-sidebar-bg flex-col border-r border-purple-500/10">
+      <aside className="hidden lg:flex w-64 shrink-0 bg-sidebar-bg flex-col print:hidden">
         {sidebar}
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden print:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <aside className="relative w-64 h-full bg-sidebar-bg">
             {sidebar}
@@ -112,17 +112,20 @@ export default function AdminLayout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="flex items-center justify-between px-4 py-2 bg-purple-900/20 border-b border-purple-500/20">
+        <header className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border print:hidden">
           <div className="flex items-center gap-3">
             <button
-              className="lg:hidden"
+              className="lg:hidden p-1.5 -ml-1.5"
               onClick={() => setMobileOpen(true)}
               aria-label={t('actions.open_menu')}
               aria-expanded={mobileOpen}
             >
               {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
             </button>
-            <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">{t('admin_nav.console')}</span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-purple-500" aria-hidden="true" />
+              {t('admin_nav.console')}
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <NotificationsCenter />

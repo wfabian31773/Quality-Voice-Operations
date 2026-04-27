@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import RevenueAnalytics from './RevenueAnalytics';
+import { PageHeader, StatusBadge } from '../components/ui';
 import {
   dashboards,
   getDashboardByKey,
@@ -163,23 +164,19 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2">
+      <PageHeader
+        title={
+          <span className="inline-flex items-center gap-2">
             <span className="text-2xl" aria-hidden="true">{dashboard.emoji}</span>
-            <h1 className="text-2xl font-bold">Analytics</h1>
-            {dashboard.key !== 'general' && (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                {dashboard.label}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {dashboard.description} Scoped to your tenant only — platform-wide metrics live in the Admin Console.
-          </p>
-        </div>
-        {tab === 'performance' && (
-          <div className="flex items-center gap-2">
+            Analytics
+          </span>
+        }
+        status={dashboard.key !== 'general' ? (
+          <StatusBadge tone="primary" variant="soft" size="sm">{dashboard.label}</StatusBadge>
+        ) : undefined}
+        description={`${dashboard.description} Scoped to your tenant only — platform-wide metrics live in the Admin Console.`}
+        actions={tab === 'performance' ? (
+          <>
             <label className="sr-only" htmlFor="vertical-dashboard-select">Dashboard</label>
             <select
               id="vertical-dashboard-select"
@@ -210,9 +207,9 @@ export default function Analytics() {
                 </button>
               ))}
             </div>
-          </div>
-        )}
-      </div>
+          </>
+        ) : undefined}
+      />
 
       <div className="border-b border-border">
         <div className="flex gap-0">

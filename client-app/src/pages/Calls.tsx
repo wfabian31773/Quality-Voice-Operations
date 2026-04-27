@@ -8,6 +8,7 @@ import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search,
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 import { SkeletonRows } from '../components/state';
+import { PageHeader } from '../components/ui';
 import {
   DndContext,
   PointerSensor,
@@ -963,35 +964,35 @@ export default function Calls() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Conversations</h1>
-          <p className="text-sm text-text-secondary mt-1">Browse and review past calls with transcripts</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {activeView && isViewDirty && (
-            <button
-              onClick={handleUpdateActiveView}
-              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
-              title={`Save current filters into "${activeView.name}"`}
-            >
-              <Star className="h-4 w-4" /> Update view
+      <PageHeader
+        title="Conversations"
+        description="Browse and review past calls with transcripts"
+        actions={
+          <>
+            {activeView && isViewDirty && (
+              <button
+                onClick={handleUpdateActiveView}
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+                title={`Save current filters into "${activeView.name}"`}
+              >
+                <Star className="h-4 w-4" /> Update view
+              </button>
+            )}
+            {activeFilterCount > 0 && !savingView && (
+              <button
+                onClick={() => { setSavingView(true); setSaveError(null); setNewViewName(''); setNewViewShared(false); setNewViewDigest(false); }}
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+              >
+                <Bookmark className="h-4 w-4" /> Save view
+              </button>
+            )}
+            <button onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${activeFilterCount > 0 ? 'border-primary text-primary bg-primary-light' : 'border-border text-text-secondary hover:bg-surface-hover'}`}>
+              <Filter className="h-4 w-4" /> Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
             </button>
-          )}
-          {activeFilterCount > 0 && !savingView && (
-            <button
-              onClick={() => { setSavingView(true); setSaveError(null); setNewViewName(''); setNewViewShared(false); setNewViewDigest(false); }}
-              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
-            >
-              <Bookmark className="h-4 w-4" /> Save view
-            </button>
-          )}
-          <button onClick={() => setShowFilters(!showFilters)}
-            className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border transition ${activeFilterCount > 0 ? 'border-primary text-primary bg-primary-light' : 'border-border text-text-secondary hover:bg-surface-hover'}`}>
-            <Filter className="h-4 w-4" /> Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {(savedViews.length > 0 || savingView) && (() => {
         // Pins are per-user, so any view this user has pinned (whether they own it or not)

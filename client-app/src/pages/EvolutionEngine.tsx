@@ -12,6 +12,7 @@ import {
 import clsx from 'clsx';
 import TourLauncher from '../components/TourLauncher';
 import { evolutionEngineTour } from '../components/tours';
+import { PageHeader } from '../components/ui';
 
 interface DashboardData {
   opportunities: {
@@ -250,28 +251,28 @@ export default function EvolutionEngine() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between" data-tour="evolution-header">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-            <Dna className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+      <div data-tour="evolution-header">
+        <PageHeader
+          icon={<Dna className="w-5 h-5" />}
+          title={
+            <span className="inline-flex items-center gap-2">
               Platform Evolution Engine
               <TourLauncher tourId="evolution-engine" steps={evolutionEngineTour} />
-            </h1>
-            <p className="text-sm text-text-secondary">AI-powered product intelligence and roadmap recommendations</p>
-          </div>
-        </div>
-        <button
-          onClick={() => runPipeline.mutate()}
-          disabled={runPipeline.isPending}
-          data-tour="evolution-run-pipeline"
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium"
-        >
-          {runPipeline.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          {runPipeline.isPending ? 'Running...' : 'Run Pipeline'}
-        </button>
+            </span>
+          }
+          description="AI-powered product intelligence and roadmap recommendations"
+          actions={
+            <button
+              onClick={() => runPipeline.mutate()}
+              disabled={runPipeline.isPending}
+              data-tour="evolution-run-pipeline"
+              className="inline-flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {runPipeline.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              {runPipeline.isPending ? 'Running...' : 'Run Pipeline'}
+            </button>
+          }
+        />
       </div>
 
       <div className="flex gap-1 bg-surface-hover p-1 rounded-lg" data-tour="evolution-tabs">

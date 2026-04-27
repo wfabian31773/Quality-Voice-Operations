@@ -10,6 +10,7 @@ import {
   ShoppingCart, Filter,
 } from 'lucide-react';
 import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
+import { PageHeader } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import Modal from '../components/Modal';
 
@@ -1460,12 +1461,10 @@ export default function Marketplace() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Marketplace</h1>
-          <p className="text-sm text-text-secondary mt-1">Browse and install agent templates for your tenant.</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Marketplace"
+        description="Browse and install agent templates for your tenant."
+      />
 
       <div className="flex gap-2 border-b border-border">
         <button

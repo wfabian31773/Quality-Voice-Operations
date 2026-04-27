@@ -2,6 +2,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { PageHeader } from '../components/ui';
 import {
   PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
   Wrench, Check, Loader2, X, Bell, BellOff, ChevronDown, ChevronUp,
@@ -781,13 +782,11 @@ export default function Operations() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Operations</h1>
-          <p className="text-sm text-text-secondary mt-1">Real-time monitoring of agent activity and performance</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1 bg-surface-secondary rounded-lg p-1">
+      <PageHeader
+        title="Operations"
+        description="Real-time monitoring of agent activity and performance"
+        actions={
+          <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
             {TIME_RANGES.map((r) => (
               <button
                 key={r.value}
@@ -802,15 +801,17 @@ export default function Operations() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1.5 text-xs">
+        }
+        status={
+          <span className="inline-flex items-center gap-1.5 text-xs">
             {connected ? (
-              <><Wifi className="h-3.5 w-3.5 text-green-500" /><span className="text-green-600 dark:text-green-400">Live</span></>
+              <><Wifi className="h-3.5 w-3.5 text-success" /><span className="text-success font-medium">Live</span></>
             ) : (
               <><WifiOff className="h-3.5 w-3.5 text-text-muted" /><span className="text-text-secondary">Connecting...</span></>
             )}
-          </div>
-        </div>
-      </div>
+          </span>
+        }
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <MetricCard

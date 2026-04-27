@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown, Check, Loader2 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { Skeleton, SkeletonRows } from '../components/state';
+import { PageHeader } from '../components/ui';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import { renderMarkdownToSafeHtml } from '../lib/markdown';
@@ -703,15 +704,13 @@ export default function KnowledgeBase() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Knowledge</h1>
-          <p className="text-sm text-text-secondary mt-1">Manage knowledge sources for your AI agents</p>
-        </div>
-        {isManager && (
-          <div className="flex gap-2">
+      <PageHeader
+        title="Knowledge"
+        description="Manage knowledge sources for your AI agents"
+        actions={isManager ? (
+          <>
             <button onClick={() => setShowUpload(true)}
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
               <Upload className="h-4 w-4" /> Add Source
             </button>
             {activeView === 'articles' && (
@@ -722,14 +721,14 @@ export default function KnowledgeBase() {
                 position="left"
               >
                 <button onClick={() => setEditingId('new')}
-                  className="inline-flex items-center gap-2 bg-surface hover:bg-surface-hover text-text-primary text-sm font-medium px-4 py-2.5 rounded-lg border border-border transition">
+                  className="inline-flex items-center gap-2 bg-surface hover:bg-surface-hover text-text-primary text-sm font-medium px-3 py-2 rounded-lg border border-border transition-colors">
                   <Plus className="h-4 w-4" /> New Article
                 </button>
               </TooltipWalkthrough>
             )}
-          </div>
-        )}
-      </div>
+          </>
+        ) : undefined}
+      />
 
       <div className="flex items-center gap-3 border-b border-border">
         <button

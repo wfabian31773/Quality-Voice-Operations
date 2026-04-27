@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
 interface RegistryTemplate {
@@ -90,12 +91,10 @@ export default function AdminMarketplace() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Marketplace Management</h1>
-        <p className="text-sm text-purple-200/70 mt-1">
-          Manage the global template registry, developer submissions, and platform revenue.
-        </p>
-      </div>
+      <PageHeader
+        title="Marketplace Management"
+        description="Manage the global template registry, developer submissions, and platform revenue."
+      />
 
       <GlobalScopeBanner
         label="Global Registry / All Tenants"

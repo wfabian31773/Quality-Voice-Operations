@@ -10,6 +10,7 @@ import {
   ChevronsUp,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton } from '../components/state';
+import { PageHeader } from '../components/ui';
 
 interface TicketItem {
   id: string;
@@ -240,30 +241,28 @@ export default function Tickets() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Ticket className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-heading">Tickets</h1>
-            <p className="text-sm text-muted mt-0.5">Track and manage support tickets</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isReadOnly && (
-            <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2">
-              <Plus className="h-4 w-4" /> New Ticket
+      <PageHeader
+        icon={<Ticket className="h-6 w-6" />}
+        title="Tickets"
+        description="Track and manage support tickets"
+        actions={
+          <>
+            {!isReadOnly && (
+              <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-hover transition-colors">
+                <Plus className="h-4 w-4" /> New Ticket
+              </button>
+            )}
+            <button onClick={() => navigate('/tickets/reporting')} className="px-3 py-2 border border-border rounded-lg text-sm text-text-primary hover:bg-surface-hover transition-colors">
+              Reports
             </button>
-          )}
-          <button onClick={() => navigate('/tickets/reporting')} className="px-3 py-2 border border-border rounded-lg text-sm text-heading hover:bg-surface-secondary">
-            Reports
-          </button>
-          {!isReadOnly && (
-            <button onClick={() => navigate('/tickets/admin')} className="px-3 py-2 border border-border rounded-lg text-sm text-heading hover:bg-surface-secondary">
-              Admin
-            </button>
-          )}
-        </div>
-      </div>
+            {!isReadOnly && (
+              <button onClick={() => navigate('/tickets/admin')} className="px-3 py-2 border border-border rounded-lg text-sm text-text-primary hover:bg-surface-hover transition-colors">
+                Admin
+              </button>
+            )}
+          </>
+        }
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">

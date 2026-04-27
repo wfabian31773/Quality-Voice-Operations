@@ -13,6 +13,7 @@ import {
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import { ErrorState, Skeleton } from '../components/state';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
 type LeadSource = 'book_demo' | 'roi_calculator' | 'contact';
@@ -404,45 +405,44 @@ export default function AdminSalesInbox() {
         description="Triage marketing leads from Book a Demo, ROI Calculator, and Contact submissions. Includes Cal.com booking metadata."
       />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Inbox className="h-6 w-6 text-purple-400" />
-            Sales Inbox
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            {counts ? `${counts.total} total leads` : 'Loading…'} •{' '}
-            {counts ? `${counts.by_status.new} new, ${counts.by_status.contacted} contacted, ${counts.by_status.closed} closed` : ''}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleExportCsv}
-            disabled={exporting}
-            title="Download the current filtered view as a CSV file"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 disabled:opacity-50"
-          >
-            <Download className={clsx('h-4 w-4', exporting && 'animate-pulse')} />
-            {exporting ? 'Preparing CSV…' : 'Download CSV'}
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700"
-            title="Configure where new-lead alerts are sent"
-          >
-            <Bell className="h-4 w-4" />
-            Alert settings
-          </button>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
-          >
-            <RefreshCw className={clsx('h-4 w-4', isFetching && 'animate-spin')} />
-            Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Inbox className="h-5 w-5" />}
+        title="Sales Inbox"
+        description={
+          counts
+            ? `${counts.total} total leads • ${counts.by_status.new} new, ${counts.by_status.contacted} contacted, ${counts.by_status.closed} closed`
+            : 'Loading…'
+        }
+        actions={
+          <>
+            <button
+              onClick={handleExportCsv}
+              disabled={exporting}
+              title="Download the current filtered view as a CSV file"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors disabled:opacity-50"
+            >
+              <Download className={clsx('h-4 w-4', exporting && 'animate-pulse')} />
+              {exporting ? 'Preparing CSV…' : 'Download CSV'}
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-medium hover:bg-surface-hover transition-colors"
+              title="Configure where new-lead alerts are sent"
+            >
+              <Bell className="h-4 w-4" />
+              Alert settings
+            </button>
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-medium hover:bg-surface-hover transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={clsx('h-4 w-4', isFetching && 'animate-spin')} />
+              Refresh
+            </button>
+          </>
+        }
+      />
 
       {exportError && (
         <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">

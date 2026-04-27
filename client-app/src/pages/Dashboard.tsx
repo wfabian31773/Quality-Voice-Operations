@@ -15,6 +15,7 @@ import OnboardingChecklist from '../components/OnboardingChecklist';
 import TrialConversionNudge from '../components/TrialConversionNudge';
 import Celebration from '../components/Celebration';
 import ConnectorAuthBanner from '../components/ConnectorAuthBanner';
+import { PageHeader, StatCard, StatusBadge } from '../components/ui';
 
 const CELEBRATION_KEY = 'qvo_first_call_celebrated';
 
@@ -46,31 +47,6 @@ interface AgentInfo {
   name: string;
   type: string;
   status: string;
-}
-
-function StatCard({ icon: Icon, label, value, trend, color }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string | number;
-  trend?: string;
-  color: string;
-}) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-3">
-        <div className={`p-2.5 rounded-lg ${color}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-text-secondary truncate">{label}</p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold text-text-primary">{value}</p>
-            {trend && <span className="text-xs text-text-secondary">{trend}</span>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function todayIso(): string {
@@ -379,27 +355,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
-          <p className="text-sm text-text-secondary mt-1">What's happening today, what's working, and what needs attention</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        title="Dashboard"
+        description="What's happening today, what's working, and what needs attention"
+        status={
+          sseConnected ? (
+            <StatusBadge tone="success" icon={<Wifi className="h-3 w-3" />}>Live</StatusBadge>
+          ) : (
+            <StatusBadge tone="neutral" icon={<WifiOff className="h-3 w-3" />}>Connecting…</StatusBadge>
+          )
+        }
+        actions={
           <button
             onClick={() => navigate('/agents')}
-            className="hidden sm:flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="hidden sm:inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             <Plus className="h-4 w-4" /> New Agent
           </button>
-          <div className="flex items-center gap-1.5 text-xs">
-            {sseConnected ? (
-              <><Wifi className="h-3.5 w-3.5 text-green-500" /><span className="text-green-600 dark:text-green-400">Live</span></>
-            ) : (
-              <><WifiOff className="h-3.5 w-3.5 text-text-muted" /><span className="text-text-secondary">Connecting...</span></>
-            )}
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <ConnectorAuthBanner />
 
@@ -410,24 +384,24 @@ export default function Dashboard() {
       <ExampleWorkflowCards navigate={navigate} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard icon={PhoneCall} label="Calls Today" value={totalToday} color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" />
-        <StatCard icon={CalendarCheck} label="Bookings Today" value={bookingsToday} trend={bookingsToday === 0 ? 'no bookings yet' : undefined} color="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" />
-        <StatCard icon={Bot} label="Active Agents" value={agentCount} color="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" />
-        <StatCard icon={DollarSign} label="Revenue (30d)" value={revenueDisplay} trend={revenueCents > 0 ? 'attributed' : 'no attribution yet'} color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" />
-        <StatCard icon={TrendingUp} label="Live Calls" value={activeCallCount} color="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" />
+        <StatCard icon={PhoneCall} label="Calls Today" value={totalToday} tone="info" />
+        <StatCard icon={CalendarCheck} label="Bookings Today" value={bookingsToday} sub={bookingsToday === 0 ? 'no bookings yet' : undefined} tone="primary" />
+        <StatCard icon={Bot} label="Active Agents" value={agentCount} tone="accent" />
+        <StatCard icon={DollarSign} label="Revenue (30d)" value={revenueDisplay} sub={revenueCents > 0 ? 'attributed' : 'no attribution yet'} tone="success" />
+        <StatCard icon={TrendingUp} label="Live Calls" value={activeCallCount} tone="warning" />
       </div>
 
       {(escalations > 0 || activeCallCount > 0) && (
-        <div className="bg-surface border border-border rounded-xl shadow-sm">
+        <div className="bg-surface border border-border rounded-xl shadow-[var(--elevation-1)]">
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <Bell className="h-4 w-4 text-amber-500" />
+            <Bell className="h-4 w-4 text-warning" />
             <h2 className="text-base font-semibold text-text-primary">Needs Attention</h2>
           </div>
           <div className="divide-y divide-border">
             {escalations > 0 && (
               <div className="px-5 py-3 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
-                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <div className="p-2 rounded-lg bg-danger-light">
+                  <AlertTriangle className="h-4 w-4 text-danger" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-text-primary">{escalations} escalated conversation{escalations !== 1 ? 's' : ''}</p>
@@ -440,8 +414,8 @@ export default function Dashboard() {
             )}
             {activeCallCount > 0 && (
               <div className="px-5 py-3 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                  <Phone className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <div className="p-2 rounded-lg bg-success-light">
+                  <Phone className="h-4 w-4 text-success" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-text-primary">{activeCallCount} live conversation{activeCallCount !== 1 ? 's' : ''} right now</p>
@@ -497,9 +471,7 @@ export default function Dashboard() {
                     <tr key={call.id} className="border-b border-border last:border-0 hover:bg-surface-hover transition-colors cursor-pointer" onClick={() => navigate('/calls')}>
                       <td className="px-5 py-3 text-text-primary font-medium">{call.agent_name || 'Unknown Agent'}</td>
                       <td className="px-5 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${call.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
-                          {call.direction}
-                        </span>
+                        <StatusBadge tone={call.direction === 'inbound' ? 'info' : 'warning'}>{call.direction}</StatusBadge>
                       </td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${stateColor(call.lifecycle_state)}`}>
@@ -548,13 +520,9 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-text-primary truncate">{agent.name}</p>
                     <p className="text-xs text-text-secondary">{agent.type.replace(/-/g, ' ')}</p>
                   </div>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                    agent.status === 'active'
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-surface-hover text-text-secondary'
-                  }`}>
+                  <StatusBadge tone={agent.status === 'active' ? 'success' : 'neutral'}>
                     {agent.status}
-                  </span>
+                  </StatusBadge>
                 </div>
               ))}
             </div>
@@ -563,12 +531,12 @@ export default function Dashboard() {
       </div>
 
       {liveActiveCalls.length > 0 && (
-        <div className="bg-surface border border-border rounded-xl shadow-sm">
+        <div className="bg-surface border border-border rounded-xl shadow-[var(--elevation-1)]">
           <div className="px-5 py-4 border-b border-border">
             <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
               </span>
               Live Calls
             </h2>
@@ -576,8 +544,8 @@ export default function Dashboard() {
           <div className="divide-y divide-border">
             {liveActiveCalls.map((call) => (
               <div key={call.id} className="px-5 py-3 flex items-center gap-4">
-                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                  <Phone className="h-4 w-4 text-green-700 dark:text-green-400" />
+                <div className="p-2 rounded-lg bg-success-light">
+                  <Phone className="h-4 w-4 text-success" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-text-primary">{call.agent_name || 'Agent'}</p>

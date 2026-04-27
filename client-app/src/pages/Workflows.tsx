@@ -8,6 +8,7 @@ import {
   Workflow as WorkflowIcon,
 } from 'lucide-react';
 import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
+import { PageHeader } from '../components/ui';
 
 interface WorkflowStep {
   id: string;
@@ -454,21 +455,21 @@ export default function Workflows() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Workflows</h1>
-          <p className="text-sm text-text-secondary mt-1">Configure call routing, lead qualification, and escalation rules</p>
-        </div>
-        <button
-          onClick={() => {
-            setEditingWorkflow(undefined);
-            setView('builder');
-          }}
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition"
-        >
-          <Plus className="h-4 w-4" /> New Workflow
-        </button>
-      </div>
+      <PageHeader
+        title="Workflows"
+        description="Configure call routing, lead qualification, and escalation rules"
+        actions={
+          <button
+            onClick={() => {
+              setEditingWorkflow(undefined);
+              setView('builder');
+            }}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="h-4 w-4" /> New Workflow
+          </button>
+        }
+      />
 
       {isLoading ? (
         <SkeletonGrid count={6} />

@@ -11,6 +11,7 @@ import {
   Radio, Timer, Smile, Meh, Frown,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+import { PageHeader } from '../components/ui';
 
 function sentimentBand(score: number): { label: string; icon: typeof Smile; color: string } {
   if (score >= 0.6) return { label: 'Positive', icon: Smile, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
@@ -757,12 +758,10 @@ export default function CallDebug() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Call Debugging</h1>
-          <p className="text-sm text-text-secondary mt-1">Trace, replay, and debug agent calls with full execution visibility</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Call Debugging"
+        description="Trace, replay, and debug agent calls with full execution visibility"
+      />
 
       {activeTab !== 'replay' && (
         <div className="flex gap-1 border-b border-border">

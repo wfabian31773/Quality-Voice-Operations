@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertT
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import { EmptyState, SkeletonGrid } from '../components/state';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 import VoicePicker from '../components/VoicePicker';
 import {
@@ -467,12 +468,10 @@ export default function Agents() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Agents</h1>
-          <p className="text-sm text-text-secondary mt-1">Manage your AI voice agents</p>
-        </div>
-        {isManager && (
+      <PageHeader
+        title="Agents"
+        description="Manage your AI voice agents"
+        actions={isManager ? (
           <TooltipWalkthrough
             tooltipKey="agents-create"
             title="Create Your First Agent"
@@ -480,12 +479,12 @@ export default function Agents() {
             position="left"
           >
             <button onClick={() => setEditingId('new')}
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
               <Plus className="h-4 w-4" /> New Agent
             </button>
           </TooltipWalkthrough>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {isLoading ? (
         <SkeletonGrid count={6} />

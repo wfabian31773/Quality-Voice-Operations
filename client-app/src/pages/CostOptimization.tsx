@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
+import { PageHeader } from '../components/ui';
 import {
   DollarSign, TrendingDown, Database,
   ArrowDown, ArrowUp, Settings2, Save, Loader2, BarChart3,
@@ -214,30 +215,28 @@ export default function CostOptimization() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Cost Optimization</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Track, analyze, and reduce AI conversation costs
-          </p>
-        </div>
-        <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
-          {(['7d', '30d', '90d'] as Range[]).map(r => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={clsx(
-                'px-3 py-1.5 text-sm rounded-md transition-colors',
-                range === r
-                  ? 'bg-surface text-text-primary shadow-sm'
-                  : 'text-text-secondary hover:text-text-primary'
-              )}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="Cost Optimization"
+        description="Track, analyze, and reduce AI conversation costs"
+        actions={
+          <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
+            {(['7d', '30d', '90d'] as Range[]).map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={clsx(
+                  'px-3 py-1.5 text-sm rounded-md transition-colors',
+                  range === r
+                    ? 'bg-surface text-text-primary shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard

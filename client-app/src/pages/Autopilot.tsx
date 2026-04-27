@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import TourLauncher from '../components/TourLauncher';
 import { autopilotTour } from '../components/tours';
+import { PageHeader } from '../components/ui';
 
 interface DashboardSummary {
   totalInsights: number;
@@ -258,30 +259,32 @@ export default function Autopilot() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between" data-tour="autopilot-header">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <Brain className="h-6 w-6 text-primary" />
-            AI Business Autopilot
-            <TourLauncher tourId="autopilot" steps={autopilotTour} />
-          </h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Proactive intelligence that detects issues, recommends actions, and optimizes your operations
-          </p>
-        </div>
-        <button
-          onClick={() => scanMutation.mutate()}
-          disabled={scanMutation.isPending}
-          data-tour="autopilot-run-scan"
-          className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {scanMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Zap className="h-4 w-4" />
-          )}
-          {scanMutation.isPending ? 'Scanning...' : 'Run Scan'}
-        </button>
+      <div data-tour="autopilot-header">
+        <PageHeader
+          icon={<Brain className="h-5 w-5" />}
+          title={
+            <span className="inline-flex items-center gap-2">
+              AI Business Autopilot
+              <TourLauncher tourId="autopilot" steps={autopilotTour} />
+            </span>
+          }
+          description="Proactive intelligence that detects issues, recommends actions, and optimizes your operations"
+          actions={
+            <button
+              onClick={() => scanMutation.mutate()}
+              disabled={scanMutation.isPending}
+              data-tour="autopilot-run-scan"
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {scanMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Zap className="h-4 w-4" />
+              )}
+              {scanMutation.isPending ? 'Scanning...' : 'Run Scan'}
+            </button>
+          }
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" data-tour="autopilot-summary">

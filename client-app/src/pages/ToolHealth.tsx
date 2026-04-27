@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { PageHeader } from '../components/ui';
 import {
   Activity, AlertTriangle, CheckCircle, XCircle, RefreshCw,
   Clock, Wrench, ArrowUpRight, Shield, ChevronDown, ChevronUp,
@@ -226,22 +227,20 @@ export default function ToolHealth() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Shield className="w-7 h-7 text-primary" />
-            Platform Reliability
-          </h1>
-          <p className="text-muted mt-1">Tool health monitoring, failure tracking, and escalation management</p>
-        </div>
-        <button
-          onClick={fetchData}
-          className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors text-sm"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
+      <PageHeader
+        icon={<Shield className="w-5 h-5" />}
+        title="Platform Reliability"
+        description="Tool health monitoring, failure tracking, and escalation management"
+        actions={
+          <button
+            onClick={fetchData}
+            className="inline-flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors text-sm font-medium text-text-primary"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        }
+      />
 
       <div className="flex gap-2">
         <button

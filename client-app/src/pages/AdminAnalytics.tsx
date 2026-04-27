@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { Inbox } from 'lucide-react';
 import { api } from '../lib/api';
+import { PageHeader } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import BillingBackfillAlertsBanner from '../components/BillingBackfillAlertsBanner';
@@ -184,17 +185,15 @@ export default function AdminAnalytics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Global Analytics</h1>
-          <p className="text-sm text-purple-200/70 mt-1">
-            Platform-wide metrics aggregated across every tenant.
-          </p>
-        </div>
-        <div className="text-xs text-purple-200/70 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
-          Window: last 30 days
-        </div>
-      </div>
+      <PageHeader
+        title="Global Analytics"
+        description="Platform-wide metrics aggregated across every tenant."
+        actions={
+          <div className="text-xs text-text-secondary bg-surface border border-border rounded-lg px-3 py-1.5">
+            Window: last 30 days
+          </div>
+        }
+      />
 
       <GlobalScopeBanner />
 

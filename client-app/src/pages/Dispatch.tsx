@@ -8,6 +8,7 @@ import {
   Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
 interface DispatchJob {
@@ -347,25 +348,23 @@ export default function Dispatch() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Truck className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-heading">Dispatch Center</h1>
-            <p className="text-sm text-muted mt-0.5">{totalActive} active jobs across {resources.length} resources</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={refreshAll} className="p-2 rounded-lg text-muted hover:text-heading hover:bg-surface-secondary transition-colors">
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          {!isReadOnly && (
-            <button onClick={() => { setEditingJob(null); setShowJobForm(true); }} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2">
-              <Plus className="h-4 w-4" /> New Job
+      <PageHeader
+        icon={<Truck className="h-5 w-5" />}
+        title="Dispatch Center"
+        description={`${totalActive} active jobs across ${resources.length} resources`}
+        actions={
+          <>
+            <button onClick={refreshAll} className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors">
+              <RefreshCw className="h-4 w-4" />
             </button>
-          )}
-        </div>
-      </div>
+            {!isReadOnly && (
+              <button onClick={() => { setEditingJob(null); setShowJobForm(true); }} className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-hover transition-colors">
+                <Plus className="h-4 w-4" /> New Job
+              </button>
+            )}
+          </>
+        }
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import TourLauncher from '../components/TourLauncher';
 import { digitalTwinTour } from '../components/tours';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
 interface DigitalTwinModel {
@@ -284,24 +285,26 @@ export default function DigitalTwin() {
         </div>
       )}
 
-      <div className="flex items-center justify-between" data-tour="twin-header">
-        <div className="flex items-center gap-3">
-          <Cpu className="w-7 h-7 text-purple-500" />
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+      <div data-tour="twin-header">
+        <PageHeader
+          icon={<Cpu className="w-5 h-5" />}
+          title={
+            <span className="inline-flex items-center gap-2">
               Digital Twin
               <TourLauncher tourId="digital-twin" steps={digitalTwinTour} />
-            </h1>
-            <p className="text-sm text-text-secondary">Simulate, forecast, and validate operational changes</p>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowCreateModel(true)}
-          data-tour="twin-new-model"
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-        >
-          <Plus className="w-4 h-4" /> New Model
-        </button>
+            </span>
+          }
+          description="Simulate, forecast, and validate operational changes"
+          actions={
+            <button
+              onClick={() => setShowCreateModel(true)}
+              data-tour="twin-new-model"
+              className="inline-flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" /> New Model
+            </button>
+          }
+        />
       </div>
 
       {models.length === 0 ? (

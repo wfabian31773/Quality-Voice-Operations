@@ -8,6 +8,7 @@ import {
   Building, Layers, ClipboardList, Activity
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
 interface Booking {
@@ -1064,20 +1065,16 @@ export default function Scheduling() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Calendar className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-heading">Scheduling</h1>
-            <p className="text-sm text-muted mt-0.5">Enterprise appointment management</p>
-          </div>
-        </div>
-        {!isReadOnly && activeTab === 'calendar' && (
-          <button onClick={() => openBookingForm()} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2">
+      <PageHeader
+        icon={<Calendar className="h-5 w-5" />}
+        title="Scheduling"
+        description="Enterprise appointment management"
+        actions={!isReadOnly && activeTab === 'calendar' ? (
+          <button onClick={() => openBookingForm()} className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-hover transition-colors">
             <Plus className="h-4 w-4" /> New Booking
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">

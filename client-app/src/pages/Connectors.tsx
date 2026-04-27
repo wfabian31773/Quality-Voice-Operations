@@ -23,6 +23,7 @@ import {
 import { useRole } from '../lib/useRole';
 import BrandLogo from '../components/BrandLogo';
 import Modal from '../components/Modal';
+import { PageHeader } from '../components/ui';
 
 interface Connector {
   integrationId: string;
@@ -2642,12 +2643,10 @@ export default function Connectors() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Integrations</h1>
-        <p className="text-sm text-text-secondary mt-1">
-          Connect your tools in one click. Events flow automatically to all active integrations.
-        </p>
-      </div>
+      <PageHeader
+        title="Integrations"
+        description="Connect your tools in one click. Events flow automatically to all active integrations."
+      />
 
       {(schedulingDriftAgents.length > 0 || schedulingDriftPhones.length > 0) && (
         <div

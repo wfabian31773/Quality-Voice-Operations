@@ -9,6 +9,7 @@ import {
   CheckCircle, XCircle, ArrowUpRight, Hash, Mail, MapPin, Bell,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
+import { PageHeader } from '../components/ui';
 
 interface PhoneLine {
   phoneNumberId: string;
@@ -328,16 +329,13 @@ export default function SmsInbox() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <MessageSquare className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-heading">SMS Console</h1>
-            <p className="text-sm text-muted mt-0.5">Enterprise messaging workspace</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {(['inbox', 'templates', 'automations', 'analytics', 'admin'] as TabView[]).map(tab => (
+      <PageHeader
+        icon={<MessageSquare className="h-5 w-5" />}
+        title="SMS Console"
+        description="Enterprise messaging workspace"
+        actions={
+          <>
+            {(['inbox', 'templates', 'automations', 'analytics', 'admin'] as TabView[]).map(tab => (
             <button
               key={tab}
               onClick={() => {
@@ -357,8 +355,9 @@ export default function SmsInbox() {
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
