@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertT
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import { EmptyState, SkeletonGrid } from '../components/state';
+import Modal from '../components/Modal';
 
 interface Agent {
   id: string;
@@ -270,17 +271,14 @@ function AgentModal({
 
   if (!loaded) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-8 text-center text-text-secondary">
-          Loading agent...
-        </div>
-      </div>
+      <Modal open onClose={onClose} ariaLabel="Loading agent" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-8 text-center text-text-secondary">
+        Loading agent...
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={agentId ? 'Edit Agent' : 'Create Agent'} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">{agentId ? 'Edit Agent' : 'Create Agent'}</h2>
           <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
@@ -401,8 +399,7 @@ function AgentModal({
             {agentId && <ToolsConfigSection agentId={agentId} />}
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

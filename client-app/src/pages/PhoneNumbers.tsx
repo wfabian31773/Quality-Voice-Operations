@@ -11,6 +11,7 @@ import {
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import clsx from 'clsx';
+import Modal from '../components/Modal';
 
 interface PhoneNumber {
   id: string;
@@ -182,8 +183,7 @@ function ProvisionFlow({
   }, [provisionMutation.isError]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+    <Modal open onClose={onClose} ariaLabel="Provision phone number" panelClassName="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         {step === 'search' && (
           <div className="p-0">
             <div className="relative bg-gradient-to-b from-[#123047] to-[#1a3d5c] text-white px-8 pt-10 pb-8 text-center">
@@ -512,8 +512,7 @@ function ProvisionFlow({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -545,8 +544,7 @@ function ReassignModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-sm">
+    <Modal open onClose={onClose} ariaLabel="Reassign Agent" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Reassign Agent</h2>
           <button onClick={onClose} aria-label="Close">
@@ -625,8 +623,7 @@ function ReassignModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

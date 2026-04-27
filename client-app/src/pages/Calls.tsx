@@ -26,6 +26,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import Modal from '../components/Modal';
 
 type PinnedDragHandleProps = {
   attributes: ReturnType<typeof useSortable>['attributes'];
@@ -397,8 +398,13 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
   const [tab, setTab] = useState<'transcript' | 'events' | 'tools'>('transcript');
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border" onClick={(e) => e.stopPropagation()}>
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Call Details"
+      containerClassName="fixed inset-0 z-50 flex justify-end"
+      panelClassName="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border"
+    >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
           <h2 className="text-lg font-semibold text-text-primary">Call Details</h2>
           <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-text-secondary hover:text-text-primary" /></button>
@@ -598,8 +604,7 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

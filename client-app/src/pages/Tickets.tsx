@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import Modal from '../components/Modal';
 import {
   Ticket, Plus, X, AlertCircle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
   Search, Filter, AlertTriangle, Shield, Users, Eye, Inbox, RotateCcw,
@@ -561,8 +562,7 @@ export default function Tickets() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal open onClose={() => setShowForm(false)} ariaLabel="New Ticket" panelClassName="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">New Ticket</h3>
               <button onClick={() => setShowForm(false)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -640,8 +640,7 @@ export default function Tickets() {
               <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button onClick={saveTicket} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Create Ticket</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

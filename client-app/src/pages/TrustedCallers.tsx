@@ -15,6 +15,7 @@ import {
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
 import EmptyState from '../components/EmptyState';
+import Modal from '../components/Modal';
 
 type CallerStatus = 'pending' | 'verified' | 'failed' | 'rotated';
 type AttestationLevel = 'A' | 'B' | 'C';
@@ -211,8 +212,7 @@ function RegisterModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel="Register Verified Caller ID" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Register Verified Caller ID</h2>
           <button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary">
@@ -320,8 +320,7 @@ function RegisterModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -356,8 +355,7 @@ function VerifyModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
+    <Modal open onClose={onClose} ariaLabel="Confirm Verification" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Confirm Verification — {formatPhone(caller.phoneNumber)}</h2>
           <button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary">
@@ -427,8 +425,7 @@ function VerifyModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -461,8 +458,7 @@ function RotateModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
+    <Modal open onClose={onClose} ariaLabel="Rotate Caller ID" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Rotate Caller ID</h2>
           <button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary">
@@ -525,8 +521,7 @@ function RotateModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

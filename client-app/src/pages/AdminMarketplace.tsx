@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import Modal from '../components/Modal';
 
 interface RegistryTemplate {
   id: string;
@@ -232,8 +233,7 @@ function VersionsModal({ template, onClose }: { template: RegistryTemplate; onCl
   const mutationError = (publishMutation.error ?? deprecateMutation.error) as Error | null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
+    <Modal open onClose={onClose} ariaLabel={`Versions — ${template.displayName}`} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
             <h3 className="text-lg font-semibold text-text-primary">Versions — {template.displayName}</h3>
@@ -295,8 +295,7 @@ function VersionsModal({ template, onClose }: { template: RegistryTemplate; onCl
             <div className="mt-3 text-sm text-red-400">{mutationError.message}</div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -613,8 +612,7 @@ function ReviewModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
+    <Modal open onClose={onClose} ariaLabel="Review Submission" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h3 className="text-lg font-semibold text-text-primary">Review Submission</h3>
           <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary">
@@ -683,8 +681,7 @@ function ReviewModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

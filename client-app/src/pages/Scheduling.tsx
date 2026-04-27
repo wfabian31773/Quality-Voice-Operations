@@ -8,6 +8,7 @@ import {
   Building, Layers, ClipboardList, Activity
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
+import Modal from '../components/Modal';
 
 interface Booking {
   id: string;
@@ -1208,8 +1209,7 @@ export default function Scheduling() {
 
       {/* Booking Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal open onClose={() => setShowForm(false)} ariaLabel={editingBooking ? 'Edit Booking' : 'New Booking'} panelClassName="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">{editingBooking ? 'Edit Booking' : 'New Booking'}</h3>
               <button onClick={() => setShowForm(false)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -1310,14 +1310,12 @@ export default function Scheduling() {
               <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button onClick={saveBooking} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Booking Detail Modal */}
       {showDetailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal open onClose={() => setShowDetailModal(null)} ariaLabel="Appointment Details" panelClassName="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">Appointment Details</h3>
               <button onClick={() => setShowDetailModal(null)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -1407,8 +1405,7 @@ export default function Scheduling() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Provider Form Modal */}
@@ -1516,8 +1513,7 @@ export default function Scheduling() {
 
 function FormModal({ title, onClose, onSave, children }: { title: string; onClose: () => void; onSave: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={title} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-heading">{title}</h3>
           <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -1527,8 +1523,7 @@ function FormModal({ title, onClose, onSave, children }: { title: string; onClos
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
           <button onClick={onSave} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

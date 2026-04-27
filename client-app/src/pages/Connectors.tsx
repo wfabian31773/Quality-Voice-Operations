@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useRole } from '../lib/useRole';
 import BrandLogo from '../components/BrandLogo';
+import Modal from '../components/Modal';
 
 interface Connector {
   integrationId: string;
@@ -960,8 +961,7 @@ function ConnectModal({
         .every((f) => (credentials[f.key] ?? '').trim().length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className={`bg-surface border border-border rounded-xl shadow-lg w-full ${hasDispositionMapping ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto`}>
+    <Modal open onClose={onClose} ariaLabel={`${isReconnect ? 'Reconnect' : 'Connect'} ${definition.name}`} panelClassName={`bg-surface border border-border rounded-xl shadow-lg w-full ${hasDispositionMapping ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <BrandLogo provider={definition.logoId} size={40} />
@@ -1454,8 +1454,7 @@ function ConnectModal({
             </div>
           </form>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

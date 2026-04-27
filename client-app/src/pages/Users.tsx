@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Users as UsersIcon, X, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useRole, ROLE_LABELS, type SimpleRole } from '../lib/useRole';
+import Modal from '../components/Modal';
 
 interface User {
   id: string;
@@ -27,8 +28,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
   const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md">
+    <Modal open onClose={onClose} ariaLabel="Invite User" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Invite User</h2>
           <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-text-secondary" /></button>
@@ -73,8 +73,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

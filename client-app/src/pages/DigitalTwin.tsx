@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import TourLauncher from '../components/TourLauncher';
 import { digitalTwinTour } from '../components/tours';
+import Modal from '../components/Modal';
 
 interface DigitalTwinModel {
   id: string;
@@ -981,8 +982,7 @@ function CreateModelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-surface rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+    <Modal open onClose={onClose} ariaLabel="Create Digital Twin Model" panelClassName="bg-surface rounded-xl p-6 w-full max-w-md shadow-xl">
         <h2 className="text-lg font-bold text-text-primary mb-4">Create Digital Twin Model</h2>
         <p className="text-sm text-text-secondary mb-4">
           Snapshot your operational history to create a simulation baseline.
@@ -1030,7 +1030,6 @@ function CreateModelModal({
             {creating ? 'Creating...' : 'Create Model'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

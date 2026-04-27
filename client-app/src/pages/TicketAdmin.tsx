@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import Modal from '../components/Modal';
 import {
   ArrowLeft, Settings2, Plus, X, Trash2, Edit, Tag, Shield,
   Zap, FileText, Columns, GitBranch, Save, ToggleLeft, ToggleRight,
@@ -514,8 +515,7 @@ export default function TicketAdmin() {
       </div>
 
       {showModal && editItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal open onClose={() => { setShowModal(false); setEditItem(null); }} ariaLabel={`${editItem._isNew ? 'Create' : 'Edit'} ${tab.replace(/s$/, '')}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">{editItem._isNew ? 'Create' : 'Edit'} {tab.replace(/s$/, '')}</h3>
               <button onClick={() => { setShowModal(false); setEditItem(null); }} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -654,8 +654,7 @@ export default function TicketAdmin() {
                 <Save className="h-4 w-4" /> Save
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import {
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import { ErrorState, Skeleton } from '../components/state';
+import Modal from '../components/Modal';
 
 type LeadSource = 'book_demo' | 'roi_calculator' | 'contact';
 type LeadStatus = 'new' | 'contacted' | 'closed';
@@ -1375,8 +1376,7 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel="Sales-alert settings" panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
           <div className="flex items-center gap-2">
             <Settings className="h-5 w-5 text-purple-400" />
@@ -1569,8 +1569,7 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -7,6 +7,7 @@ import { Skeleton, SkeletonRows } from '../components/state';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import { renderMarkdownToSafeHtml } from '../lib/markdown';
+import Modal from '../components/Modal';
 
 interface Article {
   id: number;
@@ -278,17 +279,14 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
 
   if (!loaded) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl p-8 text-center text-text-secondary">
-          Loading article...
-        </div>
-      </div>
+      <Modal open onClose={onClose} ariaLabel="Loading article" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl p-8 text-center text-text-secondary">
+        Loading article...
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={currentArticleId ? 'Edit Article' : 'Create Article'} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-text-primary">{currentArticleId ? 'Edit Article' : 'Create Article'}</h2>
@@ -370,8 +368,7 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -442,8 +439,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel="Add Knowledge Source" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Add Knowledge Source</h2>
           <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
@@ -559,8 +555,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -571,8 +566,7 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel="Document Preview" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Document Preview</h2>
           <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
@@ -645,8 +639,7 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
         ) : (
           <div className="p-8 text-center text-text-secondary">Document not found</div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

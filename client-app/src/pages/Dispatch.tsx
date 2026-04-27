@@ -8,6 +8,7 @@ import {
   Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
+import Modal from '../components/Modal';
 
 interface DispatchJob {
   id: string;
@@ -882,8 +883,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal open onClose={() => setShowForm(false)} ariaLabel={editingResource ? 'Edit Resource' : 'New Resource'} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">{editingResource ? 'Edit Resource' : 'New Resource'}</h3>
               <button onClick={() => setShowForm(false)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -958,8 +958,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button onClick={saveResource} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -1385,8 +1384,7 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
 }) {
   const titles: Record<string, string> = { territory: 'Territory', skill: 'Skill Type', notification: 'Notification Template', rule: 'Assignment Rule' };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={`${formData.id ? 'Edit' : 'New'} ${titles[formType]}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-heading">{formData.id ? 'Edit' : 'New'} {titles[formType]}</h3>
           <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -1477,8 +1475,7 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
           <button onClick={onSave} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1534,8 +1531,7 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
   const inputCls = "w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-surface border border-border rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={job ? 'Edit Job' : 'New Job'} panelClassName="bg-surface border border-border rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-heading">{job ? 'Edit Job' : 'New Job'}</h3>
           <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
@@ -1664,8 +1660,7 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
           <button onClick={saveJob} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1730,8 +1725,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
   const inputCls = "w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-surface border border-border rounded-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={job.title} panelClassName="bg-surface border border-border rounded-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div>
             <h3 className="font-semibold text-heading">{job.title}</h3>
@@ -1954,7 +1948,6 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

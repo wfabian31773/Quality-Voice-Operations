@@ -10,6 +10,7 @@ import {
   Info, CheckCircle2, ShieldCheck,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import Modal from '../components/Modal';
 
 type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled';
 type ContactStatus = 'pending' | 'dialing' | 'connected' | 'completed' | 'failed' | 'skipped' | 'no_answer' | 'voicemail' | 'opted_out';
@@ -355,8 +356,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={step === 'type' ? 'Choose Campaign Type' : 'Configure Campaign'} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             {step === 'config' && (
@@ -552,8 +552,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
             </div>
           </form>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -610,8 +609,7 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel="Add Contacts" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Add Contacts</h2>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X className="h-5 w-5" /></button>
@@ -682,8 +680,7 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

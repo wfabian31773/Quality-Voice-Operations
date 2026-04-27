@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import Modal from '../components/Modal';
 
 interface TenantInfo {
   id: string;
@@ -166,11 +167,13 @@ function AdminCallDetailDrawer({
   const toolExecutions = toolExecData?.executions ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
-      <div
-        className="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Call Details"
+      containerClassName="fixed inset-0 z-50 flex justify-end"
+      panelClassName="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border"
+    >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
           <h2 className="text-lg font-semibold text-text-primary">Call Details</h2>
           <button onClick={onClose} aria-label="Close">
@@ -330,8 +333,7 @@ function AdminCallDetailDrawer({
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
