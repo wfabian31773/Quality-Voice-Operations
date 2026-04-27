@@ -384,10 +384,13 @@ describe('HTTP cross-tenant isolation', () => {
   });
 
   describe('Listing endpoints exclude foreign tenants', () => {
-    // `requireOwn`: when true, also assert that tenant A's seeded row IS
-    // present in the listing. Some legacy listings filter or transform rows
-    // (e.g. /calls only surfaces certain lifecycle states) so we keep those
-    // looser to avoid false negatives.
+    // Every listing case asserts BOTH halves of tenant isolation:
+    //   1. Tenant A's seeded row IS present in the listing for tenant A
+    //      (catches regressions where a route accidentally returns nothing
+    //      for the calling tenant — e.g. an over-broad WHERE clause).
+    //   2. Tenant B's seeded row is NOT present.
+    // `requireOwn` defaults to true. The fixtures in `seedResources` are
+    // tuned to satisfy each route's default filters (status, joins, etc.).
     const cases: Array<{
       name: string;
       path: string;
@@ -395,13 +398,13 @@ describe('HTTP cross-tenant isolation', () => {
       foreignIdKey: keyof SeededIds;
       requireOwn?: boolean;
     }> = [
-      { name: 'GET /agents', path: '/agents', ownIdKey: 'agentA', foreignIdKey: 'agentB' },
-      { name: 'GET /calls', path: '/calls', ownIdKey: 'callA', foreignIdKey: 'callB' },
-      { name: 'GET /phone-numbers', path: '/phone-numbers', ownIdKey: 'phoneA', foreignIdKey: 'phoneB' },
-      { name: 'GET /tickets', path: '/tickets', ownIdKey: 'ticketA', foreignIdKey: 'ticketB' },
-      { name: 'GET /scheduling/bookings', path: '/scheduling/bookings', ownIdKey: 'bookingA', foreignIdKey: 'bookingB' },
-      { name: 'GET /dispatch/jobs', path: '/dispatch/jobs', ownIdKey: 'dispatchA', foreignIdKey: 'dispatchB' },
-      { name: 'GET /sms-inbox/threads', path: '/sms-inbox/threads', ownIdKey: 'smsA', foreignIdKey: 'smsB' },
+      { name: 'GET /agents', path: '/agents', ownIdKey: 'agentA', foreignIdKey: 'agentB', requireOwn: true },
+      { name: 'GET /calls', path: '/calls', ownIdKey: 'callA', foreignIdKey: 'callB', requireOwn: true },
+      { name: 'GET /phone-numbers', path: '/phone-numbers', ownIdKey: 'phoneA', foreignIdKey: 'phoneB', requireOwn: true },
+      { name: 'GET /tickets', path: '/tickets', ownIdKey: 'ticketA', foreignIdKey: 'ticketB', requireOwn: true },
+      { name: 'GET /scheduling/bookings', path: '/scheduling/bookings', ownIdKey: 'bookingA', foreignIdKey: 'bookingB', requireOwn: true },
+      { name: 'GET /dispatch/jobs', path: '/dispatch/jobs', ownIdKey: 'dispatchA', foreignIdKey: 'dispatchB', requireOwn: true },
+      { name: 'GET /sms-inbox/threads', path: '/sms-inbox/threads', ownIdKey: 'smsA', foreignIdKey: 'smsB', requireOwn: true },
       { name: 'GET /autopilot/recommendations', path: '/autopilot/recommendations', ownIdKey: 'autopilotRecA', foreignIdKey: 'autopilotRecB', requireOwn: true },
       { name: 'GET /autopilot/insights', path: '/autopilot/insights', ownIdKey: 'autopilotInsightA', foreignIdKey: 'autopilotInsightB', requireOwn: true },
       { name: 'GET /autopilot/actions', path: '/autopilot/actions', ownIdKey: 'autopilotActionA', foreignIdKey: 'autopilotActionB', requireOwn: true },
@@ -424,7 +427,15 @@ describe('HTTP cross-tenant isolation', () => {
         expect(res.status, `${c.path} returned ${res.status}: ${JSON.stringify(res.body).slice(0, 200)}`).toBe(200);
 
         const body = res.body as Record<string, unknown>;
-        const candidateArrays = [body.items, body.data, body.results, body.rows, body.tokens, body.documents, body.executions, body.installations, body.suggestions, body.recommendations, body.insights, body.models, body.runs, body.forecasts, body.actions, body];
+        const candidateArrays = [
+          body.items, body.data, body.results, body.rows,
+          body.agents, body.calls, body.phoneNumbers, body.tickets,
+          body.bookings, body.jobs, body.conversations,
+          body.tokens, body.documents, body.executions, body.installations,
+          body.suggestions, body.recommendations, body.insights,
+          body.models, body.runs, body.forecasts, body.actions,
+          body,
+        ];
         const list = candidateArrays.find((v) => Array.isArray(v)) as unknown[] | undefined;
         const arr = (list ?? []) as Array<Record<string, unknown>>;
 
