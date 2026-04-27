@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   HelpCircle, X, Search, BookOpen, MessageCircle,
-  Sparkles, Keyboard, Command, ArrowRight, Map,
+  Sparkles, Keyboard, Command, ArrowRight, Map, ExternalLink, Globe,
 } from 'lucide-react';
 import { docArticles, searchDocs, type DocArticle, type DocBlock } from '../data/docs';
+import { searchMarketingPages, type MarketingPage } from '../data/marketingPages';
 
 function extractText(block: DocBlock): string {
   if (block.type === 'p' || block.type === 'h2' || block.type === 'h3') return block.text;
@@ -96,6 +97,13 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
     [query],
   );
 
+  const marketingResults = useMemo<MarketingPage[]>(
+    () => (query.trim() ? searchMarketingPages(query).slice(0, 6) : []),
+    [query],
+  );
+
+  const totalResults = results.length + marketingResults.length;
+
   return (
     <>
       <button
@@ -165,43 +173,88 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                     autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search docs..."
-                    aria-label="Search docs"
+                    placeholder="Search docs and pages..."
+                    aria-label="Search docs and marketing pages"
                     className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
                   />
                 </div>
                 <div className="space-y-1 mt-2">
                   {query.trim() && (
                     <p className="text-[10px] uppercase tracking-wider text-text-muted px-1 pb-1">
-                      {results.length} {results.length === 1 ? 'result' : 'results'}
+                      {totalResults} {totalResults === 1 ? 'result' : 'results'}
                     </p>
                   )}
-                  {results.length === 0 && (
+                  {query.trim() && totalResults === 0 && (
                     <p className="text-xs text-text-muted py-3 text-center">No matches for "{query}".</p>
                   )}
-                  {results.map((d) => (
-                    <button
-                      key={d.slug}
-                      onClick={() => {
-                        navigate(`/docs/${d.slug}`);
-                        setOpen(false);
-                      }}
-                      className="w-full text-left flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">
-                          {highlight(d.title, query)}
-                        </p>
-                        <p className="text-xs text-text-muted line-clamp-2 mt-0.5">
-                          {highlight(buildSnippet(d, query), query)}
-                        </p>
-                        <p className="text-[10px] text-text-muted/70 uppercase tracking-wider mt-1">
-                          {d.category.replace('-', ' ')} · {d.readTime}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-3.5 w-3.5 text-text-muted shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </button>
-                  ))}
+
+                  {results.length > 0 && (
+                    <>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted px-1 pt-1 pb-0.5 flex items-center gap-1.5">
+                        <BookOpen className="h-3 w-3" />
+                        Docs
+                      </p>
+                      {results.map((d) => (
+                        <button
+                          key={d.slug}
+                          onClick={() => {
+                            navigate(`/docs/${d.slug}`);
+                            setOpen(false);
+                          }}
+                          className="w-full text-left flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-text-primary truncate">
+                              {highlight(d.title, query)}
+                            </p>
+                            <p className="text-xs text-text-muted line-clamp-2 mt-0.5">
+                              {highlight(buildSnippet(d, query), query)}
+                            </p>
+                            <p className="text-[10px] text-text-muted/70 uppercase tracking-wider mt-1">
+                              {d.category.replace('-', ' ')} · {d.readTime}
+                            </p>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 text-text-muted shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {marketingResults.length > 0 && (
+                    <>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted px-1 pt-3 pb-0.5 flex items-center gap-1.5">
+                        <Globe className="h-3 w-3" />
+                        Marketing pages
+                      </p>
+                      {marketingResults.map((m) => {
+                        const Icon = m.icon;
+                        return (
+                          <a
+                            key={m.slug}
+                            href={m.path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setOpen(false)}
+                            className="w-full text-left flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
+                          >
+                            <Icon className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-text-primary truncate flex items-center gap-1">
+                                {highlight(m.title, query)}
+                                <ExternalLink className="h-3 w-3 text-text-muted shrink-0" />
+                              </p>
+                              <p className="text-xs text-text-muted line-clamp-2 mt-0.5">
+                                {highlight(m.description, query)}
+                              </p>
+                              <p className="text-[10px] text-text-muted/70 uppercase tracking-wider mt-1">
+                                {m.category} · opens in new tab
+                              </p>
+                            </div>
+                          </a>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               </div>
             )}
