@@ -619,6 +619,29 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
       }
     }
 
+    // Re-activating a previously inactive booking (`reopen`: cancelled /
+    // no_show / completed → pending) or confirming a pending booking can
+    // both move a booking back into the "live" set. If an admin created a
+    // schedule override AFTER the original booking was made, we must
+    // re-check it now so the booking is not silently activated into a
+    // window that is no longer bookable.
+    if ((action === 'reopen' || action === 'confirm') && !override_reason) {
+      const overrideConflict = await buildOverrideConflictResponse(
+        pool,
+        tenantId,
+        booking.start_time instanceof Date
+          ? booking.start_time.toISOString()
+          : String(booking.start_time),
+        booking.end_time instanceof Date
+          ? booking.end_time.toISOString()
+          : String(booking.end_time),
+        booking.provider_id || null,
+      );
+      if (overrideConflict) {
+        return res.status(overrideConflict.status).json(overrideConflict.body);
+      }
+    }
+
     await pool.query(
       `UPDATE bookings SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],

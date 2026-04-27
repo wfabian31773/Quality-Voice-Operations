@@ -33,7 +33,14 @@ vi.mock('../../platform/core/logger', () => ({
 }));
 
 vi.mock('../../server/admin-api/middleware/auth', () => ({
-  requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+  requireAuth: (
+    req: { user?: Record<string, unknown> },
+    _res: unknown,
+    next: () => void,
+  ) => {
+    req.user = { tenantId: 'tenant-1', userId: 'user-1' };
+    next();
+  },
 }));
 
 vi.mock('../../server/admin-api/middleware/rbac', () => ({
@@ -46,6 +53,10 @@ import {
   buildOverrideConflictResponse,
   type ScheduleOverride,
 } from '../../server/admin-api/routes/scheduling';
+import schedulingRouter from '../../server/admin-api/routes/scheduling';
+import { getPlatformPool } from '../../platform/db';
+import express from 'express';
+import request from 'supertest';
 
 const PROVIDER_A = 'prov-a';
 const TENANT = 'tenant-1';
@@ -325,5 +336,297 @@ describe('findBlockingOverride / buildOverrideConflictResponse', () => {
     const override = response?.body.override as Record<string, unknown>;
     expect(override.id).toBe('ovr-1');
     expect(override.reason).toBe('Lunch');
+  });
+});
+
+describe('booking endpoints honour schedule overrides', () => {
+  // Mount the real router with stubbed auth/RBAC so we can drive the
+  // create/transition handlers end-to-end via supertest. The platform
+  // pool is replaced with a queue-driven mock so each test scripts the
+  // exact rows it wants the handlers to see.
+  let app: ReturnType<typeof express>;
+  const queryQueue: Array<{
+    match?: RegExp;
+    rows: unknown[];
+    rowCount?: number;
+  }> = [];
+  const queryMock = vi.fn(async (sql: string) => {
+    if (queryQueue.length === 0) {
+      throw new Error(`Unexpected query (no mock queued):\n${sql}`);
+    }
+    const next = queryQueue.shift()!;
+    if (next.match && !next.match.test(sql)) {
+      throw new Error(
+        `Query did not match expected pattern.\nExpected: ${next.match}\nGot: ${sql}`,
+      );
+    }
+    return { rows: next.rows, rowCount: next.rowCount ?? next.rows.length };
+  });
+
+  beforeEach(() => {
+    queryMock.mockClear();
+    queryQueue.length = 0;
+    vi.mocked(getPlatformPool).mockReturnValue(
+      { query: queryMock } as unknown as ReturnType<typeof getPlatformPool>,
+    );
+    app = express();
+    app.use(express.json());
+    app.use(schedulingRouter);
+  });
+
+  it('POST /scheduling/bookings → 409 when the requested slot overlaps a partial blackout', async () => {
+    queryQueue.push(
+      // getBookingRules — no rule rows
+      { match: /FROM scheduling_booking_rules/i, rows: [] },
+      // checkConflicts — no other bookings overlap
+      { match: /FROM bookings WHERE/i, rows: [] },
+      // findBlockingOverride — return a partial blackout that overlaps
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-lunch',
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: '12:00:00',
+            end_time: '13:00:00',
+            is_available: false,
+            reason: 'Lunch',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/bookings').send({
+      title: 'Cleaning',
+      start_time: '2026-05-01T12:30:00.000Z',
+      end_time: '2026-05-01T12:45:00.000Z',
+      provider_id: PROVIDER_A,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/blocked by a schedule override/i);
+    expect(res.body.override.id).toBe('ovr-lunch');
+    // The handler must short-circuit before INSERT/audit-log writes.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('POST /scheduling/bookings with override_reason bypasses the override gate (201)', async () => {
+    queryQueue.push(
+      // INSERT INTO bookings
+      {
+        match: /INSERT INTO bookings/i,
+        rows: [
+          {
+            id: 'bk-1',
+            tenant_id: TENANT,
+            title: 'Cleaning',
+            start_time: '2026-05-01T12:30:00.000Z',
+            end_time: '2026-05-01T12:45:00.000Z',
+            status: 'confirmed',
+            provider_id: PROVIDER_A,
+          },
+        ],
+      },
+      // INSERT INTO scheduling_audit_log
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+    );
+
+    const res = await request(app).post('/scheduling/bookings').send({
+      title: 'Cleaning',
+      start_time: '2026-05-01T12:30:00.000Z',
+      end_time: '2026-05-01T12:45:00.000Z',
+      provider_id: PROVIDER_A,
+      override_reason: 'Customer drove an hour for this — squeezing in',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.booking.id).toBe('bk-1');
+    // Booking-rules / conflicts / override queries were all skipped.
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('POST /scheduling/bookings/:id/transition reopen → 409 if an override now blocks the original window', async () => {
+    queryQueue.push(
+      // SELECT existing booking — was cancelled, eligible for reopen
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-cxl',
+            tenant_id: TENANT,
+            status: 'cancelled',
+            start_time: '2026-05-01T12:30:00.000Z',
+            end_time: '2026-05-01T12:45:00.000Z',
+            provider_id: PROVIDER_A,
+            resource_id: null,
+          },
+        ],
+      },
+      // findBlockingOverride — admin created a partial blackout in the meantime
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-late',
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: '12:00:00',
+            end_time: '13:00:00',
+            is_available: false,
+            reason: 'Lunch',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app)
+      .post('/scheduling/bookings/bk-cxl/transition')
+      .send({ action: 'reopen' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/blocked by a schedule override/i);
+    expect(res.body.override.id).toBe('ovr-late');
+    // No UPDATE / audit-log writes after the gate.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('POST /scheduling/bookings/:id/transition confirm → 409 if an override now blocks the booked window', async () => {
+    queryQueue.push(
+      // SELECT existing booking — pending, eligible for confirm
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-pend',
+            tenant_id: TENANT,
+            status: 'pending',
+            start_time: '2026-05-01T08:30:00.000Z',
+            end_time: '2026-05-01T09:00:00.000Z',
+            provider_id: PROVIDER_A,
+            resource_id: null,
+          },
+        ],
+      },
+      // findBlockingOverride — full-day blackout
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-day',
+            provider_id: PROVIDER_A,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: 'Holiday',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app)
+      .post('/scheduling/bookings/bk-pend/transition')
+      .send({ action: 'confirm' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.override.id).toBe('ovr-day');
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('POST /scheduling/bookings/:id/transition reopen → succeeds when override_reason is supplied', async () => {
+    queryQueue.push(
+      // SELECT existing booking
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-cxl',
+            tenant_id: TENANT,
+            status: 'cancelled',
+            start_time: '2026-05-01T12:30:00.000Z',
+            end_time: '2026-05-01T12:45:00.000Z',
+            provider_id: PROVIDER_A,
+            resource_id: null,
+          },
+        ],
+      },
+      // UPDATE bookings
+      { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
+      // INSERT INTO scheduling_audit_log
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      // SELECT updated booking row to return
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-cxl',
+            tenant_id: TENANT,
+            status: 'pending',
+            start_time: '2026-05-01T12:30:00.000Z',
+            end_time: '2026-05-01T12:45:00.000Z',
+            provider_id: PROVIDER_A,
+          },
+        ],
+      },
+    );
+
+    const res = await request(app)
+      .post('/scheduling/bookings/bk-cxl/transition')
+      .send({ action: 'reopen', override_reason: 'admin override' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe('pending');
+    // No override-lookup query was issued because override_reason bypassed it.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('POST /scheduling/bookings/:id/transition reschedule → 409 on full-day blackout', async () => {
+    queryQueue.push(
+      // SELECT existing booking (must be in a state that can reschedule)
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-existing',
+            tenant_id: TENANT,
+            status: 'confirmed',
+            provider_id: PROVIDER_A,
+            resource_id: null,
+          },
+        ],
+      },
+      // checkConflicts — no other bookings overlap
+      { match: /FROM bookings WHERE/i, rows: [] },
+      // findBlockingOverride — full-day blackout
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-holiday',
+            provider_id: PROVIDER_A,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: 'Holiday',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app)
+      .post('/scheduling/bookings/bk-existing/transition')
+      .send({
+        action: 'reschedule',
+        new_start_time: '2026-05-01T09:00:00.000Z',
+        new_end_time: '2026-05-01T09:30:00.000Z',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/blocked by a schedule override/i);
+    expect(res.body.override.id).toBe('ovr-holiday');
+    // No UPDATE / INSERT / audit-log writes should follow the gate.
+    expect(queryQueue).toHaveLength(0);
   });
 });
