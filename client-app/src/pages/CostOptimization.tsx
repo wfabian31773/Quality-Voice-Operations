@@ -405,6 +405,7 @@ export default function CostOptimization() {
                 type="number"
                 step="0.01"
                 min="0"
+                // eslint-disable-next-line local/no-cents-divided-by-100 -- HTML number input needs a primitive dollar value, not a formatCurrency() string
                 value={(currentBudget.maxCostPerConversationCents / 100).toFixed(2)}
                 /* numeric input value: dollars with 2 decimals, never displayed as currency */
                 onChange={(e) =>
