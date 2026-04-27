@@ -9,9 +9,13 @@ const logger = createLogger('AUDIT_MUTATION');
  * admin-api request to the `audit_logs` table (BL-010 / S-06).
  *
  * Intentional opt-outs (set `req.skipAuditMutation = true` inside the handler):
- *   - `POST /v1/ingest/calls`   — high-volume machine-to-machine ingest with
- *                                  per-event domain audits already in place.
- *   - `POST /v1/ingest/tickets` — same.
+ *   - `POST /v1/ingest/calls`           — high-volume machine-to-machine
+ *                                         ingest with per-event domain audits
+ *                                         already in place.
+ *   - `POST /v1/ingest/calls/backfill`  — same; carries an explicit
+ *                                         `backfill_attestation` block that is
+ *                                         persisted into `ingest_events`.
+ *   - `POST /v1/ingest/tickets`         — same.
  *
  * Add new opt-outs sparingly and document them here so the exclusion list
  * stays reviewable. Everything else (connector connect/disconnect, widget

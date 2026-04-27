@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+/**
+ * Window during which a "live" call event is accepted by `/v1/ingest/calls`.
+ * Anything older must be sent through `/v1/ingest/calls/backfill` with an
+ * explicit attestation block.
+ */
+export const INGEST_FRESH_WINDOW_DAYS = 7;
+
+/**
+ * Maximum age accepted by `/v1/ingest/calls/backfill`. Events older than this
+ * are rejected outright — they would skew historical billing/usage reporting
+ * by more than a single billing cycle.
+ */
+export const INGEST_BACKFILL_WINDOW_DAYS = 30;
+
 export const CallCompletionEventV1Schema = z.object({
   version: z.literal('v1'),
   event_type: z.literal('call.completed'),
@@ -55,6 +69,24 @@ export const CallCompletionEventV1Schema = z.object({
 });
 
 export type CallCompletionEventV1 = z.infer<typeof CallCompletionEventV1Schema>;
+
+/**
+ * Backfill variant of the call-completion event. Carries the same payload as
+ * the live event, plus a mandatory `backfill_attestation` block recording who
+ * authorized the late ingest and why. The presence of this block is treated
+ * as the operator's signed acknowledgement that the historical figures
+ * (usage_metrics, daily_org_usage, billing rollups) will be adjusted.
+ */
+export const CallBackfillEventV1Schema = CallCompletionEventV1Schema.extend({
+  backfill_attestation: z.object({
+    reason: z.string().min(8).max(500),
+    attested_by: z.string().min(1).max(120),
+    original_system: z.string().min(1).max(120).optional(),
+    attested_at: z.string().datetime().optional(),
+  }),
+});
+
+export type CallBackfillEventV1 = z.infer<typeof CallBackfillEventV1Schema>;
 
 export const TicketCreationEventV1Schema = z.object({
   version: z.literal('v1'),
