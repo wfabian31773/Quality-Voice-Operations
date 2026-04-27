@@ -102,6 +102,7 @@ export default function TooltipWalkthrough({
           <div className={`absolute border-8 ${arrowClasses[position]}`} />
           <button
             onClick={handleDismiss}
+            aria-label="Dismiss"
             className="absolute top-2 right-2 text-white/60 hover:text-white transition-colors"
           >
             <X className="h-3.5 w-3.5" />

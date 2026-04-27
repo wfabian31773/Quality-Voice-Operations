@@ -283,7 +283,7 @@ function AgentModal({
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">{agentId ? 'Edit Agent' : 'Create Agent'}</h2>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
 
         {agentId && (

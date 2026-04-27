@@ -238,7 +238,7 @@ function VersionsModal({ template, onClose }: { template: RegistryTemplate; onCl
             <h3 className="text-lg font-semibold text-text-primary">Versions — {template.displayName}</h3>
             <p className="text-xs text-text-secondary">{template.slug}</p>
           </div>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -616,7 +616,7 @@ function ReviewModal({
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h3 className="text-lg font-semibold text-text-primary">Review Submission</h3>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>

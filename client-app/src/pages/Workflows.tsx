@@ -110,6 +110,7 @@ function StepCard({
           <button
             onClick={onMoveUp}
             disabled={index === 0}
+            aria-label="Move step up"
             className="p-1 text-text-secondary hover:text-text-primary disabled:opacity-30 transition"
           >
             <ChevronUp className="h-4 w-4" />
@@ -117,11 +118,12 @@ function StepCard({
           <button
             onClick={onMoveDown}
             disabled={index === total - 1}
+            aria-label="Move step down"
             className="p-1 text-text-secondary hover:text-text-primary disabled:opacity-30 transition"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
-          <button onClick={onDelete} className="p-1 text-text-secondary hover:text-danger transition">
+          <button onClick={onDelete} aria-label="Delete step" className="p-1 text-text-secondary hover:text-danger transition">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>

@@ -435,7 +435,7 @@ function NodeConfigPanel({
     <div className="w-80 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <h3 className="text-sm font-semibold text-text-primary">Node Configuration</h3>
-        <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
       <div className="p-3 space-y-4">
         <div>
@@ -595,7 +595,7 @@ function ImprovementSuggestionsPanel({
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
           <Lightbulb className="h-4 w-4 text-amber-500" /> Improvement Suggestions
         </h3>
-        <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -746,7 +746,7 @@ function VoiceConfigPanel({
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
           <Mic className="h-4 w-4" /> Voice & Agent Config
         </h3>
-        <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
       <div className="p-3 space-y-4">
         <div>
@@ -989,7 +989,7 @@ function TestConsolePanel({
               Reset
             </button>
           )}
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
         </div>
       </div>
       {nodes.length === 0 ? (
@@ -1050,7 +1050,7 @@ function TestConsolePanel({
                 className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Type a caller response..."
               />
-              <button onClick={sendMessage} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-hover transition">
+              <button onClick={sendMessage} aria-label="Send message" className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-hover transition">
                 <Send className="h-4 w-4" />
               </button>
             </div>
@@ -1124,7 +1124,7 @@ function DeploymentPanel({
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
           <Rocket className="h-4 w-4" /> Deployment
         </h3>
-        <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
       <div className="p-3 space-y-4">
         <div>

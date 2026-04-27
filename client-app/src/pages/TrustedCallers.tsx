@@ -108,7 +108,7 @@ function RegisterModal({
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Register Verified Caller ID</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -253,7 +253,7 @@ function VerifyModal({
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Confirm Verification — {formatPhone(caller.phoneNumber)}</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -358,7 +358,7 @@ function RotateModal({
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Rotate Caller ID</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>

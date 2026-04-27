@@ -413,7 +413,7 @@ function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: 
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-text-secondary font-mono">{callId.slice(0, 8)}...</span>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary">
             <X className="h-4 w-4" />
           </button>
         </div>

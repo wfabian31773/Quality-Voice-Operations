@@ -31,7 +31,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Invite User</h2>
-          <button onClick={onClose}><X className="h-5 w-5 text-text-secondary" /></button>
+          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-text-secondary" /></button>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(form); }} className="p-5 space-y-4">
           <div>

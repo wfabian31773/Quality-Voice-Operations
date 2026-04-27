@@ -169,7 +169,7 @@ function AdminCallDetailDrawer({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
           <h2 className="text-lg font-semibold text-text-primary">Call Details</h2>
-          <button onClick={onClose}>
+          <button onClick={onClose} aria-label="Close">
             <X className="h-5 w-5 text-text-secondary hover:text-text-primary" />
           </button>
         </div>

@@ -341,7 +341,7 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
       <div className="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
           <h2 className="text-lg font-semibold text-text-primary">Call Details</h2>
-          <button onClick={onClose}><X className="h-5 w-5 text-text-secondary hover:text-text-primary" /></button>
+          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-text-secondary hover:text-text-primary" /></button>
         </div>
 
         {call && (

@@ -124,7 +124,7 @@ function WebhookRow({ webhook, onRetry, retrying }: {
         className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-surface-secondary/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <button className="shrink-0 text-muted">
+        <button aria-label={expanded ? 'Collapse details' : 'Expand details'} aria-expanded={expanded} className="shrink-0 text-muted">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-5 gap-2 items-center">

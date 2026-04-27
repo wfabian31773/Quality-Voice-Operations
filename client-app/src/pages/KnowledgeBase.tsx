@@ -120,7 +120,7 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">{articleId ? 'Edit Article' : 'Create Article'}</h2>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
         <form
           onSubmit={(e) => { e.preventDefault(); mutation.mutate(form); }}
@@ -243,7 +243,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Add Knowledge Source</h2>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="flex border-b border-border">
@@ -372,7 +372,7 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Document Preview</h2>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
 
         {isLoading ? (

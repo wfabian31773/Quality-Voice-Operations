@@ -232,7 +232,7 @@ export default function TicketReporting() {
             <option value={30}>Last 30 days</option>
             <option value={90}>Last 90 days</option>
           </select>
-          <button onClick={fetchData} className="p-2 rounded-lg hover:bg-surface-secondary text-muted">
+          <button onClick={fetchData} aria-label="Refresh" className="p-2 rounded-lg hover:bg-surface-secondary text-muted">
             <RefreshCw className="h-4 w-4" />
           </button>
         </div>

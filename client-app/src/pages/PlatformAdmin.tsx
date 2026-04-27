@@ -1601,7 +1601,7 @@ export default function PlatformAdmin() {
                       <tr key={t.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50 cursor-pointer"
                           onClick={() => setExpandedTemplate(expandedTemplate === t.id ? null : t.id)}>
                         <td className="px-2">
-                          <button className="p-1 rounded hover:bg-surface-secondary">
+                          <button aria-label={expandedTemplate === t.id ? 'Collapse template' : 'Expand template'} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
                             {expandedTemplate === t.id
                               ? <ChevronDown className="h-4 w-4 text-muted" />
                               : <ChevronRight className="h-4 w-4 text-muted" />}

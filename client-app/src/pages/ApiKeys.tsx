@@ -114,6 +114,7 @@ export default function ApiKeys() {
                 </code>
                 <button
                   onClick={handleCopy}
+                  aria-label={copied ? 'Copied' : 'Copy API key'}
                   className="shrink-0 p-2 rounded-lg bg-yellow-100 dark:bg-yellow-800 hover:bg-yellow-200 dark:hover:bg-yellow-700 transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4 text-yellow-700 dark:text-yellow-300" />}
