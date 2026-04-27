@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
+import { auditMutation } from '../../platform/audit/auditMutation';
 import { attachSpaFallback, isProductionBoot } from './spaFallback';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
@@ -83,6 +84,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+app.use(auditMutation());
 
 app.use('/', healthRoutes);
 app.use('/', authRoutes);

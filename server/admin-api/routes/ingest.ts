@@ -83,6 +83,7 @@ router.post(
   ingestLimiter,
   requireApiKeyPermission('write'),
   async (req: Request, res: Response) => {
+    req.skipAuditMutation = true;
     const tenantId = req.user!.tenantId;
 
     const parseResult = CallCompletionEventV1Schema.safeParse(req.body);
@@ -337,6 +338,7 @@ router.post(
   ingestLimiter,
   requireApiKeyPermission('write'),
   async (req: Request, res: Response) => {
+    req.skipAuditMutation = true;
     const tenantId = req.user!.tenantId;
 
     const parseResult = TicketCreationEventV1Schema.safeParse(req.body);
