@@ -199,8 +199,9 @@ Order within each priority is **execution order**: the higher item should be don
 
 ### BL-026 — Workforce / autopilot endpoints cross-tenant test coverage
 - **Source:** D-20
-- **Summary:** Extend `tests/security/crossTenantEndpoints.test.ts` to cover `/workforce/*`, `/autopilot/*`, `/digital-twin/*`, `/evolution/*`, `/insights/*`, `/improvements/*`, `/case-studies/*`, `/widget/tokens/*`, `/knowledge-documents/:id`, `/tool-executions/:id/replay`, `/marketplace/installations/:id/customize`.
-- **Acceptance:** All 14 endpoints tested across two tenants in CI.
+- **Summary:** Extend `tests/security/crossTenantEndpoints.test.ts` to cover `/autopilot/*`, `/digital-twin/*`, `/evolution/*`, `/improvements/*`, `/case-studies/*`, `/widget/tokens/*`, `/knowledge-documents/:id`, `/tool-executions/:id/replay`, `/marketplace/installations/:id/customize`.
+- **Out of scope:** `/workforce/*` and standalone `/insights/*` were originally enumerated here but are not exposed as HTTP routes on `server/admin-api`. The `platform/workforce/*` services are consumed in-process by the voice gateway and the workforce scheduler started from `server/admin-api/start.ts`; the only `/insights*` endpoint is `/autopilot/insights`, which is covered by the matrix above. `tests/security/crossTenantEndpoints.test.ts` keeps a "Reserved route families" regression guard that asserts `/workforce/teams`, `/workforce/members`, `/workforce/handoffs`, `/insights`, and `/insights/summary` return 404, so the moment any of those families is mounted the guard fails and forces proper two-tenant coverage to be authored alongside the new routes.
+- **Acceptance:** All in-scope endpoints tested across two tenants in CI; reserved-route-family guard remains green until/unless those routes are introduced (at which point this item must be re-opened with implementations + tests).
 - **Effort:** M
 - **Related task:** none
 
