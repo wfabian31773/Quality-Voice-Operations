@@ -30,6 +30,12 @@ export const TRIAL_LIMITS: TrialLimits = {
   maxToolExecutions: 10,
 };
 
+export const PLAN_MONTHLY_PRICE_CENTS: Record<PlanTier, number> = {
+  starter: 9_900,
+  pro: 39_900,
+  enterprise: 99_900,
+};
+
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   starter: {
     monthlyCallLimit: 500,

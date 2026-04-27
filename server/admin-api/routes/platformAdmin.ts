@@ -12,6 +12,7 @@ import {
 import { getCampaign, getCampaignMetrics, listContacts } from '../../../platform/campaigns/CampaignService';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { getConversationCost } from '../../../platform/billing/cost';
+import { PLAN_MONTHLY_PRICE_CENTS, type PlanTier } from '../../../platform/billing/stripe/plans';
 import { listToolExecutions } from '../../../platform/tools/ToolExecutionService';
 import {
   iterateLeadsForExport,
@@ -624,17 +625,34 @@ router.get('/platform/cost-monitoring', requireAuth, requirePlatformAdmin, async
         WHERE period_start >= date_trunc('month', NOW())
       `);
 
-      const { rows: [trialStats] } = await client.query(`
-        SELECT
-          COUNT(*) FILTER (WHERE s.status = 'trialing') AS active_trials,
-          COUNT(*) FILTER (WHERE s.status = 'active') AS paid_accounts,
-          COUNT(*) FILTER (WHERE s.status IN ('trialing', 'active', 'past_due', 'cancelled')) AS total_accounts
-        FROM subscriptions s
+      const { rows: subscriptionRows } = await client.query(`
+        SELECT plan, status::text AS status, COUNT(*)::text AS count
+        FROM subscriptions
+        WHERE status IN ('trialing', 'active', 'past_due', 'cancelled')
+        GROUP BY plan, status
       `);
 
-      const totalAccounts = parseInt(String(trialStats.total_accounts), 10) || 0;
-      const activeTrials = parseInt(String(trialStats.active_trials), 10) || 0;
-      const paidAccounts = parseInt(String(trialStats.paid_accounts), 10) || 0;
+      let activeTrials = 0;
+      let paidAccounts = 0;
+      let totalAccounts = 0;
+      let mrrCents = 0;
+      let pipelineMrrCents = 0;
+
+      for (const row of subscriptionRows) {
+        const count = parseInt(String(row.count), 10) || 0;
+        const planPriceCents = PLAN_MONTHLY_PRICE_CENTS[String(row.plan) as PlanTier] ?? 0;
+        totalAccounts += count;
+        if (row.status === 'trialing') {
+          activeTrials += count;
+          pipelineMrrCents += count * planPriceCents;
+        } else if (row.status === 'active') {
+          paidAccounts += count;
+          mrrCents += count * planPriceCents;
+        } else if (row.status === 'past_due') {
+          mrrCents += count * planPriceCents;
+        }
+      }
+
       const conversionRate = totalAccounts > 0
         ? Math.round((paidAccounts / totalAccounts) * 100)
         : 0;
@@ -688,6 +706,8 @@ router.get('/platform/cost-monitoring', requireAuth, requirePlatformAdmin, async
           aiCostCents: parseInt(String(monthlyStats.monthly_ai_cost_cents), 10) || 0,
           twilioCostCents: parseInt(String(monthlyStats.monthly_twilio_cost_cents), 10) || 0,
           revenueCents: monthlyRevenueCents,
+          mrrCents,
+          pipelineMrrCents,
         },
         trials: {
           activeTrials,

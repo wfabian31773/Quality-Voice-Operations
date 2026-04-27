@@ -40,6 +40,8 @@ interface CostMonitoring {
     aiCostCents: number;
     twilioCostCents: number;
     revenueCents: number;
+    mrrCents: number;
+    pipelineMrrCents: number;
   };
   trials: {
     activeTrials: number;
@@ -257,7 +259,9 @@ export default function AdminAnalytics() {
             <EmptyState icon={Inbox} title="No data yet" variant="compact" />
           ) : (
             <div className="space-y-3">
-              <Row label="Monthly Revenue" value={formatCents(mon.monthly.revenueCents)} bold />
+              <Row label="MRR" value={formatCents(mon.monthly.mrrCents)} hint="active + past_due subscriptions" bold />
+              <Row label="Pipeline MRR" value={formatCents(mon.monthly.pipelineMrrCents)} hint="trialing subscriptions" />
+              <Row label="Monthly Revenue (collected)" value={formatCents(mon.monthly.revenueCents)} muted />
               <Row label="Total Cost" value={formatCents(mon.monthly.totalCostCents)} />
               <Row label="OpenAI Cost" value={formatCents(mon.monthly.aiCostCents)} muted />
               <Row label="Twilio Cost" value={formatCents(mon.monthly.twilioCostCents)} muted />
@@ -473,10 +477,13 @@ function SortableTh({
   );
 }
 
-function Row({ label, value, bold, muted }: { label: string; value: string; bold?: boolean; muted?: boolean }) {
+function Row({ label, value, bold, muted, hint }: { label: string; value: string; bold?: boolean; muted?: boolean; hint?: string }) {
   return (
     <div className={clsx('flex justify-between text-sm', bold && 'font-semibold text-text-primary', muted && 'text-muted-foreground')}>
-      <span className={muted ? '' : 'text-muted-foreground'}>{label}</span>
+      <span className={muted ? '' : 'text-muted-foreground'}>
+        {label}
+        {hint && <span className="ml-1 text-xs text-text-secondary">({hint})</span>}
+      </span>
       <span className={bold ? 'text-text-primary' : 'text-text-primary'}>{value}</span>
     </div>
   );
