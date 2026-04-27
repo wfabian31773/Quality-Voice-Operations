@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getPlatformPool } from '../../../platform/db';
 import { issueToken, requireAuth } from '../middleware/auth';
+import { authCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { getStripeClient } from '../../../platform/billing/stripe/client';
 import { getPlanPriceId, TRIAL_LIMITS, type PlanTier } from '../../../platform/billing/stripe/plans';
@@ -94,14 +95,7 @@ router.post('/auth/login', async (req, res) => {
       isPlatformAdmin: (user.is_platform_admin as boolean) ?? false,
     });
 
-    const isProd = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod');
-    res.cookie('auth_token', token, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 8 * 60 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie('auth_token', token, authCookieOptions());
 
     logger.info('User logged in', { userId: user.id, tenantId: user.tenant_id });
 
@@ -265,14 +259,7 @@ router.post('/auth/signup', async (req, res) => {
       isPlatformAdmin: false,
     });
 
-    const isProd = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod');
-    res.cookie('auth_token', token, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 8 * 60 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie('auth_token', token, authCookieOptions());
 
     logger.info('Signup initiated', { tenantId, userId, emailVerificationRequired: true });
 
@@ -652,14 +639,7 @@ router.post('/auth/accept-invite', async (req, res) => {
       isPlatformAdmin: (user.is_platform_admin as boolean) ?? false,
     });
 
-    const isProd = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod');
-    res.cookie('auth_token', jwt, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 8 * 60 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie('auth_token', jwt, authCookieOptions());
 
     logger.info('Invitation accepted', { userId: user.id, tenantId: user.tenant_id, email: user.email });
 

@@ -4,15 +4,18 @@ import crypto from 'crypto';
 import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireTenantContext } from './tenantGuard';
+import { isProductionLike } from './security';
 
 const logger = createLogger('ADMIN_AUTH');
-
-const IS_PROD = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod');
 
 function getJwtSecret(): string {
   const secret = process.env.ADMIN_JWT_SECRET;
   if (!secret) {
-    if (IS_PROD) {
+    // Evaluate per-call (not at module-load) so test setups that mutate
+    // process.env between requests, and any nonstandard boot path that
+    // skips start.ts's assertProductionSecrets(), still fail closed in
+    // production *and* staging.
+    if (isProductionLike()) {
       throw new Error('ADMIN_JWT_SECRET is required in production');
     }
     const devSecret = 'qvo-dev-jwt-' + (process.env.REPL_ID ?? 'local');
@@ -144,7 +147,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
   try {
-    const payload = jwt.verify(token, getJwtSecret()) as Record<string, unknown>;
+    // Pin to HS256 — without this, jsonwebtoken accepts whichever algorithm
+    // the token's header advertises, which enables algorithm-confusion attacks
+    // (e.g. an attacker signing with `none` or with the public key of an RSA
+    // pair). The only signing algorithm we use anywhere is HS256.
+    const payload = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as Record<string, unknown>;
     const userId = payload.sub as string;
     const tenantId = payload.tenantId as string;
     const email = payload.email as string;
@@ -228,6 +235,10 @@ export function issueToken(user: AuthenticatedUser, expiresIn: string = '8h'): s
       isPlatformAdmin: user.isPlatformAdmin ?? false,
     },
     getJwtSecret(),
-    { expiresIn } as jwt.SignOptions,
+    // Explicit `algorithm: 'HS256'` keeps signing in lock-step with the
+    // verifier's `algorithms: ['HS256']` allow-list above. (HS256 is also
+    // the jsonwebtoken default, but pinning it here makes the contract
+    // explicit and protects against future default changes.)
+    { algorithm: 'HS256', expiresIn } as jwt.SignOptions,
   );
 }

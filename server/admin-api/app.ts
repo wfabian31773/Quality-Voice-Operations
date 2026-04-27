@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
 import { auditMutation } from '../../platform/audit/auditMutation';
+import { corsOptions, securityHeaders } from './middleware/security';
 import { attachSpaFallback, isProductionBoot } from './spaFallback';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
@@ -60,7 +61,7 @@ import productionEssentialsRoutes from './routes/productionEssentials';
 
 const app = express();
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors(corsOptions()));
 app.use(cookieParser());
 
 app.use(
@@ -76,9 +77,8 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+app.use(securityHeaders());
+app.use((req, _res, next) => {
   if (req.method !== 'GET' || req.path.includes('auth')) {
     console.log(`[REQ] ${req.method} ${req.path} from ${req.ip}`);
   }

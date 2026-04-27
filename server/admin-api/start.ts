@@ -7,6 +7,7 @@ import { startCampaignScheduler, stopCampaignScheduler } from '../../platform/ca
 import { startMetricsRollup, stopMetricsRollup, startSystemMetricsWriter, stopSystemMetricsWriter, logError } from '../../platform/core/observability';
 import { validateBillingConfig } from '../../platform/billing/stripe/plans';
 import { validateEnvironment, validateDatabaseConnection } from '../../scripts/validate-env';
+import { assertProductionSecrets } from './middleware/security';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
@@ -41,6 +42,12 @@ const envResult = validateEnvironment({ exitOnFailure: isProd });
 if (!envResult.passed && !isProd) {
   logger.warn('Environment validation has warnings — some features may be unavailable');
 }
+
+// Belt-and-braces: even when the broader env validator runs, defensively
+// re-check the security-critical secrets right before binding the port. If
+// anything is missing in production we throw so the process exits with a
+// clear error message instead of starting in a half-configured state.
+assertProductionSecrets();
 
 const server = http.createServer(app);
 

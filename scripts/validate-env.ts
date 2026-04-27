@@ -37,6 +37,8 @@ const ENV_VARS: EnvVar[] = [
   { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com /book-demo/calendar-webhook requests (production fails closed without it)' },
   { name: 'SALES_NOTIFICATION_EMAIL', required: 'production', purpose: 'Sales inbox that receives demo lead and Cal.com booking lifecycle emails' },
   { name: 'VITE_BOOK_DEMO_SCHEDULER_URL', required: 'production', purpose: 'Embedded scheduler URL inlined into the /book-demo client bundle at vite build time' },
+  { name: 'TURNSTILE_SECRET_KEY', required: 'production', purpose: 'Cloudflare Turnstile secret key for verifying sign-up CAPTCHA (production fails closed without it)' },
+  { name: 'ALLOWED_ORIGINS', required: 'production', purpose: 'Comma-separated list of CORS origins allowed in production (e.g. https://app.example.com)' },
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
