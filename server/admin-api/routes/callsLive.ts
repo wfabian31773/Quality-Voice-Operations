@@ -12,7 +12,13 @@ import type { Request } from 'express';
 const logger = createLogger('CALLS_LIVE');
 const router = Router();
 
-const TENANT_LIVE_STREAM_CAP = Number(process.env.TENANT_LIVE_STREAM_CAP ?? '20');
+function parseTenantLiveStreamCap(raw: string | undefined): number {
+  if (!raw) return 20;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return 20;
+  return Math.floor(n);
+}
+const TENANT_LIVE_STREAM_CAP = parseTenantLiveStreamCap(process.env.TENANT_LIVE_STREAM_CAP);
 
 // Per-task spec: reuse createRateLimiter keyed on req.user.tenantId. This
 // guards the connection-open endpoint at request rate (20 opens / 60s) so a

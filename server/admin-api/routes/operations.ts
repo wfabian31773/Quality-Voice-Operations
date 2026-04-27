@@ -13,7 +13,13 @@ import {
 const logger = createLogger('OPERATIONS_API');
 const router = Router();
 
-const TENANT_LIVE_STREAM_CAP = Number(process.env.TENANT_LIVE_STREAM_CAP ?? '20');
+function parseTenantLiveStreamCap(raw: string | undefined): number {
+  if (!raw) return 20;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return 20;
+  return Math.floor(n);
+}
+const TENANT_LIVE_STREAM_CAP = parseTenantLiveStreamCap(process.env.TENANT_LIVE_STREAM_CAP);
 
 // Per-task spec: reuse createRateLimiter keyed on req.user.tenantId.
 export const operationsCallLiveRateLimiter = createRateLimiter({
