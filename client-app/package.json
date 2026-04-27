@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "vite build --config vite.config.ts",
-    "preview": "vite preview --config vite.config.ts"
+    "preview": "vite preview --config vite.config.ts",
+    "analyze": "vite-bundle-visualizer --config vite.config.ts -o dist/stats.html --open false",
+    "analyze:json": "vite-bundle-visualizer --config vite.config.ts -o dist/stats.json --template raw-data --open false"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -17,5 +19,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-i18next": "^17.0.4"
+  },
+  "devDependencies": {
+    "vite-bundle-visualizer": "^1.2.1"
   }
 }

@@ -11,7 +11,9 @@
     "start": "npx tsx server/admin-api/start.ts",
     "db:migrate": "tsx scripts/run-migrations.ts",
     "db:seed": "tsx scripts/seed-demo.ts",
-    "db:verify-rls": "tsx scripts/verify-rls.ts"
+    "db:verify-rls": "tsx scripts/verify-rls.ts",
+    "analyze": "npm --prefix client-app run analyze",
+    "analyze:json": "npm --prefix client-app run analyze:json"
   },
   "keywords": [],
   "author": "",
@@ -93,7 +95,8 @@
     "happy-dom": "^20.9.0",
     "supertest": "^7.2.2",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vite-bundle-visualizer": "^1.2.1"
   },
   "overrides": {
     "esbuild": "^0.25.0",
