@@ -1,0 +1,17 @@
+{
+  "key": "restaurant",
+  "label": "Restaurant & Hospitality",
+  "emoji": "🍽️",
+  "description": "Reservation volume, peak-hour load, and guest-facing automation.",
+  "industries": ["restaurant", "hospitality", "food-service", "hotel"],
+  "defaultRange": "7d",
+  "callsLabel": "Guest Calls",
+  "contactLabel": "Guest",
+  "kpis": [
+    { "metric": "totalCalls", "label": "Guest Calls" },
+    { "metric": "automationRate", "label": "Reservations Auto-Handled" },
+    { "metric": "avgDuration", "label": "Avg Call Time" },
+    { "metric": "costPerCall", "label": "Cost / Reservation" }
+  ],
+  "sections": ["callVolume", "callOutcomes", "campaigns", "costBreakdown"]
+}

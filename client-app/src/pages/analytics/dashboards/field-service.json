@@ -1,0 +1,17 @@
+{
+  "key": "field-service",
+  "label": "Field Service",
+  "emoji": "🛠️",
+  "description": "Service-request capture, dispatch readiness, and outbound campaign ROI.",
+  "industries": ["hvac", "plumbing", "electrical", "home-services", "field-service", "property-management", "facilities"],
+  "defaultRange": "30d",
+  "callsLabel": "Service Requests",
+  "contactLabel": "Job",
+  "kpis": [
+    { "metric": "totalCalls", "label": "Service Requests" },
+    { "metric": "automationRate", "label": "Auto-Scheduled Rate" },
+    { "metric": "avgDuration", "label": "Avg Call Time" },
+    { "metric": "costPerCall", "label": "Cost / Lead" }
+  ],
+  "sections": ["callVolume", "campaigns", "callOutcomes", "costBreakdown", "toolReliability"]
+}

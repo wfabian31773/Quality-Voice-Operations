@@ -1,0 +1,17 @@
+{
+  "key": "legal",
+  "label": "Legal",
+  "emoji": "⚖️",
+  "description": "Client-intake quality, escalation discipline, and after-hours coverage.",
+  "industries": ["legal", "law", "law-firm", "attorney"],
+  "defaultRange": "30d",
+  "callsLabel": "Intakes",
+  "contactLabel": "Intake",
+  "kpis": [
+    { "metric": "totalCalls", "label": "Intakes" },
+    { "metric": "automationRate", "label": "Intake Automation" },
+    { "metric": "avgDuration", "label": "Avg Intake Time" },
+    { "metric": "costPerCall", "label": "Cost / Intake" }
+  ],
+  "sections": ["callVolume", "callOutcomes", "toolReliability", "costBreakdown"]
+}

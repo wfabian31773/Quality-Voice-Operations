@@ -1,0 +1,17 @@
+{
+  "key": "real-estate",
+  "label": "Real Estate",
+  "emoji": "🏠",
+  "description": "Lead inquiries, qualified-buyer rate, and outbound nurture campaigns.",
+  "industries": ["real-estate", "realty", "brokerage"],
+  "defaultRange": "30d",
+  "callsLabel": "Inquiries",
+  "contactLabel": "Lead",
+  "kpis": [
+    { "metric": "totalCalls", "label": "Inquiries" },
+    { "metric": "automationRate", "label": "Qualified Lead %" },
+    { "metric": "avgDuration", "label": "Avg Inquiry Time" },
+    { "metric": "costPerCall", "label": "Cost / Lead" }
+  ],
+  "sections": ["callVolume", "campaigns", "callOutcomes", "costBreakdown"]
+}

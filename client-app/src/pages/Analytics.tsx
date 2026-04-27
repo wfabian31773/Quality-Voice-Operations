@@ -1,12 +1,21 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { useState } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import RevenueAnalytics from './RevenueAnalytics';
+import {
+  dashboards,
+  getDashboardByKey,
+  pickDashboardForIndustry,
+  type DashboardKpiMetric,
+  type DashboardRange,
+  type DashboardSection,
+  type VerticalDashboard,
+} from './analytics/dashboards';
 
 interface ToolHealthMetric {
   toolName: string;
@@ -72,13 +81,48 @@ interface CostAnalytics {
   costPerCallCents: number;
 }
 
-const RANGES = ['7d', '30d', '90d'] as const;
+interface TenantMeResponse {
+  tenant: {
+    id: string;
+    settings?: { industry?: string | null } | null;
+  };
+}
+
+const RANGES: DashboardRange[] = ['7d', '30d', '90d'];
 
 type AnalyticsTab = 'performance' | 'revenue';
 
 export default function Analytics() {
-  const [range, setRange] = useState<string>('30d');
+  const { data: tenantMe } = useQuery({
+    queryKey: ['tenants-me'],
+    queryFn: () => api.get<TenantMeResponse>('/tenants/me'),
+    staleTime: 5 * 60_000,
+  });
+
+  const tenantIndustry = tenantMe?.tenant?.settings?.industry ?? null;
+  const defaultDashboard = useMemo(
+    () => pickDashboardForIndustry(tenantIndustry),
+    [tenantIndustry],
+  );
+
+  const [dashboardKey, setDashboardKey] = useState<string | null>(null);
+  const dashboard: VerticalDashboard =
+    dashboardKey != null ? getDashboardByKey(dashboardKey) : defaultDashboard;
+
+  const [range, setRange] = useState<DashboardRange>(defaultDashboard.defaultRange);
   const [tab, setTab] = useState<AnalyticsTab>('performance');
+
+  // Keep `range` synchronized with the active dashboard's preferred default —
+  // this covers two cases the architect flagged:
+  //   1. /tenants/me resolves after first render and changes the default
+  //      dashboard (e.g. restaurant → 7d), so the initial range value
+  //      (general → 30d) would otherwise be stale.
+  //   2. The user picks a different dashboard from the dropdown; each vertical
+  //      curates its own default window and we honor that on switch.
+  // The user can still override the range afterwards via the range buttons.
+  useEffect(() => {
+    setRange(dashboard.defaultRange);
+  }, [dashboard.key, dashboard.defaultRange]);
 
   const { data: calls, isLoading: callsLoading } = useQuery({
     queryKey: ['analytics-calls', range],
@@ -106,34 +150,57 @@ export default function Analytics() {
 
   const navigate = useNavigate();
 
-  const formatCents = (cents: number) =>
-    `$${(cents / 100).toFixed(2)}`;
+  const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Analytics</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl" aria-hidden="true">{dashboard.emoji}</span>
+            <h1 className="text-2xl font-bold">Analytics</h1>
+            {dashboard.key !== 'general' && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                {dashboard.label}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Scoped to your tenant only. Platform-wide metrics live in the Admin Console.
+            {dashboard.description} Scoped to your tenant only — platform-wide metrics live in the Admin Console.
           </p>
         </div>
         {tab === 'performance' && (
-          <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={clsx(
-                  'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-                  range === r
-                    ? 'bg-surface shadow text-text-primary'
-                    : 'text-text-secondary hover:text-text-primary',
-                )}
-              >
-                {r}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="vertical-dashboard-select">Dashboard</label>
+            <select
+              id="vertical-dashboard-select"
+              data-testid="vertical-dashboard-select"
+              value={dashboard.key}
+              onChange={(e) => setDashboardKey(e.target.value)}
+              className="bg-surface border border-border text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {dashboards.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.emoji} {d.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
+              {RANGES.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRange(r)}
+                  className={clsx(
+                    'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                    range === r
+                      ? 'bg-surface shadow text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary',
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -163,7 +230,7 @@ export default function Analytics() {
       {tab === 'revenue' && <RevenueAnalytics embedded />}
       {tab === 'performance' && (
         <PerformanceTab
-          range={range}
+          dashboard={dashboard}
           calls={calls}
           callsLoading={callsLoading}
           campaignData={campaignData}
@@ -181,7 +248,7 @@ export default function Analytics() {
 }
 
 interface PerformanceTabProps {
-  range: string;
+  dashboard: VerticalDashboard;
   calls: CallAnalytics | undefined;
   callsLoading: boolean;
   campaignData: { campaigns: CampaignRow[] } | undefined;
@@ -194,35 +261,38 @@ interface PerformanceTabProps {
   navigate: (path: string) => void;
 }
 
+function kpiValue(
+  metric: DashboardKpiMetric,
+  calls: CallAnalytics | undefined,
+  costs: CostAnalytics | undefined,
+  callsLoading: boolean,
+  costsLoading: boolean,
+  formatCents: (cents: number) => string,
+): string {
+  switch (metric) {
+    case 'totalCalls':
+      return callsLoading ? '—' : String(calls?.totalCalls ?? 0);
+    case 'automationRate':
+      return callsLoading ? '—' : `${((calls?.automationRate ?? 0) * 100).toFixed(1)}%`;
+    case 'avgDuration':
+      return callsLoading ? '—' : `${Math.round(calls?.avgDurationSeconds ?? 0)}s`;
+    case 'costPerCall':
+      return callsLoading && costsLoading
+        ? '—'
+        : formatCents(calls?.costPerCallCents ?? costs?.costPerCallCents ?? 0);
+    default:
+      return '—';
+  }
+}
+
 function PerformanceTab({
-  calls, callsLoading, campaignData, campaignsLoading, costs, costsLoading,
+  dashboard, calls, callsLoading, campaignData, campaignsLoading, costs, costsLoading,
   toolHealth, healthLoading, formatCents, navigate,
 }: PerformanceTabProps) {
-  return (
-    <div className="space-y-6">
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Calls" value={callsLoading ? '—' : String(calls?.totalCalls ?? 0)} />
-        <KpiCard
-          label="Automation Rate"
-          value={callsLoading ? '—' : `${((calls?.automationRate ?? 0) * 100).toFixed(1)}%`}
-        />
-        <KpiCard
-          label="Avg Duration"
-          value={callsLoading ? '—' : `${Math.round(calls?.avgDurationSeconds ?? 0)}s`}
-        />
-        <KpiCard
-          label="Cost / Call"
-          value={
-            callsLoading && costsLoading
-              ? '—'
-              : formatCents(calls?.costPerCallCents ?? costs?.costPerCallCents ?? 0)
-          }
-        />
-      </div>
-
-      <div className="bg-surface border border-border rounded-xl p-6">
-        <h2 className="text-lg font-semibold mb-4">Call Volume Trend</h2>
+  const sectionRenderers: Record<DashboardSection, () => ReactElement> = {
+    callVolume: () => (
+      <div key="callVolume" className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-4">{dashboard.callsLabel} — Volume Trend</h2>
         {callsLoading ? (
           <div className="h-64 flex items-center justify-center text-text-secondary">Loading...</div>
         ) : !calls?.dailyBreakdown?.length ? (
@@ -256,49 +326,50 @@ function PerformanceTab({
           </ResponsiveContainer>
         )}
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-surface border border-border rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Cost Breakdown</h2>
-          {costsLoading ? (
-            <div className="text-text-secondary">Loading...</div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">OpenAI Inference</span>
-                <span className="font-medium">{formatCents(costs?.totalOpenaiCostCents ?? 0)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Twilio Telephony</span>
-                <span className="font-medium">{formatCents(costs?.totalTwilioCostCents ?? 0)}</span>
-              </div>
-              <div className="border-t border-border pt-2 flex justify-between text-sm font-semibold">
-                <span>Total</span>
-                <span>{formatCents(costs?.totalCostCents ?? 0)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-text-secondary">
-                <span>Cost per Call</span>
-                <span>{formatCents(costs?.costPerCallCents ?? 0)}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-surface border border-border rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Call Outcomes</h2>
-          {callsLoading ? (
-            <div className="text-text-secondary">Loading...</div>
-          ) : (
-            <div className="space-y-3">
-              <OutcomeRow label="Completed" count={calls?.completedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-green-500" />
-              <OutcomeRow label="Escalated" count={calls?.escalatedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-yellow-500" />
-              <OutcomeRow label="Failed" count={calls?.failedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-red-500" />
-            </div>
-          )}
-        </div>
+    ),
+    callOutcomes: () => (
+      <div key="callOutcomes" className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-4">{dashboard.callsLabel} — Outcomes</h2>
+        {callsLoading ? (
+          <div className="text-text-secondary">Loading...</div>
+        ) : (
+          <div className="space-y-3">
+            <OutcomeRow label="Completed" count={calls?.completedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-green-500" />
+            <OutcomeRow label="Escalated" count={calls?.escalatedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-yellow-500" />
+            <OutcomeRow label="Failed" count={calls?.failedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-red-500" />
+          </div>
+        )}
       </div>
-
-      <div className="bg-surface border border-border rounded-xl p-6">
+    ),
+    costBreakdown: () => (
+      <div key="costBreakdown" className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-4">Cost Breakdown</h2>
+        {costsLoading ? (
+          <div className="text-text-secondary">Loading...</div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-text-secondary">OpenAI Inference</span>
+              <span className="font-medium">{formatCents(costs?.totalOpenaiCostCents ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-text-secondary">Twilio Telephony</span>
+              <span className="font-medium">{formatCents(costs?.totalTwilioCostCents ?? 0)}</span>
+            </div>
+            <div className="border-t border-border pt-2 flex justify-between text-sm font-semibold">
+              <span>Total</span>
+              <span>{formatCents(costs?.totalCostCents ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-text-secondary">
+              <span>Cost per {dashboard.contactLabel}</span>
+              <span>{formatCents(costs?.costPerCallCents ?? 0)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    ),
+    toolReliability: () => (
+      <div key="toolReliability" className="bg-surface border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Tool Reliability</h2>
           <button
@@ -341,8 +412,9 @@ function PerformanceTab({
           </div>
         )}
       </div>
-
-      <div className="bg-surface border border-border rounded-xl p-6">
+    ),
+    campaigns: () => (
+      <div key="campaigns" className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4">Campaign Performance</h2>
         {campaignsLoading ? (
           <div className="text-text-secondary">Loading...</div>
@@ -354,12 +426,12 @@ function PerformanceTab({
               <thead>
                 <tr className="border-b border-border text-left text-text-secondary">
                   <th className="pb-2 font-medium">Campaign</th>
-                  <th className="pb-2 font-medium text-right">Contacts</th>
+                  <th className="pb-2 font-medium text-right">{dashboard.contactLabel}s</th>
                   <th className="pb-2 font-medium text-right">Answered</th>
                   <th className="pb-2 font-medium text-right">Voicemail</th>
                   <th className="pb-2 font-medium text-right">Completion</th>
                   <th className="pb-2 font-medium text-right">Avg Duration</th>
-                  <th className="pb-2 font-medium text-right">Cost/Contact</th>
+                  <th className="pb-2 font-medium text-right">Cost / {dashboard.contactLabel}</th>
                 </tr>
               </thead>
               <tbody>
@@ -379,6 +451,26 @@ function PerformanceTab({
           </div>
         )}
       </div>
+    ),
+  };
+
+  // Group cost+outcomes side-by-side if both present and adjacent.
+  const sections = dashboard.sections;
+
+  return (
+    <div className="space-y-6" data-testid="performance-tab" data-dashboard-key={dashboard.key}>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {dashboard.kpis.map((kpi) => (
+          <KpiCard
+            key={kpi.metric}
+            label={kpi.label}
+            value={kpiValue(kpi.metric, calls, costs, callsLoading, costsLoading, formatCents)}
+          />
+        ))}
+      </div>
+
+      {sections.map((section) => sectionRenderers[section]())}
     </div>
   );
 }

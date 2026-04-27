@@ -1,0 +1,17 @@
+{
+  "key": "general",
+  "label": "General Business",
+  "emoji": "📊",
+  "description": "Standard call performance, outcomes, costs, and tool reliability.",
+  "industries": [],
+  "defaultRange": "30d",
+  "callsLabel": "Calls",
+  "contactLabel": "Contact",
+  "kpis": [
+    { "metric": "totalCalls", "label": "Total Calls" },
+    { "metric": "automationRate", "label": "Automation Rate" },
+    { "metric": "avgDuration", "label": "Avg Duration" },
+    { "metric": "costPerCall", "label": "Cost / Call" }
+  ],
+  "sections": ["callVolume", "callOutcomes", "costBreakdown", "campaigns", "toolReliability"]
+}

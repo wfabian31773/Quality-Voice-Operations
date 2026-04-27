@@ -1,0 +1,17 @@
+{
+  "key": "medical",
+  "label": "Medical & Dental",
+  "emoji": "🩺",
+  "description": "Patient-call triage, after-hours coverage, and escalation quality.",
+  "industries": ["medical", "dental", "medical-after-hours", "healthcare", "clinic"],
+  "defaultRange": "30d",
+  "callsLabel": "Patient Calls",
+  "contactLabel": "Patient",
+  "kpis": [
+    { "metric": "totalCalls", "label": "Patient Calls" },
+    { "metric": "automationRate", "label": "Triage Automation" },
+    { "metric": "avgDuration", "label": "Avg Patient Time" },
+    { "metric": "costPerCall", "label": "Cost / Patient Contact" }
+  ],
+  "sections": ["callVolume", "callOutcomes", "toolReliability", "costBreakdown"]
+}
