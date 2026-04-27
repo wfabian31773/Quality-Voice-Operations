@@ -64,6 +64,7 @@ import ingestRoutes from './routes/ingest';
 import legalComplianceRoutes from './routes/legalCompliance';
 import supportRoutes from './routes/support';
 import productionEssentialsRoutes from './routes/productionEssentials';
+import voicePreviewRoutes from './routes/voicePreview';
 
 const app = express();
 const reqLogger = createLogger('REQ');
@@ -157,6 +158,7 @@ app.use('/', ingestRoutes);
 app.use('/', legalComplianceRoutes);
 app.use('/', supportRoutes);
 app.use('/', productionEssentialsRoutes);
+app.use('/', voicePreviewRoutes);
 
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
 
