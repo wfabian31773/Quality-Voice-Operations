@@ -18,10 +18,11 @@ interface PublicMetricSpec {
 
 const PUBLIC_METRICS: PublicMetricSpec[] = [
   { vertical: 'medical', verticalLabel: 'Healthcare', metric: 'call_completion_rate', metricLabel: 'After-hours answer rate', format: 'percent' },
+  { vertical: 'home_services', verticalLabel: 'Field service', metric: 'avg_call_duration_seconds', metricLabel: 'Average handle time', format: 'duration' },
   { vertical: 'dental', verticalLabel: 'Dental', metric: 'booking_conversion_rate', metricLabel: 'Booking conversion', format: 'percent' },
-  { vertical: 'home_services', verticalLabel: 'Field service', metric: 'avg_call_duration_seconds', metricLabel: 'Average call duration', format: 'duration' },
   { vertical: 'property_management', verticalLabel: 'Real estate', metric: 'booking_conversion_rate', metricLabel: 'Lead-to-tour rate', format: 'percent' },
-  { vertical: 'legal', verticalLabel: 'Legal', metric: 'avg_quality_score', metricLabel: 'Quality score', format: 'score' },
+  { vertical: 'medical', verticalLabel: 'Healthcare', metric: 'avg_quality_score', metricLabel: 'CSAT (quality score, 0–10)', format: 'score' },
+  { vertical: 'legal', verticalLabel: 'Legal', metric: 'avg_quality_score', metricLabel: 'CSAT (quality score, 0–10)', format: 'score' },
 ];
 
 function formatValue(raw: number, format: PublicMetricSpec['format']): string {
@@ -36,7 +37,9 @@ function formatValue(raw: number, format: PublicMetricSpec['format']): string {
     return minutes > 0 ? `${minutes}m ${seconds.toString().padStart(2, '0')}s` : `${seconds}s`;
   }
   if (format === 'score') {
-    return raw <= 1 ? raw.toFixed(2) : raw.toFixed(1);
+    if (raw <= 1) return raw.toFixed(2);
+    if (raw <= 10) return `${raw.toFixed(1)} / 10`;
+    return raw.toFixed(1);
   }
   return String(raw);
 }
@@ -47,6 +50,19 @@ const publicGinLimiter = createRateLimiter({
   message: 'GIN public benchmark rate limit exceeded.',
   keyGenerator: (req) => `public-gin:${req.ip ?? 'anon'}`,
 });
+
+const PUBLIC_CACHE_HEADERS = {
+  // Allow shared caches (CDN, reverse proxy) to cache for an hour, browsers for 5 minutes,
+  // and serve stale content for up to a day while a refresh is happening in the background.
+  'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+  Vary: 'Accept-Encoding',
+};
+
+const FALLBACK_CACHE_HEADERS = {
+  // Cache the "no data yet" response briefly so we don't hammer the DB before benchmarks land.
+  'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+  Vary: 'Accept-Encoding',
+};
 
 router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
   try {
@@ -99,6 +115,7 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
     }).filter((r): r is NonNullable<typeof r> => r !== null);
 
     if (rows.length === 0) {
+      res.set(FALLBACK_CACHE_HEADERS);
       return res.json({
         status: 'illustrative' as const,
         snapshotAt: null,
@@ -111,6 +128,7 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
 
     const status = rows.length >= 3 ? ('live' as const) : ('preview' as const);
 
+    res.set(PUBLIC_CACHE_HEADERS);
     return res.json({
       status,
       snapshotAt: latestPeriodEnd ? (latestPeriodEnd as Date).toISOString().slice(0, 10) : null,
@@ -121,6 +139,8 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
     });
   } catch (err) {
     logger.error('Failed to load public GIN benchmarks', { error: String(err) });
+    // Don't cache transient errors — let the next request retry.
+    res.set('Cache-Control', 'no-store');
     return res.status(503).json({
       status: 'illustrative' as const,
       snapshotAt: null,

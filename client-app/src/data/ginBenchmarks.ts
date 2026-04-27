@@ -29,8 +29,9 @@ export const ginBenchmarkFallback: GinBenchmarkSnapshot = {
     'Sample figures shown for layout while the live cohort accumulates enough opted-in tenants to publish real benchmarks. Real cohort medians and top-quartile values replace these automatically once each (vertical, metric) cohort meets the k-anonymity threshold.',
   rows: [
     { vertical: 'Healthcare', metric: 'After-hours answer rate', cohortAvg: '85%', median: '78%', topQuartile: '94%', cohortSize: 0 },
+    { vertical: 'Field service', metric: 'Average handle time', cohortAvg: '5m 30s', median: '7m 30s', topQuartile: '3m 10s', cohortSize: 0 },
     { vertical: 'Dental', metric: 'Booking conversion', cohortAvg: '58%', median: '54%', topQuartile: '71%', cohortSize: 0 },
-    { vertical: 'Field service', metric: 'Average call duration', cohortAvg: '5m 30s', median: '7m 30s', topQuartile: '3m 10s', cohortSize: 0 },
     { vertical: 'Real estate', metric: 'Lead-to-tour rate', cohortAvg: '32%', median: '29%', topQuartile: '46%', cohortSize: 0 },
+    { vertical: 'Healthcare', metric: 'CSAT (quality score, 0–10)', cohortAvg: '8.4 / 10', median: '8.1 / 10', topQuartile: '9.2 / 10', cohortSize: 0 },
   ],
 };

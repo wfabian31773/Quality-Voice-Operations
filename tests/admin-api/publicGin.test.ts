@@ -135,7 +135,7 @@ describe('GET /public/gin/benchmarks', () => {
       cohortSize: 9,
     });
     expect(byVertical['Field service']).toMatchObject({
-      metric: 'Average call duration',
+      metric: 'Average handle time',
       cohortAvg: '5m 30s',
       median: '7m 30s',
       topQuartile: '3m 10s',
@@ -143,6 +143,35 @@ describe('GET /public/gin/benchmarks', () => {
     });
 
     expect(res.body.rows.every((r: { cohortSize: number }) => r.cohortSize > 0)).toBe(true);
+
+    // Live cohort responses are cache-friendly so CDNs / browsers don't hammer the DB.
+    expect(res.headers['cache-control']).toMatch(/public/);
+    expect(res.headers['cache-control']).toMatch(/s-maxage=\d+/);
+  });
+
+  it('exposes a CSAT (avg quality score) row when the quality cohort is above k', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          industry_vertical: 'medical',
+          metric_name: 'avg_quality_score',
+          metric_value: '8.4',
+          sample_size: 14,
+          percentile_50: '8.2',
+          percentile_75: '9.1',
+          period_end: '2026-04-20',
+          updated_at: '2026-04-20T00:00:00Z',
+        },
+      ],
+    });
+
+    const res = await request(buildApp()).get('/public/gin/benchmarks');
+
+    expect(res.status).toBe(200);
+    const csat = (res.body.rows as Array<{ metric: string; vertical: string; cohortAvg: string }>)
+      .find(r => r.vertical === 'Healthcare' && /CSAT/i.test(r.metric));
+    expect(csat).toBeDefined();
+    expect(csat?.cohortAvg).toBe('8.4 / 10');
   });
 
   it('returns preview status when only one or two cohorts pass k', async () => {
@@ -177,5 +206,21 @@ describe('GET /public/gin/benchmarks', () => {
     expect(res.body.status).toBe('illustrative');
     expect(res.body.error).toBe('benchmarks_unavailable');
     expect(res.body.rows).toEqual([]);
+    // Transient errors must not be cached so the next request can retry.
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('uses a short cache window for the empty/illustrative payload', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(buildApp()).get('/public/gin/benchmarks');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('illustrative');
+    // Empty cohort responses cache briefly so we don't hammer the DB before
+    // benchmarks land, but refresh quickly once they do.
+    expect(res.headers['cache-control']).toMatch(/public/);
+    expect(res.headers['cache-control']).toMatch(/max-age=60/);
+    expect(res.headers['cache-control']).toMatch(/s-maxage=300/);
   });
 });
