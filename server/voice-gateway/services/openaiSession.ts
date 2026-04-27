@@ -739,6 +739,36 @@ function buildRealtimeTools(
   });
 }
 
+export interface OpenAISessionConfigInput {
+  voice: string;
+  language?: string;
+}
+
+export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
+  const transcription = input.language && input.language !== 'en'
+    ? { model: 'gpt-4o-mini-transcribe' as const, language: input.language }
+    : { model: 'gpt-4o-mini-transcribe' as const };
+  return {
+    voice: input.voice,
+    audio: {
+      input: {
+        format: 'g711_ulaw' as const,
+        transcription,
+        turnDetection: {
+          type: 'semantic_vad' as const,
+          eagerness: 'medium' as const,
+          createResponse: true,
+          interruptResponse: true,
+        },
+      },
+      output: {
+        format: 'g711_ulaw' as const,
+        voice: input.voice,
+      },
+    },
+  };
+}
+
 function classifyAgentComplexity(
   templateKey: string,
   systemPrompt: string,
@@ -966,27 +996,10 @@ export async function createRealtimeSession(
 
   const wsTransport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
 
-  const sessionConfig = {
+  const sessionConfig = buildOpenAISessionConfig({
     voice: agentConfig.voice,
-    audio: {
-      input: {
-        format: 'g711_ulaw' as const,
-        transcription: agentConfig.language && agentConfig.language !== 'en'
-          ? { model: 'gpt-4o-mini-transcribe', language: agentConfig.language }
-          : { model: 'gpt-4o-mini-transcribe' },
-        turnDetection: {
-          type: 'semantic_vad' as const,
-          eagerness: 'medium' as const,
-          createResponse: true,
-          interruptResponse: true,
-        },
-      },
-      output: {
-        format: 'g711_ulaw' as const,
-        voice: agentConfig.voice,
-      },
-    },
-  };
+    language: agentConfig.language,
+  });
 
   const session = new RealtimeSession(agent, {
     transport: wsTransport,
@@ -1490,27 +1503,10 @@ export async function createRealtimeSession(
 
     const newTransport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
 
-    const newSessionConfig = {
+    const newSessionConfig = buildOpenAISessionConfig({
       voice: newAgentConfig.voice,
-      audio: {
-        input: {
-          format: 'g711_ulaw' as const,
-          transcription: newAgentConfig.language && newAgentConfig.language !== 'en'
-            ? { model: 'gpt-4o-mini-transcribe', language: newAgentConfig.language }
-            : { model: 'gpt-4o-mini-transcribe' },
-          turnDetection: {
-            type: 'semantic_vad' as const,
-            eagerness: 'medium' as const,
-            createResponse: true,
-            interruptResponse: true,
-          },
-        },
-        output: {
-          format: 'g711_ulaw' as const,
-          voice: newAgentConfig.voice,
-        },
-      },
-    };
+      language: newAgentConfig.language,
+    });
 
     const newSession = new RealtimeSession(newAgent, {
       transport: newTransport,
