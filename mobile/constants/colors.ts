@@ -1,4 +1,25 @@
-export const lightColors = {
+export interface AppColors {
+  background: string;
+  surface: string;
+  surfaceMuted: string;
+  border: string;
+  divider: string;
+  text: string;
+  textMuted: string;
+  textInverse: string;
+  primary: string;
+  primaryMuted: string;
+  success: string;
+  successMuted: string;
+  warning: string;
+  warningMuted: string;
+  danger: string;
+  dangerMuted: string;
+  info: string;
+  infoMuted: string;
+}
+
+export const lightColors: AppColors = {
   background: '#F8FAFC',
   surface: '#FFFFFF',
   surfaceMuted: '#F1F5F9',
@@ -17,9 +38,9 @@ export const lightColors = {
   dangerMuted: '#FEE2E2',
   info: '#0EA5E9',
   infoMuted: '#E0F2FE',
-} as const;
+};
 
-export const darkColors: typeof lightColors = {
+export const darkColors: AppColors = {
   background: '#020617',
   surface: '#0F172A',
   surfaceMuted: '#1E293B',
@@ -39,8 +60,6 @@ export const darkColors: typeof lightColors = {
   info: '#38BDF8',
   infoMuted: '#075985',
 };
-
-export type AppColors = typeof lightColors;
 
 export const STATUS_TONES: Record<
   string,
