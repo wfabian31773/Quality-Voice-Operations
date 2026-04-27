@@ -18,6 +18,7 @@ import {
   Mail,
   MessageSquare,
   ShieldAlert,
+  PowerOff,
 } from 'lucide-react';
 import { useRole } from '../lib/useRole';
 import BrandLogo from '../components/BrandLogo';
@@ -1786,16 +1787,28 @@ function ConnectedCard({
             <AlertTriangle className="h-3 w-3" /> Reconnect needed
           </span>
         ) : enabled && !syncError ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap">
-            <CheckCircle2 className="h-3 w-3" /> Connected
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap"
+            aria-label={`${definition.name} sync status: connected`}
+            title="Connected and syncing"
+          >
+            <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> Connected
           </span>
         ) : syncError ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap">
-            <AlertCircle className="h-3 w-3" /> Sync error
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap"
+            aria-label={`${definition.name} sync status: sync error`}
+            title="Last sync failed"
+          >
+            <AlertCircle className="h-3 w-3" aria-hidden="true" /> Sync error
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 whitespace-nowrap">
-            Disabled
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 whitespace-nowrap"
+            aria-label={`${definition.name} sync status: disabled`}
+            title="Connector is disabled"
+          >
+            <PowerOff className="h-3 w-3" aria-hidden="true" /> Disabled
           </span>
         )}
       </div>

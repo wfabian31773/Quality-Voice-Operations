@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
@@ -11,6 +12,7 @@ import {
 import {
   DollarSign, Users, PhoneIncoming,
   Target, AlertTriangle, Download,
+  Smile, Meh, Frown,
 } from 'lucide-react';
 
 interface RevenueData {
@@ -121,10 +123,10 @@ function formatTopicLabel(topic: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function sentimentColor(score: number): string {
-  if (score > 0.3) return 'text-green-500';
-  if (score < -0.3) return 'text-red-500';
-  return 'text-yellow-500';
+function sentimentBand(score: number): { label: string; icon: typeof Smile; color: string } {
+  if (score > 0.3) return { label: 'Positive', icon: Smile, color: 'text-green-500' };
+  if (score < -0.3) return { label: 'Negative', icon: Frown, color: 'text-red-500' };
+  return { label: 'Neutral', icon: Meh, color: 'text-yellow-500' };
 }
 
 interface RevenueAnalyticsProps {
@@ -389,21 +391,31 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
             <EmptyPlaceholder message="No agent sentiment data" />
           ) : (
             <div className="space-y-3">
-              {sentiment.agentSentiments.map((a) => (
-                <div key={a.agentId} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">{a.agentName}</span>
+              {sentiment.agentSentiments.map((a) => {
+                const band = sentimentBand(a.avgScore);
+                const SentimentIcon = band.icon;
+                return (
+                  <div key={a.agentId} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium">{a.agentName}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={clsx('inline-flex items-center gap-1 font-medium', band.color)}
+                        aria-label={`${band.label} sentiment, average score ${a.avgScore.toFixed(2)}`}
+                        title={`${band.label} sentiment`}
+                      >
+                        <SentimentIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>{band.label}</span>
+                        <span className="opacity-75">({a.avgScore > 0 ? '+' : ''}{a.avgScore.toFixed(2)})</span>
+                      </span>
+                      <span className="text-muted-foreground">{a.callCount} calls</span>
+                      <span className="text-green-500 text-xs">{(a.positiveRate * 100).toFixed(0)}% positive</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={clsx('font-medium', sentimentColor(a.avgScore))}>
-                      {a.avgScore > 0 ? '+' : ''}{a.avgScore.toFixed(2)}
-                    </span>
-                    <span className="text-muted-foreground">{a.callCount} calls</span>
-                    <span className="text-green-500 text-xs">{(a.positiveRate * 100).toFixed(0)}% positive</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -458,11 +470,29 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <MetricItem label="Booking Rate" value={`${(bookingRate * 100).toFixed(1)}%`} />
                     <MetricItem label="Quality Score" value={agent.avgQualityScore > 0 ? agent.avgQualityScore.toFixed(1) : '—'} />
-                    <MetricItem
-                      label="Sentiment"
-                      value={sentimentAgent ? `${sentimentAgent.avgScore > 0 ? '+' : ''}${sentimentAgent.avgScore.toFixed(2)}` : '—'}
-                      valueClass={sentimentAgent ? sentimentColor(sentimentAgent.avgScore) : ''}
-                    />
+                    {(() => {
+                      if (!sentimentAgent) {
+                        return <MetricItem label="Sentiment" value="—" />;
+                      }
+                      const band = sentimentBand(sentimentAgent.avgScore);
+                      const SentimentIcon = band.icon;
+                      return (
+                        <MetricItem
+                          label="Sentiment"
+                          value={
+                            <span
+                              className={clsx('inline-flex items-center gap-1', band.color)}
+                              aria-label={`${band.label} sentiment, average score ${sentimentAgent.avgScore.toFixed(2)}`}
+                              title={`${band.label} sentiment`}
+                            >
+                              <SentimentIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>{band.label}</span>
+                              <span className="opacity-75 text-xs">({sentimentAgent.avgScore > 0 ? '+' : ''}{sentimentAgent.avgScore.toFixed(2)})</span>
+                            </span>
+                          }
+                        />
+                      );
+                    })()}
                     <MetricItem label="Revenue" value={formatCents(revenueAgent?.revenueCents ?? 0)} />
                   </div>
                 </div>
@@ -513,7 +543,7 @@ function MetricItem({
   valueClass,
 }: {
   label: string;
-  value: string;
+  value: string | ReactNode;
   valueClass?: string;
 }) {
   return (

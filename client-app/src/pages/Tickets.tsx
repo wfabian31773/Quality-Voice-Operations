@@ -5,7 +5,8 @@ import { useAuth } from '../lib/auth';
 import {
   Ticket, Plus, X, AlertCircle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
   Search, Filter, AlertTriangle, Shield, Users, Eye, Inbox, RotateCcw,
-  ArrowUpDown, ChevronDown, MoreHorizontal, User, ArrowUp,
+  ArrowUpDown, ChevronDown, MoreHorizontal, User, ArrowUp, ArrowDown, Minus,
+  ChevronsUp,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton } from '../components/state';
 
@@ -57,11 +58,11 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
   reopened: { label: 'Reopened', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: RotateCcw },
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'text-text-secondary',
-  medium: 'text-blue-500',
-  high: 'text-orange-500',
-  urgent: 'text-red-500',
+const PRIORITY_CONFIG: Record<string, { label: string; color: string; icon: typeof ArrowUp; description: string }> = {
+  low: { label: 'Low', color: 'text-text-secondary', icon: ArrowDown, description: 'Low priority' },
+  medium: { label: 'Medium', color: 'text-blue-500', icon: Minus, description: 'Medium priority' },
+  high: { label: 'High', color: 'text-orange-500', icon: ArrowUp, description: 'High priority' },
+  urgent: { label: 'Urgent', color: 'text-red-500', icon: ChevronsUp, description: 'Urgent priority' },
 };
 
 const QUEUE_TABS = [
@@ -508,9 +509,20 @@ export default function Tickets() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-medium capitalize ${PRIORITY_COLORS[ticket.priority]}`}>
-                          {ticket.priority}
-                        </span>
+                        {(() => {
+                          const pc = PRIORITY_CONFIG[ticket.priority] ?? { label: ticket.priority, color: 'text-text-secondary', icon: Minus, description: ticket.priority };
+                          const Icon = pc.icon;
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1 text-xs font-medium ${pc.color}`}
+                              aria-label={pc.description}
+                              title={pc.description}
+                            >
+                              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>{pc.label}</span>
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs text-muted">{ticket.assignee_email || 'Unassigned'}</span>

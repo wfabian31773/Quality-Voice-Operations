@@ -8,9 +8,15 @@ import {
   Search, Filter, PhoneCall, ChevronLeft, ChevronRight, X, Clock,
   AlertTriangle, TrendingUp, Zap, ArrowRight, ChevronDown, ChevronUp,
   Activity, Eye, Globe, Code, MessageSquare, Bot, User, Wrench, Layers,
-  Radio, Timer,
+  Radio, Timer, Smile, Meh, Frown,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+
+function sentimentBand(score: number): { label: string; icon: typeof Smile; color: string } {
+  if (score >= 0.6) return { label: 'Positive', icon: Smile, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
+  if (score >= 0.3) return { label: 'Neutral', icon: Meh, color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' };
+  return { label: 'Negative', icon: Frown, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
+}
 
 interface CallSummary {
   id: string;
@@ -278,7 +284,25 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
           <div><span className="text-text-secondary block text-xs mb-0.5">Start</span><span className="text-xs">{call.start_time ? format(new Date(call.start_time as string), 'PPp') : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">End</span><span className="text-xs">{call.end_time ? format(new Date(call.end_time as string), 'PPp') : '--'}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Cost</span><span className="font-medium">{call.total_cost_cents != null ? formatCents(call.total_cost_cents as number) : '--'}</span></div>
-          <div><span className="text-text-secondary block text-xs mb-0.5">Sentiment</span><span className="font-medium">{call.sentiment_score != null ? (call.sentiment_score as number).toFixed(2) : '--'}</span></div>
+          <div>
+            <span className="text-text-secondary block text-xs mb-0.5">Sentiment</span>
+            {call.sentiment_score != null ? (() => {
+              const score = call.sentiment_score as number;
+              const band = sentimentBand(score);
+              const Icon = band.icon;
+              return (
+                <span
+                  className="inline-flex items-center gap-1 font-medium"
+                  aria-label={`${band.label} sentiment, score ${score.toFixed(2)}`}
+                  title={`${band.label} sentiment`}
+                >
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{band.label}</span>
+                  <span className="text-text-secondary text-xs">({score.toFixed(2)})</span>
+                </span>
+              );
+            })() : <span className="font-medium">--</span>}
+          </div>
         </div>
       </div>
 
@@ -938,13 +962,21 @@ export default function CallDebug() {
                         <td className="px-4 py-3 text-text-secondary text-xs">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{call.total_cost_cents != null ? formatCents(call.total_cost_cents) : '--'}</td>
                         <td className="px-4 py-3">
-                          {call.sentiment_score != null ? (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                              call.sentiment_score >= 0.6 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                              call.sentiment_score >= 0.3 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                            }`}>{call.sentiment_score.toFixed(2)}</span>
-                          ) : <span className="text-xs text-text-muted">--</span>}
+                          {call.sentiment_score != null ? (() => {
+                            const band = sentimentBand(call.sentiment_score);
+                            const Icon = band.icon;
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${band.color}`}
+                                aria-label={`${band.label} sentiment, score ${call.sentiment_score.toFixed(2)}`}
+                                title={`${band.label} sentiment`}
+                              >
+                                <Icon className="h-3 w-3" aria-hidden="true" />
+                                <span>{band.label}</span>
+                                <span className="opacity-75">{call.sentiment_score.toFixed(2)}</span>
+                              </span>
+                            );
+                          })() : <span className="text-xs text-text-muted" aria-label="No sentiment data">--</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">

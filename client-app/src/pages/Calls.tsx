@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical, ExternalLink, ArrowRightLeft, UserPlus, Building2, Briefcase, ClipboardCheck, Cloud } from 'lucide-react';
+import { PhoneCall, X, ChevronLeft, ChevronRight, Filter, AlertTriangle, Search, Star, Bookmark, Trash2, Users, Mail, MailX, UserMinus, Pin, PinOff, GripVertical, ExternalLink, ArrowRightLeft, UserPlus, Building2, Briefcase, ClipboardCheck, Cloud, CheckCircle2, XCircle, Circle } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmptyState from '../components/EmptyState';
 import { SkeletonRows } from '../components/state';
@@ -450,9 +450,40 @@ function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => 
                       const eventLabel = dispatchPayload
                         ? `${dispatchProvider ?? dispatchPayload.connectorType ?? 'connector'} · ${dispatchPayload.payloadType ?? 'dispatched'}`
                         : event.event_type;
+                      const dispatchStatusLabel =
+                        dispatchSuccess === false
+                          ? 'failed'
+                          : dispatchSuccess === true
+                            ? 'succeeded'
+                            : 'recorded';
+                      const dispatchTitle =
+                        dispatchSuccess === false
+                          ? 'Dispatch failed'
+                          : dispatchSuccess === true
+                            ? 'Dispatch succeeded'
+                            : 'Event recorded';
+                      const StatusIcon =
+                        dispatchSuccess === false
+                          ? XCircle
+                          : dispatchSuccess === true
+                            ? CheckCircle2
+                            : Circle;
+                      const statusBgClass =
+                        dispatchSuccess === false
+                          ? 'bg-red-500 text-white'
+                          : dispatchSuccess === true
+                            ? 'bg-primary text-white'
+                            : 'bg-surface-hover text-text-secondary';
                       return (
                         <div key={event.id} className="relative pl-8">
-                          <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 border-surface ${dispatchSuccess === false ? 'bg-red-500' : 'bg-primary'}`} />
+                          <span
+                            role="img"
+                            aria-label={`Event ${dispatchStatusLabel}`}
+                            title={dispatchTitle}
+                            className={`absolute left-0 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-surface ${statusBgClass}`}
+                          >
+                            <StatusIcon className="h-3 w-3" aria-hidden="true" />
+                          </span>
                           <div className="bg-surface-hover rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-sm font-medium text-text-primary capitalize">{eventLabel}</span>
