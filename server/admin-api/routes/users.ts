@@ -206,6 +206,75 @@ router.post('/users/invite', requireAuth, requireRole('owner'), async (req, res)
   }
 });
 
+router.get('/me/preferences', requireAuth, async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query<{ preferences: Record<string, unknown> | null }>(
+      `SELECT preferences FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    await client.query('COMMIT');
+    return res.json({ preferences: rows[0]?.preferences ?? {} });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to load user preferences', { tenantId, userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to load preferences' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/me/preferences', requireAuth, async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const body = req.body as Record<string, unknown> | null | undefined;
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be a JSON object of preference keys' });
+  }
+
+  // Cap the size of the merged blob to avoid runaway growth from a buggy
+  // client. The wizard only writes a handful of small primitive fields.
+  const serialized = JSON.stringify(body);
+  if (serialized.length > 8 * 1024) {
+    return res.status(413).json({ error: 'Preferences payload too large' });
+  }
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    // Shallow-merge into the existing JSONB blob so callers can update a
+    // single key (e.g. just `onboarding_step`) without clobbering other keys.
+    const { rows } = await client.query<{ preferences: Record<string, unknown> | null }>(
+      `UPDATE users
+         SET preferences = COALESCE(preferences, '{}'::jsonb) || $1::jsonb,
+             updated_at = NOW()
+       WHERE id = $2
+       RETURNING preferences`,
+      [serialized, userId],
+    );
+    await client.query('COMMIT');
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    return res.json({ preferences: rows[0].preferences ?? {} });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to update user preferences', { tenantId, userId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update preferences' });
+  } finally {
+    client.release();
+  }
+});
+
 router.patch('/users/:id/role', requireAuth, requireRole('owner'), async (req, res) => {
   const { tenantId, userId: requestingUserId } = req.user!;
   const { id } = req.params;

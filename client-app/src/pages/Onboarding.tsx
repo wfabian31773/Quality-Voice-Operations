@@ -9,6 +9,21 @@ interface ProvisioningStatus {
   phoneNumberCount: number;
 }
 
+interface UserPreferences {
+  onboarding_step?: number;
+  onboarding_completed?: boolean;
+  [key: string]: unknown;
+}
+
+const TOTAL_ONBOARDING_STEPS = 3;
+
+function clampStep(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const rounded = Math.floor(value);
+  if (rounded < 1 || rounded > TOTAL_ONBOARDING_STEPS) return null;
+  return rounded;
+}
+
 const AGENT_TEMPLATES = [
   { value: 'answering-service', label: 'Answering Service', description: 'General inbound call handling and ticket creation' },
   { value: 'medical-after-hours', label: 'Medical After-Hours', description: 'Medical triage with urgent escalation' },
@@ -26,7 +41,66 @@ export default function Onboarding() {
   const [selectedTemplate, setSelectedTemplate] = useState('answering-service');
   const [updatingAgent, setUpdatingAgent] = useState(false);
   const [pollCount, setPollCount] = useState(0);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const verifyAttempted = useRef(false);
+  const persistedStepRef = useRef<number | null>(null);
+
+  // Persist the user's current step to the server so they can resume
+  // exactly where they left off after a refresh, logout, or new login.
+  const persistStep = useCallback(async (nextStep: number, completed = false) => {
+    if (persistedStepRef.current === nextStep && !completed) return;
+    persistedStepRef.current = nextStep;
+    try {
+      await api.patch('/me/preferences', {
+        onboarding_step: nextStep,
+        ...(completed ? { onboarding_completed: true } : {}),
+      });
+    } catch {
+      // Best-effort: a failed save shouldn't block the wizard. The user
+      // can still navigate; we'll try again on the next step change.
+    }
+  }, []);
+
+  const advanceTo = useCallback(
+    (nextStep: number, options: { persist?: boolean; completed?: boolean } = {}) => {
+      const { persist = true, completed = false } = options;
+      setStep((current) => {
+        // Never go backwards — if the user has already advanced past this
+        // step (e.g. resumed at step 3 from saved progress), the
+        // provisioning-ready signal mustn't yank them back to step 2.
+        const target = Math.max(current, nextStep);
+        if (persist) {
+          void persistStep(target, completed);
+        }
+        return target;
+      });
+    },
+    [persistStep],
+  );
+
+  // Load saved progress before doing anything else so we don't overwrite
+  // a higher saved step with the default `1`.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await api.get<{ preferences: UserPreferences }>('/me/preferences');
+        if (cancelled) return;
+        const saved = clampStep(result.preferences?.onboarding_step);
+        if (saved !== null && !result.preferences?.onboarding_completed) {
+          setStep(saved);
+          persistedStepRef.current = saved;
+        }
+      } catch {
+        // If we can't load preferences, fall back to starting at step 1.
+      } finally {
+        if (!cancelled) setPreferencesLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const verifyCheckout = useCallback(async () => {
     const sessionId = searchParams.get('session_id');
@@ -36,42 +110,44 @@ export default function Onboarding() {
       const result = await api.post<{ status: string }>('/tenants/me/verify-checkout', { sessionId });
       if (result.status === 'ready') {
         setProvisioningStatus({ status: 'ready', agentCount: 1, phoneNumberCount: 0 });
-        setStep(2);
+        advanceTo(2);
       }
     } catch {
       // Fall through to polling
     }
-  }, [searchParams]);
+  }, [searchParams, advanceTo]);
 
   const pollStatus = useCallback(async () => {
     try {
       const data = await api.get<ProvisioningStatus>('/tenants/me/provisioning-status');
       setProvisioningStatus(data);
       if (data.status === 'ready') {
-        setStep(2);
+        advanceTo(2);
       }
     } catch {
       // Retry silently
     }
-  }, []);
+  }, [advanceTo]);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     verifyCheckout();
     pollStatus();
-  }, [verifyCheckout, pollStatus]);
+  }, [preferencesLoaded, verifyCheckout, pollStatus]);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     if (provisioningStatus?.status === 'ready') return;
     const interval = setInterval(() => {
       setPollCount((c) => c + 1);
       pollStatus();
     }, 3000);
     return () => clearInterval(interval);
-  }, [provisioningStatus?.status, pollStatus, pollCount]);
+  }, [preferencesLoaded, provisioningStatus?.status, pollStatus, pollCount]);
 
   const handleTemplateConfirm = async () => {
     if (selectedTemplate === 'answering-service') {
-      setStep(3);
+      advanceTo(3);
       return;
     }
 
@@ -84,12 +160,19 @@ export default function Onboarding() {
           name: AGENT_TEMPLATES.find((t) => t.value === selectedTemplate)?.label ?? selectedTemplate,
         });
       }
-      setStep(3);
+      advanceTo(3);
     } catch {
-      setStep(3);
+      advanceTo(3);
     } finally {
       setUpdatingAgent(false);
     }
+  };
+
+  const handleFinish = (path: string) => {
+    // Wizard is done — record completion so we don't resume into the
+    // (now-stale) wizard the next time the user lands here.
+    void persistStep(TOTAL_ONBOARDING_STEPS, true);
+    navigate(path);
   };
 
   return (
@@ -126,7 +209,7 @@ export default function Onboarding() {
                   </div>
                   <p className="text-sm text-text-secondary">Your tenant environment has been provisioned successfully.</p>
                   <button
-                    onClick={() => setStep(2)}
+                    onClick={() => advanceTo(2)}
                     className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
                   >
                     Continue <ArrowRight className="h-4 w-4" />
@@ -210,13 +293,13 @@ export default function Onboarding() {
 
               <div className="flex flex-col gap-3 pt-2">
                 <button
-                  onClick={() => navigate('/phone-numbers')}
+                  onClick={() => handleFinish('/phone-numbers')}
                   className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   <Phone className="h-4 w-4" /> Add Phone Number
                 </button>
                 <button
-                  onClick={() => navigate('/')}
+                  onClick={() => handleFinish('/')}
                   className="w-full bg-surface hover:bg-surface-secondary text-text-primary font-medium py-2.5 px-4 rounded-lg text-sm transition-colors border border-border"
                 >
                   Skip for Now — Go to Dashboard
