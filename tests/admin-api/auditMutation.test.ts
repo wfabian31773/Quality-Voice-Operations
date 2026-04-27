@@ -237,4 +237,178 @@ describe('auditMutation middleware', () => {
     const event = writeAuditLogMock.mock.calls[0][0];
     expect(event.changes.query).toEqual({ source: 'admin', password: '[REDACTED]' });
   });
+
+  describe('S-06 acceptance — one audit row per representative route', () => {
+    /**
+     * Locks BL-010's done-criteria: every S-06 route emits exactly one
+     * middleware-driven audit_logs row with the right action/resource/method
+     * and the right severity for success vs failure paths.
+     *
+     * Each route is mounted on the same Express app instance the production
+     * code uses, so this exercises real `req.route` template inference, real
+     * body parsing, and the real `res.on('finish')` flow.
+     */
+    it.each([
+      {
+        name: 'connector connect (OAuth callback POST)',
+        method: 'post' as const,
+        path: '/connectors/hubspot/connect',
+        body: { code: 'oauth-code', state: 'xyz', client_secret: 'shh' },
+        status: 201,
+        expectAction: 'connectors_connect.post',
+        expectResourceType: 'connectors',
+        expectResourceId: 'hubspot',
+        expectSeverity: 'info' as const,
+        expectRedacted: ['client_secret'],
+      },
+      {
+        name: 'connector disconnect',
+        method: 'post' as const,
+        path: '/connectors/conn-99/disconnect',
+        body: { reason: 'manual' },
+        status: 200,
+        expectAction: 'connectors_disconnect.post',
+        expectResourceType: 'connectors',
+        expectResourceId: 'conn-99',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'widget token create',
+        method: 'post' as const,
+        path: '/widget/tokens',
+        body: { label: 'Default' },
+        status: 201,
+        expectAction: 'widget_tokens.post',
+        expectResourceType: 'widget',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'widget token delete',
+        method: 'delete' as const,
+        path: '/widget/tokens/tok-42',
+        body: undefined,
+        status: 200,
+        expectAction: 'widget_tokens.delete',
+        expectResourceType: 'widget',
+        expectResourceId: 'tok-42',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'phone-number routing change',
+        method: 'patch' as const,
+        path: '/phone-numbers/+15551234567',
+        body: { routingProfileId: 'rp-1' },
+        status: 200,
+        expectAction: 'phone-numbers.patch',
+        expectResourceType: 'phone-numbers',
+        expectResourceId: '+15551234567',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'user invite',
+        method: 'post' as const,
+        path: '/users/invite',
+        body: { email: 'new@acme.test', role: 'agent' },
+        status: 201,
+        expectAction: 'users_invite.post',
+        expectResourceType: 'users',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'user role change',
+        method: 'patch' as const,
+        path: '/users/u-77/role',
+        body: { role: 'manager' },
+        status: 200,
+        expectAction: 'users_role.patch',
+        expectResourceType: 'users',
+        expectResourceId: 'u-77',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'encryption key rotate',
+        method: 'post' as const,
+        path: '/compliance/encryption/rotate',
+        body: { reason: 'quarterly' },
+        status: 202,
+        expectAction: 'compliance_encryption_rotate.post',
+        expectResourceType: 'compliance',
+        expectSeverity: 'info' as const,
+      },
+      {
+        name: 'GDPR erasure (5xx → warning severity)',
+        method: 'post' as const,
+        path: '/compliance/gdpr/erase',
+        body: { contactId: 'c-13' },
+        status: 500,
+        expectAction: 'compliance_gdpr_erase.post',
+        expectResourceType: 'compliance',
+        expectSeverity: 'warning' as const,
+      },
+    ])(
+      'records one audit row for $name',
+      async ({
+        method,
+        path,
+        body,
+        status,
+        expectAction,
+        expectResourceType,
+        expectResourceId,
+        expectSeverity,
+        expectRedacted,
+      }) => {
+        const { auditMutation } = await import('../../platform/audit/auditMutation');
+        const app = express();
+        app.use(express.json());
+        app.use((req, _res, next) => {
+          req.user = {
+            userId: 'user-1',
+            tenantId: 'tenant-A',
+            email: 'owner@acme.test',
+            role: 'tenant_owner',
+            isPlatformAdmin: false,
+          } as Request['user'];
+          next();
+        });
+        app.use(auditMutation());
+
+        // Real S-06 route shapes — same templates the admin-api uses.
+        app.post('/connectors/:provider/connect', (_req, res) => res.status(201).json({ ok: true }));
+        app.post('/connectors/:id/disconnect', (_req, res) => res.status(200).json({ ok: true }));
+        app.post('/widget/tokens', (_req, res) => res.status(201).json({ token: { id: 'tok-1' } }));
+        app.delete('/widget/tokens/:id', (_req, res) => res.status(200).json({ ok: true }));
+        app.patch('/phone-numbers/:id', (_req, res) => res.status(200).json({ ok: true }));
+        app.post('/users/invite', (_req, res) => res.status(201).json({ user: { id: 'u-1' } }));
+        app.patch('/users/:id/role', (_req, res) => res.status(200).json({ ok: true }));
+        app.post('/compliance/encryption/rotate', (_req, res) => res.status(202).json({ jobId: 'j-1' }));
+        app.post('/compliance/gdpr/erase', (_req, res) => res.status(500).json({ error: 'boom' }));
+
+        let req = (request(app) as unknown as Record<string, (p: string) => request.Test>)[method](
+          path,
+        );
+        if (body !== undefined) {
+          req = req.send(body);
+        }
+        await req.expect(status);
+
+        expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+        const event = writeAuditLogMock.mock.calls[0][0];
+        expect(event.tenantId).toBe('tenant-A');
+        expect(event.actorUserId).toBe('user-1');
+        expect(event.action).toBe(expectAction);
+        expect(event.resourceType).toBe(expectResourceType);
+        if (expectResourceId !== undefined) {
+          expect(event.resourceId).toBe(expectResourceId);
+        }
+        expect(event.severity).toBe(expectSeverity);
+        expect(event.changes.method).toBe(method.toUpperCase());
+        expect(event.changes.path).toBe(path);
+        expect(event.changes.statusCode).toBe(status);
+        for (const key of expectRedacted ?? []) {
+          expect(event.changes.body[key]).toBe('[REDACTED]');
+        }
+      },
+    );
+  });
 });

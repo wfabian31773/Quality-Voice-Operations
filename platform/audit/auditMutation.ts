@@ -4,6 +4,20 @@ import { createLogger } from '../core/logger';
 
 const logger = createLogger('AUDIT_MUTATION');
 
+/**
+ * Default-on Express middleware that records every non-GET tenant-scoped
+ * admin-api request to the `audit_logs` table (BL-010 / S-06).
+ *
+ * Intentional opt-outs (set `req.skipAuditMutation = true` inside the handler):
+ *   - `POST /v1/ingest/calls`   — high-volume machine-to-machine ingest with
+ *                                  per-event domain audits already in place.
+ *   - `POST /v1/ingest/tickets` — same.
+ *
+ * Add new opt-outs sparingly and document them here so the exclusion list
+ * stays reviewable. Everything else (connector connect/disconnect, widget
+ * token create/delete, phone-number routing, user invite + role change,
+ * encryption rotate, GDPR erase, …) is captured automatically.
+ */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 const SENSITIVE_KEY_PATTERN = /(password|passwd|secret|token|apikey|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|client[_-]?secret|private[_-]?key|webhook[_-]?signature|otp|mfa)/i;
