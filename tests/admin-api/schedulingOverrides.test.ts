@@ -898,6 +898,425 @@ describe('booking endpoints honour schedule overrides', () => {
   });
 });
 
+describe('POST /scheduling/overrides cascades to existing bookings', () => {
+  // Re-uses the same queue-driven pool mock as the booking endpoints
+  // describe block above.
+  let app: ReturnType<typeof express>;
+  const queryQueue: Array<{
+    match?: RegExp;
+    rows?: unknown[];
+    rowCount?: number;
+    throws?: Error;
+  }> = [];
+  const queryMock = vi.fn(async (sql: string) => {
+    if (queryQueue.length === 0) {
+      throw new Error(`Unexpected query (no mock queued):\n${sql}`);
+    }
+    const next = queryQueue.shift()!;
+    if (next.match && !next.match.test(sql)) {
+      throw new Error(
+        `Query did not match expected pattern.\nExpected: ${next.match}\nGot: ${sql}`,
+      );
+    }
+    if (next.throws) throw next.throws;
+    const rows = next.rows ?? [];
+    return { rows, rowCount: next.rowCount ?? rows.length };
+  });
+
+  beforeEach(() => {
+    queryMock.mockClear();
+    queryQueue.length = 0;
+    vi.mocked(getPlatformPool).mockReturnValue(
+      { query: queryMock } as unknown as ReturnType<typeof getPlatformPool>,
+    );
+    app = express();
+    app.use(express.json());
+    app.use(schedulingRouter);
+  });
+
+  it('surfaces existing future bookings on the blocked date without auto-cancelling them', async () => {
+    queryQueue.push(
+      // INSERT INTO scheduling_overrides — full-day blackout for Friday
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-cascade',
+            tenant_id: TENANT,
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: 'Holiday',
+          },
+        ],
+      },
+      // findBookingsBlockedByOverride — two pending/confirmed bookings on the date
+      {
+        match: /FROM bookings[\s\S]+status IN/i,
+        rows: [
+          {
+            id: 'bk-1',
+            title: 'Cleaning',
+            start_time: '2026-05-01T09:00:00.000Z',
+            end_time: '2026-05-01T09:30:00.000Z',
+            status: 'confirmed',
+            contact_name: 'Acme',
+            contact_phone: '+15555550100',
+            contact_email: 'ops@acme.test',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+          },
+          {
+            id: 'bk-2',
+            title: 'Inspection',
+            start_time: '2026-05-01T13:00:00.000Z',
+            end_time: '2026-05-01T13:30:00.000Z',
+            status: 'pending',
+            contact_name: 'Beta',
+            contact_phone: '',
+            contact_email: 'beta@b.test',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      override_date: '2026-05-01',
+      reason: 'Holiday',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.override.id).toBe('ovr-cascade');
+    expect(res.body.affected_bookings).toHaveLength(2);
+    expect(res.body.affected_bookings.map((b: { id: string }) => b.id)).toEqual([
+      'bk-1',
+      'bk-2',
+    ]);
+    // Without `cancel_affected`, no UPDATE / audit / notification queries fire.
+    expect(res.body.cancelled).toEqual([]);
+    expect(res.body.notifications_queued).toBe(0);
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('cancel_affected: true → cancels each affected booking with a "schedule override" reason and queues notifications via the matching reminder configs', async () => {
+    queryQueue.push(
+      // INSERT INTO scheduling_overrides
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-cancel',
+            tenant_id: TENANT,
+            provider_id: PROVIDER_A,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: 'Snow day',
+          },
+        ],
+      },
+      // findBookingsBlockedByOverride
+      {
+        match: /FROM bookings[\s\S]+status IN/i,
+        rows: [
+          {
+            id: 'bk-cancel-1',
+            title: 'Cleaning',
+            start_time: '2026-05-01T09:00:00.000Z',
+            end_time: '2026-05-01T09:30:00.000Z',
+            status: 'confirmed',
+            contact_name: 'Acme',
+            contact_phone: '+15555550100',
+            contact_email: 'ops@acme.test',
+            provider_id: PROVIDER_A,
+            appointment_type_id: 'type-a',
+          },
+        ],
+      },
+      // UPDATE bookings → cancelled
+      { match: /UPDATE bookings\s+SET status = 'cancelled'/i, rows: [], rowCount: 1 },
+      // INSERT INTO scheduling_audit_log
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      // SELECT reminder configs for the booking's appointment type
+      {
+        match: /FROM scheduling_reminder_configs/i,
+        rows: [
+          { id: 'cfg-cancel', channel: 'sms', reminder_type: 'cancellation_followup' },
+          { id: 'cfg-generic', channel: 'email', reminder_type: 'reminder' },
+        ],
+      },
+      // INSERT INTO scheduling_reminder_log — only the cancellation_followup
+      // config fires when one is present; the generic reminder is skipped so
+      // the customer gets the right template.
+      { match: /INSERT INTO scheduling_reminder_log/i, rows: [] },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      provider_id: PROVIDER_A,
+      override_date: '2026-05-01',
+      reason: 'Snow day',
+      cancel_affected: true,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.cancelled).toEqual(['bk-cancel-1']);
+    expect(res.body.notifications_queued).toBe(1);
+
+    // Sanity-check the cancellation reason carried through to UPDATE +
+    // audit-log writes.
+    const updateCall = queryMock.mock.calls.find((c) =>
+      /UPDATE bookings\s+SET status = 'cancelled'/i.test(String(c[0])),
+    );
+    expect(String(updateCall?.[1]?.[2])).toBe('Schedule override: Snow day');
+
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('falls back to any active reminder config when no cancellation_followup row exists', async () => {
+    queryQueue.push(
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-fallback',
+            tenant_id: TENANT,
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: '',
+          },
+        ],
+      },
+      {
+        match: /FROM bookings[\s\S]+status IN/i,
+        rows: [
+          {
+            id: 'bk-fallback',
+            title: 'Visit',
+            start_time: '2026-05-01T09:00:00.000Z',
+            end_time: '2026-05-01T09:30:00.000Z',
+            status: 'confirmed',
+            contact_name: 'Cust',
+            contact_phone: '+15555550100',
+            contact_email: '',
+            provider_id: null,
+            appointment_type_id: null,
+          },
+        ],
+      },
+      { match: /UPDATE bookings\s+SET status = 'cancelled'/i, rows: [], rowCount: 1 },
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      {
+        match: /FROM scheduling_reminder_configs/i,
+        rows: [
+          { id: 'cfg-sms', channel: 'sms', reminder_type: 'reminder' },
+          { id: 'cfg-email', channel: 'email', reminder_type: 'reminder' },
+        ],
+      },
+      // Both reminder configs fire when there's no cancellation-specific row,
+      // so the customer at least hears about it on every active channel.
+      { match: /INSERT INTO scheduling_reminder_log/i, rows: [] },
+      { match: /INSERT INTO scheduling_reminder_log/i, rows: [] },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      override_date: '2026-05-01',
+      cancel_affected: true,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.cancelled).toEqual(['bk-fallback']);
+    expect(res.body.notifications_queued).toBe(2);
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('cancel_affected="false" (the literal string) does NOT trigger cancellation — strict boolean opt-in only', async () => {
+    queryQueue.push(
+      // INSERT INTO scheduling_overrides
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-strict',
+            tenant_id: TENANT,
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: '',
+          },
+        ],
+      },
+      // findBookingsBlockedByOverride — return one match so we can prove
+      // it's surfaced WITHOUT being cancelled.
+      {
+        match: /FROM bookings[\s\S]+status IN/i,
+        rows: [
+          {
+            id: 'bk-keep',
+            title: 'Cleaning',
+            start_time: '2026-05-01T09:00:00.000Z',
+            end_time: '2026-05-01T09:30:00.000Z',
+            status: 'confirmed',
+            contact_name: 'Acme',
+            contact_phone: '+15555550100',
+            contact_email: '',
+            provider_id: null,
+            appointment_type_id: null,
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      override_date: '2026-05-01',
+      // Truthy in JS but explicitly "false" — must NOT cancel anything.
+      cancel_affected: 'false',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.affected_bookings).toHaveLength(1);
+    expect(res.body.cancelled).toEqual([]);
+    expect(res.body.notifications_queued).toBe(0);
+    // No UPDATE / audit / reminder writes were issued — proves the strict
+    // boolean parse short-circuited the destructive path.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('skips the cascade entirely for an "available" override (it opens hours rather than blocking them)', async () => {
+    queryQueue.push(
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-open',
+            tenant_id: TENANT,
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: '10:00:00',
+            end_time: '14:00:00',
+            is_available: true,
+            reason: 'Special hours',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      override_date: '2026-05-01',
+      start_time: '10:00:00',
+      end_time: '14:00:00',
+      is_available: true,
+      cancel_affected: true,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.affected_bookings).toEqual([]);
+    expect(res.body.cancelled).toEqual([]);
+    expect(res.body.notifications_queued).toBe(0);
+    // No bookings/reminder lookups should have been issued.
+    expect(queryQueue).toHaveLength(0);
+  });
+
+  it('surfaces cascade failures via cascade_error without rolling back the override row', async () => {
+    queryQueue.push(
+      // Override row is persisted successfully…
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-soft-fail',
+            tenant_id: TENANT,
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: null,
+            end_time: null,
+            is_available: false,
+            reason: '',
+          },
+        ],
+      },
+      // …but the bookings lookup blows up. The handler must NOT 500: the
+      // override is already saved, so the failure has to come back in the
+      // payload so the admin knows the cascade did not run.
+      {
+        match: /FROM bookings[\s\S]+status IN/i,
+        throws: new Error('bookings table down'),
+      },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      override_date: '2026-05-01',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.override.id).toBe('ovr-soft-fail');
+    expect(res.body.affected_bookings).toEqual([]);
+    expect(res.body.cancelled).toEqual([]);
+    expect(res.body.cascade_error).toMatch(/bookings table down/i);
+  });
+
+  it('partial blackouts only cascade to bookings that overlap the blocked window', async () => {
+    queryQueue.push(
+      {
+        match: /INSERT INTO scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-partial',
+            tenant_id: TENANT,
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: '12:00:00',
+            end_time: '13:00:00',
+            is_available: false,
+            reason: 'Lunch',
+          },
+        ],
+      },
+      // The bookings query carries the blocked-window predicates so the
+      // database does the overlap filtering for us; we just verify the
+      // SQL includes overlap clauses on start_time / end_time.
+      {
+        match: /FROM bookings[\s\S]+start_time < \$\d+::timestamptz[\s\S]+end_time > \$\d+::timestamptz/i,
+        rows: [
+          {
+            id: 'bk-overlap',
+            title: 'Lunch slot',
+            start_time: '2026-05-01T12:30:00.000Z',
+            end_time: '2026-05-01T12:45:00.000Z',
+            status: 'confirmed',
+            contact_name: 'Cust',
+            contact_phone: '',
+            contact_email: '',
+            provider_id: null,
+            appointment_type_id: null,
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/overrides').send({
+      override_date: '2026-05-01',
+      start_time: '12:00:00',
+      end_time: '13:00:00',
+      reason: 'Lunch',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.affected_bookings).toHaveLength(1);
+    expect(res.body.affected_bookings[0].id).toBe('bk-overlap');
+    expect(queryQueue).toHaveLength(0);
+  });
+});
+
 describe('expandRecurringSeriesDates', () => {
   it('expands a weekly cadence between series_start and series_end', () => {
     const dates = expandRecurringSeriesDates(

@@ -237,6 +237,196 @@ export async function findBlockingOverride(
   return null;
 }
 
+// ─── OVERRIDE → EXISTING BOOKINGS CASCADE ───
+//
+// Creating an override only protects FUTURE booking writes from landing on a
+// blocked window. Bookings that were already on the calendar before the
+// admin marked the date blocked (e.g. customers booked Friday last week,
+// admin closes Friday today) are still sitting in `bookings` with an active
+// status — and unless we surface or cancel them, customers will show up to
+// a closed office. The helpers below (used by `createOverrideHandler`) find
+// those bookings, optionally cancel them, and queue customer notifications
+// via the existing `scheduling_reminder_configs` pipeline.
+export type AffectedBooking = {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  contact_name: string;
+  contact_phone: string;
+  contact_email: string;
+  provider_id: string | null;
+  appointment_type_id: string | null;
+};
+
+type OverrideCascadeRow = {
+  id?: string;
+  provider_id: string | null;
+  override_date: string | Date;
+  start_time: string | null;
+  end_time: string | null;
+  is_available: boolean;
+  reason?: string | null;
+};
+
+function overrideDateToString(value: string | Date): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+/**
+ * Returns the active future bookings whose time falls inside the override's
+ * blocked window. Never returns rows for an `is_available = true` override —
+ * those open the schedule rather than close it. Provider scope is honoured:
+ * a provider-scoped override only affects that provider's bookings; a
+ * tenant-wide override affects every booking on the date.
+ */
+export async function findBookingsBlockedByOverride(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  override: OverrideCascadeRow,
+): Promise<AffectedBooking[]> {
+  if (override.is_available) return [];
+
+  const dateStr = overrideDateToString(override.override_date);
+  // Treat the override date as a UTC day so bucketing matches the rest of
+  // the override engine (see `findBlockingOverride`).
+  const dayStart = `${dateStr}T00:00:00.000Z`;
+  const dayEnd = `${dateStr}T23:59:59.999Z`;
+
+  const conditions: string[] = [
+    'tenant_id = $1',
+    "status IN ('pending', 'confirmed', 'checked_in')",
+    'start_time >= NOW()',
+    'start_time >= $2::timestamptz',
+    'start_time <= $3::timestamptz',
+  ];
+  const values: unknown[] = [tenantId, dayStart, dayEnd];
+
+  if (override.provider_id) {
+    values.push(override.provider_id);
+    conditions.push(`provider_id = $${values.length}`);
+  }
+
+  // Partial blackouts only collide with bookings that overlap the window;
+  // full-day blackouts (no start/end times) take every booking on the date.
+  if (override.start_time && override.end_time) {
+    const startTime = normalizeTime(override.start_time);
+    const endTime = normalizeTime(override.end_time);
+    if (!startTime || !endTime) return [];
+    const windowStart = `${dateStr}T${startTime}.000Z`;
+    values.push(windowStart);
+    const windowStartIdx = values.length;
+    const windowEnd = `${dateStr}T${endTime}.000Z`;
+    values.push(windowEnd);
+    const windowEndIdx = values.length;
+    // Booking overlaps the window iff start < windowEnd AND end > windowStart.
+    conditions.push(`start_time < $${windowEndIdx}::timestamptz`);
+    conditions.push(`end_time > $${windowStartIdx}::timestamptz`);
+  }
+
+  const { rows } = await pool.query(
+    `SELECT id, title, start_time, end_time, status,
+            contact_name, contact_phone, contact_email,
+            provider_id, appointment_type_id
+     FROM bookings
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY start_time ASC`,
+    values,
+  );
+  return rows as AffectedBooking[];
+}
+
+type ReminderConfigRow = {
+  id: string;
+  channel: string;
+  reminder_type: string;
+};
+
+/**
+ * Cancel each `bookings` row supplied with a "schedule override" reason,
+ * write an audit-log entry per cancellation, and queue customer-facing
+ * notifications by inserting one `scheduling_reminder_log` row per active
+ * reminder config that matches the booking's appointment type (or any
+ * tenant-wide config). Cancellation rows are favoured when present so the
+ * customer gets the right template; otherwise any active reminder config is
+ * used so the contact still hears about it.
+ */
+export async function cancelBookingsForOverride(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  override: OverrideCascadeRow,
+  bookings: AffectedBooking[],
+  changedBy: string | null,
+): Promise<{ cancelled: string[]; notifications_queued: number }> {
+  const cancelled: string[] = [];
+  let notifications_queued = 0;
+  const reasonSuffix = override.reason ? `: ${override.reason}` : '';
+  const cancellationReason = `Schedule override${reasonSuffix}`;
+
+  for (const booking of bookings) {
+    const { rowCount } = await pool.query(
+      `UPDATE bookings
+       SET status = 'cancelled', cancellation_reason = $3, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2`,
+      [booking.id, tenantId, cancellationReason],
+    );
+    if (!rowCount) continue;
+    cancelled.push(booking.id);
+
+    await auditLog(
+      pool,
+      tenantId,
+      booking.id,
+      'cancel',
+      booking.status,
+      'cancelled',
+      changedBy,
+      {
+        override_id: override.id ?? null,
+        source: 'schedule_override_cascade',
+      },
+      cancellationReason,
+    );
+
+    // Notifications need at least one contact channel to reach a customer.
+    const hasContact = !!(booking.contact_phone || booking.contact_email);
+    if (!hasContact) continue;
+
+    const { rows: configRows } = await pool.query(
+      `SELECT id, channel, reminder_type
+       FROM scheduling_reminder_configs
+       WHERE tenant_id = $1
+         AND is_active = true
+         AND (appointment_type_id = $2 OR appointment_type_id IS NULL)`,
+      [tenantId, booking.appointment_type_id],
+    );
+    const configs = configRows as ReminderConfigRow[];
+    if (configs.length === 0) continue;
+
+    // Prefer cancellation-specific configs (so the template matches the
+    // event the customer is being told about); fall back to any active
+    // config so the contact at least hears about it.
+    const cancellationConfigs = configs.filter(
+      (c) => c.reminder_type === 'cancellation_followup',
+    );
+    const configsToFire = cancellationConfigs.length > 0 ? cancellationConfigs : configs;
+
+    for (const cfg of configsToFire) {
+      await pool.query(
+        `INSERT INTO scheduling_reminder_log
+           (tenant_id, booking_id, reminder_config_id, channel, status)
+         VALUES ($1, $2, $3, $4, 'pending')`,
+        [tenantId, booking.id, cfg.id, cfg.channel],
+      );
+      notifications_queued += 1;
+    }
+  }
+
+  return { cancelled, notifications_queued };
+}
+
 /**
  * Convenience wrapper used by booking endpoints: returns a JSON 409 payload
  * if the requested window collides with a schedule override and `false`
@@ -1071,7 +1261,15 @@ const listOverridesHandler: RequestHandler = async (req, res) => {
 
 const createOverrideHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { provider_id, override_date, start_time, end_time, is_available, reason } = req.body;
+  const {
+    provider_id,
+    override_date,
+    start_time,
+    end_time,
+    is_available,
+    reason,
+    cancel_affected,
+  } = req.body;
   if (!override_date) return res.status(400).json({ error: 'override_date is required' });
   const pool = getPlatformPool();
   try {
@@ -1080,7 +1278,57 @@ const createOverrideHandler: RequestHandler = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [tenantId, provider_id || null, override_date, start_time || null, end_time || null, is_available !== undefined ? is_available : false, reason || '', req.user!.userId],
     );
-    return res.status(201).json({ override: rows[0] });
+    const override = rows[0] as OverrideCascadeRow;
+
+    // Cascade to existing bookings: always surface the affected rows so the
+    // admin can review them, and optionally cancel + notify the contacts in
+    // the same request when `cancel_affected: true` is passed. The cascade
+    // is best-effort — the override row is already persisted, so a cascade
+    // failure surfaces in the response payload rather than 500-ing.
+    let affected_bookings: AffectedBooking[] = [];
+    let cancelled: string[] = [];
+    let notifications_queued = 0;
+    let cascade_error: string | undefined;
+
+    // Strict boolean opt-in: only `true` (or the literal string "true")
+    // triggers the destructive cascade. Other truthy values like the
+    // string "false" or "0" must NOT cancel bookings — accidental
+    // destructive behaviour is much worse than an admin having to retry
+    // with a properly-typed flag.
+    const cancelAffected = cancel_affected === true || cancel_affected === 'true';
+
+    if (!override.is_available) {
+      try {
+        affected_bookings = await findBookingsBlockedByOverride(pool, tenantId, override);
+        if (cancelAffected && affected_bookings.length > 0) {
+          const result = await cancelBookingsForOverride(
+            pool,
+            tenantId,
+            override,
+            affected_bookings,
+            req.user!.userId ?? null,
+          );
+          cancelled = result.cancelled;
+          notifications_queued = result.notifications_queued;
+        }
+      } catch (cascadeErr) {
+        const message = String(cascadeErr instanceof Error ? cascadeErr.message : cascadeErr);
+        logger.error('Failed to cascade override to existing bookings', {
+          tenantId,
+          overrideId: override.id ?? null,
+          error: message,
+        });
+        cascade_error = message;
+      }
+    }
+
+    return res.status(201).json({
+      override,
+      affected_bookings,
+      cancelled,
+      notifications_queued,
+      ...(cascade_error ? { cascade_error } : {}),
+    });
   } catch (err) {
     logger.error('Failed to create override', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to create override' });
