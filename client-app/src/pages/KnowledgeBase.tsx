@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown, Check, Loader2 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { Skeleton, SkeletonRows } from '../components/state';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
+import { renderMarkdownToSafeHtml } from '../lib/markdown';
 
 interface Article {
   id: number;
@@ -65,45 +66,215 @@ const STATUS_STYLES: Record<string, string> = {
   archived: 'bg-surface-hover text-text-secondary',
 };
 
+const AUTOSAVE_DELAY_MS = 1500;
+
+type AutosaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
+function formatSavedAt(date: Date | null): string {
+  if (!date) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+const EMPTY_FORM: ArticleFormData = { title: '', content: '', category: '', status: 'active' };
+
+function formsEqual(a: ArticleFormData, b: ArticleFormData): boolean {
+  return a.title === b.title && a.content === b.content && a.category === b.category && a.status === b.status;
+}
+
 function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onClose: () => void; onSaved: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<ArticleFormData>({
-    title: '',
-    content: '',
-    category: '',
-    status: 'active',
-  });
+  const [form, setForm] = useState<ArticleFormData>(EMPTY_FORM);
   const [loaded, setLoaded] = useState(!articleId);
+  const [editorTab, setEditorTab] = useState<'edit' | 'preview'>('edit');
+  const [currentArticleId, setCurrentArticleId] = useState<number | undefined>(articleId);
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const [autosaveError, setAutosaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // Refs hold the freshest values so the autosave loop never captures stale data.
+  const formRef = useRef<ArticleFormData>(EMPTY_FORM);
+  const lastSavedFormRef = useRef<ArticleFormData | null>(null);
+  const currentArticleIdRef = useRef<number | undefined>(articleId);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const closingRef = useRef(false);
+
+  useEffect(() => { formRef.current = form; }, [form]);
+  useEffect(() => { currentArticleIdRef.current = currentArticleId; }, [currentArticleId]);
 
   useEffect(() => {
     if (!articleId) return;
     api.get<{ article: Article }>(`/knowledge-articles/${articleId}`).then((res) => {
       const a = res.article;
-      setForm({
+      const next: ArticleFormData = {
         title: a.title ?? '',
         content: a.content ?? '',
         category: a.category ?? '',
         status: a.status ?? 'active',
-      });
+      };
+      setForm(next);
+      formRef.current = next;
+      lastSavedFormRef.current = next;
+      setLastSavedAt(a.updated_at ? new Date(a.updated_at) : null);
       setLoaded(true);
     });
   }, [articleId]);
 
-  const mutation = useMutation({
-    mutationFn: (data: ArticleFormData) => {
-      const payload = { ...data, category: data.category || null };
-      return articleId
-        ? api.patch(`/knowledge-articles/${articleId}`, payload)
-        : api.post('/knowledge-articles', payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['knowledge-articles'] });
-      onSaved();
-      onClose();
-    },
-  });
+  const previewHtml = useMemo(() => renderMarkdownToSafeHtml(form.content), [form.content]);
+
+  const performSave = (opts: { closeOnSuccess?: boolean } = {}): Promise<void> => {
+    // If a save is already running, chain onto it. After it resolves, re-check
+    // whether the form is still dirty and run another save with the latest
+    // values. This guarantees no edits are lost while a request is in flight.
+    if (inFlightPromiseRef.current) {
+      const next = inFlightPromiseRef.current.then(() => {
+        const latest = formRef.current;
+        const last = lastSavedFormRef.current;
+        const stillDirty = !last || !formsEqual(latest, last);
+        const closeNow = opts.closeOnSuccess;
+        if (!stillDirty) {
+          if (closeNow && !closingRef.current) {
+            closingRef.current = true;
+            onSaved();
+            onClose();
+          }
+          return;
+        }
+        return doSaveOnce(latest, opts);
+      });
+      return next;
+    }
+    return doSaveOnce(formRef.current, opts);
+  };
+
+  const doSaveOnce = (data: ArticleFormData, opts: { closeOnSuccess?: boolean }): Promise<void> => {
+    if (!data.title.trim() || !data.content.trim()) {
+      setAutosaveStatus('dirty');
+      return Promise.resolve();
+    }
+    const id = currentArticleIdRef.current;
+    setAutosaveStatus('saving');
+    setAutosaveError(null);
+
+    let runRef: Promise<void> | null = null;
+    const run = (async () => {
+      try {
+        const payload = { ...data, category: data.category || null };
+        let savedArticle: Article | null = null;
+        if (id) {
+          const res = await api.patch<{ article: Article }>(`/knowledge-articles/${id}`, payload);
+          savedArticle = res?.article ?? null;
+        } else {
+          const res = await api.post<{ article: Article }>('/knowledge-articles', payload);
+          savedArticle = res?.article ?? null;
+          if (savedArticle?.id) {
+            currentArticleIdRef.current = savedArticle.id;
+            setCurrentArticleId(savedArticle.id);
+          }
+        }
+        lastSavedFormRef.current = data;
+        setLastSavedAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['knowledge-articles'] });
+
+        // After a successful save, check whether the user kept typing while
+        // the request was in flight. If so, immediately schedule another save
+        // with the latest data — that's how we avoid "lost updates".
+        const latest = formRef.current;
+        const stillDirty = !formsEqual(latest, data);
+        if (stillDirty) {
+          setAutosaveStatus('dirty');
+        } else {
+          setAutosaveStatus('saved');
+          if (opts.closeOnSuccess && !closingRef.current) {
+            closingRef.current = true;
+            onSaved();
+            onClose();
+          }
+        }
+      } catch (err) {
+        setAutosaveStatus('error');
+        setAutosaveError((err as Error).message || 'Failed to save');
+      } finally {
+        if (inFlightPromiseRef.current === runRef) {
+          inFlightPromiseRef.current = null;
+        }
+      }
+    })();
+    runRef = run;
+    inFlightPromiseRef.current = run;
+
+    // If the form is still dirty after this save resolves, fire the next one.
+    return run.then(() => {
+      const latest = formRef.current;
+      const last = lastSavedFormRef.current;
+      const stillDirty = !last || !formsEqual(latest, last);
+      if (stillDirty && !closingRef.current) {
+        return doSaveOnce(latest, opts);
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (!loaded || closingRef.current) return;
+    const last = lastSavedFormRef.current;
+    const baseline = last ?? EMPTY_FORM;
+    const isDirty = !formsEqual(baseline, form);
+
+    if (!isDirty) return;
+    if (!form.title.trim() || !form.content.trim()) {
+      setAutosaveStatus('dirty');
+      return;
+    }
+    setAutosaveStatus('dirty');
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void performSave();
+    }, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [form, loaded]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, []);
 
   const set = (key: keyof ArticleFormData, val: string) => setForm((f) => ({ ...f, [key]: val }));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    void performSave({ closeOnSuccess: true });
+  };
+
+  const renderAutosaveBadge = () => {
+    if (autosaveStatus === 'saving') {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+          <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+        </span>
+      );
+    }
+    if (autosaveStatus === 'saved' && lastSavedAt) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+          <Check className="h-3 w-3 text-green-600" /> Saved at {formatSavedAt(lastSavedAt)}
+        </span>
+      );
+    }
+    if (autosaveStatus === 'dirty') {
+      return <span className="text-xs text-text-secondary">Unsaved changes</span>;
+    }
+    if (autosaveStatus === 'error') {
+      return <span className="text-xs text-danger">Autosave failed{autosaveError ? `: ${autosaveError}` : ''}</span>;
+    }
+    if (lastSavedAt) {
+      return <span className="text-xs text-text-secondary">Last saved {formatSavedAt(lastSavedAt)}</span>;
+    }
+    return null;
+  };
 
   if (!loaded) {
     return (
@@ -119,13 +290,13 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
       <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-text-primary">{articleId ? 'Edit Article' : 'Create Article'}</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-text-primary">{currentArticleId ? 'Edit Article' : 'Create Article'}</h2>
+            <div data-testid="autosave-status">{renderAutosaveBadge()}</div>
+          </div>
           <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
-        <form
-          onSubmit={(e) => { e.preventDefault(); mutation.mutate(form); }}
-          className="p-5 space-y-4"
-        >
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-1">Title</label>
             <input value={form.title} onChange={(e) => set('title', e.target.value)} required
@@ -153,17 +324,49 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">Content</label>
-            <textarea value={form.content} onChange={(e) => set('content', e.target.value)} rows={12} required
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-text-primary">Content</label>
+              <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setEditorTab('edit')}
+                  className={`px-3 py-1 transition ${editorTab === 'edit' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditorTab('preview')}
+                  className={`px-3 py-1 transition ${editorTab === 'preview' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}
+                >
+                  Preview
+                </button>
+              </div>
+            </div>
+            {editorTab === 'edit' ? (
+              <textarea value={form.content} onChange={(e) => set('content', e.target.value)} rows={12} required
+                placeholder="Markdown is supported. Use **bold**, # headings, lists, etc."
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+            ) : (
+              <div
+                data-testid="article-preview"
+                className="prose prose-sm max-w-none min-h-[18rem] px-3 py-2 rounded-lg border border-border bg-surface-secondary text-text-primary"
+                dangerouslySetInnerHTML={{ __html: previewHtml || '<p class="text-text-muted text-sm">Nothing to preview yet.</p>' }}
+              />
+            )}
+            <p className="text-xs text-text-secondary mt-1">Markdown is rendered safely — scripts and unsafe HTML are stripped automatically.</p>
           </div>
-          {mutation.error && <p className="text-danger text-sm">{(mutation.error as Error).message}</p>}
+          {autosaveStatus === 'error' && autosaveError && (
+            <p className="text-danger text-sm">{autosaveError}</p>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-lg border border-border hover:bg-surface-hover transition">Cancel</button>
-            <button type="submit" disabled={mutation.isPending}
+              className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-lg border border-border hover:bg-surface-hover transition">
+              {autosaveStatus === 'saved' || autosaveStatus === 'idle' ? 'Close' : 'Cancel'}
+            </button>
+            <button type="submit" disabled={autosaveStatus === 'saving'}
               className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50">
-              {mutation.isPending ? 'Saving...' : articleId ? 'Update' : 'Create'}
+              {autosaveStatus === 'saving' ? 'Saving...' : currentArticleId ? 'Save & Close' : 'Create'}
             </button>
           </div>
         </form>
