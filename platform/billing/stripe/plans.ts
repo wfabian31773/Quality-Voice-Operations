@@ -1,4 +1,7 @@
-export type PlanTier = 'starter' | 'pro' | 'enterprise';
+export type { PlanTier } from '../../../shared/billing/planCatalog';
+export { PLAN_MONTHLY_PRICE_CENTS } from '../../../shared/billing/planCatalog';
+import type { PlanTier } from '../../../shared/billing/planCatalog';
+
 export type SubscriptionState = 'trialing' | 'active' | 'past_due' | 'paused' | 'cancelled';
 
 export interface PlanLimits {
@@ -28,12 +31,6 @@ export const TRIAL_LIMITS: TrialLimits = {
   maxCallDurationMs: 3 * 60 * 1000,
   maxAgents: 2,
   maxToolExecutions: 10,
-};
-
-export const PLAN_MONTHLY_PRICE_CENTS: Record<PlanTier, number> = {
-  starter: 9_900,
-  pro: 39_900,
-  enterprise: 99_900,
 };
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {

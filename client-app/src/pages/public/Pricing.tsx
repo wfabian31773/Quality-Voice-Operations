@@ -7,6 +7,11 @@ import ROICalculator from '../../components/ROICalculator';
 import MinutesPricingCalculator from '../../components/MinutesPricingCalculator';
 import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { PLAN_CATALOG, getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
+
+function formatOverageRate(ratePerMinute: number): string {
+  return `$${ratePerMinute.toFixed(2)}/min`;
+}
 
 interface Feature {
   name: string;
@@ -16,8 +21,18 @@ interface Feature {
 }
 
 const features: Feature[] = [
-  { name: 'AI minutes included', starter: '500', pro: '2,500', enterprise: '10,000' },
-  { name: 'Overage rate', starter: '$0.15/min', pro: '$0.12/min', enterprise: '$0.08/min' },
+  {
+    name: 'AI minutes included',
+    starter: PLAN_CATALOG.starter.includedMinutes.toLocaleString(),
+    pro: PLAN_CATALOG.pro.includedMinutes.toLocaleString(),
+    enterprise: PLAN_CATALOG.enterprise.includedMinutes.toLocaleString(),
+  },
+  {
+    name: 'Overage rate',
+    starter: formatOverageRate(PLAN_CATALOG.starter.overageRatePerMinute),
+    pro: formatOverageRate(PLAN_CATALOG.pro.overageRatePerMinute),
+    enterprise: formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute),
+  },
   { name: 'Voice agents', starter: 'Unlimited', pro: 'Unlimited', enterprise: 'Unlimited' },
   { name: 'Phone numbers', starter: 'Up to 3', pro: 'Up to 10', enterprise: 'Unlimited' },
   { name: 'Inbound call handling', starter: true, pro: true, enterprise: true },
@@ -38,33 +53,32 @@ const features: Feature[] = [
   { name: '14-day free trial', starter: true, pro: true, enterprise: true },
 ];
 
-const tiers = [
-  {
-    key: 'starter' as const,
-    name: 'Starter',
-    price: 99,
+const TIER_COPY: Record<'starter' | 'pro' | 'enterprise', { desc: string; popular?: boolean }> = {
+  starter: {
     desc: 'For small practices getting started with voice automation.',
-    minutes: '500 AI minutes',
-    overage: '$0.15/min overage',
   },
-  {
-    key: 'pro' as const,
-    name: 'Pro',
-    price: 399,
+  pro: {
     desc: 'For growing businesses that need campaigns and integrations.',
     popular: true,
-    minutes: '2,500 AI minutes',
-    overage: '$0.12/min overage',
   },
-  {
-    key: 'enterprise' as const,
-    name: 'Enterprise',
-    price: 999,
+  enterprise: {
     desc: 'For multi-location organizations with high call volume.',
-    minutes: '10,000 AI minutes',
-    overage: '$0.08/min overage',
   },
-];
+};
+
+const tiers = (['starter', 'pro', 'enterprise'] as const).map((key) => {
+  const plan = PLAN_CATALOG[key];
+  const copy = TIER_COPY[key];
+  return {
+    key,
+    name: plan.name,
+    price: getPlanMonthlyPriceWholeDollars(key),
+    desc: copy.desc,
+    popular: copy.popular,
+    minutes: `${plan.includedMinutes.toLocaleString()} AI minutes`,
+    overage: `${formatOverageRate(plan.overageRatePerMinute)} overage`,
+  };
+});
 
 const faqs = [
   {
@@ -77,7 +91,7 @@ const faqs = [
   },
   {
     q: 'What happens if I exceed my included minutes?',
-    a: 'You\'ll be billed at your plan\'s overage rate for any minutes beyond your monthly allocation. Starter plans pay $0.15/min, Pro pays $0.12/min, and Enterprise pays $0.08/min.',
+    a: `You'll be billed at your plan's overage rate for any minutes beyond your monthly allocation. Starter plans pay ${formatOverageRate(PLAN_CATALOG.starter.overageRatePerMinute)}, Pro pays ${formatOverageRate(PLAN_CATALOG.pro.overageRatePerMinute)}, and Enterprise pays ${formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute)}.`,
   },
   {
     q: 'Can I change plans at any time?',
@@ -163,7 +177,7 @@ export default function Pricing() {
       {
         '@type': 'Question',
         name: 'How much does QVO cost?',
-        acceptedAnswer: { '@type': 'Answer', text: 'QVO offers three plans: Starter at $99/month, Pro at $399/month, and Enterprise at $999/month. All plans include a 14-day free trial.' },
+        acceptedAnswer: { '@type': 'Answer', text: `QVO offers three plans: Starter at $${getPlanMonthlyPriceWholeDollars('starter')}/month, Pro at $${getPlanMonthlyPriceWholeDollars('pro')}/month, and Enterprise at $${getPlanMonthlyPriceWholeDollars('enterprise')}/month. All plans include a 14-day free trial.` },
       },
       {
         '@type': 'Question',
@@ -182,7 +196,7 @@ export default function Pricing() {
     <div>
       <SEO
         title="Pricing — AI Voice Agent Plans with AI Minutes, Agents & Integrations"
-        description="QVO pricing starts at $99/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial."
+        description={`QVO pricing starts at $${getPlanMonthlyPriceWholeDollars('starter')}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial.`}
         canonicalPath="/pricing"
         structuredData={faqSchema}
       />

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Calculator, Sparkles } from 'lucide-react';
 import { formatDollars } from '../lib/formatCurrency';
+import { PLAN_CATALOG, PLAN_TIERS, getPlanMonthlyPriceWholeDollars, type PlanTier } from '../../../shared/billing/planCatalog';
 
 interface CalculatorTier {
-  key: 'starter' | 'pro' | 'enterprise';
+  key: PlanTier;
   name: string;
   basePrice: number;
   includedMinutes: number;
@@ -11,11 +12,19 @@ interface CalculatorTier {
   popular?: boolean;
 }
 
-const CALC_TIERS: CalculatorTier[] = [
-  { key: 'starter', name: 'Starter', basePrice: 99, includedMinutes: 500, overageRate: 0.15 },
-  { key: 'pro', name: 'Pro', basePrice: 399, includedMinutes: 2_500, overageRate: 0.12, popular: true },
-  { key: 'enterprise', name: 'Enterprise', basePrice: 999, includedMinutes: 10_000, overageRate: 0.08 },
-];
+const POPULAR_TIER: PlanTier = 'pro';
+
+const CALC_TIERS: CalculatorTier[] = PLAN_TIERS.map((key) => {
+  const plan = PLAN_CATALOG[key];
+  return {
+    key: plan.key,
+    name: plan.name,
+    basePrice: getPlanMonthlyPriceWholeDollars(plan.key),
+    includedMinutes: plan.includedMinutes,
+    overageRate: plan.overageRatePerMinute,
+    popular: plan.key === POPULAR_TIER,
+  };
+});
 
 const MIN_MINUTES = 100;
 const MAX_MINUTES = 25_000;

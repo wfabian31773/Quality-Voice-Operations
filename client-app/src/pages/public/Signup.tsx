@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
+import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 
 const TURNSTILE_SITE_KEY = (import.meta as Record<string, Record<string, string>>).env?.VITE_TURNSTILE_SITE_KEY || '';
 
@@ -26,9 +27,9 @@ export default function Signup() {
   const navigate = useNavigate();
 
   const plans = [
-    { key: 'starter', name: t('auth.plan_starter'), price: 99 },
-    { key: 'pro', name: t('auth.plan_pro'), price: 399, popular: true },
-    { key: 'enterprise', name: t('auth.plan_enterprise'), price: 999 },
+    { key: 'starter', name: t('auth.plan_starter'), price: getPlanMonthlyPriceWholeDollars('starter') },
+    { key: 'pro', name: t('auth.plan_pro'), price: getPlanMonthlyPriceWholeDollars('pro'), popular: true },
+    { key: 'enterprise', name: t('auth.plan_enterprise'), price: getPlanMonthlyPriceWholeDollars('enterprise') },
   ];
 
   const benefits = [
