@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
@@ -7,6 +8,8 @@ import {
   createSseConnectionLimiter,
   attachSseHeartbeat,
   resolveLiveStreamCap,
+  registerSseConnection,
+  ackSseConnection,
 } from '../../../platform/infra/rate-limit/sseConnectionLimiter';
 import type { Request } from 'express';
 
@@ -15,9 +18,6 @@ const router = Router();
 
 const TENANT_LIVE_STREAM_CAP = resolveLiveStreamCap(process.env.TENANT_LIVE_STREAM_CAP);
 
-// Per-task spec: reuse createRateLimiter keyed on req.user.tenantId. This
-// guards the connection-open endpoint at request rate (20 opens / 60s) so a
-// single tenant cannot stampede the SSE port.
 export const callsLiveRateLimiter = createRateLimiter({
   windowMs: 60_000,
   maxRequests: TENANT_LIVE_STREAM_CAP,
@@ -26,8 +26,6 @@ export const callsLiveRateLimiter = createRateLimiter({
   message: 'Too many live-stream connection attempts for this tenant.',
 });
 
-// Concurrency cap: enforces *simultaneously open* connections, which is what
-// "concurrent" means semantically and what request-rate alone cannot capture.
 export const callsLiveSseLimiter = createSseConnectionLimiter({
   maxConcurrent: TENANT_LIVE_STREAM_CAP,
 });
@@ -63,7 +61,8 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
     'X-Accel-Buffering': 'no',
   });
 
-  res.write(':\n\n');
+  const connectionId = randomUUID();
+  res.write(`event: connection\ndata: ${JSON.stringify({ connectionId })}\n\n`);
 
   const knownCalls = new Map<string, string>();
   let alive = true;
@@ -153,12 +152,27 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
     intervalMs: 15_000,
     idleTimeoutMs: 60_000,
   });
+  const unregister = registerSseConnection(tenantId, connectionId, detachHeartbeat.ack);
 
   req.on('close', () => {
     alive = false;
     clearInterval(interval);
+    unregister();
     detachHeartbeat();
   });
+});
+
+router.post('/calls/live/ack', requireAuth, (req, res) => {
+  const { tenantId } = req.user!;
+  const connectionId =
+    (req.body && typeof req.body === 'object' && (req.body as { connectionId?: unknown }).connectionId) ||
+    req.query.connectionId;
+  if (typeof connectionId !== 'string' || !connectionId) {
+    return res.status(400).json({ error: 'connectionId required' });
+  }
+  const ok = ackSseConnection(tenantId, connectionId);
+  if (!ok) return res.status(404).json({ error: 'unknown connectionId' });
+  return res.status(204).end();
 });
 
 export default router;

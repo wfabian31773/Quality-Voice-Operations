@@ -1,14 +1,5 @@
 import type { Request, Response } from 'express';
 
-/**
- * Resolve the per-tenant live-stream cap from an env var with sane fallbacks.
- * Centralized so all SSE routes share the same parsing rules and don't drift.
- *
- *   - missing or empty → fallback (default 20)
- *   - non-numeric, NaN, Infinity → fallback
- *   - < 1 → fallback
- *   - otherwise → floor(value)
- */
 export function resolveLiveStreamCap(
   raw: string | undefined,
   fallback = 20,
@@ -84,43 +75,56 @@ export function createSseConnectionLimiter(config: SseConnectionLimiterConfig): 
   };
 }
 
+// Registry of active SSE connections keyed by (tenantId, connectionId), used
+// by the companion ack endpoint to refresh a stream's idle deadline.
+const sseRegistry = new Map<string, () => void>();
+const registryKey = (tenantId: string, connectionId: string) =>
+  `${tenantId}:${connectionId}`;
+
+export function registerSseConnection(
+  tenantId: string,
+  connectionId: string,
+  ack: () => void,
+): () => void {
+  const key = registryKey(tenantId, connectionId);
+  sseRegistry.set(key, ack);
+  return () => {
+    if (sseRegistry.get(key) === ack) sseRegistry.delete(key);
+  };
+}
+
+export function ackSseConnection(tenantId: string, connectionId: string): boolean {
+  const fn = sseRegistry.get(registryKey(tenantId, connectionId));
+  if (!fn) return false;
+  fn();
+  return true;
+}
+
+export function clearSseRegistry(): void {
+  sseRegistry.clear();
+}
+
 export interface SseHeartbeatConfig {
   intervalMs?: number;
   idleTimeoutMs?: number;
 }
 
 export type SseHeartbeatHandle = (() => void) & {
-  /**
-   * Reset the idle-disconnect deadline. Callers (e.g. a companion ack
-   * endpoint) invoke this whenever they have evidence the client is alive
-   * (e.g. an explicit ack POST, a re-subscribe, etc.).
-   */
+  /** Reset the idle-disconnect deadline. */
   ack: () => void;
 };
 
 /**
- * Wire SSE keepalive on (req, res) with a deterministic idle-disconnect
- * deadline that does NOT depend on TCP backpressure transitions.
+ * SSE keepalive with a deterministic idle-disconnect deadline.
  *
- *  - Emits `: heartbeat\n\n` every `intervalMs` (default 15s).
- *  - Maintains a sliding `lastLivenessAt` timestamp. The connection is
- *    force-closed if `now - lastLivenessAt > idleTimeoutMs` (default 60s).
- *    A periodic checker runs at `min(intervalMs, idleTimeoutMs / 4)` so
- *    closure happens within at most one check window past the deadline.
- *  - `lastLivenessAt` is reset on any of the following client-liveness
- *    signals:
- *      • `res` `'drain'` event — client read backpressured bytes.
- *      • `req` `'data'` event — client sent any HTTP/1.1 chunked body data.
- *      • explicit `ack()` call from a companion ack endpoint.
- *    Heartbeat *writes* themselves do NOT reset liveness — successful
- *    `res.write()` only proves the kernel accepted the bytes, not that the
- *    far end read them.
- *  - Also sets a TCP-socket inactivity timeout as belt-and-suspenders for
- *    half-open TCP (no FIN/RST, no bytes flowing).
+ * Emits `: heartbeat\n\n` every `intervalMs` (default 15s). Maintains a
+ * sliding `lastLivenessAt` and force-closes when `now - lastLivenessAt`
+ * exceeds `idleTimeoutMs` (default 60s). Successful server writes do NOT
+ * count as liveness; only client-initiated signals do:
+ *   - `res` 'drain' (client read backpressured bytes)
+ *   - explicit `handle.ack()` (companion ack endpoint)
  *
- * The returned value is the cleanup function with an `.ack` property
- * attached so existing call sites (`const cleanup = attach...; cleanup();`)
- * keep working while new sites can call `cleanup.ack()`.
+ * Returns a cleanup function with an `.ack` property attached.
  */
 export function attachSseHeartbeat(
   req: Request,
@@ -138,39 +142,20 @@ export function attachSseHeartbeat(
   };
 
   const forceClose = () => {
-    try {
-      res.end();
-    } catch {
-      /* noop */
-    }
-    try {
-      req.socket?.destroy();
-    } catch {
-      /* noop */
-    }
+    res.end();
+    req.socket?.destroy();
   };
 
-  // Liveness signals from the transport.
   res.on('drain', noteLiveness);
-  req.on('data', noteLiveness);
 
   const heartbeat = setInterval(() => {
     if (res.writableEnded || res.destroyed) return;
-    try {
-      res.write(': heartbeat\n\n');
-    } catch {
-      forceClose();
-    }
+    res.write(': heartbeat\n\n');
   }, intervalMs);
-  if (typeof (heartbeat as { unref?: () => void }).unref === 'function') {
-    (heartbeat as { unref: () => void }).unref();
-  }
 
-  // Deterministic idle-disconnect checker. Runs at a cadence that guarantees
-  // at most one check window of overshoot past idleTimeoutMs.
   const checkEveryMs =
     idleTimeoutMs > 0
-      ? Math.max(250, Math.min(intervalMs, Math.floor(idleTimeoutMs / 4)))
+      ? Math.max(50, Math.min(intervalMs, Math.floor(idleTimeoutMs / 4)))
       : 0;
   const checker =
     checkEveryMs > 0
@@ -182,14 +167,6 @@ export function attachSseHeartbeat(
           }
         }, checkEveryMs)
       : null;
-  if (checker && typeof (checker as { unref?: () => void }).unref === 'function') {
-    (checker as { unref: () => void }).unref();
-  }
-
-  if (req.socket && idleTimeoutMs > 0) {
-    req.socket.setTimeout(idleTimeoutMs);
-    req.socket.once('timeout', forceClose);
-  }
 
   const cleanup = (() => {
     if (cleared) return;
@@ -197,7 +174,6 @@ export function attachSseHeartbeat(
     clearInterval(heartbeat);
     if (checker) clearInterval(checker);
     res.off('drain', noteLiveness);
-    req.off('data', noteLiveness);
   }) as SseHeartbeatHandle;
   cleanup.ack = noteLiveness;
 

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import http from 'node:http';
+import { AddressInfo } from 'node:net';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createRateLimiter } from '../../platform/infra/rate-limit/createRateLimiter';
@@ -9,6 +11,9 @@ import {
   createSseConnectionLimiter,
   attachSseHeartbeat,
   resolveLiveStreamCap,
+  registerSseConnection,
+  ackSseConnection,
+  clearSseRegistry,
 } from '../../platform/infra/rate-limit/sseConnectionLimiter';
 
 function makeReq(tenantId = 'tenant-a'): Request & EventEmitter {
@@ -176,16 +181,6 @@ describe('attachSseHeartbeat', () => {
     expect(res.__writes.length).toBe(beforeClose);
   });
 
-  it('sets a socket idle timeout and ends the response on timeout', () => {
-    const req = makeReq();
-    const res = makeRes();
-    attachSseHeartbeat(req, res, { intervalMs: 60_000, idleTimeoutMs: 60_000 });
-    expect(req.socket.setTimeout).toHaveBeenCalledWith(60_000);
-    (req.socket as unknown as EventEmitter).emit('timeout');
-    expect(res.end).toHaveBeenCalled();
-    expect(req.socket.destroy).toHaveBeenCalled();
-  });
-
   it('deterministically force-closes after idleTimeoutMs with NO liveness signals (writes succeeding)', () => {
     // The reviewer specifically called this out: even when res.write() keeps
     // returning true (no backpressure), the connection must auto-disconnect
@@ -244,18 +239,6 @@ describe('attachSseHeartbeat', () => {
     // Stop ack-ing; the connection must close after one more 60s window.
     vi.advanceTimersByTime(61_000);
     expect(res.end).toHaveBeenCalled();
-  });
-
-  it('inbound req.data also counts as a liveness signal', () => {
-    const req = makeReq();
-    const res = makeRes();
-    res.write = vi.fn(() => true) as unknown as Response['write'];
-    attachSseHeartbeat(req, res, { intervalMs: 1000, idleTimeoutMs: 60_000 });
-
-    vi.advanceTimersByTime(50_000);
-    req.emit('data', Buffer.from('x'));
-    vi.advanceTimersByTime(50_000);
-    expect(res.end).not.toHaveBeenCalled();
   });
 
   it('does not write after writableEnded becomes true', () => {
@@ -351,6 +334,178 @@ describe('source contract — SSE endpoints use the limiter and heartbeat helper
  * three slots are used and the 4th sees 429.
  */
 describe('SSE rate-limit + concurrency cap (route-level integration)', () => {
+  /**
+   * End-to-end ack flow with real timers and a real HTTP server.
+   * Asserts the deterministic ~60s force-close (scaled to 250ms here) works:
+   *   - a non-acking client is disconnected within ~one idleTimeoutMs
+   *   - an actively-acking client stays connected past several deadlines
+   */
+  describe('explicit ack lifecycle (real timers, real socket)', () => {
+    function buildServer(idleTimeoutMs: number) {
+      const app = express();
+      app.use(express.json());
+
+      app.get('/sse', (req: Request, res: Response) => {
+        const tenantId = 'tenant-int';
+        (req as Request & { user: { tenantId: string } }).user = { tenantId };
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        const connectionId = `conn-${Math.random().toString(36).slice(2)}`;
+        res.write(`event: connection\ndata: {"connectionId":"${connectionId}"}\n\n`);
+        const handle = attachSseHeartbeat(req, res, {
+          intervalMs: Math.max(50, Math.floor(idleTimeoutMs / 4)),
+          idleTimeoutMs,
+        });
+        const unregister = registerSseConnection(tenantId, connectionId, handle.ack);
+        req.on('close', () => {
+          unregister();
+          handle();
+        });
+      });
+
+      app.post('/sse/ack', (req: Request, res: Response) => {
+        const { connectionId } = (req.body ?? {}) as { connectionId?: string };
+        if (!connectionId) return res.status(400).end();
+        const ok = ackSseConnection('tenant-int', connectionId);
+        return res.status(ok ? 204 : 404).end();
+      });
+
+      const server = http.createServer(app);
+      return server;
+    }
+
+    afterEach(() => {
+      clearSseRegistry();
+    });
+
+    it('non-acking client is force-closed within ~idleTimeoutMs', async () => {
+      const idleTimeoutMs = 300;
+      const server = buildServer(idleTimeoutMs);
+      await new Promise<void>((r) => server.listen(0, r));
+      const port = (server.address() as AddressInfo).port;
+
+      const result = await new Promise<{ elapsedMs: number }>((resolve, reject) => {
+        const startedAt = Date.now();
+        const settled = (label: string) => () => {
+          resolve({ elapsedMs: Date.now() - startedAt });
+        };
+        const req = http.get(`http://127.0.0.1:${port}/sse`, (res) => {
+          res.on('data', () => {});
+          res.on('close', settled('close'));
+          res.on('end', settled('end'));
+        });
+        // 'aborted' fires when server destroys the socket — that is the
+        // expected outcome.
+        req.on('close', settled('req-close'));
+        req.on('error', (err) => {
+          if ((err as NodeJS.ErrnoException).code === 'ECONNRESET' ||
+              err.message === 'aborted' ||
+              err.message === 'socket hang up') {
+            resolve({ elapsedMs: Date.now() - startedAt });
+          } else {
+            reject(err);
+          }
+        });
+        setTimeout(() => reject(new Error('did not close in time')), 5_000);
+      });
+
+      expect(result.elapsedMs).toBeGreaterThanOrEqual(idleTimeoutMs - 100);
+      expect(result.elapsedMs).toBeLessThan(idleTimeoutMs * 4);
+
+      await new Promise<void>((r) => server.close(() => r()));
+    });
+
+    it('actively-acking client stays connected past multiple idleTimeoutMs windows', async () => {
+      const idleTimeoutMs = 500;
+      const server = buildServer(idleTimeoutMs);
+      await new Promise<void>((r) => server.listen(0, r));
+      const port = (server.address() as AddressInfo).port;
+
+      let connectionId: string | null = null;
+      let stillOpen = true;
+
+      const req = http.get(`http://127.0.0.1:${port}/sse`, (res) => {
+        let buf = '';
+        res.on('data', (chunk: Buffer) => {
+          buf += chunk.toString('utf-8');
+          const m = buf.match(/"connectionId":"([^"]+)"/);
+          if (m && !connectionId) connectionId = m[1];
+        });
+        res.on('close', () => {
+          stillOpen = false;
+        });
+      });
+      req.on('close', () => {
+        stillOpen = false;
+      });
+
+      // Wait for the SSE handshake + connectionId.
+      await new Promise<void>((resolve, reject) => {
+        const start = Date.now();
+        const t = setInterval(() => {
+          if (connectionId) {
+            clearInterval(t);
+            resolve();
+          } else if (Date.now() - start > 2_000) {
+            clearInterval(t);
+            reject(new Error('no connectionId'));
+          }
+        }, 10);
+      });
+
+      const sendAck = () =>
+        new Promise<number>((resolve, reject) => {
+          const post = http.request(
+            {
+              host: '127.0.0.1',
+              port,
+              path: '/sse/ack',
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            },
+            (r) => {
+              r.resume();
+              r.on('end', () => resolve(r.statusCode ?? 0));
+            },
+          );
+          post.on('error', reject);
+          post.end(JSON.stringify({ connectionId }));
+        });
+
+      // Ack every idleTimeoutMs/3 for ~3 idle windows. Connection must stay
+      // open the whole time.
+      const ackEveryMs = Math.floor(idleTimeoutMs / 3);
+      const totalAcks = 6;
+      for (let i = 0; i < totalAcks; i++) {
+        const status = await sendAck();
+        expect(status).toBe(204);
+        await new Promise((r) => setTimeout(r, ackEveryMs));
+      }
+
+      expect(stillOpen).toBe(true);
+
+      // Stop acking — within a few windows the deterministic checker closes it.
+      const stoppedAt = Date.now();
+      await new Promise<void>((resolve, reject) => {
+        const t = setInterval(() => {
+          if (!stillOpen) {
+            clearInterval(t);
+            resolve();
+          } else if (Date.now() - stoppedAt > idleTimeoutMs * 5) {
+            clearInterval(t);
+            reject(new Error('did not close after acks stopped'));
+          }
+        }, 20);
+      });
+
+      req.destroy();
+      await new Promise<void>((r) => server.close(() => r()));
+    });
+  });
+
   it('per-tenant rate limiter trips after exceeding the request window cap', async () => {
     const app = express();
     const tenantLimiter = createRateLimiter({

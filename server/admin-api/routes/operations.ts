@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request } from 'express';
+import { randomUUID } from 'node:crypto';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
@@ -9,6 +10,8 @@ import {
   createSseConnectionLimiter,
   attachSseHeartbeat,
   resolveLiveStreamCap,
+  registerSseConnection,
+  ackSseConnection,
 } from '../../../platform/infra/rate-limit/sseConnectionLimiter';
 
 const logger = createLogger('OPERATIONS_API');
@@ -16,7 +19,6 @@ const router = Router();
 
 const TENANT_LIVE_STREAM_CAP = resolveLiveStreamCap(process.env.TENANT_LIVE_STREAM_CAP);
 
-// Per-task spec: reuse createRateLimiter keyed on req.user.tenantId.
 export const operationsCallLiveRateLimiter = createRateLimiter({
   windowMs: 60_000,
   maxRequests: TENANT_LIVE_STREAM_CAP,
@@ -25,7 +27,6 @@ export const operationsCallLiveRateLimiter = createRateLimiter({
   message: 'Too many live-stream connection attempts for this tenant.',
 });
 
-// Concurrency cap (simultaneous open connections).
 export const operationsCallLiveSseLimiter = createSseConnectionLimiter({
   maxConcurrent: TENANT_LIVE_STREAM_CAP,
 });
@@ -260,7 +261,8 @@ router.get('/operations/calls/:callId/live', requireAuth, operationsCallLiveRate
     'X-Accel-Buffering': 'no',
   });
 
-  res.write(':\n\n');
+  const connectionId = randomUUID();
+  res.write(`event: connection\ndata: ${JSON.stringify({ connectionId })}\n\n`);
 
   let alive = true;
   const seenEventIds = new Set<string>();
@@ -381,12 +383,27 @@ router.get('/operations/calls/:callId/live', requireAuth, operationsCallLiveRate
     intervalMs: 15_000,
     idleTimeoutMs: 60_000,
   });
+  const unregister = registerSseConnection(tenantId, connectionId, detachHeartbeat.ack);
 
   req.on('close', () => {
     alive = false;
     clearInterval(interval);
+    unregister();
     detachHeartbeat();
   });
+});
+
+router.post('/operations/calls/:callId/live/ack', requireAuth, (req, res) => {
+  const { tenantId } = req.user!;
+  const connectionId =
+    (req.body && typeof req.body === 'object' && (req.body as { connectionId?: unknown }).connectionId) ||
+    req.query.connectionId;
+  if (typeof connectionId !== 'string' || !connectionId) {
+    return res.status(400).json({ error: 'connectionId required' });
+  }
+  const ok = ackSseConnection(tenantId, connectionId);
+  if (!ok) return res.status(404).json({ error: 'unknown connectionId' });
+  return res.status(204).end();
 });
 
 function findPairedToolStart(
