@@ -7,7 +7,7 @@ import {
   XCircle, UserCheck, PhoneOff, RotateCcw, Edit2, Trash2,
   Building, Layers, ClipboardList, Activity
 } from 'lucide-react';
-import EmptyState from '../components/EmptyState';
+import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 
 interface Booking {
   id: string;
@@ -403,11 +403,7 @@ export default function Scheduling() {
   const activeProviders = useMemo(() => providers.filter(p => p.is_active), [providers]);
 
   if (loading && activeTab === 'calendar') {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   const saveProvider = async () => {
@@ -907,7 +903,7 @@ export default function Scheduling() {
   );
 
   const renderReportsTab = () => {
-    if (!reportData) return <div className="flex items-center justify-center h-40"><div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full" /></div>;
+    if (!reportData) return <SkeletonRows count={4} rowClassName="h-14" />;
 
     const s = reportData.summary;
     return (
@@ -1000,7 +996,7 @@ export default function Scheduling() {
   };
 
   const renderUtilizationTab = () => {
-    if (!utilizationData) return <div className="flex items-center justify-center h-40"><div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full" /></div>;
+    if (!utilizationData) return <SkeletonRows count={4} rowClassName="h-14" />;
 
     return (
       <div className="space-y-6">

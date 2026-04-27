@@ -7,7 +7,7 @@ import {
   CheckCircle2, XCircle, ArrowRight, FileText, MessageSquare, Calendar,
   Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
 } from 'lucide-react';
-import EmptyState from '../components/EmptyState';
+import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 
 interface DispatchJob {
   id: string;
@@ -336,11 +336,7 @@ export default function Dispatch() {
   ];
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (
@@ -968,7 +964,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
 // ============ REPORTING VIEW ============
 
 function ReportingView({ data, fetchReporting }: { data: ReportingData | null; fetchReporting: () => void }) {
-  if (!data) return <div className="text-center py-12 text-muted">Loading reporting data...</div>;
+  if (!data) return <SkeletonRows count={5} rowClassName="h-16" />;
 
   const m = data.metrics;
   return (

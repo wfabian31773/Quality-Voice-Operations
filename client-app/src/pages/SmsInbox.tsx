@@ -8,7 +8,7 @@ import {
   FileText, Plus, Trash2, Edit, Filter, RefreshCw, Calendar,
   CheckCircle, XCircle, ArrowUpRight, Hash, Mail, MapPin, Bell,
 } from 'lucide-react';
-import EmptyState from '../components/EmptyState';
+import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 
 interface PhoneLine {
   phoneNumberId: string;
@@ -323,11 +323,7 @@ export default function SmsInbox() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (
@@ -1290,9 +1286,8 @@ function AnalyticsView({ analytics, loadAnalytics }: { analytics: Analytics | nu
 
   if (!analytics) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto" />
-        <p className="text-muted text-sm mt-4">Loading analytics...</p>
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <SkeletonRows count={5} rowClassName="h-16" />
       </div>
     );
   }

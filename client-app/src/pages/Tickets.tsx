@@ -7,7 +7,7 @@ import {
   Search, Filter, AlertTriangle, Shield, Users, Eye, Inbox, RotateCcw,
   ArrowUpDown, ChevronDown, MoreHorizontal, User, ArrowUp,
 } from 'lucide-react';
-import EmptyState from '../components/EmptyState';
+import { EmptyState, PageSkeleton } from '../components/state';
 
 interface TicketItem {
   id: string;
@@ -233,11 +233,7 @@ export default function Tickets() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (
