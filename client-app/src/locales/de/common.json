@@ -26,14 +26,44 @@
   },
   "public_nav": {
     "product": "Produkt",
+    "product_overview": "Plattform-Überblick",
     "features": "Funktionen",
     "agents": "Agenten",
     "pricing": "Preise",
+    "solutions": "Lösungen",
     "use_cases": "Anwendungsfälle",
     "integrations": "Integrationen",
     "demo": "Demo",
     "resources": "Ressourcen",
-    "contact": "Kontakt"
+    "contact": "Kontakt",
+    "federated_ingest": "Federated Ingest",
+    "gin": "Global Intelligence Network",
+    "vertical_agents": "Branchen-Agenten",
+    "new_badge": "Neu"
+  },
+  "public_nav_groups": {
+    "platform": "Plattform",
+    "developer": "Entwickler",
+    "solutions_overview": "Lösungen",
+    "industries": "Nach Branche"
+  },
+  "public_nav_desc": {
+    "product_overview": "So fügt sich die Voice-Operations-Plattform von QVO zusammen.",
+    "features": "Der gesamte Funktionsumfang, von Anfang bis Ende.",
+    "agents": "Produktive KI-Sprachagenten im Einsatz.",
+    "integrations": "Verbinden Sie QVO mit Ihren bestehenden Tools.",
+    "use_cases": "Typische Voice-Operations-Workflows.",
+    "case_studies": "Kundenerfolgsgeschichten und Ergebnisse.",
+    "vertical_agents": "Vorgefertigte Sprachagenten für Medizin, Zahnmedizin, Außendienst und mehr.",
+    "federated_ingest": "Bringen Sie Ihren eigenen Sprachagenten mit. Streamen Sie Anrufereignisse per REST in QVO.",
+    "gin": "Tenant-übergreifende Benchmarks für Antwortrate, AHT und Conversion."
+  },
+  "resources": {
+    "search_placeholder": "Anleitungen, Seiten und Themen suchen…",
+    "search_aria": "Ressourcen, Anleitungen und Seiten suchen",
+    "pages_heading": "Seiten auf qvo.ai",
+    "pages_match_count_one": "{{count}} Seite passt zu \"{{query}}\"",
+    "pages_match_count_other": "{{count}} Seiten passen zu \"{{query}}\""
   },
   "footer": {
     "section_product": "Produkt",

@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, ArrowRight, BookOpen, Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Search, ArrowRight, BookOpen, Clock, Compass } from 'lucide-react';
 import RevealSection from '../../components/RevealSection';
 import { guides, categories, type GuideCategory } from '../../data/guides';
+import { searchMarketingPages } from '../../data/marketingPages';
 
 export default function Resources() {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<GuideCategory | 'All'>('All');
 
@@ -17,6 +20,8 @@ export default function Resources() {
       g.category.toLowerCase().includes(search.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  const marketingMatches = search.trim() ? searchMarketingPages(search) : [];
 
   return (
     <div>
@@ -37,8 +42,8 @@ export default function Resources() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
             <input
               type="text"
-              placeholder="Search guides..."
-              aria-label="Search resources and guides"
+              placeholder={t('resources.search_placeholder')}
+              aria-label={t('resources.search_aria')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal/50 focus:border-teal/50"
@@ -76,6 +81,54 @@ export default function Resources() {
               ))}
             </div>
           </RevealSection>
+
+          {marketingMatches.length > 0 && (
+            <RevealSection className="mb-12">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
+                  <Compass className="h-5 w-5 text-harbor" />
+                </div>
+                <div>
+                  <h2 className="font-display text-2xl font-bold text-harbor">
+                    {t('resources.pages_heading')}
+                  </h2>
+                  <p className="text-sm text-slate-ink/60 font-body">
+                    {t('resources.pages_match_count', {
+                      count: marketingMatches.length,
+                      query: search,
+                    })}
+                  </p>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {marketingMatches.map((page) => {
+                  const Icon = page.icon;
+                  return (
+                    <Link
+                      key={page.slug}
+                      to={page.path}
+                      className="group bg-white rounded-2xl border border-soft-steel/50 p-5 hover:border-teal/30 hover:shadow-md hover:-translate-y-0.5 transition-all"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-9 h-9 rounded-lg bg-harbor/10 flex items-center justify-center">
+                          <Icon className="h-4 w-4 text-harbor" />
+                        </div>
+                        <span className="text-[11px] text-harbor bg-harbor/10 px-2 py-0.5 rounded-full font-medium uppercase tracking-wider">
+                          {page.category}
+                        </span>
+                      </div>
+                      <h3 className="font-display text-base font-semibold text-harbor mb-1 group-hover:text-teal transition-colors">
+                        {page.title}
+                      </h3>
+                      <p className="text-xs text-slate-ink/60 leading-relaxed font-body line-clamp-2">
+                        {page.description}
+                      </p>
+                    </Link>
+                  );
+                })}
+              </div>
+            </RevealSection>
+          )}
 
           <RevealSection>
             <div className="flex items-center justify-between mb-8">

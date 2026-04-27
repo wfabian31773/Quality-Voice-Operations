@@ -26,14 +26,44 @@
   },
   "public_nav": {
     "product": "Produit",
+    "product_overview": "Aperçu de la plateforme",
     "features": "Fonctionnalités",
     "agents": "Agents",
     "pricing": "Tarifs",
+    "solutions": "Solutions",
     "use_cases": "Cas d'usage",
     "integrations": "Intégrations",
     "demo": "Démo",
     "resources": "Ressources",
-    "contact": "Contact"
+    "contact": "Contact",
+    "federated_ingest": "Federated Ingest",
+    "gin": "Réseau d'intelligence globale",
+    "vertical_agents": "Agents verticaux",
+    "new_badge": "Nouveau"
+  },
+  "public_nav_groups": {
+    "platform": "Plateforme",
+    "developer": "Développeur",
+    "solutions_overview": "Solutions",
+    "industries": "Par secteur"
+  },
+  "public_nav_desc": {
+    "product_overview": "Comment la plateforme d'opérations vocales QVO s'articule.",
+    "features": "L'ensemble des fonctionnalités, de bout en bout.",
+    "agents": "Agents vocaux IA en production, en action.",
+    "integrations": "Connectez QVO aux outils que vous utilisez déjà.",
+    "use_cases": "Flux courants d'opérations vocales.",
+    "case_studies": "Histoires et résultats clients.",
+    "vertical_agents": "Agents vocaux préconçus pour le médical, dentaire, terrain et plus.",
+    "federated_ingest": "Apportez votre propre agent vocal. Diffusez les événements d'appel vers QVO via REST.",
+    "gin": "Benchmarks inter-tenants pour le taux de réponse, l'AHT et la conversion."
+  },
+  "resources": {
+    "search_placeholder": "Rechercher guides, pages et sujets…",
+    "search_aria": "Rechercher ressources, guides et pages",
+    "pages_heading": "Pages sur qvo.ai",
+    "pages_match_count_one": "{{count}} page correspond à \"{{query}}\"",
+    "pages_match_count_other": "{{count}} pages correspondent à \"{{query}}\""
   },
   "footer": {
     "section_product": "Produit",

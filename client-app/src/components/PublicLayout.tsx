@@ -1,27 +1,140 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Menu, X, Phone } from 'lucide-react';
+import { Menu, X, Phone, ChevronDown } from 'lucide-react';
 import WebsiteSalesWidget from './WebsiteSalesWidget';
 import CookieConsent from './CookieConsent';
 import LanguageSwitcher from './LanguageSwitcher';
 
-const navLinks = [
-  { to: '/product', i18nKey: 'public_nav.product' },
-  { to: '/features', i18nKey: 'public_nav.features' },
-  { to: '/ai-agents', i18nKey: 'public_nav.agents' },
-  { to: '/pricing', i18nKey: 'public_nav.pricing' },
-  { to: '/use-cases', i18nKey: 'public_nav.use_cases' },
-  { to: '/integrations', i18nKey: 'public_nav.integrations' },
-  { to: '/demo', i18nKey: 'public_nav.demo' },
-  { to: '/resources', i18nKey: 'public_nav.resources' },
-  { to: '/contact', i18nKey: 'public_nav.contact' },
-] as const;
+type SimpleLink = { kind: 'link'; to: string; i18nKey: string };
+type DropdownLink = {
+  kind: 'dropdown';
+  id: string;
+  i18nKey: string;
+  /** Path prefixes (or exact paths) that should mark this dropdown as active. */
+  activePaths: string[];
+  groups: Array<{
+    label?: string;
+    items: Array<{ to: string; label: string; description?: string; isNew?: boolean }>;
+  }>;
+};
+type NavItem = SimpleLink | DropdownLink;
 
 export default function PublicLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const location = useLocation();
   const { t } = useTranslation();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns when route changes.
+  useEffect(() => {
+    setOpenDropdown(null);
+    setMobileOpen(false);
+    setMobileExpanded(null);
+  }, [location.pathname]);
+
+  // Close dropdowns on outside click.
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openDropdown]);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenDropdown(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [openDropdown]);
+
+  const navItems: NavItem[] = [
+    {
+      kind: 'dropdown',
+      id: 'product',
+      i18nKey: 'public_nav.product',
+      activePaths: ['/product', '/features', '/ai-agents', '/integrations'],
+      groups: [
+        {
+          label: t('public_nav_groups.platform'),
+          items: [
+            { to: '/product', label: t('public_nav.product_overview'), description: t('public_nav_desc.product_overview') },
+            { to: '/features', label: t('public_nav.features'), description: t('public_nav_desc.features') },
+            { to: '/ai-agents', label: t('public_nav.agents'), description: t('public_nav_desc.agents') },
+            { to: '/integrations', label: t('public_nav.integrations'), description: t('public_nav_desc.integrations') },
+          ],
+        },
+        {
+          label: t('public_nav_groups.developer'),
+          items: [
+            {
+              to: '/product/federated-ingest',
+              label: t('public_nav.federated_ingest'),
+              description: t('public_nav_desc.federated_ingest'),
+              isNew: true,
+            },
+            {
+              to: '/product/global-intelligence-network',
+              label: t('public_nav.gin'),
+              description: t('public_nav_desc.gin'),
+              isNew: true,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      kind: 'dropdown',
+      id: 'solutions',
+      i18nKey: 'public_nav.solutions',
+      activePaths: ['/industries', '/use-cases', '/case-studies'],
+      groups: [
+        {
+          label: t('public_nav_groups.solutions_overview'),
+          items: [
+            {
+              to: '/industries/vertical-agents',
+              label: t('public_nav.vertical_agents'),
+              description: t('public_nav_desc.vertical_agents'),
+              isNew: true,
+            },
+            { to: '/use-cases', label: t('public_nav.use_cases'), description: t('public_nav_desc.use_cases') },
+            { to: '/case-studies', label: t('footer.case_studies'), description: t('public_nav_desc.case_studies') },
+          ],
+        },
+        {
+          label: t('public_nav_groups.industries'),
+          items: [
+            { to: '/industries/healthcare', label: t('footer.healthcare') },
+            { to: '/industries/dental', label: t('footer.dental') },
+            { to: '/industries/legal', label: t('footer.legal') },
+            { to: '/industries/real-estate', label: t('footer.real_estate') },
+            { to: '/industries/home-services', label: t('footer.home_services') },
+          ],
+        },
+      ],
+    },
+    { kind: 'link', to: '/pricing', i18nKey: 'public_nav.pricing' },
+    { kind: 'link', to: '/demo', i18nKey: 'public_nav.demo' },
+    { kind: 'link', to: '/resources', i18nKey: 'public_nav.resources' },
+    { kind: 'link', to: '/contact', i18nKey: 'public_nav.contact' },
+  ];
+
+  const isItemActive = (item: NavItem) => {
+    if (item.kind === 'link') return location.pathname === item.to;
+    return item.activePaths.some(
+      (p) => location.pathname === p || location.pathname.startsWith(`${p}/`),
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-mist font-body text-slate-ink">
@@ -35,20 +148,100 @@ export default function PublicLayout() {
               <span className="font-display text-xl font-bold tracking-tight">{t('brand.name')}</span>
             </Link>
 
-            <nav className="hidden lg:flex items-center gap-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    location.pathname === link.to
-                      ? 'bg-white/15 text-white'
-                      : 'text-white/75 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {t(link.i18nKey)}
-                </Link>
-              ))}
+            <nav className="hidden lg:flex items-center gap-1" ref={dropdownRef}>
+              {navItems.map((item) => {
+                if (item.kind === 'link') {
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+                        isItemActive(item)
+                          ? 'bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {t(item.i18nKey)}
+                    </Link>
+                  );
+                }
+
+                const isOpen = openDropdown === item.id;
+                return (
+                  <div key={item.id} className="relative">
+                    <button
+                      type="button"
+                      aria-haspopup="true"
+                      aria-expanded={isOpen}
+                      onClick={() => setOpenDropdown(isOpen ? null : item.id)}
+                      onMouseEnter={() => setOpenDropdown(item.id)}
+                      className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1 ${
+                        isItemActive(item) || isOpen
+                          ? 'bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {t(item.i18nKey)}
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+
+                    {isOpen && (
+                      <div
+                        onMouseLeave={() => setOpenDropdown(null)}
+                        className="absolute left-0 top-full pt-2 z-50"
+                      >
+                        <div className="w-[28rem] bg-white text-slate-ink rounded-xl shadow-2xl border border-soft-steel/40 overflow-hidden">
+                          <div className="p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {item.groups.map((group, gi) => (
+                              <div key={gi}>
+                                {group.label && (
+                                  <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-ink/50">
+                                    {group.label}
+                                  </p>
+                                )}
+                                <ul className="space-y-0.5">
+                                  {group.items.map((sub) => (
+                                    <li key={sub.to}>
+                                      <Link
+                                        to={sub.to}
+                                        onClick={() => setOpenDropdown(null)}
+                                        className={`block px-2.5 py-2 rounded-lg transition-colors group ${
+                                          location.pathname === sub.to
+                                            ? 'bg-harbor/5'
+                                            : 'hover:bg-mist'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm font-semibold text-harbor group-hover:text-teal transition-colors">
+                                            {sub.label}
+                                          </span>
+                                          {sub.isNew && (
+                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-teal bg-teal/10 px-1.5 py-0.5 rounded">
+                                              {t('public_nav.new_badge')}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {sub.description && (
+                                          <p className="text-xs text-slate-ink/55 leading-snug mt-0.5 line-clamp-2">
+                                            {sub.description}
+                                          </p>
+                                        )}
+                                      </Link>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </nav>
 
             <div className="hidden lg:flex items-center gap-2">
@@ -86,20 +279,80 @@ export default function PublicLayout() {
         {mobileOpen && (
           <div className="lg:hidden border-t border-white/10 bg-harbor">
             <div className="px-6 py-4 space-y-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMobileOpen(false)}
-                  className={`block px-3 py-2.5 text-sm font-medium rounded-lg ${
-                    location.pathname === link.to
-                      ? 'bg-white/15 text-white'
-                      : 'text-white/75 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {t(link.i18nKey)}
-                </Link>
-              ))}
+              {navItems.map((item) => {
+                if (item.kind === 'link') {
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      className={`block px-3 py-2.5 text-sm font-medium rounded-lg ${
+                        isItemActive(item)
+                          ? 'bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {t(item.i18nKey)}
+                    </Link>
+                  );
+                }
+
+                const isExpanded = mobileExpanded === item.id;
+                return (
+                  <div key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => setMobileExpanded(isExpanded ? null : item.id)}
+                      aria-expanded={isExpanded}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg ${
+                        isItemActive(item)
+                          ? 'bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <span>{t(item.i18nKey)}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {isExpanded && (
+                      <div className="pl-3 mt-1 mb-2 space-y-2 border-l border-white/10 ml-3">
+                        {item.groups.map((group, gi) => (
+                          <div key={gi}>
+                            {group.label && (
+                              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                                {group.label}
+                              </p>
+                            )}
+                            {group.items.map((sub) => (
+                              <Link
+                                key={sub.to}
+                                to={sub.to}
+                                onClick={() => setMobileOpen(false)}
+                                className={`block px-3 py-2 text-sm rounded-lg ${
+                                  location.pathname === sub.to
+                                    ? 'bg-white/15 text-white'
+                                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                                }`}
+                              >
+                                <span className="inline-flex items-center gap-2">
+                                  {sub.label}
+                                  {sub.isNew && (
+                                    <span className="text-[9px] font-semibold uppercase tracking-wider text-teal bg-teal/15 px-1.5 py-0.5 rounded">
+                                      {t('public_nav.new_badge')}
+                                    </span>
+                                  )}
+                                </span>
+                              </Link>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <div className="pt-3 border-t border-white/10 mt-3 space-y-2">
                 <div className="flex items-center justify-center px-3 py-2">
                   <LanguageSwitcher variant="header" />

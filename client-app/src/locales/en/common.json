@@ -26,14 +26,44 @@
   },
   "public_nav": {
     "product": "Product",
+    "product_overview": "Platform overview",
     "features": "Features",
     "agents": "Agents",
     "pricing": "Pricing",
+    "solutions": "Solutions",
     "use_cases": "Use Cases",
     "integrations": "Integrations",
     "demo": "Demo",
     "resources": "Resources",
-    "contact": "Contact"
+    "contact": "Contact",
+    "federated_ingest": "Federated Ingest",
+    "gin": "Global Intelligence Network",
+    "vertical_agents": "Vertical Agents",
+    "new_badge": "New"
+  },
+  "public_nav_groups": {
+    "platform": "Platform",
+    "developer": "Developer",
+    "solutions_overview": "Solutions",
+    "industries": "By industry"
+  },
+  "public_nav_desc": {
+    "product_overview": "How QVO's voice operations platform fits together.",
+    "features": "The full feature set, end to end.",
+    "agents": "Production AI voice agents in action.",
+    "integrations": "Connect QVO to the tools you already use.",
+    "use_cases": "Common voice operations workflows.",
+    "case_studies": "Customer stories and outcomes.",
+    "vertical_agents": "Pre-built voice agents for medical, dental, field service, and more.",
+    "federated_ingest": "Bring your own voice agent. Stream call events into QVO via REST.",
+    "gin": "Cross-tenant benchmarks for answer rate, AHT, and conversion."
+  },
+  "resources": {
+    "search_placeholder": "Search guides, pages, and topics...",
+    "search_aria": "Search resources, guides, and pages",
+    "pages_heading": "Pages on qvo.ai",
+    "pages_match_count_one": "{{count}} page matching \"{{query}}\"",
+    "pages_match_count_other": "{{count}} pages matching \"{{query}}\""
   },
   "footer": {
     "section_product": "Product",
