@@ -183,6 +183,37 @@ describe('attachSseHeartbeat', () => {
     expect(req.socket.destroy).toHaveBeenCalled();
   });
 
+  it('force-closes after idleTimeoutMs if a heartbeat write returns false and drain never fires', () => {
+    const req = makeReq();
+    const res = makeRes();
+    // Simulate kernel buffer full: write returns false.
+    res.write = vi.fn((chunk: string) => {
+      res.__writes.push(chunk);
+      return false;
+    }) as unknown as Response['write'];
+    attachSseHeartbeat(req, res, { intervalMs: 1000, idleTimeoutMs: 60_000 });
+    vi.advanceTimersByTime(1000); // first heartbeat (returns false → start drain timer)
+    expect(res.end).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(59_999);
+    expect(res.end).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2);
+    expect(res.end).toHaveBeenCalled();
+    expect(req.socket.destroy).toHaveBeenCalled();
+  });
+
+  it('drain event clears the pending close timer (heartbeat ack received)', () => {
+    const req = makeReq();
+    const res = makeRes();
+    let backpressure = true;
+    res.write = vi.fn(() => !backpressure) as unknown as Response['write'];
+    attachSseHeartbeat(req, res, { intervalMs: 1000, idleTimeoutMs: 60_000 });
+    vi.advanceTimersByTime(1000); // heartbeat #1, write false → drain timer armed
+    res.emit('drain'); // client caught up
+    backpressure = false; // subsequent writes succeed
+    vi.advanceTimersByTime(120_000);
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
   it('does not write after writableEnded becomes true', () => {
     const req = makeReq();
     const res = makeRes();
@@ -205,28 +236,34 @@ describe('attachSseHeartbeat', () => {
 });
 
 describe('source contract — SSE endpoints use the limiter and heartbeat helper', () => {
-  it('callsLive route imports limiter + heartbeat and calls acquire before writeHead', () => {
+  it('callsLive route reuses createRateLimiter (per task spec) AND the concurrency limiter', () => {
     const src = readFileSync(
       join(process.cwd(), 'server/admin-api/routes/callsLive.ts'),
       'utf-8',
     );
+    expect(src).toMatch(/import\s*\{\s*createRateLimiter\s*\}\s*from\s*['"][^'"]*createRateLimiter['"]/);
+    expect(src).toMatch(/createRateLimiter\(\s*\{[\s\S]*?keyGenerator[\s\S]*?\.user\?\.tenantId/);
     expect(src).toMatch(/createSseConnectionLimiter/);
     expect(src).toMatch(/attachSseHeartbeat/);
     expect(src).toMatch(/callsLiveSseLimiter\.acquire\(req,\s*res\)/);
+    expect(src).toMatch(/router\.get\(\s*['"]\/calls\/live['"][\s\S]*?callsLiveRateLimiter/);
     const acquireIdx = src.indexOf('callsLiveSseLimiter.acquire');
     const writeHeadIdx = src.indexOf('res.writeHead(200');
     expect(acquireIdx).toBeGreaterThan(0);
     expect(writeHeadIdx).toBeGreaterThan(acquireIdx);
   });
 
-  it('operations route imports limiter + heartbeat and calls acquire before writeHead', () => {
+  it('operations route reuses createRateLimiter (per task spec) AND the concurrency limiter', () => {
     const src = readFileSync(
       join(process.cwd(), 'server/admin-api/routes/operations.ts'),
       'utf-8',
     );
+    expect(src).toMatch(/import\s*\{\s*createRateLimiter\s*\}\s*from\s*['"][^'"]*createRateLimiter['"]/);
+    expect(src).toMatch(/createRateLimiter\(\s*\{[\s\S]*?keyGenerator[\s\S]*?\.user\?\.tenantId/);
     expect(src).toMatch(/createSseConnectionLimiter/);
     expect(src).toMatch(/attachSseHeartbeat/);
     expect(src).toMatch(/operationsCallLiveSseLimiter\.acquire\(req,\s*res\)/);
+    expect(src).toMatch(/router\.get\(\s*['"]\/operations\/calls\/:callId\/live['"][\s\S]*?operationsCallLiveRateLimiter/);
     const acquireIdx = src.indexOf('operationsCallLiveSseLimiter.acquire');
     const writeHeadIdx = src.indexOf('res.writeHead(200', acquireIdx);
     expect(acquireIdx).toBeGreaterThan(0);

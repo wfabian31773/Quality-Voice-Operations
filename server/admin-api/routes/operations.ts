@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
 import { requireOpsRole } from '../middleware/rbac';
+import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import {
   createSseConnectionLimiter,
   attachSseHeartbeat,
@@ -12,6 +14,17 @@ const logger = createLogger('OPERATIONS_API');
 const router = Router();
 
 const TENANT_LIVE_STREAM_CAP = Number(process.env.TENANT_LIVE_STREAM_CAP ?? '20');
+
+// Per-task spec: reuse createRateLimiter keyed on req.user.tenantId.
+export const operationsCallLiveRateLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: TENANT_LIVE_STREAM_CAP,
+  keyGenerator: (req: Request) =>
+    (req as Request & { user?: { tenantId?: string } }).user?.tenantId ?? 'platform',
+  message: 'Too many live-stream connection attempts for this tenant.',
+});
+
+// Concurrency cap (simultaneous open connections).
 export const operationsCallLiveSseLimiter = createSseConnectionLimiter({
   maxConcurrent: TENANT_LIVE_STREAM_CAP,
 });
@@ -208,7 +221,7 @@ router.post('/operations/alerts/acknowledge-all', requireAuth, async (req, res) 
   }
 });
 
-router.get('/operations/calls/:callId/live', requireAuth, async (req, res) => {
+router.get('/operations/calls/:callId/live', requireAuth, operationsCallLiveRateLimiter, async (req, res) => {
   const { tenantId } = req.user!;
   const { callId } = req.params;
 

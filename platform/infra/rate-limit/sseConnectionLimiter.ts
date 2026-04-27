@@ -70,6 +70,18 @@ export interface SseHeartbeatConfig {
   idleTimeoutMs?: number;
 }
 
+/**
+ * Wire SSE keepalive on (req, res):
+ *  - Emits `: heartbeat\n\n` every `intervalMs` (default 15s).
+ *  - Treats the TCP `drain` event as the client-side acknowledgment of a
+ *    heartbeat. If a heartbeat write returns false (kernel buffer full)
+ *    AND `drain` does not fire within `idleTimeoutMs` (default 60s), the
+ *    response is force-closed. This implements "auto-disconnect after
+ *    60s of no heartbeat ack" — backpressure that never clears means the
+ *    far end has stopped reading.
+ *  - Also sets a socket-level inactivity timeout as belt-and-suspenders for
+ *    half-open TCP (no FIN/RST, no bytes flowing).
+ */
 export function attachSseHeartbeat(
   req: Request,
   res: Response,
@@ -78,12 +90,48 @@ export function attachSseHeartbeat(
   const intervalMs = config.intervalMs ?? 15_000;
   const idleTimeoutMs = config.idleTimeoutMs ?? 60_000;
 
+  let pendingDrainTimer: NodeJS.Timeout | null = null;
+
+  const forceClose = () => {
+    try {
+      res.end();
+    } catch {
+      /* noop */
+    }
+    try {
+      req.socket?.destroy();
+    } catch {
+      /* noop */
+    }
+  };
+
+  const onDrain = () => {
+    if (pendingDrainTimer) {
+      clearTimeout(pendingDrainTimer);
+      pendingDrainTimer = null;
+    }
+  };
+  res.on('drain', onDrain);
+
   const heartbeat = setInterval(() => {
     if (res.writableEnded || res.destroyed) return;
+    let ok = false;
     try {
-      res.write(': heartbeat\n\n');
+      ok = Boolean(res.write(': heartbeat\n\n'));
     } catch {
-      clearInterval(heartbeat);
+      forceClose();
+      return;
+    }
+    if (!ok && !pendingDrainTimer && idleTimeoutMs > 0) {
+      // Backpressure: client isn't draining. Wait up to idleTimeoutMs for
+      // 'drain' before declaring the connection dead.
+      pendingDrainTimer = setTimeout(() => {
+        pendingDrainTimer = null;
+        forceClose();
+      }, idleTimeoutMs);
+      if (typeof (pendingDrainTimer as { unref?: () => void }).unref === 'function') {
+        (pendingDrainTimer as { unref: () => void }).unref();
+      }
     }
   }, intervalMs);
   if (typeof (heartbeat as { unref?: () => void }).unref === 'function') {
@@ -92,19 +140,7 @@ export function attachSseHeartbeat(
 
   if (req.socket && idleTimeoutMs > 0) {
     req.socket.setTimeout(idleTimeoutMs);
-    const onTimeout = () => {
-      try {
-        res.end();
-      } catch {
-        /* noop */
-      }
-      try {
-        req.socket?.destroy();
-      } catch {
-        /* noop */
-      }
-    };
-    req.socket.once('timeout', onTimeout);
+    req.socket.once('timeout', forceClose);
   }
 
   let cleared = false;
@@ -112,6 +148,11 @@ export function attachSseHeartbeat(
     if (cleared) return;
     cleared = true;
     clearInterval(heartbeat);
+    if (pendingDrainTimer) {
+      clearTimeout(pendingDrainTimer);
+      pendingDrainTimer = null;
+    }
+    res.off('drain', onDrain);
   };
   req.on('close', cleanup);
   res.on('close', cleanup);

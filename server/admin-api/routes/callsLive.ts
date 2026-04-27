@@ -2,15 +2,31 @@ import { Router } from 'express';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
+import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import {
   createSseConnectionLimiter,
   attachSseHeartbeat,
 } from '../../../platform/infra/rate-limit/sseConnectionLimiter';
+import type { Request } from 'express';
 
 const logger = createLogger('CALLS_LIVE');
 const router = Router();
 
 const TENANT_LIVE_STREAM_CAP = Number(process.env.TENANT_LIVE_STREAM_CAP ?? '20');
+
+// Per-task spec: reuse createRateLimiter keyed on req.user.tenantId. This
+// guards the connection-open endpoint at request rate (20 opens / 60s) so a
+// single tenant cannot stampede the SSE port.
+export const callsLiveRateLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: TENANT_LIVE_STREAM_CAP,
+  keyGenerator: (req: Request) =>
+    (req as Request & { user?: { tenantId?: string } }).user?.tenantId ?? 'platform',
+  message: 'Too many live-stream connection attempts for this tenant.',
+});
+
+// Concurrency cap: enforces *simultaneously open* connections, which is what
+// "concurrent" means semantically and what request-rate alone cannot capture.
 export const callsLiveSseLimiter = createSseConnectionLimiter({
   maxConcurrent: TENANT_LIVE_STREAM_CAP,
 });
@@ -28,11 +44,11 @@ interface CallRow {
   duration_seconds: number | null;
 }
 
-router.get('/calls/live', requireAuth, async (req, res) => {
+router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) => {
   const { tenantId } = req.user!;
 
   if (!callsLiveSseLimiter.acquire(req, res)) {
-    logger.warn('Rejected live-stream connection — tenant cap reached', {
+    logger.warn('Rejected live-stream connection — tenant concurrency cap reached', {
       tenantId,
       cap: TENANT_LIVE_STREAM_CAP,
     });
