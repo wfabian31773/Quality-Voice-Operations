@@ -229,6 +229,83 @@ export async function checkCampaignCompliance(
 }
 
 /**
+ * Scan every (or up to MAX_PREFLIGHT_CONTACTS) campaign contact and return
+ * the IDs of those whose decrypted phone is on the tenant's DNC list. This
+ * powers the "Scrub DNC matches" admin action — unlike `checkCampaignCompliance`
+ * which slices the displayed match list to 25 for the UI, this returns the
+ * full set so the caller can flip every match to `opted_out` in one shot.
+ *
+ * `truncated` is true when we hit the pre-flight ceiling and there are still
+ * more contacts to scan beyond it. Callers should surface this so the operator
+ * knows another scrub pass may be needed (or the campaign needs to be split).
+ */
+export async function findDncMatchingContactIds(
+  tenantId: string,
+  campaignId: string,
+): Promise<{ contactIds: string[]; scannedContacts: number; truncated: boolean }> {
+  return withTenant(tenantId, async (client) => {
+    const { rows: dncRows } = await client.query(
+      `SELECT phone_number FROM dnc_list WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    const dncSet = new Set<string>(dncRows.map((r) => String(r.phone_number)));
+
+    const matches: string[] = [];
+    let scanned = 0;
+    let lastCreatedAt: string | null = null;
+    let lastId: string | null = null;
+    let truncated = false;
+
+    while (scanned < MAX_PREFLIGHT_CONTACTS) {
+      const params: unknown[] = [campaignId, tenantId];
+      let cursorClause = '';
+      if (lastCreatedAt && lastId) {
+        params.push(lastCreatedAt, lastId);
+        cursorClause = `AND (created_at, id) > ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
+      }
+      params.push(PREFLIGHT_BATCH_SIZE);
+      const { rows: batch } = await client.query(
+        `SELECT id, phone_number, created_at FROM campaign_contacts
+         WHERE campaign_id = $1 AND tenant_id = $2
+           AND status NOT IN ('opted_out')
+           ${cursorClause}
+         ORDER BY created_at ASC, id ASC
+         LIMIT $${params.length}`,
+        params,
+      );
+      if (batch.length === 0) break;
+
+      for (const row of batch) {
+        const decrypted = await safeDecryptPhone(tenantId, String(row.phone_number));
+        if (dncSet.has(decrypted)) {
+          matches.push(String(row.id));
+        }
+        scanned++;
+      }
+
+      const last = batch[batch.length - 1];
+      lastCreatedAt = String(last.created_at);
+      lastId = String(last.id);
+      if (batch.length < PREFLIGHT_BATCH_SIZE) break;
+    }
+
+    if (scanned >= MAX_PREFLIGHT_CONTACTS && lastCreatedAt && lastId) {
+      const { rows: more } = await client.query(
+        `SELECT 1 FROM campaign_contacts
+         WHERE campaign_id = $1 AND tenant_id = $2
+           AND status NOT IN ('opted_out')
+           AND (created_at, id) > ($3::timestamptz, $4::uuid)
+         LIMIT 1`,
+        [campaignId, tenantId, lastCreatedAt, lastId],
+      );
+      if (more.length > 0) truncated = true;
+    }
+
+    return { contactIds: matches, scannedContacts: scanned, truncated };
+  });
+}
+
+/**
  * Lightweight DNC membership check that handles encrypted contact phones.
  * Used by the scheduler at dial-time as a defense-in-depth fallback.
  */

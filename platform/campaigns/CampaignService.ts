@@ -449,6 +449,47 @@ export async function updateContactStatus(
   });
 }
 
+/**
+ * Flip a batch of campaign contacts to `opted_out` and stamp the reason
+ * (e.g. "dnc_match", "manual_review") into `metadata.optOutReason`. Only
+ * contacts that aren't already opted out are touched, so calling this twice
+ * is idempotent. Returns the number of rows actually updated.
+ */
+export async function bulkMarkOptedOut(
+  tenantId: string,
+  campaignId: string,
+  contactIds: string[],
+  reason: string,
+): Promise<number> {
+  if (contactIds.length === 0) return 0;
+  return withTenant(tenantId, async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE campaign_contacts
+       SET status = 'opted_out',
+           metadata = jsonb_set(
+             COALESCE(metadata, '{}'::jsonb),
+             '{optOutReason}',
+             to_jsonb($1::text)
+           ),
+           updated_at = NOW()
+       WHERE tenant_id = $2 AND campaign_id = $3
+         AND id = ANY($4::uuid[])
+         AND status <> 'opted_out'`,
+      [reason, tenantId, campaignId, contactIds],
+    );
+    const count = rowCount ?? 0;
+    if (count > 0) {
+      logger.info('Bulk marked contacts opted_out', {
+        tenantId,
+        campaignId,
+        count,
+        reason,
+      });
+    }
+    return count;
+  });
+}
+
 export async function checkCampaignCompletion(tenantId: string, campaignId: string): Promise<boolean> {
   return withTenant(tenantId, async (client) => {
     const campaign = await getCampaign(tenantId, campaignId);

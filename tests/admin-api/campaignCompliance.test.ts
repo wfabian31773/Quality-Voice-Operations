@@ -54,6 +54,11 @@ vi.mock('../../platform/audit/AuditService', () => ({
   extractIp: () => '127.0.0.1',
 }));
 
+const getVerifiedCallerByIdMock = vi.fn(async () => null);
+vi.mock('../../platform/telephony/TrustedCallerService', () => ({
+  getVerifiedCallerById: (...args: unknown[]) => getVerifiedCallerByIdMock(...args as [string, string]),
+}));
+
 vi.mock('../../server/admin-api/middleware/auth', () => ({
   requireAuth: (req: Request, _res: Response, next: NextFunction) => {
     (req as Request & { user?: unknown }).user = {
@@ -117,6 +122,8 @@ beforeEach(() => {
   queryMock.mockReset();
   releaseMock.mockReset();
   connectMock.mockClear();
+  getVerifiedCallerByIdMock.mockReset();
+  getVerifiedCallerByIdMock.mockResolvedValue(null);
 });
 
 describe('PATCH /campaigns/:id launch pre-flight', () => {
@@ -248,6 +255,171 @@ describe('PATCH /campaigns/:id launch fail-closed on truncated preflight', () =>
 
     delete process.env.CAMPAIGN_PREFLIGHT_MAX_CONTACTS;
     delete process.env.CAMPAIGN_PREFLIGHT_BATCH_SIZE;
+  });
+});
+
+describe('POST /campaigns/:id/scrub-dnc', () => {
+  it('flips DNC matches to opted_out with reason=dnc_match and re-runs the launch', async () => {
+    let updateCampaignCalls = 0;
+    const updateOptedOutCalls: Array<{ sql: string; values?: unknown[] }> = [];
+    let dncListReturned = true;
+
+    queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/SET LOCAL/i.test(sql)) return { rows: [], rowCount: 0 };
+
+      if (/phone_verified FROM users/i.test(sql)) {
+        return { rows: [{ phone_verified: true }], rowCount: 1 };
+      }
+      if (/SELECT \* FROM campaigns WHERE id = \$1/i.test(sql)) {
+        return { rows: [sampleCampaignRow], rowCount: 1 };
+      }
+      if (/SELECT phone_number FROM dnc_list/i.test(sql)) {
+        // First call returns the matches; subsequent calls (post-scrub
+        // re-check) return an empty list so compliance.ok is true.
+        if (dncListReturned) {
+          dncListReturned = false;
+          return { rows: [{ phone_number: '+15551234567' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      }
+      if (/COUNT\(\*\) FILTER \(WHERE status = 'opted_out'\)/.test(sql)) {
+        return { rows: [{ total: 2, opted_out: 0 }], rowCount: 1 };
+      }
+      // findDncMatchingContactIds scan (selects without `name`)
+      if (/SELECT id, phone_number, created_at FROM campaign_contacts/i.test(sql)) {
+        return {
+          rows: [
+            { id: '00000000-0000-0000-0000-000000000001', phone_number: 'env1:+15551234567', created_at: '2026-04-27T00:00:00Z' },
+            { id: '00000000-0000-0000-0000-000000000002', phone_number: 'env1:+15559999999', created_at: '2026-04-27T00:00:01Z' },
+          ],
+          rowCount: 2,
+        };
+      }
+      // checkCampaignCompliance scan (selects with `name`)
+      if (/SELECT id, phone_number, name, created_at FROM campaign_contacts/i.test(sql)) {
+        return {
+          rows: [
+            { id: '00000000-0000-0000-0000-000000000002', phone_number: 'env1:+15559999999', name: 'Bob', created_at: '2026-04-27T00:00:01Z' },
+          ],
+          rowCount: 1,
+        };
+      }
+      // bulkMarkOptedOut UPDATE
+      if (/UPDATE campaign_contacts[\s\S]+SET status = 'opted_out'/i.test(sql)) {
+        updateOptedOutCalls.push({ sql, values });
+        return { rows: [], rowCount: 1 };
+      }
+      // updateCampaign
+      if (/UPDATE campaigns SET/i.test(sql)) {
+        updateCampaignCalls++;
+        return { rows: [{ ...sampleCampaignRow, status: 'running' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/campaigns/camp-1/scrub-dnc')
+      .send({ retryStatus: 'running' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.scrubbed).toBe(1);
+    expect(res.body.compliance.dncMatchCount).toBe(0);
+    expect(res.body.compliance.ok).toBe(true);
+    expect(res.body.campaign).toMatchObject({ status: 'running' });
+    expect(res.body.retryError).toBeNull();
+    expect(updateCampaignCalls).toBe(1);
+
+    // The bulk update must reference the matching contact id and
+    // stamp metadata.optOutReason = 'dnc_match'.
+    expect(updateOptedOutCalls).toHaveLength(1);
+    const call = updateOptedOutCalls[0];
+    expect(call.sql).toMatch(/optOutReason/);
+    const values = call.values as unknown[];
+    expect(values[0]).toBe('dnc_match');
+    expect(values[3]).toEqual(['00000000-0000-0000-0000-000000000001']);
+  });
+
+  it('does not relaunch when the post-scrub compliance check still fails', async () => {
+    let updateCampaignCalls = 0;
+
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/SET LOCAL/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/phone_verified FROM users/i.test(sql)) return { rows: [{ phone_verified: true }], rowCount: 1 };
+      if (/SELECT \* FROM campaigns WHERE id = \$1/i.test(sql)) return { rows: [sampleCampaignRow], rowCount: 1 };
+      if (/SELECT phone_number FROM dnc_list/i.test(sql)) {
+        return { rows: [{ phone_number: '+15551234567' }], rowCount: 1 };
+      }
+      if (/COUNT\(\*\) FILTER \(WHERE status = 'opted_out'\)/.test(sql)) {
+        // Empty campaign post-scrub triggers ok=false ('Add contacts before launching')
+        return { rows: [{ total: 0, opted_out: 0 }], rowCount: 1 };
+      }
+      if (/SELECT id, phone_number, created_at FROM campaign_contacts/i.test(sql)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (/SELECT id, phone_number, name, created_at FROM campaign_contacts/i.test(sql)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (/UPDATE campaign_contacts[\s\S]+SET status = 'opted_out'/i.test(sql)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (/UPDATE campaigns SET/i.test(sql)) {
+        updateCampaignCalls++;
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/campaigns/camp-1/scrub-dnc')
+      .send({ retryStatus: 'running' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.scrubbed).toBe(0);
+    expect(res.body.compliance.ok).toBe(false);
+    expect(res.body.campaign).toBeNull();
+    expect(res.body.retryError).toEqual(expect.stringMatching(/compliance blocker/i));
+    expect(updateCampaignCalls).toBe(0);
+  });
+
+  it('rejects an invalid retryStatus', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/campaigns/camp-1/scrub-dnc')
+      .send({ retryStatus: 'completed' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/retryStatus/);
+  });
+
+  it('refuses to relaunch when the campaign references a missing verified caller ID', async () => {
+    // Mirror the PATCH /campaigns/:id launch gating: if the campaign config
+    // points at a verifiedCallerId that no longer exists or isn't verified,
+    // the scrub-and-launch path must reject the relaunch — otherwise it
+    // could be used as a side door around the trusted-caller check.
+    const campaignWithCaller = {
+      ...sampleCampaignRow,
+      config: { ...sampleCampaignRow.config, verifiedCallerId: 'caller-does-not-exist' },
+    };
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/SET LOCAL/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/phone_verified FROM users/i.test(sql)) return { rows: [{ phone_verified: true }], rowCount: 1 };
+      if (/SELECT \* FROM campaigns WHERE id = \$1/i.test(sql)) return { rows: [campaignWithCaller], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    getVerifiedCallerByIdMock.mockResolvedValue(null);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/campaigns/camp-1/scrub-dnc')
+      .send({ retryStatus: 'running' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/verified caller id/i);
+    expect(getVerifiedCallerByIdMock).toHaveBeenCalledWith('tenant-1', 'caller-does-not-exist');
   });
 });
 

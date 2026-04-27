@@ -22,6 +22,7 @@ export {
   getTenantActiveDialingCount,
   getTenantMaxConcurrent,
   incrementQuietHoursSkips,
+  bulkMarkOptedOut,
 } from './CampaignService';
 export type { CallbackReconciliation } from './CampaignService';
 
@@ -31,7 +32,7 @@ export type { CallClassificationInput } from './OutcomeClassifier';
 export { CampaignScheduler, startCampaignScheduler, stopCampaignScheduler } from './CampaignScheduler';
 export { addToDnc, isOnDnc, listDnc, removeFromDnc, detectOptOutInTranscript, isSmsOptOut } from './DncService';
 export type { DncEntry } from './DncService';
-export { checkCampaignCompliance, isContactOnDnc } from './ComplianceService';
+export { checkCampaignCompliance, findDncMatchingContactIds, isContactOnDnc } from './ComplianceService';
 export type { ComplianceCheck, DncMatch } from './ComplianceService';
 export { evaluateQuietHours, resolveTimezoneForContact } from './QuietHours';
 export type { QuietHoursConfig, QuietHoursDecision } from './QuietHours';

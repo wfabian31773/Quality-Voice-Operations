@@ -21,6 +21,8 @@ import {
   getValidCampaignTypes,
   isValidDisposition,
   checkCampaignCompliance,
+  findDncMatchingContactIds,
+  bulkMarkOptedOut,
 } from '../../../platform/campaigns';
 import type { CampaignStatus } from '../../../platform/campaigns';
 import { getVerifiedCallerById } from '../../../platform/telephony/TrustedCallerService';
@@ -447,6 +449,140 @@ router.get('/campaigns/:id/compliance', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('Failed to compute campaign compliance', { tenantId, campaignId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to compute compliance report' });
+  }
+});
+
+/**
+ * Auto-scrub DNC matches and (optionally) retry the launch in one step.
+ *
+ * Flow:
+ *   1. Re-scan the campaign roster for DNC matches (uses the same paginated
+ *      decrypt-and-compare logic as the pre-flight, so we catch every match
+ *      up to the pre-flight ceiling — not just the first 25 the panel shows).
+ *   2. Flip those contacts to `opted_out` with `metadata.optOutReason='dnc_match'`.
+ *   3. Write an audit log entry recording the scrub.
+ *   4. Re-run the compliance check so the response carries the fresh report.
+ *   5. If the caller requested `retryStatus` ('running' | 'scheduled') AND the
+ *      fresh compliance check is `ok`, flip the campaign to that status and
+ *      audit the relaunch. Phone-verification gating mirrors PATCH /campaigns/:id.
+ *
+ * Response: `{ scrubbed, preflightTruncated, compliance, campaign?, retryError? }`.
+ */
+router.post('/campaigns/:id/scrub-dnc', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const { retryStatus } = req.body as { retryStatus?: string };
+
+  const allowedRetry: CampaignStatus[] = ['running', 'scheduled'];
+  if (retryStatus !== undefined && !allowedRetry.includes(retryStatus as CampaignStatus)) {
+    return res.status(400).json({
+      error: `retryStatus must be one of: ${allowedRetry.join(', ')}`,
+    });
+  }
+
+  try {
+    const campaign = await getCampaign(tenantId, id);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    // Pre-launch gating mirrors PATCH /campaigns/:id so Scrub & Launch can't
+    // be used as a side door around the same checks: phone verification on
+    // the actor and a valid verified caller ID on the campaign config.
+    if (retryStatus === 'running' || retryStatus === 'scheduled') {
+      const userId = req.user!.userId;
+      const pool = (await import('../../../platform/db')).getPlatformPool();
+      const { rows: userRows } = await pool.query(
+        `SELECT phone_verified FROM users WHERE id = $1`,
+        [userId],
+      );
+      if (userRows.length > 0 && !(userRows[0].phone_verified as boolean)) {
+        return res.status(403).json({
+          error: 'Phone verification required before activating outbound campaigns. Verify your phone number in Settings.',
+        });
+      }
+
+      const verifiedCallerIdCfg = (campaign.config as Record<string, unknown> | undefined)?.verifiedCallerId;
+      if (typeof verifiedCallerIdCfg === 'string' && verifiedCallerIdCfg.length > 0) {
+        const verified = await getVerifiedCallerById(tenantId, verifiedCallerIdCfg);
+        if (!verified) {
+          return res.status(400).json({
+            error: 'The selected verified caller ID is missing or has not finished verification. Confirm verification from Trusted Callers.',
+          });
+        }
+      }
+    }
+
+    const { contactIds, truncated } = await findDncMatchingContactIds(tenantId, id);
+    const scrubbed = await bulkMarkOptedOut(tenantId, id, contactIds, 'dnc_match');
+
+    if (scrubbed > 0) {
+      logger.info('DNC scrub completed', { tenantId, campaignId: id, scrubbed, truncated });
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: req.user!.role,
+        action: 'campaign.dnc_scrubbed',
+        resourceType: 'campaign',
+        resourceId: id,
+        severity: 'warning',
+        afterState: {
+          scrubbedCount: scrubbed,
+          // Cap the recorded id list so a 100k-contact scrub doesn't blow up
+          // the audit row payload. The full count is still captured above.
+          contactIds: contactIds.slice(0, 200),
+          reason: 'dnc_match',
+          preflightTruncated: truncated,
+        },
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+    }
+
+    const compliance = await checkCampaignCompliance(tenantId, id, { config: campaign.config });
+
+    let updatedCampaign: Awaited<ReturnType<typeof updateCampaign>> = null;
+    let retryError: string | null = null;
+
+    if (retryStatus && compliance.ok) {
+      updatedCampaign = await updateCampaign(tenantId, id, {
+        status: retryStatus as CampaignStatus,
+      });
+      if (updatedCampaign) {
+        logger.info('Campaign relaunched after DNC scrub', {
+          tenantId,
+          campaignId: id,
+          status: retryStatus,
+          scrubbed,
+        });
+        await writeAuditLog({
+          tenantId,
+          actorUserId: req.user!.userId,
+          actorRole: req.user!.role,
+          action: 'campaign.relaunched_after_scrub',
+          resourceType: 'campaign',
+          resourceId: id,
+          afterState: { status: retryStatus, scrubbed },
+          ipAddress: extractIp(req),
+          userAgent: req.headers['user-agent'],
+        });
+      }
+    } else if (retryStatus && !compliance.ok) {
+      retryError = compliance.dncMatchCount > 0
+        ? `Scrubbed ${scrubbed} contact${scrubbed === 1 ? '' : 's'}, but ${compliance.dncMatchCount} DNC match${compliance.dncMatchCount === 1 ? '' : 'es'} remain (pre-flight scan ceiling reached). Split the campaign or scrub again.`
+        : compliance.preflightTruncated
+          ? `Scrubbed ${scrubbed} contact${scrubbed === 1 ? '' : 's'}, but the campaign exceeds the pre-flight scan ceiling. Split the campaign before launching.`
+          : `Scrubbed ${scrubbed} contact${scrubbed === 1 ? '' : 's'}, but the campaign still has compliance blockers.`;
+    }
+
+    return res.json({
+      scrubbed,
+      preflightTruncated: truncated,
+      compliance,
+      campaign: updatedCampaign,
+      retryError,
+    });
+  } catch (err) {
+    logger.error('Failed to scrub DNC matches', { tenantId, campaignId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to scrub DNC matches' });
   }
 });
 

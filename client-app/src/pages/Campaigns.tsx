@@ -786,7 +786,17 @@ function CampaignListPrimaryRate({ campaignId, campaignType }: { campaignId: str
   );
 }
 
-function CompliancePanel({ campaignId }: { campaignId: string }) {
+function CompliancePanel({
+  campaignId,
+  canScrub,
+  onScrub,
+  scrubbing,
+}: {
+  campaignId: string;
+  canScrub?: boolean;
+  onScrub?: () => void;
+  scrubbing?: boolean;
+}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['campaign-compliance', campaignId],
     queryFn: () => api.get<{ compliance: ComplianceReport }>(`/campaigns/${campaignId}/compliance`),
@@ -853,9 +863,26 @@ function CompliancePanel({ campaignId }: { campaignId: string }) {
 
       {report.dncMatches.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs font-medium text-text-secondary mb-2">
-            DNC matches{report.dncMatchCount > report.dncMatches.length ? ` (showing first ${report.dncMatches.length})` : ''}
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-text-secondary">
+              DNC matches{report.dncMatchCount > report.dncMatches.length ? ` (showing first ${report.dncMatches.length})` : ''}
+            </p>
+            {canScrub && onScrub && (
+              <button
+                type="button"
+                onClick={onScrub}
+                disabled={scrubbing}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-medium rounded-md disabled:opacity-50"
+              >
+                {scrubbing ? (
+                  <div className="animate-spin h-3 w-3 border-2 border-danger border-t-transparent rounded-full" />
+                ) : (
+                  <ShieldOff className="h-3.5 w-3.5" />
+                )}
+                {scrubbing ? 'Scrubbing…' : `Scrub ${report.dncMatchCount} DNC match${report.dncMatchCount === 1 ? '' : 'es'}`}
+              </button>
+            )}
+          </div>
           <div className="bg-surface-hover rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
             {report.dncMatches.map((m) => (
               <div key={m.contactId} className="flex items-center justify-between px-3 py-2">
@@ -913,11 +940,13 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
   });
 
   const [launchBlock, setLaunchBlock] = useState<{ message: string; report: ComplianceReport } | null>(null);
+  const [scrubResult, setScrubResult] = useState<{ scrubbed: number; relaunched: boolean; retryError?: string | null } | null>(null);
 
   const statusMutation = useMutation({
     mutationFn: (status: string) => api.patch(`/campaigns/${campaignId}`, { status }),
     onSuccess: () => {
       setLaunchBlock(null);
+      setScrubResult(null);
       queryClient.invalidateQueries({ queryKey: ['campaign', campaignId] });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['campaign-compliance', campaignId] });
@@ -927,6 +956,37 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
       if (err.status === 409 && body?.compliance) {
         setLaunchBlock({ message: body.error ?? 'Compliance check failed', report: body.compliance });
         queryClient.setQueryData(['campaign-compliance', campaignId], { compliance: body.compliance });
+      }
+    },
+  });
+
+  // Scrub-and-launch helper for the launch-blocked banner. When called from
+  // the banner we pass `retryStatus: 'running'` so the backend re-checks
+  // compliance and (if clean) flips the campaign back to running in one round
+  // trip. When invoked from the compliance panel without a launch attempt, we
+  // omit retryStatus so we just scrub without changing campaign status.
+  const scrubMutation = useMutation({
+    mutationFn: (retryStatus?: 'running' | 'scheduled') =>
+      api.post<{
+        scrubbed: number;
+        preflightTruncated: boolean;
+        compliance: ComplianceReport;
+        campaign: Campaign | null;
+        retryError: string | null;
+      }>(`/campaigns/${campaignId}/scrub-dnc`, retryStatus ? { retryStatus } : {}),
+    onSuccess: (data, retryStatus) => {
+      const relaunched = !!(retryStatus && data.campaign);
+      setScrubResult({ scrubbed: data.scrubbed, relaunched, retryError: data.retryError });
+      queryClient.setQueryData(['campaign-compliance', campaignId], { compliance: data.compliance });
+      if (relaunched) {
+        setLaunchBlock(null);
+        queryClient.invalidateQueries({ queryKey: ['campaign', campaignId] });
+        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      } else if (launchBlock) {
+        setLaunchBlock({
+          message: launchBlock.message,
+          report: data.compliance,
+        });
       }
     },
   });
@@ -1012,9 +1072,28 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                 <ShieldOff className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="font-medium">Launch blocked: {launchBlock.message}</p>
-                  <p className="text-xs mt-1 text-danger/80">
-                    {launchBlock.report.dncMatchCount} contact{launchBlock.report.dncMatchCount === 1 ? '' : 's'} on the Do-Not-Call list. Remove or scrub them, then try again.
-                  </p>
+                  {launchBlock.report.dncMatchCount > 0 && (
+                    <p className="text-xs mt-1 text-danger/80">
+                      {launchBlock.report.dncMatchCount} contact{launchBlock.report.dncMatchCount === 1 ? '' : 's'} on the Do-Not-Call list. Scrub them to opt-out and retry the launch in one step.
+                    </p>
+                  )}
+                  {isManager && launchBlock.report.dncMatchCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => scrubMutation.mutate('running')}
+                      disabled={scrubMutation.isPending}
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-danger hover:bg-danger/90 text-white text-xs font-medium rounded-md disabled:opacity-50"
+                    >
+                      {scrubMutation.isPending ? (
+                        <div className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+                      ) : (
+                        <ShieldOff className="h-3.5 w-3.5" />
+                      )}
+                      {scrubMutation.isPending
+                        ? 'Scrubbing & relaunching…'
+                        : `Scrub ${launchBlock.report.dncMatchCount} DNC match${launchBlock.report.dncMatchCount === 1 ? '' : 'es'} & launch`}
+                    </button>
+                  )}
                 </div>
                 <button onClick={() => setLaunchBlock(null)} className="text-danger/70 hover:text-danger">
                   <X className="h-4 w-4" />
@@ -1023,7 +1102,49 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
             </div>
           )}
 
-          <CompliancePanel campaignId={campaignId} />
+          {scrubMutation.isError && (
+            <div className="bg-danger/10 border border-danger/30 text-danger text-sm px-4 py-3 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <span>Failed to scrub DNC matches: {(scrubMutation.error as Error)?.message ?? 'Unknown error'}</span>
+            </div>
+          )}
+
+          {scrubResult && (
+            <div className={`text-sm px-4 py-3 rounded-lg flex items-start gap-2 ${
+              scrubResult.relaunched
+                ? 'bg-success/10 border border-success/30 text-success'
+                : scrubResult.retryError
+                  ? 'bg-warning/10 border border-warning/30 text-warning'
+                  : 'bg-primary/10 border border-primary/30 text-primary'
+            }`}>
+              {scrubResult.relaunched ? (
+                <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              ) : (
+                <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              )}
+              <div className="flex-1">
+                <p className="font-medium">
+                  Scrubbed {scrubResult.scrubbed} contact{scrubResult.scrubbed === 1 ? '' : 's'} (marked opted-out, reason: dnc_match).
+                </p>
+                {scrubResult.relaunched && (
+                  <p className="text-xs mt-1 opacity-80">Launch retried automatically — campaign is running.</p>
+                )}
+                {scrubResult.retryError && (
+                  <p className="text-xs mt-1 opacity-80">{scrubResult.retryError}</p>
+                )}
+              </div>
+              <button onClick={() => setScrubResult(null)} className="opacity-70 hover:opacity-100">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <CompliancePanel
+            campaignId={campaignId}
+            canScrub={isManager}
+            onScrub={() => scrubMutation.mutate(undefined)}
+            scrubbing={scrubMutation.isPending}
+          />
 
           {isTypedCampaign && (
             <TypeMetricsPanel campaignId={campaignId} campaignType={campaign.type} />
