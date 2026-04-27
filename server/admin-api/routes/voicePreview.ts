@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth';
 import { createLogger } from '../../../platform/core/logger';
+import { objectStorageClient } from '../../replit_integrations/object_storage';
 
 const router = Router();
 const logger = createLogger('VOICE_PREVIEW');
@@ -18,6 +19,7 @@ const SUPPORTED_LANGUAGES = new Set([
 const MAX_GREETING_CHARS = 280;
 const TTS_MODEL = 'gpt-4o-mini-tts';
 const TTS_FORMAT = 'mp3';
+const TTS_CONTENT_TYPE = 'audio/mpeg';
 
 interface CacheEntry {
   audio: Buffer;
@@ -112,13 +114,75 @@ function trimGreeting(greeting: string): string {
   return trimmed.slice(0, MAX_GREETING_CHARS - 1).trimEnd() + '…';
 }
 
-function previewKey(voice: string, language: string, greeting: string): string {
-  const hash = crypto
+function previewHash(voice: string, language: string, greeting: string): string {
+  return crypto
     .createHash('sha256')
     .update(`${voice}|${language}|${greeting}`)
-    .digest('hex')
-    .slice(0, 32);
-  return `${voice}:${language}:${hash}`;
+    .digest('hex');
+}
+
+function previewKey(voice: string, language: string, hash: string): string {
+  return `${voice}:${language}:${hash.slice(0, 32)}`;
+}
+
+interface ObjectLocation {
+  bucketName: string;
+  objectName: string;
+}
+
+function getObjectLocation(hash: string): ObjectLocation | null {
+  const dir = process.env.PRIVATE_OBJECT_DIR;
+  if (!dir) return null;
+  const trimmed = dir.replace(/\/+$/, '');
+  // Namespace under voice-previews/ so this cache isn't co-mingled with
+  // other private objects (e.g. dispatch attachments). Each file is keyed
+  // purely by the (voice, language, greeting) sha256 hash.
+  const fullPath = `${trimmed}/voice-previews/${hash}.${TTS_FORMAT}`;
+  const path = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
+  const parts = path.split('/');
+  if (parts.length < 2) return null;
+  return {
+    bucketName: parts[0],
+    objectName: parts.slice(1).join('/'),
+  };
+}
+
+async function readFromObjectStorage(hash: string): Promise<Buffer | null> {
+  const loc = getObjectLocation(hash);
+  if (!loc) return null;
+  try {
+    const file = objectStorageClient.bucket(loc.bucketName).file(loc.objectName);
+    const [exists] = await file.exists();
+    if (!exists) return null;
+    const [buf] = await file.download();
+    return buf;
+  } catch (err) {
+    logger.warn('Voice preview object storage read failed', {
+      hash: hash.slice(0, 12),
+      error: String(err),
+    });
+    return null;
+  }
+}
+
+async function writeToObjectStorage(hash: string, audio: Buffer): Promise<void> {
+  const loc = getObjectLocation(hash);
+  if (!loc) return;
+  try {
+    const file = objectStorageClient.bucket(loc.bucketName).file(loc.objectName);
+    await file.save(audio, {
+      contentType: TTS_CONTENT_TYPE,
+      resumable: false,
+      metadata: {
+        cacheControl: 'private, max-age=31536000',
+      },
+    });
+  } catch (err) {
+    logger.warn('Voice preview object storage write failed', {
+      hash: hash.slice(0, 12),
+      error: String(err),
+    });
+  }
 }
 
 router.post('/agents/voice-preview', requireAuth, async (req: Request, res: Response) => {
@@ -151,13 +215,26 @@ router.post('/agents/voice-preview', requireAuth, async (req: Request, res: Resp
     return res.status(429).json({ error: 'Too many preview requests. Try again in a minute.' });
   }
 
-  const key = previewKey(voice, language, greeting);
-  const cached = cacheGet(key);
-  if (cached) {
-    res.setHeader('Content-Type', cached.contentType);
+  const hash = previewHash(voice, language, greeting);
+  const key = previewKey(voice, language, hash);
+
+  // Hot tier: in-memory LRU.
+  const hot = cacheGet(key);
+  if (hot) {
+    res.setHeader('Content-Type', hot.contentType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.setHeader('X-Voice-Preview-Cache', 'hit');
-    return res.send(cached.audio);
+    return res.send(hot.audio);
+  }
+
+  // Warm tier: object storage (survives restarts/deploys).
+  const fromStore = await readFromObjectStorage(hash);
+  if (fromStore) {
+    cacheSet(key, { audio: fromStore, contentType: TTS_CONTENT_TYPE, cachedAt: Date.now() });
+    res.setHeader('Content-Type', TTS_CONTENT_TYPE);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('X-Voice-Preview-Cache', 'warm');
+    return res.send(fromStore);
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -197,9 +274,12 @@ router.post('/agents/voice-preview', requireAuth, async (req: Request, res: Resp
 
     const arrayBuf = await upstream.arrayBuffer();
     const audio = Buffer.from(arrayBuf);
-    const contentType = 'audio/mpeg';
+    const contentType = TTS_CONTENT_TYPE;
 
     cacheSet(key, { audio, contentType, cachedAt: Date.now() });
+    // Persist to object storage in the background — never block the response
+    // on a slow or flaky write. Errors are logged inside the helper.
+    void writeToObjectStorage(hash, audio);
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
