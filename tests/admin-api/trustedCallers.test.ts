@@ -78,6 +78,7 @@ const campaignsServiceMock = {
   getAllCampaignTypes: vi.fn(() => []),
   getValidCampaignTypes: vi.fn(() => []),
   isValidDisposition: vi.fn(() => true),
+  checkCampaignCompliance: vi.fn(),
 };
 vi.mock('../../platform/campaigns', () => campaignsServiceMock);
 
@@ -90,6 +91,11 @@ beforeEach(() => {
   campaignsServiceMock.getAllCampaignTypes.mockReturnValue([]);
   campaignsServiceMock.getValidCampaignTypes.mockReturnValue([]);
   campaignsServiceMock.isValidDisposition.mockReturnValue(true);
+  campaignsServiceMock.checkCampaignCompliance.mockResolvedValue({
+    ok: true,
+    dncMatchCount: 0,
+    complianceScore: 100,
+  });
   auditMock.mockReset();
   poolQueryMock.mockReset();
 });
