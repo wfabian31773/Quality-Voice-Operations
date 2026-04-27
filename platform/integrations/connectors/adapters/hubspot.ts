@@ -1,12 +1,45 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
 import { parseDispositionMap, mapDisposition } from '../dispositionMap';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('HUBSPOT_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const HUBSPOT_API = 'https://api.hubapi.com';
+
+/**
+ * BL-014 (Task #248): every HubSpot HTTP call goes through `hubspotFetch`,
+ * which retries transient failures (network errors + 429/502/503/504) with
+ * 1s/4s/16s ±20% jitter and honours `Retry-After` on rate-limit responses.
+ *
+ * Each retry attempt gets a fresh `AbortSignal.timeout(REQUEST_TIMEOUT_MS)`
+ * so a slow first attempt cannot poison the retry. The init.signal that the
+ * original call sites set up via per-call `AbortController` is intentionally
+ * dropped here — the retry layer manages its own per-attempt timeout, which
+ * is the only correct way to bound latency across multiple retries while
+ * keeping the total under the 60s adapter budget.
+ */
+async function hubspotFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  // Strip caller-supplied signal — retry layer manages timeout per attempt.
+  const { signal: _ignored, ...rest } = init;
+  void _ignored;
+  return retryFetch(url, rest, {
+    label: 'hubspot',
+    fetcher: async (input, opts) => {
+      // Each retry attempt uses a fresh AbortController so a previous timeout
+      // does not leak into the next attempt.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(input, { ...opts, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
+}
 
 const ASSOCIATION = {
   CONTACT_TO_COMPANY: 1,
@@ -141,7 +174,7 @@ export async function fetchHubSpotDealPipelines(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/pipelines/deals`, {
+    const res = await hubspotFetch(`${HUBSPOT_API}/crm/v3/pipelines/deals`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -475,7 +508,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const searchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
+      const searchRes = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify({
@@ -497,7 +530,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
       const lastName = (payload.callerLastName as string) ?? '';
       const email = (payload.callerEmail as string) ?? '';
 
-      const createRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts`, {
+      const createRes = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/contacts`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify({
@@ -532,7 +565,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const searchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
+      const searchRes = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify({
@@ -551,7 +584,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         logger.warn('HubSpot company search failed', { status: searchRes.status, body: text.slice(0, 200) });
       }
 
-      const createRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies`, {
+      const createRes = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/companies`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify({ properties: { name: trimmed } }),
@@ -579,7 +612,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
+      const res = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify({
@@ -640,7 +673,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         });
       }
 
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals`, {
+      const res = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/deals`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify({ properties, associations }),
@@ -686,7 +719,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     try {
       const properties: Record<string, string> = { dealstage: stageId };
       if (pipelineId) properties.pipeline = pipelineId;
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/${dealId}`, {
+      const res = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/deals/${dealId}`, {
         method: 'PATCH',
         headers: this.headers(accessToken),
         body: JSON.stringify({ properties }),
@@ -728,7 +761,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(
+      const res = await hubspotFetch(
         `${HUBSPOT_API}/crm/v4/objects/${fromObject}/${fromId}/associations/${toObject}/${toId}`,
         {
           method: 'PUT',
@@ -806,7 +839,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         }),
       };
 
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/calls`, {
+      const res = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/calls`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify(body),
@@ -868,7 +901,7 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
         ...(associations.length ? { associations } : {}),
       };
 
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/notes`, {
+      const res = await hubspotFetch(`${HUBSPOT_API}/crm/v3/objects/notes`, {
         method: 'POST',
         headers: this.headers(accessToken),
         body: JSON.stringify(payload),

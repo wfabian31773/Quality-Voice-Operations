@@ -1,6 +1,7 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
 import { parseDispositionMap, mapDisposition } from '../dispositionMap';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -52,18 +53,34 @@ async function pdFetch<T = unknown>(
   path: string,
   init?: { method?: string; body?: unknown },
 ): Promise<{ ok: boolean; status: number; data?: T; error?: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const sep = path.includes('?') ? '&' : '?';
     const tokenSep = auth.apiToken ? `${sep}api_token=${encodeURIComponent(auth.apiToken)}` : '';
     const url = `${auth.apiBase}${path}${tokenSep}`;
-    const res = await fetch(url, {
-      method: init?.method ?? 'GET',
-      headers: authHeaders(auth),
-      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: controller.signal,
-    });
+    // BL-014 (Task #248): retry transient 429/5xx + network errors with
+    // 1s/4s/16s ±20% jitter, honouring `Retry-After` on rate limits. Each
+    // attempt gets a fresh AbortController so the per-attempt timeout does
+    // not poison subsequent retries.
+    const res = await retryFetch(
+      url,
+      {
+        method: init?.method ?? 'GET',
+        headers: authHeaders(auth),
+        body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      },
+      {
+        label: 'pipedrive',
+        fetcher: async (input, opts) => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+          try {
+            return await fetch(input, { ...opts, signal: controller.signal });
+          } finally {
+            clearTimeout(timer);
+          }
+        },
+      },
+    );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       return { ok: false, status: res.status, error: `Pipedrive ${res.status}: ${text.slice(0, 200)}` };
@@ -72,8 +89,6 @@ async function pdFetch<T = unknown>(
     return { ok: true, status: res.status, data };
   } catch (err) {
     return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

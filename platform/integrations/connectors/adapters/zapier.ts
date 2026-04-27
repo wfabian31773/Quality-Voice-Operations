@@ -1,5 +1,6 @@
 import { createLogger } from '../../../core/logger';
 import { safeFetch, SsrfBlockedError } from '../ssrfGuard';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -49,12 +50,32 @@ export class ZapierWebhookConnectorAdapter implements ConnectorAdapter {
         headers['X-API-Key'] = apiKey;
       }
 
-      const res = await safeFetch(webhookUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(eventPayload),
-        signal: controller.signal,
-      });
+      // BL-014 (Task #248): retry transient 429/5xx + network errors via
+      // retryFetch, but plug `safeFetch` in as the fetcher so the SSRF guard
+      // still runs on every attempt. Retry-After on a 429 is honoured.
+      const res = await retryFetch(
+        webhookUrl,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(eventPayload),
+        },
+        {
+          label: 'zapier',
+          fetcher: async (input, opts) => {
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS);
+            try {
+              return await safeFetch(typeof input === 'string' ? input : String(input), {
+                ...opts,
+                signal: c.signal,
+              });
+            } finally {
+              clearTimeout(t);
+            }
+          },
+        },
+      );
 
       clearTimeout(timeoutId);
 

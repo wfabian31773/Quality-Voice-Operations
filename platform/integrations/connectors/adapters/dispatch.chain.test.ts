@@ -920,7 +920,14 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
     });
   });
 
-  test('HubSpot: a non-stale failure (e.g. rate limit) must NOT clear the CRM caller identity cache', async () => {
+  // BL-014 (Task #248): the HubSpot adapter now retries 429s with 1s + 4s
+  // backoff before surfacing the failure, which adds ~5s of real wall-clock
+  // sleep to this scenario. The describe-level beforeEach installs fake
+  // timers, but here we need real timers so retryWithBackoff's setTimeout
+  // actually fires; otherwise the retry sleep stalls forever and the test
+  // times out without ever reaching the cache assertions.
+  test('HubSpot: a non-stale failure (e.g. rate limit) must NOT clear the CRM caller identity cache', { timeout: 15_000 }, async () => {
+    vi.useRealTimers();
     const config: ConnectorConfig = {
       integrationId: 'int-hs-no-clear',
       tenantId: TENANT,
@@ -940,12 +947,19 @@ describe('ConnectorService dispatch chain — meta forwarding from call.complete
       extras: { contactId: 'hs-contact-keep', companyId: 'hs-company-keep' },
     });
 
-    // Make the very first HubSpot call fail with a 429. No staleIds, so the
-    // dispatch layer must NOT touch the cache.
+    // Make the very first HubSpot call fail with a 429 (the rate-limit
+    // signal we care about), then have every subsequent call fail with a
+    // non-retryable 500 so the BL-014 retry helper exhausts quickly. The
+    // dispatch layer must NOT touch the cache for either failure mode.
     setupFetch([
       {
         match: () => true,
         response: { status: 429, body: { message: 'rate limited' } },
+        times: 1,
+      },
+      {
+        match: () => true,
+        response: { status: 500, body: { message: 'server error' } },
       },
     ]);
 

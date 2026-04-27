@@ -1,5 +1,6 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
+import { retryFetch } from '../retryWithBackoff';
 import {
   parseDispositionMap as parseSharedDispositionMap,
   mapDisposition,
@@ -141,13 +142,23 @@ type SfRecord = { id: string; object: 'Contact' | 'Lead' };
 const SALESFORCE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 
 async function salesforceFetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), SALESFORCE_REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  // BL-014 (Task #248): retry transient failures (network errors + 429/5xx)
+  // with 1s/4s/16s ±20% jitter. Each retry attempt gets a fresh
+  // AbortController so a slow first attempt does not poison subsequent ones.
+  const { signal: _ignored, ...rest } = init;
+  void _ignored;
+  return retryFetch(url, rest, {
+    label: 'salesforce',
+    fetcher: async (input, opts) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), SALESFORCE_REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(input, { ...opts, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
 }
 
 /**
@@ -1142,13 +1153,9 @@ export class SalesforceConnectorAdapter implements ConnectorAdapter {
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      return await fetch(url, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    // Delegate to the module-level helper so every Salesforce HTTP call shares
+    // the BL-014 retry behaviour (transient 429/5xx + network-error retries).
+    return salesforceFetchWithTimeout(url, init);
   }
 }
 

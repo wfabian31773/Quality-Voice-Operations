@@ -1,4 +1,5 @@
 import { createLogger } from '../../../core/logger';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
@@ -205,15 +206,34 @@ export class SlackConnectorAdapter implements ConnectorAdapter {
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const res = await fetch(`${SLACK_API}/chat.postMessage`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${botToken}`,
-          'Content-Type': 'application/json',
+      // BL-014 (Task #248): wrap the chat.postMessage call in retryFetch so
+      // a transient 429 (Slack returns Retry-After) or 5xx is retried with
+      // 1s/4s/16s ±20% jitter. The outer controller/timeoutId on this
+      // method is now a no-op kept for source-stability; retryFetch's
+      // per-attempt fetcher creates a fresh timeout for each attempt.
+      const res = await retryFetch(
+        `${SLACK_API}/chat.postMessage`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${botToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ channel, blocks, text: fallbackText }),
         },
-        body: JSON.stringify({ channel, blocks, text: fallbackText }),
-        signal: controller.signal,
-      });
+        {
+          label: 'slack',
+          fetcher: async (input, opts) => {
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS);
+            try {
+              return await fetch(input, { ...opts, signal: c.signal });
+            } finally {
+              clearTimeout(t);
+            }
+          },
+        },
+      );
 
       clearTimeout(timeoutId);
 
