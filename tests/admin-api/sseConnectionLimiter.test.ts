@@ -186,34 +186,75 @@ describe('attachSseHeartbeat', () => {
     expect(req.socket.destroy).toHaveBeenCalled();
   });
 
-  it('force-closes after idleTimeoutMs if a heartbeat write returns false and drain never fires', () => {
+  it('deterministically force-closes after idleTimeoutMs with NO liveness signals (writes succeeding)', () => {
+    // The reviewer specifically called this out: even when res.write() keeps
+    // returning true (no backpressure), the connection must auto-disconnect
+    // at ~idleTimeoutMs because the server has no proof the client is alive.
     const req = makeReq();
     const res = makeRes();
-    // Simulate kernel buffer full: write returns false.
+    // res.write returns true throughout — no backpressure, no drain events.
     res.write = vi.fn((chunk: string) => {
       res.__writes.push(chunk);
-      return false;
+      return true;
     }) as unknown as Response['write'];
     attachSseHeartbeat(req, res, { intervalMs: 1000, idleTimeoutMs: 60_000 });
-    vi.advanceTimersByTime(1000); // first heartbeat (returns false → start drain timer)
+
+    // At t=59s, no liveness signals yet → not closed.
+    vi.advanceTimersByTime(59_000);
     expect(res.end).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(59_999);
-    expect(res.end).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(2);
+    // Past 60s, the deterministic checker fires force-close.
+    vi.advanceTimersByTime(2_000);
     expect(res.end).toHaveBeenCalled();
     expect(req.socket.destroy).toHaveBeenCalled();
   });
 
-  it('drain event clears the pending close timer (heartbeat ack received)', () => {
+  it('drain event resets the liveness deadline (treated as client-side ack)', () => {
     const req = makeReq();
     const res = makeRes();
-    let backpressure = true;
-    res.write = vi.fn(() => !backpressure) as unknown as Response['write'];
+    res.write = vi.fn(() => true) as unknown as Response['write'];
     attachSseHeartbeat(req, res, { intervalMs: 1000, idleTimeoutMs: 60_000 });
-    vi.advanceTimersByTime(1000); // heartbeat #1, write false → drain timer armed
-    res.emit('drain'); // client caught up
-    backpressure = false; // subsequent writes succeed
-    vi.advanceTimersByTime(120_000);
+
+    // Just before the 60s deadline, simulate a drain → liveness reset.
+    vi.advanceTimersByTime(50_000);
+    res.emit('drain');
+    // Another 50s passes; idle = 50s < 60s → still alive.
+    vi.advanceTimersByTime(50_000);
+    expect(res.end).not.toHaveBeenCalled();
+    // Without further liveness, the deadline expires ~60s after last drain.
+    vi.advanceTimersByTime(11_000);
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it('explicit ack() resets the liveness deadline (companion ack endpoint hook)', () => {
+    const req = makeReq();
+    const res = makeRes();
+    res.write = vi.fn(() => true) as unknown as Response['write'];
+    const handle = attachSseHeartbeat(req, res, {
+      intervalMs: 1000,
+      idleTimeoutMs: 60_000,
+    });
+
+    // Tick across multiple deadlines while ack()ing each cycle.
+    for (let i = 0; i < 5; i++) {
+      vi.advanceTimersByTime(50_000);
+      handle.ack();
+    }
+    expect(res.end).not.toHaveBeenCalled();
+
+    // Stop ack-ing; the connection must close after one more 60s window.
+    vi.advanceTimersByTime(61_000);
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it('inbound req.data also counts as a liveness signal', () => {
+    const req = makeReq();
+    const res = makeRes();
+    res.write = vi.fn(() => true) as unknown as Response['write'];
+    attachSseHeartbeat(req, res, { intervalMs: 1000, idleTimeoutMs: 60_000 });
+
+    vi.advanceTimersByTime(50_000);
+    req.emit('data', Buffer.from('x'));
+    vi.advanceTimersByTime(50_000);
     expect(res.end).not.toHaveBeenCalled();
   });
 

@@ -89,27 +89,53 @@ export interface SseHeartbeatConfig {
   idleTimeoutMs?: number;
 }
 
+export type SseHeartbeatHandle = (() => void) & {
+  /**
+   * Reset the idle-disconnect deadline. Callers (e.g. a companion ack
+   * endpoint) invoke this whenever they have evidence the client is alive
+   * (e.g. an explicit ack POST, a re-subscribe, etc.).
+   */
+  ack: () => void;
+};
+
 /**
- * Wire SSE keepalive on (req, res):
+ * Wire SSE keepalive on (req, res) with a deterministic idle-disconnect
+ * deadline that does NOT depend on TCP backpressure transitions.
+ *
  *  - Emits `: heartbeat\n\n` every `intervalMs` (default 15s).
- *  - Treats the TCP `drain` event as the client-side acknowledgment of a
- *    heartbeat. If a heartbeat write returns false (kernel buffer full)
- *    AND `drain` does not fire within `idleTimeoutMs` (default 60s), the
- *    response is force-closed. This implements "auto-disconnect after
- *    60s of no heartbeat ack" — backpressure that never clears means the
- *    far end has stopped reading.
- *  - Also sets a socket-level inactivity timeout as belt-and-suspenders for
+ *  - Maintains a sliding `lastLivenessAt` timestamp. The connection is
+ *    force-closed if `now - lastLivenessAt > idleTimeoutMs` (default 60s).
+ *    A periodic checker runs at `min(intervalMs, idleTimeoutMs / 4)` so
+ *    closure happens within at most one check window past the deadline.
+ *  - `lastLivenessAt` is reset on any of the following client-liveness
+ *    signals:
+ *      • `res` `'drain'` event — client read backpressured bytes.
+ *      • `req` `'data'` event — client sent any HTTP/1.1 chunked body data.
+ *      • explicit `ack()` call from a companion ack endpoint.
+ *    Heartbeat *writes* themselves do NOT reset liveness — successful
+ *    `res.write()` only proves the kernel accepted the bytes, not that the
+ *    far end read them.
+ *  - Also sets a TCP-socket inactivity timeout as belt-and-suspenders for
  *    half-open TCP (no FIN/RST, no bytes flowing).
+ *
+ * The returned value is the cleanup function with an `.ack` property
+ * attached so existing call sites (`const cleanup = attach...; cleanup();`)
+ * keep working while new sites can call `cleanup.ack()`.
  */
 export function attachSseHeartbeat(
   req: Request,
   res: Response,
   config: SseHeartbeatConfig = {},
-): () => void {
+): SseHeartbeatHandle {
   const intervalMs = config.intervalMs ?? 15_000;
   const idleTimeoutMs = config.idleTimeoutMs ?? 60_000;
 
-  let pendingDrainTimer: NodeJS.Timeout | null = null;
+  let lastLivenessAt = Date.now();
+  let cleared = false;
+
+  const noteLiveness = () => {
+    lastLivenessAt = Date.now();
+  };
 
   const forceClose = () => {
     try {
@@ -124,37 +150,40 @@ export function attachSseHeartbeat(
     }
   };
 
-  const onDrain = () => {
-    if (pendingDrainTimer) {
-      clearTimeout(pendingDrainTimer);
-      pendingDrainTimer = null;
-    }
-  };
-  res.on('drain', onDrain);
+  // Liveness signals from the transport.
+  res.on('drain', noteLiveness);
+  req.on('data', noteLiveness);
 
   const heartbeat = setInterval(() => {
     if (res.writableEnded || res.destroyed) return;
-    let ok = false;
     try {
-      ok = Boolean(res.write(': heartbeat\n\n'));
+      res.write(': heartbeat\n\n');
     } catch {
       forceClose();
-      return;
-    }
-    if (!ok && !pendingDrainTimer && idleTimeoutMs > 0) {
-      // Backpressure: client isn't draining. Wait up to idleTimeoutMs for
-      // 'drain' before declaring the connection dead.
-      pendingDrainTimer = setTimeout(() => {
-        pendingDrainTimer = null;
-        forceClose();
-      }, idleTimeoutMs);
-      if (typeof (pendingDrainTimer as { unref?: () => void }).unref === 'function') {
-        (pendingDrainTimer as { unref: () => void }).unref();
-      }
     }
   }, intervalMs);
   if (typeof (heartbeat as { unref?: () => void }).unref === 'function') {
     (heartbeat as { unref: () => void }).unref();
+  }
+
+  // Deterministic idle-disconnect checker. Runs at a cadence that guarantees
+  // at most one check window of overshoot past idleTimeoutMs.
+  const checkEveryMs =
+    idleTimeoutMs > 0
+      ? Math.max(250, Math.min(intervalMs, Math.floor(idleTimeoutMs / 4)))
+      : 0;
+  const checker =
+    checkEveryMs > 0
+      ? setInterval(() => {
+          if (cleared) return;
+          if (res.writableEnded || res.destroyed) return;
+          if (Date.now() - lastLivenessAt > idleTimeoutMs) {
+            forceClose();
+          }
+        }, checkEveryMs)
+      : null;
+  if (checker && typeof (checker as { unref?: () => void }).unref === 'function') {
+    (checker as { unref: () => void }).unref();
   }
 
   if (req.socket && idleTimeoutMs > 0) {
@@ -162,17 +191,16 @@ export function attachSseHeartbeat(
     req.socket.once('timeout', forceClose);
   }
 
-  let cleared = false;
-  const cleanup = () => {
+  const cleanup = (() => {
     if (cleared) return;
     cleared = true;
     clearInterval(heartbeat);
-    if (pendingDrainTimer) {
-      clearTimeout(pendingDrainTimer);
-      pendingDrainTimer = null;
-    }
-    res.off('drain', onDrain);
-  };
+    if (checker) clearInterval(checker);
+    res.off('drain', noteLiveness);
+    req.off('data', noteLiveness);
+  }) as SseHeartbeatHandle;
+  cleanup.ack = noteLiveness;
+
   req.on('close', cleanup);
   res.on('close', cleanup);
   return cleanup;
