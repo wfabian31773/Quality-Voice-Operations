@@ -160,7 +160,8 @@ export type AgentBuilderTKey =
   | 'cmdFocusNode'
   | 'cmdNoMatches'
   | 'keyboardShortcutsLabel'
-  | 'moreActions';
+  | 'moreActions'
+  | 'templateFallbackHint';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -323,6 +324,7 @@ const EN: Record<AgentBuilderTKey, string> = {
   cmdNoMatches: 'No matches. Try a node name like "Greeting" or "connect Greeting to Ask".',
   keyboardShortcutsLabel: 'Keyboard',
   moreActions: 'More',
+  templateFallbackHint: "Industry copy for this template hasn't been translated to {language} yet — using English. You can edit any field below.",
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -477,6 +479,7 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'Sin coincidencias. Prueba el nombre de un nodo como "Saludo" o "connect Saludo to Pregunta".',
   keyboardShortcutsLabel: 'Teclado',
   moreActions: 'Más',
+  templateFallbackHint: 'La copia específica del sector aún no se ha traducido al {language} — se muestra en inglés. Puedes editar cualquier campo abajo.',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -631,6 +634,7 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'Aucune correspondance. Essayez un nom comme "Salutation" ou "connect Salutation to Question".',
   keyboardShortcutsLabel: 'Clavier',
   moreActions: 'Plus',
+  templateFallbackHint: "Le contenu spécifique au secteur n'a pas encore été traduit en {language} — affiché en anglais. Vous pouvez modifier les champs ci-dessous.",
 };
 
 const DE: Partial<Record<AgentBuilderTKey, string>> = {
@@ -785,6 +789,7 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'Keine Treffer. Versuche einen Knotennamen wie "Begrüßung" oder "connect Begrüßung to Frage".',
   keyboardShortcutsLabel: 'Tastatur',
   moreActions: 'Mehr',
+  templateFallbackHint: 'Branchenspezifischer Inhalt für diese Vorlage ist noch nicht in {language} verfügbar – wird auf Englisch angezeigt. Sie können die Felder unten anpassen.',
 };
 
 const PT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -939,6 +944,7 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'Sem correspondências. Tente um nome como "Saudação" ou "connect Saudação to Pergunta".',
   keyboardShortcutsLabel: 'Teclado',
   moreActions: 'Mais',
+  templateFallbackHint: 'O conteúdo específico do setor ainda não foi traduzido para {language} — exibido em inglês. Você pode editar qualquer campo abaixo.',
 };
 
 const IT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1093,6 +1099,7 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'Nessuna corrispondenza. Prova un nome come "Saluto" o "connect Saluto to Domanda".',
   keyboardShortcutsLabel: 'Tastiera',
   moreActions: 'Altro',
+  templateFallbackHint: 'I contenuti del settore per questo modello non sono ancora tradotti in {language} — mostrati in inglese. Puoi modificare i campi qui sotto.',
 };
 
 const NL: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1247,6 +1254,7 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'Geen overeenkomsten. Probeer een naam als "Begroeting" of "connect Begroeting to Vraag".',
   keyboardShortcutsLabel: 'Toetsenbord',
   moreActions: 'Meer',
+  templateFallbackHint: 'De branchespecifieke inhoud is nog niet vertaald naar {language} — wordt in het Engels weergegeven. Je kunt alle velden hieronder bewerken.',
 };
 
 const ZH: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1401,6 +1409,7 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: '没有匹配项。试试节点名称,例如 "问候" 或 "connect 问候 to 询问"。',
   keyboardShortcutsLabel: '键盘',
   moreActions: '更多',
+  templateFallbackHint: '此模板的行业专用内容尚未翻译为{language},暂以英文显示。您可以在下方编辑任何字段。',
 };
 
 const JA: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1555,6 +1564,7 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: '一致なし。"挨拶" のようなノード名や "connect 挨拶 to 質問" を試してください。',
   keyboardShortcutsLabel: 'キーボード',
   moreActions: 'その他',
+  templateFallbackHint: 'このテンプレートの業界向けコピーはまだ{language}に翻訳されていないため、英語で表示しています。下記の各フィールドは自由に編集できます。',
 };
 
 const KO: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1709,6 +1719,7 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: '일치 항목 없음. "인사" 같은 노드 이름이나 "connect 인사 to 질문"을 시도해 보세요.',
   keyboardShortcutsLabel: '키보드',
   moreActions: '더보기',
+  templateFallbackHint: '이 템플릿의 업종별 문구는 아직 {language}로 번역되지 않아 영어로 표시됩니다. 아래 모든 필드를 수정할 수 있습니다.',
 };
 
 const AR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1863,6 +1874,7 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'لا توجد نتائج. جرّب اسم عقدة مثل "تحية" أو "connect تحية to سؤال".',
   keyboardShortcutsLabel: 'لوحة المفاتيح',
   moreActions: 'المزيد',
+  templateFallbackHint: 'لم تتم ترجمة المحتوى الخاص بالقطاع لهذا القالب إلى {language} بعد — يتم عرضه بالإنجليزية. يمكنك تعديل أي حقل أدناه.',
 };
 
 const HI: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2017,6 +2029,7 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   cmdNoMatches: 'कोई मिलान नहीं। "अभिवादन" जैसे नोड नाम या "connect अभिवादन to प्रश्न" आज़माएँ।',
   keyboardShortcutsLabel: 'कीबोर्ड',
   moreActions: 'अधिक',
+  templateFallbackHint: 'इस टेम्पलेट की उद्योग-विशिष्ट प्रति अभी तक {language} में अनुवादित नहीं है — अंग्रेज़ी में दिखाई जा रही है। आप नीचे किसी भी फ़ील्ड को संपादित कर सकते हैं।',
 };
 
 const TRANSLATIONS: Record<string, Partial<Record<AgentBuilderTKey, string>>> = {
@@ -2207,6 +2220,567 @@ export function isDefaultSystemPrompt(value: string | undefined | null): boolean
   if (!trimmed) return true;
   for (const code of Object.keys(DEFAULT_SYSTEM_PROMPTS)) {
     if (DEFAULT_SYSTEM_PROMPTS[code].trim() === trimmed) return true;
+  }
+  return false;
+}
+
+// ===== Industry template copy =====
+
+export type IndustryTemplateKey = 'medical' | 'dental' | 'hvac' | 'legal' | 'support';
+
+export const INDUSTRY_TEMPLATE_KEYS: readonly IndustryTemplateKey[] = [
+  'medical',
+  'dental',
+  'hvac',
+  'legal',
+  'support',
+];
+
+interface IndustryTemplateNodeCopy {
+  label: string;
+  prompt?: string;
+  toolConfig?: string;
+}
+
+interface IndustryTemplateCopy {
+  /**
+   * Industry-specific welcome greeting. When omitted the consumer should
+   * fall back to {@link getDefaultWelcomeGreeting} for the requested language.
+   */
+  welcomeGreeting?: string;
+  /**
+   * Industry-specific tone/instructions appended on top of the localized base
+   * system prompt.
+   */
+  systemPromptSuffix?: string;
+  /** Localized copy for each workflow node, keyed by the node id used in the template. */
+  nodes: Record<string, IndustryTemplateNodeCopy>;
+}
+
+/**
+ * Per-template, per-language copy. Languages without an entry fall back to
+ * English (callers should surface a hint via {@link getIndustryTemplateCopy}).
+ *
+ * Node ids match `INDUSTRY_TEMPLATES_RAW` in `AgentBuilder.tsx`.
+ */
+const INDUSTRY_TEMPLATE_COPY: Record<
+  IndustryTemplateKey,
+  Partial<Record<string, IndustryTemplateCopy>>
+> = {
+  medical: {
+    en: {
+      welcomeGreeting:
+        'Thank you for calling. This is the after-hours service. How can I help you tonight?',
+      systemPromptSuffix:
+        'You are an after-hours medical answering service.\n- Triage urgency before any other action.\n- Never give medical advice.\n- Escalate true emergencies to the on-call provider immediately.',
+      nodes: {
+        '1': { label: 'Patient Greeting', prompt: 'Warmly greet the patient. Identify yourself as the after-hours service.' },
+        '2': { label: 'Symptom Assessment', prompt: 'Ask about symptoms, severity, and duration.' },
+        '3': { label: 'Urgency Check' },
+        '4': { label: 'Urgent Ticket', toolConfig: 'Priority: HIGH, Notify on-call provider immediately' },
+        '5': { label: 'Schedule Follow-up', toolConfig: 'Next available appointment slot' },
+        '6': { label: 'SMS Confirmation', toolConfig: 'Send appointment/ticket confirmation' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. Este es el servicio fuera de horario. ¿En qué puedo ayudarle esta noche?',
+      systemPromptSuffix:
+        'Eres un servicio médico de contestación fuera de horario.\n- Evalúa la urgencia antes de cualquier otra acción.\n- Nunca des consejos médicos.\n- Escala las emergencias reales al médico de guardia de inmediato.',
+      nodes: {
+        '1': { label: 'Saludo al paciente', prompt: 'Saluda cálidamente al paciente. Identifícate como el servicio fuera de horario.' },
+        '2': { label: 'Evaluación de síntomas', prompt: 'Pregunta por los síntomas, su gravedad y duración.' },
+        '3': { label: 'Verificación de urgencia' },
+        '4': { label: 'Ticket urgente', toolConfig: 'Prioridad: ALTA, notificar al médico de guardia de inmediato' },
+        '5': { label: 'Programar seguimiento', toolConfig: 'Próximo horario de cita disponible' },
+        '6': { label: 'Confirmación por SMS', toolConfig: 'Enviar confirmación de cita/ticket' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        "Merci de votre appel. Vous êtes au service de garde. En quoi puis-je vous aider ce soir ?",
+      systemPromptSuffix:
+        "Vous êtes un service médical de garde.\n- Évaluez l'urgence avant toute autre action.\n- Ne donnez jamais de conseil médical.\n- Faites remonter immédiatement les vraies urgences au médecin de garde.",
+      nodes: {
+        '1': { label: 'Accueil du patient', prompt: "Accueillez chaleureusement le patient. Identifiez-vous comme le service de garde." },
+        '2': { label: 'Évaluation des symptômes', prompt: 'Demandez les symptômes, leur gravité et leur durée.' },
+        '3': { label: "Vérification d'urgence" },
+        '4': { label: 'Ticket urgent', toolConfig: 'Priorité : HAUTE, notifier immédiatement le médecin de garde' },
+        '5': { label: 'Planifier un suivi', toolConfig: 'Prochain créneau de rendez-vous disponible' },
+        '6': { label: 'Confirmation SMS', toolConfig: 'Envoyer la confirmation du rendez-vous/ticket' },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Hier ist der Bereitschaftsdienst. Wie kann ich Ihnen heute Abend helfen?',
+      systemPromptSuffix:
+        'Sie sind ein medizinischer Bereitschaftsdienst.\n- Beurteilen Sie die Dringlichkeit vor jeder anderen Aktion.\n- Geben Sie niemals medizinische Ratschläge.\n- Eskalieren Sie echte Notfälle sofort an den diensthabenden Arzt.',
+      nodes: {
+        '1': { label: 'Patientenbegrüßung', prompt: 'Begrüßen Sie den Patienten herzlich. Stellen Sie sich als Bereitschaftsdienst vor.' },
+        '2': { label: 'Symptomerfassung', prompt: 'Fragen Sie nach Symptomen, Schweregrad und Dauer.' },
+        '3': { label: 'Dringlichkeitsprüfung' },
+        '4': { label: 'Notfall-Ticket', toolConfig: 'Priorität: HOCH, diensthabenden Arzt sofort benachrichtigen' },
+        '5': { label: 'Folgetermin planen', toolConfig: 'Nächster verfügbarer Terminplatz' },
+        '6': { label: 'SMS-Bestätigung', toolConfig: 'Termin-/Ticketbestätigung senden' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。時間外対応サービスです。本日はいかがされましたか?',
+      systemPromptSuffix:
+        'あなたは時間外の医療電話応答サービスです。\n- 他の対応の前に必ず緊急度を判定してください。\n- 医療上の助言は決して行わないでください。\n- 真の緊急事態は直ちにオンコール医師にエスカレーションしてください。',
+      nodes: {
+        '1': { label: '患者への挨拶', prompt: '患者を温かく迎え、時間外対応サービスであることを伝えてください。' },
+        '2': { label: '症状の確認', prompt: '症状・重症度・持続時間を伺ってください。' },
+        '3': { label: '緊急度チェック' },
+        '4': { label: '緊急チケット', toolConfig: '優先度: 高、オンコール医師に直ちに通知' },
+        '5': { label: 'フォローアップ予約', toolConfig: '空いている次の予約枠' },
+        '6': { label: 'SMS確認', toolConfig: '予約/チケットの確認を送信' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您来电,这里是夜间值班服务。请问今晚我能为您做些什么?',
+      systemPromptSuffix:
+        '您是夜间医疗值班接线服务。\n- 在执行其他操作前先评估紧急程度。\n- 切勿提供医疗建议。\n- 真正紧急的情况立即上报值班医生。',
+      nodes: {
+        '1': { label: '患者问候', prompt: '热情问候患者,告知对方这是夜间值班服务。' },
+        '2': { label: '症状评估', prompt: '询问症状、严重程度和持续时间。' },
+        '3': { label: '紧急程度判定' },
+        '4': { label: '紧急工单', toolConfig: '优先级:高,立即通知值班医生' },
+        '5': { label: '安排回访', toolConfig: '下一个可预约时段' },
+        '6': { label: '短信确认', toolConfig: '发送预约/工单确认' },
+      },
+    },
+  },
+  dental: {
+    en: {
+      welcomeGreeting:
+        "Thanks for calling our dental office. Are you booking a cleaning, a checkup, or something else?",
+      systemPromptSuffix:
+        'You are a dental office assistant.\n- Help patients book cleanings and checkups.\n- Confirm visit details before saving.\n- Handle dental concerns politely; never diagnose.',
+      nodes: {
+        '1': { label: 'Welcome', prompt: 'Welcome the patient to the dental office.' },
+        '2': { label: 'Reason for Visit', prompt: 'Ask if they need a cleaning, checkup, or have a dental issue.' },
+        '3': { label: 'Book Dental Appt', toolConfig: 'Check dentist availability' },
+        '4': { label: 'Confirm Details', prompt: 'Confirm the appointment date, time, and patient info.' },
+        '5': { label: 'Send Reminder', toolConfig: 'SMS with appointment details' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar a nuestra clínica dental. ¿Quiere reservar una limpieza, una revisión o algo más?',
+      systemPromptSuffix:
+        'Eres un asistente de una clínica dental.\n- Ayuda a los pacientes a reservar limpiezas y revisiones.\n- Confirma los detalles de la cita antes de guardarla.\n- Atiende consultas dentales con amabilidad; nunca diagnostiques.',
+      nodes: {
+        '1': { label: 'Bienvenida', prompt: 'Da la bienvenida al paciente a la clínica dental.' },
+        '2': { label: 'Motivo de la visita', prompt: 'Pregunta si necesita limpieza, revisión o tiene un problema dental.' },
+        '3': { label: 'Reservar cita dental', toolConfig: 'Comprobar disponibilidad del dentista' },
+        '4': { label: 'Confirmar detalles', prompt: 'Confirma la fecha, la hora y los datos del paciente.' },
+        '5': { label: 'Enviar recordatorio', toolConfig: 'SMS con los detalles de la cita' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        'Merci de votre appel à notre cabinet dentaire. Souhaitez-vous prendre un détartrage, un contrôle ou autre chose ?',
+      systemPromptSuffix:
+        "Vous êtes l'assistant d'un cabinet dentaire.\n- Aidez les patients à prendre rendez-vous pour un détartrage ou un contrôle.\n- Confirmez les détails du rendez-vous avant l'enregistrement.\n- Traitez les questions dentaires poliment ; ne posez jamais de diagnostic.",
+      nodes: {
+        '1': { label: 'Accueil', prompt: 'Souhaitez la bienvenue au patient au cabinet dentaire.' },
+        '2': { label: 'Motif de la visite', prompt: "Demandez s'il s'agit d'un détartrage, d'un contrôle ou d'un problème dentaire." },
+        '3': { label: 'Réserver un RDV dentaire', toolConfig: "Vérifier les disponibilités du dentiste" },
+        '4': { label: 'Confirmer les détails', prompt: 'Confirmez la date, l’heure et les coordonnées du patient.' },
+        '5': { label: 'Envoyer un rappel', toolConfig: 'SMS avec les détails du rendez-vous' },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf in unserer Zahnarztpraxis. Möchten Sie eine Reinigung, eine Kontrolle oder etwas anderes vereinbaren?',
+      systemPromptSuffix:
+        'Sie sind die Assistenz einer Zahnarztpraxis.\n- Helfen Sie Patienten, Reinigungen und Kontrollen zu buchen.\n- Bestätigen Sie die Termindetails vor dem Speichern.\n- Bearbeiten Sie zahnärztliche Anliegen freundlich; stellen Sie nie eine Diagnose.',
+      nodes: {
+        '1': { label: 'Begrüßung', prompt: 'Begrüßen Sie den Patienten in der Zahnarztpraxis.' },
+        '2': { label: 'Grund des Besuchs', prompt: 'Fragen Sie, ob eine Reinigung, Kontrolle oder ein Problem vorliegt.' },
+        '3': { label: 'Zahnarzttermin buchen', toolConfig: 'Verfügbarkeit des Zahnarztes prüfen' },
+        '4': { label: 'Details bestätigen', prompt: 'Bestätigen Sie Datum, Uhrzeit und Patientendaten.' },
+        '5': { label: 'Erinnerung senden', toolConfig: 'SMS mit den Termindaten' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        '歯科医院へお電話ありがとうございます。クリーニング、定期検診、その他のご予約でしょうか?',
+      systemPromptSuffix:
+        'あなたは歯科医院のアシスタントです。\n- 患者がクリーニングや定期検診を予約できるようサポートしてください。\n- 保存前に予約内容を確認してください。\n- 歯科に関する相談には丁寧に対応し、診断は行わないでください。',
+      nodes: {
+        '1': { label: 'ご挨拶', prompt: '歯科医院へようこそ、と患者を温かく迎えてください。' },
+        '2': { label: '来院理由', prompt: 'クリーニング・検診・歯のトラブルか、どれに該当するか伺ってください。' },
+        '3': { label: '歯科予約', toolConfig: '歯科医師の空き状況を確認' },
+        '4': { label: '内容確認', prompt: '日時と患者情報を確認してください。' },
+        '5': { label: 'リマインダー送信', toolConfig: '予約詳細をSMSで送信' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您致电我们的牙科诊所。您是想预约洗牙、检查,还是其他服务?',
+      systemPromptSuffix:
+        '您是牙科诊所助理。\n- 协助患者预约洗牙和定期检查。\n- 保存前确认就诊详情。\n- 礼貌处理牙科咨询,切勿做出诊断。',
+      nodes: {
+        '1': { label: '欢迎', prompt: '欢迎患者来到牙科诊所。' },
+        '2': { label: '就诊原因', prompt: '询问需要洗牙、检查,还是有牙齿问题。' },
+        '3': { label: '预约牙科', toolConfig: '查询牙医可预约时段' },
+        '4': { label: '确认信息', prompt: '确认预约日期、时间及患者信息。' },
+        '5': { label: '发送提醒', toolConfig: '通过短信发送预约详情' },
+      },
+    },
+  },
+  hvac: {
+    en: {
+      welcomeGreeting:
+        "Thanks for calling. Are you experiencing a service issue or scheduling a routine visit?",
+      systemPromptSuffix:
+        'You are a home-services dispatcher.\n- Quickly identify true emergencies (no heat, leaks, gas).\n- Dispatch the nearest technician immediately for emergencies.\n- Otherwise schedule the next available service window.',
+      nodes: {
+        '1': { label: 'Service Call', prompt: 'Answer the service call professionally.' },
+        '2': { label: 'Issue Details', prompt: 'Collect details about the HVAC/home service issue.' },
+        '3': { label: 'Emergency?' },
+        '4': { label: 'Emergency Dispatch', toolConfig: 'Priority dispatch to nearest technician' },
+        '5': { label: 'Schedule Service', toolConfig: 'Book regular service appointment' },
+        '6': { label: 'SMS Confirmation', toolConfig: 'Send service details and ETA' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. ¿Tiene una avería o quiere programar una visita de mantenimiento?',
+      systemPromptSuffix:
+        'Eres un coordinador de servicios para el hogar.\n- Identifica rápidamente las emergencias reales (sin calefacción, fugas, gas).\n- Despacha al técnico más cercano de inmediato en emergencias.\n- En el resto de casos, programa la próxima visita disponible.',
+      nodes: {
+        '1': { label: 'Llamada de servicio', prompt: 'Atiende la llamada de servicio con profesionalidad.' },
+        '2': { label: 'Detalles de la avería', prompt: 'Recoge los detalles del problema de HVAC/servicio en el hogar.' },
+        '3': { label: '¿Emergencia?' },
+        '4': { label: 'Despacho de emergencia', toolConfig: 'Despacho prioritario al técnico más cercano' },
+        '5': { label: 'Programar servicio', toolConfig: 'Reservar una cita de servicio normal' },
+        '6': { label: 'Confirmación por SMS', toolConfig: 'Enviar detalles del servicio y hora estimada' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        'Merci de votre appel. S’agit-il d’une panne ou d’une visite d’entretien à planifier ?',
+      systemPromptSuffix:
+        "Vous êtes répartiteur de services à domicile.\n- Identifiez rapidement les vraies urgences (panne de chauffage, fuites, gaz).\n- Dépêchez immédiatement le technicien le plus proche en cas d'urgence.\n- Sinon, planifiez le prochain créneau disponible.",
+      nodes: {
+        '1': { label: "Appel d'intervention", prompt: "Répondez à l'appel d'intervention de manière professionnelle." },
+        '2': { label: 'Détails du problème', prompt: 'Recueillez les détails du problème de CVC/service à domicile.' },
+        '3': { label: 'Urgence ?' },
+        '4': { label: 'Intervention urgente', toolConfig: 'Envoi prioritaire du technicien le plus proche' },
+        '5': { label: "Planifier l'intervention", toolConfig: 'Réserver un rendez-vous de service standard' },
+        '6': { label: 'Confirmation SMS', toolConfig: 'Envoyer les détails et l’heure estimée' },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Haben Sie einen Notfall oder möchten Sie einen regulären Servicetermin vereinbaren?',
+      systemPromptSuffix:
+        'Sie sind Disponent für Haushaltsdienste.\n- Erkennen Sie echte Notfälle schnell (kein Heizen, Lecks, Gas).\n- Schicken Sie im Notfall sofort den nächstgelegenen Techniker.\n- Andernfalls vereinbaren Sie den nächsten verfügbaren Termin.',
+      nodes: {
+        '1': { label: 'Serviceanruf', prompt: 'Nehmen Sie den Serviceanruf professionell entgegen.' },
+        '2': { label: 'Problemdetails', prompt: 'Erfassen Sie die Details zum HLK-/Haushaltsproblem.' },
+        '3': { label: 'Notfall?' },
+        '4': { label: 'Notfalleinsatz', toolConfig: 'Priorisierte Entsendung des nächstgelegenen Technikers' },
+        '5': { label: 'Service planen', toolConfig: 'Regulären Servicetermin buchen' },
+        '6': { label: 'SMS-Bestätigung', toolConfig: 'Service-Details und voraussichtliche Ankunft senden' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。トラブルでのご連絡ですか、それとも定期点検のご予約でしょうか?',
+      systemPromptSuffix:
+        'あなたは住宅サービスのディスパッチャーです。\n- 真の緊急事態(暖房不良、水漏れ、ガス漏れ)を素早く判別してください。\n- 緊急時は最寄りの技術者を直ちに派遣してください。\n- それ以外は次に空いているサービス枠で予約してください。',
+      nodes: {
+        '1': { label: 'サービスコール対応', prompt: 'サービスコールに丁寧に応対してください。' },
+        '2': { label: '症状の聞き取り', prompt: 'HVACなど住宅サービスのトラブル詳細を伺ってください。' },
+        '3': { label: '緊急判定' },
+        '4': { label: '緊急派遣', toolConfig: '最寄り技術者への優先派遣' },
+        '5': { label: 'サービス予約', toolConfig: '通常のサービス予約を確保' },
+        '6': { label: 'SMS確認', toolConfig: 'サービス詳細と到着予定をSMS送信' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您致电,请问您是有故障报修还是预约日常上门服务?',
+      systemPromptSuffix:
+        '您是家庭服务调度员。\n- 迅速识别真正的紧急情况(无暖气、漏水、漏气)。\n- 紧急情况立即派遣最近的技师。\n- 其余情况安排下一个可用上门时段。',
+      nodes: {
+        '1': { label: '服务来电', prompt: '专业地接听服务来电。' },
+        '2': { label: '问题描述', prompt: '收集 HVAC/家庭服务问题的详细信息。' },
+        '3': { label: '紧急情况?' },
+        '4': { label: '紧急派单', toolConfig: '优先派遣最近的技师' },
+        '5': { label: '安排上门', toolConfig: '预约常规上门服务' },
+        '6': { label: '短信确认', toolConfig: '发送服务详情和预计到达时间' },
+      },
+    },
+  },
+  legal: {
+    en: {
+      welcomeGreeting:
+        'Thanks for calling. I can take a few details and book a consultation with one of our attorneys.',
+      systemPromptSuffix:
+        'You are a legal intake specialist.\n- Collect case type, key dates, parties, and goals.\n- Do not give legal advice.\n- Book a consultation with an attorney for next steps.',
+      nodes: {
+        '1': { label: 'Caller Greeting', prompt: 'Professional legal intake greeting.' },
+        '2': { label: 'Case Details', prompt: 'Gather case type, key dates, and involved parties.' },
+        '3': { label: 'Create Client Record', toolConfig: 'Add to CRM with case info' },
+        '4': { label: 'Schedule Consultation', toolConfig: 'Book attorney consultation' },
+        '5': { label: 'Confirmation', toolConfig: 'Email with consultation details' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. Puedo tomar unos datos y reservar una consulta con uno de nuestros abogados.',
+      systemPromptSuffix:
+        'Eres un especialista en recepción legal.\n- Recoge el tipo de caso, fechas clave, partes implicadas y objetivos.\n- No des asesoramiento legal.\n- Reserva una consulta con un abogado para los próximos pasos.',
+      nodes: {
+        '1': { label: 'Saludo al llamante', prompt: 'Saludo profesional de recepción legal.' },
+        '2': { label: 'Detalles del caso', prompt: 'Recoge el tipo de caso, fechas clave y partes implicadas.' },
+        '3': { label: 'Crear ficha del cliente', toolConfig: 'Añadir al CRM con la información del caso' },
+        '4': { label: 'Programar consulta', toolConfig: 'Reservar consulta con un abogado' },
+        '5': { label: 'Confirmación', toolConfig: 'Correo con los detalles de la consulta' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        "Merci de votre appel. Je peux relever quelques informations et planifier une consultation avec l'un de nos avocats.",
+      systemPromptSuffix:
+        "Vous êtes spécialiste de l'accueil juridique.\n- Recueillez le type d'affaire, les dates clés, les parties et les objectifs.\n- Ne donnez pas de conseil juridique.\n- Planifiez une consultation avec un avocat pour la suite.",
+      nodes: {
+        '1': { label: "Accueil de l'appelant", prompt: "Accueil professionnel d'admission juridique." },
+        '2': { label: "Détails de l'affaire", prompt: "Recueillez le type d'affaire, les dates clés et les parties impliquées." },
+        '3': { label: 'Créer la fiche client', toolConfig: "Ajouter au CRM avec les informations de l'affaire" },
+        '4': { label: 'Planifier la consultation', toolConfig: 'Réserver une consultation avec un avocat' },
+        '5': { label: 'Confirmation', toolConfig: 'E-mail avec les détails de la consultation' },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Ich nehme gerne ein paar Angaben auf und vereinbare einen Beratungstermin mit einem unserer Anwälte.',
+      systemPromptSuffix:
+        'Sie sind Spezialist für die juristische Mandantenaufnahme.\n- Erfassen Sie Fallart, wichtige Termine, Beteiligte und Ziele.\n- Geben Sie keine Rechtsberatung.\n- Vereinbaren Sie für die nächsten Schritte einen Beratungstermin mit einem Anwalt.',
+      nodes: {
+        '1': { label: 'Anruferbegrüßung', prompt: 'Professionelle Begrüßung zur juristischen Mandantenaufnahme.' },
+        '2': { label: 'Falldetails', prompt: 'Erfassen Sie Fallart, wichtige Termine und Beteiligte.' },
+        '3': { label: 'Mandantenakte anlegen', toolConfig: 'Im CRM mit Fallinformationen anlegen' },
+        '4': { label: 'Beratungstermin vereinbaren', toolConfig: 'Anwaltstermin buchen' },
+        '5': { label: 'Bestätigung', toolConfig: 'E-Mail mit den Beratungsdetails' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。簡単にお話を伺い、当事務所の弁護士との相談予約をお取りいたします。',
+      systemPromptSuffix:
+        'あなたは法律相談の受付担当です。\n- 案件の種類、重要な日付、関係者、目的を伺ってください。\n- 法律的な助言は行わないでください。\n- 次のステップとして弁護士との相談予約を取ってください。',
+      nodes: {
+        '1': { label: '受付挨拶', prompt: '法律相談の専門的な受付挨拶を行ってください。' },
+        '2': { label: '案件の詳細', prompt: '案件の種類、重要な日付、関係者を伺ってください。' },
+        '3': { label: 'クライアント情報の登録', toolConfig: '案件情報と共にCRMへ登録' },
+        '4': { label: '相談予約', toolConfig: '弁護士との相談を予約' },
+        '5': { label: '確認', toolConfig: '相談内容をメールで送付' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您来电。我可以记录基本信息并为您预约我们律师的咨询。',
+      systemPromptSuffix:
+        '您是法律咨询接待专员。\n- 收集案件类型、关键日期、相关当事人和目标。\n- 不要提供法律建议。\n- 安排与律师的咨询作为下一步。',
+      nodes: {
+        '1': { label: '来电问候', prompt: '专业的法律接案问候。' },
+        '2': { label: '案件详情', prompt: '收集案件类型、关键日期和相关当事人。' },
+        '3': { label: '建立客户档案', toolConfig: '将案件信息录入 CRM' },
+        '4': { label: '安排咨询', toolConfig: '预约律师咨询' },
+        '5': { label: '确认', toolConfig: '通过邮件发送咨询详情' },
+      },
+    },
+  },
+  support: {
+    en: {
+      welcomeGreeting: "Hi there, thanks for contacting support. Can I have your name and what's going on?",
+      systemPromptSuffix:
+        'You are a customer support agent.\n- Stay calm and empathetic.\n- Reproduce the issue and capture clear details.\n- Open a ticket or schedule a callback with a specialist.',
+      nodes: {
+        '1': { label: 'Customer Welcome', prompt: 'Greet the customer and identify their account.' },
+        '2': { label: 'Issue Description', prompt: 'What issue are you experiencing today?' },
+        '3': { label: 'Route by Type' },
+        '4': { label: 'Support Ticket', toolConfig: 'Create support ticket with issue details' },
+        '5': { label: 'Callback Schedule', toolConfig: 'Schedule callback with specialist' },
+      },
+    },
+    es: {
+      welcomeGreeting: 'Hola, gracias por contactar con soporte. ¿Me dice su nombre y qué está ocurriendo?',
+      systemPromptSuffix:
+        'Eres un agente de atención al cliente.\n- Mantén la calma y la empatía.\n- Reproduce el problema y captura los detalles con claridad.\n- Abre un ticket o programa una devolución de llamada con un especialista.',
+      nodes: {
+        '1': { label: 'Bienvenida al cliente', prompt: 'Saluda al cliente e identifica su cuenta.' },
+        '2': { label: 'Descripción del problema', prompt: '¿Qué problema está experimentando hoy?' },
+        '3': { label: 'Ruta por tipo' },
+        '4': { label: 'Ticket de soporte', toolConfig: 'Crear ticket de soporte con los detalles' },
+        '5': { label: 'Devolución de llamada', toolConfig: 'Programar llamada con un especialista' },
+      },
+    },
+    fr: {
+      welcomeGreeting: "Bonjour, merci de contacter le support. Puis-je avoir votre nom et la nature du problème ?",
+      systemPromptSuffix:
+        "Vous êtes agent du support client.\n- Restez calme et empathique.\n- Reproduisez le problème et notez clairement les détails.\n- Ouvrez un ticket ou planifiez un rappel avec un spécialiste.",
+      nodes: {
+        '1': { label: 'Accueil du client', prompt: 'Saluez le client et identifiez son compte.' },
+        '2': { label: 'Description du problème', prompt: 'Quel problème rencontrez-vous aujourd’hui ?' },
+        '3': { label: 'Routage par type' },
+        '4': { label: 'Ticket de support', toolConfig: 'Créer un ticket avec les détails du problème' },
+        '5': { label: 'Rappel programmé', toolConfig: 'Planifier un rappel avec un spécialiste' },
+      },
+    },
+    de: {
+      welcomeGreeting: 'Hallo, danke für Ihre Kontaktaufnahme mit dem Support. Wie ist Ihr Name und was ist passiert?',
+      systemPromptSuffix:
+        'Sie sind Kundensupport-Mitarbeiter.\n- Bleiben Sie ruhig und einfühlsam.\n- Reproduzieren Sie das Problem und erfassen Sie klare Details.\n- Eröffnen Sie ein Ticket oder vereinbaren Sie einen Rückruf mit einem Spezialisten.',
+      nodes: {
+        '1': { label: 'Kundenbegrüßung', prompt: 'Begrüßen Sie den Kunden und identifizieren Sie sein Konto.' },
+        '2': { label: 'Problembeschreibung', prompt: 'Welches Problem haben Sie heute?' },
+        '3': { label: 'Routing nach Typ' },
+        '4': { label: 'Support-Ticket', toolConfig: 'Support-Ticket mit den Details erstellen' },
+        '5': { label: 'Rückrufplanung', toolConfig: 'Rückruf mit Spezialist vereinbaren' },
+      },
+    },
+    ja: {
+      welcomeGreeting: 'こんにちは、サポートへのご連絡ありがとうございます。お名前と状況を教えていただけますか?',
+      systemPromptSuffix:
+        'あなたはカスタマーサポート担当です。\n- 落ち着いて共感的に対応してください。\n- 問題を再現し、詳細を明確に記録してください。\n- チケットを作成するか、専門担当者の折り返しを予約してください。',
+      nodes: {
+        '1': { label: 'お客様への挨拶', prompt: 'お客様に挨拶し、アカウントを確認してください。' },
+        '2': { label: '問題の確認', prompt: '本日発生している問題を伺ってください。' },
+        '3': { label: 'タイプ別ルーティング' },
+        '4': { label: 'サポートチケット', toolConfig: '問題詳細を含むサポートチケットを作成' },
+        '5': { label: 'コールバック予約', toolConfig: '専門担当者からの折り返しを予約' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '您好,感谢联系客服。请告诉我您的姓名以及遇到的问题。',
+      systemPromptSuffix:
+        '您是客户支持坐席。\n- 保持冷静与同理心。\n- 复现问题并清晰记录细节。\n- 创建工单或安排专家回拨。',
+      nodes: {
+        '1': { label: '客户欢迎', prompt: '问候客户并确认其账户。' },
+        '2': { label: '问题描述', prompt: '请问您今天遇到的问题是什么?' },
+        '3': { label: '按类型路由' },
+        '4': { label: '支持工单', toolConfig: '创建包含问题详情的支持工单' },
+        '5': { label: '安排回拨', toolConfig: '安排专家回拨' },
+      },
+    },
+  },
+};
+
+export interface IndustryTemplateResolved {
+  /** Localized welcome greeting (industry-specific when available, otherwise base default). */
+  welcomeGreeting: string;
+  /** Localized base system prompt followed by the industry tone suffix. */
+  systemPrompt: string;
+  /** Per-node copy keyed by node id. */
+  nodes: Record<string, IndustryTemplateNodeCopy>;
+  /** Resolved language code that was used. */
+  language: string;
+  /**
+   * True when the requested language has no translated industry copy and we
+   * fell back to English for the suffix and node labels/prompts. The base
+   * prompt and welcome greeting remain in the requested language so the agent
+   * still speaks the right language at runtime.
+   */
+  usedEnglishFallback: boolean;
+}
+
+/**
+ * Resolve the industry-specific copy for a template + language pair.
+ *
+ * Behaviour:
+ * - If the language has explicit copy → use it directly.
+ * - Otherwise fall back to the English copy for nodes and suffix, but keep the
+ *   localized base welcome greeting so the agent still opens the call in the
+ *   chosen language. `usedEnglishFallback` is set to true so the UI can show
+ *   a hint inviting the operator to edit before publishing.
+ */
+export function getIndustryTemplateCopy(
+  language: string | undefined,
+  key: IndustryTemplateKey,
+): IndustryTemplateResolved {
+  const lang = language && SUPPORTED_CODES.has(language) ? language : DEFAULT_AGENT_LANGUAGE;
+  const map = INDUSTRY_TEMPLATE_COPY[key];
+  const localized = map[lang];
+  const englishCopy = map[DEFAULT_AGENT_LANGUAGE]!;
+  const usedEnglishFallback = !localized && lang !== DEFAULT_AGENT_LANGUAGE;
+  const baseGreeting = getDefaultWelcomeGreeting(lang);
+  const basePrompt = getDefaultSystemPrompt(lang);
+  const greeting = localized?.welcomeGreeting ?? baseGreeting;
+  const suffix = localized?.systemPromptSuffix ?? englishCopy.systemPromptSuffix;
+  const systemPrompt = suffix ? `${basePrompt}\n\n${suffix}` : basePrompt;
+  const nodes = localized?.nodes ?? englishCopy.nodes;
+  return {
+    welcomeGreeting: greeting,
+    systemPrompt,
+    nodes,
+    language: lang,
+    usedEnglishFallback,
+  };
+}
+
+/** Returns the industry-specific welcome greeting for `language` + `key`. */
+export function getIndustryWelcomeGreeting(
+  language: string | undefined,
+  key: IndustryTemplateKey,
+): string {
+  return getIndustryTemplateCopy(language, key).welcomeGreeting;
+}
+
+/** Returns the industry-flavoured system prompt (base + suffix) for `language` + `key`. */
+export function getIndustrySystemPrompt(
+  language: string | undefined,
+  key: IndustryTemplateKey,
+): string {
+  return getIndustryTemplateCopy(language, key).systemPrompt;
+}
+
+/**
+ * True when `value` matches any built-in welcome greeting — either the generic
+ * localized default or one of the industry-specific greetings — so loading a
+ * template can safely overwrite it without clobbering user customisation.
+ */
+export function isTemplateOrDefaultGreeting(value: string | undefined | null): boolean {
+  if (isDefaultGreeting(value)) return true;
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  for (const key of INDUSTRY_TEMPLATE_KEYS) {
+    const map = INDUSTRY_TEMPLATE_COPY[key];
+    for (const lang of Object.keys(map)) {
+      const greeting = map[lang]?.welcomeGreeting;
+      if (greeting && greeting.trim() === trimmed) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when `value` matches the localized base prompt or any base-plus-suffix
+ * combination produced by the industry templates. Used so loading a different
+ * template doesn't clobber a user-edited prompt.
+ */
+export function isTemplateOrDefaultSystemPrompt(value: string | undefined | null): boolean {
+  if (isDefaultSystemPrompt(value)) return true;
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  for (const langCode of Object.keys(DEFAULT_SYSTEM_PROMPTS)) {
+    const base = DEFAULT_SYSTEM_PROMPTS[langCode];
+    for (const key of INDUSTRY_TEMPLATE_KEYS) {
+      const map = INDUSTRY_TEMPLATE_COPY[key];
+      const englishSuffix = map[DEFAULT_AGENT_LANGUAGE]?.systemPromptSuffix;
+      const localizedSuffix = map[langCode]?.systemPromptSuffix;
+      for (const suffix of [localizedSuffix, englishSuffix]) {
+        if (!suffix) continue;
+        const candidate = `${base}\n\n${suffix}`.trim();
+        if (candidate === trimmed) return true;
+      }
+    }
   }
   return false;
 }

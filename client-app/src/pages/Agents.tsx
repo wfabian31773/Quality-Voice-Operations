@@ -18,12 +18,33 @@ import {
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import {
+  type IndustryTemplateKey,
   getDefaultWelcomeGreeting,
   getDefaultSystemPrompt,
+  getIndustryTemplateCopy,
   isDefaultGreeting,
   isDefaultSystemPrompt,
+  isTemplateOrDefaultGreeting,
+  isTemplateOrDefaultSystemPrompt,
+  makeBuilderT,
 } from '../lib/agentBuilderI18n';
 import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
+
+/**
+ * Maps the quick-create agent-type slug to an industry template key when one
+ * exists. When the type maps to a template we seed the welcome greeting and
+ * system prompt with the localized industry copy (falling back to English
+ * with a hint when the language has no translation yet). Types not listed
+ * here keep the generic localized defaults.
+ */
+const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
+  'medical-after-hours': 'medical',
+  'dental': 'dental',
+  'home-services': 'hvac',
+  'legal': 'legal',
+  'customer-support': 'support',
+  'technical-support': 'support',
+};
 
 interface Agent {
   id: string;
@@ -301,6 +322,8 @@ function AgentModal({
     });
   }, [agentId, prefillRecommendedVoice]);
 
+  const queryClient = useQueryClient();
+
   const mutation = useMutation({
     mutationFn: (data: AgentFormData) => {
       const payload: Record<string, unknown> = {
@@ -322,6 +345,7 @@ function AgentModal({
   });
 
   const isNewAgent = !agentId;
+  const [templateFallbackHint, setTemplateFallbackHint] = useState<string | null>(null);
   const set = (key: keyof AgentFormData, val: string | number) =>
     setForm((f) => {
       if (key === 'language' && typeof val === 'string') {
@@ -330,11 +354,56 @@ function AgentModal({
         if (isNewAgent) {
           next.voice = getDefaultVoiceForLanguage(newLang);
         }
-        if (!f.welcome_greeting || isDefaultGreeting(f.welcome_greeting)) {
-          next.welcome_greeting = getDefaultWelcomeGreeting(newLang);
+        // If the agent type maps to an industry template, prefer the
+        // industry-localized copy so the greeting and prompt stay aligned
+        // with the chosen language and template.
+        const templateKey = AGENT_TYPE_TO_TEMPLATE[f.type];
+        if (templateKey) {
+          const copy = getIndustryTemplateCopy(newLang, templateKey);
+          if (!f.welcome_greeting || isTemplateOrDefaultGreeting(f.welcome_greeting)) {
+            next.welcome_greeting = copy.welcomeGreeting;
+          }
+          if (!f.system_prompt || isTemplateOrDefaultSystemPrompt(f.system_prompt)) {
+            next.system_prompt = copy.systemPrompt;
+          }
+          setTemplateFallbackHint(
+            copy.usedEnglishFallback
+              ? makeBuilderT(newLang)('templateFallbackHint', {
+                  language: getAgentLanguageLabel(newLang),
+                })
+              : null,
+          );
+        } else {
+          if (!f.welcome_greeting || isDefaultGreeting(f.welcome_greeting)) {
+            next.welcome_greeting = getDefaultWelcomeGreeting(newLang);
+          }
+          if (!f.system_prompt || isDefaultSystemPrompt(f.system_prompt)) {
+            next.system_prompt = getDefaultSystemPrompt(newLang);
+          }
+          setTemplateFallbackHint(null);
         }
-        if (!f.system_prompt || isDefaultSystemPrompt(f.system_prompt)) {
-          next.system_prompt = getDefaultSystemPrompt(newLang);
+        return next;
+      }
+      if (key === 'type' && typeof val === 'string') {
+        const next = { ...f, type: val };
+        const templateKey = AGENT_TYPE_TO_TEMPLATE[val];
+        if (templateKey) {
+          const copy = getIndustryTemplateCopy(f.language, templateKey);
+          if (!f.welcome_greeting || isTemplateOrDefaultGreeting(f.welcome_greeting)) {
+            next.welcome_greeting = copy.welcomeGreeting;
+          }
+          if (!f.system_prompt || isTemplateOrDefaultSystemPrompt(f.system_prompt)) {
+            next.system_prompt = copy.systemPrompt;
+          }
+          setTemplateFallbackHint(
+            copy.usedEnglishFallback
+              ? makeBuilderT(f.language)('templateFallbackHint', {
+                  language: getAgentLanguageLabel(f.language),
+                })
+              : null,
+          );
+        } else {
+          setTemplateFallbackHint(null);
         }
         return next;
       }
@@ -420,6 +489,11 @@ function AgentModal({
                 {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
+            {templateFallbackHint && (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                {templateFallbackHint}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1">System Prompt</label>
               <textarea value={form.system_prompt} onChange={(e) => set('system_prompt', e.target.value)} rows={6}

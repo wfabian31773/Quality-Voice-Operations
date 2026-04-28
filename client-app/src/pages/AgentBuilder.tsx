@@ -25,15 +25,20 @@ import { api } from '../lib/api';
 import {
   AGENT_LANGUAGES,
   DEFAULT_AGENT_LANGUAGE,
+  getAgentLanguageLabel,
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import {
   type AgentBuilderTKey,
+  type IndustryTemplateKey,
   makeBuilderT,
   getDefaultWelcomeGreeting,
   getDefaultSystemPrompt,
   isDefaultGreeting,
   isDefaultSystemPrompt,
+  isTemplateOrDefaultGreeting,
+  isTemplateOrDefaultSystemPrompt,
+  getIndustryTemplateCopy,
 } from '../lib/agentBuilderI18n';
 import {
   ArrowLeft, Save, Play, Rocket, History, GripVertical,
@@ -334,22 +339,46 @@ function isValidConnection(sourceNodeType: string, targetNodeType: string): bool
 interface IndustryTemplate {
   label: string;
   labelKey: AgentBuilderTKey;
-  key: string;
+  key: IndustryTemplateKey;
   nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  /** True when the active language has no translated industry copy and English fallback was used. */
+  usedEnglishFallback: boolean;
+}
+
+/**
+ * Workflow shape for each industry template. Holds only positions, node ids,
+ * categories, node types, edges, and any non-translatable code (e.g. JS-style
+ * condition expressions). All user-facing strings (labels, prompts, tool
+ * configs) live in `INDUSTRY_TEMPLATE_COPY` in `agentBuilderI18n.ts` keyed by
+ * the same node ids and are merged in by `buildIndustryTemplates` below.
+ */
+interface IndustryTemplateShapeNode {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  nodeType: string;
+  conditionField?: string;
+}
+
+interface IndustryTemplateShape {
+  labelKey: AgentBuilderTKey;
+  key: IndustryTemplateKey;
+  nodes: IndustryTemplateShapeNode[];
   edges: WorkflowEdge[];
 }
 
-const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] }[] = [
+const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   {
     labelKey: 'tplMedical',
     key: 'medical',
     nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Patient Greeting', prompt: 'Warmly greet the patient. Identify yourself as the after-hours service.' } },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, data: { nodeType: 'askQuestion', label: 'Symptom Assessment', prompt: 'Ask about symptoms, severity, and duration.' } },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, data: { nodeType: 'condition', label: 'Urgency Check', conditionField: 'urgency === "emergency"' } },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, data: { nodeType: 'createTicket', label: 'Urgent Ticket', toolConfig: 'Priority: HIGH, Notify on-call provider immediately' } },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, data: { nodeType: 'scheduleAppt', label: 'Schedule Follow-up', toolConfig: 'Next available appointment slot' } },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, data: { nodeType: 'sendSms', label: 'SMS Confirmation', toolConfig: 'Send appointment/ticket confirmation' } },
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'urgency === "emergency"' },
+      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
+      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
+      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
     ],
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
@@ -364,11 +393,11 @@ const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: 
     labelKey: 'tplDental',
     key: 'dental',
     nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Welcome', prompt: 'Welcome the patient to the dental office.' } },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, data: { nodeType: 'askQuestion', label: 'Reason for Visit', prompt: 'Ask if they need a cleaning, checkup, or have a dental issue.' } },
-      { id: '3', type: 'action', position: { x: 250, y: 300 }, data: { nodeType: 'scheduleAppt', label: 'Book Dental Appt', toolConfig: 'Check dentist availability' } },
-      { id: '4', type: 'conversation', position: { x: 250, y: 450 }, data: { nodeType: 'confirmInfo', label: 'Confirm Details', prompt: 'Confirm the appointment date, time, and patient info.' } },
-      { id: '5', type: 'action', position: { x: 250, y: 600 }, data: { nodeType: 'sendSms', label: 'Send Reminder', toolConfig: 'SMS with appointment details' } },
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'scheduleAppt' },
+      { id: '4', type: 'conversation', position: { x: 250, y: 450 }, nodeType: 'confirmInfo' },
+      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
     ],
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
@@ -381,12 +410,12 @@ const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: 
     labelKey: 'tplHvac',
     key: 'hvac',
     nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Service Call', prompt: 'Answer the service call professionally.' } },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, data: { nodeType: 'askQuestion', label: 'Issue Details', prompt: 'Collect details about the HVAC/home service issue.' } },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, data: { nodeType: 'condition', label: 'Emergency?', conditionField: 'isEmergency === true' } },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, data: { nodeType: 'dispatchJob', label: 'Emergency Dispatch', toolConfig: 'Priority dispatch to nearest technician' } },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, data: { nodeType: 'scheduleAppt', label: 'Schedule Service', toolConfig: 'Book regular service appointment' } },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, data: { nodeType: 'sendSms', label: 'SMS Confirmation', toolConfig: 'Send service details and ETA' } },
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'isEmergency === true' },
+      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'dispatchJob' },
+      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
+      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
     ],
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
@@ -401,11 +430,11 @@ const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: 
     labelKey: 'tplLegal',
     key: 'legal',
     nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Caller Greeting', prompt: 'Professional legal intake greeting.' } },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, data: { nodeType: 'askQuestion', label: 'Case Details', prompt: 'Gather case type, key dates, and involved parties.' } },
-      { id: '3', type: 'action', position: { x: 250, y: 300 }, data: { nodeType: 'createContact', label: 'Create Client Record', toolConfig: 'Add to CRM with case info' } },
-      { id: '4', type: 'action', position: { x: 250, y: 450 }, data: { nodeType: 'scheduleAppt', label: 'Schedule Consultation', toolConfig: 'Book attorney consultation' } },
-      { id: '5', type: 'action', position: { x: 250, y: 600 }, data: { nodeType: 'sendSms', label: 'Confirmation', toolConfig: 'Email with consultation details' } },
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'createContact' },
+      { id: '4', type: 'action', position: { x: 250, y: 450 }, nodeType: 'scheduleAppt' },
+      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
     ],
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
@@ -418,11 +447,11 @@ const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: 
     labelKey: 'tplSupport',
     key: 'support',
     nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, data: { nodeType: 'greeting', label: 'Customer Welcome', prompt: 'Greet the customer and identify their account.' } },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, data: { nodeType: 'askQuestion', label: 'Issue Description', prompt: 'What issue are you experiencing today?' } },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, data: { nodeType: 'routeDecision', label: 'Route by Type', conditionField: 'issueType' } },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, data: { nodeType: 'createTicket', label: 'Support Ticket', toolConfig: 'Create support ticket with issue details' } },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, data: { nodeType: 'scheduleAppt', label: 'Callback Schedule', toolConfig: 'Schedule callback with specialist' } },
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'routeDecision', conditionField: 'issueType' },
+      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
+      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
     ],
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
@@ -433,14 +462,34 @@ const INDUSTRY_TEMPLATES_RAW: { labelKey: AgentBuilderTKey; key: string; nodes: 
   },
 ];
 
-function buildIndustryTemplates(t: BuilderT): IndustryTemplate[] {
-  return INDUSTRY_TEMPLATES_RAW.map((tpl) => ({
-    label: t(tpl.labelKey),
-    labelKey: tpl.labelKey,
-    key: tpl.key,
-    nodes: tpl.nodes,
-    edges: tpl.edges,
-  }));
+function buildIndustryTemplates(t: BuilderT, language: string): IndustryTemplate[] {
+  return INDUSTRY_TEMPLATES_RAW.map((tpl) => {
+    const copy = getIndustryTemplateCopy(language, tpl.key);
+    const nodes: WorkflowNode[] = tpl.nodes.map((n) => {
+      const nodeCopy = copy.nodes[n.id];
+      const data: Record<string, unknown> = {
+        nodeType: n.nodeType,
+        label: nodeCopy?.label ?? getNodeLabel(n.nodeType, t),
+      };
+      if (nodeCopy?.prompt) data.prompt = nodeCopy.prompt;
+      if (nodeCopy?.toolConfig) data.toolConfig = nodeCopy.toolConfig;
+      if (n.conditionField) data.conditionField = n.conditionField;
+      return {
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data,
+      };
+    });
+    return {
+      label: t(tpl.labelKey),
+      labelKey: tpl.labelKey,
+      key: tpl.key,
+      nodes,
+      edges: tpl.edges,
+      usedEnglishFallback: copy.usedEnglishFallback,
+    };
+  });
 }
 
 function NodeLibrarySidebar({ onDragStart, t }: { onDragStart: (type: string, nodeType: string) => void; t: BuilderT }) {
@@ -1815,7 +1864,10 @@ function AgentBuilderInner() {
 
   const t = useMemo(() => makeBuilderT(agentSettings.language), [agentSettings.language]);
 
-  const industryTemplates = useMemo(() => buildIndustryTemplates(t), [t]);
+  const industryTemplates = useMemo(
+    () => buildIndustryTemplates(t, agentSettings.language),
+    [t, agentSettings.language],
+  );
 
   const loadTemplate = useCallback(
     (template: IndustryTemplate) => {
@@ -1827,9 +1879,35 @@ function AgentBuilderInner() {
           style: { strokeWidth: 2 },
         })),
       );
+      // Replace welcome greeting & system prompt with the industry-localized
+      // versions, but only when the user hasn't customized them — this lets
+      // operators safely switch between templates without losing edits.
+      setAgentSettings((prev) => {
+        const copy = getIndustryTemplateCopy(prev.language, template.key);
+        const next = { ...prev };
+        if (isTemplateOrDefaultGreeting(prev.welcome_greeting)) {
+          next.welcome_greeting = copy.welcomeGreeting;
+        }
+        if (isTemplateOrDefaultSystemPrompt(prev.system_prompt)) {
+          next.system_prompt = copy.systemPrompt;
+        }
+        return next;
+      });
       setHasChanges(true);
+      // When the active language has no translated industry copy we surface a
+      // visible hint so the operator knows to review the English fallback
+      // before publishing.
+      if (template.usedEnglishFallback) {
+        setSaveMessage({
+          text: t('templateFallbackHint', {
+            language: getAgentLanguageLabel(agentSettings.language),
+          }),
+          tone: 'success',
+        });
+        setTimeout(() => setSaveMessage(null), 6000);
+      }
     },
-    [setNodes, setEdges],
+    [setNodes, setEdges, setAgentSettings, t, agentSettings.language],
   );
 
   const currentSelectedNode = useMemo(
