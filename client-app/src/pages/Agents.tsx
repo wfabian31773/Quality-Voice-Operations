@@ -15,6 +15,12 @@ import {
   getDefaultVoiceForLanguage,
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
+import {
+  getDefaultWelcomeGreeting,
+  getDefaultSystemPrompt,
+  isDefaultGreeting,
+  isDefaultSystemPrompt,
+} from '../lib/agentBuilderI18n';
 
 interface Agent {
   id: string;
@@ -230,8 +236,8 @@ function AgentModal({
     voice: getDefaultVoiceForLanguage(DEFAULT_AGENT_LANGUAGE),
     model: 'gpt-4o-realtime-preview',
     language: DEFAULT_AGENT_LANGUAGE,
-    system_prompt: '',
-    welcome_greeting: '',
+    system_prompt: getDefaultSystemPrompt(DEFAULT_AGENT_LANGUAGE),
+    welcome_greeting: getDefaultWelcomeGreeting(DEFAULT_AGENT_LANGUAGE),
     temperature: 0.7,
     scheduling_provider: '',
   });
@@ -286,6 +292,12 @@ function AgentModal({
         const next = { ...f, language: newLang };
         if (isNewAgent) {
           next.voice = getDefaultVoiceForLanguage(newLang);
+        }
+        if (!f.welcome_greeting || isDefaultGreeting(f.welcome_greeting)) {
+          next.welcome_greeting = getDefaultWelcomeGreeting(newLang);
+        }
+        if (!f.system_prompt || isDefaultSystemPrompt(f.system_prompt)) {
+          next.system_prompt = getDefaultSystemPrompt(newLang);
         }
         return next;
       }
