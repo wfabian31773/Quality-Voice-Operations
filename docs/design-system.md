@@ -201,6 +201,30 @@ npm run check:design-tokens
 
 It exits non-zero with a clear diff if any pair has drifted.
 
+### Catch dark-mode regressions on the public marketing site
+
+A second check launches a real headless browser, visits each top-level public route in both light and dark mode, and walks every visible text node to compute its contrast against the effective opaque background. It catches the most common dark-mode regressions — hardcoded `bg-white` cards, `text-harbor` on a `bg-harbor-light` surface, and similar near-invisible pairings — that the static token check cannot see.
+
+```bash
+# Requires the Platform Dev workflow running on :5000 and
+# `npx playwright install chromium` already done.
+npm run check:public-dark-mode
+```
+
+It exits non-zero and prints up to 10 worst-offender elements per failing route, with their tag, classes, computed text colour, computed background colour and contrast ratio. Tunable via `DARKMODE_MIN_CONTRAST` (default `1.6`) and `DARKMODE_MAX_FAILURES` (default `0`).
+
+### Run both checks together (CI entrypoint)
+
+`scripts/ci-design-checks.sh` is the single entrypoint that runs both checks back-to-back. It reuses an already-running vite dev server on `:5000` if there is one (so it doesn't fight a developer's open `Platform Dev` workflow) and otherwise boots an ephemeral one for the duration of the run. It also installs the Playwright Chromium binary on demand if it is not already cached.
+
+```bash
+npm run check:design
+# or, in environments without a browser available:
+SKIP_DARK_MODE_CHECK=1 npm run check:design
+```
+
+This script is wired into `scripts/post-merge.sh` so both checks run automatically after every task merge.
+
 ---
 
 ## 7. Where to see the comparison
