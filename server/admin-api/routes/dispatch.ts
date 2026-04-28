@@ -10,9 +10,21 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from '../../replit_integrations/object_storage';
+import {
+  geocodeAddressCached,
+  getDriveEta,
+  type DriveEtaResult,
+  type GeoPoint,
+} from '../../../platform/integrations/routing';
 
 const router = Router();
 const logger = createLogger('ADMIN_DISPATCH');
+
+// Maximum acceptable age (in seconds) of a technician's last GPS fix when
+// computing the live ETA for an SMS notification. Anything older falls
+// back to the friendlier "soon" placeholder rather than misleading the
+// customer with a stale ETA.
+const LIVE_ETA_MAX_FIX_AGE_SEC = 600;
 
 /**
  * Fire-and-forget push to the assigned technician for a dispatch lifecycle
@@ -150,7 +162,7 @@ const STATUS_TO_TRIGGER: Record<string, string> = {
   cancelled: 'cancelled',
 };
 
-async function fireNotifications(
+export async function fireNotifications(
   pool: ReturnType<typeof getPlatformPool>,
   tenantId: string,
   jobId: string,
@@ -174,18 +186,44 @@ async function fireNotifications(
     if (jobRows.length === 0) return;
 
     const job = jobRows[0];
-    for (const tpl of templates) {
-      let body = (tpl.body_template as string)
-        .replace(/\{\{job_title\}\}/g, job.title as string || '')
-        .replace(/\{\{contact_name\}\}/g, job.contact_name as string || '')
-        .replace(/\{\{eta\}\}/g, job.eta_start ? new Date(job.eta_start as string).toLocaleString() : 'TBD')
-        .replace(/\{\{resource_name\}\}/g, job.resource_name as string || '')
-        .replace(/\{\{status\}\}/g, job.status as string || '')
-        .replace(/\{\{address\}\}/g, job.address as string || '');
 
-      let subject = (tpl.subject as string || '')
-        .replace(/\{\{job_title\}\}/g, job.title as string || '')
-        .replace(/\{\{status\}\}/g, job.status as string || '');
+    // Compute the live driving ETA when the trigger is en_route (or any
+    // template body actually references one of the live-ETA tokens).
+    // Customers care about "when will my tech show up" the moment they
+    // hear the truck is on the way; for any other lifecycle event the
+    // tech may not have a fix yet, so the {{eta_drive_*}} tokens
+    // gracefully degrade to the scheduled window.
+    const needsLiveEta = templates.some((t) => {
+      const body = String(t.body_template ?? '');
+      const subject = String(t.subject ?? '');
+      return /\{\{eta_drive_minutes\}\}|\{\{eta_arrival_time\}\}/.test(body) ||
+             /\{\{eta_drive_minutes\}\}|\{\{eta_arrival_time\}\}/.test(subject);
+    });
+    let liveEta: { minutes: number; arrivalDate: Date } | null = null;
+    if ((triggerEvent === 'en_route' || needsLiveEta) && job.resource_id && job.address) {
+      liveEta = await computeLiveEtaForJob(
+        pool, tenantId, jobId, String(job.resource_id), String(job.address),
+      );
+    }
+
+    const liveEtaMinutes = liveEta ? String(liveEta.minutes) : 'soon';
+    const liveEtaArrival = liveEta
+      ? liveEta.arrivalDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : (job.eta_start ? new Date(job.eta_start as string).toLocaleString() : 'TBD');
+
+    const substitute = (raw: string): string => raw
+      .replace(/\{\{job_title\}\}/g, job.title as string || '')
+      .replace(/\{\{contact_name\}\}/g, job.contact_name as string || '')
+      .replace(/\{\{eta\}\}/g, job.eta_start ? new Date(job.eta_start as string).toLocaleString() : 'TBD')
+      .replace(/\{\{eta_drive_minutes\}\}/g, liveEtaMinutes)
+      .replace(/\{\{eta_arrival_time\}\}/g, liveEtaArrival)
+      .replace(/\{\{resource_name\}\}/g, job.resource_name as string || '')
+      .replace(/\{\{status\}\}/g, job.status as string || '')
+      .replace(/\{\{address\}\}/g, job.address as string || '');
+
+    for (const tpl of templates) {
+      const body = substitute(tpl.body_template as string);
+      const subject = substitute(tpl.subject as string || '');
 
       const recipient = (job.contact_phone as string) || (job.contact_email as string) || '';
       if (!recipient) continue;
@@ -198,6 +236,97 @@ async function fireNotifications(
     }
   } catch (err) {
     logger.error('Failed to fire notifications', { tenantId, jobId, triggerEvent, error: String(err) });
+  }
+}
+
+/**
+ * Helper used by `fireNotifications` to look up the technician's most
+ * recent fix and drive an ETA for the SMS substitution. Returns `null`
+ * when we don't have the inputs to compute a real number — callers
+ * should substitute a friendly fallback like "soon" instead of leaving
+ * the unresolved token in the body.
+ */
+async function computeLiveEtaForJob(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  jobId: string,
+  resourceId: string,
+  address: string,
+): Promise<{ minutes: number; arrivalDate: Date } | null> {
+  try {
+    // Always read the freshest fix — without the explicit ORDER BY, Postgres
+    // is free to return any historical row, which would silently send SMS
+    // ETAs based on stale coordinates.
+    const { rows: locRows } = await pool.query(
+      `SELECT latitude, longitude, received_at
+         FROM dispatch_resource_locations
+        WHERE tenant_id = $1 AND resource_id = $2
+        ORDER BY received_at DESC
+        LIMIT 1`,
+      [tenantId, resourceId],
+    );
+    if (locRows.length === 0) return null;
+    // Mirror the live-map staleness budget — if the tech hasn't pinged in a
+    // while, treat the ETA as unknown rather than computing from a stale fix.
+    const receivedAt = locRows[0].received_at instanceof Date
+      ? locRows[0].received_at
+      : new Date(String(locRows[0].received_at));
+    if (!Number.isFinite(receivedAt.getTime())) return null;
+    const ageSec = (Date.now() - receivedAt.getTime()) / 1000;
+    if (ageSec > LIVE_ETA_MAX_FIX_AGE_SEC) return null;
+    const origin: GeoPoint = {
+      lat: Number(locRows[0].latitude),
+      lon: Number(locRows[0].longitude),
+    };
+    if (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lon)) return null;
+
+    const { rows: jobRows } = await pool.query(
+      `SELECT address_lat, address_lon, address_geocoded_for
+         FROM dispatch_jobs WHERE id = $1 AND tenant_id = $2`,
+      [jobId, tenantId],
+    );
+    let dest: GeoPoint | null = null;
+    if (jobRows.length > 0) {
+      const lat = jobRows[0].address_lat == null ? NaN : Number(jobRows[0].address_lat);
+      const lon = jobRows[0].address_lon == null ? NaN : Number(jobRows[0].address_lon);
+      const cachedFor = String(jobRows[0].address_geocoded_for ?? '').trim();
+      if (Number.isFinite(lat) && Number.isFinite(lon) && cachedFor === address.trim()) {
+        dest = { lat, lon };
+      }
+    }
+    if (!dest) {
+      dest = await geocodeAddressCached(tenantId, address);
+      if (dest) {
+        try {
+          await pool.query(
+            `UPDATE dispatch_jobs
+                SET address_lat = $1, address_lon = $2,
+                    address_geocoded_at = NOW(), address_geocoded_for = $3
+              WHERE id = $4 AND tenant_id = $5`,
+            [dest.lat, dest.lon, address.trim(), jobId, tenantId],
+          );
+        } catch (err) {
+          logger.warn('Failed to persist geocoded coords for SMS ETA', {
+            tenantId, jobId, error: String(err),
+          });
+        }
+      }
+    }
+    if (!dest) return null;
+
+    const eta = await getDriveEta({
+      tenantId, resourceId, jobId, origin, destination: dest,
+    });
+    const minutes = Math.max(1, Math.round(eta.durationSeconds / 60));
+    return {
+      minutes,
+      arrivalDate: new Date(Date.now() + eta.durationSeconds * 1000),
+    };
+  } catch (err) {
+    logger.warn('Live ETA computation for SMS failed', {
+      tenantId, jobId, resourceId, error: String(err),
+    });
+    return null;
   }
 }
 
@@ -1612,7 +1741,7 @@ export const recordResourceLocationHandler: RequestHandler = async (req, res) =>
  * an active job, the job's title / customer / status — that's what the
  * UI uses to color the marker and label the popup.
  */
-const listResourceLocationsHandler: RequestHandler = async (req, res) => {
+export const listResourceLocationsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   const staleness = Math.min(
@@ -1646,6 +1775,9 @@ const listResourceLocationsHandler: RequestHandler = async (req, res) => {
               j.contact_name AS job_contact_name,
               j.address     AS job_address,
               j.status      AS job_status,
+              j.address_lat AS job_address_lat,
+              j.address_lon AS job_address_lon,
+              j.address_geocoded_for AS job_address_geocoded_for,
               EXTRACT(EPOCH FROM (NOW() - l.received_at))::int AS age_seconds
          FROM dispatch_resource_locations l
          JOIN dispatch_resources r
@@ -1659,7 +1791,9 @@ const listResourceLocationsHandler: RequestHandler = async (req, res) => {
         ORDER BY l.received_at DESC`,
       [tenantId, staleness, terminalArr],
     );
-    return res.json({ locations: rows, staleness_seconds: staleness });
+
+    const enriched = await enrichLocationsWithEta(pool, tenantId, rows);
+    return res.json({ locations: enriched, staleness_seconds: staleness });
   } catch (err) {
     logger.error('Failed to list resource locations', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list resource locations' });
@@ -1745,6 +1879,166 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
     return res.status(500).json({ error: 'Failed to get job route' });
   }
 };
+
+interface LocationRowForEta {
+  resource_id: string;
+  latitude: number | string;
+  longitude: number | string;
+  active_job_id: string | null;
+  job_address: string | null;
+  job_address_lat: number | string | null;
+  job_address_lon: number | string | null;
+  job_address_geocoded_for: string | null;
+  [k: string]: unknown;
+}
+
+/**
+ * Walk the live-map result set, lazily geocode any job whose address
+ * has changed (or never been geocoded), then attach a driving ETA to
+ * every row that has a usable origin + destination. Failures from any
+ * single row are isolated so one bad address doesn't blank the map.
+ *
+ * The persist step (`UPDATE dispatch_jobs SET address_lat ...`) writes
+ * the geocode back so subsequent polls skip the geocoder entirely.
+ */
+async function enrichLocationsWithEta(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  rows: LocationRowForEta[],
+): Promise<LocationRowForEta[]> {
+  if (rows.length === 0) return rows;
+
+  // Group by job to avoid duplicate geocode work when several techs
+  // share a job (rare but possible during a hand-off window).
+  const jobsToGeocode = new Map<string, { address: string; needsGeocode: boolean }>();
+  for (const row of rows) {
+    const jobId = row.active_job_id;
+    const address = (row.job_address ?? '').trim();
+    if (!jobId || !address) continue;
+    const cachedFor = (row.job_address_geocoded_for ?? '').trim();
+    const cachedLat = row.job_address_lat == null ? null : Number(row.job_address_lat);
+    const cachedLon = row.job_address_lon == null ? null : Number(row.job_address_lon);
+    const haveCoords =
+      cachedLat != null && cachedLon != null &&
+      Number.isFinite(cachedLat) && Number.isFinite(cachedLon);
+    const stillValid = haveCoords && cachedFor === address;
+    if (!jobsToGeocode.has(jobId)) {
+      jobsToGeocode.set(jobId, { address, needsGeocode: !stillValid });
+    }
+  }
+
+  const geocoded = new Map<string, GeoPoint | null>();
+  for (const [jobId, info] of jobsToGeocode.entries()) {
+    if (!info.needsGeocode) continue;
+    try {
+      const point = await geocodeAddressCached(tenantId, info.address);
+      geocoded.set(jobId, point);
+      if (point) {
+        // Persist back so future polls skip the geocoder. We tolerate
+        // failures here — the in-memory cache still helps.
+        try {
+          await pool.query(
+            `UPDATE dispatch_jobs
+                SET address_lat = $1, address_lon = $2,
+                    address_geocoded_at = NOW(), address_geocoded_for = $3
+              WHERE id = $4 AND tenant_id = $5`,
+            [point.lat, point.lon, info.address, jobId, tenantId],
+          );
+        } catch (persistErr) {
+          logger.warn('Failed to persist geocoded coords', {
+            tenantId, jobId, error: String(persistErr),
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn('Geocode failed during live-map enrichment', {
+        tenantId, jobId, error: String(err),
+      });
+      geocoded.set(jobId, null);
+    }
+  }
+
+  return Promise.all(rows.map(async (row) => {
+    const jobId = row.active_job_id;
+    let dest: GeoPoint | null = null;
+    if (jobId) {
+      if (geocoded.has(jobId)) {
+        dest = geocoded.get(jobId) ?? null;
+      } else {
+        const lat = row.job_address_lat == null ? NaN : Number(row.job_address_lat);
+        const lon = row.job_address_lon == null ? NaN : Number(row.job_address_lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          dest = { lat, lon };
+        }
+      }
+    }
+
+    if (!jobId || !dest) {
+      return {
+        ...row,
+        eta_minutes: null,
+        eta_seconds: null,
+        eta_distance_m: null,
+        eta_provider: null,
+        eta_computed_at: null,
+        eta_is_estimate: null,
+      };
+    }
+
+    const origin: GeoPoint = {
+      lat: Number(row.latitude),
+      lon: Number(row.longitude),
+    };
+    if (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lon)) {
+      return {
+        ...row,
+        eta_minutes: null,
+        eta_seconds: null,
+        eta_distance_m: null,
+        eta_provider: null,
+        eta_computed_at: null,
+        eta_is_estimate: null,
+      };
+    }
+
+    let eta: DriveEtaResult;
+    try {
+      eta = await getDriveEta({
+        tenantId,
+        resourceId: row.resource_id,
+        jobId,
+        origin,
+        destination: dest,
+      });
+    } catch (err) {
+      logger.warn('getDriveEta unexpectedly threw', {
+        tenantId, jobId, resourceId: row.resource_id, error: String(err),
+      });
+      return {
+        ...row,
+        eta_minutes: null,
+        eta_seconds: null,
+        eta_distance_m: null,
+        eta_provider: null,
+        eta_computed_at: null,
+        eta_is_estimate: null,
+      };
+    }
+
+    return {
+      ...row,
+      eta_minutes: Math.round(eta.durationSeconds / 60),
+      eta_seconds: eta.durationSeconds,
+      eta_distance_m: eta.distanceMeters,
+      eta_provider: eta.provider,
+      eta_computed_at: new Date(eta.computedAtMs).toISOString(),
+      // The UI shows a subtle "estimate" badge when this is true, e.g.
+      // when the haversine fallback kicks in for a transient routing
+      // outage or when the haversine provider is the configured one.
+      eta_is_estimate: eta.provider === 'haversine' || eta.fallback,
+    };
+  }));
+}
 
 // ============ TERRITORIES ============
 

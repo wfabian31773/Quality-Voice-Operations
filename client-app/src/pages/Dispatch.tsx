@@ -626,6 +626,17 @@ interface ResourceLocationRow {
   job_contact_name: string | null;
   job_address: string | null;
   job_status: string | null;
+  // Live driving ETA from the technician's last known fix to the job
+  // address. Null when the job has no geocodable address or the
+  // routing service is unavailable. `eta_is_estimate` is true when the
+  // server fell back to a haversine estimate (the popup adds a tilde
+  // and a tooltip in that case).
+  eta_minutes: number | null;
+  eta_seconds: number | null;
+  eta_distance_m: number | null;
+  eta_provider: 'haversine' | 'osrm' | 'mapbox' | 'google' | null;
+  eta_computed_at: string | null;
+  eta_is_estimate: boolean | null;
 }
 
 const STATUS_HEX: Record<string, string> = {
@@ -719,6 +730,41 @@ function formatAge(seconds: number): string {
   return `${Math.round(seconds / 3600)}h ago`;
 }
 
+function formatEtaMinutes(min: number): string {
+  if (min < 1) return '<1 min';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
+function formatEtaDistance(meters: number | null): string {
+  if (meters == null || !Number.isFinite(meters)) return '';
+  const km = meters / 1000;
+  if (km < 1) return `${Math.round(meters)} m`;
+  return `${km.toFixed(km < 10 ? 1 : 0)} km`;
+}
+
+/**
+ * Render the "ETA to job: X min" line for a marker popup. Returns an
+ * empty string when the server didn't compute one (no geocodable
+ * address, no active job, or routing provider down). When the row
+ * came back as an estimate (haversine fallback), we prefix a tilde so
+ * dispatchers know it's not a routed time.
+ */
+function renderEtaLine(loc: ResourceLocationRow): string {
+  if (loc.eta_minutes == null) return '';
+  const isEstimate = !!loc.eta_is_estimate;
+  const prefix = isEstimate ? '~' : '';
+  const distance = formatEtaDistance(loc.eta_distance_m);
+  const tooltip = isEstimate
+    ? `Straight-line estimate (${loc.eta_provider ?? 'haversine'})`
+    : `Driving ETA (${loc.eta_provider ?? 'routing'})`;
+  return `<div style="font-size:11px;font-weight:600;color:#0f172a;margin-bottom:4px" title="${escapeHtml(tooltip)}">
+            ETA to job: ${prefix}${escapeHtml(formatEtaMinutes(loc.eta_minutes))}${distance ? ` <span style="font-weight:400;color:#666">· ${escapeHtml(distance)}</span>` : ''}
+          </div>`;
+}
+
 function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void }) {
   const [locations, setLocations] = useState<ResourceLocationRow[]>([]);
   const [staleness, setStaleness] = useState(600);
@@ -800,12 +846,14 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
         .toUpperCase();
       const html = `<div style="background:${color};color:#0b1220;border:2px solid #0b1220;border-radius:9999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,0.4)">${initials || '•'}</div>`;
       const icon = L.divIcon({ html, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+      const etaLine = renderEtaLine(loc);
       const popup = `
         <div style="font-family:inherit;min-width:180px">
           <div style="font-weight:600;margin-bottom:4px">${escapeHtml(loc.resource_name || 'Unknown tech')}</div>
           ${loc.job_title ? `<div style="font-size:12px;margin-bottom:2px">${escapeHtml(loc.job_title)}</div>` : ''}
           ${loc.job_contact_name ? `<div style="font-size:11px;color:#666;margin-bottom:2px">${escapeHtml(loc.job_contact_name)}</div>` : ''}
           ${loc.job_address ? `<div style="font-size:11px;color:#666;margin-bottom:4px">${escapeHtml(loc.job_address)}</div>` : ''}
+          ${etaLine}
           <div style="font-size:11px;color:#666">
             ${loc.active_status ? `Status: <strong style="color:${color}">${escapeHtml(loc.active_status)}</strong> · ` : ''}Updated ${escapeHtml(formatAge(loc.age_seconds))}
           </div>
@@ -1841,8 +1889,11 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
               <div>
                 <label className="block text-xs font-medium text-muted mb-1">Body Template *</label>
                 <textarea value={(formData.body_template as string) || ''} onChange={e => setFormData({ ...formData, body_template: e.target.value })}
-                  rows={4} placeholder="Use {{job_title}}, {{contact_name}}, {{eta}}, etc."
+                  rows={4} placeholder="Use {{job_title}}, {{contact_name}}, {{eta}}, {{eta_drive_minutes}}, {{eta_arrival_time}}, {{address}}, {{resource_name}}, etc."
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                <p className="mt-1 text-[11px] text-muted">
+                  <code>{'{{eta_drive_minutes}}'}</code> and <code>{'{{eta_arrival_time}}'}</code> are filled with the live driving ETA from the technician&apos;s last GPS fix when the job is en route.
+                </p>
               </div>
             </>
           )}
