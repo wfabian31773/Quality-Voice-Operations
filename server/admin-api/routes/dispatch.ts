@@ -17,6 +17,7 @@ import {
   type DriveEtaResult,
   type GeoPoint,
 } from '../../../platform/integrations/routing';
+import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 
 const router = Router();
 const logger = createLogger('ADMIN_DISPATCH');
@@ -2024,6 +2025,154 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
   }
 };
 
+// How often the customer-facing booking-tracker page should re-poll
+// while the job is en_route. Long enough to keep provider call volume
+// bounded — the per-(tenant, resource, job) routing cache absorbs
+// most repeats from concurrent visitors anyway.
+const PUBLIC_TRACKER_POLL_INTERVAL_MS = 30_000;
+
+// Lifecycle states the customer's tracker page is allowed to display.
+// Anything else (including unknown values) is rendered as the generic
+// "Your appointment is on the schedule" pre-en-route view so we never
+// leak internal status names to customers.
+const TRACKER_PUBLIC_STATUSES = new Set([
+  'pending',
+  'assigned',
+  'scheduled',
+  'en_route',
+  'on_site',
+  'in_progress',
+  'completed',
+  'done',
+  'cancelled',
+]);
+
+/**
+ * GET /public/dispatch/track/:token
+ *
+ * Customer-facing endpoint backing the booking-tracker page. Auth is
+ * the per-job opaque `tracking_token` (migration 088) — no session,
+ * no API key. Returns the minimum information the customer already
+ * knows about their own visit (status, address, scheduled window,
+ * tech first name) plus the live driving ETA when the job is en route
+ * and the technician has reported a recent fix.
+ *
+ * Intentional omissions:
+ *   - tenant_id, internal job UUID, contact phone/email
+ *   - technician's GPS coordinates or device id
+ *
+ * The same routing-adapter cache used by the dispatcher live map and
+ * the SMS template substitution is reused here, so concurrent visitors
+ * don't trigger extra provider calls per poll.
+ */
+export const getPublicJobTrackerHandler: RequestHandler = async (req, res) => {
+  const token = String(req.params.token ?? '').trim();
+  // Tokens are gen_random_uuid()::text — exactly 36 chars including
+  // dashes. Reject obviously malformed inputs cheaply before hitting
+  // the DB, both as a smoke screen against scrapers and to keep the
+  // 404 path off the query path.
+  if (!token || token.length > 64 || !/^[a-zA-Z0-9-]+$/.test(token)) {
+    return res.status(404).json({ error: 'Tracking link not found' });
+  }
+
+  const pool = getPlatformPool();
+  try {
+    const { rows } = await pool.query(
+      `SELECT j.id, j.tenant_id, j.title, j.status,
+              j.address, j.scheduled_at, j.eta_start, j.eta_end,
+              j.completed_at, j.resource_id,
+              j.address_lat, j.address_lon, j.address_geocoded_for,
+              r.name AS resource_name
+         FROM dispatch_jobs j
+         LEFT JOIN dispatch_resources r
+           ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+        WHERE j.tracking_token = $1
+        LIMIT 1`,
+      [token],
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Tracking link not found' });
+    }
+    const row = rows[0] as Record<string, unknown>;
+    const tenantId = String(row.tenant_id);
+    const jobId = String(row.id);
+    const status = String(row.status ?? '');
+    const address = String(row.address ?? '').trim();
+    const resourceId = (row.resource_id as string | null) ?? null;
+
+    // Compute live ETA only when the customer actually benefits — the
+    // tech is en route. Other statuses either don't have a meaningful
+    // driving ETA (pending/assigned/scheduled — the truck hasn't left
+    // yet) or are already over (on_site/completed/cancelled).
+    let liveEta: { minutes: number; arrival_at: string } | null = null;
+    if (status === 'en_route' && resourceId && address) {
+      const eta = await computeLiveEtaForJob(pool, tenantId, jobId, resourceId, address);
+      if (eta) {
+        liveEta = {
+          minutes: eta.minutes,
+          arrival_at: eta.arrivalDate.toISOString(),
+        };
+      }
+    }
+
+    // Only the public-safe display name of the status — we map a few
+    // synonyms together so the customer sees a stable label even when
+    // dispatchers transition through lifecycle aliases.
+    const safeStatus = TRACKER_PUBLIC_STATUSES.has(status) ? status : 'scheduled';
+
+    // First-name only for the tech, to avoid leaking the rest of the
+    // resource roster from a guessable URL.
+    const techFirstName = (() => {
+      const full = String(row.resource_name ?? '').trim();
+      if (!full) return null;
+      const first = full.split(/\s+/)[0];
+      return first.length > 32 ? first.slice(0, 32) : first;
+    })();
+
+    return res.json({
+      job: {
+        title: (row.title as string | null) ?? null,
+        status: safeStatus,
+        address: address || null,
+        scheduled_at: row.scheduled_at
+          ? new Date(row.scheduled_at as string | Date).toISOString()
+          : null,
+        eta_start: row.eta_start
+          ? new Date(row.eta_start as string | Date).toISOString()
+          : null,
+        eta_end: row.eta_end
+          ? new Date(row.eta_end as string | Date).toISOString()
+          : null,
+        completed_at: row.completed_at
+          ? new Date(row.completed_at as string | Date).toISOString()
+          : null,
+        resource_name: techFirstName,
+      },
+      live_eta: liveEta,
+      poll_interval_ms: PUBLIC_TRACKER_POLL_INTERVAL_MS,
+      now: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.error('Failed to load public job tracker', { token, error: String(err) });
+    return res.status(500).json({ error: 'Tracking link is temporarily unavailable' });
+  }
+};
+
+// Per-IP rate limit on the public tracker endpoint. Keying by IP
+// alone (not IP+token) hardens us against token-spray abuse — one
+// attacker probing many guessed tokens from one address still hits
+// a single shared bucket. The 120/min ceiling is generous enough
+// that a shared NAT (apartment building, office) all watching the
+// same job will not false-positive. Returns plain JSON 429s rather
+// than the HTML default so the React poller can surface a soft
+// retry message.
+const publicTrackerLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 120,
+  message: 'Too many tracking requests. Please wait a moment.',
+  keyGenerator: (req) => `dispatch-tracker:${req.ip ?? 'unknown'}`,
+});
+
 interface LocationRowForEta {
   resource_id: string;
   latitude: number | string;
@@ -2652,6 +2801,14 @@ router.delete('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, de
 router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite, syncResourceSkillsHandler);
 router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
 router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
+
+// Public, token-authenticated booking-tracker endpoint. NO requireAuth —
+// the per-job tracking_token (migration 088) is the only credential.
+router.get(
+  '/public/dispatch/track/:token',
+  publicTrackerLimiter,
+  getPublicJobTrackerHandler,
+);
 
 router.get('/dispatch/territories', requireAuth, listTerritoriesHandler);
 router.post('/dispatch/territories', requireAuth, requireMiniSystemWrite, createTerritoryHandler);

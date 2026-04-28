@@ -95,6 +95,7 @@ const Privacy = lazy(() => import('./pages/public/Privacy'));
 const Security = lazy(() => import('./pages/public/Security'));
 const SecurityPosture = lazy(() => import('./pages/public/SecurityPosture'));
 const Subprocessors = lazy(() => import('./pages/public/Subprocessors'));
+const BookingTracker = lazy(() => import('./pages/public/BookingTracker'));
 
 const SETTINGS_TABS = ['general', 'notifications', 'roles', 'security', 'api-keys', 'privacy'];
 
@@ -117,6 +118,7 @@ export default function App() {
       <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/auth/verify-email" element={<VerifyEmail />} />
       <Route path="/internal/design-directions" element={<DesignDirections />} />
+      <Route path="/track/:token" element={<BookingTracker />} />
 
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
