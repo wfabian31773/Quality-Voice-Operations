@@ -398,26 +398,26 @@ function TenantDetailPanel({ tenantId }: { tenantId: string }) {
     queryFn: () => api.get<{ tenant: TenantDetail }>(`/platform/tenants/${tenantId}`),
   });
 
-  if (isLoading) return <div className="px-4 py-3 text-sm text-muted">Loading details...</div>;
+  if (isLoading) return <div className="px-4 py-3 text-sm text-text-muted">Loading details...</div>;
   if (!data) return null;
 
   const t = data.tenant;
   return (
     <div className="px-6 py-4 bg-surface-secondary/50 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
       <div>
-        <span className="text-muted">Agents</span>
+        <span className="text-text-muted">Agents</span>
         <div className="font-medium">{t.agent_count}</div>
       </div>
       <div>
-        <span className="text-muted">Phone Numbers</span>
+        <span className="text-text-muted">Phone Numbers</span>
         <div className="font-medium">{t.phone_number_count}</div>
       </div>
       <div>
-        <span className="text-muted">Total Calls</span>
+        <span className="text-text-muted">Total Calls</span>
         <div className="font-medium">{t.total_calls}</div>
       </div>
       <div>
-        <span className="text-muted">Total Spend</span>
+        <span className="text-text-muted">Total Spend</span>
         <div className="font-medium">{formatCents(t.total_cost_cents)}</div>
       </div>
     </div>
@@ -446,7 +446,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
     <div className="border border-border rounded-lg p-4 bg-surface-secondary/50 space-y-3">
       <h4 className="font-medium text-sm">Create New Version</h4>
       <div>
-        <label className="text-xs text-muted block mb-1">Version (semver)</label>
+        <label className="text-xs text-text-muted block mb-1">Version (semver)</label>
         <input
           type="text"
           value={version}
@@ -456,7 +456,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
         />
       </div>
       <div>
-        <label className="text-xs text-muted block mb-1">Changelog</label>
+        <label className="text-xs text-text-muted block mb-1">Changelog</label>
         <textarea
           value={changelog}
           onChange={(e) => setChangelog(e.target.value)}
@@ -466,7 +466,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
         />
       </div>
       <div>
-        <label className="text-xs text-muted block mb-1">Release Notes (optional)</label>
+        <label className="text-xs text-text-muted block mb-1">Release Notes (optional)</label>
         <textarea
           value={releaseNotes}
           onChange={(e) => setReleaseNotes(e.target.value)}
@@ -490,7 +490,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
         </button>
         <button
           onClick={onClose}
-          className="px-4 py-2 text-sm text-muted hover:text-foreground rounded-lg hover:bg-surface-secondary"
+          className="px-4 py-2 text-sm text-text-muted hover:text-text-primary rounded-lg hover:bg-surface-secondary"
         >
           Cancel
         </button>
@@ -534,7 +534,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
     },
   });
 
-  if (isLoading) return <div className="px-4 py-3 text-sm text-muted">Loading template...</div>;
+  if (isLoading) return <div className="px-4 py-3 text-sm text-text-muted">Loading template...</div>;
   if (!data) return null;
 
   const versions = data.versions ?? [];
@@ -544,7 +544,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-medium">{data.displayName}</h3>
-          <p className="text-xs text-muted">Current: v{data.currentVersion} | {versions.length} version(s)</p>
+          <p className="text-xs text-text-muted">Current: v{data.currentVersion} | {versions.length} version(s)</p>
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
@@ -587,7 +587,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                     <button
                       onClick={() => validateMutation.mutate(v.id)}
                       disabled={validateMutation.isPending}
-                      className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground"
+                      className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
                       title="Validate"
                     >
                       <AlertCircle className="h-4 w-4" />
@@ -599,7 +599,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                         }
                       }}
                       disabled={publishMutation.isPending}
-                      className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-muted hover:text-green-600"
+                      className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-text-muted hover:text-green-600"
                       title="Publish"
                     >
                       <Play className="h-4 w-4" />
@@ -614,7 +614,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                       }
                     }}
                     disabled={deprecateMutation.isPending}
-                    className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-muted hover:text-red-600"
+                    className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-text-muted hover:text-red-600"
                     title="Deprecate"
                   >
                     <Archive className="h-4 w-4" />
@@ -623,9 +623,9 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
               </div>
             </div>
             {v.changelog && (
-              <p className="text-xs text-muted mt-1">{v.changelog}</p>
+              <p className="text-xs text-text-muted mt-1">{v.changelog}</p>
             )}
-            <p className="text-xs text-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               {v.status === 'draft' ? 'Not yet published' : `Published: ${new Date(v.publishedAt).toLocaleDateString()}`}
             </p>
 
@@ -643,7 +643,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                     <span className={check.passed ? 'text-green-500' : 'text-red-500'}>
                       {check.passed ? '\u2713' : '\u2717'}
                     </span>
-                    <span className="text-muted">{check.message}</span>
+                    <span className="text-text-muted">{check.message}</span>
                   </div>
                 ))}
               </div>
@@ -651,7 +651,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
           </div>
         ))}
         {versions.length === 0 && (
-          <p className="text-sm text-muted text-center py-4">No versions created yet</p>
+          <p className="text-sm text-text-muted text-center py-4">No versions created yet</p>
         )}
       </div>
     </div>
@@ -756,7 +756,7 @@ function ConnectorHealthPanel() {
 
   if (isLoading) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-muted">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
         Loading connector health…
       </div>
     );
@@ -790,7 +790,7 @@ function ConnectorHealthPanel() {
           <h2 className="font-semibold flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-primary" /> Connector Health
           </h2>
-          <p className="text-xs text-muted mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Cross-tenant view of connectors that need a reconnect or are failing to sync, plus
             recent proactive token-refresh failures from the background sweep.
           </p>
@@ -798,7 +798,7 @@ function ConnectorHealthPanel() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground disabled:opacity-50"
+          className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
           title="Refresh"
         >
           <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
@@ -807,24 +807,24 @@ function ConnectorHealthPanel() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-muted">Reconnect needed</div>
+          <div className="text-xs text-text-muted">Reconnect needed</div>
           <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
             {summary.needsReconnect}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-muted">Sync errors</div>
+          <div className="text-xs text-text-muted">Sync errors</div>
           <div className={`text-2xl font-bold ${summary.syncError > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
             {summary.syncError}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-muted">Healthy</div>
+          <div className="text-xs text-text-muted">Healthy</div>
           <div className="text-2xl font-bold text-green-600 dark:text-green-400">{summary.healthy}</div>
-          <div className="text-xs text-muted mt-0.5">of {summary.totalEnabled} enabled</div>
+          <div className="text-xs text-text-muted mt-0.5">of {summary.totalEnabled} enabled</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-muted">Affected tenants</div>
+          <div className="text-xs text-text-muted">Affected tenants</div>
           <div className="text-2xl font-bold">{summary.affectedTenants}</div>
         </div>
       </div>
@@ -857,13 +857,13 @@ function ConnectorHealthPanel() {
               <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               Recent token refresh failures
             </h3>
-            <p className="text-xs text-muted mt-0.5">
+            <p className="text-xs text-text-muted mt-0.5">
               From <code className="font-mono">connector.token_refresh_failed</code> audit events in the last {window.sinceDays} days.
             </p>
           </div>
         </div>
         {recentRefreshFailures.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-muted">
+          <div className="px-4 py-6 text-center text-sm text-text-muted">
             No proactive token refresh failures in the last {window.sinceDays} days.
           </div>
         ) : (
@@ -871,16 +871,16 @@ function ConnectorHealthPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="text-left px-4 py-2 font-medium text-muted">When</th>
-                  <th className="text-left px-4 py-2 font-medium text-muted">Tenant</th>
-                  <th className="text-left px-4 py-2 font-medium text-muted">Provider</th>
-                  <th className="text-left px-4 py-2 font-medium text-muted">Error</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">When</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Provider</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Error</th>
                 </tr>
               </thead>
               <tbody>
                 {recentRefreshFailures.map((ev) => (
                   <tr key={ev.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+                    <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                       <span title={new Date(ev.occurredAt).toLocaleString()}>
                         {formatRelativeTime(ev.occurredAt)}
                       </span>
@@ -888,7 +888,7 @@ function ConnectorHealthPanel() {
                     <td className="px-4 py-2 text-xs">
                       <div className="font-medium">{ev.tenantName ?? '—'}</div>
                       {ev.tenantSlug && (
-                        <div className="text-muted font-mono">{ev.tenantSlug}</div>
+                        <div className="text-text-muted font-mono">{ev.tenantSlug}</div>
                       )}
                     </td>
                     <td className="px-4 py-2 text-xs font-medium capitalize">{ev.provider ?? '—'}</td>
@@ -931,19 +931,19 @@ function ConnectorAttentionTable({
         </h3>
       </div>
       {rows.length === 0 ? (
-        <div className="px-4 py-6 text-center text-sm text-muted">{emptyText}</div>
+        <div className="px-4 py-6 text-center text-sm text-text-muted">{emptyText}</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2 font-medium text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Connector</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Last sync</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">First failed</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Last error</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Alerts</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Actions</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Connector</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Last sync</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">First failed</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Last error</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Alerts</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1022,24 +1022,24 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
       <td className="px-4 py-2 text-xs">
         <div className="font-medium">{c.tenantName ?? '—'}</div>
         {c.tenantSlug && (
-          <div className="text-muted font-mono">{c.tenantSlug}</div>
+          <div className="text-text-muted font-mono">{c.tenantSlug}</div>
         )}
       </td>
       <td className="px-4 py-2 text-xs">
         <div className="font-medium capitalize">{c.name ?? c.provider}</div>
-        <div className="text-muted">
+        <div className="text-text-muted">
           <span className="capitalize">{c.connectorType}</span>
           {c.provider && c.provider !== c.name && (
             <span className="font-mono"> · {c.provider}</span>
           )}
         </div>
       </td>
-      <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+      <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
         <span title={c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : 'never'}>
           {formatRelativeTime(c.lastSyncAt)}
         </span>
       </td>
-      <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">
+      <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
         <span title={c.lastSyncErrorAt ? new Date(c.lastSyncErrorAt).toLocaleString() : 'never'}>
           {formatRelativeTime(c.lastSyncErrorAt)}
         </span>
@@ -1061,7 +1061,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
             <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt)}
           </span>
         ) : (
-          <span className="text-muted">No email yet</span>
+          <span className="text-text-muted">No email yet</span>
         )}
       </td>
       <td className="px-4 py-2 text-xs">
@@ -1071,7 +1071,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
               href={openTenantConnectorsHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-foreground text-xs"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs"
               title="Open the tenant's Connectors page in a new tab"
             >
               <ExternalLink className="h-3 w-3" /> Open tenant connectors
@@ -1083,7 +1083,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
                 refreshMutation.mutate();
               }}
               disabled={refreshing || alerting || !refreshable}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-foreground text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               title={refreshable
                 ? 'Force an OAuth token refresh now'
                 : `${c.provider} does not support OAuth refresh from this panel`}
@@ -1098,7 +1098,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
                 alertMutation.mutate();
               }}
               disabled={refreshing || alerting}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-foreground text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               title="Re-issue the reconnect email to tenant admins (bypasses the 24h throttle)"
             >
               <Send className={`h-3 w-3 ${alerting ? 'animate-pulse' : ''}`} />
@@ -1147,7 +1147,7 @@ function tokenStatusBadgeClasses(status: ConnectorTokenHealthStatus): string {
     case 'needs_reconnect':
       return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
     default:
-      return 'bg-surface-secondary text-muted border border-border';
+      return 'bg-surface-secondary text-text-muted border border-border';
   }
 }
 
@@ -1227,7 +1227,7 @@ function ConnectorTokenHealthPanel({
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <Clock className="h-4 w-4 text-primary" /> OAuth token freshness
-            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-secondary text-foreground border border-border">
+            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-secondary text-text-primary border border-border">
               {rows.length}
             </span>
             {expiringSoonCount > 0 && (
@@ -1241,18 +1241,18 @@ function ConnectorTokenHealthPanel({
               </span>
             )}
           </h3>
-          <p className="text-xs text-muted mt-0.5">
+          <p className="text-xs text-text-muted mt-0.5">
             Last refresh and next expiry per OAuth connector. Tokens expiring within {horizonHours}h are
             flagged; the worker sweeps every ~{cycleMinutes}m and a row badges as "stale" after{' '}
             {staleCycleThreshold} missed cycles.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <label className="text-muted">Filter</label>
+          <label className="text-text-muted">Filter</label>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as TokenHealthFilter)}
-            className="border border-border rounded px-2 py-1 bg-surface text-foreground"
+            className="border border-border rounded px-2 py-1 bg-surface text-text-primary"
           >
             <option value="all">All</option>
             <option value="attention">Needs attention</option>
@@ -1260,11 +1260,11 @@ function ConnectorTokenHealthPanel({
             <option value="stale">Stale only</option>
             <option value="healthy">Healthy only</option>
           </select>
-          <label className="text-muted ml-2">Sort</label>
+          <label className="text-text-muted ml-2">Sort</label>
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as TokenHealthSortKey)}
-            className="border border-border rounded px-2 py-1 bg-surface text-foreground"
+            className="border border-border rounded px-2 py-1 bg-surface text-text-primary"
           >
             <option value="expiring">Expiring soonest</option>
             <option value="lastRefresh">Most recently refreshed</option>
@@ -1273,7 +1273,7 @@ function ConnectorTokenHealthPanel({
         </div>
       </div>
       {sorted.length === 0 ? (
-        <div className="px-4 py-6 text-center text-sm text-muted">
+        <div className="px-4 py-6 text-center text-sm text-text-muted">
           {rows.length === 0
             ? 'No OAuth connectors enabled across tenants yet.'
             : 'No connectors match the current filter.'}
@@ -1283,29 +1283,29 @@ function ConnectorTokenHealthPanel({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2 font-medium text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Connector</th>
-                <th className="text-left px-4 py-2 font-medium text-muted">
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Connector</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">
                   <button
                     type="button"
                     onClick={() => setSortKey('lastRefresh')}
-                    className={`inline-flex items-center gap-1 hover:text-foreground ${sortKey === 'lastRefresh' ? 'text-foreground' : ''}`}
+                    className={`inline-flex items-center gap-1 hover:text-text-primary ${sortKey === 'lastRefresh' ? 'text-text-primary' : ''}`}
                   >
                     Last refresh
                     {sortKey === 'lastRefresh' && <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </th>
-                <th className="text-left px-4 py-2 font-medium text-muted">
+                <th className="text-left px-4 py-2 font-medium text-text-muted">
                   <button
                     type="button"
                     onClick={() => setSortKey('expiring')}
-                    className={`inline-flex items-center gap-1 hover:text-foreground ${sortKey === 'expiring' ? 'text-foreground' : ''}`}
+                    className={`inline-flex items-center gap-1 hover:text-text-primary ${sortKey === 'expiring' ? 'text-text-primary' : ''}`}
                   >
                     Expires
                     {sortKey === 'expiring' && <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </th>
-                <th className="text-left px-4 py-2 font-medium text-muted">Status</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -1314,12 +1314,12 @@ function ConnectorTokenHealthPanel({
                   <td className="px-4 py-2 text-xs">
                     <div className="font-medium">{r.tenantName ?? '—'}</div>
                     {r.tenantSlug && (
-                      <div className="text-muted font-mono">{r.tenantSlug}</div>
+                      <div className="text-text-muted font-mono">{r.tenantSlug}</div>
                     )}
                   </td>
                   <td className="px-4 py-2 text-xs">
                     <div className="font-medium capitalize">{r.name ?? r.provider}</div>
-                    <div className="text-muted">
+                    <div className="text-text-muted">
                       <span className="capitalize">{r.integrationType}</span>
                       {r.provider && r.provider !== r.name && (
                         <span className="font-mono"> · {r.provider}</span>
@@ -1328,13 +1328,13 @@ function ConnectorTokenHealthPanel({
                   </td>
                   <td className="px-4 py-2 text-xs whitespace-nowrap">
                     <div
-                      className="text-muted"
+                      className="text-text-muted"
                       title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : 'never'}
                     >
                       {formatRelativeTime(r.tokenIssuedAt)}
                     </div>
                     {r.cyclesSinceRefresh !== null && r.cyclesSinceRefresh > 0 && (
-                      <div className="text-muted text-[10px] mt-0.5">
+                      <div className="text-text-muted text-[10px] mt-0.5">
                         {r.cyclesSinceRefresh} cycle{r.cyclesSinceRefresh === 1 ? '' : 's'} since refresh
                       </div>
                     )}
@@ -1346,14 +1346,14 @@ function ConnectorTokenHealthPanel({
                           ? 'text-red-600 dark:text-red-400'
                           : r.expiresInMs !== null && r.expiresInMs <= expiringHorizonMs
                             ? 'text-amber-700 dark:text-amber-300'
-                            : 'text-muted'
+                            : 'text-text-muted'
                       }
                       title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : 'unknown'}
                     >
                       {formatExpiresIn(r.expiresInMs)}
                     </div>
                     {r.tokenExpiresAt && (
-                      <div className="text-muted text-[10px] mt-0.5">
+                      <div className="text-text-muted text-[10px] mt-0.5">
                         {new Date(r.tokenExpiresAt).toLocaleString(undefined, {
                           month: 'short',
                           day: 'numeric',
@@ -1483,7 +1483,7 @@ function CallEventsRetentionPanel() {
 
   if (isLoading) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-muted">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
         Loading call event retention status...
       </div>
     );
@@ -1520,7 +1520,7 @@ function CallEventsRetentionPanel() {
             <h2 className="font-semibold flex items-center gap-2">
               <Database className="h-4 w-4" /> {headerLabel}
             </h2>
-            <p className="text-xs text-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               Daily worker keeps the partitioned <code className="font-mono">call_events</code> table inside its{' '}
               {data.retentionDays}-day retention window and pre-creates next month's partition.
             </p>
@@ -1536,7 +1536,7 @@ function CallEventsRetentionPanel() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground disabled:opacity-50 flex-shrink-0"
+          className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50 flex-shrink-0"
           title="Refresh"
         >
           <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
@@ -1580,22 +1580,22 @@ function CallEventsRetentionPanel() {
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-semibold text-sm">Current partitions</h3>
-          <span className="text-xs text-muted">{partitions.length} total</span>
+          <span className="text-xs text-text-muted">{partitions.length} total</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Partition</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Range start</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Range end (exclusive)</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Role</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Partition</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Range start</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Range end (exclusive)</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Role</th>
               </tr>
             </thead>
             <tbody>
               {partitions.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-muted">
+                  <td colSpan={4} className="text-center py-8 text-text-muted">
                     No partitions found. The scheduler may not have run yet.
                   </td>
                 </tr>
@@ -1610,8 +1610,8 @@ function CallEventsRetentionPanel() {
                   return (
                     <tr key={p.name} className="border-b border-border last:border-0">
                       <td className="px-4 py-2.5 font-mono text-xs">{p.name}</td>
-                      <td className="px-4 py-2.5 text-muted">{formatPartitionDate(p.lower_bound)}</td>
-                      <td className="px-4 py-2.5 text-muted">{formatPartitionDate(p.upper_bound)}</td>
+                      <td className="px-4 py-2.5 text-text-muted">{formatPartitionDate(p.lower_bound)}</td>
+                      <td className="px-4 py-2.5 text-text-muted">{formatPartitionDate(p.upper_bound)}</td>
                       <td className="px-4 py-2.5">
                         {role && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
@@ -1631,23 +1631,23 @@ function CallEventsRetentionPanel() {
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-semibold text-sm">Recent retention cycles</h3>
-          <span className="text-xs text-muted">Showing last {recentRuns.length}</span>
+          <span className="text-xs text-text-muted">Showing last {recentRuns.length}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Started</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Status</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Ensured</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Dropped</th>
-                <th className="text-left px-4 py-2.5 font-medium text-muted">Notes</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Started</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Ensured</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Dropped</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Notes</th>
               </tr>
             </thead>
             <tbody>
               {recentRuns.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-muted">
+                  <td colSpan={5} className="text-center py-8 text-text-muted">
                     No retention cycles have been recorded yet.
                   </td>
                 </tr>
@@ -1656,7 +1656,7 @@ function CallEventsRetentionPanel() {
                   <tr key={run.id} className="border-b border-border last:border-0 align-top">
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <div>{formatRunTimestamp(run.started_at)}</div>
-                      <div className="text-xs text-muted">{formatRelativeAge(run.started_at)}</div>
+                      <div className="text-xs text-text-muted">{formatRelativeAge(run.started_at)}</div>
                     </td>
                     <td className="px-4 py-2.5">
                       {run.status === 'success' ? (
@@ -1671,7 +1671,7 @@ function CallEventsRetentionPanel() {
                     </td>
                     <td className="px-4 py-2.5">
                       {run.ensured_partitions.length === 0 ? (
-                        <span className="text-muted">—</span>
+                        <span className="text-text-muted">—</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {run.ensured_partitions.map((p) => (
@@ -1687,7 +1687,7 @@ function CallEventsRetentionPanel() {
                     </td>
                     <td className="px-4 py-2.5">
                       {run.dropped_partitions.length === 0 ? (
-                        <span className="text-muted">—</span>
+                        <span className="text-text-muted">—</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {run.dropped_partitions.map((p) => (
@@ -1705,7 +1705,7 @@ function CallEventsRetentionPanel() {
                       {run.error_message ? (
                         <span className="text-red-600 dark:text-red-400 break-words">{run.error_message}</span>
                       ) : (
-                        <span className="text-muted">{run.retention_days}d window</span>
+                        <span className="text-text-muted">{run.retention_days}d window</span>
                       )}
                     </td>
                   </tr>
@@ -1750,7 +1750,7 @@ function IntegrationsStatusPanel() {
 
   if (isLoading) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-muted">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
         Loading integration status...
       </div>
     );
@@ -1776,13 +1776,13 @@ function IntegrationsStatusPanel() {
           <h2 className="font-semibold flex items-center gap-2">
             <Plug className="h-4 w-4 text-primary" /> OAuth Integration Credentials
           </h2>
-          <p className="text-xs text-muted mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Server-side check of <code className="font-mono">*_CLIENT_ID</code> /{' '}
             <code className="font-mono">*_CLIENT_SECRET</code> environment variables. No secret values are shown — only whether they are set.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-sm text-muted">
+          <div className="text-sm text-text-muted">
             <span className="font-semibold text-green-600 dark:text-green-400">{data.summary.configured}</span>
             {' / '}
             {data.summary.total} configured
@@ -1790,7 +1790,7 @@ function IntegrationsStatusPanel() {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground disabled:opacity-50"
+            className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
             title="Refresh"
           >
             <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
@@ -1815,7 +1815,7 @@ function IntegrationsStatusPanel() {
       {Object.entries(grouped).map(([category, providers]) => (
         <div key={category} className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-2 bg-surface-secondary/50 border-b border-border">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">{category}</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">{category}</h3>
           </div>
           <div className="divide-y divide-border">
             {providers.map((p) => (
@@ -1853,14 +1853,14 @@ function IntegrationsStatusPanel() {
                   </div>
                   {p.optionalEnv.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5 items-center">
-                      <span className="text-xs text-muted">Optional:</span>
+                      <span className="text-xs text-text-muted">Optional:</span>
                       {p.optionalEnv.map((env) => (
                         <code
                           key={env.name}
                           className={`text-xs font-mono px-2 py-0.5 rounded border ${
                             env.set
                               ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
-                              : 'bg-surface-hover text-muted border-border'
+                              : 'bg-surface-hover text-text-muted border-border'
                           }`}
                           title={env.set ? 'Set in environment' : 'Not set (uses default)'}
                         >
@@ -2097,20 +2097,20 @@ export default function PlatformAdmin() {
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
                   <th className="w-8 px-2"></th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Tenant</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Users</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Calls (30d)</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Last Activity</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Users</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Calls (30d)</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Last Activity</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {tenantsLoading ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-muted">Loading...</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-text-muted">Loading...</td></tr>
                 ) : !tenantsData?.tenants.length ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-muted">No tenants found</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-text-muted">No tenants found</td></tr>
                 ) : (
                   tenantsData.tenants.map((tenant) => (
                     <Fragment key={tenant.id}>
@@ -2121,26 +2121,26 @@ export default function PlatformAdmin() {
                             className="p-1 rounded hover:bg-surface-secondary"
                           >
                             {expandedTenant === tenant.id
-                              ? <ChevronDown className="h-4 w-4 text-muted" />
-                              : <ChevronRight className="h-4 w-4 text-muted" />}
+                              ? <ChevronDown className="h-4 w-4 text-text-muted" />
+                              : <ChevronRight className="h-4 w-4 text-text-muted" />}
                           </button>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium">{tenant.name}</div>
-                          <div className="text-xs text-muted font-mono">{tenant.slug}</div>
+                          <div className="text-xs text-text-muted font-mono">{tenant.slug}</div>
                         </td>
                         <td className="px-4 py-3"><StatusBadge status={tenant.status} /></td>
                         <td className="px-4 py-3"><PlanBadge plan={tenant.plan} /></td>
-                        <td className="px-4 py-3 text-muted">{tenant.user_count}</td>
-                        <td className="px-4 py-3 text-muted">{tenant.calls_last_30d}</td>
-                        <td className="px-4 py-3 text-muted whitespace-nowrap">
+                        <td className="px-4 py-3 text-text-muted">{tenant.user_count}</td>
+                        <td className="px-4 py-3 text-text-muted">{tenant.calls_last_30d}</td>
+                        <td className="px-4 py-3 text-text-muted whitespace-nowrap">
                           {tenant.last_call_at ? new Date(tenant.last_call_at).toLocaleDateString() : 'Never'}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
-                              className="p-1.5 rounded hover:bg-surface-secondary text-muted hover:text-foreground"
+                              className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
                               title="View details"
                             >
                               <Eye className="h-4 w-4" />
@@ -2152,7 +2152,7 @@ export default function PlatformAdmin() {
                                     statusMutation.mutate({ id: tenant.id, status: 'suspended' });
                                   }
                                 }}
-                                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-muted hover:text-red-600"
+                                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-text-muted hover:text-red-600"
                                 title="Suspend tenant"
                               >
                                 <Ban className="h-4 w-4" />
@@ -2164,7 +2164,7 @@ export default function PlatformAdmin() {
                                     statusMutation.mutate({ id: tenant.id, status: 'active' });
                                   }
                                 }}
-                                className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-muted hover:text-green-600"
+                                className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-text-muted hover:text-green-600"
                                 title="Reactivate tenant"
                               >
                                 <CheckCircle className="h-4 w-4" />
@@ -2193,24 +2193,24 @@ export default function PlatformAdmin() {
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
             <h2 className="font-semibold">Template Version Management</h2>
-            <p className="text-xs text-muted mt-0.5">Create, validate, publish, and deprecate template versions</p>
+            <p className="text-xs text-text-muted mt-0.5">Create, validate, publish, and deprecate template versions</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
                   <th className="w-8 px-2"></th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Template</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Slug</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Current Version</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Template</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Slug</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Current Version</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {templatesLoading ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-muted">Loading templates...</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">Loading templates...</td></tr>
                 ) : !templatesData?.templates.length ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-muted">No templates found</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">No templates found</td></tr>
                 ) : (
                   templatesData.templates.map((t) => (
                     <Fragment key={t.id}>
@@ -2219,12 +2219,12 @@ export default function PlatformAdmin() {
                         <td className="px-2">
                           <button aria-label={expandedTemplate === t.id ? 'Collapse template' : 'Expand template'} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
                             {expandedTemplate === t.id
-                              ? <ChevronDown className="h-4 w-4 text-muted" />
-                              : <ChevronRight className="h-4 w-4 text-muted" />}
+                              ? <ChevronDown className="h-4 w-4 text-text-muted" />
+                              : <ChevronRight className="h-4 w-4 text-text-muted" />}
                           </button>
                         </td>
                         <td className="px-4 py-3 font-medium">{t.displayName}</td>
-                        <td className="px-4 py-3 text-muted font-mono text-xs">{t.slug}</td>
+                        <td className="px-4 py-3 text-text-muted font-mono text-xs">{t.slug}</td>
                         <td className="px-4 py-3 font-mono text-sm">v{t.currentVersion}</td>
                         <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                       </tr>
@@ -2323,10 +2323,10 @@ function DocsFeedbackTab() {
         <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 className="font-semibold">Article Helpfulness</h2>
-            <p className="text-xs text-muted mt-0.5">Reader votes from the &ldquo;Was this helpful?&rdquo; widget across help articles</p>
+            <p className="text-xs text-text-muted mt-0.5">Reader votes from the &ldquo;Was this helpful?&rdquo; widget across help articles</p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-muted">Sort</label>
+            <label className="text-xs text-text-muted">Sort</label>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as DocsFeedbackSort)}
@@ -2343,25 +2343,25 @@ function DocsFeedbackTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Article</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Helpfulness</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Helpful</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Not helpful</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Comments</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Last vote</th>
-                <th className="text-right px-4 py-3 font-medium text-muted">Actions</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Article</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Helpfulness</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Helpful</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Not helpful</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Comments</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Last vote</th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
               {summaryLoading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-muted">Loading feedback...</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-text-muted">Loading feedback...</td></tr>
               ) : articles.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-12 text-muted">No feedback collected yet</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-text-muted">No feedback collected yet</td></tr>
               ) : (
                 articles.map((a) => {
                   const ratio = a.helpful_ratio;
                   const ratioColor =
-                    ratio === null ? 'text-muted'
+                    ratio === null ? 'text-text-muted'
                       : ratio >= 75 ? 'text-green-600'
                       : ratio >= 50 ? 'text-yellow-600'
                       : 'text-red-600';
@@ -2370,7 +2370,7 @@ function DocsFeedbackTab() {
                       <td className="px-4 py-3 font-mono text-xs">{a.article_slug}</td>
                       <td className={`px-4 py-3 font-semibold ${ratioColor}`}>
                         {ratio === null ? '—' : `${ratio}%`}
-                        <span className="text-muted font-normal ml-1">({a.total_votes})</span>
+                        <span className="text-text-muted font-normal ml-1">({a.total_votes})</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1 text-green-600">
@@ -2384,11 +2384,11 @@ function DocsFeedbackTab() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
-                          <span className="inline-flex items-center gap-1 text-muted">
+                          <span className="inline-flex items-center gap-1 text-text-muted">
                             <MessageSquare className="h-3.5 w-3.5" /> {a.comment_count}
                           </span>
                           {a.comment_count > 0 && (
-                            <span className="text-xs text-muted">
+                            <span className="text-xs text-text-muted">
                               {a.new_comment_count} new · {a.resolved_comment_count} resolved · {a.hidden_comment_count} hidden
                             </span>
                           )}
@@ -2408,7 +2408,7 @@ function DocsFeedbackTab() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-muted whitespace-nowrap">
+                      <td className="px-4 py-3 text-text-muted whitespace-nowrap">
                         {a.last_vote_at ? new Date(a.last_vote_at).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -2434,14 +2434,14 @@ function DocsFeedbackTab() {
             <h2 className="font-semibold">
               {selectedSlug ? `Comments for ${selectedSlug}` : 'Recent Comments'}
             </h2>
-            <p className="text-xs text-muted mt-0.5">
+            <p className="text-xs text-text-muted mt-0.5">
               {selectedSlug
                 ? 'Showing comments only for the selected article'
                 : 'Most recent reader comments across all articles'}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-muted">Reply state</label>
+            <label className="text-xs text-text-muted">Reply state</label>
             <select
               value={replyStateFilter}
               onChange={(e) => setReplyStateFilter(e.target.value as DocsFeedbackReplyStateFilter)}
@@ -2458,7 +2458,7 @@ function DocsFeedbackTab() {
               <option value="failed">Failed replies only</option>
               <option value="hard_bounce">Hard-bounced only</option>
             </select>
-            <label className="text-xs text-muted">Status</label>
+            <label className="text-xs text-text-muted">Status</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as DocsFeedbackStatusFilter)}
@@ -2475,9 +2475,9 @@ function DocsFeedbackTab() {
         </div>
         <div className="divide-y divide-border">
           {commentsLoading ? (
-            <div className="text-center py-12 text-muted">Loading comments...</div>
+            <div className="text-center py-12 text-text-muted">Loading comments...</div>
           ) : comments.length === 0 ? (
-            <div className="text-center py-12 text-muted">No comments to show</div>
+            <div className="text-center py-12 text-text-muted">No comments to show</div>
           ) : (
             comments.map((c) => (
               <DocsFeedbackCommentRow
@@ -2726,7 +2726,7 @@ function DocsFeedbackCommentRow({
           )}
         </div>
       )}
-      <div className="flex items-center gap-2 text-xs text-muted mb-1 flex-wrap">
+      <div className="flex items-center gap-2 text-xs text-text-muted mb-1 flex-wrap">
         {c.vote === 'helpful' ? (
           <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
         ) : (
@@ -2736,7 +2736,7 @@ function DocsFeedbackCommentRow({
           {c.status}
         </span>
         <span className="font-mono">{c.article_slug}</span>
-        {c.page_path && <span className="text-muted">· {c.page_path}</span>}
+        {c.page_path && <span className="text-text-muted">· {c.page_path}</span>}
         {c.reply_count > 0 && (
           <span className="inline-flex items-center gap-1 text-teal-700">
             <Mail className="h-3 w-3" /> {c.reply_count} repl{c.reply_count === 1 ? 'y' : 'ies'}
@@ -2746,7 +2746,7 @@ function DocsFeedbackCommentRow({
       </div>
       <div className="text-sm whitespace-pre-wrap">{c.comment}</div>
       {c.reply_email && (
-        <div className="mt-1 text-xs text-muted inline-flex items-center gap-1">
+        <div className="mt-1 text-xs text-text-muted inline-flex items-center gap-1">
           <Mail className="h-3 w-3" />
           <a href={`mailto:${c.reply_email}`} className="text-teal-700 hover:underline">{c.reply_email}</a>
         </div>
@@ -2809,7 +2809,7 @@ function DocsFeedbackCommentRow({
           </button>
         )}
         {c.status_updated_by && c.status_updated_at && (
-          <span className="text-muted ml-auto">
+          <span className="text-text-muted ml-auto">
             {c.status} by {c.status_updated_by} · {new Date(c.status_updated_at).toLocaleString()}
           </span>
         )}
@@ -2819,7 +2819,7 @@ function DocsFeedbackCommentRow({
 
       {showReply && c.reply_email && (
         <div className="mt-3 border border-teal-200 rounded-lg bg-teal-50/30 p-3 space-y-2">
-          <div className="text-xs text-muted">
+          <div className="text-xs text-text-muted">
             Reply will be sent from your support address to <span className="font-mono">{c.reply_email}</span>.
           </div>
           <input
@@ -2836,7 +2836,7 @@ function DocsFeedbackCommentRow({
             placeholder="Write your reply..."
             className="w-full px-2 py-1.5 rounded border border-border text-sm bg-surface"
           />
-          <label className="flex items-center gap-2 text-xs text-muted">
+          <label className="flex items-center gap-2 text-xs text-text-muted">
             <input
               type="checkbox"
               checked={markResolved}
@@ -2874,9 +2874,9 @@ function DocsFeedbackCommentRow({
       {showHistory && (
         <div className="mt-3 border border-border rounded-lg bg-surface-secondary/30 p-3 space-y-2">
           {repliesLoading ? (
-            <div className="text-xs text-muted">Loading replies...</div>
+            <div className="text-xs text-text-muted">Loading replies...</div>
           ) : replies.length === 0 ? (
-            <div className="text-xs text-muted">No replies yet.</div>
+            <div className="text-xs text-text-muted">No replies yet.</div>
           ) : (
             groupDocsFeedbackReplyChains(replies).map((chain) => {
               const r = chain.root;
@@ -2886,7 +2886,7 @@ function DocsFeedbackCommentRow({
                   key={r.id}
                   className="text-xs border border-border rounded p-2 bg-surface"
                 >
-                  <div className="flex items-center gap-2 text-muted mb-1 flex-wrap">
+                  <div className="flex items-center gap-2 text-text-muted mb-1 flex-wrap">
                     <span>{new Date(r.created_at).toLocaleString()}</span>
                     <span>· from {r.sent_by ?? 'admin'}</span>
                     <span>· to {r.to_email}</span>
@@ -2934,7 +2934,7 @@ function DocsFeedbackCommentRow({
                       {chain.retries.map((retry, idx) => (
                         <div
                           key={retry.id}
-                          className="flex items-center gap-2 text-muted flex-wrap"
+                          className="flex items-center gap-2 text-text-muted flex-wrap"
                         >
                           <span
                             className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
@@ -3139,7 +3139,7 @@ function SupportInboxTab() {
               className={`px-3 py-1.5 text-sm rounded-lg border ${
                 statusFilter === s
                   ? 'bg-primary text-white border-primary'
-                  : 'bg-surface border-border text-muted hover:text-foreground'
+                  : 'bg-surface border-border text-text-muted hover:text-text-primary'
               }`}
             >
               {s.replace('_', ' ')}
@@ -3147,7 +3147,7 @@ function SupportInboxTab() {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+          <label className="inline-flex items-center gap-1.5 text-xs text-text-muted">
             <input
               type="checkbox"
               checked={hardBounceOnly}
@@ -3164,11 +3164,11 @@ function SupportInboxTab() {
                   count) or when the hard-bounce filter is already on (the
                   user is explicitly asking for the global subset). */}
               {hardBounceCount > 0 && (statusFilter === 'all' || hardBounceOnly) && (
-                <span className="ml-1 text-muted font-normal">({hardBounceCount})</span>
+                <span className="ml-1 text-text-muted font-normal">({hardBounceCount})</span>
               )}
             </span>
           </label>
-          <div className="text-xs text-muted">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</div>
+          <div className="text-xs text-text-muted">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</div>
         </div>
       </div>
 
@@ -3187,21 +3187,21 @@ function SupportInboxTab() {
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
               <th className="w-8 px-2"></th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Ticket</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">From</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Topic</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Routed To</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Created</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Ticket</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">From</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Topic</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Routed To</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Created</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} className="text-center py-12 text-muted">Loading tickets...</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-text-muted">Loading tickets...</td></tr>
             ) : tickets.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-12 text-muted">No tickets found</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-text-muted">No tickets found</td></tr>
             ) : (
               tickets.map((t) => (
                 <Fragment key={t.id}>
@@ -3212,8 +3212,8 @@ function SupportInboxTab() {
                         className="p-1 rounded hover:bg-surface-secondary"
                       >
                         {expandedId === t.id
-                          ? <ChevronDown className="h-4 w-4 text-muted" />
-                          : <ChevronRight className="h-4 w-4 text-muted" />}
+                          ? <ChevronDown className="h-4 w-4 text-text-muted" />
+                          : <ChevronRight className="h-4 w-4 text-text-muted" />}
                       </button>
                     </td>
                     <td className="px-4 py-3">
@@ -3240,11 +3240,11 @@ function SupportInboxTab() {
                     </td>
                     <td className="px-4 py-3">
                       <div>{t.user_email ?? '—'}</div>
-                      <div className="text-xs text-muted">{t.tenant_name ?? t.tenant_id ?? '—'}</div>
+                      <div className="text-xs text-text-muted">{t.tenant_name ?? t.tenant_id ?? '—'}</div>
                     </td>
                     <td className="px-4 py-3">{t.topic}</td>
                     <td className="px-4 py-3"><PlanBadge plan={t.plan ?? 'trial'} /></td>
-                    <td className="px-4 py-3 text-muted text-xs">{t.routed_to}</td>
+                    <td className="px-4 py-3 text-text-muted text-xs">{t.routed_to}</td>
                     <td className="px-4 py-3">
                       <select
                         value={t.status}
@@ -3257,7 +3257,7 @@ function SupportInboxTab() {
                         <option value="closed">closed</option>
                       </select>
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs">{new Date(t.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-text-muted text-xs">{new Date(t.created_at).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       {t.user_email && (
                         <button
@@ -3509,20 +3509,20 @@ function BouncedRecipientsPanel({
       >
         <div className="flex items-center gap-2 text-left">
           {expanded
-            ? <ChevronDown className="h-4 w-4 text-muted" />
-            : <ChevronRight className="h-4 w-4 text-muted" />}
+            ? <ChevronDown className="h-4 w-4 text-text-muted" />
+            : <ChevronRight className="h-4 w-4 text-text-muted" />}
           <ShieldAlert className="h-4 w-4 text-red-600" />
           <div>
             <div className="text-sm font-medium">
               Bounced recipients
-              <span className="ml-2 text-xs text-muted font-normal">
+              <span className="ml-2 text-xs text-text-muted font-normal">
                 {isLoading
                   ? 'loading…'
                   : `${total} address${total === 1 ? '' : 'es'} with permanent SMTP failures`}
                 {truncated && ' (showing first 200)'}
               </span>
             </div>
-            <div className="text-xs text-muted mt-0.5">
+            <div className="text-xs text-text-muted mt-0.5">
               Addresses that have produced at least one hard bounce on an outbound reply.
               Use this list to clean records, contact users via another channel, or suspend
               tickets that can&rsquo;t be answered by email.
@@ -3535,18 +3535,18 @@ function BouncedRecipientsPanel({
           <thead>
             <tr className="border-b border-border bg-surface">
               <th className="w-8 px-2"></th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Recipient</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Failures</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Tickets</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Last failure</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Alerted</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Most recent error</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Suppression</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Recipient</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Failures</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Tickets</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Last failure</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Alerted</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Most recent error</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Suppression</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-8 text-muted">Loading…</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-text-muted">Loading…</td></tr>
             ) : (
               recipients.map((r) => {
                 const key = r.user_email.toLowerCase();
@@ -3571,8 +3571,8 @@ function BouncedRecipientsPanel({
                         aria-label={openEmails.has(r.user_email) ? 'Collapse tickets' : 'Expand tickets'}
                       >
                         {openEmails.has(r.user_email)
-                          ? <ChevronDown className="h-4 w-4 text-muted" />
-                          : <ChevronRight className="h-4 w-4 text-muted" />}
+                          ? <ChevronDown className="h-4 w-4 text-text-muted" />
+                          : <ChevronRight className="h-4 w-4 text-text-muted" />}
                       </button>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">
@@ -3589,10 +3589,10 @@ function BouncedRecipientsPanel({
                         {r.occurrence_count}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-xs text-text-muted">
                       {r.ticket_count} ticket{r.ticket_count === 1 ? '' : 's'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-xs text-text-muted">
                       {new Date(r.last_failure_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-xs">
@@ -3622,7 +3622,7 @@ function BouncedRecipientsPanel({
                           </button>
                         </div>
                       ) : (
-                        <span className="text-muted">—</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs text-red-700 max-w-md truncate" title={r.last_error}>
@@ -3705,12 +3705,12 @@ function BouncedRecipientsPanel({
                   {openEmails.has(r.user_email) && (
                     <tr className="bg-surface-secondary/30">
                       <td colSpan={7} className="px-6 py-3">
-                        <div className="text-xs text-muted mb-2">
+                        <div className="text-xs text-text-muted mb-2">
                           Affected tickets (newest failure first):
                         </div>
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="text-muted">
+                            <tr className="text-text-muted">
                               <th className="text-left py-1 font-medium">Ticket</th>
                               <th className="text-left py-1 font-medium">Status</th>
                               <th className="text-left py-1 font-medium">Failures</th>
@@ -3725,7 +3725,7 @@ function BouncedRecipientsPanel({
                                 <td className="py-1.5 pr-3 font-mono">{tk.ticket_id}</td>
                                 <td className="py-1.5 pr-3">{tk.ticket_status}</td>
                                 <td className="py-1.5 pr-3">{tk.occurrence_count}</td>
-                                <td className="py-1.5 pr-3 text-muted">
+                                <td className="py-1.5 pr-3 text-text-muted">
                                   {new Date(tk.last_failure_at).toLocaleString()}
                                 </td>
                                 <td
@@ -3864,17 +3864,17 @@ function UnsubscribedAddressesPanel() {
       >
         <div className="flex items-center gap-2 text-left">
           {expanded
-            ? <ChevronDown className="h-4 w-4 text-muted" />
-            : <ChevronRight className="h-4 w-4 text-muted" />}
+            ? <ChevronDown className="h-4 w-4 text-text-muted" />
+            : <ChevronRight className="h-4 w-4 text-text-muted" />}
           <MailX className="h-4 w-4 text-amber-600" />
           <div>
             <div className="text-sm font-medium">
               Unsubscribed addresses
-              <span className="ml-2 text-xs text-muted font-normal">
+              <span className="ml-2 text-xs text-text-muted font-normal">
                 {summaryParts.join(' · ')}
               </span>
             </div>
-            <div className="text-xs text-muted mt-0.5">
+            <div className="text-xs text-text-muted mt-0.5">
               Recipients who clicked the unsubscribe link or sent a one-click
               opt-out header. Outbound support replies skip these addresses
               automatically.
@@ -3896,16 +3896,16 @@ function UnsubscribedAddressesPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface">
-                <th className="text-left px-4 py-3 font-medium text-muted">Address</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Source</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Unsubscribed at</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Address</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Source</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Unsubscribed at</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={3} className="text-center py-8 text-muted">Loading…</td></tr>
+                <tr><td colSpan={3} className="text-center py-8 text-text-muted">Loading…</td></tr>
               ) : filteredUnsubs.length === 0 ? (
-                <tr><td colSpan={3} className="text-center py-8 text-muted">No matching addresses</td></tr>
+                <tr><td colSpan={3} className="text-center py-8 text-text-muted">No matching addresses</td></tr>
               ) : (
                 filteredUnsubs.map((u) => (
                   <tr
@@ -3913,10 +3913,10 @@ function UnsubscribedAddressesPanel() {
                     className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
                   >
                     <td className="px-4 py-3 font-mono text-xs">{u.email_lower}</td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-xs text-text-muted">
                       {u.source ?? '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-xs text-text-muted">
                       {new Date(u.unsubscribed_at).toLocaleString()}
                     </td>
                   </tr>
@@ -3934,10 +3934,10 @@ function UnsubscribedAddressesPanel() {
           {recentResubscribes.length > 0 && (
             <div>
               <div className="px-4 py-3 border-y border-border bg-surface-secondary/40">
-                <div className="text-xs font-medium text-muted">
+                <div className="text-xs font-medium text-text-muted">
                   Recently resubscribed (last {resubscribeWindowDays} days)
                 </div>
-                <div className="text-[11px] text-muted mt-0.5">
+                <div className="text-[11px] text-text-muted mt-0.5">
                   Addresses that came off the opt-out list. Useful for
                   sanity-checking "I thought I asked to stop" complaints.
                 </div>
@@ -3945,15 +3945,15 @@ function UnsubscribedAddressesPanel() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface">
-                    <th className="text-left px-4 py-3 font-medium text-muted">Address</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted">Resubscribed via</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted">Resubscribed at</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted">Originally opted out</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">Address</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">Resubscribed via</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">Resubscribed at</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">Originally opted out</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredResubs.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-6 text-muted">No matching resubscribes</td></tr>
+                    <tr><td colSpan={4} className="text-center py-6 text-text-muted">No matching resubscribes</td></tr>
                   ) : (
                     filteredResubs.map((r) => (
                       <tr
@@ -3961,13 +3961,13 @@ function UnsubscribedAddressesPanel() {
                         className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
                       >
                         <td className="px-4 py-3 font-mono text-xs">{r.email_lower}</td>
-                        <td className="px-4 py-3 text-xs text-muted">
+                        <td className="px-4 py-3 text-xs text-text-muted">
                           {r.resubscribed_source ?? '—'}
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted">
+                        <td className="px-4 py-3 text-xs text-text-muted">
                           {new Date(r.resubscribed_at).toLocaleString()}
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted">
+                        <td className="px-4 py-3 text-xs text-text-muted">
                           {r.previous_unsubscribed_at
                             ? (
                               <>
@@ -4205,9 +4205,9 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div className="space-y-3">
         <div>
-          <div className="text-xs font-medium text-muted mb-1">Original message</div>
+          <div className="text-xs font-medium text-text-muted mb-1">Original message</div>
           <pre className="whitespace-pre-wrap text-sm bg-surface p-3 rounded border border-border">{ticket.message}</pre>
-          <div className="text-xs text-muted mt-1 flex items-center gap-2 flex-wrap">
+          <div className="text-xs text-text-muted mt-1 flex items-center gap-2 flex-wrap">
             <span>
               {ticket.user_email ?? '—'} · {new Date(ticket.created_at).toLocaleString()}
             </span>
@@ -4287,13 +4287,13 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         </div>
         {ticket.recent_errors && (
           <div>
-            <div className="text-xs font-medium text-muted mb-1">Recent errors</div>
+            <div className="text-xs font-medium text-text-muted mb-1">Recent errors</div>
             <pre className="whitespace-pre-wrap text-xs bg-red-50 dark:bg-red-950/20 p-3 rounded border border-border font-mono">{ticket.recent_errors}</pre>
           </div>
         )}
         {ticket.context && Object.keys(ticket.context).length > 0 && (
           <div>
-            <div className="text-xs font-medium text-muted mb-1">Context</div>
+            <div className="text-xs font-medium text-text-muted mb-1">Context</div>
             <pre className="text-xs bg-surface p-3 rounded border border-border font-mono">{JSON.stringify(ticket.context, null, 2)}</pre>
           </div>
         )}
@@ -4319,19 +4319,19 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
       </div>
 
       <div className="space-y-3">
-        <div className="text-xs font-medium text-muted">Conversation</div>
+        <div className="text-xs font-medium text-text-muted">Conversation</div>
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {isLoading ? (
-            <div className="text-xs text-muted">Loading replies…</div>
+            <div className="text-xs text-text-muted">Loading replies…</div>
           ) : replies.length === 0 ? (
-            <div className="text-xs text-muted italic">No replies yet.</div>
+            <div className="text-xs text-text-muted italic">No replies yet.</div>
           ) : (
             replies.map((r) => {
               if (r.direction === 'system') {
                 return (
                   <div
                     key={r.id}
-                    className="text-xs text-muted italic text-center py-1.5 px-3 border-y border-dashed border-border"
+                    className="text-xs text-text-muted italic text-center py-1.5 px-3 border-y border-dashed border-border"
                   >
                     {r.body} · {new Date(r.created_at).toLocaleString()}
                   </div>
@@ -4391,7 +4391,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 } else {
                   badge = {
                     label: 'Logged (dev)',
-                    className: 'bg-muted/30 text-muted border-border',
+                    className: 'bg-muted/30 text-text-muted border-border',
                     title: 'No SMTP delivery — reply was logged to the server console (development mode).',
                   };
                 }
@@ -4437,9 +4437,9 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                       : 'bg-surface border-border'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs text-muted mb-1 gap-2">
+                  <div className="flex items-center justify-between text-xs text-text-muted mb-1 gap-2">
                     <span className="flex items-center gap-2 min-w-0 flex-wrap">
-                      <strong className="text-foreground">
+                      <strong className="text-text-primary">
                         {isOutbound ? 'Support' : 'Customer'}
                       </strong>
                       {r.author_email ? <span className="truncate">· {r.author_email}</span> : null}
@@ -4482,7 +4482,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           onClick={() => cancelRetries.mutate(r.id)}
                           disabled={cancellingReplyId === r.id && cancelRetries.isPending}
                           title="Stop the background scheduler from auto-retrying this reply. Use after you've already replied to the customer through another channel."
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-surface text-muted text-[11px] font-medium hover:bg-surface-secondary disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-surface text-text-muted text-[11px] font-medium hover:bg-surface-secondary disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           Stop auto-retries
                         </button>
@@ -4525,7 +4525,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         </div>
 
         <div className="space-y-2 pt-2 border-t border-border">
-          <label className="text-xs font-medium text-muted">
+          <label className="text-xs font-medium text-text-muted">
             Reply to {ticket.user_email ?? 'customer'}
           </label>
           <textarea
@@ -4536,7 +4536,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
             className="w-full text-sm rounded-lg border border-border bg-surface p-3 focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-xs text-muted">
+            <div className="text-xs text-text-muted">
               Sent via the same SMTP path. Customer replies thread back automatically.
             </div>
             <div className="flex items-center gap-2">
@@ -4579,8 +4579,8 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
 }
 
 function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitoringData } | undefined; loading: boolean }) {
-  if (loading) return <div className="text-center py-12 text-muted">Loading cost data...</div>;
-  if (!data) return <div className="text-center py-12 text-muted">No data available</div>;
+  if (loading) return <div className="text-center py-12 text-text-muted">Loading cost data...</div>;
+  if (!data) return <div className="text-center py-12 text-text-muted">No data available</div>;
 
   const m = data.monitoring;
 
@@ -4589,35 +4589,35 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Activity className="h-4 w-4 text-muted" />
-            <span className="text-sm text-muted">Daily Call Minutes</span>
+            <Activity className="h-4 w-4 text-text-muted" />
+            <span className="text-sm text-text-muted">Daily Call Minutes</span>
           </div>
           <div className="text-2xl font-bold">{m.daily.callMinutes.toLocaleString()}</div>
-          <div className="text-xs text-muted mt-1">{m.daily.callCount} calls today</div>
+          <div className="text-xs text-text-muted mt-1">{m.daily.callCount} calls today</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="h-4 w-4 text-muted" />
-            <span className="text-sm text-muted">Daily AI Cost</span>
+            <DollarSign className="h-4 w-4 text-text-muted" />
+            <span className="text-sm text-text-muted">Daily AI Cost</span>
           </div>
           <div className="text-2xl font-bold">{formatCents(String(m.daily.aiCostCents))}</div>
-          <div className="text-xs text-muted mt-1">{formatCents(String(m.daily.totalCostCents))} total cost</div>
+          <div className="text-xs text-text-muted mt-1">{formatCents(String(m.daily.totalCostCents))} total cost</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <PhoneCall className="h-4 w-4 text-muted" />
-            <span className="text-sm text-muted">Daily Twilio Spend</span>
+            <PhoneCall className="h-4 w-4 text-text-muted" />
+            <span className="text-sm text-text-muted">Daily Twilio Spend</span>
           </div>
           <div className="text-2xl font-bold">{formatCents(String(m.daily.twilioCostCents))}</div>
-          <div className="text-xs text-muted mt-1">SMS: {formatCents(String(m.daily.smsCostCents))}</div>
+          <div className="text-xs text-text-muted mt-1">SMS: {formatCents(String(m.daily.smsCostCents))}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Users className="h-4 w-4 text-muted" />
-            <span className="text-sm text-muted">Active Trials</span>
+            <Users className="h-4 w-4 text-text-muted" />
+            <span className="text-sm text-text-muted">Active Trials</span>
           </div>
           <div className="text-2xl font-bold">{m.trials.activeTrials}</div>
-          <div className="text-xs text-muted mt-1">{m.trials.paidAccounts} paid accounts</div>
+          <div className="text-xs text-text-muted mt-1">{m.trials.paidAccounts} paid accounts</div>
         </div>
       </div>
 
@@ -4626,7 +4626,7 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
           <h3 className="font-semibold mb-4">Trial-to-Paid Conversion</h3>
           <div className="flex items-center gap-4">
             <div className="text-4xl font-bold text-primary">{m.trials.conversionRate}%</div>
-            <div className="text-sm text-muted">
+            <div className="text-sm text-text-muted">
               <div>{m.trials.paidAccounts} paid / {m.trials.totalAccounts} total</div>
               <div>{m.trials.activeTrials} active trials</div>
             </div>
@@ -4637,15 +4637,15 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
           <h3 className="font-semibold mb-4">Unit Economics</h3>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-xs text-muted mb-1">Cost/Call</div>
+              <div className="text-xs text-text-muted mb-1">Cost/Call</div>
               <div className="text-lg font-bold">{formatCents(String(m.economics.costPerCallCents))}</div>
             </div>
             <div>
-              <div className="text-xs text-muted mb-1">Revenue/Call</div>
+              <div className="text-xs text-text-muted mb-1">Revenue/Call</div>
               <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.economics.revenuePerCallCents))}</div>
             </div>
             <div>
-              <div className="text-xs text-muted mb-1">Margin/Call</div>
+              <div className="text-xs text-text-muted mb-1">Margin/Call</div>
               <div className={`text-lg font-bold ${m.economics.marginPerCallCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {formatCents(String(m.economics.marginPerCallCents))}
               </div>
@@ -4658,27 +4658,27 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
         <h3 className="font-semibold mb-4">Monthly Summary</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div>
-            <div className="text-xs text-muted mb-1">Call Minutes</div>
+            <div className="text-xs text-text-muted mb-1">Call Minutes</div>
             <div className="text-lg font-bold">{m.monthly.callMinutes.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-1">Total Calls</div>
+            <div className="text-xs text-text-muted mb-1">Total Calls</div>
             <div className="text-lg font-bold">{m.monthly.callCount.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-1">AI Cost</div>
+            <div className="text-xs text-text-muted mb-1">AI Cost</div>
             <div className="text-lg font-bold">{formatCents(String(m.monthly.aiCostCents))}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-1">Twilio Cost</div>
+            <div className="text-xs text-text-muted mb-1">Twilio Cost</div>
             <div className="text-lg font-bold">{formatCents(String(m.monthly.twilioCostCents))}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-1">Total Cost</div>
+            <div className="text-xs text-text-muted mb-1">Total Cost</div>
             <div className="text-lg font-bold">{formatCents(String(m.monthly.totalCostCents))}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-1">Revenue</div>
+            <div className="text-xs text-text-muted mb-1">Revenue</div>
             <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.monthly.revenueCents))}</div>
           </div>
         </div>
@@ -4688,11 +4688,11 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
         <h3 className="font-semibold mb-4">Daily Usage (Tool & API)</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <div className="text-xs text-muted mb-1">Tool Executions Today</div>
+            <div className="text-xs text-text-muted mb-1">Tool Executions Today</div>
             <div className="text-lg font-bold">{m.daily.toolExecutions.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-1">API Requests Today</div>
+            <div className="text-xs text-text-muted mb-1">API Requests Today</div>
             <div className="text-lg font-bold">{m.daily.apiRequests.toLocaleString()}</div>
           </div>
         </div>
@@ -4707,16 +4707,16 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="text-left px-4 py-3 font-medium text-muted">Date</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted">Calls</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted">Minutes</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted">Cost</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Date</th>
+                  <th className="text-right px-4 py-3 font-medium text-text-muted">Calls</th>
+                  <th className="text-right px-4 py-3 font-medium text-text-muted">Minutes</th>
+                  <th className="text-right px-4 py-3 font-medium text-text-muted">Cost</th>
                 </tr>
               </thead>
               <tbody>
                 {m.trend.map((day) => (
                   <tr key={day.day} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2 text-muted">{new Date(day.day).toLocaleDateString()}</td>
+                    <td className="px-4 py-2 text-text-muted">{new Date(day.day).toLocaleDateString()}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{day.callCount}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{day.callMinutes}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{formatCents(String(day.totalCostCents))}</td>
@@ -4741,7 +4741,7 @@ function SortableHeader({ label, field, currentField, currentDir, onSort }: {
   const active = field === currentField;
   return (
     <th
-      className="text-right px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-foreground transition-colors"
+      className="text-right px-4 py-3 font-medium text-text-muted cursor-pointer select-none hover:text-text-primary transition-colors"
       onClick={() => onSort(field)}
     >
       <span className="inline-flex items-center gap-1 justify-end">
@@ -4749,7 +4749,7 @@ function SortableHeader({ label, field, currentField, currentDir, onSort }: {
         {active ? (
           <span className="text-primary text-[10px]">{currentDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
         ) : (
-          <span className="text-muted/40 text-[10px]">{'\u25BC'}</span>
+          <span className="text-text-muted/40 text-[10px]">{'\u25BC'}</span>
         )}
       </span>
     </th>
@@ -4774,7 +4774,7 @@ function BarChart({ data, labelKey, valueKey, secondaryKey, barColor, secondaryC
         const secPct = secondaryKey ? (secVal / maxVal) * 100 : 0;
         return (
           <div key={d.id} className="flex items-center gap-3">
-            <div className="w-32 truncate text-xs text-muted text-right" title={String(d[labelKey])}>
+            <div className="w-32 truncate text-xs text-text-muted text-right" title={String(d[labelKey])}>
               {String(d[labelKey])}
             </div>
             <div className="flex-1 flex items-center gap-1">
@@ -4790,9 +4790,9 @@ function BarChart({ data, labelKey, valueKey, secondaryKey, barColor, secondaryC
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="text-xs tabular-nums text-muted w-12 text-right">{val.toLocaleString()}</span>
+              <span className="text-xs tabular-nums text-text-muted w-12 text-right">{val.toLocaleString()}</span>
               {secondaryKey && (
-                <span className="text-xs tabular-nums text-muted/60 w-12 text-right">{secVal.toLocaleString()}</span>
+                <span className="text-xs tabular-nums text-text-muted/60 w-12 text-right">{secVal.toLocaleString()}</span>
               )}
             </div>
           </div>
@@ -4820,9 +4820,9 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
   if (!data?.templates?.length) {
     return (
       <div className="bg-surface border border-border rounded-xl p-12 text-center">
-        <BarChart3 className="h-10 w-10 text-muted mx-auto mb-3" />
-        <p className="text-muted">No template analytics data available yet.</p>
-        <p className="text-xs text-muted mt-1">Analytics will populate as tenants install and use templates.</p>
+        <BarChart3 className="h-10 w-10 text-text-muted mx-auto mb-3" />
+        <p className="text-text-muted">No template analytics data available yet.</p>
+        <p className="text-xs text-text-muted mt-1">Analytics will populate as tenants install and use templates.</p>
       </div>
     );
   }
@@ -4874,12 +4874,12 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-surface border border-border rounded-xl p-5">
           <h3 className="font-semibold text-sm mb-1">Installs by Template</h3>
-          <p className="text-xs text-muted mb-4">Total installs (dark) vs active installs (light)</p>
+          <p className="text-xs text-text-muted mb-4">Total installs (dark) vs active installs (light)</p>
           <BarChart data={chartData} labelKey="displayName" valueKey="activeInstalls" secondaryKey="totalInstalls" barColor="bg-primary" secondaryColor="bg-primary/25" />
         </div>
         <div className="bg-surface border border-border rounded-xl p-5">
           <h3 className="font-semibold text-sm mb-1">Call Volume by Template (30d)</h3>
-          <p className="text-xs text-muted mb-4">Calls generated through template-installed agents</p>
+          <p className="text-xs text-text-muted mb-4">Calls generated through template-installed agents</p>
           <BarChart data={[...templates].sort((a, b) => b.callsLast30d - a.callsLast30d).slice(0, 10)} labelKey="displayName" valueKey="callsLast30d" barColor="bg-green-500" />
         </div>
       </div>
@@ -4887,26 +4887,26 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h2 className="font-semibold">Template Performance</h2>
-          <p className="text-xs text-muted mt-0.5">Click column headers to sort. Includes call and campaign metrics.</p>
+          <p className="text-xs text-text-muted mt-0.5">Click column headers to sort. Includes call and campaign metrics.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-foreground" onClick={() => onSort('displayName')}>
+                <th className="text-left px-4 py-3 font-medium text-text-muted cursor-pointer select-none hover:text-text-primary" onClick={() => onSort('displayName')}>
                   <span className="inline-flex items-center gap-1">
                     Template
-                    {sortField === 'displayName' ? <span className="text-primary text-[10px]">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-muted/40 text-[10px]">{'\u25BC'}</span>}
+                    {sortField === 'displayName' ? <span className="text-primary text-[10px]">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-text-muted/40 text-[10px]">{'\u25BC'}</span>}
                   </span>
                 </th>
                 <SortableHeader label="Installs" field="totalInstalls" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <th className="text-right px-4 py-3 font-medium text-muted">Active</th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">Active</th>
                 <SortableHeader label="Activation" field="activationRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Upgrade Adoption" field="upgradeAdoption" currentField={sortField} currentDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Uninstalls" field="uninstallRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Calls (30d)" field="callsLast30d" currentField={sortField} currentDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Campaigns" field="totalCampaigns" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <th className="text-right px-4 py-3 font-medium text-muted">Avg Duration</th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">Avg Duration</th>
                 <SortableHeader label="CSAT" field="avgSatisfaction" currentField={sortField} currentDir={sortDir} onSort={onSort} />
               </tr>
             </thead>
@@ -4915,7 +4915,7 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
                 <tr key={t.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                   <td className="px-4 py-3">
                     <div className="font-medium">{t.displayName}</div>
-                    <div className="text-xs text-muted font-mono">{t.slug} · v{t.currentVersion}</div>
+                    <div className="text-xs text-text-muted font-mono">{t.slug} · v{t.currentVersion}</div>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.totalInstalls}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.activeInstalls}</td>
@@ -4926,9 +4926,9 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    <span className={`inline-flex items-center gap-1 ${t.upgradeAdoption >= 50 ? 'text-green-600 dark:text-green-400' : t.upgradeAdoption >= 20 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted'}`}>
+                    <span className={`inline-flex items-center gap-1 ${t.upgradeAdoption >= 50 ? 'text-green-600 dark:text-green-400' : t.upgradeAdoption >= 20 ? 'text-yellow-600 dark:text-yellow-400' : 'text-text-muted'}`}>
                       {t.upgradeAdoption}%
-                      <span className="text-muted/60">({t.upgradeCount})</span>
+                      <span className="text-text-muted/60">({t.upgradeCount})</span>
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
@@ -4951,7 +4951,7 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="font-semibold text-sm">{t.displayName}</h3>
-                <p className="text-xs text-muted">v{t.currentVersion}</p>
+                <p className="text-xs text-text-muted">v{t.currentVersion}</p>
               </div>
               <StatusBadge status={t.status} />
             </div>
@@ -4973,7 +4973,7 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
 function MetricItem({ label, value, trend }: { label: string; value: string; trend?: 'up' | 'down' | 'neutral' }) {
   return (
     <div>
-      <p className="text-xs text-muted mb-0.5">{label}</p>
+      <p className="text-xs text-text-muted mb-0.5">{label}</p>
       <div className="flex items-center gap-1">
         <span className="text-sm font-semibold">{value}</span>
         {trend === 'up' && <TrendingUp className="h-3 w-3 text-green-500" />}
@@ -4996,8 +4996,8 @@ function formatHours(hours: number | null): string {
 }
 
 function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMetricRow[] } | undefined; loading: boolean }) {
-  if (loading) return <div className="text-center py-12 text-muted">Loading activation metrics...</div>;
-  if (!data) return <div className="text-center py-12 text-muted">No data available</div>;
+  if (loading) return <div className="text-center py-12 text-text-muted">Loading activation metrics...</div>;
+  if (!data) return <div className="text-center py-12 text-text-muted">No data available</div>;
 
   const metrics = data.metrics;
   const totalTenants = metrics.length;
@@ -5021,24 +5021,24 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-muted mb-1">Agent Created</div>
-          <div className="text-2xl font-bold">{withAgent} <span className="text-sm text-muted font-normal">/ {totalTenants}</span></div>
-          <div className="text-xs text-muted mt-1">Avg time: {formatHours(avgTimeToAgent)}</div>
+          <div className="text-sm text-text-muted mb-1">Agent Created</div>
+          <div className="text-2xl font-bold">{withAgent} <span className="text-sm text-text-muted font-normal">/ {totalTenants}</span></div>
+          <div className="text-xs text-text-muted mt-1">Avg time: {formatHours(avgTimeToAgent)}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-muted mb-1">First Call</div>
-          <div className="text-2xl font-bold">{withCall} <span className="text-sm text-muted font-normal">/ {totalTenants}</span></div>
-          <div className="text-xs text-muted mt-1">Avg time: {formatHours(avgTimeToCall)}</div>
+          <div className="text-sm text-text-muted mb-1">First Call</div>
+          <div className="text-2xl font-bold">{withCall} <span className="text-sm text-text-muted font-normal">/ {totalTenants}</span></div>
+          <div className="text-xs text-text-muted mt-1">Avg time: {formatHours(avgTimeToCall)}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-muted mb-1">First Workflow</div>
-          <div className="text-2xl font-bold">{withWorkflow} <span className="text-sm text-muted font-normal">/ {totalTenants}</span></div>
-          <div className="text-xs text-muted mt-1">Avg time: {formatHours(avgTimeToWorkflow)}</div>
+          <div className="text-sm text-text-muted mb-1">First Workflow</div>
+          <div className="text-2xl font-bold">{withWorkflow} <span className="text-sm text-text-muted font-normal">/ {totalTenants}</span></div>
+          <div className="text-xs text-text-muted mt-1">Avg time: {formatHours(avgTimeToWorkflow)}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-muted mb-1">Stuck Tenants</div>
+          <div className="text-sm text-text-muted mb-1">Stuck Tenants</div>
           <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stuckTenants.length}</div>
-          <div className="text-xs text-muted mt-1">Started but stalled (&lt;2 milestones)</div>
+          <div className="text-xs text-text-muted mt-1">Started but stalled (&lt;2 milestones)</div>
         </div>
       </div>
 
@@ -5050,18 +5050,18 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Tenant</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
-                <th className="text-center px-4 py-3 font-medium text-muted">Agent</th>
-                <th className="text-center px-4 py-3 font-medium text-muted">Deploy</th>
-                <th className="text-center px-4 py-3 font-medium text-muted">Phone</th>
-                <th className="text-center px-4 py-3 font-medium text-muted">Tools</th>
-                <th className="text-center px-4 py-3 font-medium text-muted">1st Call</th>
-                <th className="text-center px-4 py-3 font-medium text-muted">Workflow</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Time to Agent</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Time to Call</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Time to Workflow</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Progress</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">Agent</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">Deploy</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">Phone</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">Tools</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">1st Call</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">Workflow</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Time to Agent</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Time to Call</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Time to Workflow</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Progress</th>
               </tr>
             </thead>
             <tbody>
@@ -5069,7 +5069,7 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                 <tr key={m.tenant_id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                   <td className="px-4 py-3">
                     <div className="font-medium">{m.tenant_name}</div>
-                    <div className="text-xs text-muted">{new Date(m.tenant_created_at).toLocaleDateString()}</div>
+                    <div className="text-xs text-text-muted">{new Date(m.tenant_created_at).toLocaleDateString()}</div>
                   </td>
                   <td className="px-4 py-3"><PlanBadge plan={m.tenant_plan} /></td>
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.agent_created_at} /></td>
@@ -5078,9 +5078,9 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.tools_connected_at} /></td>
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.first_call_at} /></td>
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.first_workflow_at} /></td>
-                  <td className="px-4 py-3 text-muted">{formatHours(m.time_to_agent_hours)}</td>
-                  <td className="px-4 py-3 text-muted">{formatHours(m.time_to_call_hours)}</td>
-                  <td className="px-4 py-3 text-muted">{formatHours(m.time_to_workflow_hours)}</td>
+                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_agent_hours)}</td>
+                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_call_hours)}</td>
+                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_workflow_hours)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-16 bg-surface-hover rounded-full h-2">
@@ -5093,13 +5093,13 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                           style={{ width: `${Math.round((m.milestones_completed / TOTAL_MILESTONES) * 100)}%` }}
                         />
                       </div>
-                      <span className="text-xs text-muted">{m.milestones_completed}/{TOTAL_MILESTONES}</span>
+                      <span className="text-xs text-text-muted">{m.milestones_completed}/{TOTAL_MILESTONES}</span>
                     </div>
                   </td>
                 </tr>
               ))}
               {metrics.length === 0 && (
-                <tr><td colSpan={12} className="text-center py-12 text-muted">No tenant data yet</td></tr>
+                <tr><td colSpan={12} className="text-center py-12 text-text-muted">No tenant data yet</td></tr>
               )}
             </tbody>
           </table>
