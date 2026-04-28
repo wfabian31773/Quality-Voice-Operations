@@ -2,7 +2,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatCard } from '../components/ui';
 import {
   PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
   Wrench, Check, Loader2, X, Bell, BellOff, ChevronDown, ChevronUp,
@@ -289,29 +289,6 @@ function toolLabel(toolName: string): string {
     create_ticket: 'Create Ticket',
   };
   return map[toolName] ?? toolName.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
-}
-
-function MetricCard({ icon: Icon, label, value, subtext, color }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string | number;
-  subtext?: string;
-  color: string;
-}) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-lg ${color}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-text-secondary truncate">{label}</p>
-          <p className="text-xl font-bold text-text-primary">{value}</p>
-          {subtext && <p className="text-[10px] text-text-secondary">{subtext}</p>}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
@@ -814,42 +791,42 @@ export default function Operations() {
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard
+        <StatCard
           icon={PhoneCall}
           label="Active Calls"
           value={activeCalls.length}
-          color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+          tone="success"
         />
-        <MetricCard
+        <StatCard
           icon={TrendingUp}
           label="Calls/Hour"
           value={metrics?.callsPerHour ?? 0}
-          color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+          tone="info"
         />
-        <MetricCard
+        <StatCard
           icon={CheckCircle2}
           label="Completion Rate"
           value={`${metrics?.completionRate ?? 0}%`}
-          color="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+          tone="success"
         />
-        <MetricCard
+        <StatCard
           icon={Clock}
           label="Avg Duration"
           value={metrics?.avgDuration ? formatDuration(metrics.avgDuration) : '--'}
-          color="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+          tone="warning"
         />
-        <MetricCard
+        <StatCard
           icon={Wrench}
           label="Tool Executions"
           value={metrics?.toolExecutions ?? 0}
-          subtext={metrics?.toolsRunning ? `${metrics.toolsRunning} running` : undefined}
-          color="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
+          sub={metrics?.toolsRunning ? `${metrics.toolsRunning} running` : undefined}
+          tone="accent"
         />
-        <MetricCard
+        <StatCard
           icon={AlertTriangle}
           label="Failed Calls"
           value={metrics?.failedCalls ?? 0}
-          color="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+          tone="danger"
         />
       </div>
 

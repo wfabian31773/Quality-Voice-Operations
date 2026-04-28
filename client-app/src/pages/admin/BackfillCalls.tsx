@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
+import { StatCard } from '../../components/ui';
 import {
   CallBackfillEventV1Schema,
   INGEST_FRESH_WINDOW_DAYS,
@@ -615,10 +616,10 @@ export default function BackfillCalls() {
             Preview ({summary.total} row{summary.total === 1 ? '' : 's'})
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatTile icon={Plus} label="Would insert" value={summary.inserts} tone="emerald" />
-            <StatTile icon={Repeat} label="Would correct" value={summary.corrections} tone="amber" />
-            <StatTile icon={CheckCircle2} label="Valid" value={summary.valid} tone="emerald" />
-            <StatTile icon={XCircle} label="Invalid" value={summary.invalid} tone="red" />
+            <StatCard icon={Plus} label="Would insert" value={summary.inserts} tone="success" />
+            <StatCard icon={Repeat} label="Would correct" value={summary.corrections} tone="warning" />
+            <StatCard icon={CheckCircle2} label="Valid" value={summary.valid} tone="success" />
+            <StatCard icon={XCircle} label="Invalid" value={summary.invalid} tone="danger" />
           </div>
 
           <RowTable rows={previewRows!} mode="preview" />
@@ -632,10 +633,10 @@ export default function BackfillCalls() {
             Submission results
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatTile icon={CheckCircle2} label="Success" value={submitSummary.success} tone="emerald" />
-            <StatTile icon={Repeat} label="Duplicate" value={submitSummary.duplicate} tone="amber" />
-            <StatTile icon={XCircle} label="Error" value={submitSummary.error} tone="red" />
-            <StatTile icon={Loader2} label="Pending" value={submitSummary.pending} tone="muted" />
+            <StatCard icon={CheckCircle2} label="Success" value={submitSummary.success} tone="success" />
+            <StatCard icon={Repeat} label="Duplicate" value={submitSummary.duplicate} tone="warning" />
+            <StatCard icon={XCircle} label="Error" value={submitSummary.error} tone="danger" />
+            <StatCard icon={Loader2} label="Pending" value={submitSummary.pending} tone="neutral" />
           </div>
           <RowTable rows={submitRows!} mode="submit" />
         </section>
@@ -658,32 +659,6 @@ export default function BackfillCalls() {
           </li>
         </ul>
       </section>
-    </div>
-  );
-}
-
-interface StatTileProps {
-  icon: typeof CheckCircle2;
-  label: string;
-  value: number;
-  tone: 'emerald' | 'amber' | 'red' | 'muted';
-}
-function StatTile({ icon: Icon, label, value, tone }: StatTileProps) {
-  const colors: Record<StatTileProps['tone'], string> = {
-    emerald: 'text-emerald-500 bg-emerald-500/10',
-    amber: 'text-amber-500 bg-amber-500/10',
-    red: 'text-red-500 bg-red-500/10',
-    muted: 'text-muted bg-muted/10',
-  };
-  return (
-    <div className="bg-background border border-border rounded-lg p-3 flex items-center gap-3">
-      <div className={`w-9 h-9 rounded-md flex items-center justify-center ${colors[tone]}`}>
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-xs text-muted">{label}</div>
-        <div className="text-lg font-semibold text-foreground">{value}</div>
-      </div>
     </div>
   );
 }

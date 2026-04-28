@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { BarChart3, Clock, DollarSign, Phone, TrendingUp, Users, ArrowRight, Star } from 'lucide-react';
+import { BarChart3, Clock, DollarSign, Phone, TrendingUp, ArrowRight, Star } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
+import { StatCard } from '../../components/ui';
 import { trackPageView, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { formatDollars } from '../../lib/formatCurrency';
 
@@ -27,16 +28,6 @@ interface CaseStudy {
   createdAt: string;
 }
 
-function MetricCard({ icon: Icon, label, value, color }: { icon: typeof Phone; label: string; value: string; color: string }) {
-  return (
-    <div className={`${color} rounded-xl p-4 text-center`}>
-      <Icon className="h-5 w-5 mx-auto mb-2 opacity-70" />
-      <div className="text-xl font-display font-bold">{value}</div>
-      <div className="text-xs mt-1 opacity-70">{label}</div>
-    </div>
-  );
-}
-
 function CaseStudyCard({ study }: { study: CaseStudy }) {
   const m = study.metrics;
   return (
@@ -54,10 +45,10 @@ function CaseStudyCard({ study }: { study: CaseStudy }) {
         <div className="p-6">
           <p className="text-sm text-slate-600 mb-6 leading-relaxed">{study.summary}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <MetricCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} color="bg-blue-50 text-blue-700" />
-            <MetricCard icon={TrendingUp} label="Automation" value={`${Math.round(m.automationRate * 100)}%`} color="bg-emerald-50 text-emerald-700" />
-            <MetricCard icon={DollarSign} label="Cost savings" value={`${m.costSavingsPercent}%`} color="bg-purple-50 text-purple-700" />
-            <MetricCard icon={Clock} label="Avg response" value={`${m.avgResponseTime}s`} color="bg-amber-50 text-amber-700" />
+            <StatCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} tone="info" />
+            <StatCard icon={TrendingUp} label="Automation" value={`${Math.round(m.automationRate * 100)}%`} tone="success" />
+            <StatCard icon={DollarSign} label="Cost savings" value={`${m.costSavingsPercent}%`} tone="accent" />
+            <StatCard icon={Clock} label="Avg response" value={`${m.avgResponseTime}s`} tone="warning" />
           </div>
         </div>
       </div>
@@ -117,10 +108,10 @@ function CaseStudyDetail({ slug }: { slug: string }) {
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <h2 className="text-2xl font-display font-bold text-text-primary mb-8">Key Results</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-            <MetricCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} color="bg-blue-50 text-blue-700" />
-            <MetricCard icon={TrendingUp} label="Automation rate" value={`${Math.round(m.automationRate * 100)}%`} color="bg-emerald-50 text-emerald-700" />
-            <MetricCard icon={DollarSign} label="Monthly savings" value={formatDollars(m.monthlySavings, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} color="bg-purple-50 text-purple-700" />
-            <MetricCard icon={Star} label="Satisfaction" value={`${m.satisfactionScore}/5.0`} color="bg-amber-50 text-amber-700" />
+            <StatCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} tone="info" />
+            <StatCard icon={TrendingUp} label="Automation rate" value={`${Math.round(m.automationRate * 100)}%`} tone="success" />
+            <StatCard icon={DollarSign} label="Monthly savings" value={formatDollars(m.monthlySavings, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} tone="accent" />
+            <StatCard icon={Star} label="Satisfaction" value={`${m.satisfactionScore}/5.0`} tone="warning" />
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-slate-50 rounded-xl p-6">

@@ -8,10 +8,11 @@ import {
   ChevronLeft, ChevronRight,
   Calendar, UserPlus, Star, RefreshCw, TrendingUp, Phone,
   Info, CheckCircle2, ShieldCheck,
+  Activity, Clock, PhoneCall, PhoneMissed, Voicemail, SkipForward,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatCard } from '../components/ui';
 
 type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled';
 type ContactStatus = 'pending' | 'dialing' | 'connected' | 'completed' | 'failed' | 'skipped' | 'no_answer' | 'voicemail' | 'opted_out';
@@ -693,15 +694,6 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
   );
 }
 
-function MetricCard({ label, value, color }: { label: string; value: number | string; color?: string }) {
-  return (
-    <div className="bg-surface border border-border rounded-lg p-3 text-center">
-      <p className={`text-2xl font-bold ${color ?? 'text-text-primary'}`}>{typeof value === 'number' ? value.toLocaleString() : value}</p>
-      <p className="text-xs text-text-muted mt-0.5 capitalize">{label}</p>
-    </div>
-  );
-}
-
 function TypeMetricsPanel({ campaignId, campaignType }: { campaignId: string; campaignType: string }) {
   const { data: typeMetricsData } = useQuery({
     queryKey: ['campaign-type-metrics', campaignId],
@@ -1194,20 +1186,20 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           {metrics && (
             <div>
               <h3 className="text-sm font-semibold text-text-primary mb-3">Call Metrics</h3>
-              <div className="grid grid-cols-5 gap-3">
-                <MetricCard label="Total" value={metrics.total} />
-                <MetricCard label="Pending" value={metrics.pending} color="text-text-muted" />
-                <MetricCard label="Dialing" value={metrics.dialing} color="text-primary" />
-                <MetricCard label="Connected" value={metrics.connected} color="text-success" />
-                <MetricCard label="Completed" value={metrics.completed} color="text-success" />
-                <MetricCard label="Failed" value={metrics.failed} color="text-danger" />
-                <MetricCard label="No Answer" value={metrics.noAnswer} color="text-warning" />
-                <MetricCard label="Voicemail" value={metrics.voicemail} color="text-primary" />
-                <MetricCard label="Skipped" value={metrics.skipped} color="text-text-muted" />
-                <MetricCard label="Opted Out" value={metrics.optedOut} color="text-danger" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <StatCard icon={Users} label="Total" value={metrics.total.toLocaleString()} tone="neutral" />
+                <StatCard icon={Clock} label="Pending" value={metrics.pending.toLocaleString()} tone="neutral" />
+                <StatCard icon={Phone} label="Dialing" value={metrics.dialing.toLocaleString()} tone="primary" />
+                <StatCard icon={PhoneCall} label="Connected" value={metrics.connected.toLocaleString()} tone="success" />
+                <StatCard icon={CheckCircle2} label="Completed" value={metrics.completed.toLocaleString()} tone="success" />
+                <StatCard icon={XCircle} label="Failed" value={metrics.failed.toLocaleString()} tone="danger" />
+                <StatCard icon={PhoneMissed} label="No Answer" value={metrics.noAnswer.toLocaleString()} tone="warning" />
+                <StatCard icon={Voicemail} label="Voicemail" value={metrics.voicemail.toLocaleString()} tone="primary" />
+                <StatCard icon={SkipForward} label="Skipped" value={metrics.skipped.toLocaleString()} tone="neutral" />
+                <StatCard icon={ShieldOff} label="Opted Out" value={metrics.optedOut.toLocaleString()} tone="danger" />
               </div>
-              <div className="mt-1">
-                <MetricCard label="Attempted" value={metrics.attempted} />
+              <div className="mt-3">
+                <StatCard icon={Activity} label="Attempted" value={metrics.attempted.toLocaleString()} tone="info" />
               </div>
               {metrics.total > 0 && (
                 <div className="mt-3 h-3 bg-surface-hover rounded-full overflow-hidden flex">
