@@ -31,6 +31,9 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Native Agent Porting (Azul Vision):** Supports running Azul Vision's production agents directly within QVO's WebSocket-based voice gateway.
 - **Technician Mobile App (`mobile/`):** An Expo (React Native) app for field technicians, enabling job management, dispatch state transitions, appointment viewing, customer communication, and photo/note uploads. It features location tracking for active jobs and secure device enrollment.
 
+## Operational Runbooks
+- **Backfill missing dispatch job geocodes:** After deploying `migrations/087_dispatch_jobs_geocode.sql`, run `npx tsx scripts/backfill-dispatch-job-geocodes.ts` (set `APP_ENV` + `DATABASE_URL` for dev, or `APP_ENV=production` + `PLATFORM_DB_POOL_URL` for prod) to pre-populate `address_lat`/`address_lon` on still-actionable jobs so the live map's first ETA is instant. The script is idempotent, rate-limits per the configured geocoder (`DISPATCH_GEOCODE_PROVIDER`), and logs successes/failures per tenant. Full options live in `scripts/README.md` under "Backfill missing dispatch job geocodes".
+
 ## External Dependencies
 - **Database:** PostgreSQL (Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).
