@@ -42,6 +42,31 @@ interface CampaignTypeDefinition {
   }>;
 }
 
+/**
+ * Mirrors `platform/campaigns/types.ts#CampaignScheduleConfig` but every field
+ * is optional because rows persisted before a given setting was introduced can
+ * (and do) omit it. Per-campaign-type config fields are still dynamic — they
+ * come from `CampaignTypeDefinition.configFields[].key` — so `CampaignConfig`
+ * intersects with `Record<string, unknown>` to keep that escape hatch typed.
+ */
+interface CampaignScheduleConfig {
+  timezone?: string;
+  callWindowStart?: string;
+  callWindowEnd?: string;
+  daysOfWeek?: number[];
+  maxConcurrentCalls?: number;
+  /** Legacy alias for `maxConcurrentCalls`; still read by the dialer. */
+  maxConcurrent?: number;
+  maxAttempts?: number;
+  retryDelayMinutes?: number;
+  respectContactTimezone?: boolean;
+  areaCodeTimezones?: Record<string, string>;
+  callWindows?: Array<{ start: string; end: string; days: number[] }>;
+  verifiedCallerId?: string | null;
+}
+
+type CampaignConfig = CampaignScheduleConfig & Record<string, unknown>;
+
 interface Campaign {
   id: string;
   tenantId: string;
@@ -49,7 +74,7 @@ interface Campaign {
   name: string;
   type: string;
   status: CampaignStatus;
-  config: Record<string, unknown>;
+  config: CampaignConfig;
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -336,24 +361,26 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
   const selectedTypeDef = campaignTypes.find((t) => t.type === form.type);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      api.post('/campaigns', {
+    mutationFn: () => {
+      const config: CampaignConfig = {
+        timezone: form.timezone,
+        callWindowStart: form.callWindowStart,
+        callWindowEnd: form.callWindowEnd,
+        daysOfWeek: form.daysOfWeek,
+        respectContactTimezone: form.respectContactTimezone,
+        maxConcurrentCalls: form.maxConcurrentCalls,
+        maxAttempts: form.maxAttempts,
+        retryDelayMinutes: form.retryDelayMinutes,
+        verifiedCallerId: form.verifiedCallerId || null,
+        ...typeConfig,
+      };
+      return api.post('/campaigns', {
         name: form.name,
         agentId: form.agentId,
         type: form.type,
-        config: {
-          timezone: form.timezone,
-          callWindowStart: form.callWindowStart,
-          callWindowEnd: form.callWindowEnd,
-          daysOfWeek: form.daysOfWeek,
-          respectContactTimezone: form.respectContactTimezone,
-          maxConcurrentCalls: form.maxConcurrentCalls,
-          maxAttempts: form.maxAttempts,
-          retryDelayMinutes: form.retryDelayMinutes,
-          verifiedCallerId: form.verifiedCallerId || null,
-          ...typeConfig,
-        },
-      }),
+        config,
+      });
+    },
     onSuccess: () => { onCreated(); onClose(); },
     onError: (err: Error) => setError(err.message),
   });
@@ -1223,35 +1250,35 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                   {typeDef?.label ?? campaign.type.replace(/_/g, ' ')}
                 </span>
               </div>
-              {Boolean(config.timezone) && (
+              {config.timezone && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Timezone</span>
-                  <span className="text-sm text-text-primary">{String(config.timezone)}</span>
+                  <span className="text-sm text-text-primary">{config.timezone}</span>
                 </div>
               )}
-              {Boolean(config.callWindowStart) && (
+              {config.callWindowStart && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Call Window</span>
-                  <span className="text-sm text-text-primary">{String(config.callWindowStart)} — {String(config.callWindowEnd)}</span>
+                  <span className="text-sm text-text-primary">{config.callWindowStart} — {config.callWindowEnd}</span>
                 </div>
               )}
-              {Array.isArray(config.daysOfWeek) && (
+              {Array.isArray(config.daysOfWeek) && config.daysOfWeek.length > 0 && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Days</span>
-                  <span className="text-sm text-text-primary">{(config.daysOfWeek as number[]).map((d: number) => DAYS[d]).join(', ')}</span>
+                  <span className="text-sm text-text-primary">{config.daysOfWeek.map((d) => DAYS[d]).join(', ')}</span>
                 </div>
               )}
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm text-text-muted">Concurrency</span>
-                <span className="text-sm text-text-primary">{(config.maxConcurrentCalls as number) ?? (config.maxConcurrent as number) ?? '—'}</span>
+                <span className="text-sm text-text-primary">{config.maxConcurrentCalls ?? config.maxConcurrent ?? '—'}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm text-text-muted">Max Attempts</span>
-                <span className="text-sm text-text-primary">{(config.maxAttempts as number) ?? '—'}</span>
+                <span className="text-sm text-text-primary">{config.maxAttempts ?? '—'}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm text-text-muted">Retry Delay</span>
-                <span className="text-sm text-text-primary">{(config.retryDelayMinutes as number) ?? '—'} min</span>
+                <span className="text-sm text-text-primary">{config.retryDelayMinutes ?? '—'} min</span>
               </div>
               {campaign.startedAt && (
                 <div className="flex items-center justify-between px-4 py-3">
