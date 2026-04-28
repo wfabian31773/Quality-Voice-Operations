@@ -10,6 +10,12 @@ import {
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 import { PageHeader, StatCard } from '../components/ui';
 import Modal from '../components/Modal';
+import {
+  buildTimedPings,
+  replayWindow,
+  positionAtMinute,
+  type TimedPing,
+} from '../lib/dispatchRouteReplay';
 
 interface DispatchJob {
   id: string;
@@ -650,11 +656,16 @@ interface LeafletMarker {
   on(evt: string, cb: () => void): LeafletMarker;
   openPopup(): LeafletMarker;
 }
+interface LeafletPolyline {
+  setLatLngs(latlngs: [number, number][]): LeafletPolyline;
+  remove(): void;
+}
 interface LeafletNS {
   map(el: HTMLElement, opts?: Record<string, unknown>): LeafletMap;
   tileLayer(url: string, opts?: Record<string, unknown>): { addTo(m: LeafletMap): unknown };
   marker(latlng: [number, number], opts?: { icon?: unknown }): LeafletMarker & { addTo(m: LeafletMap): LeafletMarker };
   divIcon(opts: Record<string, unknown>): unknown;
+  polyline(latlngs: [number, number][], opts?: Record<string, unknown>): LeafletPolyline & { addTo(m: LeafletMap): LeafletPolyline };
 }
 
 declare global {
@@ -2056,7 +2067,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
   isReadOnly: boolean; transitionJob: (id: string, s: string, n?: string) => void;
   onClose: () => void; onRefresh: () => void; refreshAll: () => void;
 }) {
-  const [detailTab, setDetailTab] = useState<'overview' | 'timeline' | 'exceptions' | 'attachments'>('overview');
+  const [detailTab, setDetailTab] = useState<'overview' | 'timeline' | 'route' | 'exceptions' | 'attachments'>('overview');
   const [showExceptionForm, setShowExceptionForm] = useState(false);
   const [showAttachmentForm, setShowAttachmentForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
@@ -2144,11 +2155,12 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
           </div>
         )}
 
-        <div className="flex gap-1 px-4 pt-3 border-b border-border">
-          {(['overview', 'timeline', 'exceptions', 'attachments'] as const).map(t => (
+        <div className="flex gap-1 px-4 pt-3 border-b border-border flex-wrap">
+          {(['overview', 'timeline', 'route', 'exceptions', 'attachments'] as const).map(t => (
             <button key={t} onClick={() => setDetailTab(t)}
               className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize ${detailTab === t ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-heading'}`}>
-              {t} {t === 'exceptions' ? `(${exceptions.length})` : t === 'attachments' ? `(${attachments.length})` : t === 'timeline' ? `(${events.length})` : ''}
+              {t === 'route' ? 'Route taken' : t}
+              {t === 'exceptions' ? ` (${exceptions.length})` : t === 'attachments' ? ` (${attachments.length})` : t === 'timeline' ? ` (${events.length})` : ''}
             </button>
           ))}
         </div>
@@ -2218,6 +2230,10 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                 </div>
               )}
             </div>
+          )}
+
+          {detailTab === 'route' && (
+            <RouteTakenTab jobId={job.id} />
           )}
 
           {detailTab === 'exceptions' && (
@@ -2334,5 +2350,322 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
           </div>
         )}
     </Modal>
+  );
+}
+
+// ============ ROUTE TAKEN TAB ============
+
+interface RoutePoint {
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+  heading_deg: number | null;
+  speed_mps: number | null;
+  recorded_at: string | null;
+  received_at: string | null;
+}
+
+interface RouteResponse {
+  job: {
+    id: string;
+    title: string | null;
+    status: string | null;
+    resource_id: string | null;
+    resource_name: string | null;
+    scheduled_at: string | null;
+    completed_at: string | null;
+  };
+  points: RoutePoint[];
+  window: { start: string | null; end: string | null };
+}
+
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  const km = meters / 1000;
+  if (km < 100) return `${km.toFixed(1)} km`;
+  return `${Math.round(km)} km`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms <= 0) return '0s';
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function RouteTakenTab({ jobId }: { jobId: string }) {
+  const [data, setData] = useState<RouteResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Scrub position is expressed in *minutes from window start* so dispatchers
+  // can inspect arbitrary minutes (not just minutes that happen to have a
+  // recorded ping). The interpolation lives in dispatchRouteReplay.ts.
+  const [scrubMinute, setScrubMinute] = useState<number>(0);
+  const [mapReady, setMapReady] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const polylineRef = useRef<LeafletPolyline | null>(null);
+  const startMarkerRef = useRef<LeafletMarker | null>(null);
+  const endMarkerRef = useRef<LeafletMarker | null>(null);
+  const scrubMarkerRef = useRef<LeafletMarker | null>(null);
+
+  // Fetch route data on mount / when jobId changes.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setData(null);
+    setScrubMinute(0);
+    api.get<RouteResponse>(`/dispatch/jobs/${jobId}/route`)
+      .then((d) => {
+        if (cancelled) return;
+        setData(d);
+        // Land the scrubber at the *end* of the window by default so the
+        // dispatcher's first impression is "the tech ended up here".
+        const timed = buildTimedPings(d.points ?? []);
+        const win = replayWindow(timed);
+        setScrubMinute(win ? win.minutes : 0);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Failed to load route');
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  const points = data?.points ?? [];
+  const hasPoints = points.length > 0;
+  const timedPings: TimedPing[] = useMemo(() => buildTimedPings(points), [points]);
+  const replay = useMemo(() => replayWindow(timedPings), [timedPings]);
+  const scrubPosition = useMemo(
+    () => positionAtMinute(timedPings, scrubMinute),
+    [timedPings, scrubMinute],
+  );
+
+  // Initialize Leaflet once we know we have points to render.
+  useEffect(() => {
+    let cancelled = false;
+    if (!hasPoints || !containerRef.current || mapRef.current) return;
+    loadLeaflet()
+      .then((L) => {
+        if (cancelled || !containerRef.current || mapRef.current) return;
+        const m = L.map(containerRef.current, { zoomControl: true }).setView([points[0].lat, points[0].lng], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap',
+        }).addTo(m);
+        mapRef.current = m;
+        setMapReady(true);
+        setTimeout(() => mapRef.current?.invalidateSize(), 50);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Could not load map library');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPoints, points]);
+
+  // Tear down Leaflet objects when this tab unmounts OR when jobId
+  // changes. The dispatcher modal usually unmounts between jobs, but if
+  // a parent ever swaps `jobId` while this component stays mounted we
+  // must dispose the old map so the next render re-initializes cleanly
+  // (otherwise `mapRef.current` is non-null and the init effect bails).
+  useEffect(() => {
+    return () => {
+      try { polylineRef.current?.remove(); } catch { /* noop */ }
+      try { startMarkerRef.current?.remove(); } catch { /* noop */ }
+      try { endMarkerRef.current?.remove(); } catch { /* noop */ }
+      try { scrubMarkerRef.current?.remove(); } catch { /* noop */ }
+      try { mapRef.current?.remove(); } catch { /* noop */ }
+      polylineRef.current = null;
+      startMarkerRef.current = null;
+      endMarkerRef.current = null;
+      scrubMarkerRef.current = null;
+      mapRef.current = null;
+      setMapReady(false);
+    };
+  }, [jobId]);
+
+  // Draw / refresh the polyline + start/end markers when data changes.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !window.L || !hasPoints) return;
+    const L = window.L;
+    const latlngs: [number, number][] = points.map((p) => [p.lat, p.lng]);
+
+    if (polylineRef.current) {
+      polylineRef.current.setLatLngs(latlngs);
+    } else {
+      polylineRef.current = L.polyline(latlngs, { color: '#2563eb', weight: 4, opacity: 0.85 }).addTo(mapRef.current);
+    }
+
+    const startIcon = L.divIcon({
+      html: `<div style="background:#22c55e;color:#0b1220;border:2px solid #0b1220;border-radius:9999px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;box-shadow:0 1px 4px rgba(0,0,0,0.4)">S</div>`,
+      className: '',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    const endIcon = L.divIcon({
+      html: `<div style="background:#ef4444;color:#fff;border:2px solid #0b1220;border-radius:9999px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;box-shadow:0 1px 4px rgba(0,0,0,0.4)">E</div>`,
+      className: '',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+
+    if (startMarkerRef.current) startMarkerRef.current.setLatLng(latlngs[0]).setIcon(startIcon);
+    else startMarkerRef.current = L.marker(latlngs[0], { icon: startIcon }).addTo(mapRef.current).bindPopup(`Start · ${points[0].recorded_at ? new Date(points[0].recorded_at).toLocaleString() : ''}`);
+
+    const last = latlngs[latlngs.length - 1];
+    const lastP = points[points.length - 1];
+    if (endMarkerRef.current) endMarkerRef.current.setLatLng(last).setIcon(endIcon);
+    else endMarkerRef.current = L.marker(last, { icon: endIcon }).addTo(mapRef.current).bindPopup(`End · ${lastP.recorded_at ? new Date(lastP.recorded_at).toLocaleString() : ''}`);
+
+    try {
+      if (latlngs.length === 1) {
+        mapRef.current.setView(latlngs[0], 15);
+      } else {
+        mapRef.current.fitBounds(latlngs, { padding: [30, 30], maxZoom: 16 });
+      }
+    } catch { /* noop */ }
+  }, [mapReady, hasPoints, points]);
+
+  // Move the scrub marker as the user drags the slider. Position is
+  // computed from `scrubPosition`, which interpolates between pings —
+  // so dispatchers can stop on any minute, not just minutes that have a
+  // recorded fix.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !window.L || !scrubPosition) return;
+    const L = window.L;
+    const sp = scrubPosition;
+    const scrubIcon = L.divIcon({
+      html: `<div style="background:#2563eb;color:#fff;border:2px solid #fff;border-radius:9999px;width:18px;height:18px;box-shadow:0 0 0 2px #2563eb,0 2px 6px rgba(0,0,0,0.5)"></div>`,
+      className: '',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+    const sourceLabel = sp.source === 'between' ? ' · interpolated' : sp.source === 'before' ? ' · before first ping' : sp.source === 'after' ? ' · after last ping' : '';
+    const popup = `${new Date(sp.ts).toLocaleString()}${sp.speed_mps != null ? ` · ${(sp.speed_mps * 2.23694).toFixed(1)} mph` : ''}${sourceLabel}`;
+    if (scrubMarkerRef.current) {
+      scrubMarkerRef.current.setLatLng([sp.lat, sp.lng]).setIcon(scrubIcon).setPopupContent(popup);
+    } else {
+      scrubMarkerRef.current = L.marker([sp.lat, sp.lng], { icon: scrubIcon }).addTo(mapRef.current).bindPopup(popup);
+    }
+  }, [scrubPosition, mapReady]);
+
+  // Derived stats: total distance traveled and elapsed time over the breadcrumb.
+  const totalDistance = useMemo(() => {
+    let m = 0;
+    for (let i = 1; i < points.length; i++) m += haversineMeters(points[i - 1], points[i]);
+    return m;
+  }, [points]);
+
+  const elapsedMs = replay ? replay.endMs - replay.startMs : 0;
+
+  if (loading) {
+    return <p className="text-sm text-muted text-center py-6">Loading route…</p>;
+  }
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+        {error}
+      </div>
+    );
+  }
+  if (!hasPoints || !replay || !scrubPosition) {
+    return (
+      <div className="bg-surface-secondary border border-border rounded-xl p-6 text-center text-sm text-muted">
+        No GPS pings were recorded for this job.
+        <p className="text-[11px] mt-2">
+          Location data is only collected from the technician&apos;s mobile app while a job is en route, on site, or in progress.
+        </p>
+      </div>
+    );
+  }
+
+  // Slider step is 1 minute. For very short windows (e.g. < 1 minute total)
+  // we still allow a single position at minute 0 so the slider doesn't
+  // collapse to nothing.
+  const sliderMax = Math.max(1, replay.minutes);
+  const clampedScrub = Math.min(Math.max(scrubMinute, 0), sliderMax);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-3 text-xs text-muted">
+        <div>
+          <span className="text-heading font-medium">{points.length}</span> ping{points.length === 1 ? '' : 's'}
+        </div>
+        <div>· <span className="text-heading">{formatDistance(totalDistance)}</span> traveled</div>
+        <div>· <span className="text-heading">{formatDuration(elapsedMs)}</span> elapsed</div>
+        {data?.job.resource_name && <div>· tech <span className="text-heading">{data.job.resource_name}</span></div>}
+      </div>
+
+      <div className="rounded-xl border border-border overflow-hidden bg-surface">
+        <div ref={containerRef} style={{ height: 360, width: '100%' }}>
+          {!mapReady && (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted">Loading map…</div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-surface-secondary border border-border rounded-xl p-3 space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted">Scrub to time</span>
+          <span className="text-heading font-medium">
+            {new Date(scrubPosition.ts).toLocaleString()}
+            {scrubPosition.source === 'between' && <span className="ml-1 text-[10px] text-muted">(interpolated)</span>}
+            {scrubPosition.source === 'before' && <span className="ml-1 text-[10px] text-muted">(before first ping)</span>}
+            {scrubPosition.source === 'after' && <span className="ml-1 text-[10px] text-muted">(after last ping)</span>}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={sliderMax}
+          step={1}
+          value={clampedScrub}
+          onChange={(e) => setScrubMinute(parseInt(e.target.value, 10))}
+          aria-label="Scrub through technician route by minute"
+          aria-valuemin={0}
+          aria-valuemax={sliderMax}
+          aria-valuenow={clampedScrub}
+          aria-valuetext={`${clampedScrub} minutes from start, ${new Date(scrubPosition.ts).toLocaleTimeString()}`}
+          className="w-full accent-primary"
+        />
+        <div className="flex justify-between text-[10px] text-muted">
+          <span>{new Date(replay.startMs).toLocaleTimeString()}</span>
+          <span className="text-heading">+{clampedScrub} min</span>
+          <span>{new Date(replay.endMs).toLocaleTimeString()}</span>
+        </div>
+        <div className="flex flex-wrap gap-3 text-[11px] text-muted pt-1">
+          <span>lat <span className="text-heading">{scrubPosition.lat.toFixed(5)}</span></span>
+          <span>lng <span className="text-heading">{scrubPosition.lng.toFixed(5)}</span></span>
+          {scrubPosition.speed_mps != null && (
+            <span>speed <span className="text-heading">{(scrubPosition.speed_mps * 2.23694).toFixed(1)} mph</span></span>
+          )}
+          {scrubPosition.accuracy_m != null && (
+            <span>±<span className="text-heading">{Math.round(scrubPosition.accuracy_m)} m</span></span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

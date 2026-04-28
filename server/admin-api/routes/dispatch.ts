@@ -1666,6 +1666,86 @@ const listResourceLocationsHandler: RequestHandler = async (req, res) => {
   }
 };
 
+/**
+ * GET /dispatch/jobs/:id/route
+ *
+ * Returns the breadcrumb of GPS pings recorded for the technician who serviced
+ * this job, ordered oldest → newest. Used by the dispatcher's "Route taken"
+ * tab to replay where the tech drove (disputed ETAs, no-shows, route
+ * audits).
+ *
+ * Source data is `dispatch_resource_location_history`. Mobile only stamps
+ * `active_job_id` on a ping while the job is in a non-terminal state, so
+ * filtering on that column already gives us the active window — no
+ * separate timestamp bookkeeping required.
+ *
+ * Tenant scoping is enforced both via the explicit tenant_id predicate
+ * and via the RLS policy on the table (migration 083).
+ */
+const getJobRouteHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows: jobRows } = await pool.query(
+      `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
+              j.resource_id, r.name AS resource_name
+         FROM dispatch_jobs j
+         LEFT JOIN dispatch_resources r
+           ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+        WHERE j.id = $1 AND j.tenant_id = $2
+        LIMIT 1`,
+      [id, tenantId],
+    );
+    if (jobRows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    const job = jobRows[0] as Record<string, unknown>;
+
+    const { rows: pointRows } = await pool.query(
+      `SELECT latitude, longitude, accuracy_m, heading_deg, speed_mps,
+              recorded_at, received_at
+         FROM dispatch_resource_location_history
+        WHERE tenant_id = $1
+          AND active_job_id = $2
+        ORDER BY recorded_at ASC, id ASC`,
+      [tenantId, id],
+    );
+
+    const points = pointRows.map((p) => ({
+      lat: Number(p.latitude),
+      lng: Number(p.longitude),
+      accuracy_m: p.accuracy_m === null ? null : Number(p.accuracy_m),
+      heading_deg: p.heading_deg === null ? null : Number(p.heading_deg),
+      speed_mps: p.speed_mps === null ? null : Number(p.speed_mps),
+      recorded_at: p.recorded_at ? new Date(p.recorded_at as string | Date).toISOString() : null,
+      received_at: p.received_at ? new Date(p.received_at as string | Date).toISOString() : null,
+    }));
+
+    const window = points.length > 0
+      ? { start: points[0].recorded_at, end: points[points.length - 1].recorded_at }
+      : { start: null, end: null };
+
+    return res.json({
+      job: {
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        resource_id: job.resource_id,
+        resource_name: job.resource_name ?? null,
+        scheduled_at: job.scheduled_at ? new Date(job.scheduled_at as string | Date).toISOString() : null,
+        completed_at: job.completed_at ? new Date(job.completed_at as string | Date).toISOString() : null,
+      },
+      points,
+      window,
+    });
+  } catch (err) {
+    logger.error('Failed to get job route', { tenantId, jobId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get job route' });
+  }
+};
+
 // ============ TERRITORIES ============
 
 const listTerritoriesHandler: RequestHandler = async (req, res) => {
@@ -2133,6 +2213,7 @@ router.put('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, updat
 router.delete('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, deleteResourceHandler);
 router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite, syncResourceSkillsHandler);
 router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
+router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
 
 router.get('/dispatch/territories', requireAuth, listTerritoriesHandler);
 router.post('/dispatch/territories', requireAuth, requireMiniSystemWrite, createTerritoryHandler);
