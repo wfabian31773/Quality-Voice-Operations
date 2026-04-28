@@ -12,7 +12,9 @@ import VoicePicker from '../components/VoicePicker';
 import {
   AGENT_LANGUAGES,
   DEFAULT_AGENT_LANGUAGE,
+  getAgentLanguageLabel,
   getDefaultVoiceForLanguage,
+  isVoiceRecommendedForLanguage,
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import {
@@ -38,6 +40,7 @@ interface Agent {
   remote_agent_id?: string;
   last_sync_at?: string;
   scheduling_provider?: string | null;
+  language?: string;
   created_at: string;
 }
 
@@ -221,11 +224,13 @@ function ToolsConfigSection({ agentId }: { agentId: string }) {
 function AgentModal({
   agentId,
   schedulingOptions,
+  prefillRecommendedVoice = false,
   onClose,
   onSaved,
 }: {
   agentId?: string;
   schedulingOptions: SchedulingConnectorOption[];
+  prefillRecommendedVoice?: boolean;
   onClose: () => void;
   onSaved: (newAgentId?: string) => void;
 }) {
@@ -249,10 +254,14 @@ function AgentModal({
     api.get<{ agent: Agent & { language?: string } }>(`/agents/${agentId}`).then((res) => {
       const a = res.agent;
       const language = normalizeAgentLanguage(a.language);
+      const savedVoice = a.voice ?? getDefaultVoiceForLanguage(language);
+      const voice = prefillRecommendedVoice && !isVoiceRecommendedForLanguage(savedVoice, language)
+        ? getDefaultVoiceForLanguage(language)
+        : savedVoice;
       setForm({
         name: a.name ?? '',
         type: a.type ?? 'general',
-        voice: a.voice ?? getDefaultVoiceForLanguage(language),
+        voice,
         model: a.model ?? 'gpt-4o-realtime-preview',
         language,
         system_prompt: a.system_prompt ?? '',
@@ -262,7 +271,7 @@ function AgentModal({
       });
       setLoaded(true);
     });
-  }, [agentId]);
+  }, [agentId, prefillRecommendedVoice]);
 
   const mutation = useMutation({
     mutationFn: (data: AgentFormData) => {
@@ -451,6 +460,7 @@ function AgentModal({
 
 export default function Agents() {
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
+  const [prefillRecommendedVoice, setPrefillRecommendedVoice] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isManager } = useRole();
@@ -521,6 +531,17 @@ export default function Agents() {
               agent.scheduling_provider &&
               !enabledSchedulingProviders.has(agent.scheduling_provider)
             );
+            const agentLanguage = normalizeAgentLanguage(agent.language);
+            const voiceMismatch =
+              !isFederated &&
+              !!agent.voice &&
+              !isVoiceRecommendedForLanguage(agent.voice, agentLanguage);
+            const recommendedVoice = voiceMismatch ? getDefaultVoiceForLanguage(agentLanguage) : null;
+            const languageLabel = getAgentLanguageLabel(agentLanguage);
+            const openVoiceFix = () => {
+              setPrefillRecommendedVoice(true);
+              setEditingId(agent.id);
+            };
             return (
             <div key={agent.id} className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
@@ -529,6 +550,27 @@ export default function Agents() {
                   <p className="text-xs text-text-secondary mt-0.5">{agent.type} &middot; {agent.voice} &middot; {agent.model.replace('gpt-4o-', '').replace('-preview', '')}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {voiceMismatch && isManager && (
+                    <button
+                      type="button"
+                      onClick={openVoiceFix}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition cursor-pointer"
+                      title={`"${agent.voice}" isn't recommended for ${languageLabel}. Click to switch to "${recommendedVoice}".`}
+                      aria-label={`Voice ${agent.voice} not recommended for ${languageLabel}. Switch to ${recommendedVoice}.`}
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      Voice mismatch
+                    </button>
+                  )}
+                  {voiceMismatch && !isManager && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50"
+                      title={`"${agent.voice}" isn't recommended for ${languageLabel}. Recommended: "${recommendedVoice}".`}
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      Voice mismatch
+                    </span>
+                  )}
                   {isFederated && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                       <Globe className="h-3 w-3" /> External
@@ -631,7 +673,11 @@ export default function Agents() {
         <AgentModal
           agentId={editingId === 'new' ? undefined : editingId}
           schedulingOptions={schedulingOptions}
-          onClose={() => setEditingId(null)}
+          prefillRecommendedVoice={prefillRecommendedVoice}
+          onClose={() => {
+            setEditingId(null);
+            setPrefillRecommendedVoice(false);
+          }}
           onSaved={(newAgentId?: string) => {
             if (newAgentId) {
               navigate(`/agents/${newAgentId}/builder`);
