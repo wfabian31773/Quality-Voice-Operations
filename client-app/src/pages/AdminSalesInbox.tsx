@@ -13,7 +13,7 @@ import {
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import { ErrorState, Skeleton } from '../components/state';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatCard } from '../components/ui';
 import Modal from '../components/Modal';
 
 type LeadSource = 'book_demo' | 'roi_calculator' | 'contact';
@@ -456,12 +456,12 @@ export default function AdminSalesInbox() {
 
       {counts && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Booked" value={counts.by_booking.booked} icon={CalendarCheck} accent="emerald" />
-          <StatCard label="No booking" value={counts.by_booking.no_booking} icon={CalendarClock} accent="amber" />
-          <StatCard label="Cancelled" value={counts.by_booking.cancelled} icon={CalendarX} accent="rose" />
-          <StatCard label="Demo requests" value={counts.by_source.book_demo} icon={Calendar} accent="purple" />
-          <StatCard label="ROI requests" value={counts.by_source.roi_calculator} icon={FileText} accent="blue" />
-          <StatCard label="Contact" value={counts.by_source.contact} icon={Mail} accent="slate" />
+          <StatCard label="Booked" value={counts.by_booking.booked} icon={CalendarCheck} tone="success" />
+          <StatCard label="No booking" value={counts.by_booking.no_booking} icon={CalendarClock} tone="warning" />
+          <StatCard label="Cancelled" value={counts.by_booking.cancelled} icon={CalendarX} tone="danger" />
+          <StatCard label="Demo requests" value={counts.by_source.book_demo} icon={Calendar} tone="accent" />
+          <StatCard label="ROI requests" value={counts.by_source.roi_calculator} icon={FileText} tone="info" />
+          <StatCard label="Contact" value={counts.by_source.contact} icon={Mail} tone="neutral" />
         </div>
       )}
 
@@ -682,36 +682,6 @@ export default function AdminSalesInbox() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  accent,
-}: {
-  label: string;
-  value: number;
-  icon: typeof Inbox;
-  accent: 'emerald' | 'amber' | 'rose' | 'purple' | 'blue' | 'slate';
-}) {
-  const accents: Record<string, string> = {
-    emerald: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
-    amber: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
-    rose: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
-    purple: 'text-purple-300 bg-purple-500/10 border-purple-500/30',
-    blue: 'text-blue-300 bg-blue-500/10 border-blue-500/30',
-    slate: 'text-slate-300 bg-slate-500/10 border-slate-500/30',
-  };
-  return (
-    <div className={clsx('rounded-lg border px-3 py-3 flex items-center gap-3', accents[accent])}>
-      <Icon className="h-5 w-5 shrink-0" />
-      <div className="min-w-0">
-        <div className="text-xl font-semibold leading-tight">{value}</div>
-        <div className="text-[11px] uppercase tracking-wider opacity-80">{label}</div>
-      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   Plus, Server, Activity, KeyRound, Globe, Mail, Zap, ArrowUpRight,
 } from 'lucide-react';
 import { EmptyState, Skeleton } from '../../components/state';
+import { StatCard } from '../../components/ui';
 
 function TenantLink({
   tenantId,
@@ -209,34 +210,6 @@ function severityClasses(sev: string): string {
   return 'bg-surface-hover text-text-secondary';
 }
 
-function StatCard({
-  icon: Icon, label, value, hint, tone = 'default',
-}: {
-  icon: typeof Shield;
-  label: string;
-  value: string | number;
-  hint?: string;
-  tone?: 'default' | 'success' | 'warn' | 'danger';
-}) {
-  const toneClasses = {
-    default: 'bg-surface',
-    success: 'bg-green-50 dark:bg-green-900/10',
-    warn: 'bg-yellow-50 dark:bg-yellow-900/10',
-    danger: 'bg-red-50 dark:bg-red-900/10',
-  }[tone];
-
-  return (
-    <div className={`rounded-xl border border-border p-4 ${toneClasses}`}>
-      <div className="flex items-center gap-2 text-muted text-xs font-medium uppercase tracking-wide">
-        <Icon className="h-4 w-4" />
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-semibold">{value}</div>
-      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
-    </div>
-  );
-}
-
 function OverviewTab() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['platform-compliance-overview'],
@@ -269,55 +242,59 @@ function OverviewTab() {
           icon={Building2}
           label="Active tenants"
           value={data.tenants.active_tenants}
-          hint={`${data.tenants.total_tenants} total · ${data.tenants.suspended_tenants} suspended`}
+          sub={`${data.tenants.total_tenants} total · ${data.tenants.suspended_tenants} suspended`}
+          tone="neutral"
         />
         <StatCard
           icon={Lock}
           label="Tenants with encryption"
           value={data.encryption.encrypted_tenants}
-          hint={`${data.encryption.active_keys} active keys · ${data.encryption.rotated_keys} rotations`}
-          tone={data.encryption.encrypted_tenants > 0 ? 'success' : 'warn'}
+          sub={`${data.encryption.active_keys} active keys · ${data.encryption.rotated_keys} rotations`}
+          tone={data.encryption.encrypted_tenants > 0 ? 'success' : 'warning'}
         />
         <StatCard
           icon={Globe}
           label="Active sub-processors"
           value={data.subprocessors.active}
-          hint={`${data.subprocessors.total} on the published list`}
+          sub={`${data.subprocessors.total} on the published list`}
+          tone="neutral"
         />
         <StatCard
           icon={Users}
           label="Platform admins"
           value={data.platformAdmins.total}
-          hint="Users with cross-tenant access"
+          sub="Users with cross-tenant access"
+          tone="neutral"
         />
         <StatCard
           icon={Activity}
           label="Audit events (24h)"
           value={data.auditEvents.last_24h.toLocaleString()}
-          hint={`${data.auditEvents.last_7d.toLocaleString()} in the last 7 days`}
+          sub={`${data.auditEvents.last_7d.toLocaleString()} in the last 7 days`}
+          tone="neutral"
         />
         <StatCard
           icon={AlertTriangle}
           label="Critical events (7d)"
           value={data.auditEvents.critical_7d}
-          hint={`${data.auditEvents.warning_7d} warnings`}
+          sub={`${data.auditEvents.warning_7d} warnings`}
           tone={data.auditEvents.critical_7d > 0 ? 'danger' : 'success'}
         />
         <StatCard
           icon={Trash2}
           label="Pending deletions"
           value={data.deletionRequests.pending}
-          hint={`${data.deletionRequests.completed} completed · ${data.deletionRequests.cancelled} cancelled`}
-          tone={data.deletionRequests.pending > 0 ? 'warn' : 'default'}
+          sub={`${data.deletionRequests.completed} completed · ${data.deletionRequests.cancelled} cancelled`}
+          tone={data.deletionRequests.pending > 0 ? 'warning' : 'neutral'}
         />
         <StatCard
           icon={Server}
           label="Isolation pass rate (30d)"
           value={isolationPassRate === null ? '—' : `${isolationPassRate}%`}
-          hint={data.isolationTests.last_run_at
+          sub={data.isolationTests.last_run_at
             ? `Last run ${formatDate(data.isolationTests.last_run_at)}`
             : 'Run the suite from the Tenant Isolation tab'}
-          tone={data.isolationTests.failed > 0 ? 'danger' : isolationPassRate === 100 ? 'success' : 'default'}
+          tone={data.isolationTests.failed > 0 ? 'danger' : isolationPassRate === 100 ? 'success' : 'neutral'}
         />
       </div>
 
@@ -603,21 +580,22 @@ function EncryptionTab() {
             icon={Building2}
             label="Tenants tracked"
             value={summary.total}
-            hint="Includes active and suspended"
+            sub="Includes active and suspended"
+            tone="neutral"
           />
           <StatCard
             icon={KeyRound}
             label="With active key"
             value={summary.with_active_keys}
-            hint="Encryption already enabled"
-            tone={summary.with_active_keys > 0 ? 'success' : 'default'}
+            sub="Encryption already enabled"
+            tone={summary.with_active_keys > 0 ? 'success' : 'neutral'}
           />
           <StatCard
             icon={AlertTriangle}
             label="Needs initialization"
             value={summary.needs_initialization}
-            hint={summary.needs_initialization > 0 ? 'Action required' : 'All tenants encrypted'}
-            tone={summary.needs_initialization > 0 ? 'warn' : 'success'}
+            sub={summary.needs_initialization > 0 ? 'Action required' : 'All tenants encrypted'}
+            tone={summary.needs_initialization > 0 ? 'warning' : 'success'}
           />
         </div>
       )}
@@ -1200,13 +1178,13 @@ function IsolationTab() {
             icon={AlertTriangle}
             label="Failed (30d)"
             value={summary.failed}
-            tone={summary.failed > 0 ? 'danger' : 'default'}
+            tone={summary.failed > 0 ? 'danger' : 'neutral'}
           />
           <StatCard
             icon={Activity}
             label="Pass rate"
             value={passRate === null ? '—' : `${passRate}%`}
-            tone={passRate === 100 ? 'success' : summary.failed > 0 ? 'danger' : 'default'}
+            tone={passRate === 100 ? 'success' : summary.failed > 0 ? 'danger' : 'neutral'}
           />
         </div>
       )}

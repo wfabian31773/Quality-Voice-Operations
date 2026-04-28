@@ -8,7 +8,7 @@ import {
   Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatCard } from '../components/ui';
 import Modal from '../components/Modal';
 
 interface DispatchJob {
@@ -182,21 +182,6 @@ const TRIGGER_EVENTS = ['job_assigned', 'job_scheduled', 'en_route', 'arrival', 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_FLOW.find(x => x.key === status);
   return <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${s?.bg || 'bg-surface-hover text-text-secondary'}`}>{s?.label || status}</span>;
-}
-
-function StatCard({ icon: Icon, label, value, sub }: { icon: React.ComponentType<{className?:string}>; label: string; value: string | number; sub?: string }) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-primary/10"><Icon className="h-4 w-4 text-primary" /></div>
-        <div>
-          <p className="text-xs text-muted">{label}</p>
-          <p className="text-lg font-bold text-heading">{value}</p>
-          {sub && <p className="text-[10px] text-muted">{sub}</p>}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ============ MAIN COMPONENT ============

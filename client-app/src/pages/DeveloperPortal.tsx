@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
+import { StatCard } from '../components/ui';
 import {
   Code2, Package, Upload, CheckCircle, XCircle, Clock,
   BarChart3, Star, Download, DollarSign, ChevronRight,
@@ -75,25 +76,6 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${STATUS_COLORS[status] ?? STATUS_COLORS.draft}`}>
       {status === 'in_review' ? 'In Review' : status}
     </span>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, suffix }: {
-  icon: typeof Package;
-  label: string;
-  value: number | string;
-  suffix?: string;
-}) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="h-4 w-4 text-primary" />
-        <span className="text-xs text-text-muted">{label}</span>
-      </div>
-      <p className="text-2xl font-bold text-text-primary">
-        {value}{suffix}
-      </p>
-    </div>
   );
 }
 

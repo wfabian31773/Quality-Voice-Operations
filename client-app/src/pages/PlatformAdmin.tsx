@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import BillingBackfillAlertsBanner from '../components/BillingBackfillAlertsBanner';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { StatCard } from '../components/ui';
 import {
   isHardBounce,
   isPermanentSmtpError,
@@ -5014,56 +5015,6 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  onClick,
-  tone,
-}: {
-  icon: typeof Building2;
-  label: string;
-  value: string;
-  sub?: string;
-  onClick?: () => void;
-  // 'warning' tints the value red so a non-zero recent-bounce window is
-  // visually distinct from the steady-state total. Kept opt-in so the
-  // existing four cards stay neutral.
-  tone?: 'warning';
-}) {
-  const valueClass =
-    tone === 'warning' && value !== '0' && value !== '...'
-      ? 'text-2xl font-bold text-red-600 dark:text-red-400'
-      : 'text-2xl font-bold';
-  const body = (
-    <>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${tone === 'warning' ? 'text-red-600 dark:text-red-400' : 'text-muted'}`} />
-        <span className="text-sm text-muted">{label}</span>
-      </div>
-      <div className={valueClass}>{value}</div>
-      {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
-    </>
-  );
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="bg-surface border border-border rounded-xl p-4 text-left w-full hover:border-primary/50 hover:bg-surface-secondary/40 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40"
-      >
-        {body}
-      </button>
-    );
-  }
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4">
-      {body}
     </div>
   );
 }

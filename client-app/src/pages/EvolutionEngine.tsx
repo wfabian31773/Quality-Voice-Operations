@@ -12,7 +12,7 @@ import {
 import clsx from 'clsx';
 import TourLauncher from '../components/TourLauncher';
 import { evolutionEngineTour } from '../components/tours';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatCard } from '../components/ui';
 
 interface DashboardData {
   opportunities: {
@@ -300,10 +300,10 @@ export default function EvolutionEngine() {
           ) : dash ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={Lightbulb} label="Active Opportunities" value={dash.opportunities.total} sub={`${dash.opportunities.highValue} high value`} color="purple" />
-                <StatCard icon={Target} label="Recommendations" value={dash.recommendations.total} sub={`${dash.recommendations.pending} pending review`} color="blue" />
-                <StatCard icon={FlaskConical} label="Experiments" value={dash.experiments.total} sub={`${dash.experiments.active} active`} color="teal" />
-                <StatCard icon={Zap} label="Signals (7d)" value={dash.signals.last7d} sub={`${dash.signals.total} total`} color="orange" />
+                <StatCard icon={Lightbulb} label="Active Opportunities" value={dash.opportunities.total.toLocaleString()} sub={`${dash.opportunities.highValue} high value`} tone="accent" />
+                <StatCard icon={Target} label="Recommendations" value={dash.recommendations.total.toLocaleString()} sub={`${dash.recommendations.pending} pending review`} tone="info" />
+                <StatCard icon={FlaskConical} label="Experiments" value={dash.experiments.total.toLocaleString()} sub={`${dash.experiments.active} active`} tone="success" />
+                <StatCard icon={Zap} label="Signals (7d)" value={dash.signals.last7d.toLocaleString()} sub={`${dash.signals.total} total`} tone="warning" />
               </div>
 
               {dash.recommendations.topRecommendation && (
@@ -805,36 +805,6 @@ export default function EvolutionEngine() {
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, sub, color }: {
-  icon: typeof Dna;
-  label: string;
-  value: number;
-  sub: string;
-  color: string;
-}) {
-  const bgColor = color === 'purple' ? 'bg-purple-100 dark:bg-purple-900/30' :
-    color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30' :
-    color === 'teal' ? 'bg-teal-100 dark:bg-teal-900/30' :
-    'bg-orange-100 dark:bg-orange-900/30';
-  const textColor = color === 'purple' ? 'text-purple-600 dark:text-purple-400' :
-    color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
-    color === 'teal' ? 'text-teal-600 dark:text-teal-400' :
-    'text-orange-600 dark:text-orange-400';
-
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center', bgColor)}>
-          <Icon className={clsx('w-4 h-4', textColor)} />
-        </div>
-        <span className="text-xs font-medium text-text-secondary">{label}</span>
-      </div>
-      <p className="text-2xl font-bold text-text-primary">{value.toLocaleString()}</p>
-      <p className="text-xs text-text-secondary mt-1">{sub}</p>
     </div>
   );
 }
