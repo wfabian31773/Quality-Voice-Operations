@@ -1607,6 +1607,8 @@ function AgentBuilderInner() {
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const templatesMenuRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
 
@@ -1628,6 +1630,25 @@ function AgentBuilderInner() {
       document.removeEventListener('keydown', handleKey);
     };
   }, [overflowOpen]);
+
+  useEffect(() => {
+    if (!templatesOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as globalThis.Node | null;
+      if (templatesMenuRef.current && target && !templatesMenuRef.current.contains(target)) {
+        setTemplatesOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTemplatesOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [templatesOpen]);
 
   const [agentSettings, setAgentSettings] = useState({
     voice: 'alloy',
@@ -2129,15 +2150,31 @@ function AgentBuilderInner() {
               ⌘K
             </kbd>
           </button>
-          <div className="relative group hidden xl:block">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition">
+          <div className="relative group hidden xl:block" ref={templatesMenuRef}>
+            <button
+              type="button"
+              onClick={() => setTemplatesOpen((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={templatesOpen}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+            >
               <Eye className="h-3.5 w-3.5" /> {t('templates')}
             </button>
-            <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 hidden group-hover:block">
+            <div
+              role="menu"
+              className={`absolute right-0 top-full mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 group-hover:block ${
+                templatesOpen ? 'block' : 'hidden'
+              }`}
+            >
               {industryTemplates.map((tpl) => (
                 <button
                   key={tpl.key}
-                  onClick={() => loadTemplate(tpl)}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setTemplatesOpen(false);
+                    loadTemplate(tpl);
+                  }}
                   className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition first:rounded-t-lg last:rounded-b-lg"
                 >
                   {tpl.label}
