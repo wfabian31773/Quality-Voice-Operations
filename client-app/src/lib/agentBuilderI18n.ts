@@ -159,7 +159,8 @@ export type AgentBuilderTKey =
   | 'cmdConnectNodes'
   | 'cmdFocusNode'
   | 'cmdNoMatches'
-  | 'keyboardShortcutsLabel';
+  | 'keyboardShortcutsLabel'
+  | 'moreActions';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -321,6 +322,7 @@ const EN: Record<AgentBuilderTKey, string> = {
   cmdFocusNode: 'Focus node: {label}',
   cmdNoMatches: 'No matches. Try a node name like "Greeting" or "connect Greeting to Ask".',
   keyboardShortcutsLabel: 'Keyboard',
+  moreActions: 'More',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -474,6 +476,7 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'Enfocar nodo: {label}',
   cmdNoMatches: 'Sin coincidencias. Prueba el nombre de un nodo como "Saludo" o "connect Saludo to Pregunta".',
   keyboardShortcutsLabel: 'Teclado',
+  moreActions: 'Más',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -627,6 +630,7 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'Cibler le nœud : {label}',
   cmdNoMatches: 'Aucune correspondance. Essayez un nom comme "Salutation" ou "connect Salutation to Question".',
   keyboardShortcutsLabel: 'Clavier',
+  moreActions: 'Plus',
 };
 
 const DE: Partial<Record<AgentBuilderTKey, string>> = {
@@ -780,6 +784,7 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'Knoten fokussieren: {label}',
   cmdNoMatches: 'Keine Treffer. Versuche einen Knotennamen wie "Begrüßung" oder "connect Begrüßung to Frage".',
   keyboardShortcutsLabel: 'Tastatur',
+  moreActions: 'Mehr',
 };
 
 const PT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -933,6 +938,7 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'Focar nó: {label}',
   cmdNoMatches: 'Sem correspondências. Tente um nome como "Saudação" ou "connect Saudação to Pergunta".',
   keyboardShortcutsLabel: 'Teclado',
+  moreActions: 'Mais',
 };
 
 const IT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1086,6 +1092,7 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'Focalizza nodo: {label}',
   cmdNoMatches: 'Nessuna corrispondenza. Prova un nome come "Saluto" o "connect Saluto to Domanda".',
   keyboardShortcutsLabel: 'Tastiera',
+  moreActions: 'Altro',
 };
 
 const NL: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1239,6 +1246,7 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'Focus knoop: {label}',
   cmdNoMatches: 'Geen overeenkomsten. Probeer een naam als "Begroeting" of "connect Begroeting to Vraag".',
   keyboardShortcutsLabel: 'Toetsenbord',
+  moreActions: 'Meer',
 };
 
 const ZH: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1392,6 +1400,7 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: '聚焦节点:{label}',
   cmdNoMatches: '没有匹配项。试试节点名称,例如 "问候" 或 "connect 问候 to 询问"。',
   keyboardShortcutsLabel: '键盘',
+  moreActions: '更多',
 };
 
 const JA: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1545,6 +1554,7 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'ノードにフォーカス:{label}',
   cmdNoMatches: '一致なし。"挨拶" のようなノード名や "connect 挨拶 to 質問" を試してください。',
   keyboardShortcutsLabel: 'キーボード',
+  moreActions: 'その他',
 };
 
 const KO: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1698,6 +1708,7 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: '노드 포커스: {label}',
   cmdNoMatches: '일치 항목 없음. "인사" 같은 노드 이름이나 "connect 인사 to 질문"을 시도해 보세요.',
   keyboardShortcutsLabel: '키보드',
+  moreActions: '더보기',
 };
 
 const AR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1851,6 +1862,7 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'تركيز العقدة: {label}',
   cmdNoMatches: 'لا توجد نتائج. جرّب اسم عقدة مثل "تحية" أو "connect تحية to سؤال".',
   keyboardShortcutsLabel: 'لوحة المفاتيح',
+  moreActions: 'المزيد',
 };
 
 const HI: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2004,6 +2016,7 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   cmdFocusNode: 'नोड पर फोकस: {label}',
   cmdNoMatches: 'कोई मिलान नहीं। "अभिवादन" जैसे नोड नाम या "connect अभिवादन to प्रश्न" आज़माएँ।',
   keyboardShortcutsLabel: 'कीबोर्ड',
+  moreActions: 'अधिक',
 };
 
 const TRANSLATIONS: Record<string, Partial<Record<AgentBuilderTKey, string>>> = {

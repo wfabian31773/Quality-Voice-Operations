@@ -41,7 +41,7 @@ import {
   Ticket, UserPlus, Calendar, Send, Truck, Phone,
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
   RotateCcw, Eye, Trash2, Lightbulb, Check, XCircle, TrendingUp,
-  Keyboard, Search,
+  Keyboard, Search, MoreHorizontal,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import VoicePicker from '../components/VoicePicker';
@@ -1556,8 +1556,29 @@ function AgentBuilderInner() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; tone: 'success' | 'error' } | null>(null);
   const [commandBarOpen, setCommandBarOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as globalThis.Node | null;
+      if (overflowMenuRef.current && target && !overflowMenuRef.current.contains(target)) {
+        setOverflowOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOverflowOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [overflowOpen]);
 
   const [agentSettings, setAgentSettings] = useState({
     voice: 'alloy',
@@ -1991,7 +2012,7 @@ function AgentBuilderInner() {
             <input
               value={agentSettings.name}
               onChange={(e) => handleSettingChange('name', e.target.value)}
-              className="text-sm font-semibold text-text-primary bg-transparent border-none focus:outline-none focus:ring-0 px-0 min-w-[12ch]"
+              className="text-sm font-semibold text-text-primary bg-transparent border-none focus:outline-none focus:ring-0 px-0 min-w-[16ch] sm:min-w-[20ch] max-w-full"
               placeholder={t('agentNamePlaceholder')}
               aria-label={t('agentNamePlaceholder')}
             />
@@ -2022,7 +2043,7 @@ function AgentBuilderInner() {
             onClick={() => setCommandBarOpen(true)}
             aria-label={t('commandBarOpen')}
             title={t('commandBarOpen')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
           >
             <Keyboard className="h-3.5 w-3.5" />
             <span>{t('keyboardShortcutsLabel')}</span>
@@ -2030,7 +2051,7 @@ function AgentBuilderInner() {
               ⌘K
             </kbd>
           </button>
-          <div className="relative group">
+          <div className="relative group hidden xl:block">
             <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition">
               <Eye className="h-3.5 w-3.5" /> {t('templates')}
             </button>
@@ -2045,6 +2066,61 @@ function AgentBuilderInner() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="relative xl:hidden" ref={overflowMenuRef}>
+            <button
+              type="button"
+              onClick={() => setOverflowOpen((open) => !open)}
+              aria-label={t('moreActions')}
+              aria-haspopup="menu"
+              aria-expanded={overflowOpen}
+              title={t('moreActions')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+              <span className="sr-only">{t('moreActions')}</span>
+            </button>
+            {overflowOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-1 w-56 bg-surface border border-border rounded-lg shadow-lg z-30 py-1"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    setCommandBarOpen(true);
+                  }}
+                  className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition"
+                >
+                  <Keyboard className="h-3.5 w-3.5 text-text-secondary" />
+                  <span className="flex-1">{t('keyboardShortcutsLabel')}</span>
+                  <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-surface-secondary text-[10px] font-mono text-text-muted">
+                    ⌘K
+                  </kbd>
+                </button>
+                <div className="border-t border-border my-1" />
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                  {t('templates')}
+                </div>
+                {industryTemplates.map((tpl) => (
+                  <button
+                    key={tpl.key}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOverflowOpen(false);
+                      loadTemplate(tpl);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-text-secondary" />
+                    <span>{tpl.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button
             onClick={() => setRightPanel(rightPanel === 'voice' ? 'none' : 'voice')}
