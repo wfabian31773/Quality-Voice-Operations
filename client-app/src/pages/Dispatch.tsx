@@ -2261,10 +2261,11 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
               <div>
                 <label className="block text-xs font-medium text-muted mb-1">Body Template *</label>
                 <textarea value={(formData.body_template as string) || ''} onChange={e => setFormData({ ...formData, body_template: e.target.value })}
-                  rows={4} placeholder="Use {{job_title}}, {{contact_name}}, {{eta}}, {{eta_drive_minutes}}, {{eta_arrival_time}}, {{address}}, {{resource_name}}, etc."
+                  rows={4} placeholder="Use {{job_title}}, {{contact_name}}, {{eta}}, {{eta_drive_minutes}}, {{eta_arrival_time}}, {{address}}, {{resource_name}}, {{tracking_url}}, etc."
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 <p className="mt-1 text-[11px] text-muted">
                   <code>{'{{eta_drive_minutes}}'}</code> and <code>{'{{eta_arrival_time}}'}</code> are filled with the live driving ETA from the technician&apos;s last GPS fix when the job is en route.
+                  {' '}<code>{'{{tracking_url}}'}</code> renders an absolute link to the customer&apos;s booking-tracker page (e.g. <code>https://&lt;host&gt;/track/&lt;token&gt;</code>).
                 </p>
               </div>
             </>

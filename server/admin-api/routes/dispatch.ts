@@ -29,6 +29,21 @@ const logger = createLogger('ADMIN_DISPATCH');
 // customer with a stale ETA.
 const LIVE_ETA_MAX_FIX_AGE_SEC = 600;
 
+// Build the absolute customer-facing booking-tracker URL for a job. The
+// `tracking_token` (migration 088) is the only credential the public
+// tracker endpoint accepts, so it must travel as part of the link we
+// drop into outbound SMS bodies. We fall back through the same
+// APP_URL → REPLIT_DEV_DOMAIN chain other outbound-link callers use so
+// dev, preview, and prod all produce a tappable absolute URL.
+function publicTrackerUrl(trackingToken: string): string {
+  const base =
+    process.env.APP_URL
+    ?? (process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : 'http://localhost:5173');
+  return `${base.replace(/\/+$/, '')}/track/${trackingToken}`;
+}
+
 /**
  * Fire-and-forget push to the assigned technician for a dispatch lifecycle
  * event. Looks up the job's resource_id (and assignee_user_id) and routes
@@ -214,6 +229,18 @@ export async function fireNotifications(
       ? liveEta.arrivalDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : (job.eta_start ? new Date(job.eta_start as string).toLocaleString() : 'TBD');
 
+    // Customers tap the {{tracking_url}} link in their SMS to reach the
+    // public booking-tracker page. The token comes straight off the job
+    // row (`SELECT d.*` above), so every job written since migration 088
+    // already has one. If the column is somehow missing the substitution
+    // collapses to an empty string rather than leaving a raw `{{...}}`
+    // placeholder visible to the customer.
+    const trackingToken =
+      typeof job.tracking_token === 'string' && job.tracking_token.length > 0
+        ? (job.tracking_token as string)
+        : null;
+    const trackingUrl = trackingToken ? publicTrackerUrl(trackingToken) : '';
+
     const substitute = (raw: string): string => raw
       .replace(/\{\{job_title\}\}/g, job.title as string || '')
       .replace(/\{\{contact_name\}\}/g, job.contact_name as string || '')
@@ -222,7 +249,8 @@ export async function fireNotifications(
       .replace(/\{\{eta_arrival_time\}\}/g, liveEtaArrival)
       .replace(/\{\{resource_name\}\}/g, job.resource_name as string || '')
       .replace(/\{\{status\}\}/g, job.status as string || '')
-      .replace(/\{\{address\}\}/g, job.address as string || '');
+      .replace(/\{\{address\}\}/g, job.address as string || '')
+      .replace(/\{\{tracking_url\}\}/g, trackingUrl);
 
     for (const tpl of templates) {
       const body = substitute(tpl.body_template as string);
