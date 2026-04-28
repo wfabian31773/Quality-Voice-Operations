@@ -391,15 +391,42 @@ export const listJobsHandler: RequestHandler = async (req, res) => {
 
     const where = conditions.join(' AND ');
 
+    // `closest_approach_m` powers the inline "X m from address" badge on
+    // the dispatch board so supervisors can spot jobs that probably never
+    // reached the right house at a glance — the same number the route
+    // replay tab surfaces, but without forcing a click into the modal.
+    //
+    // Computed in SQL with the haversine formula against the cached
+    // address geocode (populated by the route replay / live-map paths)
+    // and the per-job breadcrumb ring. The LATERAL only does work for
+    // jobs with both a cached geocode and at least one ping; otherwise
+    // it returns NULL and the UI hides the badge.
     const { rows } = await pool.query(
       `SELECT d.*, u.email AS assignee_email,
               r.name AS resource_name,
               t.name AS territory_name,
+              ca.closest_approach_m,
               COUNT(*) OVER() AS _total_count
        FROM dispatch_jobs d
        LEFT JOIN users u ON u.id = d.assignee_user_id
        LEFT JOIN dispatch_resources r ON r.id = d.resource_id AND r.tenant_id = d.tenant_id
        LEFT JOIN dispatch_territories t ON t.id = d.territory_id AND t.tenant_id = d.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT MIN(
+           6371000 * 2 * ASIN(
+             SQRT(LEAST(1.0,
+               POWER(SIN(RADIANS((h.latitude - d.address_lat::float8) / 2)), 2)
+               + COS(RADIANS(d.address_lat::float8)) * COS(RADIANS(h.latitude))
+                 * POWER(SIN(RADIANS((h.longitude - d.address_lon::float8) / 2)), 2)
+             ))
+           )
+         ) AS closest_approach_m
+         FROM dispatch_resource_location_history h
+         WHERE h.tenant_id = d.tenant_id
+           AND h.active_job_id = d.id
+           AND d.address_lat IS NOT NULL
+           AND d.address_lon IS NOT NULL
+       ) ca ON TRUE
        WHERE ${where}
        ORDER BY
          CASE d.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
@@ -411,7 +438,15 @@ export const listJobsHandler: RequestHandler = async (req, res) => {
     let total = 0;
     if (rows.length > 0) {
       total = parseInt(rows[0]._total_count as string, 10) || 0;
-      for (const r of rows) delete (r as Record<string, unknown>)._total_count;
+      for (const r of rows) {
+        delete (r as Record<string, unknown>)._total_count;
+        // Pg returns DOUBLE PRECISION as a JS number already, but the
+        // outer aggregate of an empty group is NULL. Normalize so the
+        // client can treat it as `number | null` without coercion.
+        const ca = (r as Record<string, unknown>).closest_approach_m;
+        (r as Record<string, unknown>).closest_approach_m =
+          ca == null ? null : Number(ca);
+      }
     } else if (offset > 0) {
       const { rows: countRows } = await pool.query(
         `SELECT COUNT(*)::int AS total FROM dispatch_jobs d WHERE ${where}`,

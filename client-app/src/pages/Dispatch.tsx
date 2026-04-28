@@ -47,6 +47,13 @@ interface DispatchJob {
   is_follow_up: boolean;
   required_skills: string[];
   created_at: string;
+  // Smallest haversine distance (meters) between any technician
+  // breadcrumb ping recorded against this job and the cached
+  // customer-address geocode. `null` when we don't have both. Surfaced
+  // as the "X m from address" badge on on-site / in-progress board
+  // cards so supervisors can spot jobs that probably never reached the
+  // right house without opening the route replay tab.
+  closest_approach_m: number | null;
 }
 
 interface Resource {
@@ -185,6 +192,47 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 const EXCEPTION_TYPES = ['delay', 'no_access', 'cancelled', 'reschedule', 'return_visit', 'reassignment', 'other'];
 const TRIGGER_EVENTS = ['job_assigned', 'job_scheduled', 'en_route', 'arrival', 'delay', 'completed', 'exception', 'cancelled'];
+
+// Job statuses where the closest-approach badge is meaningful: the tech
+// has at least had a chance to be at the address. We intentionally skip
+// `en_route` (not arrived yet — value would just be the latest in-motion
+// distance) and the pre-dispatch states (no breadcrumbs).
+const SHOW_CLOSEST_APPROACH_STATUSES = new Set([
+  'on_site',
+  'in_progress',
+  'completed',
+  'incomplete',
+  'done',
+]);
+
+// Distance thresholds (meters) for the closest-approach badge color.
+// > 250 m is "almost certainly didn't reach the right house" — that's
+// the threshold called out in the task spec; 100 m is a softer warning
+// for "GPS-noisy but probably OK" (urban canyons, multi-unit buildings).
+const CLOSEST_APPROACH_BAD_M = 250;
+const CLOSEST_APPROACH_WARN_M = 100;
+
+function ClosestApproachBadge({ meters }: { meters: number }) {
+  const tone =
+    meters > CLOSEST_APPROACH_BAD_M
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+      : meters > CLOSEST_APPROACH_WARN_M
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+      : 'bg-surface-hover text-muted';
+  const title =
+    meters > CLOSEST_APPROACH_BAD_M
+      ? `Closest GPS ping was ${formatDistance(meters)} from the address — likely never reached the right location`
+      : `Closest GPS ping was ${formatDistance(meters)} from the address`;
+  return (
+    <div
+      className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] ${tone}`}
+      title={title}
+    >
+      <MapPin className="h-2.5 w-2.5" />
+      <span>{formatDistance(meters)} from address</span>
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_FLOW.find(x => x.key === status);
@@ -848,6 +896,14 @@ function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }:
   onSelect: () => void; onClick: () => void; onTransition: (s: string) => void;
 }) {
   const nextStates = VALID_TRANSITIONS[job.status] || [];
+  // Show the closest-approach badge once the tech has had a real chance
+  // to be at the address — i.e. on-site or actively working the job.
+  // Earlier states (en_route) reflect a still-in-motion distance, not an
+  // arrival accuracy, so we keep the badge focused on the dispute case
+  // ("did the tech actually get to the right house?").
+  const showCloseness =
+    job.closest_approach_m != null
+    && SHOW_CLOSEST_APPROACH_STATUSES.has(job.status);
   return (
     <div onClick={onClick}
       className={`bg-surface-secondary rounded-lg p-2.5 cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all ${selected ? 'ring-2 ring-primary' : ''}`}>
@@ -881,6 +937,9 @@ function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }:
           <Clock className="h-2.5 w-2.5" />
           <span>{new Date(job.scheduled_at).toLocaleDateString()} {new Date(job.scheduled_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
         </div>
+      )}
+      {showCloseness && (
+        <ClosestApproachBadge meters={job.closest_approach_m as number} />
       )}
       {job.is_follow_up && <span className="text-[8px] px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded mt-1 inline-block">Follow-up</span>}
       {!isReadOnly && nextStates.length > 0 && (
