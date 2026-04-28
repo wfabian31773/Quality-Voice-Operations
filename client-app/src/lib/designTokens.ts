@@ -63,18 +63,6 @@ export const palette = {
   sidebarText: "#C5D2DA",
   sidebarActive: "#1F8E83",
   sidebarHover: "#143A52",
-
-  // Brand pigments (kept for backwards compat)
-  harbor: "#0E2738",
-  harborLight: "#143A52",
-  teal: "#1F8E83",
-  tealLight: "#D8EDEB",
-  mist: "#F4F7F8",
-  warmAmber: "#E2A24A",
-  controlledRed: "#B34D4D",
-  calmGreen: "#2F8F58",
-  frostBlue: "#DCEAF0",
-  mineralSand: "#E8E1D8",
 } as const;
 
 export const paletteDark = {
@@ -268,7 +256,7 @@ export const chartPalette = [
   palette.info, // calm blue
   palette.success, // green
   palette.warning, // ochre
-  palette.harborLight, // deep navy tint
+  palette.sidebarHover, // deep navy tint
 ] as const;
 
 /* ----------------------------------------------------------------- */
