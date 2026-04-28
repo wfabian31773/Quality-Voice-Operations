@@ -516,6 +516,70 @@ export default function Agents() {
   const agents = data?.agents ?? [];
   const enabledSchedulingProviders = connectedProviders;
 
+  const mismatchedAgents = agents
+    .filter((agent) => {
+      const isFederated = agent.execution_mode === 'federated';
+      if (isFederated || !agent.voice) return false;
+      const language = normalizeAgentLanguage(agent.language);
+      return !isVoiceRecommendedForLanguage(agent.voice, language);
+    })
+    .map((agent) => ({
+      id: agent.id,
+      recommendedVoice: getDefaultVoiceForLanguage(normalizeAgentLanguage(agent.language)),
+    }));
+
+  const [bulkFixState, setBulkFixState] = useState<
+    { status: 'idle' } | { status: 'running' } | { status: 'error'; message: string }
+  >({ status: 'idle' });
+
+  const BULK_FIX_CONCURRENCY = 5;
+
+  const bulkFixMutation = useMutation({
+    mutationFn: async (
+      targets: Array<{ id: string; recommendedVoice: string }>,
+    ) => {
+      let failureCount = 0;
+      for (let i = 0; i < targets.length; i += BULK_FIX_CONCURRENCY) {
+        const slice = targets.slice(i, i + BULK_FIX_CONCURRENCY);
+        const results = await Promise.allSettled(
+          slice.map((t) => api.patch(`/agents/${t.id}`, { voice: t.recommendedVoice })),
+        );
+        failureCount += results.filter((r) => r.status === 'rejected').length;
+      }
+      return { total: targets.length, failureCount };
+    },
+    onMutate: () => setBulkFixState({ status: 'running' }),
+    onSuccess: ({ failureCount, total }) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      if (failureCount > 0) {
+        setBulkFixState({
+          status: 'error',
+          message: `Updated ${total - failureCount} of ${total} agents. ${failureCount} failed — please retry.`,
+        });
+      } else {
+        setBulkFixState({ status: 'idle' });
+      }
+    },
+    onError: (err: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      const message = err instanceof Error ? err.message : 'Bulk fix failed';
+      setBulkFixState({ status: 'error', message });
+    },
+  });
+
+  const handleBulkFixVoices = () => {
+    if (mismatchedAgents.length === 0) return;
+    const confirmed = window.confirm(
+      mismatchedAgents.length === 1
+        ? `Switch 1 agent to its recommended voice?`
+        : `Switch all ${mismatchedAgents.length} agents to their recommended voices?`,
+    );
+    if (!confirmed) return;
+    bulkFixMutation.mutate(
+      mismatchedAgents.map((a) => ({ id: a.id, recommendedVoice: a.recommendedVoice })),
+    );
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -535,6 +599,39 @@ export default function Agents() {
           </TooltipWalkthrough>
         ) : undefined}
       />
+
+      {!isLoading && isManager && mismatchedAgents.length > 0 && (
+        <div
+          role="status"
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-900/20"
+        >
+          <div className="flex items-start gap-2 text-sm text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">
+                {mismatchedAgents.length === 1
+                  ? '1 agent is using a voice not recommended for its language.'
+                  : `${mismatchedAgents.length} agents are using a voice not recommended for their language.`}
+              </p>
+              {bulkFixState.status === 'error' && (
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                  {bulkFixState.message}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleBulkFixVoices}
+            disabled={bulkFixState.status === 'running'}
+            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            {bulkFixState.status === 'running'
+              ? 'Switching voices…'
+              : 'Switch all to recommended voices'}
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <SkeletonGrid count={6} />
