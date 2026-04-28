@@ -9,7 +9,7 @@ import {
   Lock, Download, Trash2, Bell, BellOff, Mail,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
-import { VOICES } from '../components/VoicePicker';
+import VoicePicker from '../components/VoicePicker';
 
 interface Tenant {
   id: string;
@@ -210,18 +210,22 @@ function GeneralSettings() {
         </div>
 
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">Default Voice</label>
-          <select
-            value={form.defaultVoice}
-            onChange={(e) => set('defaultVoice', e.target.value)}
-            disabled={!isOwner}
-            className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
+          <div
+            className={`max-w-md ${!isOwner ? 'opacity-60 pointer-events-none' : ''}`}
+            aria-disabled={!isOwner}
           >
-            {VOICES.map((v) => (
-              <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
-            ))}
-          </select>
-          <p className="text-xs text-text-muted mt-1.5">Voice used for new agents by default</p>
+            <VoicePicker
+              voice={form.defaultVoice}
+              language="en"
+              welcomeGreeting="Hi! Thanks for calling. How can I help today?"
+              onChange={(next) => {
+                if (!isOwner) return;
+                set('defaultVoice', next);
+              }}
+              labelClassName="block text-sm font-medium text-text-primary mb-1.5"
+            />
+          </div>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">Voice used for new agents by default. Use the play buttons to preview each voice.</p>
         </div>
 
         <div className="p-6">
