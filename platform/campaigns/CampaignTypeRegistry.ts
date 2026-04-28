@@ -1,4 +1,15 @@
-import type { CampaignType, TypeDisposition } from './types';
+import type { CampaignType, CampaignTypeConfigFields, TypeDisposition } from './types';
+
+/**
+ * Allowed `configFields[].key` values for a registered campaign type.
+ * Constrained to the keys declared on `CampaignTypeConfigFields` so the
+ * registry, the prompt augmenter, and any caller iterating these fields
+ * all agree with the typed `CampaignConfig`. Adding a new per-type config
+ * field requires extending one of the source interfaces in
+ * `platform/campaigns/types.ts` first — which is exactly the property
+ * Task #780 was meant to enforce.
+ */
+export type CampaignConfigFieldKey = keyof CampaignTypeConfigFields;
 
 export interface CampaignTypeDefinition {
   type: CampaignType;
@@ -10,7 +21,7 @@ export interface CampaignTypeDefinition {
   primaryDispositions: string[];
   promptTemplate: string;
   configFields: Array<{
-    key: string;
+    key: CampaignConfigFieldKey;
     label: string;
     type: 'text' | 'url' | 'number' | 'boolean';
     placeholder?: string;

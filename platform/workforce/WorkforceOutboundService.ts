@@ -162,7 +162,10 @@ export class WorkforceOutboundService {
           callWindowStart: (taskConfig.callWindowStart as string) ?? '09:00',
           callWindowEnd: (taskConfig.callWindowEnd as string) ?? '17:00',
           maxConcurrentCalls: 2,
-          maxRetries: 1,
+          // The dialer reads `maxAttempts` (see `CampaignScheduler.ts`); the
+          // previous `maxRetries: 1` typo silently slipped through the old
+          // `Record<string, unknown>` escape hatch and never took effect.
+          maxAttempts: 1,
           workforceMeta: {
             workforceTaskId: taskId,
             teamId: task.teamId,

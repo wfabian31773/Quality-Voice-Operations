@@ -67,13 +67,21 @@ function getValidTimezones(): string[] {
 }
 const VALID_TIMEZONES = getValidTimezones();
 
-function validateScheduleConfig(config?: Record<string, unknown>): string | null {
-  if (!config) return null;
+function validateScheduleConfig(config?: unknown): string | null {
+  if (config === undefined || config === null) return null;
+  // The payload comes from `req.body`, so even though the route hands us
+  // something it claims is a `CampaignConfig`, we treat it as `unknown` and
+  // narrow with explicit guards. Anything we accept here flows back out as a
+  // typed `CampaignConfig` for the rest of the route.
+  if (typeof config !== 'object' || Array.isArray(config)) {
+    return 'config must be an object';
+  }
+  const raw = config as Record<string, unknown>;
   const {
     timezone, callWindowStart, callWindowEnd, daysOfWeek,
     maxConcurrentCalls, maxAttempts, retryDelayMinutes,
     respectContactTimezone, areaCodeTimezones, verifiedCallerId,
-  } = config;
+  } = raw;
 
   if (verifiedCallerId !== undefined && verifiedCallerId !== null && typeof verifiedCallerId !== 'string') {
     return 'config.verifiedCallerId must be a string id or null';
@@ -319,10 +327,10 @@ router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, 
     }
 
     const existingCampaign = await getCampaign(tenantId, id);
-    const mergedConfig = {
+    const mergedConfig: CampaignConfig = {
       ...(existingCampaign?.config ?? {}),
       ...(config ?? {}),
-    } as Record<string, unknown>;
+    };
     const verifiedCallerIdCfg = mergedConfig.verifiedCallerId;
     if (typeof verifiedCallerIdCfg === 'string' && verifiedCallerIdCfg.length > 0) {
       const verified = await getVerifiedCallerById(tenantId, verifiedCallerIdCfg);

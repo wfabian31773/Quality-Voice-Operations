@@ -1,5 +1,5 @@
 import { getCampaignTypeDefinition } from './CampaignTypeRegistry';
-import type { CampaignType } from './types';
+import type { CampaignConfig, CampaignType } from './types';
 
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -11,7 +11,7 @@ function replaceToken(prompt: string, token: string, value: string): string {
 
 export function buildCampaignTypePromptAugmentation(
   campaignType: string,
-  campaignConfig: Record<string, unknown>,
+  campaignConfig: CampaignConfig,
   contactMetadata: Record<string, unknown>,
   contactName: string | null,
 ): string | null {
@@ -22,13 +22,18 @@ export function buildCampaignTypePromptAugmentation(
 
   let prompt = typeDef.promptTemplate;
 
-  const businessName = (campaignConfig.businessName as string) ?? 'our business';
+  const businessName = campaignConfig.businessName ?? 'our business';
   prompt = replaceToken(prompt, 'businessName', businessName);
 
   if (contactName) {
     prompt = replaceToken(prompt, 'contactName', contactName);
   }
 
+  // Registry-driven traversal: `field.key` is constrained to
+  // `CampaignConfigFieldKey` (= `keyof CampaignTypeConfigFields`), so direct
+  // index access against `CampaignConfig` is type-checked. Adding a new
+  // per-type field requires extending the source interfaces in
+  // `platform/campaigns/types.ts` first — no escape hatch needed.
   for (const field of typeDef.configFields) {
     if (!field.key.endsWith('Field')) continue;
 
@@ -55,7 +60,11 @@ export function buildCampaignTypePromptAugmentation(
     }
   }
 
-  for (const [key, value] of Object.entries(campaignConfig)) {
+  // Final pass: any remaining string-valued config keys can fill same-named
+  // tokens (e.g. `{{followupGoal}}`). Iterating with `Object.entries` is
+  // intrinsically dynamic, so we walk a `Record` view here — this is a
+  // runtime convenience for `for-of`, not a type-system escape hatch.
+  for (const [key, value] of Object.entries(campaignConfig as Record<string, unknown>)) {
     if (typeof value === 'string') {
       prompt = replaceToken(prompt, key, value);
     }

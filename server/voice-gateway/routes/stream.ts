@@ -320,12 +320,11 @@ export function attachWebSocket(server: HTTPServer): void {
                 const campaign = await getCampaign(tenantId, campaignId);
                 if (campaign && campaign.type && campaign.type !== 'outbound_call') {
                   const contact = await getContact(tenantId, campaignId, campaignContactId);
-                  const contactMeta = (contact as Record<string, unknown>)?.metadata as Record<string, unknown> ?? {};
-                  const contactName = (contact as Record<string, unknown>)?.name as string ?? null;
-                  const campaignConfig = (campaign as Record<string, unknown>).config as Record<string, unknown> ?? {};
+                  const contactMeta = contact?.metadata ?? {};
+                  const contactName = contact?.name ?? null;
                   const augmentation = buildCampaignTypePromptAugmentation(
                     campaign.type,
-                    campaignConfig,
+                    campaign.config,
                     contactMeta,
                     contactName,
                   );

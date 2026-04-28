@@ -47,9 +47,11 @@ export interface CampaignScheduleConfig {
  * Persisted campaign config blob. Mirrors the client-side `CampaignConfig`
  * (see `client-app/src/pages/Campaigns.tsx`): every scheduling field is
  * optional because rows persisted before a setting was introduced can
- * (and do) omit it. Per-campaign-type config fields are still dynamic and
- * stored on the same JSONB blob, so we keep the `Record<string, unknown>`
- * escape hatch.
+ * (and do) omit it. Per-campaign-type config fields (appointment date
+ * field, lead source field, review URL, etc.) live on the same JSONB blob
+ * and are intersected in via `CampaignTypeConfigFields` below — so any
+ * known type-specific key is type-checked instead of silently slipping
+ * through an index signature.
  */
 export type CampaignConfig =
   & Partial<CampaignScheduleConfig>
@@ -58,8 +60,25 @@ export type CampaignConfig =
     maxConcurrent?: number;
     /** Verified outbound caller ID (Trusted Caller record id) or null when unset. */
     verifiedCallerId?: string | null;
+    /**
+     * Business name substituted into the per-type prompt templates as
+     * the `{{businessName}}` token (see `CampaignTypeRegistry` and
+     * `buildCampaignTypePromptAugmentation`).
+     */
+    businessName?: string;
+    /**
+     * Origin metadata stamped on campaigns launched by the Workforce
+     * outbound launcher (`platform/workforce/WorkforceOutboundService.ts`).
+     * Persisted on the JSONB blob so admin tooling can trace a campaign
+     * back to the workforce task that spawned it.
+     */
+    workforceMeta?: {
+      workforceTaskId: string;
+      teamId: string | null;
+      campaignType: string;
+    };
   }
-  & Record<string, unknown>;
+  & CampaignTypeConfigFields;
 
 export interface CampaignComplianceMatch {
   contactId: string;
@@ -112,12 +131,33 @@ export interface UpsellConfig {
   discountField?: string;
 }
 
+/**
+ * Discriminated-style union of every per-campaign-type config interface.
+ * Useful when you want to talk about "exactly one of these shapes" in
+ * isolation (e.g. validation helpers or registry-driven UIs).
+ */
 export type CampaignTypeConfig =
   | AppointmentReminderConfig
   | LeadFollowupConfig
   | ReviewRequestConfig
   | ReactivationConfig
   | UpsellConfig;
+
+/**
+ * Flattened intersection of every per-campaign-type config interface.
+ * All keys are optional, so this is safe to merge into the schedule
+ * config without forcing any one type's fields. Adding a new type-
+ * specific field (in one of the source interfaces above) automatically
+ * propagates here and into `CampaignConfig`, so a typo like
+ * `appointmentDateFiled` becomes a compile error instead of silently
+ * vanishing into a `Record<string, unknown>` escape hatch.
+ */
+export type CampaignTypeConfigFields =
+  & AppointmentReminderConfig
+  & LeadFollowupConfig
+  & ReviewRequestConfig
+  & ReactivationConfig
+  & UpsellConfig;
 
 export interface Campaign {
   id: string;
