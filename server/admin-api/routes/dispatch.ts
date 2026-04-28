@@ -2069,6 +2069,20 @@ const TRACKER_PUBLIC_STATUSES = new Set([
   'cancelled',
 ]);
 
+// Terminal statuses for the *public* tracker. Once a job lands in one
+// of these and stays there past the grace period below, the tracking
+// link stops resolving and we serve the same friendly 404 page used
+// for unknown tokens. This keeps the SMS link useful for a day after
+// the visit (so the customer can revisit "what time were they here?")
+// without leaving the tech's first name + appointment window
+// indefinitely accessible to anyone who keeps the URL.
+const TRACKER_TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'no_show']);
+
+// Grace period after a job enters a terminal status during which the
+// tracking link still resolves. Tune this single constant to make the
+// link expire faster or linger longer.
+const TRACKER_TERMINAL_GRACE_MS = 24 * 60 * 60 * 1000;
+
 /**
  * GET /public/dispatch/track/:token
  *
@@ -2102,7 +2116,7 @@ export const getPublicJobTrackerHandler: RequestHandler = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT j.id, j.tenant_id, j.title, j.status,
               j.address, j.scheduled_at, j.eta_start, j.eta_end,
-              j.completed_at, j.resource_id,
+              j.completed_at, j.updated_at, j.resource_id,
               j.address_lat, j.address_lon, j.address_geocoded_for,
               r.name AS resource_name
          FROM dispatch_jobs j
@@ -2121,6 +2135,30 @@ export const getPublicJobTrackerHandler: RequestHandler = async (req, res) => {
     const status = String(row.status ?? '');
     const address = String(row.address ?? '').trim();
     const resourceId = (row.resource_id as string | null) ?? null;
+
+    // Expire the link once the job has been in a terminal state past
+    // the grace period. We fall back to `updated_at` for cancelled /
+    // no_show transitions where `completed_at` is never written; that
+    // timestamp is updated on every status change so it's a safe proxy
+    // for "when did this job leave the active queue?". We return the
+    // same 404 shape used for unknown tokens so the public UI shows
+    // its existing "Tracking link not found" page rather than leaking
+    // that the job ever existed.
+    if (TRACKER_TERMINAL_STATUSES.has(status)) {
+      const refRaw =
+        (row.completed_at as string | Date | null | undefined) ??
+        (row.updated_at as string | Date | null | undefined) ??
+        null;
+      if (refRaw) {
+        const refMs = new Date(refRaw as string | Date).getTime();
+        if (
+          Number.isFinite(refMs) &&
+          Date.now() - refMs > TRACKER_TERMINAL_GRACE_MS
+        ) {
+          return res.status(404).json({ error: 'Tracking link not found' });
+        }
+      }
+    }
 
     // Compute live ETA only when the customer actually benefits — the
     // tech is en route. Other statuses either don't have a meaningful

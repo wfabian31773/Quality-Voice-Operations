@@ -227,6 +227,129 @@ describe('getPublicJobTrackerHandler', () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
+  it('returns 404 once the job has been in a terminal status past the grace period', async () => {
+    // 48h ago is well past the 24h grace period defined alongside the
+    // handler. The customer-facing 404 here matches the unknown-token
+    // path so the public UI shows its existing "Tracking link not
+    // found" page rather than leaking that the job ever existed.
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'job-4',
+          tenant_id: 'tenant-A',
+          title: 'Repair',
+          status: 'completed',
+          contact_name: 'Jane',
+          address: '500 Folsom',
+          scheduled_at: null,
+          eta_start: null,
+          eta_end: null,
+          completed_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+          resource_id: 'res-1',
+          address_lat: null,
+          address_lon: null,
+          address_geocoded_for: null,
+          resource_name: 'Alex',
+        },
+      ],
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getJson } = makeRes();
+    await (dispatch.getPublicJobTrackerHandler as (
+      req: Request,
+      res: Response,
+    ) => Promise<void>)(makeReq('44444444-4444-4444-4444-444444444444'), res);
+
+    expect(getStatus()).toBe(404);
+    expect((getJson() as Record<string, unknown>).error).toBe('Tracking link not found');
+    // We exited right after the initial SELECT — no follow-up queries.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('expires cancelled and no_show jobs using updated_at as the reference', async () => {
+    // cancelled / no_show transitions never write completed_at, so the
+    // expiry check falls back to updated_at. This locks in that
+    // fallback so a future refactor can't silently regress it.
+    for (const status of ['cancelled', 'no_show'] as const) {
+      queryMock.mockReset();
+      queryMock.mockResolvedValueOnce({
+        rows: [
+          {
+            id: `job-${status}`,
+            tenant_id: 'tenant-A',
+            title: 'Repair',
+            status,
+            contact_name: 'Jane',
+            address: '500 Folsom',
+            scheduled_at: null,
+            eta_start: null,
+            eta_end: null,
+            completed_at: null,
+            updated_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+            resource_id: 'res-1',
+            address_lat: null,
+            address_lon: null,
+            address_geocoded_for: null,
+            resource_name: 'Alex',
+          },
+        ],
+      });
+
+      const dispatch = await import('../../server/admin-api/routes/dispatch');
+      const { res, getStatus } = makeRes();
+      await (dispatch.getPublicJobTrackerHandler as (
+        req: Request,
+        res: Response,
+      ) => Promise<void>)(makeReq('66666666-6666-6666-6666-666666666666'), res);
+
+      expect(getStatus(), `expected ${status} past grace to 404`).toBe(404);
+    }
+  });
+
+  it('still serves a freshly completed job within the grace period', async () => {
+    // 1h ago is well inside the 24h grace window, so the link should
+    // continue to resolve (lets the customer revisit "what time were
+    // they here?" right after the visit). live_eta is null because
+    // the job is no longer en_route.
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'job-5',
+          tenant_id: 'tenant-A',
+          title: 'Repair',
+          status: 'completed',
+          contact_name: 'Jane',
+          address: '500 Folsom',
+          scheduled_at: null,
+          eta_start: null,
+          eta_end: null,
+          completed_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          resource_id: 'res-1',
+          address_lat: null,
+          address_lon: null,
+          address_geocoded_for: null,
+          resource_name: 'Alex',
+        },
+      ],
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getJson } = makeRes();
+    await (dispatch.getPublicJobTrackerHandler as (
+      req: Request,
+      res: Response,
+    ) => Promise<void>)(makeReq('55555555-5555-5555-5555-555555555555'), res);
+
+    expect(getStatus()).toBe(200);
+    const body = getJson() as Record<string, unknown>;
+    const job = body.job as Record<string, unknown>;
+    expect(job.status).toBe('completed');
+    expect(body.live_eta).toBeNull();
+  });
+
   it('returns live_eta=null gracefully when the latest fix is stale', async () => {
     const { __resetRoutingCachesForTests } = await import(
       '../../platform/integrations/routing'
