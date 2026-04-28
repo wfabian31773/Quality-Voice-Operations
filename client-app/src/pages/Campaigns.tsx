@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import { PageHeader } from '../components/ui';
 
 type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled';
 type ContactStatus = 'pending' | 'dialing' | 'connected' | 'completed' | 'failed' | 'skipped' | 'no_answer' | 'voicemail' | 'opted_out';
@@ -1242,7 +1243,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                   <span className="text-sm text-text-primary">{String(config.callWindowStart)} — {String(config.callWindowEnd)}</span>
                 </div>
               )}
-              {Boolean(config.daysOfWeek) && (
+              {Array.isArray(config.daysOfWeek) && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Days</span>
                   <span className="text-sm text-text-primary">{(config.daysOfWeek as number[]).map((d: number) => DAYS[d]).join(', ')}</span>
@@ -1548,25 +1549,37 @@ export default function Campaigns() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Automation</h1>
-          <p className="text-sm text-text-muted mt-0.5">Create and manage outbound calling campaigns</p>
-        </div>
-        {isManager && (
-          <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
-            <Plus className="h-4 w-4" /> New Campaign
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Automation"
+        description="Create and manage outbound calling campaigns"
+        icon={<Megaphone className="h-5 w-5" />}
+        actions={
+          isManager ? (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus className="h-4 w-4" /> New Campaign
+            </button>
+          ) : undefined
+        }
+      />
 
-      <div className="flex gap-2 mb-4">
+      <div
+        role="tablist"
+        aria-label="Campaign status filter"
+        className="flex flex-wrap gap-1 mb-6 border-b border-border"
+      >
         {(['', 'draft', 'running', 'paused', 'completed', 'cancelled'] as const).map((s) => (
           <button
             key={s}
+            role="tab"
+            aria-selected={statusFilter === s}
             onClick={() => { setStatusFilter(s); setPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              statusFilter === s ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary hover:text-text-primary'
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px capitalize ${
+              statusFilter === s
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-text-primary'
             }`}
           >
             {s || 'All'}

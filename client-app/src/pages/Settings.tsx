@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 import VoicePicker from '../components/VoicePicker';
+import { PageHeader } from '../components/ui';
 
 interface Tenant {
   id: string;
@@ -29,13 +30,15 @@ const VOICE_MODELS = [
 ];
 
 const ALL_TIMEZONES: string[] = (() => {
+  const intlExt = Intl as typeof Intl & {
+    supportedValuesOf?: (key: string) => string[];
+  };
   try {
-    const intl = Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] };
-    if (typeof intl.supportedValuesOf === 'function') {
-      return intl.supportedValuesOf('timeZone');
+    if (typeof intlExt.supportedValuesOf === 'function') {
+      return intlExt.supportedValuesOf('timeZone');
     }
   } catch {
-    /* fall through */
+    // fall through to fallback list
   }
   return [
     'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
@@ -1335,15 +1338,22 @@ export default function Settings() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-text-primary">Settings</h1>
-        <p className="text-sm text-text-muted mt-0.5">Manage your organization configuration</p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Manage your organization configuration"
+        icon={<Settings2 className="h-5 w-5" />}
+      />
 
-      <div className="flex gap-1 mb-6 border-b border-border">
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        className="flex flex-wrap gap-1 mb-6 border-b border-border"
+      >
         {TABS.map((t) => (
           <button
             key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
               tab === t.key

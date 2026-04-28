@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import VoicePicker from '../components/VoicePicker';
+import { PageHeader } from '../components/ui';
 
 type BuilderT = (key: AgentBuilderTKey, params?: Record<string, string | number>) => string;
 
@@ -1974,38 +1975,50 @@ function AgentBuilderInner() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-surface z-10">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition"
-          >
-            <ArrowLeft className="h-4 w-4" /> {t('back')}
-          </button>
-          <div className="h-5 w-px bg-border" />
-          <div>
+      <div className="px-4 py-2 border-b border-border bg-surface z-10">
+        <PageHeader
+          size="compact"
+          className="mb-0 sm:items-center"
+          breadcrumbs={
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> {t('back')}
+            </button>
+          }
+          title={
             <input
               value={agentSettings.name}
               onChange={(e) => handleSettingChange('name', e.target.value)}
-              className="text-sm font-semibold text-text-primary bg-transparent border-none focus:outline-none focus:ring-0 px-0"
+              className="text-sm font-semibold text-text-primary bg-transparent border-none focus:outline-none focus:ring-0 px-0 min-w-[12ch]"
               placeholder={t('agentNamePlaceholder')}
+              aria-label={t('agentNamePlaceholder')}
             />
-          </div>
-          {hasChanges && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
-              {t('unsaved')}
-            </span>
-          )}
-          {saveMessage && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              saveMessage.tone === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-            }`}>
-              {saveMessage.text}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
+          }
+          status={
+            <>
+              {hasChanges && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                  {t('unsaved')}
+                </span>
+              )}
+              {saveMessage && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    saveMessage.tone === 'error'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  }`}
+                >
+                  {saveMessage.text}
+                </span>
+              )}
+            </>
+          }
+          actions={
+            <>
+              <button
             onClick={() => setCommandBarOpen(true)}
             aria-label={t('commandBarOpen')}
             title={t('commandBarOpen')}
@@ -2083,7 +2096,9 @@ function AgentBuilderInner() {
             <Save className="h-3.5 w-3.5" />
             {saveMutation.isPending ? t('saving') : t('save')}
           </button>
-        </div>
+            </>
+          }
+        />
       </div>
 
       <div className="flex flex-1 overflow-hidden">

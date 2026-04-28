@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import BillingBackfillAlertsBanner from '../components/BillingBackfillAlertsBanner';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
-import { StatCard } from '../components/ui';
+import { StatCard, PageHeader } from '../components/ui';
 import {
   isHardBounce,
   isPermanentSmtpError,
@@ -1887,10 +1887,35 @@ function IntegrationsStatusPanel() {
   );
 }
 
+type PlatformAdminTab =
+  | 'tenants'
+  | 'templates'
+  | 'analytics'
+  | 'cost-monitoring'
+  | 'activation'
+  | 'docs-feedback'
+  | 'support'
+  | 'integrations'
+  | 'connector-health'
+  | 'retention';
+
+const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; label: string; icon: typeof Building2 }[] = [
+  { key: 'tenants', label: 'Tenants', icon: Building2 },
+  { key: 'templates', label: 'Template Versions', icon: Package },
+  { key: 'analytics', label: 'Template Analytics', icon: BarChart3 },
+  { key: 'cost-monitoring', label: 'Cost Monitoring', icon: DollarSign },
+  { key: 'activation', label: 'Activation', icon: Activity },
+  { key: 'docs-feedback', label: 'Docs Feedback', icon: BookOpen },
+  { key: 'support', label: 'Support', icon: LifeBuoy },
+  { key: 'integrations', label: 'Integrations', icon: Plug },
+  { key: 'connector-health', label: 'Connector Health', icon: ShieldAlert },
+  { key: 'retention', label: 'Call Event Retention', icon: Database },
+];
+
 export default function PlatformAdmin() {
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'templates' | 'analytics' | 'cost-monitoring' | 'activation' | 'docs-feedback' | 'support' | 'integrations' | 'connector-health' | 'retention'>('tenants');
+  const [activeTab, setActiveTab] = useState<PlatformAdminTab>('tenants');
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -1959,10 +1984,12 @@ export default function PlatformAdmin() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Building2 className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold">Platform Administration</h1>
-      </div>
+      <PageHeader
+        title="Platform Administration"
+        description="Tenant management, template versioning, billing health, and platform-wide diagnostics"
+        icon={<Building2 className="h-5 w-5" />}
+        className="mb-0"
+      />
 
       <BillingBackfillAlertsBanner />
 
@@ -2029,107 +2056,31 @@ export default function PlatformAdmin() {
         />
       </div>
 
-      <div className="flex gap-2 border-b border-border">
-        <button
-          onClick={() => setActiveTab('tenants')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'tenants'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Tenants</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('templates')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'templates'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><Package className="h-4 w-4" /> Template Versions</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('analytics')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'analytics'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Template Analytics</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('cost-monitoring')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'cost-monitoring'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><DollarSign className="h-4 w-4" /> Cost Monitoring</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('activation')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'activation'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><Activity className="h-4 w-4" /> Activation</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('docs-feedback')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'docs-feedback'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> Docs Feedback</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('support')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'support'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><LifeBuoy className="h-4 w-4" /> Support</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('integrations')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'integrations'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><Plug className="h-4 w-4" /> Integrations</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('connector-health')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'connector-health'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Connector Health</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('retention')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'retention'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted hover:text-foreground'
-          }`}
-        >
-          <span className="flex items-center gap-2"><Database className="h-4 w-4" /> Call Event Retention</span>
-        </button>
+      <div
+        role="tablist"
+        aria-label="Platform admin sections"
+        className="flex flex-wrap gap-1 border-b border-border overflow-x-auto"
+      >
+        {PLATFORM_ADMIN_TABS.map((t) => {
+          const Icon = t.icon;
+          const isActive = activeTab === t.key;
+          return (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveTab(t.key)}
+              className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
+                isActive
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {activeTab === 'integrations' && <IntegrationsStatusPanel />}
@@ -2162,8 +2113,8 @@ export default function PlatformAdmin() {
                   <tr><td colSpan={8} className="text-center py-12 text-muted">No tenants found</td></tr>
                 ) : (
                   tenantsData.tenants.map((tenant) => (
-                    <>
-                      <tr key={tenant.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                    <Fragment key={tenant.id}>
+                      <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                         <td className="px-2">
                           <button
                             onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
@@ -2223,13 +2174,13 @@ export default function PlatformAdmin() {
                         </td>
                       </tr>
                       {expandedTenant === tenant.id && (
-                        <tr key={`${tenant.id}-detail`} className="border-b border-border">
+                        <tr className="border-b border-border">
                           <td colSpan={8} className="p-0">
                             <TenantDetailPanel tenantId={tenant.id} />
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))
                 )}
               </tbody>
@@ -2262,8 +2213,8 @@ export default function PlatformAdmin() {
                   <tr><td colSpan={5} className="text-center py-12 text-muted">No templates found</td></tr>
                 ) : (
                   templatesData.templates.map((t) => (
-                    <>
-                      <tr key={t.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50 cursor-pointer"
+                    <Fragment key={t.id}>
+                      <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50 cursor-pointer"
                           onClick={() => setExpandedTemplate(expandedTemplate === t.id ? null : t.id)}>
                         <td className="px-2">
                           <button aria-label={expandedTemplate === t.id ? 'Collapse template' : 'Expand template'} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
@@ -2278,13 +2229,13 @@ export default function PlatformAdmin() {
                         <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                       </tr>
                       {expandedTemplate === t.id && (
-                        <tr key={`${t.id}-versions`} className="border-b border-border">
+                        <tr className="border-b border-border">
                           <td colSpan={5} className="p-0">
                             <TemplateVersionManager templateId={t.id} />
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))
                 )}
               </tbody>
