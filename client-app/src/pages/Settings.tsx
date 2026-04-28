@@ -11,6 +11,12 @@ import {
 import ApiKeys from './ApiKeys';
 import VoicePicker from '../components/VoicePicker';
 import { PageHeader } from '../components/ui';
+import {
+  AGENT_LANGUAGES,
+  DEFAULT_AGENT_LANGUAGE,
+  normalizeAgentLanguage,
+} from '../lib/agentLanguages';
+import { getDefaultWelcomeGreeting } from '../lib/agentBuilderI18n';
 
 interface Tenant {
   id: string;
@@ -86,6 +92,7 @@ function GeneralSettings() {
   const [form, setForm] = useState({
     name: '',
     timezone: '',
+    primaryLanguage: DEFAULT_AGENT_LANGUAGE,
     defaultVoiceModel: '',
     defaultVoice: '',
     defaultAgentType: '',
@@ -98,6 +105,7 @@ function GeneralSettings() {
       setForm({
         name: t.name ?? '',
         timezone: s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
         defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
         defaultVoice: s.defaultVoice ?? 'sage',
         defaultAgentType: s.defaultAgentType ?? 'general',
@@ -112,6 +120,7 @@ function GeneralSettings() {
         settings: {
           ...(data?.tenant?.settings ?? {}),
           timezone: form.timezone,
+          primaryLanguage: form.primaryLanguage,
           defaultVoiceModel: form.defaultVoiceModel,
           defaultVoice: form.defaultVoice,
           defaultAgentType: form.defaultAgentType,
@@ -119,6 +128,7 @@ function GeneralSettings() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-primary-language'] });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     },
@@ -147,7 +157,15 @@ function GeneralSettings() {
     );
   }
 
-  const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const set = (key: keyof typeof form, value: string) =>
+    setForm((f) => {
+      if (key === 'primaryLanguage') {
+        return { ...f, primaryLanguage: normalizeAgentLanguage(value) };
+      }
+      return { ...f, [key]: value };
+    });
+
+  const previewGreeting = getDefaultWelcomeGreeting(form.primaryLanguage);
 
   return (
     <div className="space-y-6">
@@ -202,6 +220,28 @@ function GeneralSettings() {
         </div>
 
         <div className="p-6">
+          <label className="block text-sm font-medium text-text-primary mb-1.5">
+            <Globe className="h-4 w-4 inline-block mr-1.5 -mt-0.5 text-text-muted" />
+            Primary Language
+          </label>
+          <select
+            value={form.primaryLanguage}
+            onChange={(e) => set('primaryLanguage', e.target.value)}
+            disabled={!isOwner}
+            className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {AGENT_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}{l.nativeLabel !== l.label ? ` (${l.nativeLabel})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">
+            New agents pre-fill with this language, and the Default Voice picker below recommends voices and previews greetings in this language.
+          </p>
+        </div>
+
+        <div className="p-6">
           <label className="block text-sm font-medium text-text-primary mb-1.5">Default Voice Model</label>
           <select
             value={form.defaultVoiceModel}
@@ -223,8 +263,8 @@ function GeneralSettings() {
           >
             <VoicePicker
               voice={form.defaultVoice}
-              language="en"
-              welcomeGreeting="Hi! Thanks for calling. How can I help today?"
+              language={form.primaryLanguage}
+              welcomeGreeting={previewGreeting}
               onChange={(next) => {
                 if (!isOwner) return;
                 set('defaultVoice', next);

@@ -23,6 +23,7 @@ import {
   isDefaultGreeting,
   isDefaultSystemPrompt,
 } from '../lib/agentBuilderI18n';
+import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
 
 interface Agent {
   id: string;
@@ -234,19 +235,46 @@ function AgentModal({
   onClose: () => void;
   onSaved: (newAgentId?: string) => void;
 }) {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState<AgentFormData>({
-    name: '',
-    type: 'general',
-    voice: getDefaultVoiceForLanguage(DEFAULT_AGENT_LANGUAGE),
-    model: 'gpt-4o-realtime-preview',
-    language: DEFAULT_AGENT_LANGUAGE,
-    system_prompt: getDefaultSystemPrompt(DEFAULT_AGENT_LANGUAGE),
-    welcome_greeting: getDefaultWelcomeGreeting(DEFAULT_AGENT_LANGUAGE),
-    temperature: 0.7,
-    scheduling_provider: '',
+  const tenantPrimaryLanguage = useTenantPrimaryLanguage();
+  const [form, setForm] = useState<AgentFormData>(() => {
+    const initialLanguage = agentId ? DEFAULT_AGENT_LANGUAGE : tenantPrimaryLanguage;
+    return {
+      name: '',
+      type: 'general',
+      voice: getDefaultVoiceForLanguage(initialLanguage),
+      model: 'gpt-4o-realtime-preview',
+      language: initialLanguage,
+      system_prompt: getDefaultSystemPrompt(initialLanguage),
+      welcome_greeting: getDefaultWelcomeGreeting(initialLanguage),
+      temperature: 0.7,
+      scheduling_provider: '',
+    };
   });
   const [loaded, setLoaded] = useState(!agentId);
+
+  // For new agents, sync the default language (and the localized greeting /
+  // system prompt) once the tenant's primary language resolves — the initial
+  // value may have been the English fallback if the tenant query was still
+  // in-flight on first render.
+  useEffect(() => {
+    if (agentId) return;
+    setForm((f) => {
+      if (f.language !== DEFAULT_AGENT_LANGUAGE) return f;
+      if (tenantPrimaryLanguage === DEFAULT_AGENT_LANGUAGE) return f;
+      const next: AgentFormData = {
+        ...f,
+        language: tenantPrimaryLanguage,
+        voice: getDefaultVoiceForLanguage(tenantPrimaryLanguage),
+      };
+      if (!f.welcome_greeting || isDefaultGreeting(f.welcome_greeting)) {
+        next.welcome_greeting = getDefaultWelcomeGreeting(tenantPrimaryLanguage);
+      }
+      if (!f.system_prompt || isDefaultSystemPrompt(f.system_prompt)) {
+        next.system_prompt = getDefaultSystemPrompt(tenantPrimaryLanguage);
+      }
+      return next;
+    });
+  }, [agentId, tenantPrimaryLanguage]);
   const [activeTab, setActiveTab] = useState<'general' | 'tools'>('general');
 
   useEffect(() => {

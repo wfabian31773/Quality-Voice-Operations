@@ -174,6 +174,10 @@ function isValidTimezone(tz: string): boolean {
   }
 }
 
+const SUPPORTED_PRIMARY_LANGUAGES = new Set([
+  'en', 'es', 'fr', 'de', 'pt', 'it', 'nl', 'zh', 'ja', 'ko', 'ar', 'hi',
+]);
+
 router.patch('/tenants/me', requireAuth, requireRole('owner'), async (req, res) => {
   const { tenantId } = req.user!;
   const { name, domain, settings, smsAlertsDisabled } = req.body as {
@@ -186,6 +190,17 @@ router.patch('/tenants/me', requireAuth, requireRole('owner'), async (req, res) 
   if (settings && settings.timezone !== undefined) {
     if (typeof settings.timezone !== 'string' || !isValidTimezone(settings.timezone)) {
       return res.status(400).json({ error: `Invalid timezone: "${settings.timezone}". Must be a valid IANA timezone identifier.` });
+    }
+  }
+
+  if (settings && settings.primaryLanguage !== undefined) {
+    if (
+      typeof settings.primaryLanguage !== 'string' ||
+      !SUPPORTED_PRIMARY_LANGUAGES.has(settings.primaryLanguage)
+    ) {
+      return res.status(400).json({
+        error: `Invalid primaryLanguage: "${settings.primaryLanguage}". Must be one of: ${[...SUPPORTED_PRIMARY_LANGUAGES].join(', ')}.`,
+      });
     }
   }
 
