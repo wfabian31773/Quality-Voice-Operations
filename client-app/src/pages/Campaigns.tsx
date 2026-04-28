@@ -104,6 +104,22 @@ interface TypeSpecificMetrics {
   primaryRateLabel: string;
 }
 
+/**
+ * Mirrors `platform/campaigns/types.ts#CampaignContact.metadata`. Known fields
+ * (set server-side by the dialer / outcome classifier / opt-out flow) are
+ * declared explicitly so the UI catches schema drift at compile time, while the
+ * `Record<string, unknown>` intersection preserves the escape hatch for
+ * arbitrary CSV columns saved at import time (see the upload help text).
+ */
+interface CampaignContactMetadataKnown {
+  /** Set by `classifyTypeDisposition` after a connected typed-campaign call. */
+  typeDisposition?: string;
+  /** Set by `bulkMarkOptedOut` (e.g. "dnc_match", "manual_review"). */
+  optOutReason?: string;
+}
+
+type CampaignContactMetadata = CampaignContactMetadataKnown & Record<string, unknown>;
+
 interface CampaignContact {
   id: string;
   phoneNumber: string;
@@ -112,7 +128,7 @@ interface CampaignContact {
   outcome: string | null;
   attemptCount: number;
   lastAttemptedAt: string | null;
-  metadata: Record<string, unknown>;
+  metadata: CampaignContactMetadata;
   createdAt: string;
 }
 
@@ -1373,8 +1389,8 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                         {isTypedCampaign && (
                           <td className="px-4 py-2.5">
                             {c.metadata?.typeDisposition ? (
-                              <span className={`text-sm font-medium capitalize ${DISPOSITION_COLORS[c.metadata.typeDisposition as string] ?? 'text-text-muted'}`}>
-                                {(c.metadata.typeDisposition as string).replace(/_/g, ' ')}
+                              <span className={`text-sm font-medium capitalize ${DISPOSITION_COLORS[c.metadata.typeDisposition] ?? 'text-text-muted'}`}>
+                                {c.metadata.typeDisposition.replace(/_/g, ' ')}
                               </span>
                             ) : (
                               <span className="text-sm text-text-muted">—</span>
