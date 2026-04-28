@@ -1821,6 +1821,15 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
   const { id } = req.params;
   const pool = getPlatformPool();
 
+  // Optional `?format=gpx|csv` turns the response into a downloadable
+  // breadcrumb file (used by the dispatcher's "Route taken" tab for
+  // disputes — handing the data to a customer, lawyer, or external
+  // mapping tool without screenshots). Default (no format) keeps the
+  // JSON shape that the in-app map replay depends on.
+  const formatRaw = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : '';
+  const exportFormat: 'gpx' | 'csv' | null =
+    formatRaw === 'gpx' ? 'gpx' : formatRaw === 'csv' ? 'csv' : null;
+
   try {
     const { rows: jobRows } = await pool.query(
       `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
@@ -1860,6 +1869,72 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
     const window = points.length > 0
       ? { start: points[0].recorded_at, end: points[points.length - 1].recorded_at }
       : { start: null, end: null };
+
+    if (exportFormat) {
+      // Pick a stable date for the filename. Prefer the actual breadcrumb
+      // start; fall back to the job's scheduled/completed time so the file
+      // is still recognizable when no pings were recorded. Final fallback
+      // is "today" — better than an "undefined" filename.
+      const filenameDateSource =
+        window.start
+          || (job.scheduled_at ? new Date(job.scheduled_at as string | Date).toISOString() : null)
+          || (job.completed_at ? new Date(job.completed_at as string | Date).toISOString() : null)
+          || new Date().toISOString();
+      const filenameDate = filenameDateSource.slice(0, 10); // YYYY-MM-DD
+      const safeJobId = String(job.id).replace(/[^A-Za-z0-9_-]/g, '');
+      const filename = `route-${safeJobId}-${filenameDate}.${exportFormat}`;
+
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      if (exportFormat === 'csv') {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        const header = 'recorded_at,latitude,longitude,accuracy_m,heading_deg,speed_mps';
+        const lines = points.map((p) =>
+          [
+            p.recorded_at ?? '',
+            p.lat,
+            p.lng,
+            p.accuracy_m ?? '',
+            p.heading_deg ?? '',
+            p.speed_mps ?? '',
+          ].join(','),
+        );
+        return res.send([header, ...lines].join('\n') + '\n');
+      }
+
+      // GPX 1.1 — one <trk> with one <trkseg>. Each <trkpt> carries the
+      // ISO timestamp; speed/heading are not part of the GPX 1.1 schema
+      // proper, so we keep this minimal and interoperable.
+      const xmlEscape = (s: string): string =>
+        s.replace(/[<>&'"]/g, (c) =>
+          c === '<' ? '&lt;'
+            : c === '>' ? '&gt;'
+            : c === '&' ? '&amp;'
+            : c === "'" ? '&apos;'
+            : '&quot;',
+        );
+      const trackName = xmlEscape(
+        `Job ${String(job.id)}${job.title ? ` — ${String(job.title)}` : ''}`,
+      );
+      const trkpts = points
+        .map((p) => {
+          const time = p.recorded_at ? `<time>${p.recorded_at}</time>` : '';
+          return `      <trkpt lat="${p.lat}" lon="${p.lng}">${time}</trkpt>`;
+        })
+        .join('\n');
+      const gpx =
+        `<?xml version="1.0" encoding="UTF-8"?>\n` +
+        `<gpx version="1.1" creator="Qvo Dispatch" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+        `  <trk>\n` +
+        `    <name>${trackName}</name>\n` +
+        `    <trkseg>\n` +
+        (trkpts ? trkpts + '\n' : '') +
+        `    </trkseg>\n` +
+        `  </trk>\n` +
+        `</gpx>\n`;
+      res.setHeader('Content-Type', 'application/gpx+xml; charset=utf-8');
+      return res.send(gpx);
+    }
 
     return res.json({
       job: {

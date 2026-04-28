@@ -198,4 +198,133 @@ describe('GET /dispatch/jobs/:id/route', () => {
     expect(res.body.points).toEqual([]);
     expect(res.body.window).toEqual({ start: null, end: null });
   });
+
+  describe('export formats (?format=gpx|csv)', () => {
+    const t1 = '2026-04-28T15:00:00.000Z';
+    const t2 = '2026-04-28T15:01:00.000Z';
+
+    function mockJobAndPoints(): void {
+      queryMock
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'job-1',
+              title: 'Replace water heater',
+              status: 'completed',
+              scheduled_at: '2026-04-28T14:30:00.000Z',
+              completed_at: '2026-04-28T15:30:00.000Z',
+              resource_id: 'res-1',
+              resource_name: 'Alex Chen',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              latitude: 37.7749,
+              longitude: -122.4194,
+              accuracy_m: 8,
+              heading_deg: 90,
+              speed_mps: 12.5,
+              recorded_at: t1,
+              received_at: t1,
+            },
+            {
+              latitude: 37.776,
+              longitude: -122.418,
+              accuracy_m: null,
+              heading_deg: null,
+              speed_mps: null,
+              recorded_at: t2,
+              received_at: t2,
+            },
+          ],
+        });
+    }
+
+    it('returns CSV with the same ordered (lat, lng, recorded_at) rows', async () => {
+      mockJobAndPoints();
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-1/route?format=csv');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/text\/csv/);
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename="route-job-1-2026-04-28.csv"',
+      );
+      const lines = res.text.trim().split('\n');
+      expect(lines[0]).toBe('recorded_at,latitude,longitude,accuracy_m,heading_deg,speed_mps');
+      expect(lines[1]).toBe(`${t1},37.7749,-122.4194,8,90,12.5`);
+      // Nullable fields render as empty cells, not "null".
+      expect(lines[2]).toBe(`${t2},37.776,-122.418,,,`);
+    });
+
+    it('returns valid GPX with one trkseg containing the points in order', async () => {
+      mockJobAndPoints();
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-1/route?format=gpx');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/application\/gpx\+xml/);
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename="route-job-1-2026-04-28.gpx"',
+      );
+      expect(res.text).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+      expect(res.text).toContain('<gpx version="1.1"');
+      expect(res.text).toContain('<trkseg>');
+      expect(res.text).toContain(`<trkpt lat="37.7749" lon="-122.4194"><time>${t1}</time></trkpt>`);
+      expect(res.text).toContain(`<trkpt lat="37.776" lon="-122.418"><time>${t2}</time></trkpt>`);
+      // Points appear in chronological order in the file.
+      const i1 = res.text.indexOf('lat="37.7749"');
+      const i2 = res.text.indexOf('lat="37.776"');
+      expect(i1).toBeGreaterThan(0);
+      expect(i2).toBeGreaterThan(i1);
+    });
+
+    it('falls back to scheduled_at for the filename date when no pings exist', async () => {
+      queryMock
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'job-2',
+              title: 'Office HVAC',
+              status: 'pending',
+              scheduled_at: '2026-05-10T10:00:00.000Z',
+              completed_at: null,
+              resource_id: null,
+              resource_name: null,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-2/route?format=csv');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename="route-job-2-2026-05-10.csv"',
+      );
+      // Header-only body when there are no points.
+      expect(res.text.trim()).toBe('recorded_at,latitude,longitude,accuracy_m,heading_deg,speed_mps');
+    });
+
+    it('returns 404 for an unknown job even when a format is requested', async () => {
+      queryMock.mockResolvedValueOnce({ rows: [] });
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/missing/route?format=gpx');
+      expect(res.status).toBe(404);
+      expect(queryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores unknown format values and falls back to JSON', async () => {
+      mockJobAndPoints();
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-1/route?format=kml');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/application\/json/);
+      expect(res.body.points).toHaveLength(2);
+    });
+  });
 });

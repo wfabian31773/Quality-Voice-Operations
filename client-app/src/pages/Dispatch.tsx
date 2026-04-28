@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { api } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
   Truck, Plus, X, User, Clock, AlertTriangle, Filter, Search, RefreshCw,
@@ -2468,6 +2468,8 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   // recorded ping). The interpolation lives in dispatchRouteReplay.ts.
   const [scrubMinute, setScrubMinute] = useState<number>(0);
   const [mapReady, setMapReady] = useState(false);
+  const [downloading, setDownloading] = useState<'gpx' | 'csv' | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -2622,6 +2624,48 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
     }
   }, [scrubPosition, mapReady]);
 
+  // Download the breadcrumb as a portable file (GPX for mapping tools,
+  // CSV for spreadsheets / dispute paperwork). We must fetch via the
+  // bearer token instead of a plain <a href> because the admin API
+  // gates this endpoint behind requireAuth.
+  const downloadRoute = useCallback(async (format: 'gpx' | 'csv') => {
+    setDownloading(format);
+    setDownloadError(null);
+    try {
+      const token = getToken();
+      const res = await fetch(`/api/dispatch/jobs/${jobId}/route?format=${format}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        let msg = `Download failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = String(body.error);
+        } catch { /* non-JSON error body */ }
+        throw new Error(msg);
+      }
+      // Prefer the server's filename so it stays consistent with the API.
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const fallbackDate = new Date().toISOString().slice(0, 10);
+      const filename = match ? match[1] : `route-${jobId}-${fallbackDate}.${format}`;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : 'Download failed');
+    } finally {
+      setDownloading(null);
+    }
+  }, [jobId]);
+
   // Derived stats: total distance traveled and elapsed time over the breadcrumb.
   const totalDistance = useMemo(() => {
     let m = 0;
@@ -2660,14 +2704,43 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-3 text-xs text-muted">
-        <div>
-          <span className="text-heading font-medium">{points.length}</span> ping{points.length === 1 ? '' : 's'}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-3 text-xs text-muted">
+          <div>
+            <span className="text-heading font-medium">{points.length}</span> ping{points.length === 1 ? '' : 's'}
+          </div>
+          <div>· <span className="text-heading">{formatDistance(totalDistance)}</span> traveled</div>
+          <div>· <span className="text-heading">{formatDuration(elapsedMs)}</span> elapsed</div>
+          {data?.job.resource_name && <div>· tech <span className="text-heading">{data.job.resource_name}</span></div>}
         </div>
-        <div>· <span className="text-heading">{formatDistance(totalDistance)}</span> traveled</div>
-        <div>· <span className="text-heading">{formatDuration(elapsedMs)}</span> elapsed</div>
-        {data?.job.resource_name && <div>· tech <span className="text-heading">{data.job.resource_name}</span></div>}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => downloadRoute('gpx')}
+            disabled={downloading !== null}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50"
+            title="Download GPX (for mapping tools like Google Earth)"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {downloading === 'gpx' ? 'Preparing…' : 'Download GPX'}
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadRoute('csv')}
+            disabled={downloading !== null}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50"
+            title="Download CSV (for spreadsheets)"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {downloading === 'csv' ? 'Preparing…' : 'Download CSV'}
+          </button>
+        </div>
       </div>
+      {downloadError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          {downloadError}
+        </div>
+      )}
 
       <div className="rounded-xl border border-border overflow-hidden bg-surface">
         <div ref={containerRef} style={{ height: 360, width: '100%' }}>
