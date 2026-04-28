@@ -2425,9 +2425,13 @@ interface RouteResponse {
     resource_name: string | null;
     scheduled_at: string | null;
     completed_at: string | null;
+    address: string | null;
+    address_lat: number | null;
+    address_lng: number | null;
   };
   points: RoutePoint[];
   window: { start: string | null; end: string | null };
+  closest_approach_m: number | null;
 }
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -2477,6 +2481,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   const startMarkerRef = useRef<LeafletMarker | null>(null);
   const endMarkerRef = useRef<LeafletMarker | null>(null);
   const scrubMarkerRef = useRef<LeafletMarker | null>(null);
+  const addressMarkerRef = useRef<LeafletMarker | null>(null);
 
   // Fetch route data on mount / when jobId changes.
   useEffect(() => {
@@ -2549,11 +2554,13 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
       try { startMarkerRef.current?.remove(); } catch { /* noop */ }
       try { endMarkerRef.current?.remove(); } catch { /* noop */ }
       try { scrubMarkerRef.current?.remove(); } catch { /* noop */ }
+      try { addressMarkerRef.current?.remove(); } catch { /* noop */ }
       try { mapRef.current?.remove(); } catch { /* noop */ }
       polylineRef.current = null;
       startMarkerRef.current = null;
       endMarkerRef.current = null;
       scrubMarkerRef.current = null;
+      addressMarkerRef.current = null;
       mapRef.current = null;
       setMapReady(false);
     };
@@ -2592,14 +2599,43 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
     if (endMarkerRef.current) endMarkerRef.current.setLatLng(last).setIcon(endIcon);
     else endMarkerRef.current = L.marker(last, { icon: endIcon }).addTo(mapRef.current).bindPopup(`End · ${lastP.recorded_at ? new Date(lastP.recorded_at).toLocaleString() : ''}`);
 
-    try {
-      if (latlngs.length === 1) {
-        mapRef.current.setView(latlngs[0], 15);
+    // Customer-address pin. Distinct from S/E so the dispatcher can tell at
+    // a glance whether the tech actually arrived where the job lives. We
+    // hide it gracefully when the address has not been geocoded yet.
+    const addrLat = data?.job.address_lat;
+    const addrLng = data?.job.address_lng;
+    const hasAddr = addrLat != null && addrLng != null
+      && Number.isFinite(addrLat) && Number.isFinite(addrLng);
+    const boundsLatLngs: [number, number][] = [...latlngs];
+    if (hasAddr) {
+      const addrPos: [number, number] = [addrLat as number, addrLng as number];
+      const addressIcon = L.divIcon({
+        html: `<div style="background:#a855f7;color:#fff;border:2px solid #0b1220;border-radius:9999px 9999px 9999px 2px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,0.45);transform:rotate(-45deg)"><span style="transform:rotate(45deg);line-height:1">⌂</span></div>`,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 24],
+      });
+      const addrPopup = `Customer address${data?.job.address ? ` · ${data.job.address}` : ''}`;
+      if (addressMarkerRef.current) {
+        addressMarkerRef.current.setLatLng(addrPos).setIcon(addressIcon).setPopupContent(addrPopup);
       } else {
-        mapRef.current.fitBounds(latlngs, { padding: [30, 30], maxZoom: 16 });
+        addressMarkerRef.current = L.marker(addrPos, { icon: addressIcon }).addTo(mapRef.current).bindPopup(addrPopup);
+      }
+      boundsLatLngs.push(addrPos);
+    } else if (addressMarkerRef.current) {
+      // Address went away (e.g. cleared) — drop the stale pin.
+      try { addressMarkerRef.current.remove(); } catch { /* noop */ }
+      addressMarkerRef.current = null;
+    }
+
+    try {
+      if (boundsLatLngs.length === 1) {
+        mapRef.current.setView(boundsLatLngs[0], 15);
+      } else {
+        mapRef.current.fitBounds(boundsLatLngs, { padding: [30, 30], maxZoom: 16 });
       }
     } catch { /* noop */ }
-  }, [mapReady, hasPoints, points]);
+  }, [mapReady, hasPoints, points, data?.job.address, data?.job.address_lat, data?.job.address_lng]);
 
   // Move the scrub marker as the user drags the slider. Position is
   // computed from `scrubPosition`, which interpolates between pings —
@@ -2711,6 +2747,11 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
           </div>
           <div>· <span className="text-heading">{formatDistance(totalDistance)}</span> traveled</div>
           <div>· <span className="text-heading">{formatDuration(elapsedMs)}</span> elapsed</div>
+          {data?.closest_approach_m != null && (
+            <div>
+              · closest approach <span className="text-heading">{formatDistance(data.closest_approach_m)}</span> from address
+            </div>
+          )}
           {data?.job.resource_name && <div>· tech <span className="text-heading">{data.job.resource_name}</span></div>}
         </div>
         <div className="flex items-center gap-2">

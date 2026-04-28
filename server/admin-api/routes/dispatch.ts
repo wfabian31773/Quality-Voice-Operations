@@ -13,6 +13,7 @@ import {
 import {
   geocodeAddressCached,
   getDriveEta,
+  haversineMeters,
   type DriveEtaResult,
   type GeoPoint,
 } from '../../../platform/integrations/routing';
@@ -1833,7 +1834,8 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
   try {
     const { rows: jobRows } = await pool.query(
       `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
-              j.resource_id, r.name AS resource_name
+              j.resource_id, r.name AS resource_name,
+              j.address, j.address_lat, j.address_lon, j.address_geocoded_for
          FROM dispatch_jobs j
          LEFT JOIN dispatch_resources r
            ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
@@ -1936,6 +1938,69 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
       return res.send(gpx);
     }
 
+    // Resolve the customer's address geocode. We prefer the cached coords
+    // on the job row when they were geocoded for the *current* address
+    // string. Otherwise we lazily geocode now and persist back so future
+    // route-replay requests skip the provider entirely. Skipped for
+    // GPX/CSV exports since neither format carries the address pin.
+    const rawAddress = typeof job.address === 'string' ? job.address.trim() : '';
+    let addressPoint: { lat: number; lng: number } | null = null;
+    if (rawAddress) {
+      const cachedFor = String(job.address_geocoded_for ?? '').trim();
+      const cachedLat = job.address_lat == null ? NaN : Number(job.address_lat);
+      const cachedLon = job.address_lon == null ? NaN : Number(job.address_lon);
+      if (
+        Number.isFinite(cachedLat)
+        && Number.isFinite(cachedLon)
+        && cachedFor === rawAddress
+      ) {
+        addressPoint = { lat: cachedLat, lng: cachedLon };
+      } else {
+        try {
+          const geocoded = await geocodeAddressCached(tenantId, rawAddress);
+          if (geocoded) {
+            addressPoint = { lat: geocoded.lat, lng: geocoded.lon };
+            try {
+              await pool.query(
+                `UPDATE dispatch_jobs
+                    SET address_lat = $1, address_lon = $2,
+                        address_geocoded_at = NOW(), address_geocoded_for = $3
+                  WHERE id = $4 AND tenant_id = $5`,
+                [geocoded.lat, geocoded.lon, rawAddress, id, tenantId],
+              );
+            } catch (persistErr) {
+              // Persist is best-effort — if it fails the next replay will
+              // simply re-geocode. We still return the resolved coords.
+              logger.warn('Failed to persist geocoded coords for route replay', {
+                tenantId, jobId: id, error: String(persistErr),
+              });
+            }
+          }
+        } catch (geoErr) {
+          // Geocoder failures fall through to a null address pin: the UI
+          // hides the marker gracefully rather than showing a broken one.
+          logger.warn('On-demand geocode failed for route replay', {
+            tenantId, jobId: id, error: String(geoErr),
+          });
+        }
+      }
+    }
+
+    // Closest-approach distance in meters between any breadcrumb ping
+    // and the customer's address. Powers the "closest approach: X m"
+    // line in the route summary so dispatchers can settle "did the tech
+    // actually get to the right house?" disputes at a glance.
+    let closestApproachM: number | null = null;
+    if (addressPoint && points.length > 0) {
+      const addr = { lat: addressPoint.lat, lon: addressPoint.lng };
+      let best = Infinity;
+      for (const p of points) {
+        const d = haversineMeters({ lat: p.lat, lon: p.lng }, addr);
+        if (d < best) best = d;
+      }
+      if (Number.isFinite(best)) closestApproachM = best;
+    }
+
     return res.json({
       job: {
         id: job.id,
@@ -1945,9 +2010,13 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
         resource_name: job.resource_name ?? null,
         scheduled_at: job.scheduled_at ? new Date(job.scheduled_at as string | Date).toISOString() : null,
         completed_at: job.completed_at ? new Date(job.completed_at as string | Date).toISOString() : null,
+        address: rawAddress || null,
+        address_lat: addressPoint ? addressPoint.lat : null,
+        address_lng: addressPoint ? addressPoint.lng : null,
       },
       points,
       window,
+      closest_approach_m: closestApproachM,
     });
   } catch (err) {
     logger.error('Failed to get job route', { tenantId, jobId: id, error: String(err) });

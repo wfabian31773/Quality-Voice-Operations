@@ -74,8 +74,20 @@ vi.mock('../../platform/infra/rate-limit/createRateLimiter', () => ({
   ) => next(),
 }));
 
+const geocodeAddressCachedMock = vi.fn();
+vi.mock('../../platform/integrations/routing', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../platform/integrations/routing')
+  >('../../platform/integrations/routing');
+  return {
+    ...actual,
+    geocodeAddressCached: (...args: unknown[]) => geocodeAddressCachedMock(...args),
+  };
+});
+
 beforeEach(() => {
   queryMock.mockReset();
+  geocodeAddressCachedMock.mockReset();
 });
 
 async function buildApp(): Promise<express.Express> {
@@ -172,6 +184,123 @@ describe('GET /dispatch/jobs/:id/route', () => {
     // not in the tenant — that would let a forged job id leak whether
     // any pings exist for a foreign tenant's job.
     expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the cached address geocode and the closest approach distance', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'job-3',
+            title: 'Furnace tune-up',
+            status: 'completed',
+            scheduled_at: null,
+            completed_at: null,
+            resource_id: 'res-2',
+            resource_name: 'Pat Lee',
+            address: '123 Main St',
+            address_lat: 37.7770,
+            address_lon: -122.4170,
+            address_geocoded_for: '123 Main St',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { latitude: 37.7700, longitude: -122.4000, accuracy_m: 5, heading_deg: 0, speed_mps: 0,
+            recorded_at: '2026-04-28T15:00:00.000Z', received_at: '2026-04-28T15:00:00.000Z' },
+          // ~150 m from address — should be the closest
+          { latitude: 37.77705, longitude: -122.41710, accuracy_m: 5, heading_deg: 0, speed_mps: 0,
+            recorded_at: '2026-04-28T15:05:00.000Z', received_at: '2026-04-28T15:05:00.000Z' },
+        ],
+      });
+
+    const app = await buildApp();
+    const res = await request(app).get('/dispatch/jobs/job-3/route');
+
+    expect(res.status).toBe(200);
+    expect(res.body.job).toMatchObject({
+      id: 'job-3',
+      address: '123 Main St',
+      address_lat: 37.777,
+      address_lng: -122.417,
+    });
+    expect(res.body.closest_approach_m).toBeGreaterThan(0);
+    expect(res.body.closest_approach_m).toBeLessThan(50);
+    // Cache hit means we never call the geocoder.
+    expect(geocodeAddressCachedMock).not.toHaveBeenCalled();
+  });
+
+  it('lazily geocodes and persists when the cached coords are stale', async () => {
+    geocodeAddressCachedMock.mockResolvedValueOnce({ lat: 40.0, lon: -70.0 });
+    queryMock
+      // job lookup — cached_for differs from current address ⇒ stale
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'job-4',
+            title: 'Drain cleaning',
+            status: 'on_site',
+            scheduled_at: null,
+            completed_at: null,
+            resource_id: null,
+            resource_name: null,
+            address: '500 New Ave',
+            address_lat: 40.0001,
+            address_lon: -70.0001,
+            address_geocoded_for: '99 Old Blvd',
+          },
+        ],
+      })
+      // points lookup
+      .mockResolvedValueOnce({ rows: [] })
+      // persist UPDATE for the freshly geocoded coords
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    const app = await buildApp();
+    const res = await request(app).get('/dispatch/jobs/job-4/route');
+
+    expect(res.status).toBe(200);
+    expect(res.body.job.address_lat).toBe(40.0);
+    expect(res.body.job.address_lng).toBe(-70.0);
+    // No pings ⇒ no closest approach.
+    expect(res.body.closest_approach_m).toBeNull();
+    expect(geocodeAddressCachedMock).toHaveBeenCalledWith('tenant-A', '500 New Ave');
+    // 3rd query is the persist UPDATE.
+    expect(queryMock.mock.calls[2][0]).toMatch(/UPDATE dispatch_jobs[\s\S]+address_lat = \$1/);
+    expect(queryMock.mock.calls[2][1]).toEqual([40.0, -70.0, '500 New Ave', 'job-4', 'tenant-A']);
+  });
+
+  it('returns null address coords when the job has no address', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'job-5',
+            title: 'Office HVAC',
+            status: 'pending',
+            scheduled_at: null,
+            completed_at: null,
+            resource_id: null,
+            resource_name: null,
+            address: null,
+            address_lat: null,
+            address_lon: null,
+            address_geocoded_for: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = await buildApp();
+    const res = await request(app).get('/dispatch/jobs/job-5/route');
+
+    expect(res.status).toBe(200);
+    expect(res.body.job.address).toBeNull();
+    expect(res.body.job.address_lat).toBeNull();
+    expect(res.body.job.address_lng).toBeNull();
+    expect(res.body.closest_approach_m).toBeNull();
+    expect(geocodeAddressCachedMock).not.toHaveBeenCalled();
   });
 
   it('returns an empty points list and null window when no pings exist', async () => {
