@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronRight, MapPin, Wrench, BarChart3, Settings, Users,
   CheckCircle2, XCircle, ArrowRight, FileText, MessageSquare, Calendar,
   Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
+  Download,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 import { PageHeader, StatCard } from '../components/ui';
@@ -426,6 +427,295 @@ export default function Dispatch() {
   );
 }
 
+// ============ BULK ROUTE DOWNLOAD ============
+//
+// Lets dispatchers grab every assigned tech's GPS breadcrumb in a single
+// archive instead of opening each job's detail modal and clicking the
+// per-job download (Task #762). Two modes exposed in the modal:
+//
+//   - "Selected jobs" — uses the multi-select checkboxes from the board
+//     or queue toolbar. Pre-selected when the dispatcher already has a
+//     selection set.
+//
+//   - "Active filters + date range" — re-runs the same filter set the
+//     dispatcher is currently looking at, scoped to a date range
+//     (defaults to the last 7 days, applied to scheduled_at fallback
+//     created_at server-side).
+//
+// The archive itself is built server-side; this component only POSTs
+// the request and saves the returned blob.
+
+// The dispatch board's filter object varies a bit between BoardView and
+// QueueView (extra keys like `dateRange`, `search`, etc.), so rather than
+// pin a tight shape we accept any string-valued record — the bulk export
+// handler already validates which keys it accepts server-side.
+type DispatchBoardFilters = Record<string, string>;
+
+function todayISODate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgoISODate(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+function BulkRouteDownloadButton({ selectedJobs, filters, onClearSelection }: {
+  selectedJobs: Set<string>;
+  filters: DispatchBoardFilters;
+  onClearSelection: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs font-medium hover:bg-surface-hover transition-colors"
+        title="Download GPS breadcrumbs for many jobs at once"
+      >
+        <Download className="h-3.5 w-3.5" />
+        Download routes
+        {selectedJobs.size > 0 && (
+          <span className="ml-1 text-primary font-semibold">({selectedJobs.size})</span>
+        )}
+      </button>
+      {open && (
+        <BulkRouteDownloadModal
+          selectedJobs={selectedJobs}
+          filters={filters}
+          onClose={() => setOpen(false)}
+          onCompleted={() => { setOpen(false); onClearSelection(); }}
+        />
+      )}
+    </>
+  );
+}
+
+function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }: {
+  selectedJobs: Set<string>;
+  filters: DispatchBoardFilters;
+  onClose: () => void;
+  onCompleted: () => void;
+}) {
+  const hasSelection = selectedJobs.size > 0;
+  const [mode, setMode] = useState<'selected' | 'filtered'>(hasSelection ? 'selected' : 'filtered');
+  // Default to a last-7-days window — covers the common "weekly insurance
+  // review" use case from the task description without surprising the
+  // dispatcher with an open-ended date range.
+  const [dateFrom, setDateFrom] = useState<string>(daysAgoISODate(7));
+  const [dateTo, setDateTo] = useState<string>(todayISODate());
+  const [format, setFormat] = useState<'gpx' | 'csv'>('gpx');
+  const [includeEmpty, setIncludeEmpty] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const inputCls = "w-full px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs focus:outline-none focus:ring-2 focus:ring-primary/30";
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    setSummary(null);
+    try {
+      const body: Record<string, unknown> = { format, include_empty: includeEmpty };
+      if (mode === 'selected') {
+        if (selectedJobs.size === 0) {
+          throw new Error('No jobs selected.');
+        }
+        body.job_ids = Array.from(selectedJobs);
+      } else {
+        // Strip empty filter strings — the server treats missing keys as
+        // "no filter" so blank values would otherwise narrow nothing while
+        // making the request payload noisier.
+        const activeFilters: Record<string, string> = {};
+        for (const [k, v] of Object.entries(filters)) {
+          if (typeof v === 'string' && v.length > 0) activeFilters[k] = v;
+        }
+        body.filters = activeFilters;
+        if (dateFrom) body.date_from = `${dateFrom}T00:00:00.000Z`;
+        if (dateTo) body.date_to = `${dateTo}T23:59:59.999Z`;
+      }
+
+      const token = getToken();
+      const res = await fetch(`/api/dispatch/jobs/routes/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        let msg = `Export failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = String(body.error);
+        } catch { /* non-JSON error body */ }
+        throw new Error(msg);
+      }
+
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const fallback = `dispatch-routes-${todayISODate()}.zip`;
+      const filename = match ? match[1] : fallback;
+
+      const total = res.headers.get('X-Route-Export-Job-Count');
+      const included = res.headers.get('X-Route-Export-Included');
+      const skipped = res.headers.get('X-Route-Export-Skipped-Empty');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      const parts: string[] = [];
+      if (included) parts.push(`${included} routes`);
+      if (skipped && skipped !== '0') parts.push(`${skipped} skipped (no pings)`);
+      if (total && parts.length > 0) parts.push(`of ${total} jobs`);
+      setSummary(parts.length > 0 ? `Downloaded ${parts.join(', ')}.` : 'Download complete.');
+      // Selection has now been "consumed" — clear it so the dispatcher's
+      // next batch action doesn't accidentally re-target the same jobs.
+      if (mode === 'selected') {
+        setTimeout(() => onCompleted(), 800);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} ariaLabel="Download routes" panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4">
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        <h3 className="font-semibold text-heading flex items-center gap-2">
+          <Download className="h-4 w-4" /> Download routes
+        </h3>
+        <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+      </div>
+      <div className="p-4 space-y-4">
+        <p className="text-xs text-muted leading-relaxed">
+          Bundles every selected (or filter-matching) job's GPS breadcrumb into a single archive of <code>route-&lt;jobId&gt;-YYYY-MM-DD</code> files plus a <code>manifest.csv</code> index. Filenames match the per-job export so they line up side-by-side.
+        </p>
+
+        <div>
+          <label className="block text-[10px] font-medium text-muted mb-1">Scope</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMode('selected')}
+              disabled={!hasSelection}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                mode === 'selected' && hasSelection
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-surface text-heading hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed'
+              }`}
+            >
+              Selected jobs ({selectedJobs.size})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('filtered')}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                mode === 'filtered'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-surface text-heading hover:bg-surface-hover'
+              }`}
+            >
+              Active filters + date range
+            </button>
+          </div>
+          {mode === 'selected' && !hasSelection && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+              No jobs selected. Use the checkboxes on the board or queue first.
+            </p>
+          )}
+        </div>
+
+        {mode === 'filtered' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-medium text-muted mb-1">From</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted mb-1">To</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-medium text-muted mb-1">Format</label>
+            <select value={format} onChange={e => setFormat(e.target.value as 'gpx' | 'csv')} className={inputCls}>
+              <option value="gpx">GPX (mapping tools)</option>
+              <option value="csv">CSV (spreadsheet)</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <label className="inline-flex items-center gap-2 text-xs text-heading cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeEmpty}
+                onChange={e => setIncludeEmpty(e.target.checked)}
+                className="rounded border-border"
+              />
+              Include jobs with no pings
+            </label>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300">
+            {error}
+          </div>
+        )}
+        {summary && (
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-2 text-xs text-emerald-700 dark:text-emerald-300">
+            {summary}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 rounded-lg border border-border text-xs text-heading hover:bg-surface-hover"
+          disabled={busy}
+        >
+          Close
+        </button>
+        <button
+          onClick={submit}
+          disabled={busy || (mode === 'selected' && !hasSelection)}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {busy ? 'Preparing…' : 'Download archive'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ============ BOARD VIEW ============
 
 function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setShowFilters,
@@ -468,6 +758,11 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
               <button onClick={() => setSelectedJobs(new Set())} className="text-primary hover:text-primary/70"><X className="h-3 w-3" /></button>
             </div>
           )}
+          <BulkRouteDownloadButton
+            selectedJobs={selectedJobs}
+            filters={filters as DispatchBoardFilters}
+            onClearSelection={() => setSelectedJobs(new Set())}
+          />
           <button onClick={() => setShowFilters(!showFilters)}
             className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-primary/10 text-primary' : 'text-muted hover:text-heading hover:bg-surface-secondary'}`}>
             <Filter className="h-4 w-4" />
@@ -1012,20 +1307,27 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
             </button>
           ))}
         </div>
-        {selectedJobs.size > 0 && !isReadOnly && (
-          <div className="flex items-center gap-2 bg-primary/10 rounded-lg px-3 py-1.5">
-            <span className="text-xs font-medium text-primary">{selectedJobs.size} selected</span>
-            <select onChange={e => { if (e.target.value) batchUpdate({ status: e.target.value }); e.target.value = ''; }}
-              className="text-xs bg-transparent border-none text-primary font-medium cursor-pointer">
-              <option value="">Batch action...</option>
-              <option value="assigned">Assign</option>
-              <option value="in_progress">Start</option>
-              <option value="completed">Complete</option>
-              <option value="cancelled">Cancel</option>
-            </select>
-            <button onClick={() => setSelectedJobs(new Set())} className="text-primary"><X className="h-3 w-3" /></button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {selectedJobs.size > 0 && !isReadOnly && (
+            <div className="flex items-center gap-2 bg-primary/10 rounded-lg px-3 py-1.5">
+              <span className="text-xs font-medium text-primary">{selectedJobs.size} selected</span>
+              <select onChange={e => { if (e.target.value) batchUpdate({ status: e.target.value }); e.target.value = ''; }}
+                className="text-xs bg-transparent border-none text-primary font-medium cursor-pointer">
+                <option value="">Batch action...</option>
+                <option value="assigned">Assign</option>
+                <option value="in_progress">Start</option>
+                <option value="completed">Complete</option>
+                <option value="cancelled">Cancel</option>
+              </select>
+              <button onClick={() => setSelectedJobs(new Set())} className="text-primary"><X className="h-3 w-3" /></button>
+            </div>
+          )}
+          <BulkRouteDownloadButton
+            selectedJobs={selectedJobs}
+            filters={filters as DispatchBoardFilters}
+            onClearSelection={() => setSelectedJobs(new Set())}
+          />
+        </div>
       </div>
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">

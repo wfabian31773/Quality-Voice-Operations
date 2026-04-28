@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import crypto from 'crypto';
+import JSZip from 'jszip';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
@@ -1802,6 +1803,133 @@ export const listResourceLocationsHandler: RequestHandler = async (req, res) => 
   }
 };
 
+// ---- Route export helpers (shared by per-job and bulk handlers) ----
+//
+// Both the single-job download (GET /dispatch/jobs/:id/route?format=…) and
+// the bulk download (POST /dispatch/jobs/routes/export) need to render the
+// same per-job GPX/CSV body and use the same `route-<jobId>-YYYY-MM-DD`
+// filename pattern so files end up recognisable side-by-side in the zip
+// archive or on the dispatcher's filesystem.
+
+interface RoutePoint {
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+  heading_deg: number | null;
+  speed_mps: number | null;
+  recorded_at: string | null;
+  received_at: string | null;
+}
+
+function mapRoutePoint(row: Record<string, unknown>): RoutePoint {
+  return {
+    lat: Number(row.latitude),
+    lng: Number(row.longitude),
+    accuracy_m: row.accuracy_m === null || row.accuracy_m === undefined ? null : Number(row.accuracy_m),
+    heading_deg: row.heading_deg === null || row.heading_deg === undefined ? null : Number(row.heading_deg),
+    speed_mps: row.speed_mps === null || row.speed_mps === undefined ? null : Number(row.speed_mps),
+    recorded_at: row.recorded_at ? new Date(row.recorded_at as string | Date).toISOString() : null,
+    received_at: row.received_at ? new Date(row.received_at as string | Date).toISOString() : null,
+  };
+}
+
+function buildRouteCsv(points: RoutePoint[]): string {
+  const header = 'recorded_at,latitude,longitude,accuracy_m,heading_deg,speed_mps';
+  const lines = points.map((p) =>
+    [
+      p.recorded_at ?? '',
+      p.lat,
+      p.lng,
+      p.accuracy_m ?? '',
+      p.heading_deg ?? '',
+      p.speed_mps ?? '',
+    ].join(','),
+  );
+  return [header, ...lines].join('\n') + '\n';
+}
+
+function xmlEscape(s: string): string {
+  return s.replace(/[<>&'"]/g, (c) =>
+    c === '<' ? '&lt;'
+      : c === '>' ? '&gt;'
+      : c === '&' ? '&amp;'
+      : c === "'" ? '&apos;'
+      : '&quot;',
+  );
+}
+
+function buildRouteGpx(jobId: string, jobTitle: string | null, points: RoutePoint[]): string {
+  // GPX 1.1 — one <trk> with one <trkseg>. Each <trkpt> carries the ISO
+  // timestamp; speed (m/s) and heading (degrees) ride along via the
+  // standard Garmin TrackPointExtension v1 namespace so insurance and
+  // accident-reconstruction tools see the same evidence as the in-app
+  // replay.
+  const trackName = xmlEscape(`Job ${jobId}${jobTitle ? ` — ${jobTitle}` : ''}`);
+  const trkpts = points
+    .map((p) => {
+      const time = p.recorded_at ? `<time>${p.recorded_at}</time>` : '';
+      const hasSpeed = p.speed_mps != null && Number.isFinite(Number(p.speed_mps));
+      const hasHeading = p.heading_deg != null && Number.isFinite(Number(p.heading_deg));
+      let extensions = '';
+      if (hasSpeed || hasHeading) {
+        const speedTag = hasSpeed
+          ? `<gpxtpx:speed>${Number(p.speed_mps)}</gpxtpx:speed>`
+          : '';
+        const courseTag = hasHeading
+          ? `<gpxtpx:course>${Number(p.heading_deg)}</gpxtpx:course>`
+          : '';
+        extensions =
+          `<extensions>`
+          + `<gpxtpx:TrackPointExtension>`
+          + speedTag
+          + courseTag
+          + `</gpxtpx:TrackPointExtension>`
+          + `</extensions>`;
+      }
+      return `      <trkpt lat="${p.lat}" lon="${p.lng}">${time}${extensions}</trkpt>`;
+    })
+    .join('\n');
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<gpx version="1.1" creator="Qvo Dispatch"`
+    + ` xmlns="http://www.topografix.com/GPX/1/1"`
+    + ` xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n` +
+    `  <trk>\n` +
+    `    <name>${trackName}</name>\n` +
+    `    <trkseg>\n` +
+    (trkpts ? trkpts + '\n' : '') +
+    `    </trkseg>\n` +
+    `  </trk>\n` +
+    `</gpx>\n`
+  );
+}
+
+function safeJobIdForFilename(jobId: string): string {
+  return jobId.replace(/[^A-Za-z0-9_-]/g, '');
+}
+
+/**
+ * Build the canonical per-job route filename used by both the single-job
+ * download and the bulk archive entry. Date is the breadcrumb start when
+ * available; otherwise we fall back through scheduled_at, completed_at,
+ * and finally "today" so we never produce an `undefined` filename.
+ */
+function buildRouteFilename(
+  jobId: string,
+  format: 'gpx' | 'csv',
+  windowStart: string | null,
+  scheduledAt: string | Date | null | undefined,
+  completedAt: string | Date | null | undefined,
+): string {
+  const filenameDateSource =
+    windowStart
+      || (scheduledAt ? new Date(scheduledAt as string | Date).toISOString() : null)
+      || (completedAt ? new Date(completedAt as string | Date).toISOString() : null)
+      || new Date().toISOString();
+  const filenameDate = filenameDateSource.slice(0, 10);
+  return `route-${safeJobIdForFilename(jobId)}-${filenameDate}.${format}`;
+}
+
 /**
  * GET /dispatch/jobs/:id/route
  *
@@ -1859,106 +1987,38 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
       [tenantId, id],
     );
 
-    const points = pointRows.map((p) => ({
-      lat: Number(p.latitude),
-      lng: Number(p.longitude),
-      accuracy_m: p.accuracy_m === null ? null : Number(p.accuracy_m),
-      heading_deg: p.heading_deg === null ? null : Number(p.heading_deg),
-      speed_mps: p.speed_mps === null ? null : Number(p.speed_mps),
-      recorded_at: p.recorded_at ? new Date(p.recorded_at as string | Date).toISOString() : null,
-      received_at: p.received_at ? new Date(p.received_at as string | Date).toISOString() : null,
-    }));
+    const points = pointRows.map((p) => mapRoutePoint(p as Record<string, unknown>));
 
     const window = points.length > 0
       ? { start: points[0].recorded_at, end: points[points.length - 1].recorded_at }
       : { start: null, end: null };
 
     if (exportFormat) {
-      // Pick a stable date for the filename. Prefer the actual breadcrumb
-      // start; fall back to the job's scheduled/completed time so the file
-      // is still recognizable when no pings were recorded. Final fallback
-      // is "today" — better than an "undefined" filename.
-      const filenameDateSource =
-        window.start
-          || (job.scheduled_at ? new Date(job.scheduled_at as string | Date).toISOString() : null)
-          || (job.completed_at ? new Date(job.completed_at as string | Date).toISOString() : null)
-          || new Date().toISOString();
-      const filenameDate = filenameDateSource.slice(0, 10); // YYYY-MM-DD
-      const safeJobId = String(job.id).replace(/[^A-Za-z0-9_-]/g, '');
-      const filename = `route-${safeJobId}-${filenameDate}.${exportFormat}`;
-
+      const filename = buildRouteFilename(
+        String(job.id),
+        exportFormat,
+        window.start,
+        job.scheduled_at as string | Date | null | undefined,
+        job.completed_at as string | Date | null | undefined,
+      );
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
       if (exportFormat === 'csv') {
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        const header = 'recorded_at,latitude,longitude,accuracy_m,heading_deg,speed_mps';
-        const lines = points.map((p) =>
-          [
-            p.recorded_at ?? '',
-            p.lat,
-            p.lng,
-            p.accuracy_m ?? '',
-            p.heading_deg ?? '',
-            p.speed_mps ?? '',
-          ].join(','),
-        );
-        return res.send([header, ...lines].join('\n') + '\n');
+        return res.send(buildRouteCsv(points));
       }
 
       // GPX 1.1 — one <trk> with one <trkseg>. Each <trkpt> carries the
-      // ISO timestamp. Speed (m/s) and heading (degrees) are emitted via
-      // the standard Garmin TrackPointExtension v1 namespace so insurance
-      // and accident-reconstruction tools see the same evidence as the
-      // in-app replay.
-      const xmlEscape = (s: string): string =>
-        s.replace(/[<>&'"]/g, (c) =>
-          c === '<' ? '&lt;'
-            : c === '>' ? '&gt;'
-            : c === '&' ? '&amp;'
-            : c === "'" ? '&apos;'
-            : '&quot;',
-        );
-      const trackName = xmlEscape(
-        `Job ${String(job.id)}${job.title ? ` — ${String(job.title)}` : ''}`,
-      );
-      const trkpts = points
-        .map((p) => {
-          const time = p.recorded_at ? `<time>${p.recorded_at}</time>` : '';
-          const hasSpeed = p.speed_mps != null && Number.isFinite(Number(p.speed_mps));
-          const hasHeading = p.heading_deg != null && Number.isFinite(Number(p.heading_deg));
-          let extensions = '';
-          if (hasSpeed || hasHeading) {
-            const speedTag = hasSpeed
-              ? `<gpxtpx:speed>${Number(p.speed_mps)}</gpxtpx:speed>`
-              : '';
-            const courseTag = hasHeading
-              ? `<gpxtpx:course>${Number(p.heading_deg)}</gpxtpx:course>`
-              : '';
-            extensions =
-              `<extensions>`
-              + `<gpxtpx:TrackPointExtension>`
-              + speedTag
-              + courseTag
-              + `</gpxtpx:TrackPointExtension>`
-              + `</extensions>`;
-          }
-          return `      <trkpt lat="${p.lat}" lon="${p.lng}">${time}${extensions}</trkpt>`;
-        })
-        .join('\n');
-      const gpx =
-        `<?xml version="1.0" encoding="UTF-8"?>\n` +
-        `<gpx version="1.1" creator="Qvo Dispatch"`
-        + ` xmlns="http://www.topografix.com/GPX/1/1"`
-        + ` xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n` +
-        `  <trk>\n` +
-        `    <name>${trackName}</name>\n` +
-        `    <trkseg>\n` +
-        (trkpts ? trkpts + '\n' : '') +
-        `    </trkseg>\n` +
-        `  </trk>\n` +
-        `</gpx>\n`;
+      // ISO timestamp plus optional Garmin TrackPointExtension v1 tags
+      // for speed/heading (handled inside `buildRouteGpx`).
       res.setHeader('Content-Type', 'application/gpx+xml; charset=utf-8');
-      return res.send(gpx);
+      return res.send(
+        buildRouteGpx(
+          String(job.id),
+          job.title ? String(job.title) : null,
+          points,
+        ),
+      );
     }
 
     // Resolve the customer's address geocode. We prefer the cached coords
@@ -2044,6 +2104,333 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
   } catch (err) {
     logger.error('Failed to get job route', { tenantId, jobId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to get job route' });
+  }
+};
+
+// Hard cap on the number of jobs a single bulk-route export request may
+// pull. Keeps both the SQL fan-out and the in-memory ZIP build bounded
+// even if a dispatcher casts a very wide filter net. The UI also surfaces
+// this number when it's exceeded so the dispatcher can tighten filters.
+const BULK_ROUTE_EXPORT_MAX_JOBS = 500;
+
+// Filter columns we accept for the "no explicit selection" mode. Mirrors
+// the subset of `listJobsHandler` filters that actually scope rows the
+// dispatcher cares about for a route audit. Anything not listed here is
+// silently ignored — never trust caller-supplied column names.
+const BULK_ROUTE_EXPORT_ALLOWED_FILTERS = new Set([
+  'status', 'priority', 'territory_id', 'resource_id', 'job_type', 'assignee_user_id',
+]);
+
+/**
+ * POST /dispatch/jobs/routes/export
+ *
+ * Bulk download of every dispatch job's GPS breadcrumb as a single
+ * archive. Used for weekly insurance reviews, audits, and chargeback
+ * batches where the dispatcher would otherwise open each job's "Route
+ * taken" tab and click Download one at a time (Task #762 ⇒ #776).
+ *
+ * Two selection modes (the request must use exactly one):
+ *
+ *  1. Explicit `job_ids: string[]` — for the multi-select toolbar on the
+ *     dispatch board. Tenant scoping is enforced when we re-fetch the
+ *     jobs (jobs not owned by this tenant simply drop out of the result).
+ *
+ *  2. Filter mode (any combination of `status`, `priority`, `territory_id`,
+ *     `resource_id`, `job_type`, `assignee_user_id`, `search`, plus a
+ *     `date_from`/`date_to` range applied to `COALESCE(scheduled_at,
+ *     created_at)`). Mirrors the dispatch board's active filters so the
+ *     download produces the same set the dispatcher is currently looking
+ *     at.
+ *
+ * Body:
+ *   {
+ *     job_ids?: string[],
+ *     filters?: { status?, priority?, territory_id?, resource_id?,
+ *                 job_type?, assignee_user_id?, search? },
+ *     date_from?: string,   // ISO8601, applied to COALESCE(scheduled_at, created_at)
+ *     date_to?: string,
+ *     format?: 'gpx' | 'csv',  // default 'gpx'
+ *     include_empty?: boolean   // default true — see note below
+ *   }
+ *
+ * Empty-job policy: by default we *include* an empty file for jobs that
+ * have no recorded pings so the file count matches the job count. That's
+ * what auditors expect ("we know this job had no breadcrumb data"). Pass
+ * `include_empty: false` to skip those jobs entirely. Either way the
+ * archive's `manifest.csv` records every considered job, including the
+ * point count, so dispatchers can see at a glance which jobs were empty.
+ *
+ * Filenames inside the archive use the same `route-<jobId>-YYYY-MM-DD`
+ * pattern as the per-job download so files are recognisable side-by-side.
+ */
+export const bulkExportJobRoutesHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  const formatRaw = typeof body.format === 'string' ? body.format.toLowerCase() : '';
+  const exportFormat: 'gpx' | 'csv' =
+    formatRaw === 'csv' ? 'csv' : formatRaw === 'gpx' ? 'gpx' : 'gpx';
+
+  const includeEmpty = body.include_empty === false ? false : true;
+
+  const rawJobIds = Array.isArray(body.job_ids) ? body.job_ids : [];
+  const jobIdsInput: string[] = rawJobIds
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  // De-duplicate so the dispatcher selecting the same job twice doesn't
+  // double-count against the cap or produce duplicate archive entries.
+  const uniqueJobIds = Array.from(new Set(jobIdsInput));
+
+  const filters = (body.filters ?? {}) as Record<string, unknown>;
+  const dateFrom = typeof body.date_from === 'string' ? body.date_from : '';
+  const dateTo = typeof body.date_to === 'string' ? body.date_to : '';
+  const search = typeof filters.search === 'string' ? filters.search : '';
+
+  const hasFilterCriteria =
+    Object.keys(filters).some((k) =>
+      BULK_ROUTE_EXPORT_ALLOWED_FILTERS.has(k) && filters[k] != null && String(filters[k]).length > 0,
+    )
+    || search.length > 0
+    || dateFrom.length > 0
+    || dateTo.length > 0;
+
+  if (uniqueJobIds.length === 0 && !hasFilterCriteria) {
+    return res.status(400).json({
+      error: 'Specify either job_ids or at least one filter / date range to export.',
+    });
+  }
+
+  try {
+    // ---- Step 1: resolve the set of jobs to include in the archive ----
+    let jobs: Array<{
+      id: string;
+      title: string | null;
+      status: string | null;
+      scheduled_at: string | Date | null;
+      completed_at: string | Date | null;
+      resource_name: string | null;
+    }> = [];
+
+    if (uniqueJobIds.length > 0) {
+      if (uniqueJobIds.length > BULK_ROUTE_EXPORT_MAX_JOBS) {
+        return res.status(400).json({
+          error: `Too many jobs selected (${uniqueJobIds.length}). Limit is ${BULK_ROUTE_EXPORT_MAX_JOBS} per export.`,
+        });
+      }
+      const { rows } = await pool.query(
+        `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
+                r.name AS resource_name
+           FROM dispatch_jobs j
+           LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+          WHERE j.tenant_id = $1 AND j.id = ANY($2::uuid[])
+          ORDER BY j.scheduled_at ASC NULLS LAST, j.created_at ASC`,
+        [tenantId, uniqueJobIds],
+      );
+      jobs = rows.map((r) => ({
+        id: String(r.id),
+        title: (r.title as string | null) ?? null,
+        status: (r.status as string | null) ?? null,
+        scheduled_at: (r.scheduled_at as string | Date | null) ?? null,
+        completed_at: (r.completed_at as string | Date | null) ?? null,
+        resource_name: (r.resource_name as string | null) ?? null,
+      }));
+    } else {
+      const conditions: string[] = ['j.tenant_id = $1'];
+      const values: unknown[] = [tenantId];
+      for (const key of BULK_ROUTE_EXPORT_ALLOWED_FILTERS) {
+        const val = filters[key];
+        if (val != null && String(val).length > 0) {
+          values.push(val);
+          conditions.push(`j.${key} = $${values.length}`);
+        }
+      }
+      if (search) {
+        values.push(`%${search}%`);
+        conditions.push(
+          `(j.title ILIKE $${values.length} OR j.description ILIKE $${values.length} OR j.contact_name ILIKE $${values.length})`,
+        );
+      }
+      if (dateFrom) {
+        values.push(dateFrom);
+        conditions.push(`COALESCE(j.scheduled_at, j.created_at) >= $${values.length}::timestamptz`);
+      }
+      if (dateTo) {
+        values.push(dateTo);
+        conditions.push(`COALESCE(j.scheduled_at, j.created_at) <= $${values.length}::timestamptz`);
+      }
+      values.push(BULK_ROUTE_EXPORT_MAX_JOBS + 1);
+      const limitParam = `$${values.length}`;
+      const { rows } = await pool.query(
+        `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
+                r.name AS resource_name
+           FROM dispatch_jobs j
+           LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY j.scheduled_at ASC NULLS LAST, j.created_at ASC
+          LIMIT ${limitParam}`,
+        values,
+      );
+      if (rows.length > BULK_ROUTE_EXPORT_MAX_JOBS) {
+        return res.status(400).json({
+          error: `Filter matched more than ${BULK_ROUTE_EXPORT_MAX_JOBS} jobs. Narrow the date range or filters and try again.`,
+          matched_at_least: rows.length,
+        });
+      }
+      jobs = rows.map((r) => ({
+        id: String(r.id),
+        title: (r.title as string | null) ?? null,
+        status: (r.status as string | null) ?? null,
+        scheduled_at: (r.scheduled_at as string | Date | null) ?? null,
+        completed_at: (r.completed_at as string | Date | null) ?? null,
+        resource_name: (r.resource_name as string | null) ?? null,
+      }));
+    }
+
+    if (jobs.length === 0) {
+      return res.status(404).json({ error: 'No jobs matched the selection.' });
+    }
+
+    // ---- Step 2: fetch every breadcrumb point in one tenant-scoped query ----
+    const jobIdList = jobs.map((j) => j.id);
+    const { rows: pointRows } = await pool.query(
+      `SELECT active_job_id, latitude, longitude, accuracy_m, heading_deg, speed_mps,
+              recorded_at, received_at
+         FROM dispatch_resource_location_history
+        WHERE tenant_id = $1
+          AND active_job_id = ANY($2::uuid[])
+        ORDER BY active_job_id ASC, recorded_at ASC, id ASC`,
+      [tenantId, jobIdList],
+    );
+
+    const pointsByJob = new Map<string, RoutePoint[]>();
+    for (const row of pointRows) {
+      const jid = String(row.active_job_id);
+      const list = pointsByJob.get(jid) ?? [];
+      list.push(mapRoutePoint(row as Record<string, unknown>));
+      pointsByJob.set(jid, list);
+    }
+
+    // ---- Step 3: build the archive ----
+    const zip = new JSZip();
+
+    type ManifestRow = {
+      job_id: string;
+      title: string;
+      resource_name: string;
+      status: string;
+      scheduled_at: string;
+      completed_at: string;
+      points: number;
+      window_start: string;
+      window_end: string;
+      file: string;
+    };
+    const manifest: ManifestRow[] = [];
+
+    let includedCount = 0;
+    let skippedEmpty = 0;
+    const usedFilenames = new Set<string>();
+
+    for (const job of jobs) {
+      const points = pointsByJob.get(job.id) ?? [];
+      const windowStart = points.length > 0 ? points[0].recorded_at : null;
+      const windowEnd = points.length > 0 ? points[points.length - 1].recorded_at : null;
+
+      if (points.length === 0 && !includeEmpty) {
+        skippedEmpty++;
+        manifest.push({
+          job_id: job.id,
+          title: job.title ?? '',
+          resource_name: job.resource_name ?? '',
+          status: job.status ?? '',
+          scheduled_at: job.scheduled_at ? new Date(job.scheduled_at).toISOString() : '',
+          completed_at: job.completed_at ? new Date(job.completed_at).toISOString() : '',
+          points: 0,
+          window_start: '',
+          window_end: '',
+          file: '',
+        });
+        continue;
+      }
+
+      // The canonical filename is collision-free across distinct job ids,
+      // but if a dispatcher manually re-uses ids in the selection (or two
+      // jobs share a date and the safe-id strip happens to collide) we
+      // disambiguate with a numeric suffix so JSZip doesn't silently
+      // overwrite an entry.
+      let filename = buildRouteFilename(
+        job.id, exportFormat, windowStart, job.scheduled_at, job.completed_at,
+      );
+      if (usedFilenames.has(filename)) {
+        const dot = filename.lastIndexOf('.');
+        const stem = dot === -1 ? filename : filename.slice(0, dot);
+        const ext = dot === -1 ? '' : filename.slice(dot);
+        let suffix = 2;
+        while (usedFilenames.has(`${stem}-${suffix}${ext}`)) suffix++;
+        filename = `${stem}-${suffix}${ext}`;
+      }
+      usedFilenames.add(filename);
+
+      const body = exportFormat === 'csv'
+        ? buildRouteCsv(points)
+        : buildRouteGpx(job.id, job.title, points);
+      zip.file(filename, body);
+      includedCount++;
+
+      manifest.push({
+        job_id: job.id,
+        title: job.title ?? '',
+        resource_name: job.resource_name ?? '',
+        status: job.status ?? '',
+        scheduled_at: job.scheduled_at ? new Date(job.scheduled_at).toISOString() : '',
+        completed_at: job.completed_at ? new Date(job.completed_at).toISOString() : '',
+        points: points.length,
+        window_start: windowStart ?? '',
+        window_end: windowEnd ?? '',
+        file: filename,
+      });
+    }
+
+    // CSV-escape per RFC 4180: wrap in quotes when the value contains a
+    // comma, quote, or newline; double up embedded quotes. Matches what
+    // Excel and Google Sheets expect.
+    const csvField = (raw: string): string => {
+      if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+      return raw;
+    };
+    const manifestHeader = [
+      'job_id', 'title', 'resource_name', 'status', 'scheduled_at',
+      'completed_at', 'points', 'window_start', 'window_end', 'file',
+    ];
+    const manifestLines = manifest.map((m) =>
+      manifestHeader.map((h) => csvField(String(m[h as keyof ManifestRow] ?? ''))).join(','),
+    );
+    zip.file('manifest.csv', [manifestHeader.join(','), ...manifestLines].join('\n') + '\n');
+
+    const generatedAt = new Date().toISOString();
+    const datePart = generatedAt.slice(0, 10);
+    const archiveName = `dispatch-routes-${datePart}.zip`;
+
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${archiveName}"`);
+    res.setHeader('X-Route-Export-Job-Count', String(jobs.length));
+    res.setHeader('X-Route-Export-Included', String(includedCount));
+    res.setHeader('X-Route-Export-Skipped-Empty', String(skippedEmpty));
+    res.setHeader('X-Route-Export-Format', exportFormat);
+    return res.send(buffer);
+  } catch (err) {
+    logger.error('Failed to bulk export dispatch routes', {
+      tenantId,
+      jobIdCount: uniqueJobIds.length,
+      filterMode: uniqueJobIds.length === 0,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to export routes' });
   }
 };
 
@@ -2861,6 +3248,7 @@ router.delete('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, de
 router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite, syncResourceSkillsHandler);
 router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
 router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
+router.post('/dispatch/jobs/routes/export', requireAuth, bulkExportJobRoutesHandler);
 
 // Public, token-authenticated booking-tracker endpoint. NO requireAuth —
 // the per-job tracking_token (migration 088) is the only credential.
