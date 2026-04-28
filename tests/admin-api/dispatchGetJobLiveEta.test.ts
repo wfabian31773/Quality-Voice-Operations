@@ -1,0 +1,257 @@
+// Verifies the dispatcher-facing GET /dispatch/jobs/:id endpoint
+// surfaces the same live customer ETA that the Live Map popup, the
+// SMS substitution, and the public booking-tracker page already show:
+//   - includes live_eta when status is en_route and the tech has a
+//     fresh GPS fix
+//   - omits live_eta when the job is not en_route (no extra DB calls)
+//   - quietly returns live_eta=null when the latest fix is stale
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Request, Response } from 'express';
+
+const queryMock = vi.fn();
+
+vi.mock('../../platform/db', () => ({
+  getPlatformPool: () => ({ query: queryMock }),
+  withTenantContext: vi.fn(async () => {}),
+  withPrivilegedClient: vi.fn(),
+}));
+vi.mock('../../platform/core/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+vi.mock('../../server/admin-api/middleware/auth', () => ({
+  requireAuth: (_req: Request, _res: Response, next: () => void) => next(),
+}));
+vi.mock('../../server/admin-api/middleware/rbac', () => ({
+  requireMiniSystemWrite: (_req: Request, _res: Response, next: () => void) => next(),
+  requireRole: () => (_req: Request, _res: Response, next: () => void) => next(),
+  requirePlatformAdmin: (_req: Request, _res: Response, next: () => void) => next(),
+}));
+vi.mock('../../server/replit_integrations/object_storage', () => ({
+  ObjectStorageService: class {},
+  ObjectNotFoundError: class extends Error {},
+}));
+
+function makeRes(): {
+  res: Response;
+  getStatus: () => number;
+  getJson: () => Record<string, unknown> | null;
+} {
+  let statusCode = 200;
+  let body: Record<string, unknown> | null = null;
+  const res = {
+    status: (code: number) => {
+      statusCode = code;
+      return {
+        json: (b: Record<string, unknown>) => {
+          body = b;
+        },
+      };
+    },
+    json: (b: Record<string, unknown>) => {
+      body = b;
+    },
+  } as unknown as Response;
+  return { res, getStatus: () => statusCode, getJson: () => body };
+}
+
+function makeReq(jobId: string): Request {
+  return {
+    params: { id: jobId },
+    query: {},
+    body: {},
+    method: 'GET',
+    headers: {},
+    cookies: {},
+    ip: '127.0.0.1',
+    user: { tenantId: 'tenant-A', userId: 'user-1' },
+  } as unknown as Request;
+}
+
+beforeEach(() => {
+  queryMock.mockReset();
+  vi.resetModules();
+  process.env.DISPATCH_ROUTING_PROVIDER = 'haversine';
+  process.env.DISPATCH_GEOCODE_PROVIDER = 'none';
+});
+
+afterEach(() => {
+  delete process.env.DISPATCH_ROUTING_PROVIDER;
+  delete process.env.DISPATCH_GEOCODE_PROVIDER;
+});
+
+describe('getJobHandler live ETA', () => {
+  it('includes live_eta when the job is en_route and the tech has a fresh fix', async () => {
+    const { __resetRoutingCachesForTests } = await import(
+      '../../platform/integrations/routing'
+    );
+    __resetRoutingCachesForTests();
+
+    // 1. SELECT job (with assignee/resource/territory joins)
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'job-1',
+          tenant_id: 'tenant-A',
+          title: 'Water heater',
+          status: 'en_route',
+          priority: 'medium',
+          contact_name: 'Jane',
+          address: '500 Folsom St, SF',
+          scheduled_at: null,
+          completed_at: null,
+          resource_id: 'res-1',
+          resource_name: 'Alex Diaz',
+          assignee_user_id: null,
+          assignee_email: null,
+        },
+      ],
+    });
+    // 2. SELECT events
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    // 3. SELECT exceptions
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    // 4. SELECT attachments
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    // 5. computeLiveEtaForJob: SELECT location row (fresh fix)
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          latitude: '37.7749',
+          longitude: '-122.4194',
+          received_at: new Date().toISOString(),
+        },
+      ],
+    });
+    // 6. computeLiveEtaForJob: SELECT cached job geocode
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          address_lat: '37.7849',
+          address_lon: '-122.4094',
+          address_geocoded_for: '500 Folsom St, SF',
+        },
+      ],
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getJson } = makeRes();
+    await (dispatch.getJobHandler as (
+      req: Request,
+      res: Response,
+    ) => Promise<void>)(makeReq('job-1'), res);
+
+    expect(getStatus()).toBe(200);
+    const body = getJson() as Record<string, unknown>;
+    const liveEta = body.live_eta as Record<string, unknown> | null;
+    expect(liveEta).not.toBeNull();
+    expect(typeof liveEta!.minutes).toBe('number');
+    expect(liveEta!.minutes as number).toBeGreaterThan(0);
+    expect(typeof liveEta!.arrival_at).toBe('string');
+    // Sanity: arrival_at parses to a valid future-ish date.
+    const arrivalAt = new Date(liveEta!.arrival_at as string);
+    expect(Number.isFinite(arrivalAt.getTime())).toBe(true);
+    // The dispatcher-facing payload still ships the full job record
+    // (no field stripping) — only the public tracker hides those.
+    const job = body.job as Record<string, unknown>;
+    expect(job.id).toBe('job-1');
+    expect(job.tenant_id).toBe('tenant-A');
+  });
+
+  it('omits live_eta (null) when the job is not en_route, without extra DB calls', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'job-2',
+          tenant_id: 'tenant-A',
+          title: 'Tune-up',
+          status: 'scheduled',
+          priority: 'medium',
+          contact_name: 'Jane',
+          address: '500 Folsom',
+          scheduled_at: null,
+          completed_at: null,
+          resource_id: 'res-1',
+          resource_name: 'Alex',
+          assignee_user_id: null,
+          assignee_email: null,
+        },
+      ],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [] }); // events
+    queryMock.mockResolvedValueOnce({ rows: [] }); // exceptions
+    queryMock.mockResolvedValueOnce({ rows: [] }); // attachments
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getJson } = makeRes();
+    await (dispatch.getJobHandler as (
+      req: Request,
+      res: Response,
+    ) => Promise<void>)(makeReq('job-2'), res);
+
+    expect(getStatus()).toBe(200);
+    const body = getJson() as Record<string, unknown>;
+    expect(body.live_eta).toBeNull();
+    // Job, events, exceptions, attachments — no location/geocode lookup.
+    expect(queryMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('returns live_eta=null when the latest fix is stale', async () => {
+    const { __resetRoutingCachesForTests } = await import(
+      '../../platform/integrations/routing'
+    );
+    __resetRoutingCachesForTests();
+
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'job-3',
+          tenant_id: 'tenant-A',
+          title: 'Repair',
+          status: 'en_route',
+          priority: 'medium',
+          contact_name: 'Jane',
+          address: '500 Folsom',
+          scheduled_at: null,
+          completed_at: null,
+          resource_id: 'res-1',
+          resource_name: 'Alex',
+          assignee_user_id: null,
+          assignee_email: null,
+        },
+      ],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [] }); // events
+    queryMock.mockResolvedValueOnce({ rows: [] }); // exceptions
+    queryMock.mockResolvedValueOnce({ rows: [] }); // attachments
+    // Stale fix: 1 hour old, beyond the 600s budget the helper enforces.
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          latitude: '37.7749',
+          longitude: '-122.4194',
+          received_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getJson } = makeRes();
+    await (dispatch.getJobHandler as (
+      req: Request,
+      res: Response,
+    ) => Promise<void>)(makeReq('job-3'), res);
+
+    expect(getStatus()).toBe(200);
+    const body = getJson() as Record<string, unknown>;
+    expect(body.live_eta).toBeNull();
+    // Job + events + exceptions + attachments + the location lookup —
+    // we exited before hitting the cached-geocode SELECT or the
+    // routing provider.
+    expect(queryMock).toHaveBeenCalledTimes(5);
+  });
+});

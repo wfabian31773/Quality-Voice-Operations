@@ -18,6 +18,17 @@ import {
   type TimedPing,
 } from '../lib/dispatchRouteReplay';
 
+// Live driving ETA from the technician's last known fix to the job
+// address, computed by the same routing-adapter cache that powers the
+// Live Map popups, the customer SMS substitution, and the public
+// booking-tracker page. `null` (or omitted) when the truck has not
+// rolled yet, the latest GPS fix is stale, or the address can't be
+// geocoded.
+interface LiveEta {
+  minutes: number;
+  arrival_at: string;
+}
+
 interface DispatchJob {
   id: string;
   title: string;
@@ -258,7 +269,7 @@ export default function Dispatch() {
   const [error, setError] = useState<string | null>(null);
   const [showJobForm, setShowJobForm] = useState(false);
   const [editingJob, setEditingJob] = useState<DispatchJob | null>(null);
-  const [jobDetail, setJobDetail] = useState<{ job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[] } | null>(null);
+  const [jobDetail, setJobDetail] = useState<{ job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[]; live_eta: LiveEta | null } | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({ status: '', priority: '', territory_id: '', resource_id: '', search: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -364,7 +375,7 @@ export default function Dispatch() {
 
   const openJobDetail = async (jobId: string) => {
     try {
-      const data = await api.get<{ job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[] }>(`/dispatch/jobs/${jobId}`);
+      const data = await api.get<{ job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[]; live_eta: LiveEta | null }>(`/dispatch/jobs/${jobId}`);
       setJobDetail(data);
     } catch { setError('Failed to load job details'); }
   };
@@ -2474,8 +2485,17 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
 
 // ============ JOB DETAIL MODAL ============
 
+// Cadence at which the dispatcher's job-detail panel re-fetches the
+// live ETA while the job is en_route. Matches the Live Map's polling
+// interval so the two surfaces stay visually in sync (the dispatcher
+// can have both open and never see them disagree). The shared
+// routing-adapter cache absorbs the cost — opening the panel does not
+// trigger an extra geocode / drive-time provider call when the Live
+// Map has already computed the same job's ETA in the same window.
+const JOB_DETAIL_LIVE_ETA_POLL_MS = 15_000;
+
 function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh, refreshAll }: {
-  detail: { job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[] };
+  detail: { job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[]; live_eta: LiveEta | null };
   isReadOnly: boolean; transitionJob: (id: string, s: string, n?: string) => void;
   onClose: () => void; onRefresh: () => void; refreshAll: () => void;
 }) {
@@ -2487,10 +2507,27 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
   const [attachmentData, setAttachmentData] = useState({ attachment_type: 'note', title: '', content: '' });
   const [followUpData, setFollowUpData] = useState({ title: '', description: '', notes: '' });
 
-  const { job, events, exceptions, attachments } = detail;
+  const { job, events, exceptions, attachments, live_eta: liveEta } = detail;
   const nextStates = VALID_TRANSITIONS[job.status] || [];
 
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  // Keep the live ETA fresh while the truck is rolling. We only poll
+  // for `en_route` jobs because:
+  //   - For pre-dispatch states (pending/assigned/scheduled) the ETA
+  //     is meaningless — there's nothing to drive.
+  //   - For terminal states (on_site/completed/cancelled) the truck
+  //     has either arrived or stopped reporting, so an ETA would be
+  //     stale by definition.
+  // Using `onRefresh` (which re-pulls the whole detail payload) keeps
+  // the rest of the panel — events, exceptions, attachments — in sync
+  // for free, and the routing-adapter cache absorbs the cost of the
+  // ETA computation on the server.
+  useEffect(() => {
+    if (job.status !== 'en_route') return;
+    const t = setInterval(onRefresh, JOB_DETAIL_LIVE_ETA_POLL_MS);
+    return () => clearInterval(t);
+  }, [job.status, onRefresh]);
 
   const submitException = async () => {
     if (!exceptionData.reason) return;
@@ -2587,6 +2624,34 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
 
           {detailTab === 'overview' && (
             <div className="space-y-4">
+              {/*
+                Live customer ETA — same string the customer sees on
+                the public booking-tracker page and in their SMS, so a
+                dispatcher fielding a "where are they?" call can read
+                it back verbatim. We render the card only for en_route
+                jobs and only when the server returned a non-null
+                live_eta — when the latest fix is stale or the address
+                isn't geocodable we quietly hide the card rather than
+                show a stale or error value.
+              */}
+              {job.status === 'en_route' && liveEta && (
+                <div data-testid="dispatcher-live-eta"
+                  className="rounded-lg border border-cyan-200 bg-cyan-50 dark:border-cyan-800 dark:bg-cyan-900/20 px-3 py-2.5 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-700 dark:text-cyan-300">
+                      Live customer ETA
+                    </p>
+                    <p className="text-sm text-heading mt-0.5">
+                      <span className="font-semibold">~{liveEta.minutes} min away</span>
+                      <span className="text-muted"> — arriving at </span>
+                      <span className="font-semibold">{new Date(liveEta.arrival_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-muted whitespace-nowrap">
+                    Same view as customer
+                  </span>
+                </div>
+              )}
               {job.description && <div><h4 className="text-xs font-medium text-muted mb-1">Description</h4><p className="text-sm text-heading">{job.description}</p></div>}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="text-xs text-muted">Contact</span><p className="text-heading">{job.contact_name || '-'}</p></div>

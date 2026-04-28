@@ -514,7 +514,31 @@ export const getJobHandler: RequestHandler = async (req, res) => {
       [id, tenantId],
     );
 
-    return res.json({ job: rows[0], events, exceptions, attachments });
+    // Live customer-facing ETA, surfaced here so dispatchers see the
+    // same "~12 min away — arriving at 3:42 PM" string that the Live
+    // Map popup, the SMS substitution, and the public booking-tracker
+    // page all show. Computed only when the truck is actually rolling
+    // (en_route) and the tech has both an assigned resource and a
+    // geocodable address. The shared routing-adapter cache means
+    // opening the panel does not trigger an extra geocode / drive-time
+    // lookup per dispatcher view as long as the Live Map (or any
+    // other surface) has computed it recently.
+    const jobRow = rows[0] as Record<string, unknown>;
+    let liveEta: { minutes: number; arrival_at: string } | null = null;
+    const status = String(jobRow.status ?? '');
+    const resourceId = (jobRow.resource_id as string | null) ?? null;
+    const address = String(jobRow.address ?? '').trim();
+    if (status === 'en_route' && resourceId && address) {
+      const eta = await computeLiveEtaForJob(pool, tenantId, id, resourceId, address);
+      if (eta) {
+        liveEta = {
+          minutes: eta.minutes,
+          arrival_at: eta.arrivalDate.toISOString(),
+        };
+      }
+    }
+
+    return res.json({ job: jobRow, events, exceptions, attachments, live_eta: liveEta });
   } catch (err) {
     logger.error('Failed to get dispatch job', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to get job' });
