@@ -117,12 +117,12 @@ const faqs = [
 
 function FeatureCell({ value }: { value: boolean | string }) {
   if (typeof value === 'string') {
-    return <span className="text-sm font-medium text-harbor">{value}</span>;
+    return <span className="text-sm font-medium text-text-primary">{value}</span>;
   }
   return value ? (
-    <CheckCircle2 className="h-4.5 w-4.5 text-calm-green mx-auto" />
+    <CheckCircle2 className="h-4.5 w-4.5 text-success mx-auto" />
   ) : (
-    <XIcon className="h-4 w-4 text-soft-steel mx-auto" />
+    <XIcon className="h-4 w-4 text-text-muted mx-auto" />
   );
 }
 
@@ -132,19 +132,19 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
   const triggerId = `faq-trigger-${id}`;
 
   return (
-    <div className="border-b border-soft-steel/30 last:border-b-0">
+    <div className="border-b border-border/30 last:border-b-0">
       <button
         id={triggerId}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between py-5 px-1 text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 rounded-lg"
+        className="w-full flex items-center justify-between py-5 px-1 text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg"
       >
-        <span className="font-display text-base font-semibold text-harbor group-hover:text-teal transition-colors pr-4">
+        <span className="font-display text-base font-semibold text-text-primary group-hover:text-primary transition-colors pr-4">
           {q}
         </span>
         <ChevronDown
-          className={`h-5 w-5 text-slate-ink/40 flex-shrink-0 transition-transform duration-300 ${
+          className={`h-5 w-5 text-text-primary/40 flex-shrink-0 transition-transform duration-300 ${
             open ? 'rotate-180' : ''
           }`}
         />
@@ -157,7 +157,7 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
           open ? 'max-h-96 pb-5' : 'max-h-0'
         }`}
       >
-        <p className="text-sm text-slate-ink/60 font-body leading-relaxed px-1">{a}</p>
+        <p className="text-sm text-text-primary/60 font-body leading-relaxed px-1">{a}</p>
       </div>
     </div>
   );
@@ -200,9 +200,9 @@ export default function Pricing() {
         canonicalPath="/pricing"
         structuredData={faqSchema}
       />
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
-          <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
             Pricing
           </p>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-6">
@@ -211,7 +211,7 @@ export default function Pricing() {
           <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-6">
             Start with a 14-day free trial on any plan. No contracts, no hidden fees. Scale as your business grows.
           </p>
-          <div className="inline-flex items-center gap-2 bg-calm-green/15 border border-calm-green/30 rounded-full px-4 py-1.5 text-calm-green text-sm font-medium">
+          <div className="inline-flex items-center gap-2 bg-success/15 border border-success/30 rounded-full px-4 py-1.5 text-success text-sm font-medium">
             <ShieldCheck className="h-4 w-4" />
             30-day money-back guarantee
           </div>
@@ -227,27 +227,27 @@ export default function Pricing() {
                 key={tier.key}
                 className={`relative bg-white rounded-2xl border p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group ${
                   tier.popular
-                    ? 'border-teal ring-2 ring-teal/20 shadow-lg shadow-teal/10'
-                    : 'border-soft-steel/50 hover:border-teal/30 hover:shadow-teal/5'
+                    ? 'border-primary ring-2 ring-primary/20 shadow-lg shadow-primary/10'
+                    : 'border-border/50 hover:border-primary/30 hover:shadow-primary/5'
                 }`}
               >
                 {tier.popular && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="inline-flex items-center gap-1.5 bg-teal text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm">
+                    <span className="inline-flex items-center gap-1.5 bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm">
                       <Star className="h-3 w-3 fill-current" />
                       Most Popular
                     </span>
                   </div>
                 )}
-                <h3 className="font-display text-xl font-bold text-harbor mb-1">{tier.name}</h3>
-                <p className="text-sm text-slate-ink/50 font-body mb-5">{tier.desc}</p>
+                <h3 className="font-display text-xl font-bold text-text-primary mb-1">{tier.name}</h3>
+                <p className="text-sm text-text-primary/50 font-body mb-5">{tier.desc}</p>
                 <div className="mb-2">
-                  <span className="font-display text-5xl font-bold text-harbor">${tier.price}</span>
-                  <span className="text-sm text-slate-ink/50 font-body">/month</span>
+                  <span className="font-display text-5xl font-bold text-text-primary">${tier.price}</span>
+                  <span className="text-sm text-text-primary/50 font-body">/month</span>
                 </div>
                 <div className="flex flex-col gap-1 mb-6">
-                  <span className="text-xs text-teal font-semibold font-body">{tier.minutes} included</span>
-                  <span className="text-xs text-slate-ink/40 font-body">{tier.overage}</span>
+                  <span className="text-xs text-primary font-semibold font-body">{tier.minutes} included</span>
+                  <span className="text-xs text-text-primary/40 font-body">{tier.overage}</span>
                 </div>
                 <Link
                   to={`/signup?plan=${tier.key}`}
@@ -269,13 +269,13 @@ export default function Pricing() {
           <RevealSection>
           <div className="max-w-5xl mx-auto mb-20">
             <div className="text-center mb-8">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 Per-minute calculator
               </p>
-              <h2 className="font-display text-2xl font-bold text-harbor mb-3">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-3">
                 See your effective price per minute
               </h2>
-              <p className="text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-text-primary/60 font-body max-w-2xl mx-auto">
                 Drag the slider to match your expected monthly volume. We'll show your estimated bill and effective per-minute rate on every plan, using the same rates billed by your usage meter.
               </p>
             </div>
@@ -285,20 +285,20 @@ export default function Pricing() {
 
           <RevealSection>
           <div className="max-w-5xl mx-auto">
-            <h2 className="font-display text-2xl font-bold text-harbor mb-8 text-center">
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-8 text-center">
               Compare all features
             </h2>
-            <div className="bg-white rounded-2xl border border-soft-steel/50 overflow-hidden shadow-sm">
+            <div className="bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-soft-steel/30 bg-mist/50">
-                      <th className="text-left py-4 px-6 font-display text-sm font-semibold text-harbor">Feature</th>
+                    <tr className="border-b border-border/30 bg-surface-secondary/50">
+                      <th className="text-left py-4 px-6 font-display text-sm font-semibold text-text-primary">Feature</th>
                       {tiers.map((t) => (
-                        <th key={t.key} className="text-center py-4 px-4 font-display text-sm font-semibold text-harbor w-36">
-                          <span className={t.popular ? 'text-teal' : ''}>{t.name}</span>
+                        <th key={t.key} className="text-center py-4 px-4 font-display text-sm font-semibold text-text-primary w-36">
+                          <span className={t.popular ? 'text-primary' : ''}>{t.name}</span>
                           {t.popular && (
-                            <span className="block text-[10px] text-teal font-medium mt-0.5">RECOMMENDED</span>
+                            <span className="block text-[10px] text-primary font-medium mt-0.5">RECOMMENDED</span>
                           )}
                         </th>
                       ))}
@@ -308,11 +308,11 @@ export default function Pricing() {
                     {features.map((f, i) => (
                       <tr
                         key={f.name}
-                        className={`transition-colors hover:bg-teal/5 ${i % 2 === 0 ? 'bg-mist/30' : ''}`}
+                        className={`transition-colors hover:bg-primary/5 ${i % 2 === 0 ? 'bg-surface-secondary/30' : ''}`}
                       >
-                        <td className="py-3.5 px-6 text-sm text-slate-ink/70 font-body">{f.name}</td>
+                        <td className="py-3.5 px-6 text-sm text-text-primary/70 font-body">{f.name}</td>
                         <td className="py-3.5 px-4 text-center"><FeatureCell value={f.starter} /></td>
-                        <td className={`py-3.5 px-4 text-center ${tiers[1].popular ? 'bg-teal/[0.02]' : ''}`}>
+                        <td className={`py-3.5 px-4 text-center ${tiers[1].popular ? 'bg-primary/[0.02]' : ''}`}>
                           <FeatureCell value={f.pro} />
                         </td>
                         <td className="py-3.5 px-4 text-center"><FeatureCell value={f.enterprise} /></td>
@@ -327,9 +327,9 @@ export default function Pricing() {
         </div>
       </section>
 
-      <section className="bg-white py-12 border-t border-soft-steel/30">
+      <section className="bg-white py-12 border-t border-border/30">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
-          <p className="text-center text-xs font-semibold text-slate-ink/40 uppercase tracking-wider mb-6">
+          <p className="text-center text-xs font-semibold text-text-primary/40 uppercase tracking-wider mb-6">
             Enterprise-ready compliance
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -344,29 +344,29 @@ export default function Pricing() {
               <Link
                 key={badge}
                 to="/security"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-harbor bg-mist hover:bg-teal/10 border border-soft-steel/40 hover:border-teal/30 rounded-full px-3 py-1.5 transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-text-primary bg-surface-secondary hover:bg-primary/10 border border-border/40 hover:border-primary/30 rounded-full px-3 py-1.5 transition-colors"
               >
-                <ShieldCheck className="h-3.5 w-3.5 text-teal" /> {badge}
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" /> {badge}
               </Link>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-mist py-20 lg:py-28">
+      <section className="bg-surface-secondary py-20 lg:py-28">
         <div className="max-w-3xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
               FAQ
             </p>
-            <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
               Common questions about billing.
             </h2>
-            <p className="text-slate-ink/60 font-body leading-relaxed">
+            <p className="text-text-primary/60 font-body leading-relaxed">
               Everything you need to know about our plans and pricing.
             </p>
           </div>
-          <div className="bg-white rounded-2xl border border-soft-steel/30 px-6 lg:px-8 shadow-sm">
+          <div className="bg-white rounded-2xl border border-border/30 px-6 lg:px-8 shadow-sm">
             {faqs.map((faq, i) => (
               <FAQItem key={faq.q} q={faq.q} a={faq.a} id={String(i)} />
             ))}
@@ -374,23 +374,23 @@ export default function Pricing() {
         </div>
       </section>
 
-      <section className="bg-mist py-16">
+      <section className="bg-surface-secondary py-16">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="font-display text-2xl font-bold text-harbor mb-3">Calculate Your ROI</h2>
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-3">Calculate Your ROI</h2>
             <p className="text-slate-600">See how much your business could save with QVO AI voice agents.</p>
           </div>
           <ROICalculator />
         </div>
       </section>
 
-      <section className="bg-white py-14 border-t border-soft-steel/20">
+      <section className="bg-white py-14 border-t border-border/20">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <LogosStrip title="Teams already running on QVO" />
         </div>
       </section>
 
-      <section className="bg-harbor text-white py-16">
+      <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold mb-4">
             Questions about pricing?

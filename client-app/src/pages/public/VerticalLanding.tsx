@@ -42,7 +42,7 @@ const verticals: Record<string, VerticalData> = {
     color: 'bg-blue-600',
     colorLight: 'bg-blue-50',
     heroImage: '/industry-hero/healthcare.jpg',
-    heroOverlayAccent: 'from-blue-500/20 to-teal/10',
+    heroOverlayAccent: 'from-blue-500/20 to-primary/10',
     painPoints: [
       { title: 'Missed patient calls', description: 'Up to 30% of patient calls go unanswered during peak hours, leading to no-shows and lost revenue.' },
       { title: 'Staff burnout', description: 'Front desk staff spend 60% of their day on repetitive phone tasks — scheduling, confirmations, and insurance checks.' },
@@ -75,7 +75,7 @@ const verticals: Record<string, VerticalData> = {
     color: 'bg-emerald-600',
     colorLight: 'bg-emerald-50',
     heroImage: '/industry-hero/real-estate.jpg',
-    heroOverlayAccent: 'from-emerald-500/20 to-teal/10',
+    heroOverlayAccent: 'from-emerald-500/20 to-primary/10',
     painPoints: [
       { title: 'Slow lead response', description: 'Leads contacted after 5 minutes are 10x less likely to convert. Most agents respond in hours, not minutes.' },
       { title: 'After-hours inquiries', description: '42% of real estate inquiries come outside business hours. Those leads go to the next agent who answers.' },
@@ -174,7 +174,7 @@ const verticals: Record<string, VerticalData> = {
     color: 'bg-cyan-600',
     colorLight: 'bg-cyan-50',
     heroImage: '/industry-hero/dental.jpg',
-    heroOverlayAccent: 'from-cyan-500/20 to-teal/10',
+    heroOverlayAccent: 'from-cyan-500/20 to-primary/10',
     painPoints: [
       { title: 'Empty chairs', description: 'The average dental practice loses $150,000/year to unfilled appointments and last-minute cancellations.' },
       { title: 'Phone hold times', description: 'Patients who wait more than 60 seconds on hold hang up. 34% don\'t call back and book elsewhere.' },
@@ -207,7 +207,7 @@ const verticals: Record<string, VerticalData> = {
     color: 'bg-green-600',
     colorLight: 'bg-green-50',
     heroImage: '/industry-hero/veterinary.jpg',
-    heroOverlayAccent: 'from-green-500/20 to-teal/10',
+    heroOverlayAccent: 'from-green-500/20 to-primary/10',
     painPoints: [
       { title: 'Front desk overload', description: 'Your team can\'t check in patients, answer calls, and run the lobby at the same time. Calls drop, owners get frustrated.' },
       { title: 'After-hours emergencies', description: 'Pet emergencies don\'t respect business hours. Without 24/7 triage, owners take their pets — and their loyalty — to the ER clinic.' },
@@ -348,9 +348,9 @@ export default function VerticalLanding() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-display font-bold text-harbor mb-4">Industry Not Found</h1>
+          <h1 className="text-2xl font-display font-bold text-text-primary mb-4">Industry Not Found</h1>
           <p className="text-slate-600 mb-6">We don't have a page for that industry yet.</p>
-          <Link to="/use-cases" className="text-teal hover:underline">View all use cases &rarr;</Link>
+          <Link to="/use-cases" className="text-primary hover:underline">View all use cases &rarr;</Link>
         </div>
       </div>
     );
@@ -387,8 +387,8 @@ export default function VerticalLanding() {
             className="w-full h-full object-cover"
           />
           {/* Dark base for text contrast (left-weighted) */}
-          <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor/85 to-harbor/30 lg:to-harbor/10" />
-          <div className="absolute inset-0 bg-gradient-to-t from-harbor/80 via-transparent to-harbor/40" />
+          <div className="absolute inset-0 bg-gradient-to-r from-sidebar-bg via-sidebar-bg/85 to-sidebar-bg/30 lg:to-sidebar-bg/10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-sidebar-bg/80 via-transparent to-sidebar-bg/40" />
           {/* Accent wash */}
           <div className={`absolute inset-0 bg-gradient-to-br opacity-70 mix-blend-soft-light ${data.heroOverlayAccent}`} />
         </div>
@@ -400,7 +400,7 @@ export default function VerticalLanding() {
                 <div className={`w-10 h-10 rounded-xl ${data.color} flex items-center justify-center shadow-lg`}>
                   <Icon className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-sm font-medium text-teal uppercase tracking-[0.2em]">{data.name}</span>
+                <span className="text-sm font-medium text-primary uppercase tracking-[0.2em]">{data.name}</span>
               </div>
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold text-white leading-[1.05] mb-6">
                 {data.headline}
@@ -429,10 +429,10 @@ export default function VerticalLanding() {
             {/* Right-side floating stats card — desktop only */}
             <div className="hidden lg:flex justify-end">
               <div className="relative max-w-sm w-full">
-                <div className="rounded-2xl bg-harbor/70 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
+                <div className="rounded-2xl bg-sidebar-bg/70 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
                   <div className="flex items-center gap-2 mb-4">
-                    <span className="w-2 h-2 rounded-full bg-calm-green animate-pulse" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-calm-green">Live performance</span>
+                    <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-success">Live performance</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     {data.stats.slice(0, 4).map((stat) => (
@@ -443,7 +443,7 @@ export default function VerticalLanding() {
                     ))}
                   </div>
                   <div className="mt-5 pt-4 border-t border-white/10 flex items-center gap-2 text-[11px] text-white/70">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-teal" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                     From QVO customers in {data.name.toLowerCase()}
                   </div>
                 </div>
@@ -452,7 +452,7 @@ export default function VerticalLanding() {
                     <Icon className="h-4 w-4 text-white" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-harbor leading-tight">Pre-built for {data.name}</p>
+                    <p className="text-[11px] font-semibold text-text-primary leading-tight">Pre-built for {data.name}</p>
                     <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Deploy in minutes, no code</p>
                   </div>
                 </div>
@@ -467,7 +467,7 @@ export default function VerticalLanding() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {data.stats.map((stat) => (
               <div key={stat.label} className="text-center">
-                <div className="text-3xl md:text-4xl font-display font-bold text-harbor">{stat.value}</div>
+                <div className="text-3xl md:text-4xl font-display font-bold text-text-primary">{stat.value}</div>
                 <div className="text-sm text-slate-500 mt-1">{stat.label}</div>
               </div>
             ))}
@@ -475,11 +475,11 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-mist">
+      <section className="py-20 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-harbor mb-4">
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 The Problems You Face Every Day
               </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
@@ -496,7 +496,7 @@ export default function VerticalLanding() {
                       <Target className="h-4 w-4 text-red-500" />
                     </div>
                     <div>
-                      <h3 className="font-display font-semibold text-harbor mb-2">{point.title}</h3>
+                      <h3 className="font-display font-semibold text-text-primary mb-2">{point.title}</h3>
                       <p className="text-sm text-slate-600 leading-relaxed">{point.description}</p>
                     </div>
                   </div>
@@ -511,7 +511,7 @@ export default function VerticalLanding() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-harbor mb-4">
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 AI Agents Built for {data.name}
               </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
@@ -522,16 +522,16 @@ export default function VerticalLanding() {
           <div className="grid md:grid-cols-3 gap-8">
             {data.agentExamples.map((agent, idx) => (
               <RevealSection key={agent.name} delay={`delay-${idx * 150}`}>
-                <div className="bg-mist rounded-2xl p-6 border border-slate-100 h-full flex flex-col">
+                <div className="bg-surface-secondary rounded-2xl p-6 border border-slate-100 h-full flex flex-col">
                   <div className={`w-10 h-10 rounded-xl ${data.color} flex items-center justify-center mb-4`}>
                     <Zap className="h-5 w-5 text-white" />
                   </div>
-                  <h3 className="font-display font-semibold text-harbor text-lg mb-2">{agent.name}</h3>
+                  <h3 className="font-display font-semibold text-text-primary text-lg mb-2">{agent.name}</h3>
                   <p className="text-sm text-slate-600 mb-4 flex-1">{agent.description}</p>
                   <ul className="space-y-2">
                     {agent.capabilities.map((cap) => (
                       <li key={cap} className="flex items-center gap-2 text-sm text-slate-700">
-                        <CheckCircle2 className="h-4 w-4 text-teal shrink-0" />
+                        <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                         {cap}
                       </li>
                     ))}
@@ -543,11 +543,11 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-mist">
+      <section className="py-20 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-harbor mb-4">
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 Calculate Your ROI
               </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
@@ -559,7 +559,7 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-harbor">
+      <section className="py-20 bg-sidebar-bg">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <RevealSection>
             <div className="flex justify-center mb-4">
@@ -583,7 +583,7 @@ export default function VerticalLanding() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-harbor mb-4">
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 Why {data.name} Businesses Choose QVO
               </h2>
             </div>
@@ -596,10 +596,10 @@ export default function VerticalLanding() {
             ].map((item, idx) => (
               <RevealSection key={item.title} delay={`delay-${idx * 150}`}>
                 <div className="text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-teal/10 flex items-center justify-center mx-auto mb-4">
-                    <item.icon className="h-6 w-6 text-teal" />
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                    <item.icon className="h-6 w-6 text-primary" />
                   </div>
-                  <h3 className="font-display font-semibold text-harbor text-lg mb-2">{item.title}</h3>
+                  <h3 className="font-display font-semibold text-text-primary text-lg mb-2">{item.title}</h3>
                   <p className="text-sm text-slate-600 leading-relaxed">{item.desc}</p>
                 </div>
               </RevealSection>
@@ -608,7 +608,7 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-gradient-to-br from-teal to-teal-hover">
+      <section className="py-20 bg-gradient-to-br from-primary to-primary-hover">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-4">
             Ready to Transform Your {data.name} Practice?
@@ -620,7 +620,7 @@ export default function VerticalLanding() {
             <Link
               to="/signup"
               onClick={() => { trackCTAClick('Start Free Trial', `industry-${data.slug}`, 'bottom-cta'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup_bottom' }); }}
-              className="inline-flex items-center gap-2 bg-white text-teal hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors"
+              className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors"
             >
               Start Your Free Trial <ArrowRight className="h-4 w-4" />
             </Link>

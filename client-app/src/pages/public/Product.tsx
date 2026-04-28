@@ -112,42 +112,42 @@ const dashboardScreenshots = [
     icon: LayoutDashboard,
     title: 'Call History',
     desc: 'Complete log of every call with transcripts, outcomes, and quality scores.',
-    gradient: 'from-teal/20 to-teal/5',
+    gradient: 'from-primary/20 to-primary/5',
     image: '/assets/screenshots/call-history.png',
   },
   {
     icon: Activity,
     title: 'Analytics Dashboard',
     desc: 'Real-time metrics on call volume, conversion rates, and agent performance.',
-    gradient: 'from-calm-green/20 to-calm-green/5',
+    gradient: 'from-success/20 to-success/5',
     image: '/assets/screenshots/analytics-dashboard.png',
   },
   {
     icon: Sliders,
     title: 'Agent Configuration',
     desc: 'Visual editor for prompts, routing rules, and voice personality settings.',
-    gradient: 'from-warm-amber/20 to-warm-amber/5',
+    gradient: 'from-accent/20 to-accent/5',
     image: '/assets/screenshots/agent-config.png',
   },
   {
     icon: Bot,
     title: 'Agent Creation',
     desc: 'Step-by-step wizard to configure and deploy a new AI voice agent from industry templates.',
-    gradient: 'from-teal/15 to-harbor/10',
+    gradient: 'from-primary/15 to-sidebar-bg/10',
     image: '/assets/screenshots/agent-creation.png',
   },
   {
     icon: FileText,
     title: 'Prompt Editor',
     desc: 'Version-controlled prompt editor with test playground for refining agent behavior.',
-    gradient: 'from-harbor/15 to-frost-blue/10',
+    gradient: 'from-sidebar-bg/15 to-info-light/10',
     image: '/assets/screenshots/prompt-editor.png',
   },
   {
     icon: PhoneCall,
     title: 'Transcript View',
     desc: 'Full conversation transcripts with tool execution indicators and call metadata.',
-    gradient: 'from-calm-green/15 to-teal/10',
+    gradient: 'from-success/15 to-primary/10',
     image: '/assets/screenshots/transcript-view.png',
   },
 ];
@@ -179,13 +179,13 @@ function WorkflowSection() {
     <section className="bg-white py-20 lg:py-28 overflow-hidden">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-16">
-          <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
             How it works
           </p>
-          <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+          <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
             Live in three steps.
           </h2>
-          <p className="text-slate-ink/60 font-body leading-relaxed">
+          <p className="text-text-primary/60 font-body leading-relaxed">
             From sign-up to your first answered call in under 15 minutes.
           </p>
         </div>
@@ -193,9 +193,9 @@ function WorkflowSection() {
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-3 gap-0 relative">
             <div className="hidden md:block absolute top-12 left-[20%] right-[20%] h-0.5">
-              <div className="w-full h-full bg-soft-steel/30 rounded-full" />
+              <div className="w-full h-full bg-border-strong/30 rounded-full" />
               <div
-                className="absolute top-0 left-0 h-full bg-teal rounded-full transition-all duration-700 ease-out"
+                className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all duration-700 ease-out"
                 style={{ width: `${activeStep * 50}%` }}
               />
             </div>
@@ -208,24 +208,24 @@ function WorkflowSection() {
                   key={s.step}
                   type="button"
                   aria-label={`Step ${s.step}: ${s.title}`}
-                  className="relative flex flex-col items-center text-center px-6 cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 rounded-xl"
+                  className="relative flex flex-col items-center text-center px-6 cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-xl"
                   onClick={() => setActiveStep(i)}
                 >
                   <div
                     className={`relative z-10 w-24 h-24 rounded-2xl flex items-center justify-center mb-6 transition-all duration-500 ${
                       isActive
-                        ? 'bg-teal text-white shadow-lg shadow-teal/25 scale-110'
+                        ? 'bg-primary text-white shadow-lg shadow-primary/25 scale-110'
                         : isComplete
-                          ? 'bg-teal/15 text-teal'
-                          : 'bg-mist text-slate-ink/40 group-hover:bg-teal/10 group-hover:text-teal/60'
+                          ? 'bg-primary/15 text-primary'
+                          : 'bg-surface-secondary text-text-primary/40 group-hover:bg-primary/10 group-hover:text-primary/60'
                     }`}
                   >
                     <s.icon className={`transition-all duration-500 ${isActive ? 'h-10 w-10' : 'h-8 w-8'}`} />
                     <span
                       className={`absolute -top-2 -right-2 w-7 h-7 rounded-full font-display text-xs font-bold flex items-center justify-center transition-all duration-500 ${
                         isActive || isComplete
-                          ? 'bg-teal text-white'
-                          : 'bg-soft-steel/50 text-slate-ink/50'
+                          ? 'bg-primary text-white'
+                          : 'bg-border-strong/50 text-text-primary/50'
                       }`}
                     >
                       {s.step}
@@ -233,20 +233,20 @@ function WorkflowSection() {
                   </div>
                   <h3
                     className={`font-display text-lg font-semibold mb-2 transition-colors duration-300 ${
-                      isActive ? 'text-teal' : 'text-harbor'
+                      isActive ? 'text-primary' : 'text-text-primary'
                     }`}
                   >
                     {s.title}
                   </h3>
-                  <p className="text-sm text-slate-ink/60 font-body leading-relaxed mb-4">{s.desc}</p>
+                  <p className="text-sm text-text-primary/60 font-body leading-relaxed mb-4">{s.desc}</p>
                   <ul
                     className={`space-y-1.5 transition-all duration-500 overflow-hidden ${
                       isActive ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
                     }`}
                   >
                     {s.details.map((d) => (
-                      <li key={d} className="flex items-center gap-2 text-xs text-slate-ink/50 font-body">
-                        <ChevronRight className="h-3 w-3 text-teal flex-shrink-0" />
+                      <li key={d} className="flex items-center gap-2 text-xs text-text-primary/50 font-body">
+                        <ChevronRight className="h-3 w-3 text-primary flex-shrink-0" />
                         {d}
                       </li>
                     ))}
@@ -263,16 +263,16 @@ function WorkflowSection() {
 
 function ScreenshotsSection() {
   return (
-    <section className="py-20 lg:py-28 bg-mist">
+    <section className="py-20 lg:py-28 bg-surface-secondary">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-14">
-          <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
             See it in action
           </p>
-          <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+          <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
             Your voice operations command center.
           </h2>
-          <p className="text-slate-ink/60 font-body leading-relaxed">
+          <p className="text-text-primary/60 font-body leading-relaxed">
             Every call, every outcome, every metric — visible from one dashboard.
           </p>
         </div>
@@ -280,7 +280,7 @@ function ScreenshotsSection() {
           {dashboardScreenshots.map((s) => (
             <div key={s.title} className="group">
               <div
-                className="rounded-2xl border border-soft-steel/30 aspect-[4/3] overflow-hidden mb-4 transition-all duration-300 group-hover:shadow-lg group-hover:scale-[1.02]"
+                className="rounded-2xl border border-border/30 aspect-[4/3] overflow-hidden mb-4 transition-all duration-300 group-hover:shadow-lg group-hover:scale-[1.02]"
               >
                 <img
                   src={s.image}
@@ -289,8 +289,8 @@ function ScreenshotsSection() {
                   className="w-full h-full object-cover"
                 />
               </div>
-              <h3 className="font-display text-base font-semibold text-harbor mb-1">{s.title}</h3>
-              <p className="text-sm text-slate-ink/60 font-body leading-relaxed">{s.desc}</p>
+              <h3 className="font-display text-base font-semibold text-text-primary mb-1">{s.title}</h3>
+              <p className="text-sm text-text-primary/60 font-body leading-relaxed">{s.desc}</p>
             </div>
           ))}
         </div>
@@ -305,18 +305,18 @@ function IntegrationsSection() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-5xl mx-auto flex flex-col lg:flex-row items-center gap-12">
           <div className="lg:w-1/2">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
               Integrations
             </p>
-            <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
               Connects to the tools you already use.
             </h2>
-            <p className="text-slate-ink/60 font-body leading-relaxed mb-6">
+            <p className="text-text-primary/60 font-body leading-relaxed mb-6">
               Sync call data, trigger workflows, and push outcomes to your CRM, calendar, or EHR system.
             </p>
             <Link
               to="/integrations"
-              className="inline-flex items-center gap-2 text-teal hover:text-teal-hover font-semibold text-sm transition-colors"
+              className="inline-flex items-center gap-2 text-primary hover:text-primary-hover font-semibold text-sm transition-colors"
             >
               View all integrations
               <ArrowRight className="h-4 w-4" />
@@ -327,16 +327,16 @@ function IntegrationsSection() {
               {integrations.map((name) => (
                 <div
                   key={name}
-                  className="flex items-center gap-3 bg-white rounded-xl border border-soft-steel/30 px-4 py-3.5 hover:border-teal/30 hover:shadow-sm transition-all duration-200"
+                  className="flex items-center gap-3 bg-white rounded-xl border border-border/30 px-4 py-3.5 hover:border-primary/30 hover:shadow-sm transition-all duration-200"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                     {name === 'Custom API' ? (
-                      <Link2 className="h-4 w-4 text-teal" />
+                      <Link2 className="h-4 w-4 text-primary" />
                     ) : (
-                      <Plug className="h-4 w-4 text-teal" />
+                      <Plug className="h-4 w-4 text-primary" />
                     )}
                   </div>
-                  <span className="text-sm font-medium text-harbor font-body">{name}</span>
+                  <span className="text-sm font-medium text-text-primary font-body">{name}</span>
                 </div>
               ))}
             </div>
@@ -349,10 +349,10 @@ function IntegrationsSection() {
 
 function SecuritySection() {
   return (
-    <section className="py-20 lg:py-28 bg-harbor text-white">
+    <section className="py-20 lg:py-28 bg-sidebar-bg text-white">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-14">
-          <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
             Security & Compliance
           </p>
           <h2 className="font-display text-3xl lg:text-4xl font-bold mb-4">
@@ -368,8 +368,8 @@ function SecuritySection() {
               key={b.title}
               className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-6 hover:bg-white/10 transition-all duration-300 group"
             >
-              <div className="w-12 h-12 rounded-xl bg-teal/20 flex items-center justify-center mb-4 group-hover:bg-teal/30 transition-colors">
-                <b.icon className="h-6 w-6 text-teal" />
+              <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4 group-hover:bg-primary/30 transition-colors">
+                <b.icon className="h-6 w-6 text-primary" />
               </div>
               <h3 className="font-display text-base font-semibold mb-2">{b.title}</h3>
               <p className="text-sm text-white/50 font-body leading-relaxed">{b.desc}</p>
@@ -409,10 +409,10 @@ export default function Product() {
         canonicalPath="/product"
         structuredData={productSchema}
       />
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               Product
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -429,10 +429,10 @@ export default function Product() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="max-w-2xl mb-14">
-              <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
                 Everything your front desk does, automated and visible.
               </h2>
-              <p className="text-slate-ink/60 font-body leading-relaxed">
+              <p className="text-text-primary/60 font-body leading-relaxed">
                 From the first ring to the follow-up task, QVO handles the complete voice operations workflow.
               </p>
             </div>
@@ -440,12 +440,12 @@ export default function Product() {
           <RevealSection>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {capabilities.map((c) => (
-                <div key={c.title} className="bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300 group">
-                  <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center mb-4 group-hover:bg-teal/15 transition-colors">
-                    <c.icon className="h-5 w-5 text-teal" />
+                <div key={c.title} className="bg-white rounded-2xl border border-border/50 p-7 hover:border-primary/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300 group">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-colors">
+                    <c.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="font-display text-base font-semibold text-harbor mb-2">{c.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{c.desc}</p>
+                  <h3 className="font-display text-base font-semibold text-text-primary mb-2">{c.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{c.desc}</p>
                 </div>
               ))}
             </div>
@@ -459,20 +459,20 @@ export default function Product() {
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 Agent Workflow
               </p>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 From call to resolution, fully automated.
               </h2>
-              <p className="text-slate-ink/60 font-body leading-relaxed max-w-2xl mx-auto">
+              <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
                 Every call follows a proven flow — your AI agent handles each step in real time.
               </p>
             </div>
             <div className="mb-14">
               <WorkflowDiagram steps={genericWorkflowSteps} />
             </div>
-            <h3 className="font-display text-xl lg:text-2xl font-semibold text-harbor text-center mb-8">
+            <h3 className="font-display text-xl lg:text-2xl font-semibold text-text-primary text-center mb-8">
               Industry-specific workflows
             </h3>
             <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
@@ -498,17 +498,17 @@ export default function Product() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-mist">
+      <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 Built-in Tools
               </p>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Every tool your agent needs, ready to go.
               </h2>
-              <p className="text-slate-ink/60 font-body leading-relaxed max-w-2xl mx-auto">
+              <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
                 Your AI agents don't just talk — they take action. Scheduling, CRM updates, ticket creation, and SMS follow-ups happen in real time.
               </p>
             </div>
@@ -521,7 +521,7 @@ export default function Product() {
               { src: '/assets/tools/sms-confirmation.png', title: 'SMS Confirmation', desc: 'Send instant text confirmations, reminders, and follow-ups after every call.' },
             ].map((tool) => (
               <RevealSection key={tool.title}>
-                <div className="bg-white rounded-2xl border border-soft-steel/30 overflow-hidden hover:shadow-lg transition-shadow group">
+                <div className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow group">
                   <div className="aspect-[4/3] overflow-hidden">
                     <img
                       src={tool.src}
@@ -531,8 +531,8 @@ export default function Product() {
                     />
                   </div>
                   <div className="p-5">
-                    <h3 className="font-display text-base font-semibold text-harbor mb-1">{tool.title}</h3>
-                    <p className="text-sm text-slate-ink/60 font-body leading-relaxed">{tool.desc}</p>
+                    <h3 className="font-display text-base font-semibold text-text-primary mb-1">{tool.title}</h3>
+                    <p className="text-sm text-text-primary/60 font-body leading-relaxed">{tool.desc}</p>
                   </div>
                 </div>
               </RevealSection>
@@ -547,10 +547,10 @@ export default function Product() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 Platform Features
               </p>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Built for voice operations at scale.
               </h2>
             </div>
@@ -563,7 +563,7 @@ export default function Product() {
               { src: '/assets/features/realtime-analytics.png', title: 'Real-Time Analytics', desc: 'Track call volume, outcomes, agent performance, and ROI in real-time dashboards.' },
             ].map((feature) => (
               <RevealSection key={feature.title}>
-                <div className="bg-mist rounded-2xl border border-soft-steel/30 overflow-hidden hover:shadow-lg transition-shadow group">
+                <div className="bg-surface-secondary rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow group">
                   <div className="aspect-[4/3] overflow-hidden">
                     <img
                       src={feature.src}
@@ -573,8 +573,8 @@ export default function Product() {
                     />
                   </div>
                   <div className="p-5">
-                    <h3 className="font-display text-base font-semibold text-harbor mb-1">{feature.title}</h3>
-                    <p className="text-sm text-slate-ink/60 font-body leading-relaxed">{feature.desc}</p>
+                    <h3 className="font-display text-base font-semibold text-text-primary mb-1">{feature.title}</h3>
+                    <p className="text-sm text-text-primary/60 font-body leading-relaxed">{feature.desc}</p>
                   </div>
                 </div>
               </RevealSection>
@@ -590,13 +590,13 @@ export default function Product() {
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 Go deeper
               </p>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Three product surfaces worth a closer look
               </h2>
-              <p className="text-slate-ink/60 font-body leading-relaxed max-w-2xl mx-auto">
+              <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
                 Federated Ingest brings external agents under one roof, the Global Intelligence Network benchmarks you against your peers, and Vertical Agents skip the blank prompt entirely.
               </p>
             </div>
@@ -628,13 +628,13 @@ export default function Product() {
               <RevealSection key={card.to}>
                 <Link
                   to={card.to}
-                  className="block bg-mist rounded-2xl border border-soft-steel/30 p-7 h-full hover:shadow-lg hover:border-teal/30 transition-all group"
+                  className="block bg-surface-secondary rounded-2xl border border-border/30 p-7 h-full hover:shadow-lg hover:border-primary/30 transition-all group"
                   onClick={() => trackCTAClick(card.title, '/product', 'go-deeper')}
                 >
-                  <p className="text-xs font-semibold text-teal uppercase tracking-wide mb-2">{card.eyebrow}</p>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{card.title}</h3>
-                  <p className="text-sm text-slate-ink/65 font-body leading-relaxed mb-4">{card.desc}</p>
-                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal group-hover:text-teal-hover">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-2">{card.eyebrow}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{card.title}</h3>
+                  <p className="text-sm text-text-primary/65 font-body leading-relaxed mb-4">{card.desc}</p>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary group-hover:text-primary-hover">
                     {card.cta}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </span>
@@ -645,25 +645,25 @@ export default function Product() {
         </div>
       </section>
 
-      <section className="bg-mist py-20 lg:py-24">
+      <section className="bg-surface-secondary py-20 lg:py-24">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
-          <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+          <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
             See it in action.
           </h2>
-          <p className="text-lg text-slate-ink/60 font-body mb-10">
+          <p className="text-lg text-text-primary/60 font-body mb-10">
             Try our live demo agents or start your free trial today.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               to="/demo"
-              className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+              className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
               onClick={() => trackCTAClick('try_demo', 'product_bottom')}
             >
               Try the demo
             </Link>
             <Link
               to="/signup"
-              className="inline-flex items-center justify-center gap-2 bg-harbor hover:bg-harbor-light text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+              className="inline-flex items-center justify-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
               onClick={() => trackCTAClick('start_free_trial', 'product_bottom')}
             >
               Start free trial

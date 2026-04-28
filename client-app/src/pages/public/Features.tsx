@@ -113,12 +113,12 @@ const miniSystems = [
 ];
 
 const architectureBlocks = [
-  { icon: Cpu, label: 'Voice AI Runtime', color: 'bg-teal/15 text-teal' },
-  { icon: Bot, label: 'Agent Builder', color: 'bg-harbor/15 text-harbor' },
-  { icon: Zap, label: 'Tool Engine', color: 'bg-warm-amber/15 text-warm-amber' },
-  { icon: Database, label: 'Knowledge RAG', color: 'bg-calm-green/15 text-calm-green' },
-  { icon: Plug, label: 'Integrations', color: 'bg-teal/15 text-teal' },
-  { icon: Shield, label: 'Security Layer', color: 'bg-controlled-red/15 text-controlled-red' },
+  { icon: Cpu, label: 'Voice AI Runtime', color: 'bg-primary/15 text-primary' },
+  { icon: Bot, label: 'Agent Builder', color: 'bg-sidebar-bg/15 text-text-primary' },
+  { icon: Zap, label: 'Tool Engine', color: 'bg-accent/15 text-accent' },
+  { icon: Database, label: 'Knowledge RAG', color: 'bg-success/15 text-success' },
+  { icon: Plug, label: 'Integrations', color: 'bg-primary/15 text-primary' },
+  { icon: Shield, label: 'Security Layer', color: 'bg-danger/15 text-danger' },
 ];
 
 export default function Features() {
@@ -134,10 +134,10 @@ export default function Features() {
         canonicalPath="/features"
       />
 
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               Platform Features
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -167,14 +167,14 @@ export default function Features() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-mist">
+      <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Platform Architecture
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 A modular architecture where each subsystem handles a specific responsibility, working together to deliver end-to-end voice automation.
               </p>
             </div>
@@ -182,22 +182,22 @@ export default function Features() {
 
           <RevealSection>
             <div className="max-w-4xl mx-auto mb-16">
-              <div className="bg-white rounded-2xl border border-soft-steel/30 p-8 lg:p-10">
+              <div className="bg-white rounded-2xl border border-border/30 p-8 lg:p-10">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {architectureBlocks.map((block) => (
                     <div
                       key={block.label}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-soft-steel/20 hover:shadow-md transition-all"
+                      className="flex items-center gap-3 p-4 rounded-xl border border-border/20 hover:shadow-md transition-all"
                     >
                       <div className={`w-10 h-10 rounded-lg ${block.color} flex items-center justify-center shrink-0`}>
                         <block.icon className="h-5 w-5" />
                       </div>
-                      <span className="font-display text-sm font-semibold text-harbor">{block.label}</span>
+                      <span className="font-display text-sm font-semibold text-text-primary">{block.label}</span>
                     </div>
                   ))}
                 </div>
-                <div className="mt-6 pt-6 border-t border-soft-steel/20 text-center">
-                  <p className="text-xs text-slate-ink/40 font-body">
+                <div className="mt-6 pt-6 border-t border-border/20 text-center">
+                  <p className="text-xs text-text-primary/40 font-body">
                     All subsystems communicate through event-driven APIs with full audit logging
                   </p>
                 </div>
@@ -209,25 +209,25 @@ export default function Features() {
             {platformCapabilities.map((cap, i) => (
               <RevealSection key={cap.title} delay={i % 2 === 0 ? '' : 'scroll-delay-1'}>
                 <div
-                  className="bg-white rounded-2xl border border-soft-steel/30 overflow-hidden hover:shadow-lg transition-shadow"
+                  className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow"
                   onMouseEnter={() => trackFeatureView(cap.title)}
                 >
                   <div className="p-8 lg:p-10">
                     <div className="flex items-start gap-4 mb-6">
-                      <div className="w-12 h-12 rounded-xl bg-teal/10 flex items-center justify-center shrink-0">
-                        <cap.icon className="h-6 w-6 text-teal" />
+                      <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <cap.icon className="h-6 w-6 text-primary" />
                       </div>
                       <div>
-                        <h3 className="font-display text-2xl font-bold text-harbor">{cap.title}</h3>
+                        <h3 className="font-display text-2xl font-bold text-text-primary">{cap.title}</h3>
                       </div>
                     </div>
-                    <p className="text-slate-ink/70 font-body leading-relaxed mb-6 max-w-3xl">
+                    <p className="text-text-primary/70 font-body leading-relaxed mb-6 max-w-3xl">
                       {cap.desc}
                     </p>
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {cap.details.map((detail) => (
-                        <div key={detail} className="flex items-center gap-2 text-sm text-slate-ink/70 font-body">
-                          <CheckCircle2 className="h-4 w-4 text-calm-green shrink-0" />
+                        <div key={detail} className="flex items-center gap-2 text-sm text-text-primary/70 font-body">
+                          <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                           {detail}
                         </div>
                       ))}
@@ -244,13 +244,13 @@ export default function Features() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">
                 Built-In Operations Suite
               </span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Integrated systems that power your agents.
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 Every QVO agent has access to these built-in systems — no external tools required for core operations.
               </p>
             </div>
@@ -259,12 +259,12 @@ export default function Features() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {miniSystems.map((sys, i) => (
               <RevealSection key={sys.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className="bg-gradient-to-br from-mist to-frost-blue/30 rounded-2xl border border-soft-steel/30 p-7 hover:shadow-lg transition-all h-full">
-                  <div className="w-11 h-11 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
-                    <sys.icon className="h-5 w-5 text-teal" />
+                <div className="bg-gradient-to-br from-surface-secondary to-info-light/30 rounded-2xl border border-border/30 p-7 hover:shadow-lg transition-all h-full">
+                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                    <sys.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{sys.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{sys.desc}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{sys.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{sys.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -273,10 +273,10 @@ export default function Features() {
       </section>
 
       <section className="relative py-20 lg:py-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor-light/40 to-harbor" />
+        <div className="absolute inset-0 bg-gradient-to-r from-sidebar-bg via-sidebar-hover/40 to-sidebar-bg" />
         <div className="absolute inset-0 opacity-15">
-          <div className="absolute top-0 left-1/4 w-64 h-64 bg-teal rounded-full blur-[100px]" />
-          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-teal rounded-full blur-[120px]" />
+          <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary rounded-full blur-[100px]" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-primary rounded-full blur-[120px]" />
         </div>
         <RevealSection>
           <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">

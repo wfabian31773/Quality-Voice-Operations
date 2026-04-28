@@ -135,11 +135,11 @@ export default function Signup() {
         description="Create your QVO account and start your 7-day free trial. Set up AI voice agents for your business in minutes. No credit card required."
         canonicalPath="/signup"
       />
-      <section className="bg-harbor text-white py-16 lg:py-20">
+      <section className="bg-sidebar-bg text-white py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">
             <div>
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
                 {t('auth.signup_eyebrow')}
               </p>
               <h1 className="font-display text-3xl lg:text-4xl font-bold leading-tight mb-6">
@@ -151,14 +151,14 @@ export default function Signup() {
               <ul className="space-y-3 mb-8">
                 {benefits.map((b) => (
                   <li key={b} className="flex items-center gap-2.5 text-sm text-white/80">
-                    <CheckCircle2 className="h-4 w-4 text-teal shrink-0" />
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                     {b}
                   </li>
                 ))}
               </ul>
               <p className="text-sm text-white/50 font-body">
                 {t('auth.signup_help')}{' '}
-                <Link to="/pricing" className="text-teal hover:text-teal-hover underline underline-offset-2 transition-colors">
+                <Link to="/pricing" className="text-primary hover:text-primary-hover underline underline-offset-2 transition-colors">
                   {t('auth.signup_compare')}
                 </Link>
               </p>
@@ -166,12 +166,12 @@ export default function Signup() {
 
             <div className="bg-white rounded-2xl shadow-xl p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-teal flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
                   <UserPlus className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="font-display text-lg font-bold text-harbor">{t('auth.signup_card_title')}</h2>
-                  <p className="text-xs text-slate-ink/60">{t('auth.signup_card_subtitle')}</p>
+                  <h2 className="font-display text-lg font-bold text-text-primary">{t('auth.signup_card_title')}</h2>
+                  <p className="text-xs text-text-primary/60">{t('auth.signup_card_subtitle')}</p>
                 </div>
               </div>
 
@@ -183,44 +183,44 @@ export default function Signup() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-1.5">{t('auth.organization_name')}</label>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.organization_name')}</label>
                   <input
                     type="text"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     required
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-harbor text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition placeholder:text-soft-steel"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.organization_name_placeholder')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-1.5">{t('auth.email')}</label>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.email')}</label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-harbor text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition placeholder:text-soft-steel"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.email_placeholder')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-1.5">{t('auth.password')}</label>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-harbor text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition placeholder:text-soft-steel"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.password_min_8_placeholder')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-harbor mb-2">{t('auth.select_plan')}</label>
+                  <label className="block text-sm font-medium text-text-primary mb-2">{t('auth.select_plan')}</label>
                   <div className="grid grid-cols-3 gap-2">
                     {plans.map((p) => (
                       <button
@@ -229,17 +229,17 @@ export default function Signup() {
                         onClick={() => { setPlan(p.key); trackCTAClick('plan_selected', 'signup', p.key); }}
                         className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
                           plan === p.key
-                            ? 'border-teal bg-teal/5 ring-2 ring-teal/20'
-                            : 'border-steel/30 hover:border-harbor/30'
+                            ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                            : 'border-steel/30 hover:border-sidebar-bg/30'
                         }`}
                       >
                         {p.popular && (
-                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-teal text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-primary text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
                             {t('auth.popular')}
                           </span>
                         )}
-                        <span className="block text-sm font-semibold text-harbor">{p.name}</span>
-                        <span className="block text-xs text-slate-ink/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
+                        <span className="block text-sm font-semibold text-text-primary">{p.name}</span>
+                        <span className="block text-xs text-text-primary/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
                       </button>
                     ))}
                   </div>
@@ -254,7 +254,7 @@ export default function Signup() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors text-sm mt-2"
+                  className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors text-sm mt-2"
                 >
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -266,13 +266,13 @@ export default function Signup() {
                   )}
                 </button>
 
-                <p className="text-center text-[10px] text-slate-ink/40 mt-1">
+                <p className="text-center text-[10px] text-text-primary/40 mt-1">
                   {t('auth.verification_required')}
                 </p>
 
-                <p className="text-center text-xs text-slate-ink/50 mt-3">
+                <p className="text-center text-xs text-text-primary/50 mt-3">
                   {t('auth.have_account')}{' '}
-                  <Link to="/login" className="text-teal hover:text-teal-hover font-medium transition-colors">
+                  <Link to="/login" className="text-primary hover:text-primary-hover font-medium transition-colors">
                     {t('auth.sign_in_link')}
                   </Link>
                 </p>

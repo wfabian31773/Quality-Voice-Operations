@@ -21,25 +21,25 @@ export default function Terms() {
   return (
     <div className="bg-white">
       <SEO title="Terms of Service — QVO" description="QVO Terms of Service governing use of the platform." canonicalPath="/terms" />
-      <section className="bg-harbor text-white py-16">
+      <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <h1 className="font-display text-4xl font-bold mb-3">Terms of Service</h1>
           <p className="text-white/70 font-body">Last updated: {new Date().toISOString().slice(0, 10)}</p>
-          <div className="mt-4 inline-block bg-warm-amber/15 border border-warm-amber/30 px-3 py-1.5 rounded-md text-xs text-warm-amber font-medium">
+          <div className="mt-4 inline-block bg-accent/15 border border-accent/30 px-3 py-1.5 rounded-md text-xs text-accent font-medium">
             DRAFT — pending legal review
           </div>
         </div>
       </section>
       <section className="py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
-          <p className="text-slate-ink/70 font-body mb-8 leading-relaxed">
+          <p className="text-text-primary/70 font-body mb-8 leading-relaxed">
             These Terms govern your use of QVO. Please read them carefully. By using the Service, you accept these Terms.
           </p>
           <div className="space-y-8">
             {sections.map((s) => (
               <div key={s.id} id={s.id}>
-                <h2 className="font-display text-xl font-semibold text-harbor mb-3">{s.title}</h2>
-                <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{s.body}</p>
+                <h2 className="font-display text-xl font-semibold text-text-primary mb-3">{s.title}</h2>
+                <p className="text-sm text-text-primary/70 font-body leading-relaxed">{s.body}</p>
               </div>
             ))}
           </div>

@@ -28,10 +28,10 @@ export default function Docs() {
         }}
       />
 
-      <section className="bg-harbor text-white py-16 lg:py-20">
+      <section className="bg-sidebar-bg text-white py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
               Documentation
             </p>
             <h1 className="font-display text-3xl lg:text-5xl font-bold leading-tight mb-4">
@@ -49,12 +49,12 @@ export default function Docs() {
               aria-label="Search the docs"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal/50 focus:border-teal/50"
+              className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
             />
             {query && (
-              <div className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-soft-steel/50 shadow-2xl max-h-96 overflow-y-auto z-30">
+              <div className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-border/50 shadow-2xl max-h-96 overflow-y-auto z-30">
                 {results.length === 0 ? (
-                  <p className="px-4 py-6 text-sm text-slate-ink/50 font-body">No matches for "{query}".</p>
+                  <p className="px-4 py-6 text-sm text-text-primary/50 font-body">No matches for "{query}".</p>
                 ) : (
                   <ul>
                     {results.map((r) => (
@@ -62,11 +62,11 @@ export default function Docs() {
                         <Link
                           to={`/docs/${r.slug}`}
                           onClick={() => setQuery('')}
-                          className="block px-4 py-3 hover:bg-teal/5 transition-colors border-b border-soft-steel/30 last:border-b-0"
+                          className="block px-4 py-3 hover:bg-primary/5 transition-colors border-b border-border/30 last:border-b-0"
                         >
-                          <p className="text-sm font-semibold text-harbor">{r.title}</p>
-                          <p className="text-xs text-slate-ink/60 font-body line-clamp-1 mt-0.5">{r.description}</p>
-                          <p className="text-[10px] text-teal uppercase tracking-wider mt-1 font-semibold">{r.category.replace('-', ' ')}</p>
+                          <p className="text-sm font-semibold text-text-primary">{r.title}</p>
+                          <p className="text-xs text-text-primary/60 font-body line-clamp-1 mt-0.5">{r.description}</p>
+                          <p className="text-[10px] text-primary uppercase tracking-wider mt-1 font-semibold">{r.category.replace('-', ' ')}</p>
                         </Link>
                       </li>
                     ))}
@@ -88,18 +88,18 @@ export default function Docs() {
             </aside>
 
             <div className="flex-1 min-w-0">
-              <div className="bg-gradient-to-br from-teal/10 to-harbor/5 border border-teal/20 rounded-2xl p-6 mb-10 flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-teal/20 flex items-center justify-center shrink-0">
-                  <Sparkles className="h-5 w-5 text-teal" />
+              <div className="bg-gradient-to-br from-primary/10 to-sidebar-bg/5 border border-primary/20 rounded-2xl p-6 mb-10 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                  <Sparkles className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="font-display text-lg font-bold text-harbor mb-1">New to QVO?</h2>
-                  <p className="text-sm text-slate-ink/70 font-body mb-3">
+                  <h2 className="font-display text-lg font-bold text-text-primary mb-1">New to QVO?</h2>
+                  <p className="text-sm text-text-primary/70 font-body mb-3">
                     Start with the quickstart — sign up, create an agent, and answer your first call in under 10 minutes.
                   </p>
                   <Link
                     to="/docs/quickstart"
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal hover:text-teal-hover"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary-hover"
                   >
                     Read the quickstart
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -115,26 +115,26 @@ export default function Docs() {
                   return (
                     <section key={cat.slug} id={cat.slug} className="scroll-mt-24">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-xl bg-teal/10 flex items-center justify-center">
-                          <Icon className="h-4.5 w-4.5 text-teal" />
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <Icon className="h-4.5 w-4.5 text-primary" />
                         </div>
-                        <h2 className="font-display text-xl font-bold text-harbor">{cat.title}</h2>
+                        <h2 className="font-display text-xl font-bold text-text-primary">{cat.title}</h2>
                       </div>
-                      <p className="text-sm text-slate-ink/60 font-body mb-4 ml-12">{cat.description}</p>
+                      <p className="text-sm text-text-primary/60 font-body mb-4 ml-12">{cat.description}</p>
                       <div className="grid sm:grid-cols-2 gap-3">
                         {articles.map((a) => (
                           <Link
                             key={a.slug}
                             to={`/docs/${a.slug}`}
-                            className="group bg-white rounded-xl border border-soft-steel/50 p-4 hover:border-teal/40 hover:shadow-sm transition-all"
+                            className="group bg-white rounded-xl border border-border/50 p-4 hover:border-primary/40 hover:shadow-sm transition-all"
                           >
-                            <p className="font-display text-sm font-semibold text-harbor group-hover:text-teal transition-colors">
+                            <p className="font-display text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">
                               {a.title}
                             </p>
-                            <p className="text-xs text-slate-ink/60 font-body mt-1 leading-relaxed line-clamp-2">
+                            <p className="text-xs text-text-primary/60 font-body mt-1 leading-relaxed line-clamp-2">
                               {a.description}
                             </p>
-                            <p className="text-[10px] text-slate-ink/40 mt-2 uppercase tracking-wider">{a.readTime}</p>
+                            <p className="text-[10px] text-text-primary/40 mt-2 uppercase tracking-wider">{a.readTime}</p>
                           </Link>
                         ))}
                       </div>
@@ -147,7 +147,7 @@ export default function Docs() {
         </div>
       </section>
 
-      <section className="bg-harbor text-white py-12">
+      <section className="bg-sidebar-bg text-white py-12">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-xl font-bold mb-3">Still need help?</h2>
           <p className="text-white/70 font-body mb-6 text-sm">
@@ -155,7 +155,7 @@ export default function Docs() {
           </p>
           <Link
             to="/contact"
-            className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
           >
             Contact support
             <ArrowRight className="h-4 w-4" />

@@ -31,7 +31,7 @@ export default function Subprocessors() {
   return (
     <div className="bg-white">
       <SEO title="Sub-processors — QVO" description="Third-party services QVO uses to deliver the platform." canonicalPath="/subprocessors" />
-      <section className="bg-harbor text-white py-16">
+      <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
           <h1 className="font-display text-4xl font-bold mb-3">Sub-processors</h1>
           <p className="text-white/70 font-body max-w-2xl">
@@ -43,43 +43,43 @@ export default function Subprocessors() {
       <section className="py-16">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
           {loading ? (
-            <div className="text-center py-12 text-slate-ink/50 font-body">Loading…</div>
+            <div className="text-center py-12 text-text-primary/50 font-body">Loading…</div>
           ) : error ? (
-            <div className="bg-controlled-red/10 text-controlled-red px-4 py-3 rounded-lg text-sm">
+            <div className="bg-danger/10 text-danger px-4 py-3 rounded-lg text-sm">
               Could not load sub-processors. Please try again later.
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-soft-steel/30 overflow-hidden">
+            <div className="bg-white rounded-xl border border-border/30 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-mist/50 border-b border-soft-steel/30">
+                <thead className="bg-surface-secondary/50 border-b border-border/30">
                   <tr>
-                    <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Sub-processor</th>
-                    <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Purpose</th>
-                    <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Data types</th>
-                    <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Location</th>
+                    <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Sub-processor</th>
+                    <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Purpose</th>
+                    <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Data types</th>
+                    <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Location</th>
                   </tr>
                 </thead>
                 <tbody>
                   {subprocessors.map((s) => (
-                    <tr key={s.id} className="border-b border-soft-steel/20 last:border-0">
-                      <td className="px-5 py-4 font-medium text-harbor">
+                    <tr key={s.id} className="border-b border-border/20 last:border-0">
+                      <td className="px-5 py-4 font-medium text-text-primary">
                         {s.website ? (
-                          <a href={s.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-teal">
+                          <a href={s.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-primary">
                             {s.name}
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         ) : s.name}
                       </td>
-                      <td className="px-5 py-4 text-slate-ink/70 text-xs">{s.purpose}</td>
-                      <td className="px-5 py-4 text-slate-ink/70 text-xs">{s.data_types}</td>
-                      <td className="px-5 py-4 text-slate-ink/70 text-xs">{s.location}</td>
+                      <td className="px-5 py-4 text-text-primary/70 text-xs">{s.purpose}</td>
+                      <td className="px-5 py-4 text-text-primary/70 text-xs">{s.data_types}</td>
+                      <td className="px-5 py-4 text-text-primary/70 text-xs">{s.location}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          <p className="text-xs text-slate-ink/50 font-body mt-6">
+          <p className="text-xs text-text-primary/50 font-body mt-6">
             To subscribe to sub-processor change notifications, contact privacy@qvo.example.
           </p>
         </div>

@@ -169,7 +169,13 @@ When sweeping the in-app or marketing surfaces:
 7. **Apply table conventions** (banding, sticky headers, tabular numerals, right-align numeric) to Calls, Tickets, Dispatch (audit U-09).
 8. **Standardize loading skeletons** on a single `<Skeleton />` family (audit U-10).
 
----
+### Marketing chrome exception: `harbor` → `sidebar-bg` (not `surface-inverse`)
+
+Legacy marketing surfaces used `bg-harbor` (and `from-/via-/to-/border-harbor`, plus `bg-harbor-light`) for the always-dark navy chrome (header, hero, gradient overlays). Those _surface_ utilities migrate to **`bg-sidebar-bg` / `bg-sidebar-hover`**, not `bg-surface-inverse`.
+
+Why: `--color-surface-inverse` flips light↔dark by design (`#0E2738` → `#E8EFF2`), so a marketing hero swapped to `bg-surface-inverse` would render light-on-light in dark mode. `--color-sidebar-bg` keeps the deep navy in both themes (`#0E2738` → `#07151E`) — the exact values the legacy `--color-harbor` token had — so the visual intent is preserved.
+
+Text utilities still follow the standard map: `text-harbor` → `text-text-primary` (text inverts for readability, which is what we actually want).
 
 ## 6. How to use the tokens in code
 

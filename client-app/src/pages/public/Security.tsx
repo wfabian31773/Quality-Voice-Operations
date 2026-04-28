@@ -28,11 +28,11 @@ export default function Security() {
   return (
     <div className="bg-white">
       <SEO title="Security & Compliance — QVO" description="QVO security architecture, certifications, and compliance posture." canonicalPath="/security" />
-      <section className="bg-harbor text-white py-20">
+      <section className="bg-sidebar-bg text-white py-20">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
-          <div className="inline-flex items-center gap-2 bg-teal/15 border border-teal/25 rounded-full px-4 py-1.5 mb-6">
-            <Shield className="h-4 w-4 text-teal" />
-            <span className="text-sm font-medium text-teal">Trust & Security</span>
+          <div className="inline-flex items-center gap-2 bg-primary/15 border border-primary/25 rounded-full px-4 py-1.5 mb-6">
+            <Shield className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-primary">Trust & Security</span>
           </div>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">Built for regulated industries.</h1>
           <p className="text-lg text-white/70 font-body max-w-3xl">
@@ -44,49 +44,49 @@ export default function Security() {
 
       <section className="py-16 bg-white">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
-          <h2 className="font-display text-2xl font-bold text-harbor mb-8">Security controls</h2>
+          <h2 className="font-display text-2xl font-bold text-text-primary mb-8">Security controls</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             {controls.map((c) => (
-              <div key={c.title} className="bg-mist rounded-xl p-5 border border-soft-steel/30">
-                <div className="w-10 h-10 rounded-lg bg-teal/10 flex items-center justify-center mb-3">
-                  <c.icon className="h-5 w-5 text-teal" />
+              <div key={c.title} className="bg-surface-secondary rounded-xl p-5 border border-border/30">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                  <c.icon className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="font-display text-sm font-semibold text-harbor mb-1.5">{c.title}</h3>
-                <p className="text-xs text-slate-ink/65 font-body leading-relaxed">{c.body}</p>
+                <h3 className="font-display text-sm font-semibold text-text-primary mb-1.5">{c.title}</h3>
+                <p className="text-xs text-text-primary/65 font-body leading-relaxed">{c.body}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="py-16 bg-mist">
+      <section className="py-16 bg-surface-secondary">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
-          <h2 className="font-display text-2xl font-bold text-harbor mb-8">Compliance & certifications</h2>
-          <div className="bg-white rounded-xl border border-soft-steel/30 overflow-hidden">
+          <h2 className="font-display text-2xl font-bold text-text-primary mb-8">Compliance & certifications</h2>
+          <div className="bg-white rounded-xl border border-border/30 overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-mist/50 border-b border-soft-steel/30">
+              <thead className="bg-surface-secondary/50 border-b border-border/30">
                 <tr>
-                  <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Framework</th>
-                  <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Status</th>
-                  <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Scope</th>
-                  <th className="text-left px-5 py-3 font-display text-harbor font-semibold">Notes</th>
+                  <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Framework</th>
+                  <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Status</th>
+                  <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Scope</th>
+                  <th className="text-left px-5 py-3 font-display text-text-primary font-semibold">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {certifications.map((c) => (
-                  <tr key={c.name} className="border-b border-soft-steel/20 last:border-0">
-                    <td className="px-5 py-4 font-medium text-harbor">{c.name}</td>
+                  <tr key={c.name} className="border-b border-border/20 last:border-0">
+                    <td className="px-5 py-4 font-medium text-text-primary">{c.name}</td>
                     <td className="px-5 py-4">
                       <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded ${
                         c.status === 'Compliant' || c.status.startsWith('Available')
-                          ? 'bg-calm-green/15 text-calm-green'
+                          ? 'bg-success/15 text-success'
                           : c.status === 'In progress'
-                          ? 'bg-warm-amber/15 text-warm-amber'
-                          : 'bg-soft-steel/30 text-slate-ink/60'
+                          ? 'bg-accent/15 text-accent'
+                          : 'bg-border-strong/30 text-text-primary/60'
                       }`}>{c.status}</span>
                     </td>
-                    <td className="px-5 py-4 text-slate-ink/70">{c.target}</td>
-                    <td className="px-5 py-4 text-slate-ink/65 text-xs">{c.description}</td>
+                    <td className="px-5 py-4 text-text-primary/70">{c.target}</td>
+                    <td className="px-5 py-4 text-text-primary/65 text-xs">{c.description}</td>
                   </tr>
                 ))}
               </tbody>
@@ -97,36 +97,36 @@ export default function Security() {
 
       <section className="py-16 bg-white">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
-          <h2 className="font-display text-2xl font-bold text-harbor mb-3">Data Processing Addendum</h2>
-          <p className="text-slate-ink/70 font-body mb-6 max-w-2xl mx-auto">
+          <h2 className="font-display text-2xl font-bold text-text-primary mb-3">Data Processing Addendum</h2>
+          <p className="text-text-primary/70 font-body mb-6 max-w-2xl mx-auto">
             Need a DPA for your procurement review? Download our standard template, or contact us for a counter-signed copy.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <a
               href="/legal/dpa"
-              className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-5 py-2.5 rounded-lg text-sm"
+              className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-5 py-2.5 rounded-lg text-sm"
             >
               <Download className="h-4 w-4" />
               Download DPA template
             </a>
             <Link
               to="/subprocessors"
-              className="inline-flex items-center justify-center gap-2 bg-harbor/5 hover:bg-harbor/10 text-harbor font-semibold px-5 py-2.5 rounded-lg text-sm"
+              className="inline-flex items-center justify-center gap-2 bg-sidebar-bg/5 hover:bg-sidebar-bg/10 text-text-primary font-semibold px-5 py-2.5 rounded-lg text-sm"
             >
               View sub-processors
             </Link>
           </div>
-          <p className="text-xs text-slate-ink/50 font-body mt-4">
+          <p className="text-xs text-text-primary/50 font-body mt-4">
             Templates marked DRAFT are pending legal review. Final counter-signed copies available on request.
           </p>
         </div>
       </section>
 
-      <section className="py-12 bg-harbor text-white text-center">
+      <section className="py-12 bg-sidebar-bg text-white text-center">
         <div className="max-w-3xl mx-auto px-6 lg:px-8">
           <h3 className="font-display text-xl font-semibold mb-2">Report a security issue</h3>
           <p className="text-white/70 font-body mb-4">
-            Found a vulnerability? Disclose responsibly to <a href="mailto:security@qvo.example" className="text-teal hover:underline">security@qvo.example</a>.
+            Found a vulnerability? Disclose responsibly to <a href="mailto:security@qvo.example" className="text-primary hover:underline">security@qvo.example</a>.
           </p>
         </div>
       </section>

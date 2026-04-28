@@ -5,9 +5,9 @@ import { getArticleBySlug, getRelatedArticles } from '../../data/blogArticles';
 
 function renderMarkdown(md: string): string {
   return md
-    .replace(/^### (.+)$/gm, '<h3 class="text-xl font-bold text-harbor mt-8 mb-3 font-display">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-2xl font-bold text-harbor mt-10 mb-4 font-display">$1</h2>')
-    .replace(/^\*\*(.+?)\*\*$/gm, '<p class="font-semibold text-harbor mt-4 mb-1">$1</p>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-xl font-bold text-text-primary mt-8 mb-3 font-display">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-2xl font-bold text-text-primary mt-10 mb-4 font-display">$1</h2>')
+    .replace(/^\*\*(.+?)\*\*$/gm, '<p class="font-semibold text-text-primary mt-4 mb-1">$1</p>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-600 leading-relaxed">$1</li>')
     .replace(/(<li.*<\/li>\n?)+/g, (match) => `<ul class="space-y-1.5 my-4">${match}</ul>`)
@@ -66,7 +66,7 @@ export default function BlogArticle() {
       <article className="max-w-4xl mx-auto px-6 lg:px-8 py-16">
         <Link
           to="/blog"
-          className="inline-flex items-center gap-1.5 text-sm text-teal hover:text-teal-hover font-medium mb-8"
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary-hover font-medium mb-8"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Blog
@@ -84,14 +84,14 @@ export default function BlogArticle() {
         )}
 
         <header className="mb-10">
-          <span className="text-xs font-semibold text-teal uppercase tracking-wider">
+          <span className="text-xs font-semibold text-primary uppercase tracking-wider">
             {article.category}
           </span>
-          <h1 className="font-display text-3xl md:text-4xl font-bold text-harbor mt-3 mb-4">
+          <h1 className="font-display text-3xl md:text-4xl font-bold text-text-primary mt-3 mb-4">
             {article.title}
           </h1>
           <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
-            <span className="font-medium text-harbor">{article.author}</span>
+            <span className="font-medium text-text-primary">{article.author}</span>
             <span className="text-slate-300">|</span>
             <span>{article.authorRole}</span>
             <span className="text-slate-300">|</span>
@@ -130,7 +130,7 @@ export default function BlogArticle() {
       {related.length > 0 && (
         <section className="bg-gray-50 py-16">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
-            <h2 className="font-display text-2xl font-bold text-harbor mb-8">
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-8">
               Related Articles
             </h2>
             <div className="grid md:grid-cols-3 gap-8">
@@ -140,16 +140,16 @@ export default function BlogArticle() {
                   to={`/blog/${r.slug}`}
                   className="group bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
                 >
-                  <span className="text-xs font-semibold text-teal uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                     {r.category}
                   </span>
-                  <h3 className="font-display text-lg font-bold text-harbor mt-2 mb-2 group-hover:text-teal transition-colors">
+                  <h3 className="font-display text-lg font-bold text-text-primary mt-2 mb-2 group-hover:text-primary transition-colors">
                     {r.title}
                   </h3>
                   <p className="text-sm text-slate-600 line-clamp-2 mb-3">
                     {r.excerpt}
                   </p>
-                  <span className="inline-flex items-center gap-1 text-sm font-medium text-teal">
+                  <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
                     Read more <ArrowRight className="h-3.5 w-3.5" />
                   </span>
                 </Link>

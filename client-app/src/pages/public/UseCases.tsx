@@ -124,10 +124,10 @@ export default function UseCases() {
         description="See how businesses use QVO AI voice agents for HVAC service dispatch, appointment scheduling, after-hours answering, customer intake, and lead qualification."
         canonicalPath="/use-cases"
       />
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               Use Cases
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -162,41 +162,41 @@ export default function UseCases() {
           {scenarios.map((s) => (
             <RevealSection key={s.title}>
               <div
-                className="bg-white rounded-2xl border border-soft-steel/50 overflow-hidden"
+                className="bg-white rounded-2xl border border-border/50 overflow-hidden"
                 onMouseEnter={() => trackVerticalEngagement(s.title, 'view')}
               >
                 <div className="p-8 lg:p-10">
                   <div className="flex items-start gap-4 mb-8">
-                    <div className="w-12 h-12 rounded-xl bg-teal/10 flex items-center justify-center shrink-0">
-                      <s.icon className="h-6 w-6 text-teal" />
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <s.icon className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-display text-2xl font-bold text-harbor">{s.title}</h3>
-                      <p className="text-sm text-slate-ink/50 font-body mt-1">{s.subtitle}</p>
+                      <h3 className="font-display text-2xl font-bold text-text-primary">{s.title}</h3>
+                      <p className="text-sm text-text-primary/50 font-body mt-1">{s.subtitle}</p>
                     </div>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-8 mb-8">
                     <div>
-                      <h4 className="font-display text-sm font-semibold text-controlled-red uppercase tracking-wide mb-4">
+                      <h4 className="font-display text-sm font-semibold text-danger uppercase tracking-wide mb-4">
                         The Problem
                       </h4>
-                      <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{s.problem}</p>
+                      <p className="text-sm text-text-primary/70 font-body leading-relaxed">{s.problem}</p>
                     </div>
                     <div>
-                      <h4 className="font-display text-sm font-semibold text-calm-green uppercase tracking-wide mb-4">
+                      <h4 className="font-display text-sm font-semibold text-success uppercase tracking-wide mb-4">
                         How QVO Solves It
                       </h4>
-                      <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{s.solution}</p>
+                      <p className="text-sm text-text-primary/70 font-body leading-relaxed">{s.solution}</p>
                     </div>
                   </div>
 
-                  <div className="bg-mist/50 rounded-xl p-6 mb-8">
-                    <h4 className="font-display text-sm font-semibold text-harbor mb-4">Workflow</h4>
+                  <div className="bg-surface-secondary/50 rounded-xl p-6 mb-8">
+                    <h4 className="font-display text-sm font-semibold text-text-primary mb-4">Workflow</h4>
                     <ol className="space-y-2">
                       {s.workflow.map((step, i) => (
-                        <li key={i} className="flex items-start gap-3 text-sm text-slate-ink/70 font-body">
-                          <span className="w-5 h-5 rounded-full bg-teal/10 text-teal text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        <li key={i} className="flex items-start gap-3 text-sm text-text-primary/70 font-body">
+                          <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                             {i + 1}
                           </span>
                           {step}
@@ -207,23 +207,23 @@ export default function UseCases() {
 
                   <div className="grid md:grid-cols-2 gap-8">
                     <div>
-                      <h4 className="font-display text-sm font-semibold text-harbor mb-3">Tools Used</h4>
+                      <h4 className="font-display text-sm font-semibold text-text-primary mb-3">Tools Used</h4>
                       <div className="flex flex-wrap gap-2">
                         {s.tools.map((tool) => (
-                          <span key={tool} className="text-xs font-medium bg-teal/5 text-teal border border-teal/15 px-3 py-1.5 rounded-full">
+                          <span key={tool} className="text-xs font-medium bg-primary/5 text-primary border border-primary/15 px-3 py-1.5 rounded-full">
                             {tool}
                           </span>
                         ))}
                       </div>
                     </div>
                     <div>
-                      <h4 className="font-display text-sm font-semibold text-harbor mb-3">Key Metrics</h4>
+                      <h4 className="font-display text-sm font-semibold text-text-primary mb-3">Key Metrics</h4>
                       <div className="grid grid-cols-3 gap-3">
                         {s.metrics.map((m) => (
                           <div key={m.label} className="text-center">
-                            <m.icon className="h-4 w-4 text-teal mx-auto mb-1" />
-                            <p className="font-display text-lg font-bold text-harbor">{m.value}</p>
-                            <p className="text-[11px] text-slate-ink/50 font-body">{m.label}</p>
+                            <m.icon className="h-4 w-4 text-primary mx-auto mb-1" />
+                            <p className="font-display text-lg font-bold text-text-primary">{m.value}</p>
+                            <p className="text-[11px] text-text-primary/50 font-body">{m.label}</p>
                           </div>
                         ))}
                       </div>
@@ -236,13 +236,13 @@ export default function UseCases() {
         </div>
       </section>
 
-      <section className="py-16 lg:py-20 bg-mist">
+      <section className="py-16 lg:py-20 bg-surface-secondary">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <RevealSection>
-            <h2 className="font-display text-2xl lg:text-3xl font-bold text-harbor mb-4">
+            <h2 className="font-display text-2xl lg:text-3xl font-bold text-text-primary mb-4">
               See these scenarios in action
             </h2>
-            <p className="text-slate-ink/60 font-body mb-8 max-w-2xl mx-auto">
+            <p className="text-text-primary/60 font-body mb-8 max-w-2xl mx-auto">
               Try our interactive demo to experience how QVO handles real conversations across industries. No signup required.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -256,7 +256,7 @@ export default function UseCases() {
               </Link>
               <Link
                 to="/features"
-                className="inline-flex items-center gap-2 bg-white border border-soft-steel/50 hover:border-teal/30 text-harbor font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"
+                className="inline-flex items-center gap-2 bg-white border border-border/50 hover:border-primary/30 text-text-primary font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"
                 onClick={() => trackCTAClick('Explore Features', '/use-cases', 'mid-cta')}
               >
                 Explore Features
@@ -266,7 +266,7 @@ export default function UseCases() {
         </div>
       </section>
 
-      <section className="bg-harbor text-white py-16">
+      <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold mb-4">
             Don't see your use case?
@@ -277,7 +277,7 @@ export default function UseCases() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               to="/contact"
-              className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
               onClick={() => trackCTAClick('Talk to Us', '/use-cases', 'bottom-cta')}
             >
               Talk to us

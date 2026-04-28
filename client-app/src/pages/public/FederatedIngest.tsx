@@ -61,10 +61,10 @@ export default function FederatedIngest() {
         canonicalPath="/product/federated-ingest"
       />
 
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               {t('federated_ingest_page.hero.eyebrow')}
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -91,22 +91,22 @@ export default function FederatedIngest() {
               </Link>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/60">
-              <span className="inline-flex items-center gap-2"><Code2 className="h-4 w-4 text-teal" />{t('federated_ingest_page.hero.chip_endpoint')}</span>
-              <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-teal" />{t('federated_ingest_page.hero.chip_keys')}</span>
-              <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4 text-teal" />{t('federated_ingest_page.hero.chip_idempotent')}</span>
+              <span className="inline-flex items-center gap-2"><Code2 className="h-4 w-4 text-primary" />{t('federated_ingest_page.hero.chip_endpoint')}</span>
+              <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" />{t('federated_ingest_page.hero.chip_keys')}</span>
+              <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4 text-primary" />{t('federated_ingest_page.hero.chip_idempotent')}</span>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-mist">
+      <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('federated_ingest_page.use_cases.heading')}
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 {t('federated_ingest_page.use_cases.subheading')}
               </p>
             </div>
@@ -117,14 +117,14 @@ export default function FederatedIngest() {
               return (
                 <RevealSection key={useCase.title} delay={`scroll-delay-${(i % 3) + 1}`}>
                   <div
-                    className="bg-white rounded-2xl border border-soft-steel/30 p-7 h-full hover:shadow-lg transition-shadow"
+                    className="bg-white rounded-2xl border border-border/30 p-7 h-full hover:shadow-lg transition-shadow"
                     onMouseEnter={() => trackFeatureView(`federated-ingest:${useCase.title}`)}
                   >
-                    <div className="w-11 h-11 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
-                      <Icon className="h-5 w-5 text-teal" />
+                    <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                      <Icon className="h-5 w-5 text-primary" />
                     </div>
-                    <h3 className="font-display text-lg font-semibold text-harbor mb-2">{useCase.title}</h3>
-                    <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{useCase.desc}</p>
+                    <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{useCase.title}</h3>
+                    <p className="text-sm text-text-primary/60 leading-relaxed font-body">{useCase.desc}</p>
                   </div>
                 </RevealSection>
               );
@@ -137,10 +137,10 @@ export default function FederatedIngest() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 {t('federated_ingest_page.ingest_steps.eyebrow')}
               </p>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('federated_ingest_page.ingest_steps.heading')}
               </h2>
             </div>
@@ -152,16 +152,16 @@ export default function FederatedIngest() {
                 const Icon = ingestStepIcons[i] || KeyRound;
                 return (
                   <RevealSection key={step.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                    <div className="bg-mist rounded-2xl border border-soft-steel/30 p-6 flex gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-harbor/10 flex items-center justify-center shrink-0">
-                        <Icon className="h-5 w-5 text-harbor" />
+                    <div className="bg-surface-secondary rounded-2xl border border-border/30 p-6 flex gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-sidebar-bg/10 flex items-center justify-center shrink-0">
+                        <Icon className="h-5 w-5 text-text-primary" />
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-teal mb-1">
+                        <p className="text-xs font-semibold text-primary mb-1">
                           {t('federated_ingest_page.ingest_steps.step_label', { n: i + 1 })}
                         </p>
-                        <h3 className="font-display text-lg font-semibold text-harbor mb-1.5">{step.title}</h3>
-                        <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{step.desc}</p>
+                        <h3 className="font-display text-lg font-semibold text-text-primary mb-1.5">{step.title}</h3>
+                        <p className="text-sm text-text-primary/65 leading-relaxed font-body">{step.desc}</p>
                       </div>
                     </div>
                   </RevealSection>
@@ -170,7 +170,7 @@ export default function FederatedIngest() {
             </div>
 
             <RevealSection>
-              <div className="bg-harbor rounded-2xl border border-harbor-light/40 overflow-hidden shadow-lg">
+              <div className="bg-sidebar-bg rounded-2xl border border-sidebar-hover/40 overflow-hidden shadow-lg">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
                   <div className="flex items-center gap-2 text-white/60 text-xs font-mono">
                     <Code2 className="h-3.5 w-3.5" />
@@ -186,7 +186,7 @@ export default function FederatedIngest() {
 {sampleRequest}
                 </pre>
               </div>
-              <p className="text-xs text-slate-ink/50 mt-3 font-body text-center">
+              <p className="text-xs text-text-primary/50 mt-3 font-body text-center">
                 {t('federated_ingest_page.ingest_steps.code_caption')}
               </p>
             </RevealSection>
@@ -194,17 +194,17 @@ export default function FederatedIngest() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-mist">
+      <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">
                 {t('federated_ingest_page.platform_benefits.pill')}
               </span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('federated_ingest_page.platform_benefits.heading')}
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 {t('federated_ingest_page.platform_benefits.subheading')}
               </p>
             </div>
@@ -215,12 +215,12 @@ export default function FederatedIngest() {
               const Icon = platformBenefitIcons[i] || BarChart3;
               return (
                 <RevealSection key={benefit.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                  <div className="bg-white rounded-2xl border border-soft-steel/30 p-6 h-full hover:shadow-lg transition-shadow">
-                    <div className="w-10 h-10 rounded-lg bg-teal/10 flex items-center justify-center mb-4">
-                      <Icon className="h-5 w-5 text-teal" />
+                  <div className="bg-white rounded-2xl border border-border/30 p-6 h-full hover:shadow-lg transition-shadow">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                      <Icon className="h-5 w-5 text-primary" />
                     </div>
-                    <h3 className="font-display text-base font-semibold text-harbor mb-1.5">{benefit.title}</h3>
-                    <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{benefit.desc}</p>
+                    <h3 className="font-display text-base font-semibold text-text-primary mb-1.5">{benefit.title}</h3>
+                    <p className="text-sm text-text-primary/65 leading-relaxed font-body">{benefit.desc}</p>
                   </div>
                 </RevealSection>
               );
@@ -233,10 +233,10 @@ export default function FederatedIngest() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-3">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
                 {t('federated_ingest_page.security_section.eyebrow')}
               </p>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('federated_ingest_page.security_section.heading')}
               </h2>
             </div>
@@ -246,13 +246,13 @@ export default function FederatedIngest() {
               const Icon = securityIcons[i] || KeyRound;
               return (
                 <RevealSection key={item.title}>
-                  <div className="bg-mist rounded-2xl border border-soft-steel/30 p-6 flex gap-4 h-full">
-                    <div className="w-10 h-10 rounded-lg bg-controlled-red/10 flex items-center justify-center shrink-0">
-                      <Icon className="h-5 w-5 text-controlled-red" />
+                  <div className="bg-surface-secondary rounded-2xl border border-border/30 p-6 flex gap-4 h-full">
+                    <div className="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center shrink-0">
+                      <Icon className="h-5 w-5 text-danger" />
                     </div>
                     <div>
-                      <h3 className="font-display text-base font-semibold text-harbor mb-1.5">{item.title}</h3>
-                      <p className="text-sm text-slate-ink/65 leading-relaxed font-body">{item.desc}</p>
+                      <h3 className="font-display text-base font-semibold text-text-primary mb-1.5">{item.title}</h3>
+                      <p className="text-sm text-text-primary/65 leading-relaxed font-body">{item.desc}</p>
                     </div>
                   </div>
                 </RevealSection>
@@ -261,10 +261,10 @@ export default function FederatedIngest() {
           </div>
 
           <RevealSection>
-            <div className="max-w-4xl mx-auto mt-12 bg-harbor rounded-2xl p-8 lg:p-10 text-white">
+            <div className="max-w-4xl mx-auto mt-12 bg-sidebar-bg rounded-2xl p-8 lg:p-10 text-white">
               <div className="flex items-center gap-3 mb-3">
-                <CheckCircle2 className="h-5 w-5 text-teal" />
-                <p className="font-display text-sm font-semibold tracking-wide uppercase text-teal">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+                <p className="font-display text-sm font-semibold tracking-wide uppercase text-primary">
                   {t('federated_ingest_page.security_section.compliance_eyebrow')}
                 </p>
               </div>
@@ -294,10 +294,10 @@ export default function FederatedIngest() {
       </section>
 
       <section className="relative py-20 lg:py-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor-light/40 to-harbor" />
+        <div className="absolute inset-0 bg-gradient-to-r from-sidebar-bg via-sidebar-hover/40 to-sidebar-bg" />
         <div className="absolute inset-0 opacity-15">
-          <div className="absolute top-0 left-1/4 w-64 h-64 bg-teal rounded-full blur-[100px]" />
-          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-teal rounded-full blur-[120px]" />
+          <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary rounded-full blur-[100px]" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-primary rounded-full blur-[120px]" />
         </div>
         <RevealSection>
           <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">

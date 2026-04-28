@@ -98,8 +98,8 @@ const agentTemplates = [
     desc: 'Handles patient intake, appointment scheduling, prescription refill requests, and insurance verification.',
     capabilities: ['Appointment booking', 'Patient triage', 'Insurance checks', 'HIPAA compliant'],
     example: '"I\'d like to schedule a checkup." → Books appointment, sends confirmation SMS',
-    color: 'from-teal/20 to-calm-green/10',
-    iconBg: 'bg-teal/15 text-teal',
+    color: 'from-primary/20 to-success/10',
+    iconBg: 'bg-primary/15 text-primary',
     avatar: '/assets/avatars/medical.png',
   },
   {
@@ -108,8 +108,8 @@ const agentTemplates = [
     desc: 'Qualifies potential clients, captures case details, and schedules consultations with the right attorney.',
     capabilities: ['Case qualification', 'Conflict checks', 'Consultation scheduling', 'Document collection'],
     example: '"I need help with a car accident claim." → Captures details, books consultation',
-    color: 'from-harbor/10 to-frost-blue/20',
-    iconBg: 'bg-harbor/15 text-harbor',
+    color: 'from-sidebar-bg/10 to-info-light/20',
+    iconBg: 'bg-sidebar-bg/15 text-text-primary',
     avatar: '/assets/avatars/legal.png',
   },
   {
@@ -118,8 +118,8 @@ const agentTemplates = [
     desc: 'Captures buyer/seller leads, answers property questions, and books showings automatically.',
     capabilities: ['Lead capture', 'Property Q&A', 'Showing scheduler', 'CRM sync'],
     example: '"Is the house on Oak St still available?" → Answers questions, schedules showing',
-    color: 'from-warm-amber/10 to-mineral-sand/30',
-    iconBg: 'bg-warm-amber/15 text-warm-amber',
+    color: 'from-accent/10 to-accent-light/30',
+    iconBg: 'bg-accent/15 text-accent',
     avatar: '/assets/avatars/real-estate.png',
   },
   {
@@ -128,8 +128,8 @@ const agentTemplates = [
     desc: 'Resolves common inquiries, processes returns, checks order status, and escalates when needed.',
     capabilities: ['Ticket creation', 'Order tracking', 'Returns processing', 'Smart escalation'],
     example: '"Where\'s my order #4521?" → Checks status, provides ETA and tracking link',
-    color: 'from-teal/10 to-frost-blue/15',
-    iconBg: 'bg-teal/15 text-teal',
+    color: 'from-primary/10 to-info-light/15',
+    iconBg: 'bg-primary/15 text-primary',
     avatar: '/assets/avatars/customer-support.png',
   },
   {
@@ -138,8 +138,8 @@ const agentTemplates = [
     desc: 'Professional payment reminder calls with compliant scripts, payment plan setup, and promise-to-pay tracking.',
     capabilities: ['Payment reminders', 'Plan negotiation', 'Compliance scripts', 'Payment links'],
     example: '"Can I set up a payment plan?" → Negotiates terms, sends payment link',
-    color: 'from-controlled-red/10 to-warm-amber/10',
-    iconBg: 'bg-controlled-red/15 text-controlled-red',
+    color: 'from-danger/10 to-accent/10',
+    iconBg: 'bg-danger/15 text-danger',
     avatar: '/assets/avatars/collections.png',
   },
   {
@@ -148,7 +148,7 @@ const agentTemplates = [
     desc: 'Handles service calls, triages emergencies, dispatches technicians, and sends customers real-time ETAs via SMS.',
     capabilities: ['Service call intake', 'Emergency triage', 'Tech dispatch', 'SMS ETAs'],
     example: '"My AC stopped working." → Captures details, dispatches tech, sends ETA',
-    color: 'from-orange-100/80 to-warm-amber/10',
+    color: 'from-orange-100/80 to-accent/10',
     iconBg: 'bg-orange-100 text-orange-700',
     avatar: '/assets/avatars/hvac.png',
   },
@@ -235,18 +235,18 @@ export default function Landing() {
         canonicalPath="/"
         structuredData={organizationSchema}
       />
-      <section className="relative bg-harbor text-white overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-harbor via-harbor-light/30 to-harbor" />
+      <section className="relative bg-sidebar-bg text-white overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-hover/30 to-sidebar-bg" />
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-teal rounded-full blur-[128px]" />
-          <div className="absolute bottom-10 right-20 w-96 h-96 bg-teal rounded-full blur-[160px]" />
+          <div className="absolute top-20 left-10 w-72 h-72 bg-primary rounded-full blur-[128px]" />
+          <div className="absolute bottom-10 right-20 w-96 h-96 bg-primary rounded-full blur-[160px]" />
         </div>
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-36">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 bg-teal/15 border border-teal/25 rounded-full px-4 py-1.5 mb-6">
-                <span className="w-2 h-2 rounded-full bg-teal animate-pulse" />
-                <span className="text-teal text-sm font-medium">AI-Powered Voice Platform</span>
+              <div className="inline-flex items-center gap-2 bg-primary/15 border border-primary/25 rounded-full px-4 py-1.5 mb-6">
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                <span className="text-primary text-sm font-medium">AI-Powered Voice Platform</span>
               </div>
               <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] mb-6">
                 <span className="hero-gradient-text">AI Voice Agents</span> That Run Your Business
@@ -257,7 +257,7 @@ export default function Landing() {
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {keyBenefits.map((benefit) => (
                   <div key={benefit.text} className="flex items-center gap-2 text-sm text-white/80">
-                    <benefit.icon className="h-4 w-4 text-teal shrink-0" />
+                    <benefit.icon className="h-4 w-4 text-primary shrink-0" />
                     <span className="font-body">{benefit.text}</span>
                   </div>
                 ))}
@@ -287,7 +287,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="bg-harbor/95 border-t border-white/5">
+      <section className="bg-sidebar-bg/95 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             {socialProofStats.map((stat) => (
@@ -310,30 +310,30 @@ export default function Landing() {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-teal" /> SOC 2 in progress
+              <ShieldCheck className="h-3 w-3 text-primary" /> SOC 2 in progress
             </Link>
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-teal" /> HIPAA-ready
+              <ShieldCheck className="h-3 w-3 text-primary" /> HIPAA-ready
             </Link>
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-teal" /> GDPR compliant
+              <ShieldCheck className="h-3 w-3 text-primary" /> GDPR compliant
             </Link>
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-teal" /> AES-256 encryption
+              <ShieldCheck className="h-3 w-3 text-primary" /> AES-256 encryption
             </Link>
           </div>
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-mist">
+      <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-16">
-              <span className="inline-block text-sm font-semibold text-controlled-red bg-controlled-red/10 px-4 py-1.5 rounded-full mb-4">The Problem</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-danger bg-danger/10 px-4 py-1.5 rounded-full mb-4">The Problem</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Every Missed Call Is a Missed Opportunity
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 Small businesses lose thousands in revenue every month to unanswered calls, slow response times, and overwhelmed front desks.
               </p>
             </div>
@@ -342,12 +342,12 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
             {painPoints.map((point, i) => (
               <RevealSection key={point.title} delay={`scroll-delay-${i + 1}`}>
-                <div className="bg-white rounded-2xl border border-controlled-red/10 p-6 hover:shadow-lg transition-shadow h-full">
-                  <div className="w-11 h-11 rounded-xl bg-controlled-red/10 flex items-center justify-center mb-4">
-                    <point.icon className="h-5 w-5 text-controlled-red" />
+                <div className="bg-white rounded-2xl border border-danger/10 p-6 hover:shadow-lg transition-shadow h-full">
+                  <div className="w-11 h-11 rounded-xl bg-danger/10 flex items-center justify-center mb-4">
+                    <point.icon className="h-5 w-5 text-danger" />
                   </div>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{point.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{point.desc}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{point.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{point.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -355,11 +355,11 @@ export default function Landing() {
 
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">The Solution</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">The Solution</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 QVO Handles It All
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 One platform to answer calls, run campaigns, and automate your entire voice operations.
               </p>
             </div>
@@ -368,12 +368,12 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {solutionFeatures.map((f, i) => (
               <RevealSection key={f.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className="glass-card-light rounded-2xl p-7 hover:shadow-lg transition-all border border-teal/10 hover:border-teal/25 h-full">
-                  <div className="w-11 h-11 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
-                    <f.icon className="h-5 w-5 text-teal" />
+                <div className="glass-card-light rounded-2xl p-7 hover:shadow-lg transition-all border border-primary/10 hover:border-primary/25 h-full">
+                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                    <f.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{f.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{f.desc}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{f.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{f.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -385,11 +385,11 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-harbor bg-harbor/10 px-4 py-1.5 rounded-full mb-4">Agent Marketplace</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">Agent Marketplace</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Pre-Built Agents, Ready to Deploy
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 Choose from industry-specific agent templates. Customize scripts, personality, and integrations — then go live in minutes.
               </p>
             </div>
@@ -398,9 +398,9 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
             {agentTemplates.map((agent, i) => (
               <RevealSection key={agent.name} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className={`relative rounded-2xl p-7 bg-gradient-to-br ${agent.color} border border-soft-steel/30 hover:shadow-lg transition-all h-full group`}>
+                <div className={`relative rounded-2xl p-7 bg-gradient-to-br ${agent.color} border border-border/30 hover:shadow-lg transition-all h-full group`}>
                   {agent.avatar ? (
-                    <div className="w-12 h-12 rounded-xl overflow-hidden mb-4 border border-soft-steel/20">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden mb-4 border border-border/20">
                       <img src={agent.avatar} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
                     </div>
                   ) : (
@@ -408,14 +408,14 @@ export default function Landing() {
                       <agent.icon className="h-6 w-6" />
                     </div>
                   )}
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{agent.name}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body mb-3">{agent.desc}</p>
-                  <div className="bg-white/50 rounded-lg p-3 mb-4 border border-soft-steel/15">
-                    <p className="text-xs text-slate-ink/70 font-body italic leading-relaxed">{agent.example}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{agent.name}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body mb-3">{agent.desc}</p>
+                  <div className="bg-white/50 rounded-lg p-3 mb-4 border border-border/15">
+                    <p className="text-xs text-text-primary/70 font-body italic leading-relaxed">{agent.example}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {agent.capabilities.map((cap) => (
-                      <span key={cap} className="text-xs font-medium bg-white/70 text-harbor/80 px-2.5 py-1 rounded-full border border-soft-steel/20">
+                      <span key={cap} className="text-xs font-medium bg-white/70 text-text-primary/80 px-2.5 py-1 rounded-full border border-border/20">
                         {cap}
                       </span>
                     ))}
@@ -429,7 +429,7 @@ export default function Landing() {
             <div className="text-center">
               <Link
                 to="/ai-agents"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-teal hover:text-teal-hover transition-colors"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
               >
                 Explore Marketplace
                 <ArrowRight className="h-4 w-4" />
@@ -440,17 +440,17 @@ export default function Landing() {
       </section>
 
       <section className="relative py-20 lg:py-28 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-white via-mist to-frost-blue/20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-surface-secondary to-info-light/20" />
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="grid lg:grid-cols-[1fr,2fr] gap-10 lg:gap-14 items-end mb-14">
               <div>
-                <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">Built for your industry</span>
-                <h2 className="font-display text-3xl lg:text-5xl font-bold text-harbor leading-[1.05] mb-4">
-                  Purpose-built voice AI for the way <span className="text-teal">your industry</span> actually works.
+                <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">Built for your industry</span>
+                <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.05] mb-4">
+                  Purpose-built voice AI for the way <span className="text-primary">your industry</span> actually works.
                 </h2>
               </div>
-              <p className="text-lg text-slate-ink/65 font-body leading-relaxed max-w-xl lg:pb-2">
+              <p className="text-lg text-text-primary/65 font-body leading-relaxed max-w-xl lg:pb-2">
                 Every vertical has its own jargon, compliance rules, and customer expectations. QVO ships pre-trained templates, integrations, and call flows for the industries where voice matters most.
               </p>
             </div>
@@ -460,15 +460,15 @@ export default function Landing() {
       </section>
 
       <section className="py-20 lg:py-28 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-mist via-frost-blue/30 to-mist" />
+        <div className="absolute inset-0 bg-gradient-to-br from-surface-secondary via-info-light/30 to-surface-secondary" />
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">Platform Capabilities</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">Platform Capabilities</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Everything You Need to Automate Voice Operations
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 A complete toolkit for managing AI voice agents, campaigns, and analytics in one place.
               </p>
             </div>
@@ -477,12 +477,12 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featureGrid.map((f, i) => (
               <RevealSection key={f.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className="bg-white rounded-2xl p-7 border border-soft-steel/30 hover:border-teal/25 hover:shadow-lg transition-all h-full">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal/15 to-harbor/10 flex items-center justify-center mb-4">
-                    <f.icon className="h-5 w-5 text-teal" />
+                <div className="bg-white rounded-2xl p-7 border border-border/30 hover:border-primary/25 hover:shadow-lg transition-all h-full">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/15 to-sidebar-bg/10 flex items-center justify-center mb-4">
+                    <f.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{f.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{f.desc}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{f.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{f.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -494,11 +494,11 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-calm-green bg-calm-green/10 px-4 py-1.5 rounded-full mb-4">Customer Results</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-success bg-success/10 px-4 py-1.5 rounded-full mb-4">Customer Results</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Real Businesses, Real Results
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 See how businesses across industries are transforming their operations with QVO.
               </p>
             </div>
@@ -507,28 +507,28 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-8">
             {customerResults.map((result, i) => (
               <RevealSection key={result.industry} delay={`scroll-delay-${i + 1}`}>
-                <div className="relative bg-mist rounded-2xl p-8 border border-soft-steel/30 hover:shadow-lg transition-all h-full">
+                <div className="relative bg-surface-secondary rounded-2xl p-8 border border-border/30 hover:shadow-lg transition-all h-full">
                   <div className="flex items-center gap-3 mb-5">
-                    <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
-                      <result.icon className="h-5 w-5 text-teal" />
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <result.icon className="h-5 w-5 text-primary" />
                     </div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-ink/40">{result.industry}</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-primary/40">{result.industry}</span>
                   </div>
                   <div className="mb-5">
-                    <span className="font-display text-4xl font-bold text-teal">{result.metric}</span>
-                    <span className="block text-sm font-semibold text-harbor mt-1">{result.metricLabel}</span>
+                    <span className="font-display text-4xl font-bold text-primary">{result.metric}</span>
+                    <span className="block text-sm font-semibold text-text-primary mt-1">{result.metricLabel}</span>
                   </div>
-                  <p className="text-sm text-slate-ink/60 font-body leading-relaxed mb-6 italic">
+                  <p className="text-sm text-text-primary/60 font-body leading-relaxed mb-6 italic">
                     "{result.quote}"
                   </p>
                   <div className="flex items-center gap-1 mb-3">
                     {[...Array(5)].map((_, j) => (
-                      <Star key={j} className="w-3.5 h-3.5 fill-warm-amber text-warm-amber" />
+                      <Star key={j} className="w-3.5 h-3.5 fill-accent text-accent" />
                     ))}
                   </div>
                   <div>
-                    <p className="font-display text-sm font-semibold text-harbor">{result.name}</p>
-                    <p className="text-xs text-slate-ink/50 font-body mt-0.5">{result.role}</p>
+                    <p className="font-display text-sm font-semibold text-text-primary">{result.name}</p>
+                    <p className="text-xs text-text-primary/50 font-body mt-0.5">{result.role}</p>
                   </div>
                 </div>
               </RevealSection>
@@ -537,15 +537,15 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white border-t border-soft-steel/20">
+      <section className="py-20 lg:py-28 bg-white border-t border-border/20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-teal bg-teal/10 px-4 py-1.5 rounded-full mb-4">In Their Words</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">In Their Words</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Hear it straight from operators.
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 Real teams replacing missed calls and overwhelmed front desks with QVO.
               </p>
             </div>
@@ -561,15 +561,15 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-mist">
+      <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-harbor bg-harbor/10 px-4 py-1.5 rounded-full mb-4">How We Compare</span>
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">How We Compare</span>
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 QVO vs. the alternatives.
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 A side-by-side look at QVO, voice-AI toolkits, and traditional answering services.
               </p>
             </div>
@@ -584,11 +584,11 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
-              <span className="inline-block text-sm font-semibold text-harbor bg-harbor/10 px-4 py-1.5 rounded-full mb-4">Security & Compliance</span>
-              <h2 className="font-display text-2xl lg:text-3xl font-bold text-harbor mb-3">
+              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">Security & Compliance</span>
+              <h2 className="font-display text-2xl lg:text-3xl font-bold text-text-primary mb-3">
                 Enterprise-grade security built in.
               </h2>
-              <p className="text-slate-ink/60 font-body max-w-xl mx-auto">
+              <p className="text-text-primary/60 font-body max-w-xl mx-auto">
                 Your data and your customers' data are protected at every layer.
               </p>
             </div>
@@ -599,11 +599,11 @@ export default function Landing() {
                 { icon: Shield, label: 'AES-256 Encryption' },
                 { icon: BarChart3, label: 'Full Audit Logs' },
               ].map((badge) => (
-                <div key={badge.label} className="flex flex-col items-center text-center bg-white rounded-xl border border-soft-steel/30 p-5">
-                  <div className="w-10 h-10 rounded-lg bg-teal/10 flex items-center justify-center mb-3">
-                    <badge.icon className="h-5 w-5 text-teal" />
+                <div key={badge.label} className="flex flex-col items-center text-center bg-white rounded-xl border border-border/30 p-5">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                    <badge.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <span className="text-sm font-semibold text-harbor font-display">{badge.label}</span>
+                  <span className="text-sm font-semibold text-text-primary font-display">{badge.label}</span>
                 </div>
               ))}
             </div>
@@ -612,10 +612,10 @@ export default function Landing() {
       </section>
 
       <section className="relative py-20 lg:py-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-harbor via-harbor-light/40 to-harbor" />
+        <div className="absolute inset-0 bg-gradient-to-r from-sidebar-bg via-sidebar-hover/40 to-sidebar-bg" />
         <div className="absolute inset-0 opacity-15">
-          <div className="absolute top-0 left-1/4 w-64 h-64 bg-teal rounded-full blur-[100px]" />
-          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-teal rounded-full blur-[120px]" />
+          <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary rounded-full blur-[100px]" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-primary rounded-full blur-[120px]" />
         </div>
         <RevealSection>
           <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">

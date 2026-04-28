@@ -20,7 +20,7 @@ export default function Blog() {
         canonicalPath="/blog"
       />
 
-      <section className="bg-harbor text-white py-20">
+      <section className="bg-sidebar-bg text-white py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <h1 className="font-display text-4xl md:text-5xl font-bold mb-4">
             The QVO Blog
@@ -39,7 +39,7 @@ export default function Blog() {
               onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                 activeCategory === cat
-                  ? 'bg-teal text-white'
+                  ? 'bg-primary text-white'
                   : 'bg-white text-slate-600 hover:bg-gray-100 border border-gray-200'
               }`}
             >
@@ -71,10 +71,10 @@ export default function Blog() {
                   </div>
                 )}
                 <div className="p-6 flex flex-col h-full">
-                  <span className="text-xs font-semibold text-teal uppercase tracking-wider mb-3">
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider mb-3">
                     {article.category}
                   </span>
-                  <h2 className="font-display text-xl font-bold text-harbor mb-3 group-hover:text-teal transition-colors">
+                  <h2 className="font-display text-xl font-bold text-text-primary mb-3 group-hover:text-primary transition-colors">
                     {article.title}
                   </h2>
                   <p className="text-sm text-slate-600 leading-relaxed mb-4 flex-1">
@@ -95,7 +95,7 @@ export default function Blog() {
                         {article.readTime} min read
                       </span>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-teal opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ArrowRight className="h-4 w-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
               </Link>

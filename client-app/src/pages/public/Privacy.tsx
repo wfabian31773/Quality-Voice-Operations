@@ -22,34 +22,34 @@ export default function Privacy() {
   return (
     <div className="bg-white">
       <SEO title="Privacy Policy — QVO" description="How QVO collects, uses, and protects your data." canonicalPath="/privacy" />
-      <section className="bg-harbor text-white py-16">
+      <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <h1 className="font-display text-4xl font-bold mb-3">Privacy Policy</h1>
           <p className="text-white/70 font-body">Last updated: {new Date().toISOString().slice(0, 10)}</p>
-          <div className="mt-4 inline-block bg-warm-amber/15 border border-warm-amber/30 px-3 py-1.5 rounded-md text-xs text-warm-amber font-medium">
+          <div className="mt-4 inline-block bg-accent/15 border border-accent/30 px-3 py-1.5 rounded-md text-xs text-accent font-medium">
             DRAFT — pending legal review
           </div>
         </div>
       </section>
       <section className="py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
-          <p className="text-slate-ink/70 font-body mb-8 leading-relaxed">
+          <p className="text-text-primary/70 font-body mb-8 leading-relaxed">
             This Privacy Policy describes how Quality Voice Operations ("QVO", "we", "us") collects, uses, and shares Personal Data when you use our Service.
           </p>
           <div className="space-y-8">
             {sections.map((s) => (
               <div key={s.id} id={s.id}>
-                <h2 className="font-display text-xl font-semibold text-harbor mb-3">{s.title}</h2>
-                <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{s.body}</p>
+                <h2 className="font-display text-xl font-semibold text-text-primary mb-3">{s.title}</h2>
+                <p className="text-sm text-text-primary/70 font-body leading-relaxed">{s.body}</p>
               </div>
             ))}
           </div>
-          <div className="mt-12 p-6 bg-mist rounded-xl border border-soft-steel/30">
-            <h3 className="font-display text-base font-semibold text-harbor mb-2">Exercise your rights</h3>
-            <p className="text-sm text-slate-ink/70 font-body mb-3">
+          <div className="mt-12 p-6 bg-surface-secondary rounded-xl border border-border/30">
+            <h3 className="font-display text-base font-semibold text-text-primary mb-2">Exercise your rights</h3>
+            <p className="text-sm text-text-primary/70 font-body mb-3">
               Tenant owners can request a full data export or schedule account deletion at any time from Settings.
             </p>
-            <Link to="/settings/privacy" className="inline-flex text-sm font-medium text-teal hover:text-teal-hover">
+            <Link to="/settings/privacy" className="inline-flex text-sm font-medium text-primary hover:text-primary-hover">
               Settings → Privacy →
             </Link>
           </div>

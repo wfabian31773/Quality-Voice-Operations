@@ -55,7 +55,7 @@ const agentTemplates: AgentTemplate[] = [
     channels: ['phone', 'web'],
     capabilities: ['Clinical triage', 'Appointment scheduling', 'Prescription refill requests', 'Insurance verification', 'HIPAA-compliant transcription'],
     icon: Stethoscope,
-    color: 'bg-teal/10 text-teal border-teal/20',
+    color: 'bg-primary/10 text-primary border-primary/20',
     avatar: '/assets/avatars/medical.png',
     conversationExample: [
       { role: 'caller', text: 'Hi, I need to schedule a follow-up appointment with Dr. Chen.' },
@@ -77,7 +77,7 @@ const agentTemplates: AgentTemplate[] = [
     channels: ['phone', 'sms'],
     capabilities: ['Appointment booking', 'Hygiene recall outreach', 'Insurance pre-authorization', 'Cancellation management', 'New patient intake'],
     icon: Headphones,
-    color: 'bg-harbor/10 text-harbor border-harbor/20',
+    color: 'bg-sidebar-bg/10 text-text-primary border-sidebar-bg/20',
     avatar: '/assets/avatars/dental.png',
     conversationExample: [
       { role: 'caller', text: 'I need to reschedule my cleaning appointment.' },
@@ -188,7 +188,7 @@ const agentTemplates: AgentTemplate[] = [
     channels: ['phone', 'web'],
     capabilities: ['Eligibility verification', 'Benefits breakdown', 'Prior auth tracking', 'Patient cost estimates', 'Payer communication'],
     icon: Shield,
-    color: 'bg-teal/10 text-teal border-teal/20',
+    color: 'bg-primary/10 text-primary border-primary/20',
     avatar: '/assets/avatars/insurance.png',
     conversationExample: [
       { role: 'caller', text: 'I need to check if my insurance covers an MRI.' },
@@ -291,7 +291,7 @@ function ChannelBadge({ channel }: { channel: string }) {
   if (!info) return null;
   const Icon = info.icon;
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 text-slate-ink/70 rounded border border-steel/30">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 text-text-primary/70 rounded border border-steel/30">
       <Icon className="h-3 w-3" />
       {info.label}
     </span>
@@ -307,7 +307,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
       <div className="p-6">
         <div className="flex items-start gap-4 mb-4">
           {agent.avatar ? (
-            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-soft-steel/20">
+            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-border/20">
               <img src={agent.avatar} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
             </div>
           ) : (
@@ -316,12 +316,12 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="font-display text-lg font-bold text-harbor mb-1">{agent.name}</h3>
-            <span className="text-xs font-medium text-teal uppercase tracking-wide">{agent.category}</span>
+            <h3 className="font-display text-lg font-bold text-text-primary mb-1">{agent.name}</h3>
+            <span className="text-xs font-medium text-primary uppercase tracking-wide">{agent.category}</span>
           </div>
         </div>
 
-        <p className="text-sm text-slate-ink/70 leading-relaxed mb-4">{agent.description}</p>
+        <p className="text-sm text-text-primary/70 leading-relaxed mb-4">{agent.description}</p>
 
         <div className="flex flex-wrap gap-1.5 mb-4">
           {agent.channels.map((ch) => (
@@ -331,20 +331,20 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
 
         <div className="space-y-1.5 mb-5">
           {agent.capabilities.slice(0, 4).map((cap) => (
-            <div key={cap} className="flex items-center gap-2 text-sm text-slate-ink/80">
-              <CheckCircle2 className="h-3.5 w-3.5 text-calm-green shrink-0" />
+            <div key={cap} className="flex items-center gap-2 text-sm text-text-primary/80">
+              <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
               {cap}
             </div>
           ))}
           {agent.capabilities.length > 4 && (
-            <p className="text-xs text-soft-steel ml-5.5">+{agent.capabilities.length - 4} more</p>
+            <p className="text-xs text-text-muted ml-5.5">+{agent.capabilities.length - 4} more</p>
           )}
         </div>
 
         <div className="flex items-center gap-3">
           <Link
             to={`/signup?agent=${agent.id}`}
-            className="inline-flex items-center gap-1.5 bg-teal hover:bg-teal-hover text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
             onClick={() => { trackCTAClick('deploy_agent', 'agents', agent.id); trackVerticalEngagement(agent.id, 'deploy_click'); }}
           >
             Deploy This Agent
@@ -352,7 +352,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
           </Link>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="inline-flex items-center gap-1 text-sm font-medium text-harbor hover:text-teal transition-colors px-2 py-2"
+            className="inline-flex items-center gap-1 text-sm font-medium text-text-primary hover:text-primary transition-colors px-2 py-2"
           >
             {expanded ? 'Less detail' : 'More detail'}
             {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -361,10 +361,10 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-steel/20 bg-mist/50 px-6 py-5 space-y-5">
+        <div className="border-t border-steel/20 bg-surface-secondary/50 px-6 py-5 space-y-5">
           <div>
-            <h4 className="font-display text-sm font-semibold text-harbor mb-3 flex items-center gap-1.5">
-              <MessageSquare className="h-4 w-4 text-teal" />
+            <h4 className="font-display text-sm font-semibold text-text-primary mb-3 flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-primary" />
               Example Conversation
             </h4>
             <div className="space-y-2.5 bg-white rounded-lg border border-steel/20 p-4">
@@ -373,8 +373,8 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
                   <div
                     className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
                       msg.role === 'agent'
-                        ? 'bg-teal/10 text-harbor border border-teal/20'
-                        : 'bg-harbor/10 text-harbor border border-harbor/20'
+                        ? 'bg-primary/10 text-text-primary border border-primary/20'
+                        : 'bg-sidebar-bg/10 text-text-primary border border-sidebar-bg/20'
                     }`}
                   >
                     <span className="block text-[10px] font-semibold uppercase tracking-wider mb-0.5 opacity-60">
@@ -388,14 +388,14 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
           </div>
 
           <div>
-            <h4 className="font-display text-sm font-semibold text-harbor mb-3 flex items-center gap-1.5">
-              <Zap className="h-4 w-4 text-teal" />
+            <h4 className="font-display text-sm font-semibold text-text-primary mb-3 flex items-center gap-1.5">
+              <Zap className="h-4 w-4 text-primary" />
               Workflow Steps
             </h4>
             <ol className="space-y-1.5">
               {agent.workflowSteps.map((step, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-sm text-slate-ink/80">
-                  <span className="w-5 h-5 rounded-full bg-teal/10 text-teal text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                <li key={i} className="flex items-start gap-2.5 text-sm text-text-primary/80">
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                     {i + 1}
                   </span>
                   {step}
@@ -406,25 +406,25 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <h4 className="font-display text-sm font-semibold text-harbor mb-2 flex items-center gap-1.5">
-                <Bot className="h-4 w-4 text-teal" />
+              <h4 className="font-display text-sm font-semibold text-text-primary mb-2 flex items-center gap-1.5">
+                <Bot className="h-4 w-4 text-primary" />
                 Tools Used
               </h4>
               <ul className="space-y-1">
                 {agent.toolsUsed.map((tool) => (
-                  <li key={tool} className="text-sm text-slate-ink/70 flex items-center gap-1.5">
-                    <span className="w-1 h-1 rounded-full bg-teal shrink-0" />
+                  <li key={tool} className="text-sm text-text-primary/70 flex items-center gap-1.5">
+                    <span className="w-1 h-1 rounded-full bg-primary shrink-0" />
                     {tool}
                   </li>
                 ))}
               </ul>
             </div>
             <div>
-              <h4 className="font-display text-sm font-semibold text-harbor mb-2 flex items-center gap-1.5">
+              <h4 className="font-display text-sm font-semibold text-text-primary mb-2 flex items-center gap-1.5">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 Escalation Behavior
               </h4>
-              <p className="text-sm text-slate-ink/70 leading-relaxed">{agent.escalationBehavior}</p>
+              <p className="text-sm text-text-primary/70 leading-relaxed">{agent.escalationBehavior}</p>
             </div>
           </div>
         </div>
@@ -451,10 +451,10 @@ export default function AgentsShowcase() {
         description="Browse QVO's AI voice agent templates for HVAC, medical offices, dental, legal intake, property management, restaurants, and real estate. Deploy AI receptionists in minutes."
         canonicalPath="/ai-agents"
       />
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               Agent Marketplace
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -466,7 +466,7 @@ export default function AgentsShowcase() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+                className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
                 onClick={() => trackCTAClick('start_free_trial', 'agents_hero')}
               >
                 Start Free Trial
@@ -495,8 +495,8 @@ export default function AgentsShowcase() {
                   onClick={() => setActiveCategory(cat)}
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     activeCategory === cat
-                      ? 'bg-harbor text-white shadow-sm'
-                      : 'bg-white text-slate-ink/70 border border-steel/30 hover:border-harbor/40 hover:text-harbor'
+                      ? 'bg-sidebar-bg text-white shadow-sm'
+                      : 'bg-white text-text-primary/70 border border-steel/30 hover:border-sidebar-bg/40 hover:text-text-primary'
                   }`}
                 >
                   <CatIcon className="h-4 w-4" />
@@ -516,14 +516,14 @@ export default function AgentsShowcase() {
 
           {filtered.length === 0 && (
             <div className="text-center py-16">
-              <Bot className="h-12 w-12 text-soft-steel mx-auto mb-4" />
-              <p className="text-slate-ink/60 font-body">No agents found in this category.</p>
+              <Bot className="h-12 w-12 text-text-muted mx-auto mb-4" />
+              <p className="text-text-primary/60 font-body">No agents found in this category.</p>
             </div>
           )}
         </div>
       </section>
 
-      <section className="bg-harbor text-white py-16 lg:py-20">
+      <section className="bg-sidebar-bg text-white py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-3xl lg:text-4xl font-bold mb-4">
             Ready to deploy your first agent?
@@ -534,7 +534,7 @@ export default function AgentsShowcase() {
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link
               to="/signup"
-              className="inline-flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
+              className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
               onClick={() => trackCTAClick('start_free_trial', 'agents_bottom')}
             >
               Start Free Trial

@@ -25,10 +25,10 @@ export default function Resources() {
 
   return (
     <div>
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               Resources
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -46,7 +46,7 @@ export default function Resources() {
               aria-label={t('resources.search_aria')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal/50 focus:border-teal/50"
+              className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
             />
           </div>
         </div>
@@ -56,10 +56,10 @@ export default function Resources() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
-                <BookOpen className="h-5 w-5 text-teal" />
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <BookOpen className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="font-display text-2xl font-bold text-harbor">Browse by category</h2>
+              <h2 className="font-display text-2xl font-bold text-text-primary">Browse by category</h2>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-16">
               {categories.map((cat) => (
@@ -68,15 +68,15 @@ export default function Resources() {
                   onClick={() => setActiveCategory(activeCategory === cat.name ? 'All' : cat.name)}
                   className={`text-left p-5 rounded-2xl border transition-all ${
                     activeCategory === cat.name
-                      ? 'bg-teal/10 border-teal/30 shadow-sm'
-                      : 'bg-white border-soft-steel/50 hover:border-teal/30 hover:shadow-sm hover:-translate-y-0.5'
+                      ? 'bg-primary/10 border-primary/30 shadow-sm'
+                      : 'bg-white border-border/50 hover:border-primary/30 hover:shadow-sm hover:-translate-y-0.5'
                   }`}
                 >
-                  <div className="w-9 h-9 rounded-lg bg-teal/10 flex items-center justify-center mb-3">
-                    <cat.icon className="h-4 w-4 text-teal" />
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                    <cat.icon className="h-4 w-4 text-primary" />
                   </div>
-                  <h3 className="font-display text-sm font-semibold text-harbor mb-1">{cat.name}</h3>
-                  <p className="text-xs text-slate-ink/50 leading-relaxed font-body">{cat.description}</p>
+                  <h3 className="font-display text-sm font-semibold text-text-primary mb-1">{cat.name}</h3>
+                  <p className="text-xs text-text-primary/50 leading-relaxed font-body">{cat.description}</p>
                 </button>
               ))}
             </div>
@@ -85,14 +85,14 @@ export default function Resources() {
           {marketingMatches.length > 0 && (
             <RevealSection className="mb-12">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-harbor/10 flex items-center justify-center">
-                  <Compass className="h-5 w-5 text-harbor" />
+                <div className="w-10 h-10 rounded-xl bg-sidebar-bg/10 flex items-center justify-center">
+                  <Compass className="h-5 w-5 text-text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-harbor">
+                  <h2 className="font-display text-2xl font-bold text-text-primary">
                     {t('resources.pages_heading')}
                   </h2>
-                  <p className="text-sm text-slate-ink/60 font-body">
+                  <p className="text-sm text-text-primary/60 font-body">
                     {t('resources.pages_match_count', {
                       count: marketingMatches.length,
                       query: search,
@@ -107,20 +107,20 @@ export default function Resources() {
                     <Link
                       key={page.slug}
                       to={page.path}
-                      className="group bg-white rounded-2xl border border-soft-steel/50 p-5 hover:border-teal/30 hover:shadow-md hover:-translate-y-0.5 transition-all"
+                      className="group bg-white rounded-2xl border border-border/50 p-5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 transition-all"
                     >
                       <div className="flex items-start justify-between mb-3">
-                        <div className="w-9 h-9 rounded-lg bg-harbor/10 flex items-center justify-center">
-                          <Icon className="h-4 w-4 text-harbor" />
+                        <div className="w-9 h-9 rounded-lg bg-sidebar-bg/10 flex items-center justify-center">
+                          <Icon className="h-4 w-4 text-text-primary" />
                         </div>
-                        <span className="text-[11px] text-harbor bg-harbor/10 px-2 py-0.5 rounded-full font-medium uppercase tracking-wider">
+                        <span className="text-[11px] text-text-primary bg-sidebar-bg/10 px-2 py-0.5 rounded-full font-medium uppercase tracking-wider">
                           {page.category}
                         </span>
                       </div>
-                      <h3 className="font-display text-base font-semibold text-harbor mb-1 group-hover:text-teal transition-colors">
+                      <h3 className="font-display text-base font-semibold text-text-primary mb-1 group-hover:text-primary transition-colors">
                         {page.title}
                       </h3>
-                      <p className="text-xs text-slate-ink/60 leading-relaxed font-body line-clamp-2">
+                      <p className="text-xs text-text-primary/60 leading-relaxed font-body line-clamp-2">
                         {page.description}
                       </p>
                     </Link>
@@ -132,13 +132,13 @@ export default function Resources() {
 
           <RevealSection>
             <div className="flex items-center justify-between mb-8">
-              <h2 className="font-display text-2xl font-bold text-harbor">
+              <h2 className="font-display text-2xl font-bold text-text-primary">
                 {activeCategory === 'All' ? 'All guides' : activeCategory}
               </h2>
               {activeCategory !== 'All' && (
                 <button
                   onClick={() => setActiveCategory('All')}
-                  className="text-sm text-teal hover:text-teal-hover font-medium transition-colors"
+                  className="text-sm text-primary hover:text-primary-hover font-medium transition-colors"
                 >
                   Show all
                 </button>
@@ -147,7 +147,7 @@ export default function Resources() {
 
             {filtered.length === 0 ? (
               <div className="text-center py-16">
-                <p className="text-slate-ink/50 font-body">No guides match your search. Try a different term.</p>
+                <p className="text-text-primary/50 font-body">No guides match your search. Try a different term.</p>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-6">
@@ -155,28 +155,28 @@ export default function Resources() {
                   <Link
                     key={guide.slug}
                     to={`/resources/${guide.slug}`}
-                    className="group bg-white rounded-2xl border border-soft-steel/50 p-7 hover:border-teal/30 hover:shadow-lg hover:-translate-y-1 transition-all"
+                    className="group bg-white rounded-2xl border border-border/50 p-7 hover:border-primary/30 hover:shadow-lg hover:-translate-y-1 transition-all"
                   >
                     <div className="flex items-start justify-between mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center">
-                        <guide.icon className="h-5 w-5 text-teal" />
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <guide.icon className="h-5 w-5 text-primary" />
                       </div>
-                      <span className="text-xs text-teal bg-teal/10 px-2.5 py-1 rounded-full font-medium">
+                      <span className="text-xs text-primary bg-primary/10 px-2.5 py-1 rounded-full font-medium">
                         {guide.category}
                       </span>
                     </div>
-                    <h3 className="font-display text-lg font-semibold text-harbor mb-2 group-hover:text-teal transition-colors">
+                    <h3 className="font-display text-lg font-semibold text-text-primary mb-2 group-hover:text-primary transition-colors">
                       {guide.title}
                     </h3>
-                    <p className="text-sm text-slate-ink/60 leading-relaxed font-body mb-4">
+                    <p className="text-sm text-text-primary/60 leading-relaxed font-body mb-4">
                       {guide.description}
                     </p>
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-xs text-slate-ink/40">
+                      <span className="flex items-center gap-1.5 text-xs text-text-primary/40">
                         <Clock className="h-3.5 w-3.5" />
                         {guide.readTime}
                       </span>
-                      <span className="flex items-center gap-1 text-sm text-teal font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="flex items-center gap-1 text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                         Read guide
                         <ArrowRight className="h-3.5 w-3.5" />
                       </span>
@@ -189,21 +189,21 @@ export default function Resources() {
 
           {activeCategory === 'All' && !search && (
             <RevealSection className="mt-16">
-              <div className="bg-white rounded-2xl border border-soft-steel/50 p-8 flex flex-col md:flex-row items-center gap-6">
-                <div className="w-14 h-14 rounded-2xl bg-harbor/10 flex items-center justify-center shrink-0">
-                  <BookOpen className="h-7 w-7 text-harbor" />
+              <div className="bg-white rounded-2xl border border-border/50 p-8 flex flex-col md:flex-row items-center gap-6">
+                <div className="w-14 h-14 rounded-2xl bg-sidebar-bg/10 flex items-center justify-center shrink-0">
+                  <BookOpen className="h-7 w-7 text-text-primary" />
                 </div>
                 <div className="flex-1 text-center md:text-left">
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-1">
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-1">
                     Looking for API reference?
                   </h3>
-                  <p className="text-sm text-slate-ink/60 font-body">
+                  <p className="text-sm text-text-primary/60 font-body">
                     Full API documentation with endpoints, authentication, and code examples.
                   </p>
                 </div>
                 <Link
                   to="/docs"
-                  className="inline-flex items-center gap-2 bg-harbor hover:bg-harbor-light text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors shrink-0"
+                  className="inline-flex items-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors shrink-0"
                 >
                   View API docs
                   <ArrowRight className="h-4 w-4" />
@@ -214,7 +214,7 @@ export default function Resources() {
         </div>
       </section>
 
-      <section className="bg-harbor text-white py-16">
+      <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold mb-4">
             Can't find what you're looking for?
@@ -224,7 +224,7 @@ export default function Resources() {
           </p>
           <Link
             to="/contact"
-            className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
           >
             Contact us
             <ArrowRight className="h-4 w-4" />

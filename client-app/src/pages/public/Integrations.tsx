@@ -120,10 +120,10 @@ export default function Integrations() {
         description="QVO integrates with Google Calendar, Outlook Calendar, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use."
         canonicalPath="/integrations"
       />
-      <section className="bg-harbor text-white py-20 lg:py-28">
+      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
-            <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+            <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               Integrations
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
@@ -157,10 +157,10 @@ export default function Integrations() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 Core Integrations
               </h2>
-              <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
                 Essential integrations across calendar, telephony, payments, CRM, accounting, and notifications — wired into every QVO deployment.
               </p>
             </div>
@@ -169,17 +169,17 @@ export default function Integrations() {
           <RevealSection>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
               {primaryIntegrations.map((int) => (
-                <div key={int.title} className="bg-white rounded-2xl border border-soft-steel/60 p-7 hover:border-teal/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                <div key={int.title} className="bg-white rounded-2xl border border-border/60 p-7 hover:border-primary/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center gap-3 mb-4">
                     <BrandLogo provider={int.logoId} size={36} />
-                    <span className="text-xs font-semibold font-display text-teal uppercase tracking-wide">{int.category}</span>
+                    <span className="text-xs font-semibold font-display text-primary uppercase tracking-wide">{int.category}</span>
                   </div>
-                  <h3 className="font-display text-lg font-semibold text-harbor mb-2">{int.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body mb-4">{int.desc}</p>
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{int.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body mb-4">{int.desc}</p>
                   <div className="space-y-1.5">
                     {int.features.map((f) => (
-                      <div key={f} className="flex items-center gap-2 text-xs text-slate-ink/70 font-body">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-calm-green shrink-0" />
+                      <div key={f} className="flex items-center gap-2 text-xs text-text-primary/70 font-body">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
                         {f}
                       </div>
                     ))}
@@ -191,18 +191,18 @@ export default function Integrations() {
 
           <RevealSection>
             <div className="text-center mb-10">
-              <h2 className="font-display text-2xl font-bold text-harbor mb-3">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-3">
                 Additional Capabilities
               </h2>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {additionalIntegrations.map((int) => (
-                <div key={int.title} className="bg-white rounded-2xl border border-soft-steel/50 p-6 hover:border-teal/30 hover:shadow-md transition-all duration-300">
-                  <div className="w-10 h-10 rounded-xl bg-teal/10 flex items-center justify-center mb-4">
-                    <int.icon className="h-5 w-5 text-teal" />
+                <div key={int.title} className="bg-white rounded-2xl border border-border/50 p-6 hover:border-primary/30 hover:shadow-md transition-all duration-300">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                    <int.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="font-display text-base font-semibold text-harbor mb-2">{int.title}</h3>
-                  <p className="text-sm text-slate-ink/60 leading-relaxed font-body">{int.desc}</p>
+                  <h3 className="font-display text-base font-semibold text-text-primary mb-2">{int.title}</h3>
+                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{int.desc}</p>
                 </div>
               ))}
             </div>
@@ -213,19 +213,19 @@ export default function Integrations() {
       <section className="bg-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl mx-auto text-center">
-            <div className="w-14 h-14 rounded-2xl bg-teal/10 flex items-center justify-center mx-auto mb-6">
-              <Plug className="h-7 w-7 text-teal" />
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+              <Plug className="h-7 w-7 text-primary" />
             </div>
-            <h2 className="font-display text-3xl font-bold text-harbor mb-4">
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
               Need a custom integration?
             </h2>
-            <p className="text-slate-ink/60 font-body mb-8 leading-relaxed">
+            <p className="text-text-primary/60 font-body mb-8 leading-relaxed">
               QVO's REST API and webhook system lets you connect to any external service. Our developer documentation covers authentication, event types, and payload formats.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 to="/signup"
-                className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+                className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
                 onClick={() => trackCTAClick('Start Free Trial', '/integrations', 'bottom-cta')}
               >
                 Start Free Trial
@@ -233,7 +233,7 @@ export default function Integrations() {
               </Link>
               <Link
                 to="/contact"
-                className="inline-flex items-center gap-2 bg-harbor hover:bg-harbor-light text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+                className="inline-flex items-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
                 onClick={() => trackCTAClick('Talk to Engineering', '/integrations', 'bottom-cta')}
               >
                 Talk to Engineering

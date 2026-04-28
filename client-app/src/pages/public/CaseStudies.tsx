@@ -42,9 +42,9 @@ function CaseStudyCard({ study }: { study: CaseStudy }) {
   return (
     <RevealSection>
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden hover:shadow-lg transition-shadow">
-        <div className="bg-gradient-to-r from-harbor to-slate-700 p-6">
+        <div className="bg-gradient-to-r from-sidebar-bg to-slate-700 p-6">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-medium text-teal bg-teal/20 px-2 py-0.5 rounded-full capitalize">
+            <span className="text-xs font-medium text-primary bg-primary/20 px-2 py-0.5 rounded-full capitalize">
               {study.industry}
             </span>
             <span className="text-xs text-white/50">{study.companySize} business</span>
@@ -83,7 +83,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-2 border-teal border-t-transparent rounded-full" />
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -92,8 +92,8 @@ function CaseStudyDetail({ slug }: { slug: string }) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-display font-bold text-harbor mb-4">Case Study Not Found</h1>
-          <Link to="/case-studies" className="text-teal hover:underline">View all case studies</Link>
+          <h1 className="text-2xl font-display font-bold text-text-primary mb-4">Case Study Not Found</h1>
+          <Link to="/case-studies" className="text-primary hover:underline">View all case studies</Link>
         </div>
       </div>
     );
@@ -104,10 +104,10 @@ function CaseStudyDetail({ slug }: { slug: string }) {
   return (
     <>
       <SEO title={`${study.title} | QVO Case Study`} description={study.summary} />
-      <section className="py-20 bg-gradient-to-br from-harbor via-harbor to-slate-800">
+      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-slate-800">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm font-medium text-teal bg-teal/20 px-3 py-1 rounded-full capitalize">{study.industry}</span>
+            <span className="text-sm font-medium text-primary bg-primary/20 px-3 py-1 rounded-full capitalize">{study.industry}</span>
           </div>
           <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-4">{study.title}</h1>
           <p className="text-lg text-white/70">{study.summary}</p>
@@ -115,7 +115,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
       </section>
       <section className="py-16 bg-white">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
-          <h2 className="text-2xl font-display font-bold text-harbor mb-8">Key Results</h2>
+          <h2 className="text-2xl font-display font-bold text-text-primary mb-8">Key Results</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
             <MetricCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} color="bg-blue-50 text-blue-700" />
             <MetricCard icon={TrendingUp} label="Automation rate" value={`${Math.round(m.automationRate * 100)}%`} color="bg-emerald-50 text-emerald-700" />
@@ -124,7 +124,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-slate-50 rounded-xl p-6">
-              <h3 className="font-display font-semibold text-harbor mb-3">Performance</h3>
+              <h3 className="font-display font-semibold text-text-primary mb-3">Performance</h3>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-slate-600">Avg response time</span><span className="font-medium">{m.avgResponseTime}s</span></div>
                 <div className="flex justify-between text-sm"><span className="text-slate-600">Days active</span><span className="font-medium">{m.daysActive}</span></div>
@@ -132,7 +132,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
               </div>
             </div>
             <div className="bg-slate-50 rounded-xl p-6">
-              <h3 className="font-display font-semibold text-harbor mb-3">Business Impact</h3>
+              <h3 className="font-display font-semibold text-text-primary mb-3">Business Impact</h3>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-slate-600">Annual savings</span><span className="font-medium text-emerald-600">{formatDollars(m.monthlySavings * 12, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-slate-600">Total calls automated</span><span className="font-medium">{Math.round(m.totalCalls * m.automationRate).toLocaleString()}</span></div>
@@ -142,11 +142,11 @@ function CaseStudyDetail({ slug }: { slug: string }) {
           </div>
         </div>
       </section>
-      <section className="py-16 bg-gradient-to-br from-teal to-teal-hover">
+      <section className="py-16 bg-gradient-to-br from-primary to-primary-hover">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-4">Get Results Like These</h2>
           <p className="text-white/80 mb-8">Start your free 14-day trial and see what QVO can do for your business.</p>
-          <Link to="/signup" className="inline-flex items-center gap-2 bg-white text-teal hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors">
+          <Link to="/signup" className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors">
             Start Free Trial <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -190,7 +190,7 @@ export default function CaseStudies() {
         description="See how businesses across healthcare, legal, real estate, and home services use QVO AI voice agents to automate calls and grow revenue."
       />
 
-      <section className="py-20 bg-gradient-to-br from-harbor via-harbor to-slate-800">
+      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-slate-800">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">Customer Success Stories</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
@@ -199,11 +199,11 @@ export default function CaseStudies() {
         </div>
       </section>
 
-      <section className="py-16 bg-mist">
+      <section className="py-16 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           {loading ? (
             <div className="flex justify-center py-16">
-              <div className="animate-spin h-8 w-8 border-2 border-teal border-t-transparent rounded-full" />
+              <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
             </div>
           ) : studies.length === 0 ? (
             <div>
@@ -213,28 +213,28 @@ export default function CaseStudies() {
                   { vertical: 'Home Services', name: 'Comfort First HVAC', metric: '$184K', label: 'recovered annually', summary: 'After-hours emergency calls now book directly into the dispatch queue without an on-call coordinator.' },
                   { vertical: 'Legal', name: 'Park & Associates', metric: '4.9 / 5', label: 'caller satisfaction', summary: 'Intake automation freed paralegals from screening calls so they could focus on case work.' },
                 ].map((s) => (
-                  <div key={s.name} className="bg-white border border-soft-steel/30 rounded-2xl p-6">
-                    <span className="text-xs font-semibold text-teal bg-teal/10 px-2.5 py-1 rounded-full">{s.vertical}</span>
-                    <h3 className="font-display text-lg font-bold text-harbor mt-4 mb-2">{s.name}</h3>
+                  <div key={s.name} className="bg-white border border-border/30 rounded-2xl p-6">
+                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">{s.vertical}</span>
+                    <h3 className="font-display text-lg font-bold text-text-primary mt-4 mb-2">{s.name}</h3>
                     <div className="mb-3">
-                      <p className="font-display text-3xl font-bold text-teal">{s.metric}</p>
-                      <p className="text-xs text-slate-ink/60 font-body">{s.label}</p>
+                      <p className="font-display text-3xl font-bold text-primary">{s.metric}</p>
+                      <p className="text-xs text-text-primary/60 font-body">{s.label}</p>
                     </div>
-                    <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{s.summary}</p>
+                    <p className="text-sm text-text-primary/70 font-body leading-relaxed">{s.summary}</p>
                   </div>
                 ))}
               </div>
-              <div className="text-center bg-white border border-soft-steel/30 rounded-2xl py-10 px-6">
+              <div className="text-center bg-white border border-border/30 rounded-2xl py-10 px-6">
                 <BarChart3 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-                <h3 className="text-lg font-display font-semibold text-harbor mb-2">Detailed case studies coming soon</h3>
+                <h3 className="text-lg font-display font-semibold text-text-primary mb-2">Detailed case studies coming soon</h3>
                 <p className="text-slate-500 mb-5 max-w-xl mx-auto text-sm">
                   We are publishing in-depth stories from our healthcare, legal, and home-service customers. In the meantime, request a custom walkthrough.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
-                  <Link to="/book-demo" className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  <Link to="/book-demo" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
                     Book a demo <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <Link to="/demo" className="inline-flex items-center gap-2 bg-mist hover:bg-soft-steel/30 text-harbor px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  <Link to="/demo" className="inline-flex items-center gap-2 bg-surface-secondary hover:bg-surface-hover text-text-primary px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
                     Try the live demo
                   </Link>
                 </div>
@@ -254,16 +254,16 @@ export default function CaseStudies() {
 
       <section className="py-16 bg-white">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
-          <h2 className="text-2xl md:text-3xl font-display font-bold text-harbor mb-4">Ready to Be Our Next Success Story?</h2>
+          <h2 className="text-2xl md:text-3xl font-display font-bold text-text-primary mb-4">Ready to Be Our Next Success Story?</h2>
           <p className="text-slate-600 mb-8">Start your free trial and see results within the first week.</p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/signup" className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
+            <Link to="/signup" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Start Free Trial <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link to="/book-demo" className="inline-flex items-center gap-2 bg-harbor/5 hover:bg-harbor/10 text-harbor px-8 py-3.5 rounded-xl font-semibold transition-colors">
+            <Link to="/book-demo" className="inline-flex items-center gap-2 bg-sidebar-bg/5 hover:bg-sidebar-bg/10 text-text-primary px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Book a Demo
             </Link>
-            <Link to="/demo" className="inline-flex items-center gap-2 text-harbor/70 hover:text-harbor px-6 py-3.5 rounded-xl font-semibold transition-colors">
+            <Link to="/demo" className="inline-flex items-center gap-2 text-text-primary/70 hover:text-text-primary px-6 py-3.5 rounded-xl font-semibold transition-colors">
               See Live Demo
             </Link>
           </div>

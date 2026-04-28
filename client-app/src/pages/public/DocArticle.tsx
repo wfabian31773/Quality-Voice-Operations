@@ -88,16 +88,16 @@ export default function DocArticle() {
         }}
       />
 
-      <section className="bg-mist border-b border-soft-steel/50">
+      <section className="bg-surface-secondary border-b border-border/50">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-4">
-          <nav className="flex items-center gap-2 text-xs text-slate-ink/60 font-body">
-            <Link to="/docs" className="hover:text-teal transition-colors">Docs</Link>
+          <nav className="flex items-center gap-2 text-xs text-text-primary/60 font-body">
+            <Link to="/docs" className="hover:text-primary transition-colors">Docs</Link>
             <ChevronRight className="h-3 w-3" />
-            <Link to={`/docs#${article.category}`} className="hover:text-teal transition-colors">
+            <Link to={`/docs#${article.category}`} className="hover:text-primary transition-colors">
               {category?.title}
             </Link>
             <ChevronRight className="h-3 w-3" />
-            <span className="text-slate-ink/80">{article.title}</span>
+            <span className="text-text-primary/80">{article.title}</span>
           </nav>
         </div>
       </section>
@@ -113,16 +113,16 @@ export default function DocArticle() {
 
             <article className="flex-1 min-w-0 max-w-3xl">
               <header className="mb-8">
-                <span className="text-xs text-teal bg-teal/10 px-2.5 py-1 rounded-full font-medium">
+                <span className="text-xs text-primary bg-primary/10 px-2.5 py-1 rounded-full font-medium">
                   {category?.title}
                 </span>
-                <h1 className="font-display text-3xl lg:text-4xl font-bold text-harbor mt-3 mb-3 leading-tight">
+                <h1 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mt-3 mb-3 leading-tight">
                   {article.title}
                 </h1>
-                <p className="text-base text-slate-ink/70 font-body leading-relaxed">
+                <p className="text-base text-text-primary/70 font-body leading-relaxed">
                   {article.description}
                 </p>
-                <div className="flex items-center gap-4 mt-4 text-xs text-slate-ink/50 font-body">
+                <div className="flex items-center gap-4 mt-4 text-xs text-text-primary/50 font-body">
                   <span className="flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5" />
                     {article.readTime}
@@ -132,7 +132,7 @@ export default function DocArticle() {
                     href={editUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="ml-auto hidden sm:flex items-center gap-1.5 hover:text-teal transition-colors"
+                    className="ml-auto hidden sm:flex items-center gap-1.5 hover:text-primary transition-colors"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                     Edit this page
@@ -142,22 +142,22 @@ export default function DocArticle() {
 
               <DocBlocks blocks={article.body} />
 
-              <div className="mt-12 border-t border-soft-steel/50 pt-8">
+              <div className="mt-12 border-t border-border/50 pt-8">
                 {!feedback || (feedback === 'not_helpful' && !submitted) ? (
                   <div>
-                    <p className="text-sm font-semibold text-harbor mb-3">Was this article helpful?</p>
+                    <p className="text-sm font-semibold text-text-primary mb-3">Was this article helpful?</p>
                     {!feedback ? (
                       <div className="flex gap-3">
                         <button
                           onClick={() => submitFeedback('helpful')}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-soft-steel/60 hover:border-teal hover:text-teal text-sm font-medium transition-colors"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border/60 hover:border-primary hover:text-primary text-sm font-medium transition-colors"
                         >
                           <ThumbsUp className="h-4 w-4" />
                           Yes
                         </button>
                         <button
                           onClick={() => submitFeedback('not_helpful')}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-soft-steel/60 hover:border-teal hover:text-teal text-sm font-medium transition-colors"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border/60 hover:border-primary hover:text-primary text-sm font-medium transition-colors"
                         >
                           <ThumbsDown className="h-4 w-4" />
                           No
@@ -165,16 +165,16 @@ export default function DocArticle() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <p className="text-xs text-slate-ink/60 font-body">What was missing or unclear? (optional)</p>
+                        <p className="text-xs text-text-primary/60 font-body">What was missing or unclear? (optional)</p>
                         <textarea
                           value={comment}
                           onChange={(e) => setComment(e.target.value)}
                           rows={3}
-                          className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40"
+                          className="w-full px-3 py-2 rounded-lg border border-border/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40"
                           placeholder="Tell us how we can improve this article..."
                         />
                         <div>
-                          <p className="text-xs text-slate-ink/60 font-body mb-1">
+                          <p className="text-xs text-text-primary/60 font-body mb-1">
                             Email (optional) — so our team can follow up
                           </p>
                           <input
@@ -185,7 +185,7 @@ export default function DocArticle() {
                               if (emailError) setEmailError(null);
                             }}
                             placeholder="you@example.com"
-                            className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40"
+                            className="w-full px-3 py-2 rounded-lg border border-border/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40"
                           />
                           {emailError && (
                             <p className="text-xs text-red-600 mt-1 font-body">{emailError}</p>
@@ -194,13 +194,13 @@ export default function DocArticle() {
                         <div className="flex gap-2">
                           <button
                             onClick={submitComment}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-hover transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
                           >
                             Submit feedback
                           </button>
                           <button
                             onClick={() => setSubmitted(true)}
-                            className="text-sm text-slate-ink/50 hover:text-slate-ink/80 px-3"
+                            className="text-sm text-text-primary/50 hover:text-text-primary/80 px-3"
                           >
                             Skip
                           </button>
@@ -220,19 +220,19 @@ export default function DocArticle() {
                 {adjacent.prev ? (
                   <Link
                     to={`/docs/${adjacent.prev.slug}`}
-                    className="group bg-white border border-soft-steel/50 rounded-xl p-4 hover:border-teal/40 hover:shadow-sm transition-all"
+                    className="group bg-white border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all"
                   >
-                    <p className="text-xs text-slate-ink/50 font-body mb-1">← Previous</p>
-                    <p className="text-sm font-semibold text-harbor group-hover:text-teal transition-colors">{adjacent.prev.title}</p>
+                    <p className="text-xs text-text-primary/50 font-body mb-1">← Previous</p>
+                    <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{adjacent.prev.title}</p>
                   </Link>
                 ) : <div />}
                 {adjacent.next ? (
                   <Link
                     to={`/docs/${adjacent.next.slug}`}
-                    className="group bg-white border border-soft-steel/50 rounded-xl p-4 hover:border-teal/40 hover:shadow-sm transition-all sm:text-right"
+                    className="group bg-white border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all sm:text-right"
                   >
-                    <p className="text-xs text-slate-ink/50 font-body mb-1">Next →</p>
-                    <p className="text-sm font-semibold text-harbor group-hover:text-teal transition-colors">{adjacent.next.title}</p>
+                    <p className="text-xs text-text-primary/50 font-body mb-1">Next →</p>
+                    <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{adjacent.next.title}</p>
                   </Link>
                 ) : <div />}
               </div>
@@ -240,13 +240,13 @@ export default function DocArticle() {
 
             <aside className="hidden xl:block w-56 shrink-0">
               <div className="sticky top-24">
-                <p className="text-xs font-semibold text-slate-ink/50 uppercase tracking-wider mb-3">On this page</p>
+                <p className="text-xs font-semibold text-text-primary/50 uppercase tracking-wider mb-3">On this page</p>
                 <ul className="space-y-1.5">
                   {tocHeadings.map((h) => (
                     <li key={h.id} className={h.level === 3 ? 'pl-3' : ''}>
                       <a
                         href={`#${h.id}`}
-                        className="block text-xs text-slate-ink/60 hover:text-teal py-1 font-body leading-relaxed"
+                        className="block text-xs text-text-primary/60 hover:text-primary py-1 font-body leading-relaxed"
                       >
                         {h.text}
                       </a>
