@@ -67,7 +67,7 @@ export type { CampaignTypeDefinition } from './CampaignTypeRegistry';
 export { buildCampaignTypePromptAugmentation, classifyTypeDisposition } from './CampaignPromptService';
 export type {
   Campaign, CampaignContact, CampaignMetrics, CampaignStatus,
-  ContactStatus, ContactOutcome, CampaignScheduleConfig,
+  ContactStatus, ContactOutcome, CampaignScheduleConfig, CampaignConfig,
   CreateCampaignParams, UpdateCampaignParams,
   CampaignType, TypeSpecificMetrics, TypeDisposition,
   CampaignComplianceReport, CampaignComplianceMatch,

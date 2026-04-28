@@ -24,7 +24,7 @@ import {
   findDncMatchingContactIds,
   bulkMarkOptedOut,
 } from '../../../platform/campaigns';
-import type { CampaignStatus } from '../../../platform/campaigns';
+import type { CampaignStatus, CampaignConfig } from '../../../platform/campaigns';
 import { getVerifiedCallerById } from '../../../platform/telephony/TrustedCallerService';
 
 function parseCsvLine(line: string): string[] {
@@ -172,7 +172,7 @@ router.post('/campaigns', requireAuth, requireRole('manager'), async (req, res) 
     agentId?: string;
     name?: string;
     type?: string;
-    config?: Record<string, unknown>;
+    config?: CampaignConfig;
     scheduledAt?: string;
   };
 
@@ -296,7 +296,7 @@ router.patch('/campaigns/:id', requireAuth, requireRole('manager'), async (req, 
   const { name, status, config, scheduledAt } = req.body as {
     name?: string;
     status?: string;
-    config?: Record<string, unknown>;
+    config?: CampaignConfig;
     scheduledAt?: string;
   };
 
@@ -520,7 +520,7 @@ router.post('/campaigns/:id/scrub-dnc', requireAuth, requireRole('manager'), asy
         });
       }
 
-      const verifiedCallerIdCfg = (campaign.config as Record<string, unknown> | undefined)?.verifiedCallerId;
+      const verifiedCallerIdCfg = campaign.config.verifiedCallerId;
       if (typeof verifiedCallerIdCfg === 'string' && verifiedCallerIdCfg.length > 0) {
         const verified = await getVerifiedCallerById(tenantId, verifiedCallerIdCfg);
         if (!verified) {

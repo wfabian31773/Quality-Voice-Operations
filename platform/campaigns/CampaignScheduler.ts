@@ -13,8 +13,9 @@ import {
 } from './CampaignService';
 import { dialContact } from './OutboundDialer';
 import { isContactOnDnc, writeFederalDncBlockAuditLog } from './ComplianceService';
-import { evaluateQuietHours, type QuietHoursConfig } from './QuietHours';
+import { evaluateQuietHours } from './QuietHours';
 import { resolveCampaignCallerId } from '../telephony/TrustedCallerService';
+import type { CampaignConfig } from './types';
 
 const logger = createLogger('CAMPAIGN_SCHEDULER');
 
@@ -34,10 +35,10 @@ export interface CampaignSchedulerConfig {
  * answer that question without a contact, so we always return true and let
  * the per-contact check inside the dial loop do the real work.
  */
-function couldAnyContactBeInWindow(config: Record<string, unknown>): boolean {
-  const respectContact = (config as { respectContactTimezone?: boolean }).respectContactTimezone !== false;
+function couldAnyContactBeInWindow(config: CampaignConfig): boolean {
+  const respectContact = config.respectContactTimezone !== false;
   if (respectContact) return true;
-  const decision = evaluateQuietHours('', config as QuietHoursConfig);
+  const decision = evaluateQuietHours('', config);
   return decision.allowed;
 }
 
@@ -116,9 +117,9 @@ export class CampaignScheduler {
           continue;
         }
 
-        const maxConcurrent = (campaign.config.maxConcurrent as number) ?? (campaign.config.maxConcurrentCalls as number) ?? DEFAULT_MAX_CONCURRENT;
-        const maxAttempts = (campaign.config.maxAttempts as number) ?? 3;
-        const retryDelayMinutes = (campaign.config.retryDelayMinutes as number) ?? 30;
+        const maxConcurrent = campaign.config.maxConcurrent ?? campaign.config.maxConcurrentCalls ?? DEFAULT_MAX_CONCURRENT;
+        const maxAttempts = campaign.config.maxAttempts ?? 3;
+        const retryDelayMinutes = campaign.config.retryDelayMinutes ?? 30;
 
         const campaignActive = await getActiveDialingCount(campaign.tenantId, campaign.id);
         const campaignAvailable = maxConcurrent - campaignActive;
@@ -148,7 +149,7 @@ export class CampaignScheduler {
           );
           if (!contact) break;
 
-          const quietHours = evaluateQuietHours(contact.phoneNumber, campaign.config as QuietHoursConfig);
+          const quietHours = evaluateQuietHours(contact.phoneNumber, campaign.config);
           if (!quietHours.allowed) {
             await revertContactToPending(campaign.tenantId, contact.id);
             tickSkippedIds.push(contact.id);
@@ -197,7 +198,7 @@ export class CampaignScheduler {
             continue;
           }
 
-          const verifiedCallerIdCfg = (campaign.config.verifiedCallerId as string | undefined) ?? null;
+          const verifiedCallerIdCfg = campaign.config.verifiedCallerId ?? null;
           let fromNumber: string | undefined;
           if (verifiedCallerIdCfg) {
             const verified = await resolveCampaignCallerId(campaign.tenantId, verifiedCallerIdCfg);

@@ -43,6 +43,24 @@ export interface CampaignScheduleConfig {
   callWindows: Array<{ start: string; end: string; days: number[] }>;
 }
 
+/**
+ * Persisted campaign config blob. Mirrors the client-side `CampaignConfig`
+ * (see `client-app/src/pages/Campaigns.tsx`): every scheduling field is
+ * optional because rows persisted before a setting was introduced can
+ * (and do) omit it. Per-campaign-type config fields are still dynamic and
+ * stored on the same JSONB blob, so we keep the `Record<string, unknown>`
+ * escape hatch.
+ */
+export type CampaignConfig =
+  & Partial<CampaignScheduleConfig>
+  & {
+    /** Legacy alias for `maxConcurrentCalls`; still read by the dialer. */
+    maxConcurrent?: number;
+    /** Verified outbound caller ID (Trusted Caller record id) or null when unset. */
+    verifiedCallerId?: string | null;
+  }
+  & Record<string, unknown>;
+
 export interface CampaignComplianceMatch {
   contactId: string;
   phoneRedacted: string;
@@ -108,7 +126,7 @@ export interface Campaign {
   name: string;
   type: string;
   status: CampaignStatus;
-  config: Partial<CampaignScheduleConfig> & Record<string, unknown>;
+  config: CampaignConfig;
   scheduledAt: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
@@ -164,13 +182,13 @@ export interface CreateCampaignParams {
   agentId: string;
   name: string;
   type?: string;
-  config?: Partial<CampaignScheduleConfig> & Record<string, unknown>;
+  config?: CampaignConfig;
   scheduledAt?: Date;
 }
 
 export interface UpdateCampaignParams {
   name?: string;
   status?: CampaignStatus;
-  config?: Partial<CampaignScheduleConfig> & Record<string, unknown>;
+  config?: CampaignConfig;
   scheduledAt?: Date;
 }
