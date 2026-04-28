@@ -28,18 +28,22 @@ const VOICE_MODELS = [
   { value: 'gpt-4o-mini-realtime-preview', label: 'GPT-4o Mini Realtime' },
 ];
 
-const ALL_TIMEZONES = (() => {
+const ALL_TIMEZONES: string[] = (() => {
   try {
-    return Intl.supportedValuesOf('timeZone');
+    const intl = Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] };
+    if (typeof intl.supportedValuesOf === 'function') {
+      return intl.supportedValuesOf('timeZone');
+    }
   } catch {
-    return [
-      'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-      'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu',
-      'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-      'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata',
-      'Australia/Sydney', 'UTC',
-    ];
+    /* fall through */
   }
+  return [
+    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+    'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu',
+    'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+    'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata',
+    'Australia/Sydney', 'UTC',
+  ];
 })();
 
 type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy' | 'notifications';

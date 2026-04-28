@@ -1,5 +1,5 @@
 {
-  "name": "voice-ai-hub-client",
+  "name": "client-app",
   "private": true,
   "version": "1.0.0",
   "type": "module",

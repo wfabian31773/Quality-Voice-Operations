@@ -305,7 +305,7 @@ export default function SmsInbox() {
         contact_name: selectedConv.contactName || '',
         contact_email: selectedConv.contactEmail || '',
         contact_location: selectedConv.contactLocation || '',
-        agent_name: user?.firstName || user?.email || '',
+        agent_name: user?.email || '',
       };
       for (const [key, val] of Object.entries(vars)) {
         text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), val);
@@ -697,7 +697,7 @@ function InboxView({
                   ))}
                   <div className="border-t border-border my-1"></div>
                   <button
-                    onClick={() => updateConversation({ assigneeUserId: user?.id || null })}
+                    onClick={() => updateConversation({ assigneeUserId: user?.userId || null })}
                     className="w-full text-left px-3 py-1.5 text-xs hover:bg-surface-secondary"
                   >
                     Assign to Me

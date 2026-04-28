@@ -1230,19 +1230,19 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                   {typeDef?.label ?? campaign.type.replace(/_/g, ' ')}
                 </span>
               </div>
-              {config.timezone && (
+              {Boolean(config.timezone) && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Timezone</span>
                   <span className="text-sm text-text-primary">{String(config.timezone)}</span>
                 </div>
               )}
-              {config.callWindowStart && (
+              {Boolean(config.callWindowStart) && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Call Window</span>
                   <span className="text-sm text-text-primary">{String(config.callWindowStart)} — {String(config.callWindowEnd)}</span>
                 </div>
               )}
-              {config.daysOfWeek && (
+              {Boolean(config.daysOfWeek) && (
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-text-muted">Days</span>
                   <span className="text-sm text-text-primary">{(config.daysOfWeek as number[]).map((d: number) => DAYS[d]).join(', ')}</span>
