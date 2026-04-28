@@ -291,7 +291,7 @@ function ChannelBadge({ channel }: { channel: string }) {
   if (!info) return null;
   const Icon = info.icon;
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 text-text-primary/70 rounded border border-steel/30">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 text-text-primary/70 rounded border border-border">
       <Icon className="h-3 w-3" />
       {info.label}
     </span>
@@ -303,7 +303,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
   const Icon = agent.icon;
 
   return (
-    <div className="bg-white rounded-xl border border-steel/30 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+    <div className="bg-white rounded-xl border border-border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
       <div className="p-6">
         <div className="flex items-start gap-4 mb-4">
           {agent.avatar ? (
@@ -361,13 +361,13 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-steel/20 bg-surface-secondary/50 px-6 py-5 space-y-5">
+        <div className="border-t border-border bg-surface-secondary/50 px-6 py-5 space-y-5">
           <div>
             <h4 className="font-display text-sm font-semibold text-text-primary mb-3 flex items-center gap-1.5">
               <MessageSquare className="h-4 w-4 text-primary" />
               Example Conversation
             </h4>
-            <div className="space-y-2.5 bg-white rounded-lg border border-steel/20 p-4">
+            <div className="space-y-2.5 bg-white rounded-lg border border-border p-4">
               {agent.conversationExample.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'agent' ? 'justify-start' : 'justify-end'}`}>
                   <div
@@ -496,7 +496,7 @@ export default function AgentsShowcase() {
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     activeCategory === cat
                       ? 'bg-sidebar-bg text-white shadow-sm'
-                      : 'bg-white text-text-primary/70 border border-steel/30 hover:border-sidebar-bg/40 hover:text-text-primary'
+                      : 'bg-white text-text-primary/70 border border-border hover:border-sidebar-bg/40 hover:text-text-primary'
                   }`}
                 >
                   <CatIcon className="h-4 w-4" />

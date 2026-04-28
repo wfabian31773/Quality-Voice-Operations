@@ -40,7 +40,7 @@ export default function VerifyEmail() {
       <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
         {status === 'loading' && (
           <>
-            <div className="w-12 h-12 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Verifying your email...</h2>
           </>
         )}
@@ -53,7 +53,7 @@ export default function VerifyEmail() {
             </div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Email Verified</h2>
             <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
-            <Link to="/login" className="inline-block bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+            <Link to="/login" className="inline-block bg-primary hover:bg-primary-hover text-white font-medium py-2 px-6 rounded-lg transition-colors">
               Go to Login
             </Link>
           </>

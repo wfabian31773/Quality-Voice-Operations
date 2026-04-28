@@ -189,7 +189,7 @@ export default function Signup() {
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     required
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.organization_name_placeholder')}
                   />
                 </div>
@@ -201,7 +201,7 @@ export default function Signup() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.email_placeholder')}
                   />
                 </div>
@@ -214,7 +214,7 @@ export default function Signup() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-steel/40 bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.password_min_8_placeholder')}
                   />
                 </div>
@@ -230,7 +230,7 @@ export default function Signup() {
                         className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
                           plan === p.key
                             ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                            : 'border-steel/30 hover:border-sidebar-bg/30'
+                            : 'border-border hover:border-sidebar-bg/30'
                         }`}
                       >
                         {p.popular && (

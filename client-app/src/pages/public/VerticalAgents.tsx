@@ -54,9 +54,9 @@ const agentMeta = [
   {
     slug: 'real-estate',
     icon: Home,
-    accent: 'bg-teal-600',
-    accentSoft: 'bg-teal-50',
-    accentText: 'text-teal-700',
+    accent: 'bg-primary',
+    accentSoft: 'bg-primary-light',
+    accentText: 'text-primary',
     verticalLink: '/industries/real-estate',
   },
 ];
