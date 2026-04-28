@@ -73,11 +73,11 @@ function StepCard({ step, color, bg, compact, stepNumber, totalSteps }: {
       >
         {step.icon}
       </div>
-      <p className={`font-display font-semibold text-harbor leading-tight mb-1 ${compact ? 'text-xs lg:text-sm' : 'text-sm lg:text-base'}`}>
+      <p className={`font-display font-semibold text-sidebar-bg leading-tight mb-1 ${compact ? 'text-xs lg:text-sm' : 'text-sm lg:text-base'}`}>
         {step.label}
       </p>
       {step.description && (
-        <p className={`text-slate-ink/70 font-body leading-snug ${compact ? 'text-[10px] lg:text-xs max-w-[110px]' : 'text-xs lg:text-sm max-w-[160px]'}`}>
+        <p className={`text-text-primary/70 font-body leading-snug ${compact ? 'text-[10px] lg:text-xs max-w-[110px]' : 'text-xs lg:text-sm max-w-[160px]'}`}>
           {step.description}
         </p>
       )}
@@ -95,12 +95,12 @@ export default function WorkflowDiagram({
 
   return (
     <div
-      className={`rounded-2xl border border-soft-steel/20 bg-white overflow-hidden transition-all duration-300 shadow-sm hover:shadow-lg hover:border-soft-steel/30 ${compact ? 'p-5 lg:p-6' : 'p-6 lg:p-10'}`}
+      className={`rounded-2xl border border-border-strong/20 bg-white overflow-hidden transition-all duration-300 shadow-sm hover:shadow-lg hover:border-border-strong/30 ${compact ? 'p-5 lg:p-6' : 'p-6 lg:p-10'}`}
       role="figure"
       aria-label={title ? `${title} workflow diagram` : 'Agent workflow diagram'}
     >
       {title && (
-        <h4 className="font-display text-base lg:text-lg font-bold text-harbor text-center mb-6 lg:mb-8">
+        <h4 className="font-display text-base lg:text-lg font-bold text-sidebar-bg text-center mb-6 lg:mb-8">
           {title}
         </h4>
       )}

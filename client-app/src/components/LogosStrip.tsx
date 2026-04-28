@@ -19,17 +19,17 @@ interface LogosStripProps {
 export default function LogosStrip({ variant = 'light', title = 'Trusted by businesses in your industry' }: LogosStripProps) {
   const isDark = variant === 'dark';
   return (
-    <div className={isDark ? 'text-white' : 'text-harbor'}>
+    <div className={isDark ? 'text-white' : 'text-sidebar-bg'}>
       {title && (
-        <p className={`text-center text-xs uppercase tracking-wider font-semibold mb-6 ${isDark ? 'text-white/40' : 'text-slate-ink/40'}`}>
+        <p className={`text-center text-xs uppercase tracking-wider font-semibold mb-6 ${isDark ? 'text-white/40' : 'text-text-primary/40'}`}>
           {title}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-5">
         {logos.map((l) => (
           <div key={l.name} className={`flex items-center gap-2 ${isDark ? 'opacity-60' : 'opacity-50'} hover:opacity-100 transition-opacity`}>
-            <l.icon className={`h-4 w-4 ${isDark ? 'text-white' : 'text-harbor'}`} />
-            <span className={`text-xs font-display font-semibold tracking-wide ${isDark ? 'text-white' : 'text-harbor'}`}>{l.name}</span>
+            <l.icon className={`h-4 w-4 ${isDark ? 'text-white' : 'text-sidebar-bg'}`} />
+            <span className={`text-xs font-display font-semibold tracking-wide ${isDark ? 'text-white' : 'text-sidebar-bg'}`}>{l.name}</span>
           </div>
         ))}
       </div>

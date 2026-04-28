@@ -73,7 +73,7 @@ export function HelpDrawer() {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open help"
-        className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-teal hover:bg-teal-hover text-white shadow-lg shadow-teal/30 flex items-center justify-center transition-colors"
+        className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-colors"
       >
         <HelpCircle className="h-5 w-5" />
       </button>
@@ -85,28 +85,28 @@ export function HelpDrawer() {
             onClick={() => setOpen(false)}
           />
           <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
-            <header className="px-5 py-4 border-b border-soft-steel/40 flex items-center justify-between">
+            <header className="px-5 py-4 border-b border-border-strong/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <HelpCircle className="h-5 w-5 text-teal" />
-                <h2 className="font-display text-base font-bold text-harbor">Help</h2>
+                <HelpCircle className="h-5 w-5 text-primary" />
+                <h2 className="font-display text-base font-bold text-sidebar-bg">Help</h2>
               </div>
               <button
                 onClick={() => setOpen(false)}
-                className="text-slate-ink/50 hover:text-slate-ink p-1 rounded-md hover:bg-mist"
+                className="text-text-primary/50 hover:text-text-primary p-1 rounded-md hover:bg-surface-secondary"
                 aria-label="Close help"
               >
                 <X className="h-4 w-4" />
               </button>
             </header>
 
-            <div className="px-5 pt-3 border-b border-soft-steel/40">
+            <div className="px-5 pt-3 border-b border-border-strong/40">
               <div className="flex gap-1">
                 <button
                   onClick={() => setTab('article')}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     tab === 'article'
-                      ? 'text-teal border-teal'
-                      : 'text-slate-ink/60 border-transparent hover:text-slate-ink'
+                      ? 'text-primary border-primary'
+                      : 'text-text-primary/60 border-transparent hover:text-text-primary'
                   }`}
                 >
                   This page
@@ -115,8 +115,8 @@ export function HelpDrawer() {
                   onClick={() => setTab('support')}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     tab === 'support'
-                      ? 'text-teal border-teal'
-                      : 'text-slate-ink/60 border-transparent hover:text-slate-ink'
+                      ? 'text-primary border-primary'
+                      : 'text-text-primary/60 border-transparent hover:text-text-primary'
                   }`}
                 >
                   Contact support
@@ -127,22 +127,22 @@ export function HelpDrawer() {
             <div className="flex-1 overflow-y-auto">
               {tab === 'article' && article && (
                 <div className="p-5">
-                  <p className="text-[10px] uppercase tracking-wider text-teal font-semibold mb-1">
+                  <p className="text-[10px] uppercase tracking-wider text-primary font-semibold mb-1">
                     {article.category.replace('-', ' ')}
                   </p>
-                  <h3 className="font-display text-lg font-bold text-harbor mb-1">
+                  <h3 className="font-display text-lg font-bold text-sidebar-bg mb-1">
                     {article.title}
                   </h3>
-                  <p className="text-sm text-slate-ink/60 font-body mb-4">{article.description}</p>
+                  <p className="text-sm text-text-primary/60 font-body mb-4">{article.description}</p>
                   <div className="text-sm">
                     <DocBlocks blocks={article.body} dense />
                   </div>
-                  <div className="mt-6 pt-4 border-t border-soft-steel/40 flex flex-col gap-2">
+                  <div className="mt-6 pt-4 border-t border-border-strong/40 flex flex-col gap-2">
                     <Link
                       to={`/docs/${article.slug}`}
                       target="_blank"
                       onClick={() => setOpen(false)}
-                      className="inline-flex items-center gap-1.5 text-sm text-teal hover:text-teal-hover font-medium"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary-hover font-medium"
                     >
                       Open in docs
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -151,7 +151,7 @@ export function HelpDrawer() {
                       to="/docs"
                       target="_blank"
                       onClick={() => setOpen(false)}
-                      className="inline-flex items-center gap-1.5 text-sm text-slate-ink/60 hover:text-teal"
+                      className="inline-flex items-center gap-1.5 text-sm text-text-primary/60 hover:text-primary"
                     >
                       Browse all documentation
                     </Link>
@@ -165,28 +165,28 @@ export function HelpDrawer() {
                       <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 flex items-center justify-center mb-4">
                         <Check className="h-6 w-6 text-emerald-600" />
                       </div>
-                      <h3 className="font-display text-lg font-bold text-harbor mb-1">Message sent</h3>
-                      <p className="text-sm text-slate-ink/70 font-body">
+                      <h3 className="font-display text-lg font-bold text-sidebar-bg mb-1">Message sent</h3>
+                      <p className="text-sm text-text-primary/70 font-body">
                         We've received your request{result.ticket_id ? ` (ticket ${result.ticket_id})` : ''} and will reply by email within one business day.
                       </p>
                       <button
                         onClick={() => { setResult(null); setOpen(false); }}
-                        className="mt-6 text-sm font-medium text-teal hover:text-teal-hover"
+                        className="mt-6 text-sm font-medium text-primary hover:text-primary-hover"
                       >
                         Close
                       </button>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <p className="text-sm text-slate-ink/70 font-body">
+                      <p className="text-sm text-text-primary/70 font-body">
                         Tell us what's going on. We'll include this page and recent activity automatically to speed things up.
                       </p>
                       <div>
-                        <label className="text-xs font-semibold text-slate-ink/70 uppercase tracking-wider mb-1.5 block">Topic</label>
+                        <label className="text-xs font-semibold text-text-primary/70 uppercase tracking-wider mb-1.5 block">Topic</label>
                         <select
                           value={topic}
                           onChange={(e) => setTopic(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40 bg-white"
+                          className="w-full px-3 py-2 rounded-lg border border-border-strong/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 bg-white"
                         >
                           <option value="question">General question</option>
                           <option value="bug">Something is broken</option>
@@ -197,26 +197,26 @@ export function HelpDrawer() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-slate-ink/70 uppercase tracking-wider mb-1.5 block">Message</label>
+                        <label className="text-xs font-semibold text-text-primary/70 uppercase tracking-wider mb-1.5 block">Message</label>
                         <textarea
                           value={message}
                           onChange={(e) => setMessage(e.target.value)}
                           rows={5}
                           required
                           placeholder="Describe what you were doing and what you'd expect to happen..."
-                          className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40"
+                          className="w-full px-3 py-2 rounded-lg border border-border-strong/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40"
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-slate-ink/70 uppercase tracking-wider mb-1.5 block">
-                          Recent errors <span className="text-slate-ink/40 normal-case">(optional)</span>
+                        <label className="text-xs font-semibold text-text-primary/70 uppercase tracking-wider mb-1.5 block">
+                          Recent errors <span className="text-text-primary/40 normal-case">(optional)</span>
                         </label>
                         <textarea
                           value={recentErrors}
                           onChange={(e) => setRecentErrors(e.target.value)}
                           rows={2}
                           placeholder="Paste any error message you saw"
-                          className="w-full px-3 py-2 rounded-lg border border-soft-steel/60 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal/40"
+                          className="w-full px-3 py-2 rounded-lg border border-border-strong/60 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40"
                         />
                       </div>
 
@@ -228,14 +228,14 @@ export function HelpDrawer() {
                         <button
                           onClick={submit}
                           disabled={submitting || !message.trim()}
-                          className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+                          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
                         >
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                           Send message
                         </button>
                         <a
                           href="mailto:support@qvo.ai"
-                          className="inline-flex items-center gap-1.5 text-sm text-slate-ink/60 hover:text-teal"
+                          className="inline-flex items-center gap-1.5 text-sm text-text-primary/60 hover:text-primary"
                         >
                           <Mail className="h-3.5 w-3.5" />
                           support@qvo.ai

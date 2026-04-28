@@ -313,10 +313,10 @@ export default function WebsiteSalesWidget() {
   return (
     <>
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[380px] max-h-[560px] rounded-2xl overflow-hidden z-[999999] shadow-2xl flex flex-col bg-white border border-soft-steel/20 animate-in slide-in-from-bottom-4 duration-300 max-[420px]:w-[calc(100vw-32px)] max-[420px]:right-4 max-[420px]:bottom-20">
-          <div className="bg-harbor px-5 py-4 flex items-center justify-between shrink-0">
+        <div className="fixed bottom-24 right-6 w-[380px] max-h-[560px] rounded-2xl overflow-hidden z-[999999] shadow-2xl flex flex-col bg-white border border-border-strong/20 animate-in slide-in-from-bottom-4 duration-300 max-[420px]:w-[calc(100vw-32px)] max-[420px]:right-4 max-[420px]:bottom-20">
+          <div className="bg-sidebar-bg px-5 py-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-teal flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                 <Phone className="h-4 w-4 text-white" />
               </div>
               <div>
@@ -333,14 +333,14 @@ export default function WebsiteSalesWidget() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[280px] max-h-[380px] bg-mist/30">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[280px] max-h-[380px] bg-surface-secondary/30">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[85%] px-3.5 py-2.5 rounded-xl text-sm leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-teal text-white rounded-br-sm'
-                      : 'bg-white text-slate-ink border border-soft-steel/20 rounded-bl-sm shadow-sm'
+                      ? 'bg-primary text-white rounded-br-sm'
+                      : 'bg-white text-text-primary border border-border-strong/20 rounded-bl-sm shadow-sm'
                   }`}
                 >
                   {msg.content}
@@ -364,11 +364,11 @@ export default function WebsiteSalesWidget() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white border border-soft-steel/20 rounded-xl rounded-bl-sm px-4 py-3 shadow-sm">
+                <div className="bg-white border border-border-strong/20 rounded-xl rounded-bl-sm px-4 py-3 shadow-sm">
                   <div className="flex gap-1.5">
-                    <span className="w-2 h-2 bg-soft-steel/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 bg-soft-steel/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 bg-soft-steel/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <span className="w-2 h-2 bg-border-strong/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 bg-border-strong/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 bg-border-strong/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
@@ -380,7 +380,7 @@ export default function WebsiteSalesWidget() {
                   <button
                     key={qa.label}
                     onClick={() => sendMessage(qa.message)}
-                    className="text-xs font-medium bg-white border border-teal/20 text-teal hover:bg-teal/5 px-3 py-1.5 rounded-full transition-colors"
+                    className="text-xs font-medium bg-white border border-primary/20 text-primary hover:bg-primary/5 px-3 py-1.5 rounded-full transition-colors"
                   >
                     {qa.label}
                   </button>
@@ -391,14 +391,14 @@ export default function WebsiteSalesWidget() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-soft-steel/20 p-3 bg-white shrink-0">
+          <div className="border-t border-border-strong/20 p-3 bg-white shrink-0">
             {isListening && (
               <div className="flex items-center gap-2 mb-2 px-1">
                 <div className="flex items-center gap-[2px] h-4">
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div
                       key={i}
-                      className="w-[3px] bg-teal rounded-full animate-pulse"
+                      className="w-[3px] bg-primary rounded-full animate-pulse"
                       style={{
                         height: `${8 + Math.random() * 12}px`,
                         animationDelay: `${i * 0.1}s`,
@@ -407,7 +407,7 @@ export default function WebsiteSalesWidget() {
                     />
                   ))}
                 </div>
-                <span className="text-xs text-teal font-medium">Listening...</span>
+                <span className="text-xs text-primary font-medium">Listening...</span>
               </div>
             )}
             <div className="flex gap-2">
@@ -417,8 +417,8 @@ export default function WebsiteSalesWidget() {
                   disabled={loading}
                   className={`p-2.5 rounded-xl transition-colors shrink-0 ${
                     isListening
-                      ? 'bg-controlled-red text-white animate-pulse'
-                      : 'bg-mist/50 text-harbor hover:bg-mist border border-soft-steel/20'
+                      ? 'bg-danger text-white animate-pulse'
+                      : 'bg-surface-secondary/50 text-sidebar-bg hover:bg-surface-secondary border border-border-strong/20'
                   } disabled:opacity-40`}
                   aria-label={isListening ? 'Stop listening' : 'Start voice input'}
                   title={isListening ? 'Stop listening' : 'Speak your message'}
@@ -434,12 +434,12 @@ export default function WebsiteSalesWidget() {
                 onKeyDown={handleKeyDown}
                 placeholder={isListening ? 'Listening...' : 'Type a message...'}
                 disabled={loading}
-                className="flex-1 px-3.5 py-2.5 text-sm border border-soft-steel/30 rounded-xl bg-mist/30 text-harbor placeholder:text-soft-steel focus:outline-none focus:ring-2 focus:ring-teal/20 focus:border-teal/40 disabled:opacity-50"
+                className="flex-1 px-3.5 py-2.5 text-sm border border-border-strong/30 rounded-xl bg-surface-secondary/30 text-sidebar-bg placeholder:text-border-strong focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 disabled:opacity-50"
               />
               <button
                 onClick={() => sendMessage(input)}
                 disabled={!input.trim() || loading}
-                className="p-2.5 bg-teal hover:bg-teal-hover text-white rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                className="p-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                 aria-label="Send message"
               >
                 <Send className="h-4 w-4" />
@@ -453,8 +453,8 @@ export default function WebsiteSalesWidget() {
         onClick={() => setIsOpen(!isOpen)}
         className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 z-[999999] flex items-center justify-center max-[420px]:bottom-4 max-[420px]:right-4 ${
           isOpen
-            ? 'bg-harbor hover:bg-harbor-light'
-            : 'bg-teal hover:bg-teal-hover hover:scale-105'
+            ? 'bg-sidebar-bg hover:bg-sidebar-hover'
+            : 'bg-primary hover:bg-primary-hover hover:scale-105'
         }`}
         aria-label={isOpen ? 'Close chat' : 'Open chat'}
       >
@@ -464,7 +464,7 @@ export default function WebsiteSalesWidget() {
           <>
             <MessageSquare className="h-5 w-5 text-white" />
             {showPulse && (
-              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-controlled-red rounded-full border-2 border-white animate-pulse" />
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger rounded-full border-2 border-white animate-pulse" />
             )}
           </>
         )}

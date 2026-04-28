@@ -15,8 +15,8 @@ export function DocsSidebar({ activeSlug }: Props) {
         return (
           <div key={cat.slug} className="mb-6">
             <div className="flex items-center gap-2 mb-2 px-2">
-              <Icon className="h-3.5 w-3.5 text-teal" />
-              <h3 className="font-display text-xs font-semibold text-slate-ink/60 uppercase tracking-wider">
+              <Icon className="h-3.5 w-3.5 text-primary" />
+              <h3 className="font-display text-xs font-semibold text-text-primary/60 uppercase tracking-wider">
                 {cat.title}
               </h3>
             </div>
@@ -27,8 +27,8 @@ export function DocsSidebar({ activeSlug }: Props) {
                     to={`/docs/${a.slug}`}
                     className={`block text-sm font-body px-3 py-1.5 rounded-lg transition-colors ${
                       activeSlug === a.slug
-                        ? 'bg-teal/10 text-teal font-semibold'
-                        : 'text-slate-ink/70 hover:text-teal hover:bg-teal/5'
+                        ? 'bg-primary/10 text-primary font-semibold'
+                        : 'text-text-primary/70 hover:text-primary hover:bg-primary/5'
                     }`}
                   >
                     {a.title}

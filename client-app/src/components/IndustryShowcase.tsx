@@ -20,7 +20,7 @@ const industries: Industry[] = [
     tagline: 'Answer every patient call — HIPAA-aware, 24/7.',
     image: '/industry-hero/healthcare.jpg',
     icon: Stethoscope,
-    accent: 'from-blue-500/70 to-teal/50',
+    accent: 'from-blue-500/70 to-primary/50',
     ringColor: 'ring-blue-400/30',
     stat: { value: '95%', label: 'Calls answered' },
   },
@@ -30,7 +30,7 @@ const industries: Industry[] = [
     tagline: 'Fill your chairs and cut no-shows in half.',
     image: '/industry-hero/dental.jpg',
     icon: Smile,
-    accent: 'from-cyan-500/70 to-teal/50',
+    accent: 'from-cyan-500/70 to-primary/50',
     ringColor: 'ring-cyan-400/30',
     stat: { value: '35%', label: 'Fewer no-shows' },
   },
@@ -50,7 +50,7 @@ const industries: Industry[] = [
     tagline: 'Qualify leads in 30 seconds, book showings instantly.',
     image: '/industry-hero/real-estate.jpg',
     icon: Home,
-    accent: 'from-emerald-500/70 to-teal/50',
+    accent: 'from-emerald-500/70 to-primary/50',
     ringColor: 'ring-emerald-400/30',
     stat: { value: '< 30s', label: 'Lead response' },
   },
@@ -70,7 +70,7 @@ const industries: Industry[] = [
     tagline: 'Book visits and triage urgent pet care 24/7.',
     image: '/industry-hero/veterinary.jpg',
     icon: PawPrint,
-    accent: 'from-green-500/70 to-teal/50',
+    accent: 'from-green-500/70 to-primary/50',
     ringColor: 'ring-green-400/30',
     stat: { value: '40%', label: 'Tech hours freed' },
   },
@@ -121,7 +121,7 @@ export default function IndustryShowcase() {
           >
             <Link
               to={`/industries/${ind.slug}`}
-              className={`group relative block overflow-hidden rounded-2xl border border-soft-steel/30 bg-harbor shadow-sm hover:shadow-2xl transition-all duration-500 h-full ${
+              className={`group relative block overflow-hidden rounded-2xl border border-border-strong/30 bg-sidebar-bg shadow-sm hover:shadow-2xl transition-all duration-500 h-full ${
                 featured ? 'aspect-[16/10] lg:aspect-auto lg:min-h-[520px]' : 'aspect-[4/3]'
               }`}
             >
@@ -134,7 +134,7 @@ export default function IndustryShowcase() {
               />
 
               {/* Bottom gradient for text legibility */}
-              <div className="absolute inset-0 bg-gradient-to-t from-harbor via-harbor/70 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-sidebar-bg via-sidebar-bg/70 to-transparent" />
               <div className={`absolute inset-0 bg-gradient-to-br opacity-30 mix-blend-overlay ${ind.accent}`} />
 
               {/* Content */}
@@ -151,7 +151,7 @@ export default function IndustryShowcase() {
 
                 <div className="mt-auto">
                   {featured && (
-                    <span className="inline-block text-[10px] font-semibold uppercase tracking-[0.15em] text-teal bg-teal/20 border border-teal/30 rounded-full px-2.5 py-1 mb-3">
+                    <span className="inline-block text-[10px] font-semibold uppercase tracking-[0.15em] text-primary bg-primary/20 border border-primary/30 rounded-full px-2.5 py-1 mb-3">
                       Most popular
                     </span>
                   )}
@@ -164,7 +164,7 @@ export default function IndustryShowcase() {
 
                   <div className="mt-4 flex items-center gap-3 pt-4 border-t border-white/15">
                     <div>
-                      <p className="font-display text-2xl font-bold text-teal leading-none">{ind.stat.value}</p>
+                      <p className="font-display text-2xl font-bold text-primary leading-none">{ind.stat.value}</p>
                       <p className="text-[10px] uppercase tracking-wider text-white/50 mt-1">{ind.stat.label}</p>
                     </div>
                     <div className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-white/80 group-hover:text-white transition-colors">

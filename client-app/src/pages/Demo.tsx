@@ -92,8 +92,8 @@ function VoiceWaveform({ active }: { active: boolean }) {
           key={i}
           className={`w-[3px] rounded-full transition-all duration-300 ${
             active
-              ? 'bg-teal demo-waveform-bar'
-              : 'bg-soft-steel/30 h-1'
+              ? 'bg-primary demo-waveform-bar'
+              : 'bg-border-strong/30 h-1'
           }`}
           style={
             active
@@ -122,7 +122,7 @@ function CallTimer({ startTime }: { startTime: number }) {
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
   return (
-    <span className="font-mono text-sm text-teal tabular-nums">
+    <span className="font-mono text-sm text-primary tabular-nums">
       {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
     </span>
   );
@@ -133,11 +133,11 @@ function DemoCompletionCelebration({ show }: { show: boolean }) {
   return (
     <div className="demo-celebration-overlay">
       <div className="demo-celebration-content">
-        <div className="w-16 h-16 rounded-full bg-calm-green/20 flex items-center justify-center mx-auto mb-4 demo-celebration-icon">
-          <CheckCircle2 className="h-8 w-8 text-calm-green" />
+        <div className="w-16 h-16 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4 demo-celebration-icon">
+          <CheckCircle2 className="h-8 w-8 text-success" />
         </div>
-        <p className="font-display text-lg font-semibold text-harbor">Demo Complete!</p>
-        <p className="text-sm text-slate-ink/60 font-body mt-1">Great experience, right?</p>
+        <p className="font-display text-lg font-semibold text-sidebar-bg">Demo Complete!</p>
+        <p className="text-sm text-text-primary/60 font-body mt-1">Great experience, right?</p>
       </div>
     </div>
   );
@@ -159,13 +159,13 @@ function AgentCard({
 
   const borderClass = selected
     ? variant === 'teal'
-      ? 'border-teal ring-2 ring-teal/20'
-      : 'border-harbor ring-2 ring-harbor/20'
-    : 'border-white/20 hover:border-teal/30';
+      ? 'border-primary ring-2 ring-primary/20'
+      : 'border-sidebar-bg ring-2 ring-sidebar-bg/20'
+    : 'border-white/20 hover:border-primary/30';
 
-  const iconBg = variant === 'teal' ? 'bg-teal/10' : 'bg-harbor/10';
-  const iconColor = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
-  const categoryColor = variant === 'teal' ? 'text-teal' : 'text-harbor-light';
+  const iconBg = variant === 'teal' ? 'bg-primary/10' : 'bg-sidebar-bg/10';
+  const iconColor = variant === 'teal' ? 'text-primary' : 'text-sidebar-hover';
+  const categoryColor = variant === 'teal' ? 'text-primary' : 'text-sidebar-hover';
 
   return (
     <button
@@ -175,7 +175,7 @@ function AgentCard({
     >
       <div className="flex items-center gap-3 mb-3">
         {AVATAR_MAP[agent.icon] ? (
-          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-soft-steel/20">
+          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-border-strong/20">
             <img src={AVATAR_MAP[agent.icon]} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
           </div>
         ) : (
@@ -184,17 +184,17 @@ function AgentCard({
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="font-display text-lg font-semibold text-harbor truncate">{agent.name}</h3>
+          <h3 className="font-display text-lg font-semibold text-sidebar-bg truncate">{agent.name}</h3>
           <span className={`text-xs font-medium ${categoryColor}`}>{agent.category}</span>
         </div>
       </div>
-      <p className="text-sm text-slate-ink/60 font-body mb-4 leading-relaxed line-clamp-2">
+      <p className="text-sm text-text-primary/60 font-body mb-4 leading-relaxed line-clamp-2">
         {agent.description}
       </p>
       <div className="space-y-1">
         {agent.useCases.map((uc) => (
-          <div key={uc} className="flex items-center gap-2 text-xs text-slate-ink/50 font-body">
-            <span className={`w-1 h-1 rounded-full ${variant === 'teal' ? 'bg-teal' : 'bg-harbor'} shrink-0`} />
+          <div key={uc} className="flex items-center gap-2 text-xs text-text-primary/50 font-body">
+            <span className={`w-1 h-1 rounded-full ${variant === 'teal' ? 'bg-primary' : 'bg-sidebar-bg'} shrink-0`} />
             {uc}
           </div>
         ))}
@@ -206,11 +206,11 @@ function AgentCard({
 function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
   if (!agent.phoneNumber) {
     return (
-      <div className="flex items-center gap-3 bg-warm-amber/10 border border-warm-amber/20 rounded-xl px-5 py-4">
-        <AlertCircle className="h-5 w-5 text-warm-amber shrink-0" />
+      <div className="flex items-center gap-3 bg-accent/10 border border-accent/20 rounded-xl px-5 py-4">
+        <AlertCircle className="h-5 w-5 text-accent shrink-0" />
         <div>
-          <p className="text-xs text-warm-amber mb-0.5">Demo line</p>
-          <p className="text-sm text-slate-ink/50">Not configured</p>
+          <p className="text-xs text-accent mb-0.5">Demo line</p>
+          <p className="text-sm text-text-primary/50">Not configured</p>
         </div>
       </div>
     );
@@ -218,22 +218,22 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
 
   if (agent.isPlaceholder) {
     return (
-      <div className="flex items-center gap-3 bg-teal/10 border border-teal/20 rounded-xl px-5 py-4">
-        <Phone className="h-5 w-5 text-teal shrink-0" />
+      <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-5 py-4">
+        <Phone className="h-5 w-5 text-primary shrink-0" />
         <div>
-          <p className="text-xs text-teal mb-0.5">Demo line — awaiting real number</p>
-          <p className="text-sm text-slate-ink/50">Contact your administrator to provision a Twilio number</p>
+          <p className="text-xs text-primary mb-0.5">Demo line — awaiting real number</p>
+          <p className="text-sm text-text-primary/50">Contact your administrator to provision a Twilio number</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-3 bg-teal/10 border border-teal/20 rounded-xl px-5 py-4">
-      <Phone className="h-5 w-5 text-teal shrink-0" />
+    <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-5 py-4">
+      <Phone className="h-5 w-5 text-primary shrink-0" />
       <div>
-        <p className="text-xs text-teal mb-0.5">Call to try it</p>
-        <p className="text-lg font-mono font-bold text-harbor">{formatPhoneNumber(agent.phoneNumber)}</p>
+        <p className="text-xs text-primary mb-0.5">Call to try it</p>
+        <p className="text-lg font-mono font-bold text-sidebar-bg">{formatPhoneNumber(agent.phoneNumber)}</p>
       </div>
     </div>
   );
@@ -245,44 +245,44 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
   return (
     <section className="demo-cta-section py-16 lg:py-24">
       <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
-        <div className="inline-flex items-center gap-2 bg-teal/10 text-teal text-sm font-medium px-4 py-1.5 rounded-full mb-6">
+        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-medium px-4 py-1.5 rounded-full mb-6">
           <Sparkles className="h-4 w-4" />
           You just experienced QVO
         </div>
-        <h2 className="font-display text-3xl lg:text-4xl font-bold text-harbor mb-4">
+        <h2 className="font-display text-3xl lg:text-4xl font-bold text-sidebar-bg mb-4">
           Deploy your own AI voice agents in minutes
         </h2>
-        <p className="text-lg text-slate-ink/60 font-body max-w-2xl mx-auto mb-8">
+        <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto mb-8">
           What you just heard is the same technology powering hundreds of businesses.
           Get started with your own custom voice agents today.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-6 mb-10 text-left max-w-2xl mx-auto">
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Zap className="h-4 w-4 text-teal" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Zap className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-harbor">5-Minute Setup</p>
-              <p className="text-xs text-slate-ink/50 font-body">Deploy your first agent in minutes, not weeks</p>
+              <p className="font-display text-sm font-semibold text-sidebar-bg">5-Minute Setup</p>
+              <p className="text-xs text-text-primary/50 font-body">Deploy your first agent in minutes, not weeks</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Shield className="h-4 w-4 text-teal" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Shield className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-harbor">HIPAA Ready</p>
-              <p className="text-xs text-slate-ink/50 font-body">Enterprise-grade security built in</p>
+              <p className="font-display text-sm font-semibold text-sidebar-bg">HIPAA Ready</p>
+              <p className="text-xs text-text-primary/50 font-body">Enterprise-grade security built in</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Clock className="h-4 w-4 text-teal" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Clock className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-harbor">24/7 Coverage</p>
-              <p className="text-xs text-slate-ink/50 font-body">Never miss a call again</p>
+              <p className="font-display text-sm font-semibold text-sidebar-bg">24/7 Coverage</p>
+              <p className="text-xs text-text-primary/50 font-body">Never miss a call again</p>
             </div>
           </div>
         </div>
@@ -290,7 +290,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
             to="/signup"
-            className="inline-flex items-center gap-2 bg-teal hover:bg-teal-hover text-white font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-teal/20 hover:shadow-xl hover:shadow-teal/30 text-base"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 text-base"
             onClick={() => trackDemoCTA('start_free_trial', activeAgentRef)}
           >
             Start Free Trial
@@ -298,7 +298,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
           </Link>
           <Link
             to="/contact"
-            className="inline-flex items-center gap-2 bg-white border border-soft-steel/50 hover:border-teal/30 text-harbor font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
+            className="inline-flex items-center gap-2 bg-white border border-border-strong/50 hover:border-primary/30 text-sidebar-bg font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
             onClick={() => trackDemoCTA('book_demo', activeAgentRef)}
           >
             Book a Demo
@@ -428,11 +428,11 @@ export default function Demo() {
 
       <DemoCompletionCelebration show={showCelebration} />
 
-      <section className="bg-harbor text-white py-16 lg:py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-harbor via-harbor to-harbor-light opacity-80" />
+      <section className="bg-sidebar-bg text-white py-16 lg:py-24 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-sidebar-hover opacity-80" />
         <div className="absolute inset-0 demo-grid-pattern opacity-5" />
         <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center relative z-10">
-          <p className="text-teal font-display text-sm font-semibold tracking-wide uppercase mb-4">
+          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
             Live Demo
           </p>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
@@ -450,14 +450,14 @@ export default function Demo() {
       <section className="py-12 lg:py-16">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           {demoConfigured === false && (
-            <div className="mb-8 p-4 bg-warm-amber/10 border border-warm-amber/30 rounded-xl text-center text-warm-amber text-sm font-body">
+            <div className="mb-8 p-4 bg-accent/10 border border-accent/30 rounded-xl text-center text-accent text-sm font-body">
               Demo phone lines are not yet provisioned. The demo system is ready but requires phone numbers to accept calls.
             </div>
           )}
 
           <div className="mb-8">
-            <h2 className="font-display text-2xl font-bold text-harbor mb-2">Choose a Demo Agent</h2>
-            <p className="text-sm text-slate-ink/60 font-body">
+            <h2 className="font-display text-2xl font-bold text-sidebar-bg mb-2">Choose a Demo Agent</h2>
+            <p className="text-sm text-text-primary/60 font-body">
               Select an agent to see its details and try it out.
             </p>
           </div>
@@ -473,7 +473,7 @@ export default function Demo() {
               />
             ))}
             {agents.length === 0 && !loading && (
-              <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-12 text-slate-ink/40 font-body">
+              <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-12 text-text-primary/40 font-body">
                 <p>No demo agents configured yet.</p>
               </div>
             )}
@@ -482,28 +482,28 @@ export default function Demo() {
           {activeAgent && (
             <div className={`demo-glass-card rounded-2xl border p-8 mb-10 transition-all duration-500 ${
               isActive
-                ? 'border-teal/40 shadow-lg shadow-teal/10'
+                ? 'border-primary/40 shadow-lg shadow-primary/10'
                 : 'border-white/20'
             }`}>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
                   {AVATAR_MAP[activeAgent.icon] ? (
-                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-soft-steel/20">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-border-strong/20">
                       <img src={AVATAR_MAP[activeAgent.icon]} alt={`${activeAgent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
                     </div>
                   ) : (() => {
                     const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
                     return (
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-300 ${
-                        isActive ? 'bg-teal/20' : 'bg-teal/10'
+                        isActive ? 'bg-primary/20' : 'bg-primary/10'
                       }`}>
-                        <IconComponent className="h-6 w-6 text-teal" />
+                        <IconComponent className="h-6 w-6 text-primary" />
                       </div>
                     );
                   })()}
                   <div>
-                    <h3 className="font-display text-xl font-semibold text-harbor">{activeAgent.name}</h3>
-                    <span className="text-xs font-medium text-teal">{activeAgent.category}</span>
+                    <h3 className="font-display text-xl font-semibold text-sidebar-bg">{activeAgent.name}</h3>
+                    <span className="text-xs font-medium text-primary">{activeAgent.category}</span>
                   </div>
                 </div>
 
@@ -512,29 +512,29 @@ export default function Demo() {
                 }`}>
                   {isActive ? (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-calm-green animate-pulse" />
-                      <Phone className="h-4 w-4 text-calm-green" />
-                      <span className="text-sm font-medium text-calm-green">Call Active</span>
+                      <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                      <Phone className="h-4 w-4 text-success" />
+                      <span className="text-sm font-medium text-success">Call Active</span>
                       {callStartTime && <CallTimer startTime={callStartTime} />}
                     </>
                   ) : (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-soft-steel/40" />
-                      <PhoneOff className="h-4 w-4 text-slate-ink/40" />
-                      <span className="text-sm text-slate-ink/40">Idle</span>
+                      <div className="w-2 h-2 rounded-full bg-border-strong/40" />
+                      <PhoneOff className="h-4 w-4 text-text-primary/40" />
+                      <span className="text-sm text-text-primary/40">Idle</span>
                     </>
                   )}
                 </div>
               </div>
 
-              <p className="text-sm text-slate-ink/60 font-body mb-6 leading-relaxed">
+              <p className="text-sm text-text-primary/60 font-body mb-6 leading-relaxed">
                 {activeAgent.description}
               </p>
 
               <div className="flex items-center gap-4 mb-4">
                 <VoiceWaveform active={isActive} />
                 {isActive && (
-                  <span className="text-xs text-teal font-body animate-pulse">Listening...</span>
+                  <span className="text-xs text-primary font-body animate-pulse">Listening...</span>
                 )}
               </div>
 
@@ -554,16 +554,16 @@ export default function Demo() {
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             <div className="md:col-span-1 demo-glass-card rounded-2xl border border-white/20 p-6">
               <div className="flex items-center gap-2 mb-4">
-                <BarChart3 className="h-5 w-5 text-calm-green" />
-                <h3 className="font-display font-semibold text-harbor">Demo Stats</h3>
+                <BarChart3 className="h-5 w-5 text-success" />
+                <h3 className="font-display font-semibold text-sidebar-bg">Demo Stats</h3>
               </div>
               <div className="text-center py-6">
-                <p className="text-5xl font-display font-bold text-teal">
+                <p className="text-5xl font-display font-bold text-primary">
                   {loading ? '...' : totalCalls.toLocaleString()}
                 </p>
-                <p className="text-sm text-slate-ink/50 font-body mt-2">Total Demo Calls</p>
+                <p className="text-sm text-text-primary/50 font-body mt-2">Total Demo Calls</p>
               </div>
-              <p className="text-xs text-slate-ink/40 font-body text-center">
+              <p className="text-xs text-text-primary/40 font-body text-center">
                 Rate limited to 5 calls per hour per caller
               </p>
             </div>
@@ -573,7 +573,7 @@ export default function Demo() {
             </div>
           </div>
 
-          <div className="text-center text-sm text-slate-ink/50 font-body space-y-2">
+          <div className="text-center text-sm text-text-primary/50 font-body space-y-2">
             <p>
               Demo calls are handled by the same system used in production.
             </p>

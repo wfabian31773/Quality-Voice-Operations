@@ -99,7 +99,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">Calls per month</span>
-            <span className="text-2xl font-display font-bold text-harbor">{monthlyCallVolume.toLocaleString()}</span>
+            <span className="text-2xl font-display font-bold text-sidebar-bg">{monthlyCallVolume.toLocaleString()}</span>
           </div>
           <input
             type="range"
@@ -108,7 +108,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={50}
             value={monthlyCallVolume}
             onChange={(e) => setMonthlyCallVolume(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal"
+            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
           />
           <div className="flex justify-between text-xs text-slate-400">
             <span>50</span>
@@ -124,7 +124,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">Minutes per call</span>
-            <span className="text-2xl font-display font-bold text-harbor">{avgHandleTime} min</span>
+            <span className="text-2xl font-display font-bold text-sidebar-bg">{avgHandleTime} min</span>
           </div>
           <input
             type="range"
@@ -133,7 +133,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={0.5}
             value={avgHandleTime}
             onChange={(e) => setAvgHandleTime(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal"
+            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
           />
           <div className="flex justify-between text-xs text-slate-400">
             <span>1 min</span>
@@ -149,7 +149,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">Hourly rate</span>
-            <span className="text-2xl font-display font-bold text-harbor">${agentHourlyCost}/hr</span>
+            <span className="text-2xl font-display font-bold text-sidebar-bg">${agentHourlyCost}/hr</span>
           </div>
           <input
             type="range"
@@ -158,14 +158,14 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={1}
             value={agentHourlyCost}
             onChange={(e) => setAgentHourlyCost(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal"
+            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
           />
           <div className="flex justify-between text-xs text-slate-400">
             <span>$10/hr</span>
             <span>$50/hr</span>
           </div>
           <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
-            Today this works out to about <span className="font-semibold text-harbor">{formatCurrency((monthlyCallVolume * avgHandleTime / 60) * agentHourlyCost / Math.max(1, monthlyCallVolume))}</span> per call.
+            Today this works out to about <span className="font-semibold text-sidebar-bg">{formatCurrency((monthlyCallVolume * avgHandleTime / 60) * agentHourlyCost / Math.max(1, monthlyCallVolume))}</span> per call.
           </p>
         </div>
       ),
@@ -177,7 +177,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">% of calls handled by AI</span>
-            <span className="text-2xl font-display font-bold text-harbor">{aiHandleRate}%</span>
+            <span className="text-2xl font-display font-bold text-sidebar-bg">{aiHandleRate}%</span>
           </div>
           <input
             type="range"
@@ -186,7 +186,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={5}
             value={aiHandleRate}
             onChange={(e) => setAiHandleRate(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal"
+            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
           />
           <div className="flex justify-between text-xs text-slate-400">
             <span>20%</span>
@@ -206,21 +206,21 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         {step < steps.length ? (
           <div className="p-8">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center">
-                <Calculator className="h-4 w-4 text-teal" />
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Calculator className="h-4 w-4 text-primary" />
               </div>
               <div className="flex gap-1.5">
                 {steps.map((_, idx) => (
                   <div
                     key={idx}
                     className={`h-1.5 w-8 rounded-full transition-colors ${
-                      idx <= step ? 'bg-teal' : 'bg-slate-200'
+                      idx <= step ? 'bg-primary' : 'bg-slate-200'
                     }`}
                   />
                 ))}
               </div>
             </div>
-            <h3 className="text-xl font-display font-bold text-harbor mt-6 mb-1">
+            <h3 className="text-xl font-display font-bold text-sidebar-bg mt-6 mb-1">
               {steps[step].title}
             </h3>
             <p className="text-sm text-slate-500 mb-8">{steps[step].description}</p>
@@ -229,13 +229,13 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
               <button
                 onClick={() => setStep(step - 1)}
                 disabled={step === 0}
-                className="flex items-center gap-1 text-sm text-slate-500 hover:text-harbor disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1 text-sm text-slate-500 hover:text-sidebar-bg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
               <button
                 onClick={() => setStep(step + 1)}
-                className="flex items-center gap-2 bg-teal hover:bg-teal-hover text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
               >
                 {step === steps.length - 1 ? 'See My Results' : 'Next'} <ArrowRight className="h-4 w-4" />
               </button>
@@ -243,7 +243,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
           </div>
         ) : (
           <div className="p-8">
-            <h3 className="text-xl font-display font-bold text-harbor mb-2">Your Projected Savings</h3>
+            <h3 className="text-xl font-display font-bold text-sidebar-bg mb-2">Your Projected Savings</h3>
             <p className="text-sm text-slate-500 mb-8">
               Based on {monthlyCallVolume.toLocaleString()} calls/month at {avgHandleTime} min each (≈{formatCurrency(results.currentCostPerCall)} per call), with QVO handling {aiHandleRate}% of volume.
             </p>
@@ -270,30 +270,30 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Current monthly cost (staff)</span>
-                  <span className="font-medium text-harbor">{formatCurrency(results.currentMonthlyCost)}</span>
+                  <span className="font-medium text-sidebar-bg">{formatCurrency(results.currentMonthlyCost)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Current cost per call</span>
-                  <span className="font-medium text-harbor">{formatCurrency(results.currentCostPerCall)}</span>
+                  <span className="font-medium text-sidebar-bg">{formatCurrency(results.currentCostPerCall)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">QVO monthly cost (incl. residual staff for {100 - aiHandleRate}%)</span>
-                  <span className="font-medium text-teal">{formatCurrency(results.qvoMonthlyCost)}</span>
+                  <span className="font-medium text-primary">{formatCurrency(results.qvoMonthlyCost)}</span>
                 </div>
                 <div className="border-t border-slate-200 pt-3 flex justify-between text-sm font-semibold">
-                  <span className="text-harbor">Annual savings</span>
+                  <span className="text-sidebar-bg">Annual savings</span>
                   <span className="text-emerald-600">{formatCurrency(results.annualSavings)}/year</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-mist/60 border border-soft-steel/30 rounded-xl p-5 mb-6">
+            <div className="bg-surface-secondary/60 border border-border-strong/30 rounded-xl p-5 mb-6">
               {emailStatus === 'sent' ? (
                 <div className="flex items-start gap-3">
-                  <CheckCircle2 className="h-5 w-5 text-calm-green shrink-0 mt-0.5" />
+                  <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-display text-sm font-semibold text-harbor">Report on the way.</p>
-                    <p className="text-xs text-slate-ink/60 font-body mt-0.5">
+                    <p className="font-display text-sm font-semibold text-sidebar-bg">Report on the way.</p>
+                    <p className="text-xs text-text-primary/60 font-body mt-0.5">
                       We will email a copy of these numbers to {emailReport.email}. A specialist may follow up with a tailored breakdown.
                     </p>
                   </div>
@@ -301,10 +301,10 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
               ) : (
                 <form onSubmit={handleEmailReport} className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-teal" />
-                    <p className="font-display text-sm font-semibold text-harbor">Email me this report</p>
+                    <Mail className="h-4 w-4 text-primary" />
+                    <p className="font-display text-sm font-semibold text-sidebar-bg">Email me this report</p>
                   </div>
-                  <p className="text-xs text-slate-ink/60 font-body">
+                  <p className="text-xs text-text-primary/60 font-body">
                     Get a PDF-ready snapshot of these numbers plus a deeper breakdown by call type.
                   </p>
                   <div className="grid sm:grid-cols-3 gap-2">
@@ -312,7 +312,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
                       placeholder="Name"
                       value={emailReport.name}
                       onChange={(e) => setEmailReport({ ...emailReport, name: e.target.value })}
-                      className="px-3 py-2 rounded-lg border border-soft-steel/40 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40"
+                      className="px-3 py-2 rounded-lg border border-border-strong/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                     <input
                       type="email"
@@ -320,22 +320,22 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
                       placeholder="Work email"
                       value={emailReport.email}
                       onChange={(e) => setEmailReport({ ...emailReport, email: e.target.value })}
-                      className="px-3 py-2 rounded-lg border border-soft-steel/40 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40"
+                      className="px-3 py-2 rounded-lg border border-border-strong/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                     <input
                       placeholder="Company"
                       value={emailReport.company}
                       onChange={(e) => setEmailReport({ ...emailReport, company: e.target.value })}
-                      className="px-3 py-2 rounded-lg border border-soft-steel/40 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40"
+                      className="px-3 py-2 rounded-lg border border-border-strong/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                   </div>
                   {emailError && (
-                    <p className="text-xs text-controlled-red">{emailError}</p>
+                    <p className="text-xs text-danger">{emailError}</p>
                   )}
                   <button
                     type="submit"
                     disabled={emailStatus === 'sending'}
-                    className="w-full inline-flex items-center justify-center gap-2 bg-harbor hover:bg-harbor/90 disabled:bg-harbor/60 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                    className="w-full inline-flex items-center justify-center gap-2 bg-sidebar-bg hover:bg-sidebar-bg/90 disabled:bg-sidebar-bg/60 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
                   >
                     {emailStatus === 'sending' ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
@@ -351,20 +351,20 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
               <Link
                 to="/signup"
                 onClick={() => { trackCTAClick('Start Free Trial', 'roi-calculator', 'results'); trackConversionEvent('cta_click', '/roi-calculator', { cta: 'signup_roi' }); }}
-                className="flex-1 flex items-center justify-center gap-2 bg-teal hover:bg-teal-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
               >
                 Start Free Trial <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 to="/book-demo"
                 onClick={() => { trackCTAClick('Book a Demo', 'roi-calculator', 'results'); }}
-                className="flex-1 flex items-center justify-center gap-2 bg-mist hover:bg-soft-steel/30 text-harbor px-6 py-3 rounded-xl font-medium transition-colors border border-soft-steel/40"
+                className="flex-1 flex items-center justify-center gap-2 bg-surface-secondary hover:bg-border-strong/30 text-sidebar-bg px-6 py-3 rounded-xl font-medium transition-colors border border-border-strong/40"
               >
                 Book a Demo
               </Link>
               <button
                 onClick={() => { setStep(0); setEmailStatus('idle'); }}
-                className="flex items-center justify-center gap-2 text-slate-600 hover:text-harbor px-6 py-3 rounded-xl font-medium transition-colors border border-slate-200"
+                className="flex items-center justify-center gap-2 text-slate-600 hover:text-sidebar-bg px-6 py-3 rounded-xl font-medium transition-colors border border-slate-200"
               >
                 Recalculate
               </button>

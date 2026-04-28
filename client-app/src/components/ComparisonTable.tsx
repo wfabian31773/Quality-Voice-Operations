@@ -26,15 +26,15 @@ const rows: Row[] = [
 
 function CellRender({ value }: { value: Cell }) {
   if (value === true) {
-    return <Check className="h-4 w-4 text-calm-green mx-auto" aria-label="Yes" />;
+    return <Check className="h-4 w-4 text-success mx-auto" aria-label="Yes" />;
   }
   if (value === false) {
-    return <X className="h-4 w-4 text-soft-steel mx-auto" aria-label="No" />;
+    return <X className="h-4 w-4 text-border-strong mx-auto" aria-label="No" />;
   }
   if (value === 'partial') {
-    return <Minus className="h-4 w-4 text-warm-amber mx-auto" aria-label="Partial" />;
+    return <Minus className="h-4 w-4 text-accent mx-auto" aria-label="Partial" />;
   }
-  return <span className="text-xs font-medium text-harbor">{value}</span>;
+  return <span className="text-xs font-medium text-sidebar-bg">{value}</span>;
 }
 
 const competitors = [
@@ -47,25 +47,25 @@ const competitors = [
 
 export default function ComparisonTable() {
   return (
-    <div className="bg-white rounded-2xl border border-soft-steel/40 overflow-hidden shadow-sm">
+    <div className="bg-white rounded-2xl border border-border-strong/40 overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px]">
           <thead>
-            <tr className="border-b border-soft-steel/30 bg-mist/60">
-              <th className="text-left py-4 px-6 font-display text-sm font-semibold text-harbor">Capability</th>
+            <tr className="border-b border-border-strong/30 bg-surface-secondary/60">
+              <th className="text-left py-4 px-6 font-display text-sm font-semibold text-sidebar-bg">Capability</th>
               {competitors.map((c) => (
-                <th key={c.key} className={`text-center py-4 px-3 font-display text-sm font-semibold ${c.highlight ? 'text-teal bg-teal/5' : 'text-harbor'}`}>
+                <th key={c.key} className={`text-center py-4 px-3 font-display text-sm font-semibold ${c.highlight ? 'text-primary bg-primary/5' : 'text-sidebar-bg'}`}>
                   {c.name}
-                  {c.highlight && <span className="block text-[10px] text-teal font-medium mt-0.5">THIS PLATFORM</span>}
+                  {c.highlight && <span className="block text-[10px] text-primary font-medium mt-0.5">THIS PLATFORM</span>}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={row.label} className={`hover:bg-teal/[0.03] transition-colors ${i % 2 === 0 ? 'bg-mist/20' : ''}`}>
-                <td className="py-3.5 px-6 text-sm text-slate-ink/70 font-body">{row.label}</td>
-                <td className="py-3.5 px-3 text-center bg-teal/[0.04]"><CellRender value={row.qvo} /></td>
+              <tr key={row.label} className={`hover:bg-primary/[0.03] transition-colors ${i % 2 === 0 ? 'bg-surface-secondary/20' : ''}`}>
+                <td className="py-3.5 px-6 text-sm text-text-primary/70 font-body">{row.label}</td>
+                <td className="py-3.5 px-3 text-center bg-primary/[0.04]"><CellRender value={row.qvo} /></td>
                 <td className="py-3.5 px-3 text-center"><CellRender value={row.retell} /></td>
                 <td className="py-3.5 px-3 text-center"><CellRender value={row.vapi} /></td>
                 <td className="py-3.5 px-3 text-center"><CellRender value={row.bland} /></td>
@@ -75,7 +75,7 @@ export default function ComparisonTable() {
           </tbody>
         </table>
       </div>
-      <div className="bg-mist/40 border-t border-soft-steel/30 px-6 py-3 text-[11px] text-slate-ink/50 font-body">
+      <div className="bg-surface-secondary/40 border-t border-border-strong/30 px-6 py-3 text-[11px] text-text-primary/50 font-body">
         Based on publicly available product information as of {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}. Competitor capabilities change frequently — check their websites for the latest details.
       </div>
     </div>

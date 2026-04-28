@@ -265,7 +265,7 @@ function LightboxHint({ onDismiss }: { onDismiss: () => void }) {
 }
 
 const calloutStyles = {
-  info: { wrap: 'bg-teal/5 border-teal/20', icon: Info, iconClass: 'text-teal' },
+  info: { wrap: 'bg-primary/5 border-primary/20', icon: Info, iconClass: 'text-primary' },
   tip: { wrap: 'bg-emerald-50 border-emerald-200', icon: Lightbulb, iconClass: 'text-emerald-600' },
   warn: { wrap: 'bg-amber-50 border-amber-200', icon: AlertTriangle, iconClass: 'text-amber-600' },
 };
@@ -330,21 +330,21 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
       {blocks.map((block, idx) => {
         if (block.type === 'p') {
           return (
-            <p key={idx} className="text-sm text-slate-ink/75 leading-relaxed font-body">
+            <p key={idx} className="text-sm text-text-primary/75 leading-relaxed font-body">
               {block.text}
             </p>
           );
         }
         if (block.type === 'h2') {
           return (
-            <h2 key={idx} id={slugify(block.text)} className="font-display text-xl font-bold text-harbor mt-8 mb-2 scroll-mt-24">
+            <h2 key={idx} id={slugify(block.text)} className="font-display text-xl font-bold text-sidebar-bg mt-8 mb-2 scroll-mt-24">
               {block.text}
             </h2>
           );
         }
         if (block.type === 'h3') {
           return (
-            <h3 key={idx} id={slugify(block.text)} className="font-display text-base font-semibold text-harbor mt-6 mb-2 scroll-mt-24">
+            <h3 key={idx} id={slugify(block.text)} className="font-display text-base font-semibold text-sidebar-bg mt-6 mb-2 scroll-mt-24">
               {block.text}
             </h3>
           );
@@ -353,8 +353,8 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
           return (
             <ul key={idx} className="space-y-2 my-2">
               {block.items.map((item, i) => (
-                <li key={i} className="flex gap-2 text-sm text-slate-ink/75 font-body leading-relaxed">
-                  <span className="text-teal mt-0.5">•</span>
+                <li key={i} className="flex gap-2 text-sm text-text-primary/75 font-body leading-relaxed">
+                  <span className="text-primary mt-0.5">•</span>
                   <span>{renderInline(item)}</span>
                 </li>
               ))}
@@ -363,9 +363,9 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         }
         if (block.type === 'ol') {
           return (
-            <ol key={idx} className="space-y-2 my-2 list-decimal pl-5 marker:text-teal">
+            <ol key={idx} className="space-y-2 my-2 list-decimal pl-5 marker:text-primary">
               {block.items.map((item, i) => (
-                <li key={i} className="text-sm text-slate-ink/75 font-body leading-relaxed pl-1">
+                <li key={i} className="text-sm text-text-primary/75 font-body leading-relaxed pl-1">
                   {renderInline(item)}
                 </li>
               ))}
@@ -374,7 +374,7 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         }
         if (block.type === 'code') {
           return (
-            <div key={idx} className="bg-harbor rounded-xl p-4 overflow-x-auto my-3">
+            <div key={idx} className="bg-sidebar-bg rounded-xl p-4 overflow-x-auto my-3">
               {block.lang && (
                 <div className="text-[10px] uppercase tracking-wider text-white/40 mb-2 font-mono">
                   {block.lang}
@@ -392,14 +392,14 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
           return (
             <div key={idx} className={`flex gap-3 border rounded-xl px-4 py-3 my-3 ${s.wrap}`}>
               <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${s.iconClass}`} />
-              <p className="text-sm text-slate-ink/80 font-body leading-relaxed">{block.text}</p>
+              <p className="text-sm text-text-primary/80 font-body leading-relaxed">{block.text}</p>
             </div>
           );
         }
         if (block.type === 'video') {
           return (
             <figure key={idx} className="my-4">
-              <div className="relative w-full overflow-hidden rounded-xl border border-soft-steel/50 bg-harbor" style={{ aspectRatio: '16 / 9' }}>
+              <div className="relative w-full overflow-hidden rounded-xl border border-border-strong/50 bg-sidebar-bg" style={{ aspectRatio: '16 / 9' }}>
                 {block.provider === 'youtube' ? (
                   <iframe
                     src={`https://www.youtube.com/embed/${block.src}`}
@@ -421,7 +421,7 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
                 )}
               </div>
               {block.caption && (
-                <figcaption className="text-xs text-slate-ink/50 mt-2 text-center font-body">{block.caption}</figcaption>
+                <figcaption className="text-xs text-text-primary/50 mt-2 text-center font-body">{block.caption}</figcaption>
               )}
             </figure>
           );
@@ -442,11 +442,11 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         }
         if (block.type === 'common-issues') {
           return (
-            <div key={idx} className="my-3 border border-soft-steel/50 rounded-xl divide-y divide-soft-steel/50 overflow-hidden">
+            <div key={idx} className="my-3 border border-border-strong/50 rounded-xl divide-y divide-border-strong/50 overflow-hidden">
               {block.items.map((it, i) => (
                 <div key={i} className="p-4">
-                  <p className="text-sm font-semibold text-harbor mb-1">{it.problem}</p>
-                  <p className="text-sm text-slate-ink/70 font-body leading-relaxed">{it.fix}</p>
+                  <p className="text-sm font-semibold text-sidebar-bg mb-1">{it.problem}</p>
+                  <p className="text-sm text-text-primary/70 font-body leading-relaxed">{it.fix}</p>
                 </div>
               ))}
             </div>
@@ -526,7 +526,7 @@ function renderInline(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
     const m = part.match(/^\*\*(.+)\*\*$/);
-    if (m) return <strong key={i} className="text-harbor font-semibold">{m[1]}</strong>;
+    if (m) return <strong key={i} className="text-sidebar-bg font-semibold">{m[1]}</strong>;
     return <span key={i}>{part}</span>;
   });
 }
@@ -552,7 +552,7 @@ function ImageBlock({ src, alt, caption, onZoom }: ImageBlockProps) {
       <button
         type="button"
         onClick={onZoom}
-        className="group block w-full rounded-xl border border-soft-steel/50 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal cursor-zoom-in"
+        className="group block w-full rounded-xl border border-border-strong/50 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-zoom-in"
         aria-label={`Zoom image: ${alt}`}
       >
         <img
@@ -562,7 +562,7 @@ function ImageBlock({ src, alt, caption, onZoom }: ImageBlockProps) {
         />
       </button>
       {caption && (
-        <figcaption className="text-xs text-slate-ink/50 mt-2 text-center font-body">{caption}</figcaption>
+        <figcaption className="text-xs text-text-primary/50 mt-2 text-center font-body">{caption}</figcaption>
       )}
     </figure>
   );

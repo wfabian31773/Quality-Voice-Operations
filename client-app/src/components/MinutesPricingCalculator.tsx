@@ -70,15 +70,15 @@ export default function MinutesPricingCalculator() {
   }, [results, minutes]);
 
   return (
-    <div className="bg-white rounded-2xl border border-soft-steel/50 shadow-sm overflow-hidden">
-      <div className="p-6 lg:p-8 border-b border-soft-steel/30 bg-mist/30">
+    <div className="bg-white rounded-2xl border border-border-strong/50 shadow-sm overflow-hidden">
+      <div className="p-6 lg:p-8 border-b border-border-strong/30 bg-surface-secondary/30">
         <div className="flex items-start gap-3 mb-5">
-          <div className="w-9 h-9 rounded-lg bg-teal/10 flex items-center justify-center shrink-0">
-            <Calculator className="h-4.5 w-4.5 text-teal" />
+          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Calculator className="h-4.5 w-4.5 text-primary" />
           </div>
           <div>
-            <h3 className="font-display text-lg font-bold text-harbor">Estimate your monthly bill</h3>
-            <p className="text-sm text-slate-ink/60 font-body mt-0.5">
+            <h3 className="font-display text-lg font-bold text-sidebar-bg">Estimate your monthly bill</h3>
+            <p className="text-sm text-text-primary/60 font-body mt-0.5">
               Pick how many AI minutes you expect to use each month and see the effective per-minute price for every plan.
             </p>
           </div>
@@ -86,7 +86,7 @@ export default function MinutesPricingCalculator() {
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-4">
-            <label htmlFor="minutes-slider" className="text-sm font-medium text-harbor">
+            <label htmlFor="minutes-slider" className="text-sm font-medium text-sidebar-bg">
               Monthly AI minutes
             </label>
             <div className="flex items-center gap-2">
@@ -101,10 +101,10 @@ export default function MinutesPricingCalculator() {
                   const v = Number(e.target.value);
                   if (Number.isFinite(v)) setMinutes(Math.max(0, Math.min(MAX_MINUTES, v)));
                 }}
-                className="w-28 px-3 py-1.5 rounded-lg border border-soft-steel/50 text-sm font-display font-bold text-harbor text-right focus:outline-none focus:ring-2 focus:ring-teal/40"
+                className="w-28 px-3 py-1.5 rounded-lg border border-border-strong/50 text-sm font-display font-bold text-sidebar-bg text-right focus:outline-none focus:ring-2 focus:ring-primary/40"
                 aria-label="Monthly AI minutes"
               />
-              <span className="text-sm text-slate-ink/60 font-body">min/mo</span>
+              <span className="text-sm text-text-primary/60 font-body">min/mo</span>
             </div>
           </div>
           <input
@@ -115,17 +115,17 @@ export default function MinutesPricingCalculator() {
             step={STEP_MINUTES}
             value={Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, minutes))}
             onChange={(e) => setMinutes(Number(e.target.value))}
-            className="w-full h-2 bg-soft-steel/40 rounded-lg appearance-none cursor-pointer accent-teal"
+            className="w-full h-2 bg-border-strong/40 rounded-lg appearance-none cursor-pointer accent-primary"
             aria-label="Adjust monthly AI minutes"
           />
-          <div className="flex justify-between text-xs text-slate-ink/40 font-body">
+          <div className="flex justify-between text-xs text-text-primary/40 font-body">
             <span>{MIN_MINUTES.toLocaleString()} min</span>
             <span>{(MAX_MINUTES / 1000).toFixed(0)},000 min</span>
           </div>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-soft-steel/30">
+      <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border-strong/30">
         {results.map(({ tier, monthlyCost, effectiveRate, overageMinutes, overageCost }) => {
           const isBest = cheapest && cheapest.tier.key === tier.key && minutes > 0;
           return (
@@ -133,15 +133,15 @@ export default function MinutesPricingCalculator() {
               key={tier.key}
               data-testid={`calc-tier-${tier.key}`}
               className={`p-6 transition-colors ${
-                isBest ? 'bg-teal/[0.04]' : ''
+                isBest ? 'bg-primary/[0.04]' : ''
               }`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className={`font-display text-sm font-semibold ${tier.popular ? 'text-teal' : 'text-harbor'}`}>
+                <span className={`font-display text-sm font-semibold ${tier.popular ? 'text-primary' : 'text-sidebar-bg'}`}>
                   {tier.name}
                 </span>
                 {isBest && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-teal bg-teal/10 px-2 py-0.5 rounded-full">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                     <Sparkles className="h-3 w-3" />
                     Best value
                   </span>
@@ -152,36 +152,36 @@ export default function MinutesPricingCalculator() {
                 <div className="flex items-baseline gap-1">
                   <span
                     data-testid={`calc-monthly-${tier.key}`}
-                    className="font-display text-3xl font-bold text-harbor"
+                    className="font-display text-3xl font-bold text-sidebar-bg"
                   >
                     {formatCurrency(monthlyCost)}
                   </span>
-                  <span className="text-xs text-slate-ink/50 font-body">/mo est.</span>
+                  <span className="text-xs text-text-primary/50 font-body">/mo est.</span>
                 </div>
                 <div
                   data-testid={`calc-effective-${tier.key}`}
-                  className="text-sm text-slate-ink/70 font-body mt-1"
+                  className="text-sm text-text-primary/70 font-body mt-1"
                 >
                   {minutes > 0 ? formatPerMinute(effectiveRate) : '—'} effective per minute
                 </div>
               </div>
 
-              <dl className="space-y-1.5 text-xs font-body border-t border-soft-steel/30 pt-3">
+              <dl className="space-y-1.5 text-xs font-body border-t border-border-strong/30 pt-3">
                 <div className="flex justify-between">
-                  <dt className="text-slate-ink/50">Base plan</dt>
-                  <dd className="text-harbor font-medium">{formatCurrency(tier.basePrice)}/mo</dd>
+                  <dt className="text-text-primary/50">Base plan</dt>
+                  <dd className="text-sidebar-bg font-medium">{formatCurrency(tier.basePrice)}/mo</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-slate-ink/50">Minutes included</dt>
-                  <dd className="text-harbor font-medium">{tier.includedMinutes.toLocaleString()}</dd>
+                  <dt className="text-text-primary/50">Minutes included</dt>
+                  <dd className="text-sidebar-bg font-medium">{tier.includedMinutes.toLocaleString()}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-slate-ink/50">Overage rate</dt>
-                  <dd className="text-harbor font-medium">{formatPerMinute(tier.overageRate)}/min</dd>
+                  <dt className="text-text-primary/50">Overage rate</dt>
+                  <dd className="text-sidebar-bg font-medium">{formatPerMinute(tier.overageRate)}/min</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-slate-ink/50">Overage this month</dt>
-                  <dd className={`font-medium ${overageMinutes > 0 ? 'text-controlled-red' : 'text-calm-green'}`}>
+                  <dt className="text-text-primary/50">Overage this month</dt>
+                  <dd className={`font-medium ${overageMinutes > 0 ? 'text-danger' : 'text-success'}`}>
                     {overageMinutes > 0
                       ? `${overageMinutes.toLocaleString()} min · ${formatCurrency(overageCost)}`
                       : 'None'}
@@ -193,7 +193,7 @@ export default function MinutesPricingCalculator() {
         })}
       </div>
 
-      <div className="px-6 lg:px-8 py-4 bg-mist/40 border-t border-soft-steel/30 text-xs text-slate-ink/60 font-body">
+      <div className="px-6 lg:px-8 py-4 bg-surface-secondary/40 border-t border-border-strong/30 text-xs text-text-primary/60 font-body">
         Estimates use the same per-minute rates billed by your usage meter. Only active conversation time counts toward AI minutes — hold time, ringing, and processing are not billed.
       </div>
     </div>

@@ -76,24 +76,24 @@ export default function TestimonialsCarousel() {
       onMouseEnter={() => { paused.current = true; }}
       onMouseLeave={() => { paused.current = false; }}
     >
-      <div className="bg-white rounded-2xl border border-soft-steel/30 shadow-sm p-8 lg:p-12 relative overflow-hidden">
-        <Quote className="absolute top-6 right-6 h-16 w-16 text-teal/10" />
+      <div className="bg-white rounded-2xl border border-border-strong/30 shadow-sm p-8 lg:p-12 relative overflow-hidden">
+        <Quote className="absolute top-6 right-6 h-16 w-16 text-primary/10" />
         <div className="flex items-center gap-1 mb-6">
           {[...Array(5)].map((_, i) => (
-            <Star key={i} className="h-4 w-4 fill-warm-amber text-warm-amber" />
+            <Star key={i} className="h-4 w-4 fill-accent text-accent" />
           ))}
-          <span className="ml-3 text-xs font-semibold uppercase tracking-wider text-slate-ink/40">{current.industry}</span>
+          <span className="ml-3 text-xs font-semibold uppercase tracking-wider text-text-primary/40">{current.industry}</span>
         </div>
-        <blockquote className="font-display text-xl lg:text-2xl text-harbor leading-relaxed mb-8 min-h-[6rem]">
+        <blockquote className="font-display text-xl lg:text-2xl text-sidebar-bg leading-relaxed mb-8 min-h-[6rem]">
           "{current.quote}"
         </blockquote>
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal to-teal-hover text-white flex items-center justify-center font-display font-bold text-sm shrink-0">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary-hover text-white flex items-center justify-center font-display font-bold text-sm shrink-0">
             {current.initials}
           </div>
           <div>
-            <p className="font-display font-semibold text-harbor">{current.name}</p>
-            <p className="text-sm text-slate-ink/60 font-body">{current.title}, {current.company}</p>
+            <p className="font-display font-semibold text-sidebar-bg">{current.name}</p>
+            <p className="text-sm text-text-primary/60 font-body">{current.title}, {current.company}</p>
           </div>
         </div>
       </div>
@@ -102,7 +102,7 @@ export default function TestimonialsCarousel() {
         <button
           onClick={() => setIndex((i) => (i - 1 + testimonials.length) % testimonials.length)}
           aria-label="Previous testimonial"
-          className="w-10 h-10 rounded-full bg-white border border-soft-steel/40 flex items-center justify-center text-harbor hover:bg-teal hover:text-white hover:border-teal transition-colors"
+          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-sidebar-bg hover:bg-primary hover:text-white hover:border-primary transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -112,14 +112,14 @@ export default function TestimonialsCarousel() {
               key={i}
               onClick={() => setIndex(i)}
               aria-label={`Go to testimonial ${i + 1}`}
-              className={`h-2 rounded-full transition-all ${i === index ? 'w-8 bg-teal' : 'w-2 bg-soft-steel/50 hover:bg-soft-steel'}`}
+              className={`h-2 rounded-full transition-all ${i === index ? 'w-8 bg-primary' : 'w-2 bg-border-strong/50 hover:bg-border-strong'}`}
             />
           ))}
         </div>
         <button
           onClick={() => setIndex((i) => (i + 1) % testimonials.length)}
           aria-label="Next testimonial"
-          className="w-10 h-10 rounded-full bg-white border border-soft-steel/40 flex items-center justify-center text-harbor hover:bg-teal hover:text-white hover:border-teal transition-colors"
+          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-sidebar-bg hover:bg-primary hover:text-white hover:border-primary transition-colors"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

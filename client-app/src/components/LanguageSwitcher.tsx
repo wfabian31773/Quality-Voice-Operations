@@ -31,7 +31,7 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
           className="bg-transparent text-sm font-medium text-text-secondary hover:text-text-primary focus:text-text-primary focus:outline-none cursor-pointer appearance-none pr-1"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
-            <option key={lang.code} value={lang.code} className="text-slate-ink bg-white">
+            <option key={lang.code} value={lang.code} className="text-text-primary bg-white">
               {lang.nativeLabel}
             </option>
           ))}
@@ -57,7 +57,7 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
           className="bg-transparent text-sm font-medium text-sidebar-text hover:text-white focus:text-white focus:outline-none cursor-pointer w-full appearance-none"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
-            <option key={lang.code} value={lang.code} className="text-slate-ink bg-white">
+            <option key={lang.code} value={lang.code} className="text-text-primary bg-white">
               {lang.nativeLabel}
             </option>
           ))}
@@ -77,7 +77,7 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
         className="bg-transparent text-sm font-medium text-white/85 hover:text-white focus:text-white focus:outline-none cursor-pointer appearance-none pr-1"
       >
         {SUPPORTED_LANGUAGES.map((lang) => (
-          <option key={lang.code} value={lang.code} className="text-slate-ink bg-white">
+          <option key={lang.code} value={lang.code} className="text-text-primary bg-white">
             {lang.nativeLabel}
           </option>
         ))}

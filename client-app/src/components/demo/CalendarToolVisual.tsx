@@ -37,13 +37,13 @@ export default function CalendarToolVisual({ visible }: CalendarToolVisualProps)
   const days = getDayLabels();
 
   return (
-    <div className="bg-white rounded-2xl border border-teal/20 p-6 animate-[fadeSlideIn_0.4s_ease-out]">
+    <div className="bg-white rounded-2xl border border-primary/20 p-6 animate-[fadeSlideIn_0.4s_ease-out]">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-teal/10 flex items-center justify-center">
-          <Calendar className="h-4 w-4 text-teal" />
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Calendar className="h-4 w-4 text-primary" />
         </div>
-        <h3 className="font-display font-semibold text-harbor">Scheduling</h3>
-        <span className="ml-auto text-xs text-calm-green font-body flex items-center gap-1">
+        <h3 className="font-display font-semibold text-sidebar-bg">Scheduling</h3>
+        <span className="ml-auto text-xs text-success font-body flex items-center gap-1">
           <Check className="h-3 w-3" />
           Appointment booked
         </span>
@@ -55,8 +55,8 @@ export default function CalendarToolVisual({ visible }: CalendarToolVisualProps)
             key={d.date}
             className={`flex flex-col items-center px-3 py-2 rounded-lg text-xs font-body transition-colors shrink-0 ${
               d.isToday
-                ? 'bg-teal text-white'
-                : 'bg-mist text-slate-ink/60 hover:bg-teal/10'
+                ? 'bg-primary text-white'
+                : 'bg-surface-secondary text-text-primary/60 hover:bg-primary/10'
             }`}
           >
             <span className="font-medium">{d.day}</span>
@@ -73,10 +73,10 @@ export default function CalendarToolVisual({ visible }: CalendarToolVisualProps)
               key={slot.time}
               className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body transition-all ${
                 isBooked
-                  ? 'bg-teal text-white ring-2 ring-teal/30'
+                  ? 'bg-primary text-white ring-2 ring-primary/30'
                   : slot.available
-                  ? 'bg-calm-green/10 text-calm-green border border-calm-green/20'
-                  : 'bg-soft-steel/20 text-slate-ink/30 line-through'
+                  ? 'bg-success/10 text-success border border-success/20'
+                  : 'bg-border-strong/20 text-text-primary/30 line-through'
               }`}
             >
               <Clock className="h-3 w-3" />
@@ -87,8 +87,8 @@ export default function CalendarToolVisual({ visible }: CalendarToolVisualProps)
         })}
       </div>
 
-      <div className="mt-3 px-3 py-2 bg-teal/5 rounded-lg border border-teal/10">
-        <p className="text-xs text-teal font-body">
+      <div className="mt-3 px-3 py-2 bg-primary/5 rounded-lg border border-primary/10">
+        <p className="text-xs text-primary font-body">
           Confirmed: Today at {BOOKED_SLOT}
         </p>
       </div>

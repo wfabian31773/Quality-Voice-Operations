@@ -66,16 +66,16 @@ export default function LiveTranscriptMock() {
 
         {/* Caller header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 bg-white/[0.02]">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal to-calm-green/60 flex items-center justify-center shadow-lg">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-success/60 flex items-center justify-center shadow-lg">
             <Phone className="h-4 w-4 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white leading-tight">+1 (415) 555-0142</p>
             <p className="text-xs text-white/50 leading-tight mt-0.5">New caller · San Francisco, CA</p>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-calm-green/15 border border-calm-green/25">
-            <span className="w-1.5 h-1.5 rounded-full bg-calm-green motion-safe:animate-pulse" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-calm-green">Live</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/15 border border-success/25">
+            <span className="w-1.5 h-1.5 rounded-full bg-success motion-safe:animate-pulse" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-success">Live</span>
           </div>
         </div>
 
@@ -92,8 +92,8 @@ export default function LiveTranscriptMock() {
               }}
             >
               {turn.speaker === 'agent' && (
-                <div className="w-7 h-7 rounded-lg bg-teal/20 border border-teal/30 flex items-center justify-center shrink-0">
-                  <Mic className="h-3 w-3 text-teal" />
+                <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                  <Mic className="h-3 w-3 text-primary" />
                 </div>
               )}
               <div className={`max-w-[78%] ${turn.speaker === 'agent' ? '' : 'text-right'}`}>
@@ -103,27 +103,27 @@ export default function LiveTranscriptMock() {
                 <div
                   className={`inline-block rounded-xl px-3.5 py-2 text-sm leading-snug text-left ${
                     turn.speaker === 'agent'
-                      ? 'bg-teal/15 border border-teal/25 text-white'
+                      ? 'bg-primary/15 border border-primary/25 text-white'
                       : 'bg-white/10 border border-white/15 text-white/90'
                   }`}
                 >
                   {turn.text}
                 </div>
                 {turn.tag && (
-                  <p className="text-[10px] font-mono text-teal/70 mt-1.5">{turn.tag}</p>
+                  <p className="text-[10px] font-mono text-primary/70 mt-1.5">{turn.tag}</p>
                 )}
               </div>
             </div>
           ))}
           {visible < SCRIPT.length && !reducedMotion && (
             <div className="flex gap-2.5 items-center">
-              <div className="w-7 h-7 rounded-lg bg-teal/20 border border-teal/30 flex items-center justify-center shrink-0">
-                <Mic className="h-3 w-3 text-teal" />
+              <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                <Mic className="h-3 w-3 text-primary" />
               </div>
-              <div className="flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-teal/10 border border-teal/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal/70 motion-safe:animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-teal/70 motion-safe:animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-teal/70 motion-safe:animate-bounce" />
+              <div className="flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-primary/10 border border-primary/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce" />
               </div>
             </div>
           )}
@@ -131,10 +131,10 @@ export default function LiveTranscriptMock() {
       </div>
 
       {/* Floating "action taken" card */}
-      <div className="absolute -bottom-5 -right-4 glass-card rounded-xl p-3.5 shadow-xl border border-white/15 bg-harbor/80 backdrop-blur-md max-w-[240px]">
+      <div className="absolute -bottom-5 -right-4 glass-card rounded-xl p-3.5 shadow-xl border border-white/15 bg-sidebar-bg/80 backdrop-blur-md max-w-[240px]">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-calm-green/20 border border-calm-green/30 flex items-center justify-center shrink-0">
-            <Calendar className="w-4 h-4 text-calm-green" />
+          <div className="w-8 h-8 rounded-lg bg-success/20 border border-success/30 flex items-center justify-center shrink-0">
+            <Calendar className="w-4 h-4 text-success" />
           </div>
           <div className="min-w-0">
             <p className="text-xs font-semibold text-white leading-tight">Appointment booked</p>
@@ -144,10 +144,10 @@ export default function LiveTranscriptMock() {
       </div>
 
       {/* Floating outcome badge */}
-      <div className="absolute -top-4 -left-4 glass-card rounded-xl p-3 shadow-xl border border-white/15 bg-harbor/80 backdrop-blur-md">
+      <div className="absolute -top-4 -left-4 glass-card rounded-xl p-3 shadow-xl border border-white/15 bg-sidebar-bg/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-teal/20 flex items-center justify-center">
-            <CheckCircle2 className="w-3.5 h-3.5 text-teal" />
+          <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
+            <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
           </div>
           <div>
             <p className="text-[10px] font-semibold text-white leading-tight">Resolved in 1 call</p>

@@ -48,7 +48,7 @@ const STAGE_COLORS: Record<string, string> = {
   demo_started: 'bg-purple-500',
   signup_started: 'bg-amber-500',
   signup_completed: 'bg-emerald-500',
-  paid: 'bg-teal',
+  paid: 'bg-primary',
 };
 
 export default function ConversionFunnel() {
@@ -66,7 +66,7 @@ export default function ConversionFunnel() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="animate-spin h-8 w-8 border-2 border-teal border-t-transparent rounded-full" />
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -78,7 +78,7 @@ export default function ConversionFunnel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-display font-bold text-harbor">Website Conversion Funnel</h2>
+          <h2 className="text-lg font-display font-bold text-sidebar-bg">Website Conversion Funnel</h2>
           <p className="text-sm text-text-secondary">Visitor to paid customer journey across all landing pages</p>
         </div>
         <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
@@ -87,7 +87,7 @@ export default function ConversionFunnel() {
               key={r}
               onClick={() => setRange(r)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                range === r ? 'bg-surface text-harbor shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                range === r ? 'bg-surface text-sidebar-bg shadow-sm' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
               {r}
@@ -99,7 +99,7 @@ export default function ConversionFunnel() {
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="text-sm text-text-secondary mb-1">Total Visitors</div>
-          <div className="text-2xl font-display font-bold text-harbor">{funnel.totalVisitors.toLocaleString()}</div>
+          <div className="text-2xl font-display font-bold text-sidebar-bg">{funnel.totalVisitors.toLocaleString()}</div>
         </div>
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="text-sm text-text-secondary mb-1">Overall Conversion</div>
@@ -107,20 +107,20 @@ export default function ConversionFunnel() {
         </div>
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="text-sm text-text-secondary mb-1">Paid Customers</div>
-          <div className="text-2xl font-display font-bold text-teal">
+          <div className="text-2xl font-display font-bold text-primary">
             {funnel.stages.find((s) => s.stage === 'paid')?.count ?? 0}
           </div>
         </div>
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-6">
-        <h3 className="text-sm font-semibold text-harbor mb-6">Funnel Stages</h3>
+        <h3 className="text-sm font-semibold text-sidebar-bg mb-6">Funnel Stages</h3>
         <div className="space-y-4">
           {funnel.stages.map((stage, idx) => (
             <div key={stage.stage}>
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-harbor">{STAGE_LABELS[stage.stage] ?? stage.stage}</span>
+                  <span className="text-sm font-medium text-sidebar-bg">{STAGE_LABELS[stage.stage] ?? stage.stage}</span>
                   <span className="text-xs text-text-muted">{stage.count.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs">
@@ -146,7 +146,7 @@ export default function ConversionFunnel() {
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-surface rounded-xl border border-border p-6">
-          <h3 className="text-sm font-semibold text-harbor mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-sidebar-bg mb-4 flex items-center gap-2">
             <Globe className="h-4 w-4" /> By Landing Page
           </h3>
           {funnel.byLandingPage.length === 0 ? (
@@ -162,7 +162,7 @@ export default function ConversionFunnel() {
                   <div className="flex items-center gap-4 shrink-0 ml-4">
                     <span className="text-text-secondary">{lp.visitors} visits</span>
                     <span className="text-text-secondary">{lp.signups} signups</span>
-                    <span className="font-medium text-harbor">{(lp.conversionRate * 100).toFixed(1)}%</span>
+                    <span className="font-medium text-sidebar-bg">{(lp.conversionRate * 100).toFixed(1)}%</span>
                   </div>
                 </div>
               ))}
@@ -171,7 +171,7 @@ export default function ConversionFunnel() {
         </div>
 
         <div className="bg-surface rounded-xl border border-border p-6">
-          <h3 className="text-sm font-semibold text-harbor mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-sidebar-bg mb-4 flex items-center gap-2">
             <TrendingUp className="h-4 w-4" /> By Traffic Source
           </h3>
           {funnel.bySource.length === 0 ? (
@@ -184,7 +184,7 @@ export default function ConversionFunnel() {
                   <div className="flex items-center gap-4 shrink-0">
                     <span className="text-text-secondary">{src.visitors} visits</span>
                     <span className="text-text-secondary">{src.signups} signups</span>
-                    <span className="font-medium text-harbor">{(src.conversionRate * 100).toFixed(1)}%</span>
+                    <span className="font-medium text-sidebar-bg">{(src.conversionRate * 100).toFixed(1)}%</span>
                   </div>
                 </div>
               ))}
