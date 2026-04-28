@@ -102,16 +102,37 @@ interface CrossDayShift {
   newDate: string;
   callSessionId: string;
   source: 'remix' | 'remix-backfill';
+  /**
+   * `rebalanced` — the OLD-day rollup rows existed and were debited in the
+   *                same ingest transaction (the overwhelmingly common path).
+   * `skipped`    — at least one OLD-day rollup row (`usage_metrics` for the
+   *                old direction, `usage_metrics` for ai_minutes, or
+   *                `daily_org_usage`) was missing. We refused to issue the
+   *                negative-quantity upsert (which would have created a row
+   *                with a NEGATIVE quantity that downstream invoicing would
+   *                have to special-case) and instead emit a finance alert so
+   *                ops can manually rebalance off the runbook.
+   */
+  kind: 'rebalanced' | 'skipped';
+  /** Per-table missing-row breakdown when `kind === 'skipped'`. */
+  missingRollups?: { calls: boolean; minutes: boolean; daily: boolean };
 }
 
 /**
  * Best-effort write of a finance-visible alert when a backfill correction
  * shifts an existing call into a different calendar day.
  *
- * The ingest transaction now auto-rebalances the OLD-day buckets
- * (`daily_org_usage` + `usage_metrics`) inline, so this alert is purely
- * informational: finance verifies the auto-rebalance landed correctly but no
- * longer has to run the manual SQL described in the historical runbook.
+ * Two flavours, one helper:
+ *
+ *   * `kind: 'rebalanced'` — the OLD-day rollup rows existed and were
+ *     auto-debited inside the ingest txn. The alert is purely informational
+ *     (severity `info`); finance just verifies the auto-rebalance landed.
+ *
+ *   * `kind: 'skipped'` — at least one OLD-day rollup row was missing
+ *     (e.g. the call_session pre-dated the rollup tables, or a row was
+ *     deleted out of band). We refused to write the negative-quantity
+ *     debit, so finance has to rebalance manually off the runbook. The
+ *     alert is `billing_backfill_cross_day_skipped` at severity `warning`.
  *
  * Runs OUTSIDE the ingest transaction with its own connection so a failure
  * here never rolls back the actual call upsert. The runbook URL is included
@@ -122,26 +143,42 @@ async function recordBackfillCrossDayAlert(
   shift: CrossDayShift,
 ): Promise<void> {
   const pool = getPlatformPool();
+  const isSkipped = shift.kind === 'skipped';
+  const alertType = isSkipped
+    ? 'billing_backfill_cross_day_skipped'
+    : 'billing_backfill_cross_day';
+  const severity = isSkipped ? 'warning' : 'info';
+  const message = isSkipped
+    ? `Backfill correction moved call ${shift.externalId} from ${shift.oldDate} to ${shift.newDate}, ` +
+      `but at least one OLD-day rollup row (daily_org_usage / usage_metrics) was missing — ` +
+      `the auto-rebalance was SKIPPED to avoid creating a negative-quantity usage row. ` +
+      `Manual rebalance required: see runbook ${BACKFILL_CROSS_DAY_RUNBOOK}.`
+    : `Backfill correction moved call ${shift.externalId} from ${shift.oldDate} to ${shift.newDate}. ` +
+      `daily_org_usage and usage_metrics were auto-rebalanced (OLD-day debit + NEW-day credit) in the ` +
+      `same ingest transaction — verify only, no manual rebalance needed. See runbook: ${BACKFILL_CROSS_DAY_RUNBOOK}.`;
+  const metadata: Record<string, unknown> = {
+    tenant_id: tenantId,
+    external_id: shift.externalId,
+    old_date: shift.oldDate,
+    new_date: shift.newDate,
+    source: shift.source,
+    auto_rebalanced: !isSkipped,
+    runbook_url: BACKFILL_CROSS_DAY_RUNBOOK,
+  };
+  if (isSkipped && shift.missingRollups) {
+    metadata.missing_old_rollups = shift.missingRollups;
+    metadata.manual_rebalance_required = true;
+  }
   try {
     await pool.query(
       `INSERT INTO operations_alerts (tenant_id, type, severity, message, metadata, call_session_id)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         tenantId,
-        'billing_backfill_cross_day',
-        'info',
-        `Backfill correction moved call ${shift.externalId} from ${shift.oldDate} to ${shift.newDate}. ` +
-          `daily_org_usage and usage_metrics were auto-rebalanced (OLD-day debit + NEW-day credit) in the ` +
-          `same ingest transaction — verify only, no manual rebalance needed. See runbook: ${BACKFILL_CROSS_DAY_RUNBOOK}.`,
-        JSON.stringify({
-          tenant_id: tenantId,
-          external_id: shift.externalId,
-          old_date: shift.oldDate,
-          new_date: shift.newDate,
-          source: shift.source,
-          auto_rebalanced: true,
-          runbook_url: BACKFILL_CROSS_DAY_RUNBOOK,
-        }),
+        alertType,
+        severity,
+        message,
+        JSON.stringify(metadata),
         shift.callSessionId,
       ],
     );
@@ -151,6 +188,7 @@ async function recordBackfillCrossDayAlert(
       externalId: shift.externalId,
       oldDate: shift.oldDate,
       newDate: shift.newDate,
+      kind: shift.kind,
       error: String(err),
     });
   }
@@ -397,6 +435,9 @@ async function persistCallEvent(
         newDate: callDate,
         callSessionId: callSessionId,
         source,
+        // Optimistically marked as rebalanced. Flipped to 'skipped' below
+        // if the OLD-day rollup row pre-check finds any missing row.
+        kind: 'rebalanced',
       };
     }
 
@@ -458,47 +499,104 @@ async function persistCallEvent(
       [tenantId, callDate, callsDelta, minutesDelta, totalCostDelta],
     );
 
-    if (isCrossDayShift && existingCall && oldCallDate) {
+    if (isCrossDayShift && existingCall && oldCallDate && crossDayShift) {
       // OLD-day reversal — fully back out the original call's contribution
-      // from the day it used to be attributed to. We use the SAME upsert
-      // pattern as the credit branch above (negative deltas on conflict);
-      // the OLD-day rows must already exist because the original ingest
-      // wrote them, so the ON CONFLICT branch is the one that fires.
+      // from the day it used to be attributed to.
+      //
+      // SAFETY GUARD: in normal operation the OLD-day rollup rows always
+      // exist because the original ingest wrote them, so an
+      // INSERT...ON CONFLICT...DO UPDATE with negative deltas safely lands
+      // on the UPDATE branch and the math works out. But if the row is
+      // missing (e.g. a tenant had a call_session row that pre-dated the
+      // rollup tables, or a row was deleted out of band) the INSERT branch
+      // would fire and create a `daily_org_usage` / `usage_metrics` row
+      // with a NEGATIVE quantity — a data-integrity smell that downstream
+      // invoicing would have to special-case. So we pre-check existence
+      // and skip the debit (with a finance alert) when any row is missing.
       const oldDirection = String(existingCall.direction);
       const oldMetricType = oldDirection === 'inbound' ? 'calls_inbound' : 'calls_outbound';
       const oldPeriodStart = `${oldCallDate}T00:00:00Z`;
       const oldPeriodEnd = `${oldCallDate}T23:59:59Z`;
       const oldTotalCostCents = Number(existingCall.total_cost_cents);
 
-      await client.query(
-        `INSERT INTO usage_metrics (tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
-         VALUES ($1, $2::usage_metric_type, $3, $4, $5, $6, $6)
-         ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
-           quantity = usage_metrics.quantity + $5,
-           total_cost_cents = usage_metrics.total_cost_cents + $6,
-           updated_at = NOW()`,
-        [tenantId, oldMetricType, oldPeriodStart, oldPeriodEnd, -1, -oldTotalCostCents],
+      const { rows: existsRows } = await client.query(
+        `SELECT
+           EXISTS(SELECT 1 FROM usage_metrics
+             WHERE tenant_id = $1 AND metric_type = $2::usage_metric_type AND period_start = $3) AS has_calls,
+           EXISTS(SELECT 1 FROM usage_metrics
+             WHERE tenant_id = $1 AND metric_type = 'ai_minutes'::usage_metric_type AND period_start = $3) AS has_minutes,
+           EXISTS(SELECT 1 FROM daily_org_usage
+             WHERE tenant_id = $1 AND date = $4) AS has_daily`,
+        [tenantId, oldMetricType, oldPeriodStart, oldCallDate],
       );
+      const exist = existsRows[0] as
+        | { has_calls: boolean; has_minutes: boolean; has_daily: boolean }
+        | undefined;
+      const hasCalls = !!exist?.has_calls;
+      const hasMinutes = !!exist?.has_minutes;
+      const hasDaily = !!exist?.has_daily;
+      const allOldRollupsPresent = hasCalls && hasMinutes && hasDaily;
 
-      await client.query(
-        `INSERT INTO usage_metrics (tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
-         VALUES ($1, 'ai_minutes'::usage_metric_type, $2, $3, $4, $5, $6)
-         ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
-           quantity = usage_metrics.quantity + $4,
-           total_cost_cents = usage_metrics.total_cost_cents + $6,
-           updated_at = NOW()`,
-        [tenantId, oldPeriodStart, oldPeriodEnd, -oldAiMinutes, -existingOpenaiCents, -existingOpenaiCents],
-      );
+      if (!allOldRollupsPresent) {
+        logger.warn('Skipping OLD-day cross-day rebalance — at least one rollup row is missing', {
+          tenantId,
+          externalId: event.external_id,
+          callSessionId,
+          oldDate: oldCallDate,
+          newDate: callDate,
+          source,
+          hasCalls,
+          hasMinutes,
+          hasDaily,
+        });
+        crossDayShift = {
+          ...crossDayShift,
+          kind: 'skipped',
+          missingRollups: {
+            calls: !hasCalls,
+            minutes: !hasMinutes,
+            daily: !hasDaily,
+          },
+        };
+      } else {
+        // Happy path. The rows exist, so we apply the negative deltas with
+        // plain UPDATE statements (no INSERT fallback). This is belt-and-
+        // braces over the pre-check above: the pre-check already decided
+        // "all rows present, proceed", but in the narrow TOCTOU race where
+        // a row got deleted between the check and the debit, the UPDATE
+        // simply affects 0 rows — a NEGATIVE-quantity row can never be
+        // created the way an INSERT…ON CONFLICT fallback would have.
+        await client.query(
+          `UPDATE usage_metrics SET
+             quantity = quantity + $4,
+             total_cost_cents = total_cost_cents + $5,
+             updated_at = NOW()
+           WHERE tenant_id = $1
+             AND metric_type = $2::usage_metric_type
+             AND period_start = $3`,
+          [tenantId, oldMetricType, oldPeriodStart, -1, -oldTotalCostCents],
+        );
 
-      await client.query(
-        `INSERT INTO daily_org_usage (tenant_id, date, total_calls, total_ai_minutes, total_cost_cents)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (tenant_id, date) DO UPDATE SET
-           total_calls = daily_org_usage.total_calls + $3,
-           total_ai_minutes = daily_org_usage.total_ai_minutes + $4,
-           total_cost_cents = daily_org_usage.total_cost_cents + $5`,
-        [tenantId, oldCallDate, -1, -oldAiMinutes, -oldTotalCostCents],
-      );
+        await client.query(
+          `UPDATE usage_metrics SET
+             quantity = quantity + $3,
+             total_cost_cents = total_cost_cents + $4,
+             updated_at = NOW()
+           WHERE tenant_id = $1
+             AND metric_type = 'ai_minutes'::usage_metric_type
+             AND period_start = $2`,
+          [tenantId, oldPeriodStart, -oldAiMinutes, -existingOpenaiCents],
+        );
+
+        await client.query(
+          `UPDATE daily_org_usage SET
+             total_calls = total_calls + $3,
+             total_ai_minutes = total_ai_minutes + $4,
+             total_cost_cents = total_cost_cents + $5
+           WHERE tenant_id = $1 AND date = $2`,
+          [tenantId, oldCallDate, -1, -oldAiMinutes, -oldTotalCostCents],
+        );
+      }
     }
 
     if (agentId) {

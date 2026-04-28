@@ -37,6 +37,14 @@ import {
 // --------------------------------------------------------------------------
 
 let nextIngestInsertReturnsRow = true;
+/**
+ * Controls what the OLD-day rollup-row existence pre-check returns inside
+ * `persistCallEvent` for cross-day backfill corrections. Default `true` so
+ * the overwhelming-majority happy path keeps working. Tests that need to
+ * simulate the data-integrity-smell scenario (rollup row pre-dates the
+ * rollup tables, or got deleted out of band) flip this to `false`.
+ */
+let oldDayRollupRowsExist = true;
 
 /**
  * In-memory state shared by the fake DB so multi-request tests (e.g.
@@ -109,6 +117,20 @@ function makeFakeClient() {
       if (trimmed.startsWith('SELECT id FROM call_quality_scores')) {
         return { rows: [], rowCount: 0 };
       }
+      if (
+        trimmed.startsWith('SELECT') &&
+        sql.includes('EXISTS(SELECT 1 FROM usage_metrics') &&
+        sql.includes('EXISTS(SELECT 1 FROM daily_org_usage')
+      ) {
+        return {
+          rows: [{
+            has_calls: oldDayRollupRowsExist,
+            has_minutes: oldDayRollupRowsExist,
+            has_daily: oldDayRollupRowsExist,
+          }],
+          rowCount: 1,
+        };
+      }
       if (trimmed.startsWith('INSERT INTO call_sessions')) {
         const v = values ?? [];
         const externalId = String(v[11]);
@@ -151,6 +173,8 @@ function makeFakeClient() {
       if (trimmed.startsWith('INSERT INTO call_quality_scores') ||
           trimmed.startsWith('INSERT INTO usage_metrics') ||
           trimmed.startsWith('INSERT INTO daily_org_usage') ||
+          trimmed.startsWith('UPDATE usage_metrics') ||
+          trimmed.startsWith('UPDATE daily_org_usage') ||
           trimmed.startsWith('UPDATE agents')) {
         return { rows: [], rowCount: 1 };
       }
@@ -231,6 +255,7 @@ vi.mock('../../platform/core/logger', () => ({
 
 beforeEach(() => {
   nextIngestInsertReturnsRow = true;
+  oldDayRollupRowsExist = true;
   allClients.length = 0;
   existingCallsByExternalId.clear();
   existingCallsBySessionId.clear();
@@ -642,13 +667,17 @@ describe('POST /v1/ingest/calls/backfill — cross-day auto-rebalance + alert', 
   /**
    * Filters the SQL captured during a single request down to the
    * `usage_metrics` / `daily_org_usage` mutations and tags each one with the
-   * calendar day it targeted (read off the period_start / date arg). Used to
-   * assert that a cross-day shift produces both NEW-day credits and OLD-day
-   * debits — i.e. the auto-rebalance landed.
+   * calendar day it targeted (read off the period_start / date arg) plus
+   * the SQL op (`INSERT` for NEW-day credits / same-day deltas, `UPDATE`
+   * for OLD-day debits — those use UPDATE-only with no INSERT fallback so
+   * a missing rollup row can never produce a NEGATIVE-quantity row).
+   * Used to assert that a cross-day shift produces both NEW-day credits
+   * and OLD-day debits — i.e. the auto-rebalance landed.
    */
   function collectUsageWrites(client: ReturnType<typeof makeFakeClient>) {
     const writes: Array<{
       table: 'usage_metrics_calls' | 'usage_metrics_minutes' | 'daily_org_usage';
+      op: 'INSERT' | 'UPDATE';
       day: string;
       args: unknown[];
     }> = [];
@@ -658,15 +687,29 @@ describe('POST /v1/ingest/calls/backfill — cross-day auto-rebalance + alert', 
       const args = (values ?? []) as unknown[];
       if (trimmed.startsWith('INSERT INTO usage_metrics') && sql.includes('$2::usage_metric_type')) {
         const periodStart = String(args[2]);
-        writes.push({ table: 'usage_metrics_calls', day: periodStart.slice(0, 10), args });
+        writes.push({ table: 'usage_metrics_calls', op: 'INSERT', day: periodStart.slice(0, 10), args });
       } else if (
         trimmed.startsWith('INSERT INTO usage_metrics') &&
         sql.includes("'ai_minutes'::usage_metric_type")
       ) {
         const periodStart = String(args[1]);
-        writes.push({ table: 'usage_metrics_minutes', day: periodStart.slice(0, 10), args });
+        writes.push({ table: 'usage_metrics_minutes', op: 'INSERT', day: periodStart.slice(0, 10), args });
       } else if (trimmed.startsWith('INSERT INTO daily_org_usage')) {
-        writes.push({ table: 'daily_org_usage', day: String(args[1]), args });
+        writes.push({ table: 'daily_org_usage', op: 'INSERT', day: String(args[1]), args });
+      } else if (trimmed.startsWith('UPDATE usage_metrics') && sql.includes('$2::usage_metric_type')) {
+        // OLD-day calls debit. Args: [tenantId, metricType, periodStart, callsDelta, totalCostDelta]
+        const periodStart = String(args[2]);
+        writes.push({ table: 'usage_metrics_calls', op: 'UPDATE', day: periodStart.slice(0, 10), args });
+      } else if (
+        trimmed.startsWith('UPDATE usage_metrics') &&
+        sql.includes("'ai_minutes'::usage_metric_type")
+      ) {
+        // OLD-day minutes debit. Args: [tenantId, periodStart, minutesDelta, openaiDelta]
+        const periodStart = String(args[1]);
+        writes.push({ table: 'usage_metrics_minutes', op: 'UPDATE', day: periodStart.slice(0, 10), args });
+      } else if (trimmed.startsWith('UPDATE daily_org_usage')) {
+        // OLD-day daily debit. Args: [tenantId, date, callsDelta, minutesDelta, costDelta]
+        writes.push({ table: 'daily_org_usage', op: 'UPDATE', day: String(args[1]), args });
       }
     }
     return writes;
@@ -815,24 +858,34 @@ describe('POST /v1/ingest/calls/backfill — cross-day auto-rebalance + alert', 
       expect(newDayDaily!.args[4]).toBe(25);
 
       // OLD day (2026-04-19) debit: full original amount as negative deltas.
+      // The OLD-day debit uses UPDATE-only (no INSERT fallback) so a missing
+      // rollup row can never produce a NEGATIVE-quantity row in the race
+      // between the existence pre-check and the debit. Args differ from the
+      // INSERT shape used for NEW-day credits — see `collectUsageWrites`.
       const oldDayCalls = writes.find(
         (w) => w.table === 'usage_metrics_calls' && w.day === '2026-04-19',
       );
       expect(oldDayCalls).toBeDefined();
-      expect(oldDayCalls!.args[4]).toBe(-1);
-      expect(oldDayCalls!.args[5]).toBe(-17);
+      expect(oldDayCalls!.op).toBe('UPDATE');
+      // [tenantId, metricType, periodStart, callsDelta, totalCostDelta]
+      expect(oldDayCalls!.args[3]).toBe(-1);
+      expect(oldDayCalls!.args[4]).toBe(-17);
 
       const oldDayMinutes = writes.find(
         (w) => w.table === 'usage_metrics_minutes' && w.day === '2026-04-19',
       );
       expect(oldDayMinutes).toBeDefined();
-      expect(oldDayMinutes!.args[3]).toBe(-2);
-      expect(oldDayMinutes!.args[4]).toBe(-12);
+      expect(oldDayMinutes!.op).toBe('UPDATE');
+      // [tenantId, periodStart, minutesDelta, openaiDelta]
+      expect(oldDayMinutes!.args[2]).toBe(-2);
+      expect(oldDayMinutes!.args[3]).toBe(-12);
 
       const oldDayDaily = writes.find(
         (w) => w.table === 'daily_org_usage' && w.day === '2026-04-19',
       );
       expect(oldDayDaily).toBeDefined();
+      expect(oldDayDaily!.op).toBe('UPDATE');
+      // [tenantId, date, callsDelta, minutesDelta, totalCostDelta]
       expect(oldDayDaily!.args[2]).toBe(-1);
       expect(oldDayDaily!.args[3]).toBe(-2);
       expect(oldDayDaily!.args[4]).toBe(-17);
@@ -1127,6 +1180,122 @@ describe('POST /v1/ingest/calls/backfill — cross-day auto-rebalance + alert', 
       await request(app).post('/v1/ingest/calls/backfill').send(event).expect(201);
 
       expect(findOpsAlertInsert()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('skips the OLD-day debit and emits billing_backfill_cross_day_skipped when the OLD-day rollup row is missing', async () => {
+    // Data-integrity guard: the OLD-day rollup rows are normally written by
+    // the original ingest, so the negative-delta INSERT...ON CONFLICT...DO
+    // UPDATE lands on the UPDATE branch. But if a tenant had a call_session
+    // row that pre-dated the rollup tables (or a row was deleted out of
+    // band), the INSERT branch would fire and create a daily_org_usage /
+    // usage_metrics row with a NEGATIVE quantity — which is a data smell
+    // downstream invoicing has to special-case. The pre-check must:
+    //   * skip ALL three OLD-day debits (no negative-quantity rows created)
+    //   * still credit the NEW day with the full new amount
+    //   * emit a `billing_backfill_cross_day_skipped` ops alert at warning
+    //     severity, with metadata flagging which rollup tables were missing
+    //   * still return 201 to the caller (the call_sessions upsert is
+    //     authoritative; the OLD-day debit was always a derived side-effect)
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(FROZEN_NOW));
+    try {
+      const app = await buildApp();
+      const sharedExternalId = 'ext-cross-day-missing-old-rollup';
+
+      const first = baseCallEvent({
+        start_time: '2026-04-19T23:30:00.000Z',
+        end_time: '2026-04-19T23:32:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-missing-old-orig',
+        duration_seconds: 120,
+        costs: { twilio_cents: 5, openai_cents: 12, total_cents: 17, is_estimated: false },
+        backfill_attestation: baseAttestation(),
+      });
+      const correction = baseCallEvent({
+        start_time: '2026-04-20T00:05:00.000Z',
+        end_time: '2026-04-20T00:08:00.000Z',
+        external_id: sharedExternalId,
+        idempotency_key: 'idem-missing-old-correction',
+        duration_seconds: 180,
+        costs: { twilio_cents: 7, openai_cents: 18, total_cents: 25, is_estimated: false },
+        backfill_attestation: baseAttestation({ reason: 'OLD-day rollup row missing — guard test.' }),
+      });
+
+      // Original ingest seeds a call_session for the OLD day, but we
+      // simulate the rollup row being missing for the *correction* request
+      // (e.g. someone deleted it out of band, or this call pre-dated the
+      // rollup tables and was hand-imported).
+      await request(app).post('/v1/ingest/calls/backfill').send(first).expect(201);
+      allClients.length = 0;
+      oldDayRollupRowsExist = false;
+
+      const res = await request(app).post('/v1/ingest/calls/backfill').send(correction);
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('processed');
+
+      const persistClient = allClients[1];
+      const writes = collectUsageWrites(persistClient);
+
+      // CRITICAL: the OLD day (2026-04-19) MUST NOT appear in any of the
+      // three rollup tables. Writing -1 / -2 / -17 there with the INSERT
+      // fallback would create rows with NEGATIVE quantities that downstream
+      // invoicing has to special-case.
+      const oldDayWrites = writes.filter((w) => w.day === '2026-04-19');
+      expect(oldDayWrites).toEqual([]);
+
+      // The NEW day (2026-04-20) is still credited with the full new amount —
+      // the call_sessions upsert is authoritative and the new-day rollup
+      // must reflect it even though the OLD-day side was skipped.
+      const newDayDaily = writes.find(
+        (w) => w.table === 'daily_org_usage' && w.day === '2026-04-20',
+      );
+      expect(newDayDaily).toBeDefined();
+      expect(newDayDaily!.args[2]).toBe(1);
+      expect(newDayDaily!.args[3]).toBe(3);
+      expect(newDayDaily!.args[4]).toBe(25);
+
+      // A `billing_backfill_cross_day_skipped` alert at warning severity
+      // must fire so finance can manually rebalance. The plain
+      // `billing_backfill_cross_day` (info) alert must NOT fire — the alert
+      // type is the operator's signal that manual action is required.
+      const alertInsert = allClients
+        .flatMap((c) => c.query.mock.calls as Array<[string, unknown[] | undefined]>)
+        .find(([sql]) =>
+          typeof sql === 'string' &&
+          sql.trimStart().startsWith('INSERT INTO operations_alerts'),
+        );
+      expect(alertInsert).toBeDefined();
+      const args = alertInsert![1] as unknown[];
+      expect(args[1]).toBe('billing_backfill_cross_day_skipped');
+      expect(args[2]).toBe('warning');
+      const message = String(args[3]);
+      expect(message).toContain(sharedExternalId);
+      expect(message).toContain('2026-04-19');
+      expect(message).toContain('2026-04-20');
+      expect(message).toMatch(/skipped/i);
+      expect(message).toMatch(/manual rebalance/i);
+      expect(message).toContain('docs/runbooks/billing-backfill-cross-day-rebalance.md');
+
+      const metadata = JSON.parse(String(args[4])) as Record<string, unknown>;
+      expect(metadata).toMatchObject({
+        tenant_id: 'tenant-A',
+        external_id: sharedExternalId,
+        old_date: '2026-04-19',
+        new_date: '2026-04-20',
+        source: 'remix-backfill',
+        auto_rebalanced: false,
+        manual_rebalance_required: true,
+        runbook_url: 'docs/runbooks/billing-backfill-cross-day-rebalance.md',
+      });
+      const missing = metadata.missing_old_rollups as Record<string, boolean>;
+      expect(missing).toEqual({ calls: true, minutes: true, daily: true });
+
+      // call_session_id must point at the existing call so finance can
+      // trace the alert back to the row that needs rebalancing.
+      expect(args[5]).toBe(`call-${sharedExternalId}`);
     } finally {
       vi.useRealTimers();
     }
