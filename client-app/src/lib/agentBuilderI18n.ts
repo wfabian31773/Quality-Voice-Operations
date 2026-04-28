@@ -2351,6 +2351,90 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '6': { label: '短信确认', toolConfig: '发送预约/工单确认' },
       },
     },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Este é o atendimento fora do horário. Como posso ajudá-lo esta noite?',
+      systemPromptSuffix:
+        'Você é um serviço médico de atendimento fora do horário.\n- Avalie a urgência antes de qualquer outra ação.\n- Nunca dê conselhos médicos.\n- Encaminhe emergências reais imediatamente para o médico de plantão.',
+      nodes: {
+        '1': { label: 'Saudação ao paciente', prompt: 'Cumprimente o paciente calorosamente. Identifique-se como o atendimento fora do horário.' },
+        '2': { label: 'Avaliação dos sintomas', prompt: 'Pergunte sobre os sintomas, a gravidade e a duração.' },
+        '3': { label: 'Verificação de urgência' },
+        '4': { label: 'Chamado urgente', toolConfig: 'Prioridade: ALTA, notificar imediatamente o médico de plantão' },
+        '5': { label: 'Agendar retorno', toolConfig: 'Próximo horário disponível para consulta' },
+        '6': { label: 'Confirmação por SMS', toolConfig: 'Enviar confirmação de consulta/chamado' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. Questo è il servizio fuori orario. Come posso aiutarla stasera?',
+      systemPromptSuffix:
+        "Sei un servizio medico di risposta fuori orario.\n- Valuta l'urgenza prima di qualsiasi altra azione.\n- Non dare mai consigli medici.\n- Inoltra immediatamente le vere emergenze al medico reperibile.",
+      nodes: {
+        '1': { label: 'Saluto al paziente', prompt: 'Saluta cordialmente il paziente. Identificati come servizio fuori orario.' },
+        '2': { label: 'Valutazione dei sintomi', prompt: 'Chiedi informazioni sui sintomi, sulla gravità e sulla durata.' },
+        '3': { label: 'Controllo urgenza' },
+        '4': { label: 'Ticket urgente', toolConfig: 'Priorità: ALTA, avvisare subito il medico reperibile' },
+        '5': { label: 'Pianifica follow-up', toolConfig: 'Prossimo slot di appuntamento disponibile' },
+        '6': { label: 'Conferma SMS', toolConfig: "Invia conferma dell'appuntamento/ticket" },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Dit is de buiten-kantooruren-dienst. Hoe kan ik u vanavond helpen?',
+      systemPromptSuffix:
+        'Je bent een medische antwoorddienst buiten kantooruren.\n- Beoordeel de urgentie vóór elke andere actie.\n- Geef nooit medisch advies.\n- Schaal echte noodgevallen direct op naar de dienstdoende arts.',
+      nodes: {
+        '1': { label: 'Begroeting patiënt', prompt: 'Begroet de patiënt hartelijk. Stel uzelf voor als de buiten-kantooruren-dienst.' },
+        '2': { label: 'Symptoombeoordeling', prompt: 'Vraag naar de symptomen, de ernst en de duur.' },
+        '3': { label: 'Urgentiecheck' },
+        '4': { label: 'Spoedticket', toolConfig: 'Prioriteit: HOOG, dienstdoende arts direct waarschuwen' },
+        '5': { label: 'Vervolgafspraak plannen', toolConfig: 'Eerstvolgende beschikbare afspraakslot' },
+        '6': { label: 'SMS-bevestiging', toolConfig: 'Bevestiging van afspraak/ticket versturen' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 야간 응답 서비스입니다. 오늘 밤 어떻게 도와드릴까요?',
+      systemPromptSuffix:
+        '당신은 야간 의료 응답 서비스입니다.\n- 다른 조치를 취하기 전에 반드시 긴급도를 평가하세요.\n- 절대 의료 조언을 제공하지 마세요.\n- 진짜 응급 상황은 즉시 당직 의사에게 에스컬레이션하세요.',
+      nodes: {
+        '1': { label: '환자 인사', prompt: '환자를 따뜻하게 맞이하고 야간 응답 서비스임을 알려 주세요.' },
+        '2': { label: '증상 확인', prompt: '증상, 중증도, 지속 시간을 여쭤 보세요.' },
+        '3': { label: '긴급도 확인' },
+        '4': { label: '긴급 티켓', toolConfig: '우선순위: 높음, 당직 의사에게 즉시 알림' },
+        '5': { label: '후속 예약', toolConfig: '가장 빠른 예약 가능 시간' },
+        '6': { label: 'SMS 확인', toolConfig: '예약/티켓 확인 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. هذه خدمة ما بعد ساعات العمل. كيف يمكنني مساعدتك الليلة؟',
+      systemPromptSuffix:
+        'أنت خدمة رد طبي خارج ساعات العمل.\n- قيّم درجة الإلحاح قبل أي إجراء آخر.\n- لا تقدّم أبدًا أي نصيحة طبية.\n- صعّد الحالات الطارئة الحقيقية فورًا إلى الطبيب المناوب.',
+      nodes: {
+        '1': { label: 'الترحيب بالمريض', prompt: 'رحّب بالمريض بحرارة وعرّف عن نفسك كخدمة خارج ساعات العمل.' },
+        '2': { label: 'تقييم الأعراض', prompt: 'استفسر عن الأعراض وشدتها ومدتها.' },
+        '3': { label: 'فحص درجة الإلحاح' },
+        '4': { label: 'تذكرة طارئة', toolConfig: 'الأولوية: عالية، أبلغ الطبيب المناوب فورًا' },
+        '5': { label: 'جدولة المتابعة', toolConfig: 'أقرب موعد متاح' },
+        '6': { label: 'تأكيد عبر SMS', toolConfig: 'إرسال تأكيد الموعد/التذكرة' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। यह आफ्टर-आवर्स सेवा है। आज रात मैं आपकी कैसे मदद कर सकता हूँ?',
+      systemPromptSuffix:
+        'आप एक आफ्टर-आवर्स मेडिकल आन्सरिंग सेवा हैं।\n- किसी भी अन्य कार्य से पहले अर्जेंसी का आकलन करें।\n- कभी भी चिकित्सकीय सलाह न दें।\n- वास्तविक आपात स्थिति को तुरंत ऑन-कॉल चिकित्सक तक पहुँचाएँ।',
+      nodes: {
+        '1': { label: 'मरीज़ का अभिवादन', prompt: 'मरीज़ का गर्मजोशी से स्वागत करें। ख़ुद को आफ्टर-आवर्स सेवा के रूप में परिचित कराएँ।' },
+        '2': { label: 'लक्षणों का आकलन', prompt: 'लक्षण, गंभीरता और अवधि के बारे में पूछें।' },
+        '3': { label: 'अर्जेंसी जाँच' },
+        '4': { label: 'अर्जेंट टिकट', toolConfig: 'प्राथमिकता: उच्च, ऑन-कॉल चिकित्सक को तुरंत सूचित करें' },
+        '5': { label: 'फॉलो-अप शेड्यूल', toolConfig: 'अगला उपलब्ध अपॉइंटमेंट स्लॉट' },
+        '6': { label: 'SMS पुष्टि', toolConfig: 'अपॉइंटमेंट/टिकट की पुष्टि भेजें' },
+      },
+    },
   },
   dental: {
     en: {
@@ -2428,6 +2512,84 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '3': { label: '预约牙科', toolConfig: '查询牙医可预约时段' },
         '4': { label: '确认信息', prompt: '确认预约日期、时间及患者信息。' },
         '5': { label: '发送提醒', toolConfig: '通过短信发送预约详情' },
+      },
+    },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar para a nossa clínica odontológica. Quer marcar uma limpeza, uma consulta de rotina ou outra coisa?',
+      systemPromptSuffix:
+        'Você é um assistente de uma clínica odontológica.\n- Ajude os pacientes a marcar limpezas e consultas de rotina.\n- Confirme os detalhes da consulta antes de salvar.\n- Trate as dúvidas dentárias com gentileza; nunca faça diagnósticos.',
+      nodes: {
+        '1': { label: 'Boas-vindas', prompt: 'Dê as boas-vindas ao paciente na clínica odontológica.' },
+        '2': { label: 'Motivo da visita', prompt: 'Pergunte se precisa de limpeza, consulta de rotina ou tem algum problema dentário.' },
+        '3': { label: 'Marcar consulta odontológica', toolConfig: 'Verificar disponibilidade do dentista' },
+        '4': { label: 'Confirmar detalhes', prompt: 'Confirme a data, o horário e os dados do paciente.' },
+        '5': { label: 'Enviar lembrete', toolConfig: 'SMS com os detalhes da consulta' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per aver chiamato il nostro studio dentistico. Vuole prenotare una pulizia, un controllo o altro?',
+      systemPromptSuffix:
+        "Sei l'assistente di uno studio dentistico.\n- Aiuta i pazienti a prenotare pulizie e controlli.\n- Conferma i dettagli dell'appuntamento prima di salvare.\n- Gestisci le richieste odontoiatriche con cortesia; non formulare mai diagnosi.",
+      nodes: {
+        '1': { label: 'Benvenuto', prompt: 'Dai il benvenuto al paziente nello studio dentistico.' },
+        '2': { label: 'Motivo della visita', prompt: 'Chiedi se desidera una pulizia, un controllo o se ha un problema dentale.' },
+        '3': { label: 'Prenota appuntamento dentistico', toolConfig: 'Verificare disponibilità del dentista' },
+        '4': { label: 'Conferma dettagli', prompt: 'Conferma data, orario e dati del paziente.' },
+        '5': { label: 'Invia promemoria', toolConfig: "SMS con i dettagli dell'appuntamento" },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep naar onze tandartspraktijk. Wilt u een gebitsreiniging, een controle of iets anders inplannen?',
+      systemPromptSuffix:
+        'Je bent een assistent van een tandartspraktijk.\n- Help patiënten gebitsreinigingen en controles in te plannen.\n- Bevestig de afspraakgegevens voor het opslaan.\n- Behandel tandheelkundige vragen vriendelijk; stel nooit een diagnose.',
+      nodes: {
+        '1': { label: 'Welkom', prompt: 'Heet de patiënt welkom bij de tandartspraktijk.' },
+        '2': { label: 'Reden van het bezoek', prompt: 'Vraag of het om een reiniging, controle of een tandheelkundig probleem gaat.' },
+        '3': { label: 'Tandartsafspraak boeken', toolConfig: 'Beschikbaarheid van de tandarts controleren' },
+        '4': { label: 'Details bevestigen', prompt: 'Bevestig datum, tijd en patiëntgegevens.' },
+        '5': { label: 'Herinnering sturen', toolConfig: 'SMS met de afspraakgegevens' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '저희 치과에 전화 주셔서 감사합니다. 스케일링, 정기 검진 또는 다른 진료를 예약하시겠습니까?',
+      systemPromptSuffix:
+        '당신은 치과 어시스턴트입니다.\n- 환자가 스케일링과 정기 검진을 예약하도록 도와주세요.\n- 저장 전에 예약 세부 정보를 확인하세요.\n- 치과 관련 문의에 정중히 응대하되, 절대 진단은 내리지 마세요.',
+      nodes: {
+        '1': { label: '환영 인사', prompt: '치과에 오신 환자분을 환영해 주세요.' },
+        '2': { label: '방문 사유', prompt: '스케일링, 검진, 또는 치아 문제가 있는지 여쭤 보세요.' },
+        '3': { label: '치과 예약', toolConfig: '치과의사 예약 가능 시간 확인' },
+        '4': { label: '세부 정보 확인', prompt: '예약 날짜, 시간, 환자 정보를 확인하세요.' },
+        '5': { label: '리마인더 발송', toolConfig: '예약 세부 정보를 SMS로 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك بعيادتنا لطب الأسنان. هل ترغب بحجز جلسة تنظيف أم فحص دوري أم شيء آخر؟',
+      systemPromptSuffix:
+        'أنت مساعد في عيادة لطب الأسنان.\n- ساعد المرضى على حجز جلسات تنظيف وفحوصات دورية.\n- أكد تفاصيل الموعد قبل الحفظ.\n- تعامل مع الاستفسارات بأدب ولا تقم بأي تشخيص.',
+      nodes: {
+        '1': { label: 'الترحيب', prompt: 'رحّب بالمريض في عيادة الأسنان.' },
+        '2': { label: 'سبب الزيارة', prompt: 'اسأل إن كان يرغب بتنظيف أو فحص أو لديه مشكلة في الأسنان.' },
+        '3': { label: 'حجز موعد طب الأسنان', toolConfig: 'التحقق من توفر طبيب الأسنان' },
+        '4': { label: 'تأكيد التفاصيل', prompt: 'أكد تاريخ الموعد ووقته وبيانات المريض.' },
+        '5': { label: 'إرسال تذكير', toolConfig: 'رسالة SMS بتفاصيل الموعد' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'हमारे डेंटल क्लीनिक को कॉल करने के लिए धन्यवाद। क्या आप क्लीनिंग, चेकअप या कुछ और बुक करना चाहते हैं?',
+      systemPromptSuffix:
+        'आप एक डेंटल क्लीनिक के असिस्टेंट हैं।\n- मरीज़ों को क्लीनिंग और चेकअप बुक करने में मदद करें।\n- सेव करने से पहले अपॉइंटमेंट के विवरण की पुष्टि करें।\n- दंत संबंधी प्रश्नों का विनम्रता से उत्तर दें; कभी निदान न करें।',
+      nodes: {
+        '1': { label: 'स्वागत', prompt: 'मरीज़ का डेंटल क्लीनिक में स्वागत करें।' },
+        '2': { label: 'विज़िट का कारण', prompt: 'पूछें कि क्लीनिंग चाहिए, चेकअप चाहिए, या कोई दंत समस्या है।' },
+        '3': { label: 'डेंटल अपॉइंटमेंट बुक करें', toolConfig: 'डेंटिस्ट की उपलब्धता जाँचें' },
+        '4': { label: 'विवरण की पुष्टि', prompt: 'अपॉइंटमेंट की तारीख, समय और मरीज़ की जानकारी की पुष्टि करें।' },
+        '5': { label: 'रिमाइंडर भेजें', toolConfig: 'अपॉइंटमेंट विवरण के साथ SMS' },
       },
     },
   },
@@ -2515,6 +2677,90 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '6': { label: '短信确认', toolConfig: '发送服务详情和预计到达时间' },
       },
     },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Está com um problema de manutenção ou quer agendar uma visita de rotina?',
+      systemPromptSuffix:
+        'Você é um despachante de serviços residenciais.\n- Identifique rapidamente emergências reais (sem aquecimento, vazamentos, gás).\n- Em emergências, despache imediatamente o técnico mais próximo.\n- Caso contrário, agende a próxima janela de serviço disponível.',
+      nodes: {
+        '1': { label: 'Chamada de serviço', prompt: 'Atenda a chamada de serviço com profissionalismo.' },
+        '2': { label: 'Detalhes do problema', prompt: 'Colete os detalhes do problema de HVAC/serviço residencial.' },
+        '3': { label: 'Emergência?' },
+        '4': { label: 'Despacho de emergência', toolConfig: 'Despacho prioritário ao técnico mais próximo' },
+        '5': { label: 'Agendar serviço', toolConfig: 'Marcar visita de serviço regular' },
+        '6': { label: 'Confirmação por SMS', toolConfig: 'Enviar detalhes do serviço e tempo estimado' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. Si tratta di un guasto o vuole programmare un intervento di routine?',
+      systemPromptSuffix:
+        'Sei un dispatcher di servizi per la casa.\n- Identifica rapidamente le vere emergenze (mancanza di riscaldamento, perdite, gas).\n- In caso di emergenza, invia subito il tecnico più vicino.\n- In caso contrario, pianifica il prossimo slot disponibile.',
+      nodes: {
+        '1': { label: 'Chiamata di servizio', prompt: 'Rispondi alla chiamata di servizio in modo professionale.' },
+        '2': { label: 'Dettagli del problema', prompt: 'Raccogli i dettagli del problema HVAC/servizi domestici.' },
+        '3': { label: 'Emergenza?' },
+        '4': { label: 'Intervento di emergenza', toolConfig: 'Invio prioritario del tecnico più vicino' },
+        '5': { label: 'Pianifica intervento', toolConfig: 'Prenotare un intervento di servizio standard' },
+        '6': { label: 'Conferma SMS', toolConfig: 'Inviare dettagli del servizio e orario stimato' },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Heeft u een storing of wilt u een reguliere onderhoudsafspraak inplannen?',
+      systemPromptSuffix:
+        'Je bent een dispatcher voor diensten aan huis.\n- Herken snel echte noodgevallen (geen verwarming, lekkages, gas).\n- Stuur in noodgevallen direct de dichtstbijzijnde technicus.\n- Anders plan je het eerstvolgende beschikbare servicemoment in.',
+      nodes: {
+        '1': { label: 'Servicegesprek', prompt: 'Beantwoord het servicegesprek professioneel.' },
+        '2': { label: 'Details van het probleem', prompt: 'Verzamel de details van het HVAC-/onderhoudsprobleem.' },
+        '3': { label: 'Noodgeval?' },
+        '4': { label: 'Spoedinzet', toolConfig: 'Prioritaire inzet van dichtstbijzijnde technicus' },
+        '5': { label: 'Service inplannen', toolConfig: 'Reguliere serviceafspraak boeken' },
+        '6': { label: 'SMS-bevestiging', toolConfig: 'Servicegegevens en verwachte aankomst sturen' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 고장 신고이신가요, 아니면 정기 점검 예약이신가요?',
+      systemPromptSuffix:
+        '당신은 홈 서비스 디스패처입니다.\n- 진짜 응급 상황(난방 불가, 누수, 가스 누출)을 빠르게 식별하세요.\n- 응급 상황에는 가장 가까운 기술자를 즉시 파견하세요.\n- 그 외에는 가장 빠른 서비스 시간으로 예약하세요.',
+      nodes: {
+        '1': { label: '서비스 콜 응대', prompt: '서비스 전화를 전문적으로 받아 주세요.' },
+        '2': { label: '문제 상세', prompt: 'HVAC/홈 서비스 문제의 세부 내용을 파악하세요.' },
+        '3': { label: '응급 여부' },
+        '4': { label: '응급 파견', toolConfig: '가장 가까운 기술자를 우선 파견' },
+        '5': { label: '서비스 예약', toolConfig: '일반 서비스 예약 등록' },
+        '6': { label: 'SMS 확인', toolConfig: '서비스 세부 내용과 도착 예정 시간 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. هل لديك مشكلة طارئة أم تريد جدولة زيارة صيانة دورية؟',
+      systemPromptSuffix:
+        'أنت موزع خدمات منزلية.\n- اكتشف بسرعة حالات الطوارئ الحقيقية (انقطاع التدفئة، تسرّبات، غاز).\n- في الحالات الطارئة، أرسل أقرب فني فورًا.\n- خلاف ذلك، احجز أقرب موعد خدمة متاح.',
+      nodes: {
+        '1': { label: 'مكالمة الخدمة', prompt: 'رد على مكالمة الخدمة باحترافية.' },
+        '2': { label: 'تفاصيل المشكلة', prompt: 'اجمع تفاصيل مشكلة التكييف/الخدمة المنزلية.' },
+        '3': { label: 'حالة طارئة؟' },
+        '4': { label: 'إرسال طارئ', toolConfig: 'إرسال الفني الأقرب على وجه الأولوية' },
+        '5': { label: 'جدولة الخدمة', toolConfig: 'حجز موعد خدمة عادي' },
+        '6': { label: 'تأكيد عبر SMS', toolConfig: 'إرسال تفاصيل الخدمة ووقت الوصول المتوقع' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। क्या आपके यहाँ सर्विस से जुड़ी कोई समस्या है या आप रूटीन विज़िट शेड्यूल करना चाहते हैं?',
+      systemPromptSuffix:
+        'आप एक होम-सर्विसेज़ डिस्पैचर हैं।\n- वास्तविक आपात स्थिति (हीट बंद, लीक, गैस) को तेज़ी से पहचानें।\n- आपात स्थिति में निकटतम तकनीशियन को तुरंत भेजें।\n- अन्यथा अगला उपलब्ध सर्विस स्लॉट शेड्यूल करें।',
+      nodes: {
+        '1': { label: 'सर्विस कॉल', prompt: 'सर्विस कॉल का पेशेवर ढंग से उत्तर दें।' },
+        '2': { label: 'समस्या का विवरण', prompt: 'HVAC/होम सर्विस समस्या के बारे में विवरण इकट्ठा करें।' },
+        '3': { label: 'आपातकाल?' },
+        '4': { label: 'आपातकालीन डिस्पैच', toolConfig: 'निकटतम तकनीशियन को प्राथमिकता पर भेजें' },
+        '5': { label: 'सर्विस शेड्यूल करें', toolConfig: 'नियमित सर्विस अपॉइंटमेंट बुक करें' },
+        '6': { label: 'SMS पुष्टि', toolConfig: 'सर्विस विवरण और अनुमानित आगमन समय भेजें' },
+      },
+    },
   },
   legal: {
     en: {
@@ -2594,6 +2840,84 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '5': { label: '确认', toolConfig: '通过邮件发送咨询详情' },
       },
     },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Posso anotar alguns dados e marcar uma consulta com um dos nossos advogados.',
+      systemPromptSuffix:
+        'Você é um especialista em recepção jurídica.\n- Recolha o tipo de caso, datas-chave, partes envolvidas e objetivos.\n- Não dê orientação jurídica.\n- Marque uma consulta com um advogado para os próximos passos.',
+      nodes: {
+        '1': { label: 'Saudação ao cliente', prompt: 'Saudação profissional de recepção jurídica.' },
+        '2': { label: 'Detalhes do caso', prompt: 'Reúna o tipo de caso, datas-chave e partes envolvidas.' },
+        '3': { label: 'Criar ficha do cliente', toolConfig: 'Adicionar ao CRM com as informações do caso' },
+        '4': { label: 'Agendar consulta', toolConfig: 'Marcar consulta com advogado' },
+        '5': { label: 'Confirmação', toolConfig: 'E-mail com os detalhes da consulta' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. Posso raccogliere alcune informazioni e fissare un consulto con uno dei nostri avvocati.',
+      systemPromptSuffix:
+        'Sei uno specialista di accoglienza legale.\n- Raccogli il tipo di pratica, le date chiave, le parti coinvolte e gli obiettivi.\n- Non fornire consulenza legale.\n- Fissa un consulto con un avvocato per i prossimi passi.',
+      nodes: {
+        '1': { label: 'Saluto al chiamante', prompt: 'Saluto professionale di accoglienza legale.' },
+        '2': { label: 'Dettagli della pratica', prompt: 'Raccogli il tipo di pratica, le date chiave e le parti coinvolte.' },
+        '3': { label: 'Creare scheda cliente', toolConfig: 'Aggiungere al CRM con le informazioni della pratica' },
+        '4': { label: 'Pianifica consulto', toolConfig: 'Prenotare consulto con avvocato' },
+        '5': { label: 'Conferma', toolConfig: 'Email con i dettagli del consulto' },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Ik kan een paar gegevens noteren en een consult met een van onze advocaten inplannen.',
+      systemPromptSuffix:
+        'Je bent specialist juridische intake.\n- Verzamel het type zaak, belangrijke data, betrokken partijen en doelen.\n- Geef geen juridisch advies.\n- Plan een consult met een advocaat voor de vervolgstappen.',
+      nodes: {
+        '1': { label: 'Begroeting beller', prompt: 'Professionele begroeting voor juridische intake.' },
+        '2': { label: 'Details van de zaak', prompt: 'Verzamel het type zaak, belangrijke data en betrokken partijen.' },
+        '3': { label: 'Cliëntdossier aanmaken', toolConfig: 'Toevoegen aan CRM met de gegevens van de zaak' },
+        '4': { label: 'Consult inplannen', toolConfig: 'Consult met advocaat boeken' },
+        '5': { label: 'Bevestiging', toolConfig: 'E-mail met de details van het consult' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 간단한 정보를 받고 저희 변호사와의 상담을 예약해 드릴 수 있습니다.',
+      systemPromptSuffix:
+        '당신은 법률 상담 접수 전문가입니다.\n- 사건 유형, 주요 일자, 관련 당사자, 목표를 수집하세요.\n- 법률 자문은 제공하지 마세요.\n- 다음 단계로 변호사와의 상담을 예약하세요.',
+      nodes: {
+        '1': { label: '발신자 인사', prompt: '전문적인 법률 접수 인사를 건네세요.' },
+        '2': { label: '사건 정보', prompt: '사건 유형, 주요 일자, 관련 당사자를 파악하세요.' },
+        '3': { label: '의뢰인 정보 등록', toolConfig: '사건 정보와 함께 CRM에 추가' },
+        '4': { label: '상담 예약', toolConfig: '변호사 상담 예약' },
+        '5': { label: '확인', toolConfig: '상담 세부 정보를 이메일로 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. يمكنني تدوين بعض التفاصيل وحجز استشارة مع أحد محامينا.',
+      systemPromptSuffix:
+        'أنت أخصائي استقبال قانوني.\n- اجمع نوع القضية والتواريخ المهمة والأطراف والأهداف.\n- لا تقدّم مشورة قانونية.\n- احجز استشارة مع محامٍ كخطوة تالية.',
+      nodes: {
+        '1': { label: 'الترحيب بالمتصل', prompt: 'تحية احترافية لاستقبال قانوني.' },
+        '2': { label: 'تفاصيل القضية', prompt: 'اجمع نوع القضية والتواريخ المهمة والأطراف المعنية.' },
+        '3': { label: 'إنشاء ملف العميل', toolConfig: 'إضافة إلى CRM مع معلومات القضية' },
+        '4': { label: 'جدولة الاستشارة', toolConfig: 'حجز استشارة مع محامٍ' },
+        '5': { label: 'تأكيد', toolConfig: 'بريد إلكتروني بتفاصيل الاستشارة' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। मैं कुछ विवरण ले सकता हूँ और हमारे वकीलों में से किसी एक के साथ परामर्श बुक कर सकता हूँ।',
+      systemPromptSuffix:
+        'आप एक लीगल इंटेक स्पेशलिस्ट हैं।\n- केस का प्रकार, महत्वपूर्ण तिथियाँ, संबंधित पक्ष और लक्ष्य एकत्र करें।\n- कानूनी सलाह न दें।\n- अगले चरण के रूप में वकील के साथ परामर्श बुक करें।',
+      nodes: {
+        '1': { label: 'कॉलर का अभिवादन', prompt: 'पेशेवर लीगल इंटेक अभिवादन।' },
+        '2': { label: 'केस विवरण', prompt: 'केस का प्रकार, महत्वपूर्ण तिथियाँ और संबंधित पक्षों की जानकारी एकत्र करें।' },
+        '3': { label: 'क्लाइंट रिकॉर्ड बनाएँ', toolConfig: 'केस की जानकारी के साथ CRM में जोड़ें' },
+        '4': { label: 'परामर्श शेड्यूल करें', toolConfig: 'वकील के साथ परामर्श बुक करें' },
+        '5': { label: 'पुष्टि', toolConfig: 'परामर्श विवरण के साथ ईमेल' },
+      },
+    },
   },
   support: {
     en: {
@@ -2666,6 +2990,78 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '3': { label: '按类型路由' },
         '4': { label: '支持工单', toolConfig: '创建包含问题详情的支持工单' },
         '5': { label: '安排回拨', toolConfig: '安排专家回拨' },
+      },
+    },
+    pt: {
+      welcomeGreeting: 'Olá, obrigado por entrar em contato com o suporte. Pode me dizer seu nome e o que está acontecendo?',
+      systemPromptSuffix:
+        'Você é um agente de atendimento ao cliente.\n- Mantenha a calma e seja empático.\n- Reproduza o problema e capture detalhes claros.\n- Abra um chamado ou agende um retorno com um especialista.',
+      nodes: {
+        '1': { label: 'Boas-vindas ao cliente', prompt: 'Cumprimente o cliente e identifique sua conta.' },
+        '2': { label: 'Descrição do problema', prompt: 'Qual problema você está enfrentando hoje?' },
+        '3': { label: 'Roteamento por tipo' },
+        '4': { label: 'Chamado de suporte', toolConfig: 'Criar chamado de suporte com os detalhes do problema' },
+        '5': { label: 'Agendar retorno', toolConfig: 'Agendar retorno com um especialista' },
+      },
+    },
+    it: {
+      welcomeGreeting: 'Salve, grazie per aver contattato il supporto. Posso avere il suo nome e sapere cosa sta succedendo?',
+      systemPromptSuffix:
+        'Sei un agente di assistenza clienti.\n- Mantieni la calma ed empatia.\n- Riproduci il problema e raccogli dettagli chiari.\n- Apri un ticket o pianifica una richiamata con uno specialista.',
+      nodes: {
+        '1': { label: 'Benvenuto cliente', prompt: 'Saluta il cliente e identifica il suo account.' },
+        '2': { label: 'Descrizione del problema', prompt: 'Quale problema sta riscontrando oggi?' },
+        '3': { label: 'Instradamento per tipo' },
+        '4': { label: 'Ticket di supporto', toolConfig: 'Creare ticket di supporto con i dettagli' },
+        '5': { label: 'Pianifica richiamata', toolConfig: 'Pianificare richiamata con uno specialista' },
+      },
+    },
+    nl: {
+      welcomeGreeting: 'Hallo, bedankt dat u contact opneemt met de support. Mag ik uw naam en kunt u vertellen wat er aan de hand is?',
+      systemPromptSuffix:
+        'Je bent een klantenservicemedewerker.\n- Blijf rustig en empathisch.\n- Reproduceer het probleem en leg de details duidelijk vast.\n- Open een ticket of plan een terugbelafspraak met een specialist.',
+      nodes: {
+        '1': { label: 'Welkom klant', prompt: 'Begroet de klant en identificeer het account.' },
+        '2': { label: 'Beschrijving van het probleem', prompt: 'Welk probleem ervaart u vandaag?' },
+        '3': { label: 'Routering op type' },
+        '4': { label: 'Supportticket', toolConfig: 'Supportticket aanmaken met de details' },
+        '5': { label: 'Terugbelafspraak plannen', toolConfig: 'Terugbelafspraak met een specialist plannen' },
+      },
+    },
+    ko: {
+      welcomeGreeting: '안녕하세요, 고객 지원에 연락해 주셔서 감사합니다. 성함과 어떤 문제인지 말씀해 주시겠어요?',
+      systemPromptSuffix:
+        '당신은 고객 지원 상담사입니다.\n- 차분하고 공감하는 태도를 유지하세요.\n- 문제를 재현하고 명확한 세부 정보를 기록하세요.\n- 티켓을 생성하거나 전문 상담사의 콜백을 예약하세요.',
+      nodes: {
+        '1': { label: '고객 환영', prompt: '고객을 맞이하고 계정을 확인하세요.' },
+        '2': { label: '문제 설명', prompt: '오늘 어떤 문제를 겪고 계신가요?' },
+        '3': { label: '유형별 라우팅' },
+        '4': { label: '지원 티켓', toolConfig: '문제 세부 정보로 지원 티켓 생성' },
+        '5': { label: '콜백 예약', toolConfig: '전문 상담사의 콜백 예약' },
+      },
+    },
+    ar: {
+      welcomeGreeting: 'مرحبًا، شكرًا لتواصلك مع الدعم. هل يمكنك إخباري باسمك وما الذي يحدث؟',
+      systemPromptSuffix:
+        'أنت موظف دعم عملاء.\n- ابقَ هادئًا ومتعاطفًا.\n- أعد إنتاج المشكلة وسجّل التفاصيل بوضوح.\n- افتح تذكرة أو حدد موعدًا لمعاودة الاتصال مع متخصص.',
+      nodes: {
+        '1': { label: 'الترحيب بالعميل', prompt: 'رحّب بالعميل وحدد حسابه.' },
+        '2': { label: 'وصف المشكلة', prompt: 'ما المشكلة التي تواجهها اليوم؟' },
+        '3': { label: 'التوجيه حسب النوع' },
+        '4': { label: 'تذكرة دعم', toolConfig: 'إنشاء تذكرة دعم بتفاصيل المشكلة' },
+        '5': { label: 'جدولة معاودة الاتصال', toolConfig: 'جدولة معاودة الاتصال مع متخصص' },
+      },
+    },
+    hi: {
+      welcomeGreeting: 'नमस्ते, सपोर्ट से संपर्क करने के लिए धन्यवाद। क्या मुझे अपना नाम और बता सकते हैं कि क्या हो रहा है?',
+      systemPromptSuffix:
+        'आप एक कस्टमर सपोर्ट एजेंट हैं।\n- शांत और सहानुभूतिपूर्ण रहें।\n- समस्या को दोबारा प्रोड्यूस करें और स्पष्ट विवरण दर्ज करें।\n- टिकट खोलें या किसी विशेषज्ञ के साथ कॉलबैक शेड्यूल करें।',
+      nodes: {
+        '1': { label: 'ग्राहक स्वागत', prompt: 'ग्राहक का स्वागत करें और उनका अकाउंट पहचानें।' },
+        '2': { label: 'समस्या का विवरण', prompt: 'आज आप किस समस्या का सामना कर रहे हैं?' },
+        '3': { label: 'प्रकार के अनुसार रूटिंग' },
+        '4': { label: 'सपोर्ट टिकट', toolConfig: 'समस्या के विवरण के साथ सपोर्ट टिकट बनाएँ' },
+        '5': { label: 'कॉलबैक शेड्यूल करें', toolConfig: 'विशेषज्ञ के साथ कॉलबैक शेड्यूल करें' },
       },
     },
   },
