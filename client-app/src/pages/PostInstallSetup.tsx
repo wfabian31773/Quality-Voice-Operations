@@ -478,7 +478,7 @@ export default function PostInstallSetup() {
           <h1 className="text-xl font-bold text-text-primary">Post-Install Setup</h1>
           <p className="text-sm text-text-muted mt-0.5">
             {installData
-              ? `${(installData as Record<string, unknown>).template_name ?? (installData as Record<string, unknown>).agent_name ?? 'Agent'} — Complete these steps to go live`
+              ? `${installData.template_name ?? installData.agent_name ?? 'Agent'} — Complete these steps to go live`
               : 'Complete these steps to make your agent live'}
           </p>
         </div>

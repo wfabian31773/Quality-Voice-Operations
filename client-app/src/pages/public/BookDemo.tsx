@@ -18,7 +18,7 @@ const timeWindows = [
   'Flexible',
 ];
 
-const VITE_ENV = (import.meta as Record<string, Record<string, string>>).env ?? {};
+const VITE_ENV = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}) as Record<string, string | undefined>;
 const SCHEDULER_URL = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_URL || 'https://cal.com/qvo/30min').trim();
 const SCHEDULER_PROVIDER = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_PROVIDER || 'cal.com').trim().toLowerCase();
 

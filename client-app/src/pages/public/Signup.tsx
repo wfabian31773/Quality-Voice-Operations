@@ -10,7 +10,7 @@ import SEO from '../../components/SEO';
 import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
 import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 
-const TURNSTILE_SITE_KEY = (import.meta as Record<string, Record<string, string>>).env?.VITE_TURNSTILE_SITE_KEY || '';
+const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
 
 export default function Signup() {
   const { t } = useTranslation();
@@ -49,7 +49,7 @@ export default function Signup() {
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY || !captchaRef.current) return;
 
-    const win = window as Record<string, unknown>;
+    const win = window as unknown as Record<string, unknown>;
     if (typeof win.turnstile !== 'undefined') {
       const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
       turnstile.render(captchaRef.current, {

@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { useAuthStore } from '../stores/authStore';
+import { getToken } from '../lib/api';
 
 export default function PhoneVerification({ onVerified }: { onVerified?: () => void }) {
-  const { token } = useAuthStore();
   const [step, setStep] = useState<'input' | 'verify'>('input');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
@@ -10,9 +9,11 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+  const buildHeaders = (): Record<string, string> => {
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
   };
 
   async function sendCode() {
@@ -21,7 +22,7 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
     try {
       const res = await fetch('/api/auth/send-phone-verification', {
         method: 'POST',
-        headers,
+        headers: buildHeaders(),
         body: JSON.stringify({ phoneNumber }),
       });
       const data = await res.json();
@@ -43,7 +44,7 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
     try {
       const res = await fetch('/api/auth/verify-phone', {
         method: 'POST',
-        headers,
+        headers: buildHeaders(),
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
