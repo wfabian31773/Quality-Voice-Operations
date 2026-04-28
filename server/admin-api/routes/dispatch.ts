@@ -1906,8 +1906,10 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
       }
 
       // GPX 1.1 — one <trk> with one <trkseg>. Each <trkpt> carries the
-      // ISO timestamp; speed/heading are not part of the GPX 1.1 schema
-      // proper, so we keep this minimal and interoperable.
+      // ISO timestamp. Speed (m/s) and heading (degrees) are emitted via
+      // the standard Garmin TrackPointExtension v1 namespace so insurance
+      // and accident-reconstruction tools see the same evidence as the
+      // in-app replay.
       const xmlEscape = (s: string): string =>
         s.replace(/[<>&'"]/g, (c) =>
           c === '<' ? '&lt;'
@@ -1922,12 +1924,32 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
       const trkpts = points
         .map((p) => {
           const time = p.recorded_at ? `<time>${p.recorded_at}</time>` : '';
-          return `      <trkpt lat="${p.lat}" lon="${p.lng}">${time}</trkpt>`;
+          const hasSpeed = p.speed_mps != null && Number.isFinite(Number(p.speed_mps));
+          const hasHeading = p.heading_deg != null && Number.isFinite(Number(p.heading_deg));
+          let extensions = '';
+          if (hasSpeed || hasHeading) {
+            const speedTag = hasSpeed
+              ? `<gpxtpx:speed>${Number(p.speed_mps)}</gpxtpx:speed>`
+              : '';
+            const courseTag = hasHeading
+              ? `<gpxtpx:course>${Number(p.heading_deg)}</gpxtpx:course>`
+              : '';
+            extensions =
+              `<extensions>`
+              + `<gpxtpx:TrackPointExtension>`
+              + speedTag
+              + courseTag
+              + `</gpxtpx:TrackPointExtension>`
+              + `</extensions>`;
+          }
+          return `      <trkpt lat="${p.lat}" lon="${p.lng}">${time}${extensions}</trkpt>`;
         })
         .join('\n');
       const gpx =
         `<?xml version="1.0" encoding="UTF-8"?>\n` +
-        `<gpx version="1.1" creator="Qvo Dispatch" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+        `<gpx version="1.1" creator="Qvo Dispatch"`
+        + ` xmlns="http://www.topografix.com/GPX/1/1"`
+        + ` xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n` +
         `  <trk>\n` +
         `    <name>${trackName}</name>\n` +
         `    <trkseg>\n` +

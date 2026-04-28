@@ -401,13 +401,92 @@ describe('GET /dispatch/jobs/:id/route', () => {
       expect(res.text).toContain('<?xml version="1.0" encoding="UTF-8"?>');
       expect(res.text).toContain('<gpx version="1.1"');
       expect(res.text).toContain('<trkseg>');
-      expect(res.text).toContain(`<trkpt lat="37.7749" lon="-122.4194"><time>${t1}</time></trkpt>`);
+      // The TrackPointExtension namespace must be declared on the root
+      // element so external mapping tools can resolve gpxtpx:* tags.
+      expect(res.text).toContain(
+        'xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"',
+      );
+      // First point has speed + heading ⇒ extensions block carries both
+      // values inside the standard TrackPointExtension wrapper.
+      expect(res.text).toContain(
+        `<trkpt lat="37.7749" lon="-122.4194"><time>${t1}</time>`
+          + `<extensions>`
+          + `<gpxtpx:TrackPointExtension>`
+          + `<gpxtpx:speed>12.5</gpxtpx:speed>`
+          + `<gpxtpx:course>90</gpxtpx:course>`
+          + `</gpxtpx:TrackPointExtension>`
+          + `</extensions>`
+          + `</trkpt>`,
+      );
+      // Second point has null speed + heading ⇒ no extensions block at all
+      // (avoids emitting empty <extensions/> noise that some parsers reject).
       expect(res.text).toContain(`<trkpt lat="37.776" lon="-122.418"><time>${t2}</time></trkpt>`);
       // Points appear in chronological order in the file.
       const i1 = res.text.indexOf('lat="37.7749"');
       const i2 = res.text.indexOf('lat="37.776"');
       expect(i1).toBeGreaterThan(0);
       expect(i2).toBeGreaterThan(i1);
+    });
+
+    it('emits a partial extensions block when only speed or only heading is present', async () => {
+      // Same job, but with one row that has speed only and one row that
+      // has heading only. The extensions block should appear in both,
+      // but only with the populated child element.
+      queryMock
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'job-1',
+              title: 'Replace water heater',
+              status: 'completed',
+              scheduled_at: '2026-04-28T14:30:00.000Z',
+              completed_at: '2026-04-28T15:30:00.000Z',
+              resource_id: 'res-1',
+              resource_name: 'Alex Chen',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              latitude: 37.7749,
+              longitude: -122.4194,
+              accuracy_m: 8,
+              heading_deg: null,
+              speed_mps: 18.7,
+              recorded_at: t1,
+              received_at: t1,
+            },
+            {
+              latitude: 37.776,
+              longitude: -122.418,
+              accuracy_m: 6,
+              heading_deg: 270,
+              speed_mps: null,
+              recorded_at: t2,
+              received_at: t2,
+            },
+          ],
+        });
+
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-1/route?format=gpx');
+
+      expect(res.status).toBe(200);
+      // Speed-only row.
+      expect(res.text).toContain(
+        `<trkpt lat="37.7749" lon="-122.4194"><time>${t1}</time>`
+          + `<extensions><gpxtpx:TrackPointExtension>`
+          + `<gpxtpx:speed>18.7</gpxtpx:speed>`
+          + `</gpxtpx:TrackPointExtension></extensions></trkpt>`,
+      );
+      // Heading-only row.
+      expect(res.text).toContain(
+        `<trkpt lat="37.776" lon="-122.418"><time>${t2}</time>`
+          + `<extensions><gpxtpx:TrackPointExtension>`
+          + `<gpxtpx:course>270</gpxtpx:course>`
+          + `</gpxtpx:TrackPointExtension></extensions></trkpt>`,
+      );
     });
 
     it('falls back to scheduled_at for the filename date when no pings exist', async () => {
