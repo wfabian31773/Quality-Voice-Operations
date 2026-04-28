@@ -2,19 +2,27 @@
  * One-shot backfill for the geocode columns added by
  * `migrations/087_dispatch_jobs_geocode.sql`.
  *
- * Why: the dispatcher live map lazy-geocodes a job's address the first
- * time a tech goes en_route, which means the very first ETA after the
- * status flip can be slightly delayed (and on the free Nominatim
- * provider, rate-limited). Pre-populating `address_lat/lon` for every
- * still-open job keeps that first render snappy.
+ * Why: two product surfaces read these cached coords and pay an
+ * on-demand geocode round-trip when they're missing —
+ *   1. The dispatcher live map lazy-geocodes when a tech goes en_route,
+ *      so the very first ETA after the status flip can be slow on the
+ *      free Nominatim provider.
+ *   2. The route-replay endpoint (`GET /admin/dispatch/jobs/:id/route`)
+ *      lazy-geocodes the customer's address pin the first time anyone
+ *      opens the route tab on a *historical* job. On a busy tenant that
+ *      can mean hundreds of completed/cancelled jobs whose first replay
+ *      blocks on a provider call.
+ * Pre-populating `address_lat`/`address_lon` for every job — open AND
+ * historical — keeps both surfaces snappy from the get-go.
  *
  * What it does: walks every `dispatch_jobs` row that has a non-empty
  * `address` but no cached coordinates for that exact address (i.e.
  * `address_lat`/`address_lon` is NULL or `address_geocoded_for` no
- * longer matches the current `address`). By default it only touches
- * "still-actionable" statuses (pending/assigned/scheduled/en_route/
- * on_site/in_progress) so we don't waste API quota on completed or
- * cancelled history. Pass `--include-all-statuses` to widen.
+ * longer matches the current `address`). By default it covers ALL
+ * statuses, so route-replay benefits even on completed/cancelled jobs.
+ * Pass `--actionable-only` to scope to still-open jobs
+ * (pending/assigned/scheduled/en_route/on_site/in_progress) — useful
+ * when you only need the live-map quick-win and want to save quota.
  *
  * The script:
  *   - is safe to re-run (rows that already have a fresh, address-matched
@@ -36,7 +44,14 @@
  *
  * Optional flags:
  *   --dry-run                   Report what would change, write nothing.
- *   --include-all-statuses      Also backfill done/cancelled/completed/incomplete jobs.
+ *   --actionable-only           Only backfill still-open jobs (pending/
+ *                               assigned/scheduled/en_route/on_site/
+ *                               in_progress). Default is ALL statuses.
+ *   --include-all-statuses      Deprecated no-op alias kept for backward
+ *                               compatibility — historical default before
+ *                               Task #779. ALL statuses are now included
+ *                               by default; pass `--actionable-only` for
+ *                               the narrower behavior.
  *   --tenant=<id>               Limit to a single tenant_id.
  *   --limit=<n>                 Stop after processing N rows total (useful for smoke tests).
  *   --rps=<n>                   Requests-per-second cap (overrides provider default).
@@ -51,7 +66,7 @@ import type { GeocoderProviderName } from '../platform/integrations/routing/type
 
 interface CliOptions {
   dryRun: boolean;
-  includeAllStatuses: boolean;
+  actionableOnly: boolean;
   tenantId: string | null;
   limit: number | null;
   rps: number | null;
@@ -59,7 +74,7 @@ interface CliOptions {
 
 function parseArgs(argv: readonly string[]): CliOptions {
   let dryRun = false;
-  let includeAllStatuses = false;
+  let actionableOnly = false;
   let tenantId: string | null = null;
   let limit: number | null = null;
   let rps: number | null = null;
@@ -67,8 +82,12 @@ function parseArgs(argv: readonly string[]): CliOptions {
   for (const arg of argv) {
     if (arg === '--dry-run') {
       dryRun = true;
+    } else if (arg === '--actionable-only') {
+      actionableOnly = true;
     } else if (arg === '--include-all-statuses') {
-      includeAllStatuses = true;
+      // Deprecated no-op: the default already includes all statuses
+      // post-Task #779. Accepting it silently keeps legacy operator
+      // runbooks and any cron entries from breaking on first invocation.
     } else if (arg.startsWith('--tenant=')) {
       const v = arg.slice('--tenant='.length).trim();
       if (v) tenantId = v;
@@ -81,7 +100,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     }
   }
 
-  return { dryRun, includeAllStatuses, tenantId, limit, rps };
+  return { dryRun, actionableOnly, tenantId, limit, rps };
 }
 
 /**
@@ -174,7 +193,7 @@ async function selectCandidates(
   ];
   const params: unknown[] = [];
 
-  if (!opts.includeAllStatuses) {
+  if (opts.actionableOnly) {
     params.push(ACTIONABLE_STATUSES);
     conditions.push(`status = ANY($${params.length}::text[])`);
   }
@@ -258,7 +277,9 @@ async function main(): Promise<void> {
   const minIntervalMs = Math.ceil(1000 / rps);
 
   console.log(
-    `[BACKFILL] Environment: ${env}${opts.dryRun ? ' (DRY RUN)' : ''} provider=${provider} rps=${rps}`,
+    `[BACKFILL] Environment: ${env}${opts.dryRun ? ' (DRY RUN)' : ''} ` +
+      `provider=${provider} rps=${rps} ` +
+      `scope=${opts.actionableOnly ? 'actionable-only' : 'all-statuses'}`,
   );
   if (provider === 'none') {
     console.log('[BACKFILL] Provider is "none" — nothing to do. Exiting.');

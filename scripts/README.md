@@ -42,12 +42,18 @@ matching renderers in `client-app/src/components/DocBlocks.tsx`.
 ## Backfill missing dispatch job geocodes
 
 `migrations/087_dispatch_jobs_geocode.sql` adds `address_lat` /
-`address_lon` columns but leaves them NULL for pre-existing jobs. The
-dispatcher live map will lazy-fill these the first time a tech goes
-en_route, but on the free Nominatim provider that first call is
-rate-limited and noticeably slower than a cached read. Run the
-backfill once after deploying the migration so every still-actionable
-job already has cached coordinates:
+`address_lon` columns but leaves them NULL for pre-existing jobs. Two
+product surfaces lazy-fill these on demand and pay a geocode round-trip
+when they're missing:
+
+1. The dispatcher live map (first ETA after a tech goes en_route).
+2. The route-replay endpoint (`GET /admin/dispatch/jobs/:id/route`),
+   which is opened on *historical* jobs — completed, cancelled,
+   incomplete — so on a busy tenant hundreds of older rows may have
+   never been geocoded.
+
+Run the backfill once after deploying the migration so every job —
+open and historical — already has cached coordinates:
 
 ```
 # Development (uses DATABASE_URL)
@@ -63,9 +69,12 @@ The script:
   whose `address_lat`/`address_lon` is missing or whose
   `address_geocoded_for` no longer matches `address` — so it's safe to
   re-run, and a re-run after an address edit picks up the change;
-- by default only touches still-actionable jobs (statuses
-  `pending`, `assigned`, `scheduled`, `en_route`, `on_site`,
-  `in_progress`). Pass `--include-all-statuses` to widen;
+- by default covers ALL statuses (open + completed + cancelled), so
+  the route-replay surface benefits even on historical jobs. Pass
+  `--actionable-only` to scope to still-open statuses
+  (`pending`, `assigned`, `scheduled`, `en_route`, `on_site`,
+  `in_progress`) when you only want the live-map quick-win and need
+  to save quota;
 - respects the configured geocoder's rate limit. Defaults are 1 req/s
   for `nominatim` (per OSM policy), 5 req/s for `mapbox`, and
   10 req/s for `google`. Override with `--rps=<n>` or
@@ -76,6 +85,11 @@ The script:
 Useful flags:
 
 - `--dry-run` — report what would change without writing.
+- `--actionable-only` — only backfill open/in-flight jobs (the
+  pre-Task-#779 default).
+- `--include-all-statuses` — deprecated no-op alias kept for backward
+  compatibility with operator runbooks; ALL statuses are now included
+  by default.
 - `--tenant=<tenant_id>` — scope to a single tenant (useful for
   re-running after a backfill failure).
 - `--limit=<n>` — stop after N rows (smoke test).
