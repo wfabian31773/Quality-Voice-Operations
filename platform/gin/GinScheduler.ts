@@ -2,6 +2,7 @@ import { createLogger } from '../core/logger';
 import { runAggregationPipeline } from './AggregationPipeline';
 import { runGlobalPatternDetection } from './GlobalInsightEngine';
 import { distributeRecommendations } from './RecommendationDistributor';
+import { invalidatePublicBenchmarkCache } from './publicBenchmarkCache';
 
 const logger = createLogger('GIN_SCHEDULER');
 
@@ -21,6 +22,10 @@ async function runGinCycle(): Promise<void> {
 
     await runGlobalPatternDetection(result.runId);
     await distributeRecommendations();
+
+    // New aggregation data is available — bust the cached marketing snapshot
+    // so the next public request picks it up instead of waiting for TTL.
+    await invalidatePublicBenchmarkCache();
 
     logger.info('GIN cycle complete', { runId: result.runId });
   } catch (err) {

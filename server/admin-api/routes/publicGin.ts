@@ -2,6 +2,12 @@ import { Router } from 'express';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
+import {
+  readCachedPublicBenchmark,
+  writeCachedPublicBenchmark,
+  type PublicBenchmarkPayload,
+  type PublicBenchmarkRow,
+} from '../../../platform/gin/publicBenchmarkCache';
 
 const logger = createLogger('PUBLIC_GIN_API');
 const router = Router();
@@ -66,6 +72,18 @@ const FALLBACK_CACHE_HEADERS = {
 
 router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
   try {
+    // Try the Redis (or in-memory fallback) cache first. A hit means we
+    // skip the multi-row Postgres query entirely, which is the whole point
+    // of this layer — under traffic spikes the marketing endpoint stays
+    // fast even when the CDN cache misses.
+    const cached = await readCachedPublicBenchmark();
+    if (cached) {
+      const headers = cached.status === 'illustrative' ? FALLBACK_CACHE_HEADERS : PUBLIC_CACHE_HEADERS;
+      res.set(headers);
+      res.set('X-Benchmark-Cache', 'hit');
+      return res.json(cached);
+    }
+
     const pool = getPlatformPool();
 
     const verticals = Array.from(new Set(PUBLIC_METRICS.map(m => m.vertical)));
@@ -88,7 +106,7 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
     }
 
     let latestPeriodEnd: Date | null = null;
-    const rows = PUBLIC_METRICS.map((spec) => {
+    const rows: PublicBenchmarkRow[] = PUBLIC_METRICS.map((spec) => {
       const row = benchmarkIndex.get(`${spec.vertical}:${spec.metric}`);
       if (!row) return null;
 
@@ -112,31 +130,38 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
         topQuartile: formatValue(topQuartile, spec.format),
         cohortSize: sampleSize,
       };
-    }).filter((r): r is NonNullable<typeof r> => r !== null);
+    }).filter((r): r is PublicBenchmarkRow => r !== null);
 
     if (rows.length === 0) {
-      res.set(FALLBACK_CACHE_HEADERS);
-      return res.json({
-        status: 'illustrative' as const,
+      const payload: PublicBenchmarkPayload = {
+        status: 'illustrative',
         snapshotAt: null,
         kAnonymity: PUBLIC_K_ANONYMITY,
         refreshCadence: 'Daily rolling window once the live aggregation pipeline accumulates enough cohorts',
         source: 'industry_benchmarks (no rows above k threshold yet)',
         rows: [],
-      });
+      };
+      await writeCachedPublicBenchmark(payload);
+      res.set(FALLBACK_CACHE_HEADERS);
+      res.set('X-Benchmark-Cache', 'miss');
+      return res.json(payload);
     }
 
-    const status = rows.length >= 3 ? ('live' as const) : ('preview' as const);
+    const status: PublicBenchmarkPayload['status'] = rows.length >= 3 ? 'live' : 'preview';
 
-    res.set(PUBLIC_CACHE_HEADERS);
-    return res.json({
+    const payload: PublicBenchmarkPayload = {
       status,
       snapshotAt: latestPeriodEnd ? (latestPeriodEnd as Date).toISOString().slice(0, 10) : null,
       kAnonymity: PUBLIC_K_ANONYMITY,
       refreshCadence: 'Daily rolling 30-day window',
       source: 'industry_benchmarks',
       rows,
-    });
+    };
+    await writeCachedPublicBenchmark(payload);
+
+    res.set(PUBLIC_CACHE_HEADERS);
+    res.set('X-Benchmark-Cache', 'miss');
+    return res.json(payload);
   } catch (err) {
     logger.error('Failed to load public GIN benchmarks', { error: String(err) });
     // Don't cache transient errors — let the next request retry.

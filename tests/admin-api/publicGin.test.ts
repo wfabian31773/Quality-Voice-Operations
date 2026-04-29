@@ -25,6 +25,14 @@ vi.mock('../../platform/infra/rate-limit/createRateLimiter', () => ({
 }));
 
 import publicGinRoutes from '../../server/admin-api/routes/publicGin';
+import {
+  __setCacheClientForTests,
+  __createMemoryCacheForTests,
+} from '../../platform/infra/cache';
+import {
+  invalidatePublicBenchmarkCache,
+  PUBLIC_BENCHMARK_CACHE_KEY,
+} from '../../platform/gin/publicBenchmarkCache';
 
 function buildApp() {
   const app = express();
@@ -32,9 +40,11 @@ function buildApp() {
   return app;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   queryMock.mockReset();
   process.env.GIN_PUBLIC_K_ANONYMITY = '8';
+  // Reset the process-wide cache between tests so they don't leak state.
+  __setCacheClientForTests(__createMemoryCacheForTests());
 });
 
 describe('GET /public/gin/benchmarks', () => {
@@ -222,5 +232,176 @@ describe('GET /public/gin/benchmarks', () => {
     expect(res.headers['cache-control']).toMatch(/public/);
     expect(res.headers['cache-control']).toMatch(/max-age=60/);
     expect(res.headers['cache-control']).toMatch(/s-maxage=300/);
+  });
+});
+
+describe('GET /public/gin/benchmarks (Redis-backed snapshot cache)', () => {
+  it('serves a second request from the cache without re-querying Postgres', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          industry_vertical: 'medical',
+          metric_name: 'call_completion_rate',
+          metric_value: '0.85',
+          sample_size: 12,
+          percentile_50: '0.78',
+          percentile_75: '0.94',
+          period_end: '2026-04-15',
+          updated_at: '2026-04-15T00:00:00Z',
+        },
+      ],
+    });
+
+    const app = buildApp();
+    const first = await request(app).get('/public/gin/benchmarks');
+    expect(first.status).toBe(200);
+    expect(first.headers['x-benchmark-cache']).toBe('miss');
+    expect(queryMock).toHaveBeenCalledTimes(1);
+
+    const second = await request(app).get('/public/gin/benchmarks');
+    expect(second.status).toBe(200);
+    expect(second.headers['x-benchmark-cache']).toBe('hit');
+    // Second request must NOT hit the database.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(second.body).toEqual(first.body);
+  });
+
+  it('also caches the empty/illustrative payload so warm-up traffic does not hammer the DB', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const app = buildApp();
+    const first = await request(app).get('/public/gin/benchmarks');
+    expect(first.status).toBe(200);
+    expect(first.body.status).toBe('illustrative');
+    expect(first.headers['x-benchmark-cache']).toBe('miss');
+
+    const second = await request(app).get('/public/gin/benchmarks');
+    expect(second.status).toBe(200);
+    expect(second.body.status).toBe('illustrative');
+    expect(second.headers['x-benchmark-cache']).toBe('hit');
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches from Postgres after the cache is invalidated (e.g. by the GIN scheduler)', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            industry_vertical: 'medical',
+            metric_name: 'call_completion_rate',
+            metric_value: '0.85',
+            sample_size: 12,
+            percentile_50: '0.78',
+            percentile_75: '0.94',
+            period_end: '2026-04-15',
+            updated_at: '2026-04-15T00:00:00Z',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            industry_vertical: 'medical',
+            metric_name: 'call_completion_rate',
+            metric_value: '0.91',
+            sample_size: 18,
+            percentile_50: '0.88',
+            percentile_75: '0.97',
+            period_end: '2026-04-22',
+            updated_at: '2026-04-22T00:00:00Z',
+          },
+        ],
+      });
+
+    const app = buildApp();
+    const first = await request(app).get('/public/gin/benchmarks');
+    expect(first.status).toBe(200);
+    expect(first.body.snapshotAt).toBe('2026-04-15');
+    expect(queryMock).toHaveBeenCalledTimes(1);
+
+    // Simulate the GIN scheduler completing a fresh aggregation cycle.
+    await invalidatePublicBenchmarkCache();
+
+    const second = await request(app).get('/public/gin/benchmarks');
+    expect(second.status).toBe(200);
+    expect(second.headers['x-benchmark-cache']).toBe('miss');
+    expect(second.body.snapshotAt).toBe('2026-04-22');
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache 503 errors so the next request can retry', async () => {
+    queryMock
+      .mockRejectedValueOnce(new Error('connection refused'))
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            industry_vertical: 'medical',
+            metric_name: 'call_completion_rate',
+            metric_value: '0.85',
+            sample_size: 12,
+            percentile_50: '0.78',
+            percentile_75: '0.94',
+            period_end: '2026-04-15',
+            updated_at: '2026-04-15T00:00:00Z',
+          },
+        ],
+      });
+
+    const app = buildApp();
+    const failed = await request(app).get('/public/gin/benchmarks');
+    expect(failed.status).toBe(503);
+    expect(failed.headers['cache-control']).toBe('no-store');
+
+    const recovered = await request(app).get('/public/gin/benchmarks');
+    expect(recovered.status).toBe(200);
+    expect(recovered.headers['x-benchmark-cache']).toBe('miss');
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the DB path when the cache backend is unavailable', async () => {
+    // Inject a deliberately-broken cache client to simulate a Redis outage.
+    __setCacheClientForTests({
+      backend: () => 'redis',
+      getJson: async () => {
+        throw new Error('redis offline');
+      },
+      setJson: async () => {
+        throw new Error('redis offline');
+      },
+      del: async () => {
+        throw new Error('redis offline');
+      },
+    });
+
+    queryMock.mockResolvedValue({
+      rows: [
+        {
+          industry_vertical: 'medical',
+          metric_name: 'call_completion_rate',
+          metric_value: '0.85',
+          sample_size: 12,
+          percentile_50: '0.78',
+          percentile_75: '0.94',
+          period_end: '2026-04-15',
+          updated_at: '2026-04-15T00:00:00Z',
+        },
+      ],
+    });
+
+    const app = buildApp();
+    const res1 = await request(app).get('/public/gin/benchmarks');
+    const res2 = await request(app).get('/public/gin/benchmarks');
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+    // With Redis broken, every request goes to Postgres — the route
+    // degrades to the original behaviour instead of failing.
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(res1.headers['x-benchmark-cache']).toBe('miss');
+    expect(res2.headers['x-benchmark-cache']).toBe('miss');
+  });
+
+  it('uses a stable cache key so a deployment with multiple instances shares the namespace', () => {
+    expect(PUBLIC_BENCHMARK_CACHE_KEY).toBe('gin:public:benchmarks:v1');
   });
 });
