@@ -315,6 +315,201 @@ describe('HubSpotConnectorAdapter appointment.booked', () => {
   });
 });
 
+describe('HubSpotConnectorAdapter retry-with-backoff (BL-014 Task #1111)', () => {
+  // Real timers because retryFetch's backoff uses setTimeout — with fake
+  // timers the retry sleep would stall forever and the test would time out.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // BL-014 (Task #1111): the older HubSpot adapter routes every call through
+  // the shared `hubspotFetch` -> `retryFetch` helper, but the existing tests
+  // only exercised the happy path / cache-stale behaviours. Without these two
+  // tests, a regression that swapped `hubspotFetch` for a plain `fetch`
+  // (e.g. during a refactor) would silently pass CI even though the dispatch
+  // would no longer recover from a transient upstream wobble or stay inside
+  // the 60s budget on a hostile one. The pattern mirrors the QuickBooks /
+  // Zoho / Google Calendar / Outlook Calendar tests added in Task #981.
+  test(
+    'recovers from a transient 5xx (502 → 503 → 200) on the call engagement POST and ultimately succeeds',
+    { timeout: 15_000 },
+    async () => {
+      const calls: Array<{ url: string; method: string }> = [];
+      let attempt = 0;
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push({ url, method });
+        attempt += 1;
+        // Two transient gateway failures must be retried by the helper
+        // BEFORE the adapter even sees them; the third attempt returns the
+        // created Call engagement as if nothing happened.
+        if (attempt === 1) {
+          return new Response(JSON.stringify({ message: 'bad gateway' }), { status: 502 });
+        }
+        if (attempt === 2) {
+          return new Response(JSON.stringify({ message: 'service unavailable' }), { status: 503 });
+        }
+        return new Response(JSON.stringify({ id: 'call-5xx' }), { status: 200 });
+      }));
+
+      const adapter = new HubSpotConnectorAdapter();
+      // Hint the contactId so handleCallCompleted skips the contact search /
+      // create lookup and only calls logCallEngagement — that keeps the
+      // test focused on a single endpoint and lets us count attempts cleanly.
+      const payload: ConnectorPayload = {
+        type: 'call.completed',
+        contactId: 'contact-hint',
+        summary: 'AI voice call completed',
+        durationSeconds: 30,
+      };
+      const result = await adapter.execute(TENANT, CONFIG, payload);
+
+      expect(result.success).toBe(true);
+      expect(result.externalId).toBe('call-5xx');
+      expect(result.meta).toMatchObject({
+        contactId: 'contact-hint',
+        engagementId: 'call-5xx',
+        provider: 'hubspot',
+      });
+      // Two 5xx + one successful retry, all targeting the same calls
+      // engagement endpoint.
+      expect(calls).toHaveLength(3);
+      expect(calls.every((c) => c.url.endsWith('/crm/v3/objects/calls'))).toBe(true);
+      expect(calls.every((c) => c.method === 'POST')).toBe(true);
+    },
+  );
+
+  test(
+    'exhausts at exactly 3 attempts on persistent 5xx, surfaces a clean error within the 60s budget',
+    { timeout: 15_000 },
+    async () => {
+      const calls: Array<{ url: string; method: string }> = [];
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push({ url, method });
+        // Persistent 503 — HubSpot's helper MUST cap at 3 attempts and let
+        // the adapter convert the final failed Response into a clean
+        // {success:false, error:'HubSpot API error 503: ...'} result rather
+        // than looping or hanging until the per-dispatch deadline fires.
+        return new Response(JSON.stringify({ message: 'service unavailable' }), {
+          status: 503,
+        });
+      }));
+
+      const startedAt = Date.now();
+      const adapter = new HubSpotConnectorAdapter();
+      const payload: ConnectorPayload = {
+        type: 'call.completed',
+        contactId: 'contact-hint',
+        summary: 'AI voice call completed',
+        durationSeconds: 30,
+      };
+      const result = await adapter.execute(TENANT, CONFIG, payload);
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(result.success).toBe(false);
+      // The adapter wraps the helper's final response in its own status
+      // string so callers get a stable, parseable failure instead of a raw
+      // exception or a never-resolving promise.
+      expect(result.error).toMatch(/HubSpot API error 503/);
+      expect(result.externalId).toBeUndefined();
+      // Exactly three POSTs to the calls engagement endpoint: the helper
+      // does NOT make a 4th attempt, which is what bounds the dispatch
+      // inside the 60s budget (3 attempts × 15s per-attempt + 1s + 4s
+      // sleeps = 50s worst case).
+      expect(calls).toHaveLength(3);
+      expect(calls.every((c) => c.url.endsWith('/crm/v3/objects/calls'))).toBe(true);
+      expect(calls.every((c) => c.method === 'POST')).toBe(true);
+      // Total wall-clock comfortably inside the 60s budget — proving the
+      // helper did not stretch past it on a hostile upstream.
+      expect(elapsedMs).toBeLessThan(60_000);
+    },
+  );
+
+  // BL-014 (Task #1111): the same retry contract MUST also cover transport-
+  // layer failures (per-attempt timeouts surfaced as `AbortError`, undici's
+  // `TypeError('fetch failed')` for ECONN/ETIMEDOUT/ENOTFOUND, etc.) since
+  // the 60s budget guarantee is meaningless if the helper would only retry
+  // on HTTP statuses. Pair the 5xx tests above with timeout-recovery and
+  // timeout-exhaustion variants so a regression that narrowed the
+  // `shouldRetry` predicate would be caught here.
+  test(
+    'recovers from a transient transport timeout (TypeError → TypeError → 200) on the call engagement POST',
+    { timeout: 15_000 },
+    async () => {
+      const calls: Array<{ url: string; method: string }> = [];
+      let attempt = 0;
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push({ url, method });
+        attempt += 1;
+        // Two transient transport failures (the shape Node's undici-based
+        // fetch surfaces on ECONNRESET/ETIMEDOUT) must be retried by the
+        // helper before the adapter sees them.
+        if (attempt <= 2) {
+          throw new TypeError('fetch failed');
+        }
+        return new Response(JSON.stringify({ id: 'call-timeout' }), { status: 200 });
+      }));
+
+      const adapter = new HubSpotConnectorAdapter();
+      const payload: ConnectorPayload = {
+        type: 'call.completed',
+        contactId: 'contact-hint',
+        summary: 'AI voice call completed',
+        durationSeconds: 30,
+      };
+      const result = await adapter.execute(TENANT, CONFIG, payload);
+
+      expect(result.success).toBe(true);
+      expect(result.externalId).toBe('call-timeout');
+      // Two transport failures + one successful retry, all targeting the
+      // same calls engagement endpoint.
+      expect(calls).toHaveLength(3);
+      expect(calls.every((c) => c.url.endsWith('/crm/v3/objects/calls'))).toBe(true);
+    },
+  );
+
+  test(
+    'exhausts at exactly 3 attempts on persistent transport timeouts, surfaces a clean error within the 60s budget',
+    { timeout: 15_000 },
+    async () => {
+      const calls: Array<{ url: string; method: string }> = [];
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push({ url, method });
+        // Persistent transport failure — the helper MUST cap at 3 attempts
+        // and let the adapter's outer try/catch turn the final thrown
+        // error into a {success:false, error:'fetch failed'} result rather
+        // than looping or hanging.
+        throw new TypeError('fetch failed');
+      }));
+
+      const startedAt = Date.now();
+      const adapter = new HubSpotConnectorAdapter();
+      const payload: ConnectorPayload = {
+        type: 'call.completed',
+        contactId: 'contact-hint',
+        summary: 'AI voice call completed',
+        durationSeconds: 30,
+      };
+      const result = await adapter.execute(TENANT, CONFIG, payload);
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/fetch failed/);
+      expect(result.externalId).toBeUndefined();
+      // Exactly three attempts: the helper does NOT make a 4th, which is
+      // what bounds the dispatch inside the 60s budget on a hostile
+      // upstream that never returns a response at all.
+      expect(calls).toHaveLength(3);
+      expect(calls.every((c) => c.url.endsWith('/crm/v3/objects/calls'))).toBe(true);
+      expect(elapsedMs).toBeLessThan(60_000);
+    },
+  );
+});
+
 describe('fetchHubSpotDealPipelines', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
