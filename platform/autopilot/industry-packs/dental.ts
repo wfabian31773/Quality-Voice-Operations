@@ -1,3 +1,4 @@
+import { dollarsToCents } from '../../core/formatCurrency';
 import type { IndustryDetectionRule, OperationalSignals, DetectionResult } from '../types';
 
 function detectCancellationPattern(signals: OperationalSignals): DetectionResult | null {
@@ -17,7 +18,7 @@ function detectCancellationPattern(signals: OperationalSignals): DetectionResult
       reasoning: 'Dental practices typically lose $200-400 per cancelled appointment. Automated reminders reduce no-shows by 30-40% according to industry benchmarks.',
       actionType: 'launch_campaign',
       actionPayload: { type: 'appointment_reminder', timing: '24h_before' },
-      estimatedRevenueImpactCents: Math.round(bookingMetrics.cancelled * 0.3 * 300 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(bookingMetrics.cancelled * 0.3 * 300),
     };
   }
   return null;
@@ -43,7 +44,7 @@ function detectNewPatientConversionDrop(signals: OperationalSignals): DetectionR
       reasoning: 'Dental practices with optimized phone handling convert 80%+ of calls. A gap indicates room for improvement in the AI agent conversation flow.',
       actionType: 'create_task',
       actionPayload: { task: 'review_agent_prompts', focus: 'new_patient_conversion' },
-      estimatedRevenueImpactCents: Math.round(callVolume.total * 0.15 * 250 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(callVolume.total * 0.15 * 250),
     };
   }
   return null;
@@ -66,7 +67,7 @@ function detectNoShowPattern(signals: OperationalSignals): DetectionResult | nul
       reasoning: 'No-shows cost dental practices $200-400 per empty chair hour. Day-of confirmation calls and rebooking outreach are proven to reduce no-show rates.',
       actionType: 'launch_campaign',
       actionPayload: { type: 'no_show_followup', timing: 'same_day' },
-      estimatedRevenueImpactCents: Math.round(bookingMetrics.noShow * 0.4 * 300 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(bookingMetrics.noShow * 0.4 * 300),
     };
   }
   return null;

@@ -1,3 +1,4 @@
+import { dollarsToCents } from '../../core/formatCurrency';
 import type { IndustryDetectionRule, OperationalSignals, DetectionResult } from '../types';
 import { hvacAutopilotRules } from './hvac';
 import { dentalAutopilotRules } from './dental';
@@ -28,7 +29,7 @@ const BASE_RULES: IndustryDetectionRule[] = [
           reasoning: 'A missed call rate above 20% indicates insufficient coverage. Each missed call is a lost business opportunity.',
           actionType: 'activate_agent',
           actionPayload: { reason: 'missed_call_coverage' },
-          estimatedRevenueImpactCents: Math.round(signals.callVolume.missed * 0.5 * 100 * 100),
+          estimatedRevenueImpactCents: dollarsToCents(signals.callVolume.missed * 0.5 * 100),
         };
       }
       return null;

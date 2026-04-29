@@ -1,3 +1,4 @@
+import { dollarsToCents } from '../../core/formatCurrency';
 import type { IndustryDetectionRule, OperationalSignals, DetectionResult } from '../types';
 
 function detectTriageRoutingOverload(signals: OperationalSignals): DetectionResult | null {
@@ -17,7 +18,7 @@ function detectTriageRoutingOverload(signals: OperationalSignals): DetectionResu
       reasoning: 'Medical practices with optimized triage AI maintain escalation rates below 20%. High rates suggest over-cautious classification that burdens on-call providers unnecessarily.',
       actionType: 'update_routing',
       actionPayload: { focus: 'triage_classification', reduceEscalation: true },
-      estimatedCostSavingsCents: Math.round(callVolume.escalated * 0.25 * 50 * 100),
+      estimatedCostSavingsCents: dollarsToCents(callVolume.escalated * 0.25 * 50),
     };
   }
   return null;

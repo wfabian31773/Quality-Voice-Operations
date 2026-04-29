@@ -1,27 +1,30 @@
 // Flat ESLint config (ESLint v9+).
 //
-// Scope: this configuration intentionally only enables one custom rule —
-// `local/no-cents-divided-by-100` — across `client-app/src/**` and
-// `platform/**`. We are not (yet) trying to lint the rest of the codebase;
-// the goal is to fail CI when contributors reintroduce inline
-// cents-to-dollar conversions like `priceCents / 100` after the BL-023
-// `formatCurrency` cleanup.
+// Scope: this configuration intentionally only enables two custom rules —
+// `local/no-cents-divided-by-100` and `local/no-dollars-times-100` —
+// across `client-app/src/**` and `platform/**`. We are not (yet) trying
+// to lint the rest of the codebase; the goal is to fail CI when
+// contributors reintroduce inline off-by-100x money math after the
+// BL-023 `formatCurrency` / `dollarsToCents` cleanup.
 //
 // To run locally:
 //     npm run lint
 //
 // To add a justified exception:
 //     // eslint-disable-next-line local/no-cents-divided-by-100 -- <reason>
+//     // eslint-disable-next-line local/no-dollars-times-100 -- <reason>
 
 import { createRequire } from 'node:module';
 import tsParser from '@typescript-eslint/parser';
 
 const require = createRequire(import.meta.url);
 const noCentsDividedBy100 = require('./tools/eslint-rules/no-cents-divided-by-100.js');
+const noDollarsTimes100 = require('./tools/eslint-rules/no-dollars-times-100.js');
 
 const localPlugin = {
   rules: {
     'no-cents-divided-by-100': noCentsDividedBy100,
+    'no-dollars-times-100': noDollarsTimes100,
   },
 };
 
@@ -86,6 +89,7 @@ export default [
     },
     rules: {
       'local/no-cents-divided-by-100': 'error',
+      'local/no-dollars-times-100': 'error',
     },
   },
 ];

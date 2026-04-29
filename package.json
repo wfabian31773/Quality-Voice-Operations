@@ -9,7 +9,7 @@
     "test:e2e:sales-inbox-filters": "tsx tests/e2e/salesInboxFilters.spec.ts",
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\"",
-    "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs",
+    "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs && node tools/eslint-rules/no-dollars-times-100.test.cjs",
     "typecheck:client": "npm --prefix client-app run typecheck",
     "check:design-tokens": "node scripts/check-design-tokens-sync.mjs",
     "check:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",

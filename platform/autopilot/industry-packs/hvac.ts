@@ -1,3 +1,4 @@
+import { dollarsToCents } from '../../core/formatCurrency';
 import type { IndustryDetectionRule, OperationalSignals, DetectionResult } from '../types';
 
 function detectEmergencyDemandSpike(signals: OperationalSignals): DetectionResult | null {
@@ -21,7 +22,7 @@ function detectEmergencyDemandSpike(signals: OperationalSignals): DetectionResul
       reasoning: `A ${Math.round(changeRate * 100)}% increase in call volume typically indicates weather-driven emergency demand in HVAC. Historical patterns show that capturing these calls during surges directly converts to emergency service revenue.`,
       actionType: 'activate_agent',
       actionPayload: { reason: 'hvac_demand_spike', extendHours: true },
-      estimatedRevenueImpactCents: Math.round(callVolume.missed * 150 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(callVolume.missed * 150),
     };
   }
   return null;
@@ -44,7 +45,7 @@ function detectMissedCallSpike(signals: OperationalSignals): DetectionResult | n
       reasoning: 'HVAC service calls have high conversion rates. Missed calls during business hours often indicate capacity issues, while after-hours misses indicate unserved demand.',
       actionType: 'activate_agent',
       actionPayload: { reason: 'missed_calls', afterHours: true },
-      estimatedRevenueImpactCents: Math.round(callVolume.missed * 0.6 * 200 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(callVolume.missed * 0.6 * 200),
     };
   }
   return null;
@@ -67,7 +68,7 @@ function detectAfterHoursSurge(signals: OperationalSignals): DetectionResult | n
       reasoning: 'After-hours HVAC calls typically carry premium pricing. A triage agent can qualify emergencies and dispatch appropriately.',
       actionType: 'activate_agent',
       actionPayload: { reason: 'after_hours_coverage', schedule: 'after_hours' },
-      estimatedRevenueImpactCents: Math.round(afterHoursCalls * 0.4 * 300 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(afterHoursCalls * 0.4 * 300),
     };
   }
   return null;

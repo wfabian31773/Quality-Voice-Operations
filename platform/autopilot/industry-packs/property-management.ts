@@ -1,3 +1,4 @@
+import { dollarsToCents } from '../../core/formatCurrency';
 import type { IndustryDetectionRule, OperationalSignals, DetectionResult } from '../types';
 
 function detectLeasingInquirySurge(signals: OperationalSignals): DetectionResult | null {
@@ -20,7 +21,7 @@ function detectLeasingInquirySurge(signals: OperationalSignals): DetectionResult
       reasoning: 'Property management leasing follows seasonal patterns. Surges indicate high demand windows where capturing every inquiry directly impacts occupancy rates.',
       actionType: 'activate_agent',
       actionPayload: { reason: 'leasing_surge', enableTourScheduling: true },
-      estimatedRevenueImpactCents: Math.round(callVolume.missed * 0.5 * 1000 * 100),
+      estimatedRevenueImpactCents: dollarsToCents(callVolume.missed * 0.5 * 1000),
     };
   }
   return null;

@@ -85,3 +85,34 @@ export function formatDollars(
 ): string {
   return formatCurrency(dollars, { ...options, unit: 'dollars' });
 }
+
+/**
+ * Canonical dollars→integer-cents converter shared by all platform code
+ * paths. Pair with `formatCurrency` for the inverse direction. Use this
+ * from any code path that takes a dollar-denominated number (or
+ * user-entered string) and needs to persist/compare it as integer cents,
+ * so the off-by-100x math (`Math.round(value * 100)`) lives in exactly
+ * one place.
+ *
+ * Returns `0` for null/undefined/empty/non-finite input — matching the
+ * defensive `parseFloat(value || '0')` idiom this helper is replacing.
+ */
+export function dollarsToCents(
+  value: number | string | bigint | null | undefined,
+): number {
+  if (value == null) return 0;
+  let numeric: number;
+  if (typeof value === 'number') {
+    numeric = value;
+  } else if (typeof value === 'bigint') {
+    numeric = Number(value);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return 0;
+    numeric = parseFloat(trimmed);
+  } else {
+    return 0;
+  }
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(numeric * 100);
+}

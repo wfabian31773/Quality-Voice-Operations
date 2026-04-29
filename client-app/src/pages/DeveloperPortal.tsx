@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { formatCents as formatCentsHelper, dollarsToCents } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import { StatCard } from '../components/ui';
 import {
@@ -261,7 +261,7 @@ function SubmissionForm({ onSuccess }: { onSuccess: () => void }) {
               step="0.01"
               // eslint-disable-next-line local/no-cents-divided-by-100 -- HTML number input needs a primitive dollar value, not a formatCurrency() string
               value={(form.priceCents / 100).toFixed(2)}
-              onChange={(e) => updateField('priceCents', Math.round(parseFloat(e.target.value || '0') * 100))}
+              onChange={(e) => updateField('priceCents', dollarsToCents(e.target.value))}
               className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               placeholder="9.99"
             />

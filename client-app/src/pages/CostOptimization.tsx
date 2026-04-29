@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { formatCents as formatCentsHelper, dollarsToCents } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import { PageHeader } from '../components/ui';
 import {
@@ -410,7 +410,7 @@ export default function CostOptimization() {
                 onChange={(e) =>
                   setBudgetForm({
                     ...currentBudget,
-                    maxCostPerConversationCents: Math.round(parseFloat(e.target.value || '0') * 100),
+                    maxCostPerConversationCents: dollarsToCents(e.target.value),
                   })
                 }
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary"
