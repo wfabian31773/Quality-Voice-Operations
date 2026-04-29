@@ -111,3 +111,59 @@ CRM is connected.
 - **Timeouts.** Wrap outbound calls with an `AbortController` /
   `REQUEST_TIMEOUT_MS` (15s is the established default) so a slow upstream
   cannot wedge the dispatcher.
+
+---
+
+## Validating cached CRM identity against live sandboxes
+
+Each first-party CRM adapter exports a `validate*CachedIdentity` function
+that the `CrmCallerIdentityRevalidationScheduler` calls periodically to
+scrub cached IDs whose upstream record has been deleted. The mocked unit
+tests in `validateCachedIdentity.test.ts` lock in our parsing rules; the
+opt-in suite in `validateCachedIdentity.integration.test.ts` re-runs the
+same validators against real CRM sandboxes to catch upstream drift
+(HubSpot moving the 404 body shape, Zoho returning a 200 wrapper around a
+missing record, Salesforce key-prefix changes, etc.) before it silently
+disables proactive cleanup.
+
+The integration suite is `describe.skipIf`-gated per provider, so each
+provider can be enabled independently — `vitest run` skips any block whose
+env vars are missing. To enable a provider, set its env vars in the CI job
+(or your local shell) before running `npm test` /
+`npx vitest run platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts`.
+
+### Per-provider env vars
+
+For each provider, you need (a) a sandbox access token the adapter can use
+and (b) at least one record ID that has been **hard-deleted** (or in
+Salesforce's case, deleted *and* purged from the Recycle Bin so the API
+returns `ENTITY_IS_DELETED`). You can supply any subset of the per-slot
+deleted IDs (contact / account / opportunity); the test asserts on
+exactly the slots you supplied.
+
+| Provider     | Required env vars                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HubSpot      | `HUBSPOT_SANDBOX_ACCESS_TOKEN`, **plus at least one of** `HUBSPOT_SANDBOX_DELETED_CONTACT_ID` / `..._DELETED_COMPANY_ID` / `..._DELETED_DEAL_ID`            |
+| Salesforce   | `SALESFORCE_SANDBOX_ACCESS_TOKEN`, `SALESFORCE_SANDBOX_INSTANCE_URL`, **plus at least one of** `SALESFORCE_SANDBOX_DELETED_CONTACT_ID` (must start with `003`), `..._DELETED_ACCOUNT_ID` (`001`), `..._DELETED_OPPORTUNITY_ID` (`006`) |
+| Pipedrive    | `PIPEDRIVE_SANDBOX_ACCESS_TOKEN` *or* `PIPEDRIVE_SANDBOX_API_TOKEN` (optional `PIPEDRIVE_SANDBOX_COMPANY_DOMAIN` for company-scoped API base), **plus at least one of** `PIPEDRIVE_SANDBOX_DELETED_PERSON_ID` / `..._DELETED_ORG_ID` / `..._DELETED_DEAL_ID` |
+| Zoho         | `ZOHO_SANDBOX_ACCESS_TOKEN`, `ZOHO_SANDBOX_API_DOMAIN` (e.g. `https://www.zohoapis.com`), **plus at least one of** `ZOHO_SANDBOX_DELETED_CONTACT_ID` / `..._DELETED_ACCOUNT_ID` / `..._DELETED_DEAL_ID` |
+
+Sandbox tokens supplied this way must be long-lived enough for the test
+run — the integration suite intentionally does not perform OAuth refresh
+(no `token_expires_at` is set on the synthetic config), so a stale token
+will surface as a non-stale 401 and the test will fail loudly rather than
+silently rotating credentials.
+
+### Wiring it into CI
+
+Provision the per-provider secrets in your CI environment, then add a job
+(or a step in the existing test job, gated on the secrets being present)
+that runs:
+
+```sh
+npx vitest run platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts
+```
+
+Each provider's block is independent — you can ship one provider at a
+time as sandboxes get provisioned without breaking the build for the
+others.
