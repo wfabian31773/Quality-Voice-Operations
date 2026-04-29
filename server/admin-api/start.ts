@@ -32,7 +32,12 @@ import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } fro
 import { startConnectorStaleAlertScheduler, stopConnectorStaleAlertScheduler } from '../../platform/integrations/connectors/ConnectorStaleAlertScheduler';
 import { startVerifiedCallerHealthScheduler, stopVerifiedCallerHealthScheduler, startTrustHubStatusScheduler, stopTrustHubStatusScheduler } from '../../platform/telephony/VerifiedCallerHealthScheduler';
 import { startVerifiedCallerSyncScheduler, stopVerifiedCallerSyncScheduler } from '../../platform/telephony/VerifiedCallerSyncScheduler';
-import { startConnectorOutboxDrainScheduler, stopConnectorOutboxDrainScheduler } from '../../platform/integrations/connectors/ConnectorOutboxDrainScheduler';
+import {
+  startConnectorOutboxDrainScheduler,
+  stopConnectorOutboxDrainScheduler,
+  startOutboxArchiveSweepScheduler,
+  stopOutboxArchiveSweepScheduler,
+} from '../../platform/integrations/connectors/ConnectorOutboxDrainScheduler';
 import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler } from '../../platform/integrations/connectors/SchedulingDriftAlertScheduler';
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler, startCrmCallerIdentityRevalidationScheduler, stopCrmCallerIdentityRevalidationScheduler, startCrmStaleCacheRetentionScheduler, stopCrmStaleCacheRetentionScheduler } from '../../platform/integrations/connectors';
 import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler } from '../../platform/billing/CallEventsRetentionScheduler';
@@ -112,6 +117,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startVerifiedCallerSyncScheduler();
   startTrustHubStatusScheduler();
   startConnectorOutboxDrainScheduler();
+  startOutboxArchiveSweepScheduler();
   startSchedulingDriftAlertScheduler();
   startOAuthTokenRefreshScheduler();
   startCrmCallerIdentityRevalidationScheduler();
@@ -151,6 +157,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopVerifiedCallerSyncScheduler();
   stopTrustHubStatusScheduler();
   stopConnectorOutboxDrainScheduler();
+  stopOutboxArchiveSweepScheduler();
   stopSchedulingDriftAlertScheduler();
   stopOAuthTokenRefreshScheduler();
   stopCrmCallerIdentityRevalidationScheduler();
