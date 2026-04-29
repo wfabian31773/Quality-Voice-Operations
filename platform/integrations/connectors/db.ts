@@ -1040,3 +1040,60 @@ export async function getAppointmentSchedulingProvider(
     return null;
   }
 }
+
+export interface SchedulingTargetRef {
+  refType: 'agent' | 'phone_number';
+  refId: string;
+  name: string;
+}
+
+/**
+ * Return every agent and phone number on this tenant whose
+ * `scheduling_provider` column points at the given provider key. Used by the
+ * connector auth-alert dispatcher to enrich the "calendar disconnected"
+ * email + in-app message with the concrete list of booking targets that
+ * will start failing until the admin reconnects the calendar.
+ *
+ * Failures swallow to an empty list so a transient DB hiccup never silences
+ * the underlying alert — the caller falls back to the generic reconnect
+ * email when nothing is returned.
+ */
+export async function findAffectedSchedulingTargets(
+  tenantId: TenantId,
+  provider: string,
+): Promise<SchedulingTargetRef[]> {
+  if (!provider) return [];
+  try {
+    return await withTenant(tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT 'agent'::text AS ref_type,
+                a.id::text AS ref_id,
+                COALESCE(NULLIF(a.name, ''), '(unnamed agent)') AS ref_name
+           FROM agents a
+          WHERE a.tenant_id = $1
+            AND a.scheduling_provider = $2
+          UNION ALL
+         SELECT 'phone_number'::text AS ref_type,
+                pn.id::text AS ref_id,
+                COALESCE(NULLIF(pn.friendly_name, ''), pn.phone_number) AS ref_name
+           FROM phone_numbers pn
+          WHERE pn.tenant_id = $1
+            AND pn.scheduling_provider = $2
+          ORDER BY 1, 3 NULLS LAST, 2`,
+        [tenantId, provider],
+      );
+      return rows.map((r) => ({
+        refType: r.ref_type as 'agent' | 'phone_number',
+        refId: String(r.ref_id),
+        name: (r.ref_name as string | null) ?? '(unnamed)',
+      }));
+    });
+  } catch (err) {
+    logger.warn('Failed to look up scheduling targets for provider', {
+      tenantId,
+      provider,
+      error: String(err),
+    });
+    return [];
+  }
+}

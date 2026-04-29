@@ -1,6 +1,6 @@
 export { ConnectorService, connectorService } from './ConnectorService';
-export { getConnectorConfig, getConnectorById, listConnectorConfigs, upsertConnector, deleteConnector, listActiveConnectorsByType, listEnabledConnectorConfigs, listRefreshableConnectorConfigs, listConnectorTokenHealth, updateConnectorSyncStatus, updateConnectorCredentials, markConnectorReconnectNeeded, getPreferredSchedulingProvider } from './db';
-export type { ConnectorTokenHealthRow } from './db';
+export { getConnectorConfig, getConnectorById, listConnectorConfigs, upsertConnector, deleteConnector, listActiveConnectorsByType, listEnabledConnectorConfigs, listRefreshableConnectorConfigs, listConnectorTokenHealth, updateConnectorSyncStatus, updateConnectorCredentials, markConnectorReconnectNeeded, getPreferredSchedulingProvider, findAffectedSchedulingTargets } from './db';
+export type { ConnectorTokenHealthRow, SchedulingTargetRef } from './db';
 export { ensureFreshOAuthToken, isRefreshableProvider } from './tokenRefresh';
 export {
   startOAuthTokenRefreshScheduler,

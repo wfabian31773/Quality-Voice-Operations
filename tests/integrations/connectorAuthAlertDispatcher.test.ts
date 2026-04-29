@@ -19,11 +19,30 @@ vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
 }));
 
+const schedulingDriftTemplateMock = vi.fn<(input: Record<string, unknown>) => {
+  subject: string;
+  html: string;
+  text: string;
+}>();
+
 vi.mock('../../platform/email', () => ({
   sendEmail: (input: Record<string, unknown>) => sendEmailMock(input),
   connectorReconnectNeededEmail: (input: Record<string, unknown>) =>
     reconnectTemplateMock(input),
   connectorSyncErrorEmail: (input: Record<string, unknown>) => syncErrorTemplateMock(input),
+  connectorSchedulingDriftEmail: (input: Record<string, unknown>) =>
+    schedulingDriftTemplateMock(input),
+}));
+
+const findAffectedSchedulingTargetsMock = vi.fn<
+  (tenantId: string, provider: string) => Promise<
+    Array<{ refType: 'agent' | 'phone_number'; refId: string; name: string }>
+  >
+>();
+
+vi.mock('../../platform/integrations/connectors/db', () => ({
+  findAffectedSchedulingTargets: (tenantId: string, provider: string) =>
+    findAffectedSchedulingTargetsMock(tenantId, provider),
 }));
 
 beforeEach(() => {
@@ -42,6 +61,16 @@ beforeEach(() => {
     html: 'sync-error-html',
     text: 'sync-error-text',
   });
+  schedulingDriftTemplateMock.mockReset();
+  schedulingDriftTemplateMock.mockReturnValue({
+    subject: 'scheduling-drift-subject',
+    html: 'scheduling-drift-html',
+    text: 'scheduling-drift-text',
+  });
+  findAffectedSchedulingTargetsMock.mockReset();
+  // Default: no scheduling targets reference the disconnected provider, so
+  // the dispatcher falls through to the generic reconnect-needed flow.
+  findAffectedSchedulingTargetsMock.mockResolvedValue([]);
 });
 
 const baseParams = {
@@ -557,6 +586,364 @@ describe('dispatchConnectorAuthAlert', () => {
     const dedupeSql = String(dedupeCall![0]);
     expect(dedupeSql).toContain("metadata ->> 'integrationId' = $2");
     expect(dedupeCall![1]).toEqual(['tenant-1', 'int-1', 'hubspot']);
+  });
+
+  it('uses the scheduling-drift email and target-aware in-app message when a calendar with referencing agents/phone numbers disconnects', async () => {
+    findAffectedSchedulingTargetsMock.mockResolvedValue([
+      { refType: 'agent', refId: 'agent-1', name: 'Front Desk Bot' },
+      { refType: 'agent', refId: 'agent-2', name: 'Sales Bot' },
+      { refType: 'phone_number', refId: 'pn-1', name: 'Main Line' },
+    ]);
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            // Tenant-named instance (e.g. "Acme Google Calendar")
+            name: 'Acme Google Calendar',
+            integration_type: 'scheduling',
+            auth_alert_sent_at: null,
+            last_sync_error: 'invalid_grant',
+            last_sync_error_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // claim
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a', email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({ rows: [] }) // recent in-app
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // fan-out restricted
+      .mockResolvedValueOnce({ rows: [] }) // pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }); // email pref filter
+
+    const { dispatchConnectorAuthAlert } = await import(
+      '../../platform/integrations/connectors/ConnectorAuthAlertScheduler'
+    );
+
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      provider: 'google-calendar',
+      connectorType: 'scheduling',
+      errorMessage: 'invalid_grant',
+    });
+
+    expect(result.status).toBe('sent');
+    expect(findAffectedSchedulingTargetsMock).toHaveBeenCalledWith('tenant-1', 'google-calendar');
+
+    // The scheduling-drift email template is used (NOT the generic
+    // reconnect/sync templates). It receives every affected target so the
+    // email can list them as bullets.
+    expect(schedulingDriftTemplateMock).toHaveBeenCalledTimes(1);
+    expect(reconnectTemplateMock).not.toHaveBeenCalled();
+    expect(syncErrorTemplateMock).not.toHaveBeenCalled();
+    const emailArg = schedulingDriftTemplateMock.mock.calls[0][0];
+    expect(emailArg.tenantName).toBe('Acme');
+    // Provider-keyed deep link survives integration row deletion.
+    expect(String(emailArg.connectorsUrl)).toContain('/connectors?provider=google-calendar');
+    const drifted = emailArg.drifted as Array<{
+      refType: string;
+      name: string;
+      providerLabel: string;
+    }>;
+    expect(drifted).toHaveLength(3);
+    expect(drifted.map((d) => d.name)).toEqual([
+      'Front Desk Bot',
+      'Sales Bot',
+      'Main Line',
+    ]);
+    // Provider label uses the human-readable form, not the raw key.
+    expect(drifted[0].providerLabel).toBe('Acme Google Calendar');
+
+    // Email actually delivered.
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0].subject).toBe('scheduling-drift-subject');
+
+    // In-app row title/message call out the impact and the metadata
+    // surfaces the affected targets so the Notifications UI can render
+    // targeted reconnect chips.
+    const insertCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    expect(insertCall).toBeDefined();
+    const insertArgs = insertCall![1] as unknown[];
+    const title = String(insertArgs[3]);
+    const message = String(insertArgs[4]);
+    expect(title).toContain('disconnected');
+    expect(title).toContain('Acme Google Calendar');
+    // Message summarizes the impact (count phrasing) so admins immediately
+    // know what stops booking.
+    expect(message).toContain('2 agents');
+    expect(message).toContain('1 phone number');
+    expect(message).toContain('Acme Google Calendar');
+
+    const metadata = JSON.parse(insertArgs[5] as string);
+    expect(metadata.connectorType).toBe('scheduling');
+    expect(metadata.provider).toBe('google-calendar');
+    // Deep link matches the email's reconnect URL (provider-keyed).
+    expect(metadata.link).toBe('/connectors?provider=google-calendar');
+    expect(metadata.affectedAgentCount).toBe(2);
+    expect(metadata.affectedPhoneNumberCount).toBe(1);
+    expect(metadata.affectedTargets).toEqual([
+      { refType: 'agent', refId: 'agent-1', name: 'Front Desk Bot' },
+      { refType: 'agent', refId: 'agent-2', name: 'Sales Bot' },
+      { refType: 'phone_number', refId: 'pn-1', name: 'Main Line' },
+    ]);
+  });
+
+  it('falls back to the generic reconnect email when a scheduling connector disconnects but no agents or phone numbers reference it', async () => {
+    findAffectedSchedulingTargetsMock.mockResolvedValue([]);
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            name: 'Outlook Calendar',
+            integration_type: 'scheduling',
+            auth_alert_sent_at: null,
+            last_sync_error: 'token expired',
+            last_sync_error_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // claim
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a', email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({ rows: [] }) // recent in-app
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // fan-out restricted
+      .mockResolvedValueOnce({ rows: [] }) // pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }); // email pref filter
+
+    const { dispatchConnectorAuthAlert } = await import(
+      '../../platform/integrations/connectors/ConnectorAuthAlertScheduler'
+    );
+
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      provider: 'outlook-calendar',
+      connectorType: 'scheduling',
+      errorMessage: 'token expired',
+    });
+
+    expect(result.status).toBe('sent');
+    // Lookup still ran (we always check on scheduling type) but came back empty.
+    expect(findAffectedSchedulingTargetsMock).toHaveBeenCalledWith('tenant-1', 'outlook-calendar');
+    // Generic reconnect template used; scheduling-drift template stays cold.
+    expect(reconnectTemplateMock).toHaveBeenCalledTimes(1);
+    expect(schedulingDriftTemplateMock).not.toHaveBeenCalled();
+
+    // Generic in-app metadata — no affectedTargets payload.
+    const insertCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO tenant_notifications'),
+    );
+    const metadata = JSON.parse((insertCall![1] as unknown[])[5] as string);
+    expect(metadata.affectedTargets).toBeUndefined();
+    expect(metadata.affectedAgentCount).toBeUndefined();
+  });
+
+  it('skips the scheduling-target lookup entirely for non-scheduling connector types', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            name: 'HubSpot',
+            integration_type: 'crm',
+            auth_alert_sent_at: null,
+            last_sync_error: 'invalid_grant',
+            last_sync_error_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // claim
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a', email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({ rows: [] }) // recent in-app
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // fan-out restricted
+      .mockResolvedValueOnce({ rows: [] }) // pref filter
+      .mockResolvedValueOnce({ rows: [] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }); // email pref filter
+
+    const { dispatchConnectorAuthAlert } = await import(
+      '../../platform/integrations/connectors/ConnectorAuthAlertScheduler'
+    );
+
+    await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      provider: 'hubspot',
+      connectorType: 'crm',
+    });
+
+    // CRM connectors must NEVER trigger the scheduling-impact query —
+    // it adds a needless join + transaction roundtrip and would bloat
+    // unrelated CRM auth alerts with empty "affected" metadata.
+    expect(findAffectedSchedulingTargetsMock).not.toHaveBeenCalled();
+    expect(schedulingDriftTemplateMock).not.toHaveBeenCalled();
+    expect(reconnectTemplateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('per-disconnect-episode dedup (scheduling): suppresses repeated cycles even past the 24h window while the connector remains disconnected', async () => {
+    findAffectedSchedulingTargetsMock.mockResolvedValue([
+      { refType: 'agent', refId: 'agent-1', name: 'Front Desk Bot' },
+    ]);
+    // Marker stamped 5 days ago — past the legacy 24h re-issue window.
+    // For a CRM connector this would re-issue; for scheduling it must NOT.
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          name: 'Acme Google Calendar',
+          integration_type: 'scheduling',
+          auth_alert_sent_at: fiveDaysAgo,
+          last_sync_error: 'invalid_grant',
+          last_sync_error_at: fiveDaysAgo,
+        },
+      ],
+    });
+
+    const { dispatchConnectorAuthAlert } = await import(
+      '../../platform/integrations/connectors/ConnectorAuthAlertScheduler'
+    );
+
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      provider: 'google-calendar',
+      connectorType: 'scheduling',
+    });
+
+    // Throttled out by per-episode dedup — the marker is non-null and the
+    // only thing that re-arms it is a reconnect (success transition clears
+    // auth_alert_sent_at to NULL via updateConnectorSyncStatus).
+    expect(result.status).toBe('throttled');
+    expect(result.emailedRecipients).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(schedulingDriftTemplateMock).not.toHaveBeenCalled();
+    expect(reconnectTemplateMock).not.toHaveBeenCalled();
+    // findAffectedSchedulingTargets must NOT run when we throttle out — no
+    // need to spend a transaction enumerating agents we won't message.
+    expect(findAffectedSchedulingTargetsMock).not.toHaveBeenCalled();
+    // Only the integration-row SELECT ran. No claim, no fan-out queries.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('per-disconnect-episode dedup (scheduling): a fresh disconnect after reconnect (marker reset to NULL) sends a new alert', async () => {
+    findAffectedSchedulingTargetsMock.mockResolvedValue([
+      { refType: 'agent', refId: 'agent-1', name: 'Front Desk Bot' },
+    ]);
+    // Marker is NULL — the previous disconnect was resolved (a successful
+    // sync via updateConnectorSyncStatus cleared it) and the connector
+    // dropped back into needs_reconnect afterwards. This is a NEW
+    // disconnect event and must re-alert.
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            name: 'Acme Google Calendar',
+            integration_type: 'scheduling',
+            auth_alert_sent_at: null,
+            last_sync_error: 'invalid_grant',
+            last_sync_error_at: null,
+          },
+        ],
+      })
+      // Atomic claim must use the strict NULL-only predicate for scheduling
+      // and succeed because the marker is NULL.
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a', email: 'admin@acme.test' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { dispatchConnectorAuthAlert } = await import(
+      '../../platform/integrations/connectors/ConnectorAuthAlertScheduler'
+    );
+
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      provider: 'google-calendar',
+      connectorType: 'scheduling',
+    });
+
+    expect(result.status).toBe('sent');
+    expect(schedulingDriftTemplateMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+
+    // Verify the claim UPDATE used the strict per-episode predicate
+    // (auth_alert_sent_at IS NULL), NOT the legacy 24h-window OR clause.
+    const claimCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return (
+        sql.includes('UPDATE integrations') &&
+        sql.includes('SET auth_alert_sent_at = NOW()') &&
+        // The conditional UPDATE (claim), not the bare stamp helper.
+        sql.includes('WHERE id = $1')
+      );
+    });
+    expect(claimCall).toBeDefined();
+    const claimSql = String(claimCall![0]);
+    expect(claimSql).toContain('auth_alert_sent_at IS NULL');
+    expect(claimSql).not.toContain("INTERVAL '24 hours'");
+  });
+
+  it('non-scheduling connector keeps the legacy 24h re-issue window (still re-alerts after the throttle expires)', async () => {
+    // CRM connector: same 5-days-ago marker that is throttled-out for
+    // scheduling MUST re-issue here, because persistent CRM failures still
+    // get a daily nudge.
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            name: 'HubSpot',
+            integration_type: 'crm',
+            auth_alert_sent_at: fiveDaysAgo,
+            last_sync_error: 'invalid_grant',
+            last_sync_error_at: fiveDaysAgo,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a', email: 'admin@acme.test' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { dispatchConnectorAuthAlert } = await import(
+      '../../platform/integrations/connectors/ConnectorAuthAlertScheduler'
+    );
+
+    const result = await dispatchConnectorAuthAlert({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      provider: 'hubspot',
+      connectorType: 'crm',
+    });
+
+    expect(result.status).toBe('sent');
+    expect(reconnectTemplateMock).toHaveBeenCalledTimes(1);
+    // The legacy claim predicate (with the 24h OR-clause) is preserved for
+    // non-scheduling connectors so this test fails loudly if a future
+    // refactor accidentally globalizes the strict NULL-only predicate.
+    const claimCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return (
+        sql.includes('UPDATE integrations') &&
+        sql.includes('SET auth_alert_sent_at = NOW()') &&
+        sql.includes('WHERE id = $1')
+      );
+    });
+    expect(claimCall).toBeDefined();
+    const claimSql = String(claimCall![0]);
+    expect(claimSql).toContain("INTERVAL '24 hours'");
   });
 
   it("falls back to the generic sync-error template when reason='auth_error'", async () => {

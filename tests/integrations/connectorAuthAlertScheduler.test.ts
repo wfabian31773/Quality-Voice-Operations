@@ -133,7 +133,18 @@ function installRouter(opts: RouterOpts): void {
     // include tenant_owner / operations_manager via the user_roles join, so
     // we match on the stable LEFT JOIN clause rather than the old role list.
     if (text.includes('FROM users') && text.includes('LEFT JOIN user_roles')) {
-      return { rows: opts.admins.map((email) => ({ email })) };
+      // getTenantAlertEmailRecipients now selects `id, email, first_name,
+      // last_name, created_at`; rows missing an `id` are filtered out as
+      // unusable recipients, so synthesize a stable id per email here.
+      return {
+        rows: opts.admins.map((email, idx) => ({
+          id: `admin-user-${idx + 1}`,
+          email,
+          first_name: null,
+          last_name: null,
+          created_at: null,
+        })),
+      };
     }
     // recordDigestSent (UPSERT into connector_alert_settings)
     if (text.includes('INSERT INTO connector_alert_settings')) {
@@ -296,7 +307,17 @@ describe('runConnectorAuthAlertCycle — digest mode gating', () => {
         return { rows: [{ name: 'Acme' }] };
       }
       if (text.includes('FROM users') && text.includes('LEFT JOIN user_roles')) {
-        return { rows: [{ email: 'admin@acme.com' }] };
+        return {
+          rows: [
+            {
+              id: 'admin-user-1',
+              email: 'admin@acme.com',
+              first_name: null,
+              last_name: null,
+              created_at: null,
+            },
+          ],
+        };
       }
       if (text.includes('UPDATE integrations') && text.includes('auth_alert_sent_at = NOW()')) {
         stamps.push((params?.[0] as string) ?? '');

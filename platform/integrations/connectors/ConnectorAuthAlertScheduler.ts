@@ -6,6 +6,7 @@ import {
   connectorAutoDisabledEmail,
   connectorReconnectNeededEmail,
   connectorTokenExpiringEmail,
+  connectorSchedulingDriftEmail,
   connectorSyncDigestEmail,
 } from '../../email';
 import {
@@ -19,7 +20,11 @@ import {
   recordDigestSent,
 } from './ConnectorAlertPreferences';
 import { getTenantAlertEmailRecipients } from './ConnectorAlertRecipients';
-import { listConnectorTokenHealth } from './db';
+import {
+  findAffectedSchedulingTargets,
+  listConnectorTokenHealth,
+  type SchedulingTargetRef,
+} from './db';
 import { getRefreshableProviders } from './tokenRefresh';
 import { TOKEN_EXPIRING_HORIZON_MS } from './connectorStaleHealth';
 
@@ -64,8 +69,13 @@ const PROVIDER_LABELS: Record<string, string> = {
   quickbooks: 'QuickBooks',
   google: 'Google',
   google_calendar: 'Google Calendar',
+  // Hyphenated keys mirror the values persisted on integrations / agents /
+  // phone_numbers.scheduling_provider so the email + in-app label matches
+  // what the tenant sees on the Connectors / Agents pages.
+  'google-calendar': 'Google Calendar',
   outlook: 'Outlook',
   outlook_calendar: 'Outlook Calendar',
+  'outlook-calendar': 'Outlook Calendar',
   microsoft: 'Microsoft',
   pipedrive: 'Pipedrive',
   slack: 'Slack',
@@ -76,6 +86,38 @@ const PROVIDER_LABELS: Record<string, string> = {
 function providerLabel(provider: string | null | undefined): string {
   if (!provider) return 'Integration';
   return PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
+}
+
+function isSchedulingType(connectorType: string | null | undefined): boolean {
+  return (connectorType ?? '').toLowerCase() === 'scheduling';
+}
+
+/**
+ * Format a short summary of the agents and phone numbers that will stop
+ * booking until the scheduling integration is reconnected. Used in the
+ * in-app notification message body so admins immediately see the impact
+ * without having to open the email. Long lists are truncated with a "+N
+ * more" suffix to keep the toast readable.
+ */
+function formatSchedulingTargetSummary(
+  affected: SchedulingTargetRef[],
+  maxNamed: number = 3,
+): string {
+  if (affected.length === 0) return '';
+  const agents = affected.filter((t) => t.refType === 'agent');
+  const numbers = affected.filter((t) => t.refType === 'phone_number');
+  const parts: string[] = [];
+  if (agents.length > 0) {
+    parts.push(`${agents.length} agent${agents.length === 1 ? '' : 's'}`);
+  }
+  if (numbers.length > 0) {
+    parts.push(`${numbers.length} phone number${numbers.length === 1 ? '' : 's'}`);
+  }
+  const counts = parts.join(' and ');
+  const named = affected.slice(0, maxNamed).map((t) => t.name).join(', ');
+  const remainder = affected.length - maxNamed;
+  const tail = remainder > 0 ? `${named} (+${remainder} more)` : named;
+  return `${counts} (${tail})`;
 }
 
 export function isAuthError(message: string | null | undefined): boolean {
@@ -186,19 +228,43 @@ async function stampAuthAlertSlot(integrationId: string, tenantId: string): Prom
   }
 }
 
-/** Atomic 24h slot claim; true on win, false on race loss or DB error (fail-closed). */
-async function claimAuthAlertSlot(integrationId: string, tenantId: string): Promise<boolean> {
+/**
+ * Atomic slot claim; true on win, false on race loss or DB error (fail-closed).
+ *
+ * The slot predicate depends on connector type:
+ *   - For scheduling connectors, we claim ONLY when `auth_alert_sent_at IS
+ *     NULL`. The marker is reset by `updateConnectorSyncStatus` /
+ *     `upsertConnector` when the integration is reconnected, so this
+ *     naturally implements "exactly one notification per provider per
+ *     tenant per disconnect event": a connector that stays in
+ *     needs_reconnect for days will fire a single alert, and only a fresh
+ *     reconnect → disconnect cycle will allow another one.
+ *   - For all other connector types (CRM, sync, etc.) we keep the legacy
+ *     24h re-issue window so persistent failures still surface daily.
+ *
+ * Operator-triggered re-issue (`force=true` upstream) bypasses this slot
+ * entirely via `stampAuthAlertSlot` so the admin Health panel can always
+ * nudge again.
+ */
+async function claimAuthAlertSlot(
+  integrationId: string,
+  tenantId: string,
+  options: { episodeScoped?: boolean } = {},
+): Promise<boolean> {
   const pool = getPlatformPool();
+  const predicate = options.episodeScoped
+    ? `auth_alert_sent_at IS NULL`
+    : `(
+            auth_alert_sent_at IS NULL
+            OR auth_alert_sent_at < NOW() - INTERVAL '24 hours'
+          )`;
   try {
     const result = await pool.query(
       `UPDATE integrations
           SET auth_alert_sent_at = NOW(), updated_at = NOW()
         WHERE id = $1
           AND tenant_id = $2
-          AND (
-            auth_alert_sent_at IS NULL
-            OR auth_alert_sent_at < NOW() - INTERVAL '24 hours'
-          )`,
+          AND ${predicate}`,
       [integrationId, tenantId],
     );
     return (result as { rowCount?: number }).rowCount === 1;
@@ -253,21 +319,42 @@ async function insertInAppNotification(params: {
   reason: string;
   /** Restrict fan-out to these user IDs; empty/undefined = tenant-wide. */
   recipientUserIds?: string[];
+  /**
+   * For scheduling-type connectors, the list of agents and phone numbers
+   * routed to the disconnected provider. Persisted in metadata so the
+   * Notifications UI can show "Affected: agent A, phone B" and (later)
+   * jump straight to the affected booking target.
+   */
+  affectedTargets?: SchedulingTargetRef[];
 }): Promise<void> {
   try {
+    const metadata: Record<string, unknown> = {
+      link: params.reconnectPath,
+      integrationId: params.integrationId,
+      connectorType: params.connectorType,
+      provider: params.provider,
+      reason: params.reason,
+      errorMessage: params.errorMessage.slice(0, 500),
+    };
+    if (params.affectedTargets && params.affectedTargets.length > 0) {
+      metadata.affectedTargets = params.affectedTargets.map((t) => ({
+        refType: t.refType,
+        refId: t.refId,
+        name: t.name,
+      }));
+      metadata.affectedAgentCount = params.affectedTargets.filter(
+        (t) => t.refType === 'agent',
+      ).length;
+      metadata.affectedPhoneNumberCount = params.affectedTargets.filter(
+        (t) => t.refType === 'phone_number',
+      ).length;
+    }
     await fanoutInAppNotification({
       tenantId: params.tenantId,
       type: 'integration',
       title: params.title,
       message: params.message,
-      metadata: {
-        link: params.reconnectPath,
-        integrationId: params.integrationId,
-        connectorType: params.connectorType,
-        provider: params.provider,
-        reason: params.reason,
-        errorMessage: params.errorMessage.slice(0, 500),
-      },
+      metadata,
       category: 'integration',
       userIds: params.recipientUserIds,
     });
@@ -355,11 +442,33 @@ export async function dispatchConnectorAuthAlert(
     return { status: 'skipped', emailedRecipients: 0 };
   }
 
+  // Compute connector-type up-front so the throttle gate can choose between
+  // the legacy 24h re-issue window (CRM / sync) and the strict per-episode
+  // gate (scheduling: at most one alert per disconnect, reset only on
+  // reconnect). `auth_alert_sent_at` is cleared by `updateConnectorSyncStatus`
+  // / `upsertConnector` whenever the integration transitions back to
+  // success, so the strict-NULL predicate naturally implements
+  // "exactly one notification per provider per tenant per disconnect event".
+  const effectiveConnectorType = params.connectorType ?? row.integration_type;
+  const useEpisodeScopedThrottle = isSchedulingType(effectiveConnectorType);
+
   // Fast-path throttle check; atomic claim below is the race-safe source of truth.
   // Operator-triggered re-issue (params.force === true) skips both the
   // fast-path check and the conditional UPDATE so a busy customer can be
-  // nudged again inside the 24h window.
+  // nudged again inside the throttle window.
   if (!params.force && row.auth_alert_sent_at) {
+    if (useEpisodeScopedThrottle) {
+      // Strict per-episode dedup: any non-null marker means we've already
+      // notified about THIS disconnect. Only a reconnect (which clears the
+      // marker) re-arms the alert.
+      logger.debug('Scheduling auth alert suppressed by per-episode dedup', {
+        tenantId: params.tenantId,
+        integrationId: params.integrationId,
+        provider: params.provider,
+        markerSetAt: String(row.auth_alert_sent_at),
+      });
+      return { status: 'throttled', emailedRecipients: 0 };
+    }
     const sentMs = new Date(row.auth_alert_sent_at as string | Date).getTime();
     if (Number.isFinite(sentMs) && Date.now() - sentMs < ALERT_THROTTLE_MS) {
       logger.debug('Connector auth alert suppressed by 24h throttle', {
@@ -383,7 +492,11 @@ export async function dispatchConnectorAuthAlert(
       // throttle from this manual re-issue.
       await stampAuthAlertSlot(params.integrationId, params.tenantId);
     } else {
-      const claimed = await claimAuthAlertSlot(params.integrationId, params.tenantId);
+      const claimed = await claimAuthAlertSlot(
+        params.integrationId,
+        params.tenantId,
+        { episodeScoped: useEpisodeScopedThrottle },
+      );
       if (!claimed) {
         logger.debug('Connector auth alert claim lost (race or throttle)', {
           tenantId: params.tenantId,
@@ -413,9 +526,31 @@ export async function dispatchConnectorAuthAlert(
     params.detectedAt ?? (row.last_sync_error_at ? new Date(row.last_sync_error_at as string | Date).toISOString() : null);
   const detectedAt = detectedAtSource ? new Date(detectedAtSource).toUTCString() : new Date().toUTCString();
 
-  const title = `${label} integration needs to be reconnected`;
-  const message =
-    reason === 'needs_reconnect'
+  // Look up which agents / phone numbers are routed to this scheduling
+  // provider so the email + in-app message can spell out exactly what will
+  // stop booking until the admin reconnects. We only run this query for
+  // scheduling connectors — for CRM / SMS / etc. this concept doesn't
+  // apply and we keep the existing generic alert content.
+  // (`useEpisodeScopedThrottle` is exactly `isSchedulingType(...)` from
+  // the throttle gate above, reused here to avoid recomputing.)
+  let affectedSchedulingTargets: SchedulingTargetRef[] = [];
+  if (useEpisodeScopedThrottle) {
+    affectedSchedulingTargets = await findAffectedSchedulingTargets(
+      params.tenantId,
+      params.provider,
+    );
+  }
+  const hasSchedulingImpact = affectedSchedulingTargets.length > 0;
+
+  const title = hasSchedulingImpact
+    ? `${label} disconnected — bookings will fail until you reconnect`
+    : `${label} integration needs to be reconnected`;
+  const targetSummary = hasSchedulingImpact
+    ? formatSchedulingTargetSummary(affectedSchedulingTargets)
+    : '';
+  const message = hasSchedulingImpact
+    ? `${label} can't book appointments for ${targetSummary} until you reauthorize it. Open Connectors to reconnect.`
+    : reason === 'needs_reconnect'
       ? `${label} can't sync until you reauthorize it. Open Connectors to reconnect.`
       : `Latest sync to ${label} failed: ${errorMessage.slice(0, 200)}. Open Connectors to reconnect.`;
 
@@ -434,7 +569,7 @@ export async function dispatchConnectorAuthAlert(
     await insertInAppNotification({
       tenantId: params.tenantId,
       integrationId: params.integrationId,
-      connectorType: params.connectorType ?? row.integration_type,
+      connectorType: effectiveConnectorType,
       provider: params.provider,
       reconnectPath,
       title,
@@ -442,6 +577,10 @@ export async function dispatchConnectorAuthAlert(
       errorMessage,
       reason,
       recipientUserIds: adminUserIds,
+      // Surfacing the affected agents / phone numbers in metadata lets the
+      // notification UI render targeted reconnect chips later without a
+      // second round-trip to fetch the impact list.
+      affectedTargets: hasSchedulingImpact ? affectedSchedulingTargets : undefined,
     });
   }
 
@@ -484,8 +623,23 @@ export async function dispatchConnectorAuthAlert(
     return { status: 'no_recipients', emailedRecipients: 0 };
   }
 
-  const { subject, html, text } =
-    reason === 'needs_reconnect'
+  // Scheduling-type connectors with at least one referencing agent / phone
+  // number get the dedicated drift email so admins immediately see which
+  // booking targets will fail. Falls through to the generic reconnect /
+  // sync-error templates for non-scheduling connectors or when nothing on
+  // the tenant references the disconnected calendar.
+  const { subject, html, text } = hasSchedulingImpact
+    ? connectorSchedulingDriftEmail({
+        tenantName,
+        connectorsUrl: reconnectUrl,
+        detectedAt,
+        drifted: affectedSchedulingTargets.map((t) => ({
+          refType: t.refType,
+          name: t.name,
+          providerLabel: label,
+        })),
+      })
+    : reason === 'needs_reconnect'
       ? connectorReconnectNeededEmail({
           tenantName,
           providerLabel: label,
