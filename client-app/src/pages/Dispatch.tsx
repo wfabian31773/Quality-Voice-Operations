@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, MapPin, Wrench,
   BarChart3, Settings, Users, CheckCircle2, XCircle, ArrowRight, FileText,
   MessageSquare, Calendar, Activity, TrendingUp, Clipboard, Bell, Shield,
-  Layers, ArrowLeftRight, Download,
+  Layers, ArrowLeftRight, Download, Loader2, RotateCw, Mail,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 import { PageHeader, StatCard } from '../components/ui';
@@ -647,6 +647,284 @@ function BulkRouteDownloadButton({ selectedJobs, filters, onClearSelection }: {
   );
 }
 
+// Shape returned by GET /api/dispatch/route-exports — kept loose
+// (unknown for some optional fields) so the panel renders even if the
+// server gains/loses columns.
+type RouteExportRow = {
+  id: string;
+  status: 'pending' | 'running' | 'ready' | 'failed';
+  format: 'gpx' | 'csv';
+  job_count: number | null;
+  included_count: number | null;
+  skipped_empty: number | null;
+  archive_filename: string | null;
+  archive_bytes: number | null;
+  download_expires_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  email_sent_at: string | null;
+  requested_by_email: string | null;
+};
+
+function formatExportTimestamp(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function formatExportBytes(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+// "Recent exports" panel rendered inside the bulk-download modal so the
+// dispatcher can watch their queued archives go from pending → running
+// → ready without leaving the page or waiting for the email link. Polls
+// the existing tenant-scoped list endpoint every 5s as long as any row
+// is still in flight; switches to a passive (no-poll) view once
+// everything is terminal so we don't hammer the server.
+function RecentExportsPanel({ refreshKey, onRetried }: {
+  refreshKey: number;
+  onRetried: () => void;
+}) {
+  const [rows, setRows] = useState<RouteExportRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const token = getToken();
+      const res = await fetch('/api/dispatch/route-exports?limit=10', {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to load recent exports (${res.status})`);
+      }
+      const body = (await res.json()) as { exports?: RouteExportRow[] };
+      setRows(Array.isArray(body.exports) ? body.exports : []);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load recent exports');
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load, refreshKey]);
+
+  // Poll while at least one row is still being built. We deliberately
+  // keep the cadence slow (5s) — these archives can take tens of
+  // seconds to assemble and the dispatcher is reading the panel
+  // visually, not staring at a millisecond timer.
+  const inFlight = useMemo(
+    () => (rows ?? []).some(r => r.status === 'pending' || r.status === 'running'),
+    [rows],
+  );
+  useEffect(() => {
+    if (!inFlight) return;
+    const handle = window.setInterval(() => { void load(); }, 5000);
+    return () => window.clearInterval(handle);
+  }, [inFlight, load]);
+
+  const retryExport = async (exportId: string) => {
+    setRetryingId(exportId);
+    try {
+      const token = getToken();
+      const res = await fetch(`/api/dispatch/route-exports/${exportId}/retry`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        let msg = `Retry failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = String(body.error);
+        } catch { /* non-JSON */ }
+        throw new Error(msg);
+      }
+      onRetried();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Retry failed');
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
+  if (rows === null && !error) {
+    return (
+      <div className="border-t border-border pt-3">
+        <div className="text-[10px] font-medium text-muted mb-1.5">Recent exports</div>
+        <div className="text-xs text-muted flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading recent exports…
+        </div>
+      </div>
+    );
+  }
+
+  if (rows && rows.length === 0 && !error) {
+    return (
+      <div className="border-t border-border pt-3">
+        <div className="text-[10px] font-medium text-muted mb-1.5">Recent exports</div>
+        <div className="text-xs text-muted">
+          No background exports yet — queue one with "Email me the archive".
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border pt-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-[10px] font-medium text-muted">Recent exports</div>
+        <button
+          type="button"
+          onClick={() => { void load(); }}
+          className="text-[10px] text-muted hover:text-heading inline-flex items-center gap-1"
+          title="Refresh"
+        >
+          <RefreshCw className="h-3 w-3" />
+          Refresh
+        </button>
+      </div>
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-[11px] text-red-700 dark:text-red-300 mb-2">
+          {error}
+        </div>
+      )}
+      <ul className="space-y-2 max-h-56 overflow-y-auto pr-1">
+        {(rows ?? []).map(row => (
+          <RecentExportRow
+            key={row.id}
+            row={row}
+            retrying={retryingId === row.id}
+            onRetry={() => retryExport(row.id)}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RecentExportRow({ row, retrying, onRetry }: {
+  row: RouteExportRow;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
+  const statusBadge = (() => {
+    switch (row.status) {
+      case 'pending':
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-secondary text-muted">
+            <Clock className="h-2.5 w-2.5" /> Pending
+          </span>
+        );
+      case 'running':
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+            <Loader2 className="h-2.5 w-2.5 animate-spin" /> Building
+          </span>
+        );
+      case 'ready':
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <CheckCircle2 className="h-2.5 w-2.5" /> Ready
+          </span>
+        );
+      case 'failed':
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">
+            <XCircle className="h-2.5 w-2.5" /> Failed
+          </span>
+        );
+    }
+  })();
+
+  const downloadUrl = `/api/dispatch/route-exports/${row.id}/file`;
+  const sizeLabel = formatExportBytes(row.archive_bytes);
+
+  return (
+    <li className="border border-border rounded-lg p-2 bg-surface">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {statusBadge}
+          <span className="text-[11px] text-muted uppercase">{row.format}</span>
+          <span className="text-[11px] text-heading truncate">
+            {row.job_count != null ? `${row.job_count} jobs` : '—'}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {row.status === 'ready' && (
+            <a
+              href={downloadUrl}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary text-white text-[11px] font-medium hover:bg-primary-hover"
+              title={row.archive_filename ?? 'Download archive'}
+            >
+              <Download className="h-3 w-3" /> Download
+            </a>
+          )}
+          {row.status === 'failed' && (
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-surface text-heading text-[11px] font-medium hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {retrying
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <RotateCw className="h-3 w-3" />}
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="mt-1 flex items-center gap-2 text-[10px] text-muted">
+        <span title={new Date(row.created_at).toLocaleString()}>
+          Requested {formatExportTimestamp(row.created_at)}
+        </span>
+        {sizeLabel && (
+          <>
+            <span className="opacity-50">•</span>
+            <span>{sizeLabel}</span>
+          </>
+        )}
+        {row.email_sent_at && (
+          <>
+            <span className="opacity-50">•</span>
+            <span className="inline-flex items-center gap-1">
+              <Mail className="h-2.5 w-2.5" /> emailed
+            </span>
+          </>
+        )}
+        {row.included_count != null && row.skipped_empty != null && row.skipped_empty > 0 && (
+          <>
+            <span className="opacity-50">•</span>
+            <span>{row.skipped_empty} skipped (no pings)</span>
+          </>
+        )}
+      </div>
+      {row.status === 'failed' && row.error_message && (
+        <div className="mt-1 text-[11px] text-red-600 dark:text-red-400 break-words">
+          {row.error_message}
+        </div>
+      )}
+    </li>
+  );
+}
+
 function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }: {
   selectedJobs: Set<string>;
   filters: DispatchBoardFilters;
@@ -671,6 +949,9 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  // Bumped after every async submit / retry so the recent-exports
+  // panel re-fetches immediately instead of waiting for its 5s tick.
+  const [recentRefreshKey, setRecentRefreshKey] = useState(0);
 
   const inputCls = "w-full px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs focus:outline-none focus:ring-2 focus:ring-primary/30";
 
@@ -742,6 +1023,10 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
             ? `Building archive of ${count} routes — we'll email a download link to ${email} when it's ready.`
             : `Building archive of ${count} routes — we'll email a download link when it's ready.`,
         );
+        // Surface the brand-new row in the recent-exports panel
+        // immediately so the dispatcher sees their request acknowledged
+        // without waiting for the next poll tick.
+        setRecentRefreshKey(k => k + 1);
         if (mode === 'selected') {
           setTimeout(() => onCompleted(), 1500);
         }
@@ -918,6 +1203,11 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
             {summary}
           </div>
         )}
+
+        <RecentExportsPanel
+          refreshKey={recentRefreshKey}
+          onRetried={() => setRecentRefreshKey(k => k + 1)}
+        />
       </div>
       <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
         <button

@@ -1122,3 +1122,299 @@ describe('downloadRouteExportHandler', () => {
     expect(getBody()).toEqual({ error: 'Archive file no longer in storage' });
   });
 });
+
+// Backs the dispatcher's "Recent exports" panel: returns the most
+// recent export-job rows for the calling tenant so the UI can poll
+// status and offer download / retry without waiting for the email.
+describe('listRouteExportsHandler', () => {
+  it('returns the latest tenant-scoped export-job rows in the documented shape', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'export-1',
+          status: 'ready',
+          format: 'gpx',
+          job_count: 3,
+          included_count: 2,
+          skipped_empty: 1,
+          archive_filename: 'dispatch-routes-2026-04-29.zip',
+          archive_bytes: 1234,
+          download_expires_at: new Date('2026-05-06T00:00:00Z'),
+          error_message: null,
+          created_at: new Date('2026-04-29T12:00:00Z'),
+          started_at: new Date('2026-04-29T12:00:01Z'),
+          completed_at: new Date('2026-04-29T12:00:30Z'),
+          email_sent_at: new Date('2026-04-29T12:00:31Z'),
+          requested_by_email: 'dispatcher@example.com',
+        },
+      ],
+    });
+
+    const req = {
+      ...makeReq({}),
+      query: {},
+      method: 'GET',
+    } as unknown as Request;
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.listRouteExportsHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(getStatus()).toBe(200);
+    const body = getBody() as { exports: Array<Record<string, unknown>> };
+    expect(body.exports).toHaveLength(1);
+    expect(body.exports[0]).toMatchObject({
+      id: 'export-1',
+      status: 'ready',
+      format: 'gpx',
+      job_count: 3,
+      included_count: 2,
+      skipped_empty: 1,
+      archive_filename: 'dispatch-routes-2026-04-29.zip',
+      archive_bytes: 1234,
+      requested_by_email: 'dispatcher@example.com',
+    });
+
+    // Tenant scoping is enforced explicitly in the WHERE clause.
+    const sql = String(queryMock.mock.calls[0][0]);
+    expect(sql).toMatch(/FROM dispatch_route_export_jobs/);
+    expect(sql).toMatch(/WHERE tenant_id = \$1/);
+    expect(sql).toMatch(/ORDER BY created_at DESC/);
+    const params = queryMock.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe(TENANT_ID);
+  });
+
+  it('clamps an out-of-range limit to the server-side maximum', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      ...makeReq({}),
+      query: { limit: '9999' },
+      method: 'GET',
+    } as unknown as Request;
+    const { res } = makeRes();
+    await (dispatch.listRouteExportsHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    const params = queryMock.mock.calls[0][1] as unknown[];
+    // The handler clamps to ROUTE_EXPORTS_LIST_MAX_LIMIT (50).
+    expect(params[1]).toBe(50);
+  });
+});
+
+// Re-queues a previously failed export by copying the snapshotted
+// selection into a brand-new pending row and firing the worker. Only
+// `failed` rows are eligible; everything else returns 409.
+describe('retryRouteExportHandler', () => {
+  it('inserts a fresh pending row from the original selection and returns 202', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock
+      // 1. SELECT the original failed row
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'export-old',
+            status: 'failed',
+            format: 'gpx',
+            include_empty: true,
+            selection: { resolved_job_ids: [JOB_ID_A, JOB_ID_B] },
+            job_count: 2,
+          },
+        ],
+      })
+      // 2. INSERT the new pending row
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'export-new',
+            status: 'pending',
+            created_at: new Date('2026-04-29T13:00:00Z'),
+          },
+        ],
+      });
+
+    const req = {
+      ...makeReq({}),
+      params: { id: 'export-old' },
+      method: 'POST',
+    } as unknown as Request;
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.retryRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(getStatus()).toBe(202);
+    const body = getBody() as Record<string, unknown>;
+    expect(body.export_job).toMatchObject({
+      id: 'export-new',
+      status: 'pending',
+      job_count: 2,
+      format: 'gpx',
+      requested_email: 'dispatcher@example.com',
+    });
+
+    // The INSERT carries forward the snapshotted ids, format, and
+    // include_empty flag — the dispatcher's retry should match what
+    // they originally requested, not be a fresh "all jobs" sweep.
+    const insertSql = String(queryMock.mock.calls[1][0]);
+    expect(insertSql).toMatch(/INSERT INTO dispatch_route_export_jobs/);
+    const insertParams = queryMock.mock.calls[1][1] as unknown[];
+    expect(insertParams[0]).toBe(TENANT_ID);
+    expect(insertParams[3]).toBe('gpx');
+    expect(insertParams[4]).toBe(true);
+    const persistedSelection = JSON.parse(String(insertParams[5])) as { resolved_job_ids: string[] };
+    expect(persistedSelection.resolved_job_ids).toEqual([JOB_ID_A, JOB_ID_B]);
+    expect(insertParams[6]).toBe(2);
+  });
+
+  it('refuses to retry a non-failed export', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'export-ready',
+          status: 'ready',
+          format: 'gpx',
+          include_empty: true,
+          selection: { resolved_job_ids: [JOB_ID_A] },
+          job_count: 1,
+        },
+      ],
+    });
+
+    const req = {
+      ...makeReq({}),
+      params: { id: 'export-ready' },
+      method: 'POST',
+    } as unknown as Request;
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.retryRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(getStatus()).toBe(409);
+    const body = getBody() as Record<string, unknown>;
+    expect(String(body.error)).toMatch(/only failed exports/i);
+    // Should not have inserted a new row.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 404 when the export id belongs to another tenant or does not exist', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      ...makeReq({}),
+      params: { id: 'no-such-export' },
+      method: 'POST',
+    } as unknown as Request;
+    const { res, getStatus } = makeRes();
+    await (dispatch.retryRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(getStatus()).toBe(404);
+  });
+});
+
+// Authenticated, in-app download — the "Recent exports" panel uses
+// this so the dispatcher can grab a ready archive without round-
+// tripping through the email link's token.
+describe('downloadRouteExportAuthenticatedHandler', () => {
+  it('streams the archive when status is ready and the row is tenant-scoped', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'export-ready',
+          status: 'ready',
+          archive_object_path: '/objects/private/dispatch-route-exports/tenant-1/export-ready.zip',
+          archive_filename: 'dispatch-routes-2026-04-29.zip',
+          download_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ],
+    });
+
+    const req = {
+      ...makeReq({}),
+      params: { id: 'export-ready' },
+      method: 'GET',
+    } as unknown as Request;
+    const { res } = makeRes();
+    await (dispatch.downloadRouteExportAuthenticatedHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(streamPrivateObjectMock).toHaveBeenCalledTimes(1);
+    expect(streamPrivateObjectMock.mock.calls[0][0]).toBe(
+      '/objects/private/dispatch-route-exports/tenant-1/export-ready.zip',
+    );
+  });
+
+  it('returns 410 when the archive has expired', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'export-stale',
+          status: 'ready',
+          archive_object_path: '/objects/private/x.zip',
+          archive_filename: 'x.zip',
+          download_expires_at: new Date(Date.now() - 1000),
+        },
+      ],
+    });
+
+    const req = {
+      ...makeReq({}),
+      params: { id: 'export-stale' },
+      method: 'GET',
+    } as unknown as Request;
+    const { res, getStatus } = makeRes();
+    await (dispatch.downloadRouteExportAuthenticatedHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(getStatus()).toBe(410);
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the export is not yet ready', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'export-pending',
+          status: 'running',
+          archive_object_path: null,
+          archive_filename: null,
+          download_expires_at: null,
+        },
+      ],
+    });
+
+    const req = {
+      ...makeReq({}),
+      params: { id: 'export-pending' },
+      method: 'GET',
+    } as unknown as Request;
+    const { res, getStatus } = makeRes();
+    await (dispatch.downloadRouteExportAuthenticatedHandler as (req: Request, res: Response) => Promise<void>)(
+      req,
+      res,
+    );
+
+    expect(getStatus()).toBe(409);
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+});

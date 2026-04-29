@@ -3469,6 +3469,170 @@ export const getRouteExportStatusHandler: RequestHandler = async (req, res) => {
 };
 
 /**
+ * GET /dispatch/route-exports
+ *
+ * Lists the most recent route-export jobs for the calling tenant. Backs
+ * the dispatcher's "Recent exports" panel inside the bulk download
+ * modal — that view polls this endpoint while any rows are still
+ * pending/running so the dispatcher can watch their archive go from
+ * "running" → "ready" without having to wait for the email.
+ *
+ * Tenant-scoped explicitly (and by RLS). The optional `limit` query
+ * parameter caps how many rows we return; we clamp it server-side so a
+ * forged client can't ask for the entire history.
+ */
+const ROUTE_EXPORTS_LIST_DEFAULT_LIMIT = 10;
+const ROUTE_EXPORTS_LIST_MAX_LIMIT = 50;
+
+export const listRouteExportsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+
+  const rawLimit = Number(req.query.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? Math.min(Math.floor(rawLimit), ROUTE_EXPORTS_LIST_MAX_LIMIT)
+    : ROUTE_EXPORTS_LIST_DEFAULT_LIMIT;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, format, job_count, included_count, skipped_empty,
+              archive_filename, archive_bytes, download_expires_at,
+              error_message, created_at, started_at, completed_at,
+              email_sent_at, requested_by_email
+         FROM dispatch_route_export_jobs
+        WHERE tenant_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [tenantId, limit],
+    );
+    return res.json({
+      exports: rows.map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        status: r.status,
+        format: r.format,
+        job_count: r.job_count,
+        included_count: r.included_count,
+        skipped_empty: r.skipped_empty,
+        archive_filename: r.archive_filename,
+        archive_bytes: r.archive_bytes ? Number(r.archive_bytes) : null,
+        download_expires_at: r.download_expires_at,
+        error_message: r.error_message,
+        created_at: r.created_at,
+        started_at: r.started_at,
+        completed_at: r.completed_at,
+        email_sent_at: r.email_sent_at,
+        requested_by_email: r.requested_by_email,
+      })),
+    });
+  } catch (err) {
+    logger.error('Failed to list route exports', {
+      tenantId,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to list exports' });
+  }
+};
+
+/**
+ * POST /dispatch/route-exports/:id/retry
+ *
+ * Re-queues a failed route export by copying the original selection
+ * (the snapshotted `resolved_job_ids`, format, and include_empty flag)
+ * into a fresh row. Only `failed` rows are eligible — re-running a
+ * `ready` row would duplicate emails, and a `pending`/`running` row is
+ * already in flight. Returns the new export-job id so the UI can swap
+ * the failed row for the new one in its "Recent exports" list.
+ */
+export const retryRouteExportHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId, email } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+
+  const requesterEmail = (email ?? '').trim();
+  if (!requesterEmail) {
+    return res.status(400).json({
+      error: 'No email address on file for this user — cannot deliver the archive.',
+    });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, format, include_empty, selection, job_count
+         FROM dispatch_route_export_jobs
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [id, tenantId],
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Export job not found' });
+    }
+    const original = rows[0] as Record<string, unknown>;
+    if (original.status !== 'failed') {
+      return res.status(409).json({
+        error: `Only failed exports can be retried (current status: ${String(original.status)})`,
+      });
+    }
+
+    const rawSelection = original.selection;
+    const selection = typeof rawSelection === 'string'
+      ? JSON.parse(rawSelection)
+      : (rawSelection as { resolved_job_ids?: unknown } | null);
+    const resolvedJobIds = Array.isArray(selection?.resolved_job_ids)
+      ? selection!.resolved_job_ids!.filter((s: unknown): s is string => typeof s === 'string')
+      : [];
+    if (resolvedJobIds.length === 0) {
+      return res.status(409).json({
+        error: 'Original export has no recorded job selection — start a new export instead.',
+      });
+    }
+
+    const { rows: insertRows } = await pool.query(
+      `INSERT INTO dispatch_route_export_jobs (
+         tenant_id, requested_by_user_id, requested_by_email,
+         status, format, include_empty, selection, job_count
+       ) VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
+       RETURNING id, status, created_at`,
+      [
+        tenantId,
+        userId,
+        requesterEmail,
+        original.format,
+        original.include_empty,
+        JSON.stringify({ resolved_job_ids: resolvedJobIds }),
+        resolvedJobIds.length,
+      ],
+    );
+    const newExportJobId = String(insertRows[0].id);
+
+    setImmediate(() => {
+      processRouteExportJob(newExportJobId).catch((err) => {
+        logger.error('processRouteExportJob crashed outside its own try/catch', {
+          exportJobId: newExportJobId,
+          error: String(err),
+        });
+      });
+    });
+
+    return res.status(202).json({
+      export_job: {
+        id: newExportJobId,
+        status: 'pending',
+        job_count: resolvedJobIds.length,
+        format: original.format,
+        requested_email: requesterEmail,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to retry route export', {
+      tenantId,
+      exportJobId: id,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to retry export' });
+  }
+};
+
+/**
  * GET /dispatch/route-exports/:id/download?token=...
  *
  * Token-authenticated download of a ready route-export archive. This
@@ -3537,6 +3701,70 @@ export const downloadRouteExportHandler: RequestHandler = async (req, res) => {
       return res.status(404).json({ error: 'Archive file no longer in storage' });
     }
     logger.error('Failed to stream route export archive', {
+      exportJobId: id,
+      error: String(err),
+    });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to download archive' });
+    }
+  }
+};
+
+/**
+ * GET /dispatch/route-exports/:id/file
+ *
+ * Authenticated, in-app download of a ready route-export archive.
+ * Mirrors `downloadRouteExportHandler` but identifies the export by
+ * (tenant + id) instead of an opaque download token, so the
+ * dispatcher's "Recent exports" panel can offer a one-click download
+ * without having to round-trip through the email link. Same expiry +
+ * status gates as the token-based path.
+ */
+export const downloadRouteExportAuthenticatedHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, archive_object_path, archive_filename,
+              download_expires_at
+         FROM dispatch_route_export_jobs
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [id, tenantId],
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Export job not found' });
+    }
+    const row = rows[0] as Record<string, unknown>;
+    if (row.status !== 'ready') {
+      return res.status(409).json({ error: `Export is not ready (status: ${String(row.status)})` });
+    }
+    const expiresAt = row.download_expires_at
+      ? new Date(row.download_expires_at as string | Date)
+      : null;
+    if (!expiresAt || expiresAt.getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Download link has expired' });
+    }
+    if (!row.archive_object_path) {
+      return res.status(500).json({ error: 'Archive path missing on export job' });
+    }
+
+    const storage = new ObjectStorageService();
+    await storage.streamPrivateObject(
+      String(row.archive_object_path),
+      res,
+      {
+        downloadFilename: String(row.archive_filename ?? `dispatch-routes-${id}.zip`),
+      },
+    );
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      return res.status(404).json({ error: 'Archive file no longer in storage' });
+    }
+    logger.error('Failed to stream authenticated route export archive', {
+      tenantId,
       exportJobId: id,
       error: String(err),
     });
@@ -4394,12 +4622,19 @@ router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite
 router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
 router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
 router.post('/dispatch/jobs/routes/export', requireAuth, bulkExportJobRoutesHandler);
+router.get('/dispatch/route-exports', requireAuth, listRouteExportsHandler);
 router.get('/dispatch/route-exports/:id', requireAuth, getRouteExportStatusHandler);
+router.post('/dispatch/route-exports/:id/retry', requireAuth, retryRouteExportHandler);
 // Intentionally NOT behind requireAuth — the per-export `download_token`
 // embedded in the email link is the only credential. See
 // `downloadRouteExportHandler` for the full token / expiry / status
 // gating that protects this endpoint.
 router.get('/dispatch/route-exports/:id/download', downloadRouteExportHandler);
+router.get(
+  '/dispatch/route-exports/:id/file',
+  requireAuth,
+  downloadRouteExportAuthenticatedHandler,
+);
 
 // Public, token-authenticated booking-tracker endpoint. NO requireAuth —
 // the per-job tracking_token (migration 088) is the only credential.
