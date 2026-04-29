@@ -55,12 +55,19 @@ describe('support ticket reply retry — server', () => {
 
   it('re-sends to the original recipient via the existing SMTP path with the inbound reply-to', () => {
     const retryRouteIdx = supportFile.indexOf("'/support/tickets/:id/replies/:replyId/retry'");
-    // Slice generously — the handler grew a hard-bounce skip block AND a
-    // suppression / unsubscribe pre-check + auto-add-on-bounce block before
-    // the actual sendEmail() call, and the result UPDATE now also writes
-    // retry_skipped_reason, so we need plenty of headroom to reach the
-    // sendEmail() invocation from the route declaration.
-    const retryRouteSlice = supportFile.slice(retryRouteIdx, retryRouteIdx + 12000);
+    expect(retryRouteIdx).toBeGreaterThan(-1);
+    // Slice from the retry route declaration up to the start of the next
+    // `router.` declaration (or end of file) so the assertion keeps locating
+    // sendEmail() no matter how much the handler body grows. Earlier versions
+    // used a fixed-size window (4000, then 12000 chars) which kept drifting
+    // out of date as the handler accreted hard-bounce skip blocks,
+    // suppression / unsubscribe pre-checks, alert-escalation logic, and the
+    // retry_skipped_reason / cooldown response fields.
+    const afterRetryRoute = supportFile.slice(retryRouteIdx + 1);
+    const nextRouterRel = afterRetryRoute.search(/\brouter\.[a-z]+\(/);
+    const handlerEnd =
+      nextRouterRel === -1 ? supportFile.length : retryRouteIdx + 1 + nextRouterRel;
+    const retryRouteSlice = supportFile.slice(retryRouteIdx, handlerEnd);
     // sendEmail call uses ticket.user_email and buildReplyToAddress(token).
     expect(retryRouteSlice).toMatch(/sendEmail\(/);
     expect(retryRouteSlice).toMatch(/to:\s*ticket\.user_email/);
