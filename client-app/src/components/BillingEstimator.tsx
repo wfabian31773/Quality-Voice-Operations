@@ -51,6 +51,13 @@ interface BillingEstimatorProps {
    * Computed by the parent as `daysInMonth / dayOfMonth`.
    */
   projectionMultiplier?: number;
+  /**
+   * Tenant's billing currency code (e.g. "USD", "EUR", "GBP"). When
+   * provided, all rendered base prices, overage costs, and per-minute
+   * rates are formatted in that currency. Defaults to USD so existing
+   * call sites that don't yet plumb the tenant currency keep rendering.
+   */
+  currency?: string;
 }
 
 interface TierSpec {
@@ -122,12 +129,14 @@ function nextTierDown(current: PlanTier): PlanTier | null {
   return PLAN_TIERS[idx - 1];
 }
 
-function formatMoney(value: number): string {
-  return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+function makeFormatMoney(currency: string) {
+  return (value: number) =>
+    formatDollars(value, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function formatPerMinute(value: number): string {
-  return formatDollars(value, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+function makeFormatPerMinute(currency: string) {
+  return (value: number) =>
+    formatDollars(value, { currency, minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 function clampMinutes(value: number): number {
@@ -141,12 +150,16 @@ function TierEstimate({
   label,
   highlight,
   direction,
+  formatMoney,
+  formatPerMinute,
 }: {
   tier: TierSpec;
   minutes: number;
   label: string;
   highlight?: boolean;
   direction?: ComparisonDirection;
+  formatMoney: (value: number) => string;
+  formatPerMinute: (value: number) => string;
 }) {
   const monthlyCost = calculateMonthlyCost(tier, minutes);
   const overageMinutes = Math.max(0, minutes - tier.includedMinutes);
@@ -275,7 +288,10 @@ export default function BillingEstimator({
   monthToDateAiMinutes,
   rateOverride,
   projectionMultiplier,
+  currency = 'USD',
 }: BillingEstimatorProps) {
+  const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
+  const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
   const currentTierKey = normalizePlan(currentPlan);
   // Only the current tier gets the Stripe override — the comparison-tier card
   // has to use catalog defaults because we have no way to know what Stripe
@@ -446,7 +462,13 @@ export default function BillingEstimator({
       </div>
 
       <div className="flex flex-col md:flex-row gap-3">
-        <TierEstimate tier={currentTier} minutes={safeMinutes} label="Current plan" />
+        <TierEstimate
+          tier={currentTier}
+          minutes={safeMinutes}
+          label="Current plan"
+          formatMoney={formatMoney}
+          formatPerMinute={formatPerMinute}
+        />
         {comparisonTier ? (
           <TierEstimate
             tier={comparisonTier}
@@ -454,6 +476,8 @@ export default function BillingEstimator({
             label={comparisonLabel}
             direction={comparisonDirection}
             highlight
+            formatMoney={formatMoney}
+            formatPerMinute={formatPerMinute}
           />
         ) : (
           <div

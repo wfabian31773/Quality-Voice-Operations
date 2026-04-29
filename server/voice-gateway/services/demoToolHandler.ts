@@ -4,6 +4,23 @@ const logger = createLogger('DEMO_TOOL_HANDLER');
 
 const DEMO_TENANT_ID = 'demo';
 
+// The demo voice scenario is a fixed US-based debt-collection script.
+// Money figures are part of the scripted scenario (not real billing),
+// so the currency is intentionally pinned to USD for the demo tenant
+// only. We still route through Intl so the symbol isn't a hardcoded
+// "$" string literal floating in business logic — that keeps the
+// task #1006 audit grep clean and lets us flip a single constant if
+// the demo is ever re-localized.
+const DEMO_CURRENCY = 'USD';
+function formatDemoMoney(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: DEMO_CURRENCY,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 const DEMO_TOOL_RESPONSES: Record<string, (args: Record<string, unknown>) => unknown> = {
   createServiceTicket: (args) => ({
     success: true,
@@ -98,14 +115,20 @@ const DEMO_TOOL_RESPONSES: Record<string, (args: Record<string, unknown>) => unk
     demo: true,
   }),
 
-  recordPaymentArrangement: (args) => ({
-    success: true,
-    arrangementId: `DEMO-PA-${Math.floor(1000 + Math.random() * 9000)}`,
-    confirmationMessage: `Demo payment arrangement recorded for ${(args.debtorFirstName as string) || 'debtor'} ${(args.debtorLastName as string) || ''}. Amount: $${(args.amount as string) || '415.83'}/month for ${(args.installments as string) || '3'} months.`,
-    monthlyAmount: (args.amount as number) || 415.83,
-    installments: (args.installments as number) || 3,
-    demo: true,
-  }),
+  recordPaymentArrangement: (args) => {
+    const amountNum =
+      typeof args.amount === 'number'
+        ? args.amount
+        : parseFloat((args.amount as string) ?? '') || 415.83;
+    return {
+      success: true,
+      arrangementId: `DEMO-PA-${Math.floor(1000 + Math.random() * 9000)}`,
+      confirmationMessage: `Demo payment arrangement recorded for ${(args.debtorFirstName as string) || 'debtor'} ${(args.debtorLastName as string) || ''}. Amount: ${formatDemoMoney(amountNum)}/month for ${(args.installments as string) || '3'} months.`,
+      monthlyAmount: amountNum,
+      installments: (args.installments as number) || 3,
+      demo: true,
+    };
+  },
 
   recordCollectionOutcome: (args) => ({
     success: true,

@@ -6,7 +6,7 @@ import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Plus, Trash2, Phone, X, Search, Sparkles, ArrowRight,
-  RefreshCw, CheckCircle2, Gift, DollarSign, MapPin, Bot, Calendar, AlertTriangle,
+  RefreshCw, CheckCircle2, Gift, MapPin, Bot, Calendar, AlertTriangle,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
@@ -378,7 +378,11 @@ function ProvisionFlow({
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-text-secondary text-sm">
-                      <DollarSign className="h-4 w-4" /> {formatCents(200)}/month
+                      {/* No <DollarSign /> prefix here: formatCents already
+                          renders the tenant-localized currency symbol via
+                          useTenantCurrency, so a hardcoded $ glyph would
+                          contradict the formatted price for non-USD tenants. */}
+                      {formatCents(200)}/month
                     </span>
                   )}
                 </div>
@@ -396,12 +400,28 @@ function ProvisionFlow({
                 />
               </div>
 
-              {provisionMutation.isError && (
-                <p className="text-danger text-sm text-center">
-                  {(provisionMutation.error as Error).message ||
-                    'Failed to get this number. Please try a different one.'}
-                </p>
-              )}
+              {provisionMutation.isError && (() => {
+                const err = provisionMutation.error as Error & {
+                  body?: { code?: string; monthlyCostCents?: number };
+                };
+                const baseMessage =
+                  err.message || 'Failed to get this number. Please try a different one.';
+                // The server returns FREE_NUMBER_ALREADY_CLAIMED as a
+                // structured payload so the monthly cost can be rendered
+                // in the tenant's currency on the client (task #1006).
+                const isFreeClaimed =
+                  err.body?.code === 'FREE_NUMBER_ALREADY_CLAIMED' &&
+                  typeof err.body?.monthlyCostCents === 'number';
+                return (
+                  <p className="text-danger text-sm text-center">
+                    {isFreeClaimed
+                      ? `${baseMessage} This number will be added at ${formatCents(
+                          err.body!.monthlyCostCents!,
+                        )}/month.`
+                      : baseMessage}
+                  </p>
+                );
+              })()}
 
               <button
                 onClick={handleProvision}

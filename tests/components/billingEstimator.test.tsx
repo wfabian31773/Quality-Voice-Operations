@@ -76,4 +76,44 @@ describe('BillingEstimator', () => {
     const input = document.getElementById('billing-estimator-input') as HTMLInputElement;
     expect(input.value).toBe('25000');
   });
+
+  it('renders monthly cost in the tenant billing currency when one is provided', () => {
+    render(
+      <BillingEstimator
+        currentPlan="starter"
+        monthToDateAiMinutes={0}
+        currency="EUR"
+      />,
+    );
+    const input = document.getElementById('billing-estimator-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '600' } });
+
+    const normalize = (s: string) => s.replace(/\u00a0/g, ' ');
+    const monthlyStarter = normalize(
+      screen.getByTestId('billing-estimator-monthly-starter').textContent ?? '',
+    );
+    const monthlyPro = normalize(
+      screen.getByTestId('billing-estimator-monthly-pro').textContent ?? '',
+    );
+    // Starter @ 600 min = €99 + 100 * €0.15 = €114
+    expect(monthlyStarter).toContain('€114');
+    // Pro @ 600 min stays at base €399 (within 2,500 included)
+    expect(monthlyPro).toContain('€399');
+    // No dollar sign should leak through for a Euro tenant.
+    expect(monthlyStarter).not.toContain('$');
+    expect(monthlyPro).not.toContain('$');
+
+    const effectiveStarter = normalize(
+      screen.getByTestId('billing-estimator-effective-starter').textContent ?? '',
+    );
+    expect(effectiveStarter).toContain('€');
+    expect(effectiveStarter).not.toContain('$');
+  });
+
+  it('defaults to USD when no currency prop is provided', () => {
+    render(<BillingEstimator currentPlan="starter" monthToDateAiMinutes={0} />);
+    const monthlyStarter =
+      screen.getByTestId('billing-estimator-monthly-starter').textContent ?? '';
+    expect(monthlyStarter).toContain('$');
+  });
 });

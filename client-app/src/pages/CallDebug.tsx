@@ -888,9 +888,14 @@ export default function CallDebug() {
                   <select value={filters.cost_range} onChange={(e) => setFilter('cost_range', e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
                     <option value="">All</option>
-                    <option value="low">Low (&lt; $0.50)</option>
-                    <option value="medium">Medium ($0.50 - $2.00)</option>
-                    <option value="high">High (&gt; $2.00)</option>
+                    {/* Cost-range labels render in the tenant's billing
+                        currency via formatCents (task #1006). The
+                        underlying option values stay literal ("low" /
+                        "medium" / "high") so the API contract is
+                        currency-agnostic. */}
+                    <option value="low">{`Low (< ${formatCents(50)})`}</option>
+                    <option value="medium">{`Medium (${formatCents(50)} - ${formatCents(200)})`}</option>
+                    <option value="high">{`High (> ${formatCents(200)})`}</option>
                   </select>
                 </div>
               </div>

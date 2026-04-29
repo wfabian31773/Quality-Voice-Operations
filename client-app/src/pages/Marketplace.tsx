@@ -5,13 +5,14 @@ import { api } from '../lib/api';
 import {
   Search, Store, ArrowLeft, Download, CheckCircle, Phone, MessageSquare,
   Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, Shield,
-  BookOpen, MessageCircle, PlayCircle, Star, DollarSign,
+  BookOpen, MessageCircle, PlayCircle, Star,
   Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
   ShoppingCart, Filter,
 } from 'lucide-react';
 import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
 import { PageHeader } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
+import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import Modal from '../components/Modal';
 
 interface TemplateCategory {
@@ -209,24 +210,30 @@ const SORT_OPTIONS = [
   { value: 'price_high', label: 'Price: High to Low' },
 ];
 
-function formatPrice(priceCents: number, priceModel: string): string {
+function formatPrice(priceCents: number, priceModel: string, currency: string): string {
   if (priceModel === 'free' || priceCents === 0) return 'Free';
-  const formatted = formatCentsHelper(priceCents);
+  const formatted = formatCentsHelper(priceCents, { currency });
   if (priceModel === 'monthly_subscription') return `${formatted}/mo`;
   if (priceModel === 'usage_based') return `From ${formatted}`;
   return formatted;
 }
 
-function PriceBadge({ priceCents, priceModel }: { priceCents: number; priceModel: string }) {
+function PriceBadge({ priceCents, priceModel, currency }: { priceCents: number; priceModel: string; currency: string }) {
   const isFree = priceModel === 'free' || priceCents === 0;
+  // Note: we intentionally do NOT prefix the badge with a hardcoded
+  // <DollarSign /> icon. The price string itself already carries the
+  // tenant's localized currency symbol (e.g. €49.00, £49.00) thanks to
+  // formatPrice, so adding a fixed dollar glyph would make every paid
+  // template visibly say "$" to non-USD tenants — exactly what task
+  // #1006 set out to eliminate.
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
       isFree
         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
         : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
     }`}>
-      {!isFree && <DollarSign className="h-3 w-3" />}
-      {formatPrice(priceCents, priceModel)}
+      {!isFree && <Tag className="h-3 w-3" />}
+      {formatPrice(priceCents, priceModel, currency)}
     </span>
   );
 }
@@ -580,6 +587,7 @@ function TemplateCard({
   installed: boolean;
   onClick: () => void;
 }) {
+  const currency = useTenantCurrency();
   return (
     <button
       onClick={onClick}
@@ -596,7 +604,7 @@ function TemplateCard({
           <CategoryIcon category={template.marketplaceCategory} />
         </div>
         <div className="flex items-center gap-2">
-          <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} />
+          <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} currency={currency} />
           {installed && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
               <CheckCircle className="h-3 w-3" /> Installed
@@ -646,6 +654,7 @@ function TemplateDetailView({
 }) {
   const queryClient = useQueryClient();
   const [showInstall, setShowInstall] = useState(false);
+  const currency = useTenantCurrency();
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -778,7 +787,7 @@ function TemplateDetailView({
                 </p>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <PlanBadge plan={template.minPlan} />
-                  <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} />
+                  <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} currency={currency} />
                   <ChannelBadges channels={template.supportedChannels} />
                   <span className="text-xs text-text-muted flex items-center gap-1">
                     <Download className="h-3 w-3" /> {template.installCount} installs
@@ -1132,7 +1141,7 @@ function TemplateDetailView({
               <div className="space-y-3">
                 <div className="text-center">
                   <p className="text-2xl font-bold text-text-primary">
-                    {formatPrice(template.priceCents, template.priceModel)}
+                    {formatPrice(template.priceCents, template.priceModel, currency)}
                   </p>
                   {template.priceModel === 'monthly_subscription' && (
                     <p className="text-xs text-text-muted">billed monthly</p>

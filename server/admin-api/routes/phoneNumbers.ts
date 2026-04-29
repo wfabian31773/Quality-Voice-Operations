@@ -249,7 +249,15 @@ router.post('/phone-numbers/provision', requireAuth, requireRole('manager'), asy
       return res.status(409).json({ error: 'This number is no longer available. Please pick a different one.' });
     }
     if (errMsg.includes('idx_phone_numbers_one_free_per_tenant') || errMsg.includes('duplicate key')) {
-      return res.status(409).json({ error: 'Your free number has already been claimed. This number will be added at $2.00/month.' });
+      // Task #1006: don't bake a "$2.00/month" string into the server
+      // response — the tenant's billing currency may not be USD. Return
+      // the raw cents amount as a structured field and let the client
+      // format it via useTenantCurrency() + formatCents.
+      return res.status(409).json({
+        error: 'Your free number has already been claimed.',
+        code: 'FREE_NUMBER_ALREADY_CLAIMED',
+        monthlyCostCents: MONTHLY_COST_CENTS,
+      });
     }
     return res.status(500).json({ error: 'Failed to provision phone number. Please try again.' });
   } finally {

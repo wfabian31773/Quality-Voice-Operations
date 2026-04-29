@@ -428,6 +428,7 @@ export default function Billing() {
                 }
               : undefined}
             projectionMultiplier={projectionMultiplier}
+            currency={currency}
           />
 
           {sub && isAdmin && (
