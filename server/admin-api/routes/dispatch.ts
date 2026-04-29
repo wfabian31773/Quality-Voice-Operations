@@ -19,6 +19,10 @@ import {
   type GeoPoint,
 } from '../../../platform/integrations/routing';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
+import {
+  DISPATCH_MERGE_TOKENS,
+  findUnknownDispatchMergeTokens,
+} from '../../../shared/dispatch/mergeTokens';
 
 const router = Router();
 const logger = createLogger('ADMIN_DISPATCH');
@@ -241,16 +245,31 @@ export async function fireNotifications(
         : null;
     const trackingUrl = trackingToken ? publicTrackerUrl(trackingToken) : '';
 
-    const substitute = (raw: string): string => raw
-      .replace(/\{\{job_title\}\}/g, job.title as string || '')
-      .replace(/\{\{contact_name\}\}/g, job.contact_name as string || '')
-      .replace(/\{\{eta\}\}/g, job.eta_start ? new Date(job.eta_start as string).toLocaleString() : 'TBD')
-      .replace(/\{\{eta_drive_minutes\}\}/g, liveEtaMinutes)
-      .replace(/\{\{eta_arrival_time\}\}/g, liveEtaArrival)
-      .replace(/\{\{resource_name\}\}/g, job.resource_name as string || '')
-      .replace(/\{\{status\}\}/g, job.status as string || '')
-      .replace(/\{\{address\}\}/g, job.address as string || '')
-      .replace(/\{\{tracking_url\}\}/g, trackingUrl);
+    // The substitution map is keyed off DISPATCH_MERGE_TOKENS so this
+    // renderer and the editor's "unknown token" warning can never
+    // drift. Adding a token requires touching `shared/dispatch/mergeTokens.ts`,
+    // which immediately surfaces missing handlers via the typed Record below.
+    const tokenValues: Record<typeof DISPATCH_MERGE_TOKENS[number], string> = {
+      job_title: (job.title as string) || '',
+      contact_name: (job.contact_name as string) || '',
+      eta: job.eta_start ? new Date(job.eta_start as string).toLocaleString() : 'TBD',
+      eta_drive_minutes: liveEtaMinutes,
+      eta_arrival_time: liveEtaArrival,
+      resource_name: (job.resource_name as string) || '',
+      status: (job.status as string) || '',
+      address: (job.address as string) || '',
+      tracking_url: trackingUrl,
+    };
+    const substitute = (raw: string): string => {
+      let out = raw;
+      for (const token of DISPATCH_MERGE_TOKENS) {
+        // Tolerate optional inner whitespace (`{{ token }}`) so the
+        // editor's tolerant warning matcher and the renderer agree.
+        const re = new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, 'g');
+        out = out.replace(re, tokenValues[token]);
+      }
+      return out;
+    };
 
     for (const tpl of templates) {
       const body = substitute(tpl.body_template as string);
@@ -3105,6 +3124,22 @@ const createNotificationTemplateHandler: RequestHandler = async (req, res) => {
   if (!name || !trigger_event || !body_template) {
     return res.status(400).json({ error: 'name, trigger_event, and body_template are required' });
   }
+  const unknownTokens = [
+    ...findUnknownDispatchMergeTokens(body_template),
+    ...findUnknownDispatchMergeTokens(subject),
+  ];
+  if (unknownTokens.length > 0) {
+    const unique = Array.from(new Set(unknownTokens));
+    return res.status(400).json({
+      error: `Unknown merge token${unique.length === 1 ? '' : 's'}: ${unique
+        .map((t) => `{{${t}}}`)
+        .join(', ')}. Supported tokens: ${DISPATCH_MERGE_TOKENS
+        .map((t) => `{{${t}}}`)
+        .join(', ')}.`,
+      unknownTokens: unique,
+      knownTokens: DISPATCH_MERGE_TOKENS,
+    });
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO dispatch_notification_templates (tenant_id, name, trigger_event, channel, subject, body_template, is_active)
@@ -3123,6 +3158,22 @@ const updateNotificationTemplateHandler: RequestHandler = async (req, res) => {
   const { id } = req.params;
   const { name, trigger_event, channel, subject, body_template, is_active } = req.body;
   const pool = getPlatformPool();
+  const unknownTokens = [
+    ...(body_template !== undefined ? findUnknownDispatchMergeTokens(body_template) : []),
+    ...(subject !== undefined ? findUnknownDispatchMergeTokens(subject) : []),
+  ];
+  if (unknownTokens.length > 0) {
+    const unique = Array.from(new Set(unknownTokens));
+    return res.status(400).json({
+      error: `Unknown merge token${unique.length === 1 ? '' : 's'}: ${unique
+        .map((t) => `{{${t}}}`)
+        .join(', ')}. Supported tokens: ${DISPATCH_MERGE_TOKENS
+        .map((t) => `{{${t}}}`)
+        .join(', ')}.`,
+      unknownTokens: unique,
+      knownTokens: DISPATCH_MERGE_TOKENS,
+    });
+  }
   try {
     const updates: string[] = ['updated_at = NOW()'];
     const values: unknown[] = [];
