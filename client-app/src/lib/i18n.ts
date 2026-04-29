@@ -50,6 +50,48 @@ const resources = {
   de: { common: deCommon, docs: deDocs, marketing: deMarketing, tenant: deTenant, admin: deAdmin },
 } as const;
 
+const SUPPORTED_CODES = SUPPORTED_LANGUAGES.map((l) => l.code) as readonly SupportedLanguageCode[];
+
+/**
+ * Map a raw BCP-47 tag (e.g. from `navigator.language` or `localStorage`) to one of
+ * our SUPPORTED_LANGUAGES. Used as `detection.convertDetectedLanguage` so a visitor
+ * with `pt-PT`, `fr-CA`, `de-AT`, `en-US`, etc. lands on the closest supported locale
+ * on first visit instead of falling through to English.
+ *
+ * Order:
+ *   1. Exact match (e.g. `pt-BR` → `pt-BR`)
+ *   2. Any Portuguese variant (`pt`, `pt-PT`, `pt-AO`, …) → `pt-BR`
+ *      (only Portuguese locale we ship today)
+ *   3. Match by primary subtag (`fr-CA` → `fr`, `de-AT` → `de`, `es-MX` → `es`,
+ *      `en-GB` → `en`)
+ *   4. Fallback to DEFAULT_LANGUAGE (`en`)
+ *
+ * NOTE: We intentionally do *not* enable i18next's `nonExplicitSupportedLngs` —
+ * a previous attempt to use it broke resource resolution for `pt-BR` because
+ * i18next would strip the region and look up a non-existent `pt` resource.
+ * Doing the mapping here keeps i18next's resolved language as one of the exact
+ * supported codes, so resource lookup is unambiguous.
+ */
+export function resolveSupportedLanguage(detected: string | undefined | null): SupportedLanguageCode {
+  if (!detected) return DEFAULT_LANGUAGE;
+
+  if ((SUPPORTED_CODES as readonly string[]).includes(detected)) {
+    return detected as SupportedLanguageCode;
+  }
+
+  const primary = detected.split('-')[0].toLowerCase();
+  if (!primary) return DEFAULT_LANGUAGE;
+
+  if (primary === 'pt') return 'pt-BR';
+
+  const byPrimary = SUPPORTED_CODES.find(
+    (code) => code.split('-')[0].toLowerCase() === primary,
+  );
+  if (byPrimary) return byPrimary;
+
+  return DEFAULT_LANGUAGE;
+}
+
 if (!i18n.isInitialized) {
   i18n
     .use(LanguageDetector)
@@ -57,7 +99,7 @@ if (!i18n.isInitialized) {
     .init({
       resources,
       fallbackLng: DEFAULT_LANGUAGE,
-      supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
+      supportedLngs: SUPPORTED_CODES as unknown as string[],
       defaultNS: 'common',
       ns: ['common', 'docs', 'marketing', 'tenant', 'admin'],
       interpolation: { escapeValue: false },
@@ -65,6 +107,7 @@ if (!i18n.isInitialized) {
         order: ['localStorage', 'navigator', 'htmlTag'],
         lookupLocalStorage: I18N_STORAGE_KEY,
         caches: ['localStorage'],
+        convertDetectedLanguage: resolveSupportedLanguage,
       },
       returnNull: false,
     });
