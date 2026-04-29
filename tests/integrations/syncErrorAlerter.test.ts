@@ -27,11 +27,36 @@ beforeEach(() => {
   fetchMock.mockReset();
   sendEmailMock.mockReset();
   sendEmailMock.mockResolvedValue({ success: true });
+  // Intentional anti-flake fallback: any query the test did not explicitly
+  // enqueue (e.g. a fire-and-forget audit INSERT inside a swallowing
+  // try/catch) returns an empty rowset instead of `undefined`, which would
+  // crash production code that destructures `.rows`. Per-test
+  // `mockResolvedValueOnce` chains take priority; this only kicks in once
+  // they're exhausted. Trade-off: tests that care about EXACT query
+  // sequencing must back the chain with explicit
+  // `expect(queryMock).toHaveBeenCalledTimes(...)` or SQL-substring
+  // assertions so future production changes don't silently slide past.
+  queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   process.env.TWILIO_ACCOUNT_SID = 'AC_test';
   process.env.TWILIO_AUTH_TOKEN = 'token_test';
   process.env.TWILIO_SMS_FROM = '+15555550100';
 });
+
+/**
+ * Enqueue `count` empty acks for the per-recipient
+ * `INSERT INTO connector_alert_recipients` calls that
+ * `recordRecipientAudit` makes between the SMS / email send loop and
+ * the in-app fan-out. Without these the fan-out's later queries get
+ * fed the wrong mocks and silently drop inserts. Centralising this
+ * here means a future column addition to the audit row only needs one
+ * place updated.
+ */
+function ackRecipientAudits(count: number): void {
+  for (let i = 0; i < count; i += 1) {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+  }
+}
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -194,7 +219,11 @@ describe('notifySustainedConnectorFailure', () => {
         ],
       })
       // filterUserIdsByPreference for SMS phones — nobody opted out.
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    // Per-recipient `INSERT INTO connector_alert_recipients` audit rows
+    // fire after each Twilio send and BEFORE the in-app fan-out.
+    ackRecipientAudits(2);
+    queryMock
       // fanoutInAppNotification: load tenant users
       .mockResolvedValueOnce({
         rows: [{ id: 'user-a' }, { id: 'user-b' }],
@@ -331,7 +360,10 @@ describe('notifySustainedConnectorFailure', () => {
       // filterUserIdsByPreference for SMS phones — user-a opted out.
       .mockResolvedValueOnce({
         rows: [{ user_id: 'user-a', enabled: false }],
-      })
+      });
+    // Audit row for the one recipient (user-b) we actually paged.
+    ackRecipientAudits(1);
+    queryMock
       // fanoutInAppNotification: tenant users
       .mockResolvedValueOnce({
         rows: [{ id: 'user-a' }, { id: 'user-b' }],
@@ -426,7 +458,10 @@ describe('notifySustainedConnectorFailure', () => {
       .mockResolvedValueOnce({ rows: [] }) // throttle empty
       .mockResolvedValueOnce({ rows: [{ id: 'user-a', phone_number: '+15551234567' }] })
       // filterUserIdsByPreference for SMS phones — nobody opted out.
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    // Audit row for user-a's "skipped" outcome (Twilio not configured).
+    ackRecipientAudits(1);
+    queryMock
       // fanoutInAppNotification: tenant users
       .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
       // fanoutInAppNotification: filterUserIdsByPreference
@@ -581,7 +616,11 @@ describe('notifyConnectorRecovery', () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admins
+      // admins — `id` required so the shared helper's `r.id && r.email`
+      // filter keeps the row.
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      })
       .mockResolvedValueOnce({ rows: [] }); // email pref filter
 
     const { notifyConnectorRecovery } = await import(
@@ -608,9 +647,14 @@ describe('notifyConnectorRecovery', () => {
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       // tenant name lookup
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // admin email lookup
+      // admin email lookup — `id` required by getTenantAlertEmailRecipients'
+      // `r.id && r.email` filter; missing it silently empties the list and
+      // suppresses both email recipients.
       .mockResolvedValueOnce({
-        rows: [{ email: 'admin@acme.test' }, { email: 'owner@acme.test' }],
+        rows: [
+          { id: 'user-admin', email: 'admin@acme.test' },
+          { id: 'user-owner', email: 'owner@acme.test' },
+        ],
       })
       // filterEmailRecipientsByPreference for integration_recovery email
       .mockResolvedValueOnce({ rows: [] });
@@ -663,7 +707,9 @@ describe('notifyConnectorRecovery', () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      }) // admins (id required)
       .mockResolvedValueOnce({ rows: [] }); // email pref filter
 
     const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
@@ -712,7 +758,9 @@ describe('notifyConnectorRecovery', () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admin emails
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      }) // admin emails (id required)
       // filterEmailRecipientsByPreference: admin@acme.test opted OUT of recovery email
       .mockResolvedValueOnce({
         rows: [{ email: 'admin@acme.test', enabled: false }],
@@ -756,7 +804,9 @@ describe('notifyConnectorRecovery', () => {
       // No per-user INSERT happens because eligible list is empty.
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] }) // admins
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      }) // admins (id required)
       .mockResolvedValueOnce({ rows: [] }); // email pref filter — nobody opted out
 
     const { notifyConnectorRecovery } = await import(
@@ -925,11 +975,13 @@ describe('notifyConnectorSyncError', () => {
       .mockResolvedValueOnce({ rows: [] })
       // 2. tenant name (fetched up-front so metadata can carry recipient counts)
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. admin email lookup
+      // 3. admin email lookup — `id` required by the shared helper's
+      //    `r.id && r.email` filter; without it the recipient list is
+      //    silently emptied and the function bails before sending.
       .mockResolvedValueOnce({
         rows: [
-          { email: 'owner@acme.test' },
-          { email: 'admin@acme.test' },
+          { id: 'user-owner', email: 'owner@acme.test' },
+          { id: 'user-admin', email: 'admin@acme.test' },
         ],
       })
       // 4. filterEmailRecipientsByPreference — admin@acme.test opted OUT of
@@ -996,8 +1048,11 @@ describe('notifyConnectorSyncError', () => {
       .mockResolvedValueOnce({ rows: [] })
       // 2. tenant name
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. admin emails
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
+      // 3. admin emails (id required by shared helper's `r.id && r.email`
+      //    filter — without it the recipient list is silently emptied).
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      })
       // 4. filterEmailRecipientsByPreference: admin opted OUT
       .mockResolvedValueOnce({
         rows: [{ email: 'admin@acme.test', enabled: false }],
@@ -1043,8 +1098,10 @@ describe('notifyConnectorSyncError', () => {
       .mockResolvedValueOnce({ rows: [] })
       // 2. tenant name
       .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. admin emails
-      .mockResolvedValueOnce({ rows: [{ email: 'admin@acme.test' }] })
+      // 3. admin emails (id required by shared helper's filter)
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      })
       // 4. email pref filter — nobody opted out of email
       .mockResolvedValueOnce({ rows: [] })
       // 5a. tenant users
