@@ -40,6 +40,11 @@ export const CTA = {
   // BookDemo sidebar's secondary trial CTA — distinct from
   // START_FREE_TRIAL so sidebar conversions stay separable.
   START_FREE_TRIAL_FROM_BOOK_DEMO: 'start_free_trial_from_book_demo',
+  // Signup form lifecycle: form submit and plan-selector clicks. Kept as
+  // canonical names so funnel reports for /signup don't drift back to
+  // ad-hoc string literals.
+  SIGNUP_SUBMIT: 'signup_submit',
+  PLAN_SELECTED: 'plan_selected',
 } as const;
 
 export type CTAName = typeof CTA[keyof typeof CTA];

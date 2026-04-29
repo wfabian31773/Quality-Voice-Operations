@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 
 const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
@@ -101,7 +102,7 @@ export default function Signup() {
     }
 
     setLoading(true);
-    trackCTAClick('signup_submit', 'signup', plan);
+    trackCTAClick(CTA.SIGNUP_SUBMIT, 'signup', plan);
     try {
       const res = await api.post<{ checkoutUrl: string; token: string; emailVerificationRequired?: boolean }>('/auth/signup', {
         name: orgName,
@@ -229,7 +230,7 @@ export default function Signup() {
                       <button
                         key={p.key}
                         type="button"
-                        onClick={() => { setPlan(p.key); trackCTAClick('plan_selected', 'signup', p.key); }}
+                        onClick={() => { setPlan(p.key); trackCTAClick(CTA.PLAN_SELECTED, 'signup', p.key); }}
                         className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
                           plan === p.key
                             ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
