@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import { sendEmail, connectorSyncErrorEmail, connectorSyncRecoveryEmail } from '../../email';
@@ -47,6 +48,74 @@ function appBaseUrl(): string {
     process.env.APP_URL ??
     `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`
   );
+}
+
+interface RecipientAuditRow {
+  tenantId: TenantId;
+  integrationId: string;
+  dispatchId: string;
+  notificationType: 'integration' | 'integration_sms';
+  channel: 'email' | 'sms';
+  userId: string | null;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  recipientPhone: string | null;
+  deliveryStatus: 'sent' | 'failed' | 'skipped';
+  deliveryError: string | null;
+  twilioStatusCode: number | null;
+}
+
+/**
+ * Persist a single recipient's delivery outcome to `connector_alert_recipients`
+ * so the admin "outage timeline" detail view can show who was paged and
+ * whether the message actually reached them. Errors here are logged and
+ * swallowed — the alert send itself must not be blocked by audit-write
+ * failures.
+ */
+async function recordRecipientAudit(row: RecipientAuditRow): Promise<void> {
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO connector_alert_recipients (
+         tenant_id, integration_id, dispatch_id, notification_type, channel,
+         user_id, recipient_name, recipient_email, recipient_phone,
+         delivery_status, delivery_error, twilio_status_code
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [
+        row.tenantId,
+        row.integrationId,
+        row.dispatchId,
+        row.notificationType,
+        row.channel,
+        row.userId,
+        row.recipientName,
+        row.recipientEmail,
+        row.recipientPhone,
+        row.deliveryStatus,
+        row.deliveryError,
+        row.twilioStatusCode,
+      ],
+    );
+  } catch (err) {
+    logger.warn('Failed to persist connector alert recipient audit row', {
+      tenantId: row.tenantId,
+      integrationId: row.integrationId,
+      dispatchId: row.dispatchId,
+      channel: row.channel,
+      error: String(err),
+    });
+  }
+}
+
+function buildDisplayName(
+  firstName: string | null,
+  lastName: string | null,
+): string | null {
+  const trimmed = [firstName, lastName]
+    .map((part) => (part ?? '').trim())
+    .filter((part) => part.length > 0)
+    .join(' ');
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 interface AlertParams {
@@ -155,7 +224,19 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
   // same set of users as the auth-alert scheduler's reconnect nudges —
   // including tenant owners and operations managers who only hold the role
   // via the `user_roles` join.
-  ({ emails: allAdminEmails } = await getTenantAlertEmailRecipients(tenantId, 5));
+  const recipientSet = await getTenantAlertEmailRecipients(tenantId, 5);
+  allAdminEmails = recipientSet.emails;
+  // Defensive: older callers (and test mocks) may not supply the
+  // `recipients` enrichment field; fall back to a synthetic record so the
+  // per-recipient audit insert below still runs with what we know.
+  const recipientByEmail = new Map(
+    (recipientSet.recipients ?? recipientSet.emails.map((email) => ({
+      id: '',
+      email,
+      firstName: null,
+      lastName: null,
+    }))).map((r) => [r.email, r]),
+  );
 
   let recipients: string[] = [];
   if (allAdminEmails.length > 0) {
@@ -165,6 +246,12 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
       'integration',
     );
   }
+
+  // Stable dispatch id for this alert event. Stamped on the in-app
+  // notification metadata AND on every per-recipient audit row so the
+  // admin "outage timeline" detail endpoint can pivot from one to the
+  // other in a single indexed lookup.
+  const dispatchId = randomUUID();
 
   const inAppMetadata = {
     link: reconnectPath,
@@ -176,6 +263,7 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     outageMinutes,
     recipientCount: recipients.length,
     emailRecipientCount: recipients.length,
+    dispatchId,
   };
 
   try {
@@ -237,9 +325,14 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
   });
 
   for (const to of recipients) {
+    const userRecord = recipientByEmail.get(to);
+    let deliveryStatus: 'sent' | 'failed' = 'sent';
+    let deliveryError: string | null = null;
     try {
       const result = await sendEmail({ to, subject, html, text });
       if (!result.success) {
+        deliveryStatus = 'failed';
+        deliveryError = result.error ?? 'sendEmail returned success=false';
         logger.warn('Connector sync alert email send failed', {
           tenantId,
           integrationId,
@@ -248,6 +341,8 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
         });
       }
     } catch (err) {
+      deliveryStatus = 'failed';
+      deliveryError = String(err);
       logger.warn('Connector sync alert email threw', {
         tenantId,
         integrationId,
@@ -255,6 +350,22 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
         error: String(err),
       });
     }
+    await recordRecipientAudit({
+      tenantId,
+      integrationId,
+      dispatchId,
+      notificationType: NOTIFICATION_TYPE,
+      channel: 'email',
+      userId: userRecord?.id ?? null,
+      recipientName: userRecord
+        ? buildDisplayName(userRecord.firstName, userRecord.lastName)
+        : null,
+      recipientEmail: to,
+      recipientPhone: null,
+      deliveryStatus,
+      deliveryError,
+      twilioStatusCode: null,
+    });
   }
 
   try {
@@ -441,13 +552,24 @@ export async function notifySustainedConnectorFailure(
   // helper so tenant owners / operations managers who only hold the role via
   // user_roles are still paged on sustained outages.
   const phoneRecipients = await getTenantAlertPhoneRecipients(tenantId, 5);
-  const phoneRows: Array<{ user_id: string; phone: string }> = phoneRecipients
+  interface NormalizedPhone {
+    user_id: string;
+    phone: string;
+    name: string | null;
+    email: string | null;
+  }
+  const phoneRows: NormalizedPhone[] = phoneRecipients
     .map((r) => {
       const normalized = normalizeE164(r.phone_number);
       if (!normalized) return null;
-      return { user_id: r.id, phone: normalized };
+      return {
+        user_id: r.id,
+        phone: normalized,
+        name: buildDisplayName(r.first_name, r.last_name),
+        email: r.email,
+      };
     })
-    .filter((p): p is { user_id: string; phone: string } => p !== null);
+    .filter((p): p is NormalizedPhone => p !== null);
 
   if (phoneRows.length === 0) {
     logger.info('No admin phone numbers on file for sustained SMS alert', {
@@ -470,8 +592,8 @@ export async function notifySustainedConnectorFailure(
     ),
   );
   const beforeOptOut = phoneRows.length;
-  const phones = phoneRows.filter((p) => optedInUsers.has(p.user_id)).map((p) => p.phone);
-  if (phones.length === 0) {
+  const optedIn = phoneRows.filter((p) => optedInUsers.has(p.user_id));
+  if (optedIn.length === 0) {
     logger.info('All admins opted out of SMS-category alerts', {
       tenantId,
       integrationId,
@@ -494,22 +616,50 @@ export async function notifySustainedConnectorFailure(
     `${outageMinutes} min. Latest error: ${errorMessage.slice(0, 100)}. ` +
     `Reconnect at ${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
 
+  // Stable dispatch id for this SMS escalation. Same role as the email
+  // dispatchId — pivot key for the per-recipient audit log feeding the
+  // admin outage timeline.
+  const dispatchId = randomUUID();
+
   const twilio = getTwilioConfig();
   let attempted = 0;
   let succeeded = 0;
+  // Per-recipient audit rows. Persisted regardless of whether Twilio is
+  // configured so the admin detail view can show "Twilio was not configured
+  // when this alert fired, so the SMS was logged only" against each
+  // intended recipient.
+  interface SmsOutcome {
+    recipient: NormalizedPhone;
+    deliveryStatus: 'sent' | 'failed' | 'skipped';
+    deliveryError: string | null;
+    twilioStatusCode: number | null;
+  }
+  const outcomes: SmsOutcome[] = [];
   if (twilio) {
-    for (const to of phones) {
+    for (const recipient of optedIn) {
       attempted += 1;
-      const result = await sendTwilioSms(twilio, to, smsBody);
+      const result = await sendTwilioSms(twilio, recipient.phone, smsBody);
       if (result.ok) {
         succeeded += 1;
+        outcomes.push({
+          recipient,
+          deliveryStatus: 'sent',
+          deliveryError: null,
+          twilioStatusCode: result.status ?? null,
+        });
       } else {
         logger.warn('Sustained SMS alert send failed', {
           tenantId,
           integrationId,
-          to,
+          to: recipient.phone,
           status: result.status,
           error: result.error,
+        });
+        outcomes.push({
+          recipient,
+          deliveryStatus: 'failed',
+          deliveryError: result.error ?? `Twilio HTTP ${result.status ?? 'error'}`,
+          twilioStatusCode: result.status ?? null,
         });
       }
     }
@@ -518,8 +668,16 @@ export async function notifySustainedConnectorFailure(
       tenantId,
       integrationId,
       provider,
-      phones: phones.length,
+      phones: optedIn.length,
     });
+    for (const recipient of optedIn) {
+      outcomes.push({
+        recipient,
+        deliveryStatus: 'skipped',
+        deliveryError: 'Twilio not configured in this environment',
+        twilioStatusCode: null,
+      });
+    }
   }
 
   // Insert the throttle / audit record only when (a) at least one SMS actually
@@ -529,6 +687,25 @@ export async function notifySustainedConnectorFailure(
   // for 24h by a transient Twilio outage.
   const shouldRecord = !twilio || succeeded > 0;
   if (shouldRecord) {
+    // Persist per-recipient SMS audit rows so admins can see exactly which
+    // person was paged and whether Twilio actually accepted the send.
+    for (const outcome of outcomes) {
+      await recordRecipientAudit({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: SMS_NOTIFICATION_TYPE,
+        channel: 'sms',
+        userId: outcome.recipient.user_id,
+        recipientName: outcome.recipient.name,
+        recipientEmail: outcome.recipient.email,
+        recipientPhone: outcome.recipient.phone,
+        deliveryStatus: outcome.deliveryStatus,
+        deliveryError: outcome.deliveryError,
+        twilioStatusCode: outcome.twilioStatusCode,
+      });
+    }
+
     try {
       await fanoutInAppNotification({
         tenantId,
@@ -541,11 +718,12 @@ export async function notifySustainedConnectorFailure(
           provider,
           firstFailedAt,
           outageMinutes,
-          recipientCount: phones.length,
+          recipientCount: optedIn.length,
           smsAttempted: attempted,
           smsSucceeded: succeeded,
           twilioConfigured: Boolean(twilio),
           link: reconnectPath,
+          dispatchId,
         },
         category: 'sms',
       });
@@ -572,7 +750,7 @@ export async function notifySustainedConnectorFailure(
     tenantId,
     integrationId,
     provider,
-    recipients: phones.length,
+    recipients: optedIn.length,
     smsSucceeded: succeeded,
     outageMinutes,
     throttleRecorded: shouldRecord,

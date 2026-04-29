@@ -38,6 +38,12 @@ const {
   getTenantAlertEmailRecipientsMock: vi.fn(async () => ({
     emails: [] as string[],
     userIds: [] as string[],
+    recipients: [] as Array<{
+      id: string;
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+    }>,
   })),
   getTenantAlertPhoneRecipientsMock: vi.fn(async () => [] as string[]),
 }));
@@ -111,6 +117,10 @@ describe('notifyConnectorSyncError opt-out', () => {
     getTenantAlertEmailRecipientsMock.mockResolvedValueOnce({
       emails: ['owner@acme.test', 'admin@acme.test'],
       userIds: ['u-1', 'u-2'],
+      recipients: [
+        { id: 'u-1', email: 'owner@acme.test', firstName: 'Owner', lastName: 'One' },
+        { id: 'u-2', email: 'admin@acme.test', firstName: 'Admin', lastName: 'Two' },
+      ],
     });
     filterRecipientsMock.mockResolvedValueOnce([]);
 

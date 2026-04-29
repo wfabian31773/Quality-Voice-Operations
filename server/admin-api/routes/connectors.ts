@@ -205,6 +205,10 @@ router.get('/connectors/alerts', requireAuth, async (req, res) => {
           typeof meta.twilioConfigured === 'boolean'
             ? (meta.twilioConfigured as boolean)
             : null,
+        // Present on alerts dispatched after migration 094. The detail
+        // endpoint uses this to load per-recipient delivery rows; older
+        // alerts without it fall back to "no per-recipient data on file".
+        dispatchId: (meta.dispatchId as string | undefined) ?? null,
       };
     });
 
@@ -215,6 +219,234 @@ router.get('/connectors/alerts', requireAuth, async (req, res) => {
       error: String(err),
     });
     return res.status(500).json({ error: 'Failed to list connector outage alerts' });
+  }
+});
+
+/**
+ * Outage alert detail view. Sibling to GET /connectors/alerts: takes the
+ * composite alert id from the listing endpoint
+ * (`${integrationId}:${type}:${createdAtMs}`) and returns:
+ *
+ *   - The full alert metadata (title, message, error trace, outage timing).
+ *   - Every individual recipient the alert was fanned out to (name +
+ *     email/phone) and, for SMS rows, whether Twilio actually accepted the
+ *     send (per-recipient delivery status), persisted by SyncErrorAlerter
+ *     to `connector_alert_recipients` and pivoted via dispatch_id.
+ *   - The current connector context (lastSyncErrorAt, lastSyncError,
+ *     lastSyncStatus, lastSyncAt) so admins can audit the incident
+ *     end-to-end without leaving the page.
+ *
+ * Older alerts written before migration 094 carry no dispatchId in
+ * metadata, so the recipients list comes back empty and the response
+ * carries `recipientsAvailable: false` to let the UI render an explanatory
+ * "no per-recipient data on file" empty state.
+ *
+ * Tenant-scoped via req.user — every query filters by req.user.tenantId so
+ * a tenant can never see another tenant's alert detail.
+ */
+router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { alertId } = req.params;
+
+  // Composite id format: `<integrationId>:<type>:<createdAtMs>`.
+  // integrationId is a UUID with no colons; type is 'integration' or
+  // 'integration_sms'; created_at is a numeric ms timestamp. We split on
+  // the last two colons so any future colons in integrationId would still
+  // parse correctly (today they don't appear).
+  const parts = alertId.split(':');
+  if (parts.length < 3) {
+    return res.status(400).json({ error: 'Invalid alert id format' });
+  }
+  const createdAtMsStr = parts[parts.length - 1];
+  const type = parts[parts.length - 2];
+  const integrationId = parts.slice(0, parts.length - 2).join(':');
+  const createdAtMs = Number(createdAtMsStr);
+  if (
+    !integrationId ||
+    (type !== 'integration' && type !== 'integration_sms') ||
+    !Number.isFinite(createdAtMs)
+  ) {
+    return res.status(400).json({ error: 'Invalid alert id format' });
+  }
+
+  try {
+    const { getPlatformPool } = await import('../../../platform/db');
+    const pool = getPlatformPool();
+
+    // 1. Re-aggregate the alert event from tenant_notifications so we can
+    //    return the same metadata + counts the listing endpoint shows. We
+    //    match by (integration_id, type, minute bucket) and tenant scope.
+    const minuteIso = new Date(createdAtMs - (createdAtMs % 60000)).toISOString();
+    const { rows: alertRows } = await pool.query<{
+      created_at: string;
+      in_app_recipients: number;
+      metadata: Record<string, unknown> | null;
+      title: string | null;
+      message: string | null;
+    }>(
+      `SELECT
+         MIN(created_at)                              AS created_at,
+         COUNT(*)::int                                AS in_app_recipients,
+         (array_agg(metadata ORDER BY created_at))[1] AS metadata,
+         (array_agg(title    ORDER BY created_at))[1] AS title,
+         (array_agg(message  ORDER BY created_at))[1] AS message
+        FROM tenant_notifications
+       WHERE tenant_id = $1
+         AND type = $2
+         AND metadata->>'integrationId' = $3
+         AND date_trunc('minute', created_at) = date_trunc('minute', $4::timestamptz)
+       GROUP BY metadata->>'integrationId', type, date_trunc('minute', created_at)
+       LIMIT 1`,
+      [tenantId, type, integrationId, minuteIso],
+    );
+    if (alertRows.length === 0) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    const alert = alertRows[0];
+    const meta = (alert.metadata ?? {}) as Record<string, unknown>;
+    const dispatchId = (meta.dispatchId as string | undefined) ?? null;
+    const channel = type === 'integration_sms' ? 'sms' : 'email';
+
+    // 2. Per-recipient delivery rows persisted by SyncErrorAlerter. Only
+    //    available for alerts dispatched after migration 094.
+    let recipients: Array<{
+      userId: string | null;
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      deliveryStatus: string;
+      deliveryError: string | null;
+      twilioStatusCode: number | null;
+      dispatchedAt: string;
+    }> = [];
+    let recipientsAvailable = false;
+    if (dispatchId) {
+      recipientsAvailable = true;
+      const { rows: recipientRows } = await pool.query<{
+        user_id: string | null;
+        recipient_name: string | null;
+        recipient_email: string | null;
+        recipient_phone: string | null;
+        delivery_status: string;
+        delivery_error: string | null;
+        twilio_status_code: number | null;
+        dispatched_at: string;
+      }>(
+        `SELECT user_id, recipient_name, recipient_email, recipient_phone,
+                delivery_status, delivery_error, twilio_status_code, dispatched_at
+           FROM connector_alert_recipients
+          WHERE tenant_id = $1
+            AND dispatch_id = $2
+          ORDER BY dispatched_at, id`,
+        [tenantId, dispatchId],
+      );
+      recipients = recipientRows.map((r) => ({
+        userId: r.user_id,
+        name: r.recipient_name,
+        email: r.recipient_email,
+        phone: r.recipient_phone,
+        deliveryStatus: r.delivery_status,
+        deliveryError: r.delivery_error,
+        twilioStatusCode: r.twilio_status_code,
+        dispatchedAt: new Date(r.dispatched_at).toISOString(),
+      }));
+    }
+
+    // 3. Current connector context. We pull lastSyncError + lastSyncErrorAt
+    //    so admins can correlate the alert with the connector's most
+    //    recent failure trace, plus lastSyncAt + lastSyncStatus so they
+    //    can see whether the integration has since recovered. The row
+    //    may be missing if the integration was deleted post-alert; we
+    //    return null in that case rather than 404 (the alert audit trail
+    //    survives integration deletes).
+    let integration: {
+      id: string;
+      name: string | null;
+      provider: string | null;
+      connectorType: string | null;
+      lastSyncAt: string | null;
+      lastSyncStatus: string | null;
+      lastSyncError: string | null;
+      lastSyncErrorAt: string | null;
+    } | null = null;
+    const { rows: integrationRows } = await pool.query<{
+      id: string;
+      name: string | null;
+      provider: string | null;
+      connector_type: string | null;
+      last_sync_at: string | null;
+      last_sync_status: string | null;
+      last_sync_error: string | null;
+      last_sync_error_at: string | null;
+    }>(
+      `SELECT id, name, provider, connector_type,
+              last_sync_at, last_sync_status, last_sync_error, last_sync_error_at
+         FROM integrations
+        WHERE tenant_id = $1 AND id = $2
+        LIMIT 1`,
+      [tenantId, integrationId],
+    );
+    if (integrationRows.length > 0) {
+      const r = integrationRows[0];
+      integration = {
+        id: r.id,
+        name: r.name,
+        provider: r.provider,
+        connectorType: r.connector_type,
+        lastSyncAt: r.last_sync_at ? new Date(r.last_sync_at).toISOString() : null,
+        lastSyncStatus: r.last_sync_status,
+        lastSyncError: r.last_sync_error,
+        lastSyncErrorAt: r.last_sync_error_at
+          ? new Date(r.last_sync_error_at).toISOString()
+          : null,
+      };
+    }
+
+    return res.json({
+      id: alertId,
+      integrationId,
+      integrationName: integration?.name ?? null,
+      provider:
+        (meta.provider as string | undefined) ?? integration?.provider ?? null,
+      connectorType:
+        (meta.connectorType as string | undefined) ?? integration?.connectorType ?? null,
+      type,
+      channel,
+      title: alert.title,
+      message: alert.message,
+      createdAt: new Date(alert.created_at).toISOString(),
+      inAppRecipientCount: alert.in_app_recipients ?? 0,
+      recipientCount:
+        typeof meta.recipientCount === 'number'
+          ? (meta.recipientCount as number)
+          : typeof meta.emailRecipientCount === 'number'
+            ? (meta.emailRecipientCount as number)
+            : (alert.in_app_recipients ?? null),
+      outageMinutes:
+        typeof meta.outageMinutes === 'number' ? (meta.outageMinutes as number) : null,
+      firstFailedAt: (meta.firstFailedAt as string | null) ?? null,
+      errorMessage: (meta.errorMessage as string | null) ?? null,
+      smsAttempted:
+        typeof meta.smsAttempted === 'number' ? (meta.smsAttempted as number) : null,
+      smsSucceeded:
+        typeof meta.smsSucceeded === 'number' ? (meta.smsSucceeded as number) : null,
+      twilioConfigured:
+        typeof meta.twilioConfigured === 'boolean'
+          ? (meta.twilioConfigured as boolean)
+          : null,
+      reconnectLink: (meta.link as string | undefined) ?? null,
+      dispatchId,
+      recipientsAvailable,
+      recipients,
+      integration,
+    });
+  } catch (err) {
+    logger.error('Failed to load connector outage alert detail', {
+      tenantId,
+      alertId,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to load connector outage alert detail' });
   }
 });
 

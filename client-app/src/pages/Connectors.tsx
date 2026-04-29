@@ -2111,6 +2111,36 @@ interface OutageAlert {
   smsAttempted: number | null;
   smsSucceeded: number | null;
   twilioConfigured: boolean | null;
+  dispatchId: string | null;
+}
+
+interface OutageAlertRecipient {
+  userId: string | null;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  deliveryStatus: string;
+  deliveryError: string | null;
+  twilioStatusCode: number | null;
+  dispatchedAt: string;
+}
+
+interface OutageAlertIntegrationContext {
+  id: string;
+  name: string | null;
+  provider: string | null;
+  connectorType: string | null;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  lastSyncErrorAt: string | null;
+}
+
+interface OutageAlertDetail extends OutageAlert {
+  reconnectLink: string | null;
+  recipientsAvailable: boolean;
+  recipients: OutageAlertRecipient[];
+  integration: OutageAlertIntegrationContext | null;
 }
 
 function formatOutageMinutes(minutes: number | null): string | null {
@@ -2149,6 +2179,7 @@ function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
   const [integrationFilter, setIntegrationFilter] = useState<string>('');
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
 
   // Reset back to page 1 whenever the integration filter changes so admins
   // don't end up looking at an empty page that no longer exists for the
@@ -2334,7 +2365,17 @@ function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
                   return (
                     <tr
                       key={alert.id}
-                      className="border-b border-border/60 last:border-b-0 align-top"
+                      className="border-b border-border/60 last:border-b-0 align-top cursor-pointer hover:bg-surface-hover focus-within:bg-surface-hover"
+                      onClick={() => setSelectedAlertId(alert.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedAlertId(alert.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View timeline for ${providerLabelFromAlert(alert)} alert sent ${formatSyncTime(alert.createdAt)}`}
                     >
                       <td
                         className="py-2.5 px-2 text-text-primary whitespace-nowrap"
@@ -2448,6 +2489,331 @@ function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
             </div>
           )}
         </>
+      )}
+
+      <OutageAlertDetailPanel
+        alertId={selectedAlertId}
+        onClose={() => setSelectedAlertId(null)}
+      />
+    </div>
+  );
+}
+
+function statusBadge(status: string): { label: string; className: string; Icon: typeof CheckCircle2 } {
+  switch (status) {
+    case 'sent':
+      return {
+        label: 'Sent',
+        className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+        Icon: CheckCircle2,
+      };
+    case 'failed':
+      return {
+        label: 'Failed',
+        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        Icon: AlertCircle,
+      };
+    case 'skipped':
+      return {
+        label: 'Skipped',
+        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        Icon: AlertTriangle,
+      };
+    default:
+      return {
+        label: status,
+        className: 'bg-surface-hover text-text-secondary',
+        Icon: AlertCircle,
+      };
+  }
+}
+
+function OutageAlertDetailPanel({
+  alertId,
+  onClose,
+}: {
+  alertId: string | null;
+  onClose: () => void;
+}) {
+  const open = alertId !== null;
+
+  // Encode the composite alert id (`integrationId:type:timestamp`) — the
+  // colons round-trip cleanly through Express path params, but encoding
+  // keeps us safe against any future id format changes.
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['connector-outage-alert-detail', alertId],
+    enabled: open,
+    queryFn: () =>
+      api.get<OutageAlertDetail>(
+        `/connectors/alerts/${encodeURIComponent(alertId as string)}`,
+      ),
+  });
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel="Outage alert details"
+      containerClassName="fixed inset-0 z-[90] flex items-stretch justify-end"
+      panelClassName="relative w-full max-w-xl h-full bg-surface border-l border-border shadow-2xl overflow-y-auto"
+    >
+      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 p-5 bg-surface border-b border-border">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
+            <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            Outage alert timeline
+          </h3>
+          <p className="text-xs text-text-secondary mt-1">
+            Who was paged, what failed, and whether each message actually delivered.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close outage alert details"
+          className="p-1.5 rounded-md text-text-secondary hover:bg-surface-hover hover:text-text-primary transition shrink-0"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="p-6 text-sm text-text-secondary">Loading alert details…</div>
+      ) : isError || !data ? (
+        <div className="p-6 text-sm text-red-600 dark:text-red-400">
+          Couldn't load alert details.{' '}
+          {error instanceof Error ? error.message : null}
+        </div>
+      ) : (
+        <OutageAlertDetailBody detail={data} />
+      )}
+    </Modal>
+  );
+}
+
+function OutageAlertDetailBody({ detail }: { detail: OutageAlertDetail }) {
+  const isSms = detail.channel === 'sms';
+  const def = detail.provider
+    ? CONNECTOR_DEFINITIONS.find((d) => d.provider === detail.provider)
+    : undefined;
+  const providerLabel = providerLabelFromAlert(detail);
+  const outage = formatOutageMinutes(detail.outageMinutes);
+
+  return (
+    <div className="p-5 space-y-5">
+      {/* Header card with provider + channel badge + when */}
+      <div className="bg-surface-hover/40 border border-border rounded-lg p-4">
+        <div className="flex items-center gap-3">
+          {def ? <BrandLogo provider={def.logoId} size={28} /> : null}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-text-primary">
+                {providerLabel}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                  isSms
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                }`}
+              >
+                {isSms ? <MessageSquare className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+                {isSms ? 'SMS escalation' : 'Email alert'}
+              </span>
+            </div>
+            <div className="text-xs text-text-secondary mt-1">
+              Dispatched {formatExactTimestamp(detail.createdAt)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Timeline: first failed -> dispatched -> outage duration */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+          Timeline
+        </h4>
+        <dl className="text-sm space-y-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-text-secondary">First failed</dt>
+            <dd className="text-text-primary text-right">
+              {detail.firstFailedAt
+                ? formatExactTimestamp(detail.firstFailedAt)
+                : <span className="text-text-secondary">Unknown</span>}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-text-secondary">Alert sent</dt>
+            <dd className="text-text-primary text-right">
+              {formatExactTimestamp(detail.createdAt)}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-text-secondary">Outage at dispatch</dt>
+            <dd className="text-text-primary text-right">
+              {outage ?? <span className="text-text-secondary">Unknown</span>}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      {/* Original error message */}
+      {detail.errorMessage && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+            Error message
+          </h4>
+          <pre className="text-xs text-text-primary bg-surface-hover border border-border rounded-md p-3 whitespace-pre-wrap break-words font-mono">
+            {detail.errorMessage}
+          </pre>
+        </div>
+      )}
+
+      {/* Connector context: latest sync state */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+            Connector context
+          </h4>
+          {detail.integrationId && (
+            <a
+              href={`/connectors${detail.provider ? `?provider=${encodeURIComponent(detail.provider)}` : ''}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              View connector <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+        {detail.integration ? (
+          <dl className="text-xs space-y-1.5 bg-surface-hover/40 border border-border rounded-md p-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-text-secondary">Latest sync attempt</dt>
+              <dd className="text-text-primary text-right">
+                {detail.integration.lastSyncAt
+                  ? formatExactTimestamp(detail.integration.lastSyncAt)
+                  : <span className="text-text-secondary">No sync recorded</span>}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-text-secondary">Latest sync status</dt>
+              <dd className="text-text-primary text-right">
+                {detail.integration.lastSyncStatus ?? (
+                  <span className="text-text-secondary">—</span>
+                )}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-text-secondary">Latest sync error at</dt>
+              <dd className="text-text-primary text-right">
+                {detail.integration.lastSyncErrorAt
+                  ? formatExactTimestamp(detail.integration.lastSyncErrorAt)
+                  : <span className="text-text-secondary">—</span>}
+              </dd>
+            </div>
+            {detail.integration.lastSyncError && (
+              <div className="pt-2 border-t border-border">
+                <dt className="text-text-secondary mb-1">Latest sync error</dt>
+                <dd>
+                  <pre className="text-[11px] text-text-primary bg-surface border border-border rounded p-2 whitespace-pre-wrap break-words font-mono">
+                    {detail.integration.lastSyncError}
+                  </pre>
+                </dd>
+              </div>
+            )}
+          </dl>
+        ) : (
+          <div className="text-xs text-text-secondary border border-dashed border-border rounded-md p-3">
+            The original integration row has been deleted. The audit trail is
+            preserved here, but live sync context is no longer available.
+          </div>
+        )}
+      </div>
+
+      {/* Recipients */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+            Recipients ({detail.recipients.length})
+          </h4>
+          {isSms && detail.twilioConfigured === false && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3 w-3" /> Twilio not configured
+            </span>
+          )}
+        </div>
+        {!detail.recipientsAvailable ? (
+          <div className="text-xs text-text-secondary border border-dashed border-border rounded-md p-3">
+            Per-recipient delivery data is only recorded for outage alerts
+            sent after this feature shipped. Older alerts only carry the
+            aggregate counts shown in the table.
+          </div>
+        ) : detail.recipients.length === 0 ? (
+          <div className="text-xs text-text-secondary border border-dashed border-border rounded-md p-3">
+            No per-recipient rows on file for this dispatch.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {detail.recipients.map((recipient, idx) => {
+              const badge = statusBadge(recipient.deliveryStatus);
+              const Icon = badge.Icon;
+              const contact = isSms ? recipient.phone : recipient.email;
+              return (
+                <li
+                  key={`${recipient.userId ?? 'anon'}-${idx}`}
+                  className="border border-border rounded-md p-3 bg-surface"
+                >
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-text-primary">
+                        {recipient.name ?? contact ?? 'Unknown recipient'}
+                      </div>
+                      {contact && recipient.name ? (
+                        <div className="text-xs text-text-secondary mt-0.5 truncate">
+                          {contact}
+                        </div>
+                      ) : null}
+                      {/* Show the secondary contact (email if SMS row, phone if email row) when present */}
+                      {isSms && recipient.email ? (
+                        <div className="text-[11px] text-text-secondary mt-0.5">
+                          {recipient.email}
+                        </div>
+                      ) : null}
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${badge.className}`}
+                    >
+                      <Icon className="h-3 w-3" />
+                      {badge.label}
+                      {isSms && recipient.twilioStatusCode != null
+                        ? ` · HTTP ${recipient.twilioStatusCode}`
+                        : ''}
+                    </span>
+                  </div>
+                  {recipient.deliveryError && (
+                    <div className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words">
+                      {recipient.deliveryError}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* SMS aggregate context (kept for parity with the table view) */}
+      {isSms && (
+        <div className="text-xs text-text-secondary">
+          Twilio accepted{' '}
+          <span className="text-text-primary font-medium">
+            {detail.smsSucceeded ?? 0}
+          </span>{' '}
+          of{' '}
+          <span className="text-text-primary font-medium">
+            {detail.smsAttempted ?? 0}
+          </span>{' '}
+          SMS sends for this dispatch.
+        </div>
       )}
     </div>
   );

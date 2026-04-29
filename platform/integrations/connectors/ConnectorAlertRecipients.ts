@@ -3,9 +3,23 @@ import { createLogger } from '../../core/logger';
 
 const logger = createLogger('CONNECTOR_ALERT_RECIPIENTS');
 
+export interface TenantAlertEmailRecipient {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
 export interface TenantAlertEmailRecipientSet {
   emails: string[];
   userIds: string[];
+  /**
+   * Parallel array to `emails`/`userIds` carrying the full user record so
+   * downstream callers (e.g. the per-recipient outage audit log persisted
+   * by SyncErrorAlerter) can record recipient names alongside addresses
+   * without re-querying the users table.
+   */
+  recipients: TenantAlertEmailRecipient[];
 }
 
 /**
@@ -35,8 +49,10 @@ export async function getTenantAlertEmailRecipients(
     const { rows } = await pool.query<{
       id: string | null;
       email: string | null;
+      first_name: string | null;
+      last_name: string | null;
     }>(
-      `SELECT DISTINCT u.id, u.email, u.created_at
+      `SELECT DISTINCT u.id, u.email, u.first_name, u.last_name, u.created_at
          FROM users u
          LEFT JOIN user_roles ur
            ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
@@ -51,25 +67,32 @@ export async function getTenantAlertEmailRecipients(
         LIMIT $2`,
       [tenantId, limit],
     );
-    const userIds = rows
-      .map((r) => (r.id as string | null) ?? '')
-      .filter((id): id is string => Boolean(id));
-    const emails = rows
-      .map((r) => (r.email as string | null) ?? '')
-      .filter((e): e is string => Boolean(e));
-    return { emails, userIds };
+    const recipients: TenantAlertEmailRecipient[] = rows
+      .map((r) => ({
+        id: (r.id as string | null) ?? '',
+        email: (r.email as string | null) ?? '',
+        firstName: (r.first_name as string | null) ?? null,
+        lastName: (r.last_name as string | null) ?? null,
+      }))
+      .filter((r) => r.id && r.email);
+    const userIds = recipients.map((r) => r.id);
+    const emails = recipients.map((r) => r.email);
+    return { emails, userIds, recipients };
   } catch (err) {
     logger.warn('Failed to load tenant alert email recipients', {
       tenantId,
       error: String(err),
     });
-    return { emails: [], userIds: [] };
+    return { emails: [], userIds: [], recipients: [] };
   }
 }
 
 export interface TenantAlertPhoneRecipient {
   id: string;
   phone_number: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 }
 
 /**
@@ -87,8 +110,11 @@ export async function getTenantAlertPhoneRecipients(
     const { rows } = await pool.query<{
       id: string | null;
       phone_number: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
     }>(
-      `SELECT DISTINCT u.id, u.phone_number, u.created_at
+      `SELECT DISTINCT u.id, u.phone_number, u.first_name, u.last_name, u.email, u.created_at
          FROM users u
          LEFT JOIN user_roles ur
            ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
@@ -108,6 +134,9 @@ export async function getTenantAlertPhoneRecipients(
       .map((r) => ({
         id: (r.id as string | null) ?? '',
         phone_number: (r.phone_number as string | null) ?? '',
+        first_name: (r.first_name as string | null) ?? null,
+        last_name: (r.last_name as string | null) ?? null,
+        email: (r.email as string | null) ?? null,
       }))
       .filter((r) => r.id && r.phone_number);
   } catch (err) {

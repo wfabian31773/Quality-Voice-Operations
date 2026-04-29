@@ -506,4 +506,291 @@ describe('GET /connectors/alerts', () => {
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/Failed to list connector outage alerts/);
   });
+
+  it('exposes dispatchId from metadata so the detail panel can fetch recipient rows', async () => {
+    // Alerts dispatched after migration 094 carry a dispatchId in metadata
+    // — the detail endpoint uses it to look up per-recipient delivery
+    // rows in connector_alert_recipients. Older alerts must keep working
+    // (dispatchId === null) and the UI shows an empty state.
+    installQueryDispatcher({
+      total: 1,
+      rows: [
+        {
+          integration_id: 'int-1',
+          type: 'integration',
+          created_at: new Date('2026-04-26T18:00:00.000Z'),
+          in_app_recipients: 1,
+          metadata: {
+            integrationId: 'int-1',
+            provider: 'salesforce',
+            dispatchId: 'disp-abc',
+          },
+          title: 't',
+          message: 'm',
+        },
+      ],
+    });
+    const app = await buildApp();
+    const res = await request(app).get('/connectors/alerts');
+    expect(res.status).toBe(200);
+    expect(res.body.alerts[0].dispatchId).toBe('disp-abc');
+  });
+});
+
+// --------------------------------------------------------------------------
+// GET /connectors/alerts/:alertId — detail panel that backs the click-into
+// view on the OutageAlertHistory table.
+//
+// The handler:
+//   1. Parses the composite id (`integrationId:type:createdAtMs`).
+//   2. Re-aggregates the alert event from tenant_notifications (matched by
+//      tenant + type + integrationId + the same minute bucket the listing
+//      uses) so the metadata it returns matches the row in the table.
+//   3. Pulls per-recipient delivery rows from connector_alert_recipients
+//      joined by `dispatch_id` (only present on alerts written after
+//      migration 094 — older alerts return `recipientsAvailable: false`).
+//   4. Loads the current `integrations` row so admins can see the live
+//      lastSyncErrorAt / lastSyncError context alongside the audit trail.
+// --------------------------------------------------------------------------
+function installDetailDispatcher(payload: {
+  alertRow?: Record<string, unknown> | null;
+  recipientRows?: Array<Record<string, unknown>>;
+  integrationRow?: Record<string, unknown> | null;
+}): void {
+  queryMock.mockImplementation(async (sql: string) => {
+    const text = String(sql);
+    if (text.includes('FROM tenant_notifications')) {
+      return { rows: payload.alertRow ? [payload.alertRow] : [] };
+    }
+    if (text.includes('FROM connector_alert_recipients')) {
+      return { rows: payload.recipientRows ?? [] };
+    }
+    if (text.includes('FROM integrations')) {
+      return { rows: payload.integrationRow ? [payload.integrationRow] : [] };
+    }
+    return { rows: [] };
+  });
+}
+
+describe('GET /connectors/alerts/:alertId', () => {
+  it('returns the full alert + per-recipient delivery rows + connector context', async () => {
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 2,
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'salesforce',
+          connectorType: 'crm',
+          dispatchId: 'disp-1',
+          recipientCount: 2,
+          smsAttempted: 2,
+          smsSucceeded: 1,
+          twilioConfigured: true,
+          firstFailedAt: '2026-04-26T17:45:00.000Z',
+          outageMinutes: 45,
+          errorMessage: 'API rate limit',
+          link: 'https://app.example/connectors',
+        },
+        title: 'SMS dispatched',
+        message: 'msg',
+      },
+      recipientRows: [
+        {
+          user_id: 'user-1',
+          recipient_name: 'Ada Lovelace',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: '+15555550101',
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: 201,
+          dispatched_at: new Date('2026-04-26T18:30:01.000Z'),
+        },
+        {
+          user_id: 'user-2',
+          recipient_name: 'Grace Hopper',
+          recipient_email: 'grace@acme.test',
+          recipient_phone: '+15555550102',
+          delivery_status: 'failed',
+          delivery_error: 'Invalid number',
+          twilio_status_code: 400,
+          dispatched_at: new Date('2026-04-26T18:30:02.000Z'),
+        },
+      ],
+      integrationRow: {
+        id: 'int-1',
+        name: 'Salesforce - Production',
+        provider: 'salesforce',
+        connector_type: 'crm',
+        last_sync_at: new Date('2026-04-26T18:25:00.000Z'),
+        last_sync_status: 'failed',
+        last_sync_error: 'API rate limit exceeded',
+        last_sync_error_at: new Date('2026-04-26T18:25:00.000Z'),
+      },
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration_sms:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(alertId);
+    expect(res.body.integrationId).toBe('int-1');
+    expect(res.body.channel).toBe('sms');
+    expect(res.body.dispatchId).toBe('disp-1');
+    expect(res.body.recipientsAvailable).toBe(true);
+    expect(res.body.recipients).toHaveLength(2);
+    expect(res.body.recipients[0]).toMatchObject({
+      name: 'Ada Lovelace',
+      email: 'ada@acme.test',
+      phone: '+15555550101',
+      deliveryStatus: 'sent',
+      twilioStatusCode: 201,
+    });
+    expect(res.body.recipients[1]).toMatchObject({
+      deliveryStatus: 'failed',
+      deliveryError: 'Invalid number',
+    });
+    expect(res.body.integration).toMatchObject({
+      id: 'int-1',
+      name: 'Salesforce - Production',
+      lastSyncStatus: 'failed',
+      lastSyncError: 'API rate limit exceeded',
+    });
+    expect(res.body.firstFailedAt).toBe('2026-04-26T17:45:00.000Z');
+    expect(res.body.outageMinutes).toBe(45);
+    expect(res.body.errorMessage).toBe('API rate limit');
+    expect(res.body.reconnectLink).toBe('https://app.example/connectors');
+
+    // Tenant scoping on every query: the SELECT from tenant_notifications,
+    // the recipient lookup, and the integration context lookup must all
+    // pin tenant_id = $1 to the requesting tenant.
+    for (const call of queryMock.mock.calls) {
+      const sql = String(call[0]);
+      const params = call[1] as unknown[];
+      expect(sql).toContain('tenant_id = $1');
+      expect(params[0]).toBe('tenant-A');
+    }
+
+    // The recipient lookup must filter by dispatch_id so a different
+    // dispatch in the same minute bucket can't bleed in.
+    const recipientCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('FROM connector_alert_recipients'),
+    );
+    expect(recipientCall).toBeDefined();
+    expect((recipientCall![1] as unknown[])[1]).toBe('disp-1');
+  });
+
+  it('returns recipientsAvailable=false (and skips the recipient query) for old alerts with no dispatchId', async () => {
+    const createdAt = new Date('2026-04-01T12:00:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 1,
+        metadata: { integrationId: 'int-old', provider: 'hubspot' },
+        title: 't',
+        message: 'm',
+      },
+      integrationRow: {
+        id: 'int-old',
+        name: 'HubSpot',
+        provider: 'hubspot',
+        connector_type: 'crm',
+        last_sync_at: null,
+        last_sync_status: null,
+        last_sync_error: null,
+        last_sync_error_at: null,
+      },
+    });
+
+    const app = await buildApp();
+    const alertId = `int-old:integration:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchId).toBeNull();
+    expect(res.body.recipientsAvailable).toBe(false);
+    expect(res.body.recipients).toEqual([]);
+
+    // We must NOT have hit the recipient table — there's no dispatchId to
+    // join on, so the query would be unconstrained.
+    const recipientCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('FROM connector_alert_recipients'),
+    );
+    expect(recipientCall).toBeUndefined();
+  });
+
+  it('returns 404 when the alert has no matching tenant_notifications row (cross-tenant safety)', async () => {
+    installDetailDispatcher({ alertRow: null });
+    const app = await buildApp();
+    const alertId = `int-other-tenant:integration:${Date.now()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects malformed alert ids with 400', async () => {
+    const app = await buildApp();
+    const bad = await request(app).get('/connectors/alerts/not-a-real-id');
+    expect(bad.status).toBe(400);
+
+    const wrongType = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent('int-1:not_a_type:123')}`,
+    );
+    expect(wrongType.status).toBe(400);
+
+    const nanTimestamp = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent('int-1:integration:notanumber')}`,
+    );
+    expect(nanTimestamp.status).toBe(400);
+  });
+
+  it('returns the alert with integration=null when the underlying connector has been deleted', async () => {
+    // Audit trail survives integration deletes — the alert row is still
+    // in tenant_notifications, but `integrations` no longer has a match.
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 1,
+        metadata: {
+          integrationId: 'int-deleted',
+          provider: 'salesforce',
+          dispatchId: 'disp-x',
+        },
+        title: 't',
+        message: 'm',
+      },
+      recipientRows: [
+        {
+          user_id: 'user-1',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: null,
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: null,
+          dispatched_at: createdAt,
+        },
+      ],
+      integrationRow: null,
+    });
+
+    const app = await buildApp();
+    const alertId = `int-deleted:integration:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.integration).toBeNull();
+    // Recipients still come back because they're a separate table.
+    expect(res.body.recipients).toHaveLength(1);
+  });
 });
