@@ -2,12 +2,13 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { PageHeader, StatCard } from '../components/ui';
+import { PageHeader, StatCard, StatusBadge, StatusDot, type BadgeTone } from '../components/ui';
 import {
   PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
   Wrench, Check, Loader2, X, Bell, BellOff, ChevronDown, ChevronUp,
   Phone, User, Activity, Filter, Pause, Play, ExternalLink,
   CheckCircle2, XCircle, AlertCircle, Timer, Zap, Eye,
+  PhoneIncoming, PhoneOutgoing, PhoneOff,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -243,16 +244,21 @@ function stateLabel(state: string): string {
   return map[state] ?? state.replace(/_/g, ' ').toLowerCase();
 }
 
-function stateColor(state: string): string {
-  if (['CALL_CONNECTED', 'AGENT_CONNECTED', 'ACTIVE_CONVERSATION', 'active'].includes(state))
-    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (['CALL_COMPLETED'].includes(state))
-    return 'bg-surface-hover text-text-secondary';
-  if (['CALL_FAILED', 'WORKFLOW_FAILED', 'ESCALATION_FAILED'].includes(state))
-    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-  if (['ESCALATED', 'CALL_ESCALATED'].includes(state))
-    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+function stateBadgeMeta(state: string): { tone: BadgeTone; tooltip: string; icon: typeof PhoneCall } {
+  const label = stateLabel(state);
+  if (['CALL_CONNECTED', 'AGENT_CONNECTED', 'ACTIVE_CONVERSATION', 'active'].includes(state)) {
+    return { tone: 'success', tooltip: `Call status: ${label} (in progress with the agent)`, icon: PhoneCall };
+  }
+  if (['CALL_COMPLETED'].includes(state)) {
+    return { tone: 'neutral', tooltip: `Call status: ${label} (call ended successfully)`, icon: CheckCircle2 };
+  }
+  if (['CALL_FAILED', 'WORKFLOW_FAILED', 'ESCALATION_FAILED'].includes(state)) {
+    return { tone: 'danger', tooltip: `Call status: ${label} (the call did not complete)`, icon: XCircle };
+  }
+  if (['ESCALATED', 'CALL_ESCALATED'].includes(state)) {
+    return { tone: 'warning', tooltip: `Call status: ${label} (handed off to a human)`, icon: AlertTriangle };
+  }
+  return { tone: 'info', tooltip: `Call status: ${label}`, icon: Activity };
 }
 
 function severityColor(severity: string): string {
@@ -260,6 +266,19 @@ function severityColor(severity: string): string {
   if (severity === 'error') return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
   if (severity === 'warning') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
   return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+}
+
+function severityBadgeMeta(severity: string): { tone: BadgeTone; tooltip: string } {
+  if (severity === 'critical') {
+    return { tone: 'danger', tooltip: 'Critical alert — needs immediate attention' };
+  }
+  if (severity === 'error') {
+    return { tone: 'danger', tooltip: 'Error — something went wrong and may need a human' };
+  }
+  if (severity === 'warning') {
+    return { tone: 'warning', tooltip: 'Warning — review when you can' };
+  }
+  return { tone: 'info', tooltip: 'Informational alert' };
 }
 
 function severityIcon(severity: string) {
@@ -300,13 +319,19 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
     <div className="bg-surface border border-border rounded-xl shadow-sm">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-          </span>
+          <StatusDot
+            label="Active calls in progress right now"
+            tone="success"
+            size="md"
+            pulse
+            ping
+          />
           Active Calls
           {calls.length > 0 && (
-            <span className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full">
+            <span
+              className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full"
+              aria-label={`${calls.length} active call${calls.length === 1 ? '' : 's'} in progress`}
+            >
               {calls.length}
             </span>
           )}
@@ -336,14 +361,33 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-text-primary">{call.agent_name || 'Agent'}</p>
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${stateColor(call.lifecycle_state)}`}>
-                    {stateLabel(call.lifecycle_state)}
-                  </span>
+                  {(() => {
+                    const meta = stateBadgeMeta(call.lifecycle_state);
+                    const Icon = meta.icon;
+                    return (
+                      <StatusBadge
+                        tone={meta.tone}
+                        tooltip={meta.tooltip}
+                        icon={<Icon className="h-3 w-3" aria-hidden="true" />}
+                        className="text-[10px] px-1.5 py-0.5"
+                      >
+                        {stateLabel(call.lifecycle_state)}
+                      </StatusBadge>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-xs text-text-secondary">{redactPhone(call.caller_number)}</span>
-                  <span className="text-xs text-text-secondary">·</span>
-                  <span className={`text-xs ${call.direction === 'inbound' ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  <span className="text-xs text-text-secondary" aria-hidden="true">·</span>
+                  <span
+                    className={`text-xs inline-flex items-center gap-1 ${call.direction === 'inbound' ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}
+                    title={call.direction === 'inbound' ? 'Inbound call — customer dialled in' : 'Outbound call — agent dialled out'}
+                  >
+                    {call.direction === 'inbound' ? (
+                      <PhoneIncoming className="h-3 w-3" aria-hidden="true" />
+                    ) : (
+                      <PhoneOutgoing className="h-3 w-3" aria-hidden="true" />
+                    )}
                     {call.direction}
                   </span>
                 </div>
@@ -385,7 +429,12 @@ function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: 
           <h3 className="text-sm font-semibold text-text-primary">Live Call Monitor</h3>
           {isActive && (
             <span className="flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <StatusDot
+                label="Call is live and streaming"
+                tone="success"
+                size="xs"
+                pulse
+              />
               Live
             </span>
           )}
@@ -539,13 +588,25 @@ function ToolExecutionFeed({ tools, agentFilter, onAgentFilterChange }: {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-text-primary">{toolLabel(tool.tool)}</p>
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                    tool.status === 'completed'
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                  }`}>
-                    {tool.status === 'completed' ? 'Success' : 'Running'}
-                  </span>
+                  {tool.status === 'completed' ? (
+                    <StatusBadge
+                      tone="success"
+                      icon={<CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                      tooltip="Tool finished successfully"
+                      className="text-[10px] px-1.5 py-0.5"
+                    >
+                      Success
+                    </StatusBadge>
+                  ) : (
+                    <StatusBadge
+                      tone="warning"
+                      icon={<Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
+                      tooltip="Tool is currently running"
+                      className="text-[10px] px-1.5 py-0.5"
+                    >
+                      Running
+                    </StatusBadge>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-xs text-text-secondary">{tool.agentName}</span>
@@ -580,7 +641,12 @@ export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAckn
           <Bell className="h-4 w-4 text-text-secondary" />
           Alerts
           {unacknowledgedCount > 0 && (
-            <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full">
+            <span
+              className="ml-1 inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full"
+              role="status"
+              aria-label={`${unacknowledgedCount} unacknowledged ${unacknowledgedCount === 1 ? 'alert' : 'alerts'} need attention`}
+              title={`${unacknowledgedCount} unacknowledged ${unacknowledgedCount === 1 ? 'alert' : 'alerts'} need attention`}
+            >
               {unacknowledgedCount > 99 ? '99+' : unacknowledgedCount}
             </span>
           )}
@@ -632,14 +698,25 @@ export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAckn
                     : ''
                 }`}
               >
-                <div className={`p-1.5 rounded-lg mt-0.5 ${severityColor(alert.severity)}`}>
+                <div className={`p-1.5 rounded-lg mt-0.5 ${severityColor(alert.severity)}`} aria-hidden="true">
                   <SeverityIcon className="h-3.5 w-3.5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${severityColor(alert.severity)}`}>
-                      {alert.severity}
-                    </span>
+                    {(() => {
+                      const meta = severityBadgeMeta(alert.severity);
+                      return (
+                        <StatusBadge
+                          tone={meta.tone}
+                          icon={<SeverityIcon className="h-3 w-3" aria-hidden="true" />}
+                          tooltip={meta.tooltip}
+                          pill={false}
+                          className="text-[10px] px-1.5 py-0.5"
+                        >
+                          {alert.severity}
+                        </StatusBadge>
+                      );
+                    })()}
                     <span className="text-[10px] text-text-secondary">
                       {alert.type.replace(/_/g, ' ')}
                     </span>

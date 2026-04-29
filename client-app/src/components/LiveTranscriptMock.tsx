@@ -50,13 +50,13 @@ export default function LiveTranscriptMock() {
       <div className="rounded-2xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/15 shadow-2xl backdrop-blur-sm overflow-hidden">
         {/* Title bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-black/20">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" aria-hidden="true">
             <span className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
             <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
             <span className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
           </div>
           <div className="flex items-center gap-2 text-[11px] text-white/50 font-body">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 motion-safe:animate-pulse" />
+            <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-green-400 motion-safe:animate-pulse" />
             Live Call · Dental Scheduler
           </div>
           <div className="text-[11px] text-white/40 font-mono tabular-nums">
@@ -74,7 +74,7 @@ export default function LiveTranscriptMock() {
             <p className="text-xs text-white/50 leading-tight mt-0.5">New caller · San Francisco, CA</p>
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/15 border border-success/25">
-            <span className="w-1.5 h-1.5 rounded-full bg-success motion-safe:animate-pulse" />
+            <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-success motion-safe:animate-pulse" />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-success">Live</span>
           </div>
         </div>
@@ -120,10 +120,14 @@ export default function LiveTranscriptMock() {
               <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
                 <Mic className="h-3 w-3 text-primary" />
               </div>
-              <div className="flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-primary/10 border border-primary/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce" />
+              <div
+                className="flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-primary/10 border border-primary/20"
+                role="status"
+                aria-label="Agent is typing a response"
+              >
+                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.3s]" />
+                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.15s]" />
+                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-primary/70 motion-safe:animate-bounce" />
               </div>
             </div>
           )}

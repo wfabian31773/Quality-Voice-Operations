@@ -119,11 +119,23 @@ export default function NotificationsCenter() {
       <button
         onClick={() => setOpen((o) => !o)}
         className="relative p-2 rounded-lg hover:bg-surface-hover transition-colors text-text-secondary"
-        aria-label="Notifications"
+        aria-label={
+          count > 0
+            ? `Notifications — ${count} unread`
+            : 'Notifications'
+        }
+        title={
+          count > 0
+            ? `You have ${count} unread notification${count === 1 ? '' : 's'}`
+            : 'No new notifications'
+        }
       >
-        <Bell className="h-5 w-5" />
+        <Bell className="h-5 w-5" aria-hidden="true" />
         {count > 0 && (
-          <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+          <span
+            className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center"
+            aria-hidden="true"
+          >
             {count > 99 ? '99+' : count}
           </span>
         )}

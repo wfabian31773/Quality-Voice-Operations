@@ -13,6 +13,20 @@ export interface StatusBadgeProps {
   icon?: ReactNode;
   pill?: boolean;
   className?: string;
+  /**
+   * Plain-language explanation of what the badge means. When provided, it is
+   * surfaced as a hover tooltip (`title`) and as the badge's accessible name
+   * (`aria-label`) so screen-reader users get the same context that a sighted
+   * user gets from the colour. Use this whenever the visible text alone
+   * ("active", "high", "open") doesn't fully convey what the colour signals.
+   */
+  tooltip?: string;
+  /**
+   * Optional sr-only suffix appended after the visible children. Useful when
+   * the visible text is fine for sighted users but a screen reader needs a
+   * little extra ("3", read as "3 unread notifications").
+   */
+  srLabel?: string;
 }
 
 const SOFT: Record<BadgeTone, string> = {
@@ -53,6 +67,8 @@ export default function StatusBadge({
   icon,
   pill = true,
   className,
+  tooltip,
+  srLabel,
 }: StatusBadgeProps) {
   const sizing =
     size === 'sm'
@@ -70,9 +86,12 @@ export default function StatusBadge({
         radius,
         className,
       )}
+      title={tooltip}
+      aria-label={tooltip}
     >
       {icon}
       {children}
+      {srLabel ? <span className="sr-only"> {srLabel}</span> : null}
     </span>
   );
 }

@@ -364,8 +364,12 @@ export default function WebsiteSalesWidget() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white border border-border-strong/20 rounded-xl rounded-bl-sm px-4 py-3 shadow-sm">
-                  <div className="flex gap-1.5">
+                <div
+                  className="bg-white border border-border-strong/20 rounded-xl rounded-bl-sm px-4 py-3 shadow-sm"
+                  role="status"
+                  aria-label="Assistant is typing a reply"
+                >
+                  <div className="flex gap-1.5" aria-hidden="true">
                     <span className="w-2 h-2 bg-border-strong/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-2 h-2 bg-border-strong/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <span className="w-2 h-2 bg-border-strong/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -464,7 +468,10 @@ export default function WebsiteSalesWidget() {
           <>
             <MessageSquare className="h-5 w-5 text-white" />
             {showPulse && (
-              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger rounded-full border-2 border-white animate-pulse" />
+              <span
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger rounded-full border-2 border-white animate-pulse"
+              />
             )}
           </>
         )}

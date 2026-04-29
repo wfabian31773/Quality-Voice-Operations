@@ -128,6 +128,12 @@ export default function Quality() {
     return 'bg-red-500';
   }
 
+  function scoreBand(score: number): string {
+    if (score >= 8) return 'good';
+    if (score >= 6) return 'fair';
+    return 'needs attention';
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -155,7 +161,19 @@ export default function Quality() {
             <Star className="h-4 w-4" />
             Avg Quality Score
           </div>
-          <p className={`text-2xl font-bold ${scoreColor(overallAvg)}`}>
+          <p
+            className={`text-2xl font-bold ${scoreColor(overallAvg)}`}
+            aria-label={
+              overallAvg > 0
+                ? `Average quality score ${overallAvg.toFixed(1)} out of 10 (${scoreBand(overallAvg)})`
+                : 'No average quality score yet'
+            }
+            title={
+              overallAvg > 0
+                ? `Colour reflects the score band: ${scoreBand(overallAvg)} (green ≥ 8, yellow 6–7.9, red < 6)`
+                : 'Scores will appear once calls have been graded'
+            }
+          >
             {overallAvg > 0 ? overallAvg.toFixed(1) : '—'}<span className="text-sm text-muted">/10</span>
           </p>
         </div>
@@ -171,7 +189,11 @@ export default function Quality() {
             <AlertTriangle className="h-4 w-4" />
             Low Quality Calls
           </div>
-          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+          <p
+            className="text-2xl font-bold text-red-600 dark:text-red-400"
+            aria-label={`${lowestScoring.filter((c) => c.score < 5).length} low-quality calls (score below 5) — flagged for review`}
+            title="Red highlights calls scoring below 5 out of 10 — these need review"
+          >
             {lowestScoring.filter((c) => c.score < 5).length}
           </p>
         </div>
@@ -187,9 +209,11 @@ export default function Quality() {
               <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
                 <span className="text-xs text-muted">{d.avgScore.toFixed(1)}</span>
                 <div
+                  role="img"
                   className={`w-full rounded-t ${scoreBgColor(d.avgScore)} transition-all`}
                   style={{ height: `${(d.avgScore / barMax) * 100}%`, minHeight: '4px' }}
-                  title={`${d.date}: ${d.avgScore.toFixed(1)} avg (${d.callCount} calls)`}
+                  title={`${d.date}: ${d.avgScore.toFixed(1)} avg (${d.callCount} calls) — ${scoreBand(d.avgScore)}`}
+                  aria-label={`${d.date}: average score ${d.avgScore.toFixed(1)} out of 10 across ${d.callCount} call${d.callCount === 1 ? '' : 's'} — ${scoreBand(d.avgScore)}`}
                 />
                 <span className="text-[10px] text-muted truncate w-full text-center">
                   {d.date.slice(5)}
@@ -226,7 +250,11 @@ export default function Quality() {
               lowestScoring.slice(0, 10).map((call) => (
                 <tr key={call.callSessionId} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                   <td className="px-4 py-3">
-                    <span className={`text-sm font-bold ${scoreColor(call.score)}`}>
+                    <span
+                      className={`text-sm font-bold ${scoreColor(call.score)}`}
+                      aria-label={`Quality score ${call.score.toFixed(1)} out of 10 — ${scoreBand(call.score)}`}
+                      title={`Score ${call.score.toFixed(1)} of 10 — ${scoreBand(call.score)} (green ≥ 8, yellow 6–7.9, red < 6)`}
+                    >
                       {call.score.toFixed(1)}
                     </span>
                   </td>

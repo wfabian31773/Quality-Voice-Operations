@@ -55,10 +55,19 @@ export default function OnboardingChecklist() {
         </div>
       </div>
 
-      <div className="w-full bg-white/10 rounded-full h-2 mb-5">
+      <div
+        className="w-full bg-white/10 rounded-full h-2 mb-5"
+        role="progressbar"
+        aria-valuenow={Math.round(progress)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Activation progress: ${completed} of ${STEPS.length} steps complete (${Math.round(progress)} percent)`}
+        title={`${Math.round(progress)}% of onboarding steps complete`}
+      >
         <div
           className="bg-green-400 h-2 rounded-full transition-all duration-500"
           style={{ width: `${progress}%` }}
+          aria-hidden="true"
         />
       </div>
 

@@ -9,14 +9,15 @@ import {
   PhoneCall, Bot, TrendingUp, AlertTriangle, Wifi, WifiOff,
   ArrowRight, Zap, BarChart3, Phone, Plus, CheckCircle2,
   Stethoscope, Building2, Wrench, Scale, Headphones,
-  DollarSign, CalendarCheck, Bell,
+  DollarSign, CalendarCheck, Bell, PhoneIncoming, PhoneOutgoing,
+  PhoneOff, Pause,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 import TrialConversionNudge from '../components/TrialConversionNudge';
 import Celebration from '../components/Celebration';
 import ConnectorAuthBanner from '../components/ConnectorAuthBanner';
-import { PageHeader, StatCard, StatusBadge } from '../components/ui';
+import { PageHeader, StatCard, StatusBadge, StatusDot, type BadgeTone } from '../components/ui';
 
 const CELEBRATION_KEY = 'qvo_first_call_celebrated';
 
@@ -120,12 +121,45 @@ function stateLabel(state: string): string {
   return map[state] ?? state.replace(/_/g, ' ').toLowerCase();
 }
 
-function stateColor(state: string): string {
-  if (state === 'CALL_CONNECTED' || state === 'active') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (state === 'CALL_COMPLETED') return 'bg-surface-hover text-text-secondary';
-  if (state === 'CALL_FAILED') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-  if (state === 'CALL_ESCALATED') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+function stateBadgeMeta(state: string): {
+  tone: BadgeTone;
+  icon: React.ReactNode;
+  tooltip: string;
+} {
+  const label = stateLabel(state);
+  if (state === 'CALL_CONNECTED' || state === 'active') {
+    return {
+      tone: 'success',
+      icon: <PhoneCall className="h-3 w-3" aria-hidden="true" />,
+      tooltip: `Call status: ${label} (in progress with the agent)`,
+    };
+  }
+  if (state === 'CALL_COMPLETED') {
+    return {
+      tone: 'neutral',
+      icon: <CheckCircle2 className="h-3 w-3" aria-hidden="true" />,
+      tooltip: `Call status: ${label} (call ended successfully)`,
+    };
+  }
+  if (state === 'CALL_FAILED') {
+    return {
+      tone: 'danger',
+      icon: <PhoneOff className="h-3 w-3" aria-hidden="true" />,
+      tooltip: `Call status: ${label} (the call did not complete)`,
+    };
+  }
+  if (state === 'CALL_ESCALATED') {
+    return {
+      tone: 'warning',
+      icon: <AlertTriangle className="h-3 w-3" aria-hidden="true" />,
+      tooltip: `Call status: ${label} (handed off to a human)`,
+    };
+  }
+  return {
+    tone: 'info',
+    icon: <Phone className="h-3 w-3" aria-hidden="true" />,
+    tooltip: `Call status: ${label}`,
+  };
 }
 
 function QuickStartCard({ navigate, agentCount, hasPhoneNumbers }: {
@@ -362,9 +396,21 @@ export default function Dashboard() {
         description={tenantT('dashboard.page_subtitle')}
         status={
           sseConnected ? (
-            <StatusBadge tone="success" icon={<Wifi className="h-3 w-3" />}>Live</StatusBadge>
+            <StatusBadge
+              tone="success"
+              icon={<Wifi className="h-3 w-3" aria-hidden="true" />}
+              tooltip="Live updates connected — call activity is streaming in real time"
+            >
+              Live
+            </StatusBadge>
           ) : (
-            <StatusBadge tone="neutral" icon={<WifiOff className="h-3 w-3" />}>Connecting…</StatusBadge>
+            <StatusBadge
+              tone="neutral"
+              icon={<WifiOff className="h-3 w-3" aria-hidden="true" />}
+              tooltip="Reconnecting to the live updates stream"
+            >
+              Connecting…
+            </StatusBadge>
           )
         }
         actions={
@@ -473,12 +519,33 @@ export default function Dashboard() {
                     <tr key={call.id} className="border-b border-border last:border-0 hover:bg-surface-hover transition-colors cursor-pointer" onClick={() => navigate('/calls')}>
                       <td className="px-5 py-3 text-text-primary font-medium">{call.agent_name || 'Unknown Agent'}</td>
                       <td className="px-5 py-3">
-                        <StatusBadge tone={call.direction === 'inbound' ? 'info' : 'warning'}>{call.direction}</StatusBadge>
+                        {call.direction === 'inbound' ? (
+                          <StatusBadge
+                            tone="info"
+                            icon={<PhoneIncoming className="h-3 w-3" aria-hidden="true" />}
+                            tooltip="Inbound call — the customer dialled in"
+                          >
+                            inbound
+                          </StatusBadge>
+                        ) : (
+                          <StatusBadge
+                            tone="warning"
+                            icon={<PhoneOutgoing className="h-3 w-3" aria-hidden="true" />}
+                            tooltip="Outbound call — the agent dialled out"
+                          >
+                            outbound
+                          </StatusBadge>
+                        )}
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${stateColor(call.lifecycle_state)}`}>
-                          {stateLabel(call.lifecycle_state)}
-                        </span>
+                        {(() => {
+                          const meta = stateBadgeMeta(call.lifecycle_state);
+                          return (
+                            <StatusBadge tone={meta.tone} icon={meta.icon} tooltip={meta.tooltip}>
+                              {stateLabel(call.lifecycle_state)}
+                            </StatusBadge>
+                          );
+                        })()}
                       </td>
                       <td className="px-5 py-3 text-text-secondary">{call.duration_seconds ? formatDuration(call.duration_seconds) : '--'}</td>
                       <td className="px-5 py-3 text-text-secondary">
@@ -522,7 +589,21 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-text-primary truncate">{agent.name}</p>
                     <p className="text-xs text-text-secondary">{agent.type.replace(/-/g, ' ')}</p>
                   </div>
-                  <StatusBadge tone={agent.status === 'active' ? 'success' : 'neutral'}>
+                  <StatusBadge
+                    tone={agent.status === 'active' ? 'success' : 'neutral'}
+                    icon={
+                      agent.status === 'active' ? (
+                        <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                      ) : (
+                        <Pause className="h-3 w-3" aria-hidden="true" />
+                      )
+                    }
+                    tooltip={
+                      agent.status === 'active'
+                        ? 'Agent is active and answering calls'
+                        : `Agent is ${agent.status} — not currently answering calls`
+                    }
+                  >
                     {agent.status}
                   </StatusBadge>
                 </div>
@@ -536,10 +617,13 @@ export default function Dashboard() {
         <div className="bg-surface border border-border rounded-xl shadow-[var(--elevation-1)]">
           <div className="px-5 py-4 border-b border-border">
             <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
-              </span>
+              <StatusDot
+                label="Live calls in progress right now"
+                tone="success"
+                size="md"
+                pulse
+                ping
+              />
               Live Calls
             </h2>
           </div>

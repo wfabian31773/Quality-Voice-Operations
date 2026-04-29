@@ -14,7 +14,7 @@ import {
   CheckCircle, XCircle, ArrowUpRight, Hash, Mail, MapPin, Bell,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatusBadge as SharedStatusBadge, type BadgeTone } from '../components/ui';
 
 interface PhoneLine {
   phoneNumberId: string;
@@ -103,13 +103,37 @@ interface Analytics {
 type TabView = 'inbox' | 'templates' | 'automations' | 'analytics' | 'admin';
 type InboxFilter = 'all' | 'open' | 'pending' | 'closed' | 'escalated' | 'archived' | 'unread' | 'pinned' | 'followUp';
 
-const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-  closed: 'bg-surface-hover text-text-secondary',
-  escalated: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  archived: 'bg-surface-hover text-text-secondary',
+const STATUS_TOOLTIPS: Record<string, string> = {
+  open: 'Open conversation — currently being handled by your team',
+  pending: 'Pending — waiting on a customer reply or an internal action',
+  closed: 'Closed — no further action needed unless the customer writes back',
+  escalated: 'Escalated — flagged for urgent attention or supervisor review',
+  archived: 'Archived — hidden from the main inbox view',
 };
+
+const STATUS_META: Record<string, { tone: BadgeTone; icon: typeof Inbox }> = {
+  open: { tone: 'info', icon: Inbox },
+  pending: { tone: 'warning', icon: Clock },
+  closed: { tone: 'neutral', icon: CheckCircle },
+  escalated: { tone: 'danger', icon: AlertTriangle },
+  archived: { tone: 'neutral', icon: Archive },
+};
+
+function ConversationStatusBadge({ status, sizeClass = 'text-[10px]' }: { status: string; sizeClass?: string }) {
+  const meta = STATUS_META[status] ?? STATUS_META.open;
+  const tooltip = STATUS_TOOLTIPS[status] || `Conversation status: ${status}`;
+  const Icon = meta.icon;
+  return (
+    <SharedStatusBadge
+      tone={meta.tone}
+      icon={<Icon className="h-3 w-3" aria-hidden="true" />}
+      tooltip={tooltip}
+      className={sizeClass}
+    >
+      {status}
+    </SharedStatusBadge>
+  );
+}
 
 const PRIORITY_ICONS: Record<string, { icon: typeof Flag; color: string }> = {
   urgent: { icon: AlertTriangle, color: 'text-red-500' },
@@ -542,7 +566,7 @@ function InboxView({
               >
                 {f.label}
                 {f.count !== undefined && f.count > 0 && (
-                  <span className="ml-1 bg-white/20 rounded-full px-1.5">{f.count}</span>
+                  <span aria-hidden="true" className="ml-1 bg-white/20 rounded-full px-1.5">{f.count}</span>
                 )}
               </button>
             ))}
@@ -605,7 +629,11 @@ function InboxView({
                         {conv.contactName || conv.remoteNumber}
                       </span>
                       {conv.unreadCount > 0 && (
-                        <span className="bg-primary text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">{conv.unreadCount}</span>
+                        <span
+                          className="bg-primary text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold"
+                          aria-label={`${conv.unreadCount} unread message${conv.unreadCount === 1 ? '' : 's'}`}
+                          title={`${conv.unreadCount} unread message${conv.unreadCount === 1 ? '' : 's'} in this conversation`}
+                        >{conv.unreadCount}</span>
                       )}
                       {conv.followUp && <Bell className="h-3 w-3 text-yellow-500 shrink-0" />}
                     </div>
@@ -614,9 +642,7 @@ function InboxView({
                     )}
                     <p className="text-xs text-muted mt-0.5 truncate">{conv.lastMessagePreview || 'No messages yet'}</p>
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_COLORS[conv.status] ?? STATUS_COLORS.open}`}>
-                        {conv.status}
-                      </span>
+                      <ConversationStatusBadge status={conv.status} />
                       {conv.priority !== 'normal' && (() => {
                         const pi = PRIORITY_ICONS[conv.priority] ?? PRIORITY_ICONS.normal;
                         const PIcon = pi.icon;
@@ -649,9 +675,7 @@ function InboxView({
                 <h3 className="font-semibold text-heading text-sm truncate">
                   {selectedConv.contactName || selectedConv.remoteNumber}
                 </h3>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_COLORS[selectedConv.status] ?? ''}`}>
-                  {selectedConv.status}
-                </span>
+                <ConversationStatusBadge status={selectedConv.status} />
               </div>
               <p className="text-xs text-muted">
                 {selectedConv.contactName ? selectedConv.remoteNumber + ' · ' : ''}{messages.length} messages
@@ -1372,8 +1396,21 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
             <div key={rule.id} className="flex items-center justify-between bg-surface-secondary rounded-lg p-3">
               <div>
                 <span className="text-sm font-medium text-heading">{rule.name}</span>
-                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${rule.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>
-                  {rule.enabled ? 'Active' : 'Disabled'}
+                <span className="ml-2 inline-flex">
+                  <SharedStatusBadge
+                    tone={rule.enabled ? 'success' : 'neutral'}
+                    icon={rule.enabled
+                      ? <CheckCircle className="h-3 w-3" aria-hidden="true" />
+                      : <XCircle className="h-3 w-3" aria-hidden="true" />
+                    }
+                    tooltip={rule.enabled
+                      ? 'Automation rule is active and replying to matching messages'
+                      : 'Automation rule is disabled — turn it on to start replying'
+                    }
+                    className="text-[10px]"
+                  >
+                    {rule.enabled ? 'Active' : 'Disabled'}
+                  </SharedStatusBadge>
                 </span>
                 <p className="text-xs text-muted mt-0.5">
                   {rule.ruleType === 'keyword' ? `Keyword: "${rule.keyword}"` : 'Business hours rule'}

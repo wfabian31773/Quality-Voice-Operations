@@ -137,7 +137,7 @@ export default function SystemActivityFeed({ events, isActive }: SystemActivityF
         <h3 className="font-display font-semibold text-sidebar-bg">System Activity</h3>
         {isActive && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-success font-body">
-            <span className="w-2 h-2 bg-success rounded-full animate-pulse" />
+            <span aria-hidden="true" className="w-2 h-2 bg-success rounded-full animate-pulse" />
             Streaming
           </span>
         )}

@@ -9,8 +9,30 @@ import BillingEstimator from '../components/BillingEstimator';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
-  FileText, Download, Clock,
+  FileText, Download, Clock, CheckCircle2, XCircle,
+  Sparkles, AlertTriangle, FileEdit, MinusCircle, Loader2,
 } from 'lucide-react';
+import { StatusBadge, type BadgeTone } from '../components/ui';
+
+interface StatusMeta { tone: BadgeTone; icon: React.ReactNode; tooltip: string; }
+
+function subscriptionMeta(status: string): StatusMeta {
+  if (status === 'active') return { tone: 'success', icon: <CheckCircle2 className="h-3 w-3" aria-hidden="true" />, tooltip: 'Subscription is active and billing normally' };
+  if (status === 'trialing') return { tone: 'primary', icon: <Sparkles className="h-3 w-3" aria-hidden="true" />, tooltip: 'Free trial — full access until the trial ends' };
+  if (status === 'past_due') return { tone: 'warning', icon: <AlertTriangle className="h-3 w-3" aria-hidden="true" />, tooltip: 'Payment is past due — update your card to keep service running' };
+  if (status === 'incomplete') return { tone: 'warning', icon: <Loader2 className="h-3 w-3" aria-hidden="true" />, tooltip: 'Subscription setup is incomplete — finish payment to activate' };
+  if (status === 'canceled' || status === 'cancelled') return { tone: 'danger', icon: <XCircle className="h-3 w-3" aria-hidden="true" />, tooltip: 'Subscription has been cancelled' };
+  return { tone: 'neutral', icon: <MinusCircle className="h-3 w-3" aria-hidden="true" />, tooltip: 'No active paid subscription — using the free tier' };
+}
+
+function invoiceMeta(status: string): StatusMeta {
+  if (status === 'paid') return { tone: 'success', icon: <CheckCircle2 className="h-3 w-3" aria-hidden="true" />, tooltip: 'Invoice has been paid in full' };
+  if (status === 'open') return { tone: 'primary', icon: <Clock className="h-3 w-3" aria-hidden="true" />, tooltip: 'Invoice is open and awaiting payment' };
+  if (status === 'draft') return { tone: 'neutral', icon: <FileEdit className="h-3 w-3" aria-hidden="true" />, tooltip: 'Invoice is in draft and not yet finalised' };
+  if (status === 'void') return { tone: 'neutral', icon: <MinusCircle className="h-3 w-3" aria-hidden="true" />, tooltip: 'Invoice was voided and is no longer owed' };
+  if (status === 'uncollectible') return { tone: 'danger', icon: <XCircle className="h-3 w-3" aria-hidden="true" />, tooltip: 'Invoice is marked uncollectible — payment is unlikely to be recovered' };
+  return { tone: 'neutral', icon: <FileText className="h-3 w-3" aria-hidden="true" />, tooltip: `Invoice status: ${status}` };
+}
 
 interface Subscription {
   plan: string;
@@ -58,16 +80,6 @@ const PLAN_LABELS: Record<string, string> = {
   enterprise: 'Enterprise',
 };
 
-const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-success/10 text-success',
-  trialing: 'bg-primary/10 text-primary',
-  past_due: 'bg-warning/10 text-warning',
-  canceled: 'bg-danger/10 text-danger',
-  cancelled: 'bg-danger/10 text-danger',
-  incomplete: 'bg-warning/10 text-warning',
-  none: 'bg-text-muted/10 text-text-muted',
-};
-
 const COST_RATES = {
   twilioCostPerMinuteCents: 2,
   aiCostPerMinuteCents: 6,
@@ -79,19 +91,18 @@ function formatDate(d: string | null): string {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const INVOICE_STATUS_STYLES: Record<string, string> = {
-  paid: 'bg-success/10 text-success',
-  open: 'bg-primary/10 text-primary',
-  draft: 'bg-text-muted/10 text-text-muted',
-  void: 'bg-text-muted/10 text-text-muted',
-  uncollectible: 'bg-danger/10 text-danger',
-};
-
 function InvoiceStatusBadge({ status }: { status: string }) {
+  const meta = invoiceMeta(status);
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${INVOICE_STATUS_STYLES[status] ?? 'bg-text-muted/10 text-text-muted'}`}>
+    <StatusBadge
+      tone={meta.tone}
+      icon={meta.icon}
+      tooltip={meta.tooltip}
+      pill={false}
+      className="text-[10px] px-1.5 py-0.5 capitalize"
+    >
       {status}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -117,10 +128,29 @@ function UsageBar({ label, icon: Icon, used, limit, color }: {
           {used.toLocaleString()} / {isUnlimited ? 'Unlimited' : limit.toLocaleString()}
         </span>
       </div>
-      <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
+      <div
+        className="h-2 bg-surface-hover rounded-full overflow-hidden"
+        role="progressbar"
+        aria-valuenow={isUnlimited ? used : Math.min(used, limit)}
+        aria-valuemin={0}
+        aria-valuemax={isUnlimited ? Math.max(used, 1) : limit}
+        aria-label={
+          isUnlimited
+            ? `${label} usage: ${used.toLocaleString()} (unlimited plan)`
+            : `${label} usage: ${used.toLocaleString()} of ${limit.toLocaleString()} (${Math.round(pct)}%)${isOverLimit ? ' — over limit' : ''}`
+        }
+        title={
+          isUnlimited
+            ? `Unlimited ${label.toLowerCase()} on this plan — usage shown for visibility only`
+            : isOverLimit
+              ? `You are over your ${label.toLowerCase()} allowance — overage charges may apply`
+              : `${Math.round(pct)}% of your ${label.toLowerCase()} allowance used this period`
+        }
+      >
         <div
           className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-danger' : color}`}
           style={{ width: `${isUnlimited ? Math.min(pct, 30) : pct}%` }}
+          aria-hidden="true"
         />
       </div>
       {isOverLimit && (
@@ -265,9 +295,20 @@ export default function Billing() {
                   <h2 className="text-lg font-semibold text-text-primary">Subscription</h2>
                   <p className="text-sm text-text-muted mt-0.5">Your current plan and billing details</p>
                 </div>
-                <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.none}`}>
-                  {status === 'none' ? 'Free Tier' : status.replace(/_/g, ' ')}
-                </span>
+                {(() => {
+                  const meta = subscriptionMeta(status);
+                  return (
+                    <StatusBadge
+                      tone={meta.tone}
+                      icon={meta.icon}
+                      tooltip={meta.tooltip}
+                      pill={false}
+                      className="text-xs px-2.5 py-1 capitalize"
+                    >
+                      {status === 'none' ? 'Free Tier' : status.replace(/_/g, ' ')}
+                    </StatusBadge>
+                  );
+                })()}
               </div>
 
               <div className="flex items-baseline gap-2 mb-4">

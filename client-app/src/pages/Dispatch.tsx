@@ -9,7 +9,8 @@ import {
   Layers, ArrowLeftRight, Download, Loader2, RotateCw, Mail,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
-import { PageHeader, StatCard } from '../components/ui';
+import { PageHeader, StatCard, StatusBadge as SharedStatusBadge, type BadgeTone } from '../components/ui';
+import { Navigation as NavigationIcon, ShieldAlert, Flag } from 'lucide-react';
 import Modal from '../components/Modal';
 import {
   buildTimedPings,
@@ -258,13 +259,6 @@ const STATUS_FLOW = [
 
 const BOARD_COLUMNS = ['pending', 'assigned', 'scheduled', 'en_route', 'on_site', 'in_progress'];
 
-const PRIORITY_BADGES: Record<string, string> = {
-  low: 'bg-surface-hover text-text-primary',
-  medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  urgent: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-};
-
 const VALID_TRANSITIONS: Record<string, string[]> = {
   pending: ['assigned', 'cancelled'],
   assigned: ['scheduled', 'en_route', 'in_progress', 'cancelled', 'pending'],
@@ -353,9 +347,78 @@ function ClosestApproachBadge({
   );
 }
 
+const STATUS_TOOLTIPS: Record<string, string> = {
+  pending: 'Pending — job is created but not yet assigned to a tech',
+  assigned: 'Assigned — a tech has been picked but they have not started travelling',
+  scheduled: 'Scheduled — job is booked for a future time slot',
+  en_route: 'En Route — the assigned tech is on their way to the customer',
+  on_site: 'On Site — the tech has arrived at the customer location',
+  in_progress: 'In Progress — work is actively happening at the customer site',
+  completed: 'Completed — work is finished, awaiting close-out',
+  incomplete: 'Incomplete — job ended without finishing the work',
+  done: 'Done — job is fully closed out',
+  cancelled: 'Cancelled — job was cancelled before completion',
+};
+
+const STATUS_META: Record<string, { tone: BadgeTone; icon: typeof Clock }> = {
+  pending: { tone: 'neutral', icon: Clock },
+  assigned: { tone: 'info', icon: User },
+  scheduled: { tone: 'info', icon: Calendar },
+  en_route: { tone: 'info', icon: NavigationIcon },
+  on_site: { tone: 'warning', icon: MapPin },
+  in_progress: { tone: 'warning', icon: Wrench },
+  completed: { tone: 'success', icon: CheckCircle2 },
+  incomplete: { tone: 'danger', icon: AlertTriangle },
+  done: { tone: 'success', icon: CheckCircle2 },
+  cancelled: { tone: 'neutral', icon: XCircle },
+};
+
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_FLOW.find(x => x.key === status);
-  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${s?.bg || 'bg-surface-hover text-text-secondary'}`}>{s?.label || status}</span>;
+  const label = s?.label || status;
+  const meta = STATUS_META[status] ?? { tone: 'neutral' as BadgeTone, icon: Clock };
+  const tooltip = STATUS_TOOLTIPS[status] || `Job status: ${label}`;
+  const Icon = meta.icon;
+  return (
+    <SharedStatusBadge
+      tone={meta.tone}
+      icon={<Icon className="h-3 w-3" aria-hidden="true" />}
+      tooltip={tooltip}
+      className="text-[10px]"
+    >
+      {label}
+    </SharedStatusBadge>
+  );
+}
+
+const PRIORITY_TOOLTIPS: Record<string, string> = {
+  low: 'Low priority — schedule whenever capacity allows',
+  medium: 'Medium priority — schedule within normal SLA',
+  high: 'High priority — needs attention soon, customer is waiting',
+  urgent: 'Urgent — drop everything, immediate dispatch required',
+};
+
+const PRIORITY_META: Record<string, { tone: BadgeTone; icon: typeof Flag }> = {
+  low: { tone: 'neutral', icon: Flag },
+  medium: { tone: 'info', icon: Flag },
+  high: { tone: 'warning', icon: Flag },
+  urgent: { tone: 'danger', icon: ShieldAlert },
+};
+
+function PriorityBadge({ priority, sizeClass = 'text-[10px]' }: { priority: string; sizeClass?: string }) {
+  const meta = PRIORITY_META[priority] ?? PRIORITY_META.low;
+  const tooltip = PRIORITY_TOOLTIPS[priority] || `Priority: ${priority}`;
+  const Icon = meta.icon;
+  return (
+    <SharedStatusBadge
+      tone={meta.tone}
+      icon={<Icon className="h-3 w-3" aria-hidden="true" />}
+      tooltip={tooltip}
+      className={sizeClass}
+    >
+      {priority}
+    </SharedStatusBadge>
+  );
 }
 
 // ============ MAIN COMPONENT ============
@@ -1878,9 +1941,7 @@ function JobCard({ job, isReadOnly, selected, liveEta, enRouteSince, now, longEn
           )}
           <h4 className="text-xs font-medium text-heading leading-tight line-clamp-1">{job.title}</h4>
         </div>
-        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-semibold ${PRIORITY_BADGES[job.priority]}`}>
-          {job.priority.toUpperCase()}
-        </span>
+        <PriorityBadge priority={job.priority} sizeClass="text-[8px] uppercase" />
       </div>
       {job.description && <p className="text-[10px] text-muted mt-1 line-clamp-1">{job.description}</p>}
       <div className="flex items-center justify-between mt-1.5">
@@ -2455,7 +2516,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
                 : 'bg-surface-secondary text-muted hover:text-heading'
           }`}
         >
-          <span className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'amber' ? 'bg-white' : 'bg-amber-500'}`} />
+          <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'amber' ? 'bg-white' : 'bg-amber-500'}`} />
           Amber+ ({offTargetCounts.amberPlus})
         </button>
         <button
@@ -2471,7 +2532,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
                 : 'bg-surface-secondary text-muted hover:text-heading'
           }`}
         >
-          <span className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'bad' ? 'bg-white' : 'bg-red-600'}`} />
+          <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'bad' ? 'bg-white' : 'bg-red-600'}`} />
           Off-target ({offTargetCounts.bad})
         </button>
         {filterActive && (
@@ -2688,7 +2749,7 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
                   <div className="text-muted truncate max-w-[200px]">{job.contact_name}</div>
                 </td>
                 <td className="p-2"><StatusBadge status={job.status} /></td>
-                <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${PRIORITY_BADGES[job.priority]}`}>{job.priority}</span></td>
+                <td className="p-2"><PriorityBadge priority={job.priority} /></td>
                 <td className="p-2 text-muted">{job.resource_name || '-'}</td>
                 <td className="p-2 text-muted">{job.territory_name || '-'}</td>
                 <td className="p-2 text-muted">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleDateString() : '-'}</td>
@@ -4572,8 +4633,14 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             <h3 className="font-semibold text-heading">{job.title}</h3>
             <div className="flex items-center gap-2 mt-1">
               <StatusBadge status={job.status} />
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${PRIORITY_BADGES[job.priority]}`}>{job.priority}</span>
-              {job.is_follow_up && <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">Follow-up</span>}
+              <PriorityBadge priority={job.priority} />
+              {job.is_follow_up && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded"
+                  title="This job is a follow-up to an earlier visit"
+                  aria-label="Follow-up job — created from a previous visit"
+                >Follow-up</span>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
