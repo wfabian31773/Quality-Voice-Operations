@@ -27,6 +27,7 @@ import { startDocsFeedbackAlertScheduler, stopDocsFeedbackAlertScheduler } from 
 import { startDocsFeedbackReplyDigestScheduler, stopDocsFeedbackReplyDigestScheduler } from '../../platform/help/DocsFeedbackReplyDigestScheduler';
 import { startDocsFeedbackReplyRetryScheduler, stopDocsFeedbackReplyRetryScheduler } from '../../platform/help/DocsFeedbackReplyRetryScheduler';
 import { startSupportReplyRetryScheduler, stopSupportReplyRetryScheduler } from '../../platform/help/SupportReplyRetryScheduler';
+import { startRetryAttemptsCleanupScheduler, stopRetryAttemptsCleanupScheduler } from '../../platform/help/RetryAttemptsCleanupScheduler';
 import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } from '../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
 import { startVerifiedCallerHealthScheduler, stopVerifiedCallerHealthScheduler, startTrustHubStatusScheduler, stopTrustHubStatusScheduler } from '../../platform/telephony/VerifiedCallerHealthScheduler';
 import { startVerifiedCallerSyncScheduler, stopVerifiedCallerSyncScheduler } from '../../platform/telephony/VerifiedCallerSyncScheduler';
@@ -101,6 +102,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startDocsFeedbackReplyDigestScheduler();
   startDocsFeedbackReplyRetryScheduler();
   startSupportReplyRetryScheduler();
+  startRetryAttemptsCleanupScheduler();
   startConnectorAuthAlertScheduler();
   startVerifiedCallerHealthScheduler();
   startVerifiedCallerSyncScheduler();
@@ -134,6 +136,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopDocsFeedbackReplyDigestScheduler();
   stopDocsFeedbackReplyRetryScheduler();
   stopSupportReplyRetryScheduler();
+  stopRetryAttemptsCleanupScheduler();
   stopConnectorAuthAlertScheduler();
   stopVerifiedCallerHealthScheduler();
   stopVerifiedCallerSyncScheduler();
