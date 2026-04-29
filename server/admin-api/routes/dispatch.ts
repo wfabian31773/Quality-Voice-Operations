@@ -27,7 +27,12 @@ import {
   sendEmail,
   dispatchRouteExportReadyEmail,
   dispatchRouteExportFailedEmail,
+  dispatchCompletionPhotosEmail,
 } from '../../../platform/email';
+import {
+  buildCompletionPhotoUrl,
+  verifyCompletionPhotoToken,
+} from '../../../platform/dispatch/completionPhotoToken';
 import {
   enqueueJobGeocode,
   geocodeAddressCached,
@@ -210,6 +215,26 @@ export async function fireNotifications(
   jobId: string,
   triggerEvent: string,
 ): Promise<void> {
+  // Fire the customer-facing completion-photos email FIRST and
+  // independently of the lifecycle-template path below. The template
+  // path bails (via early `return` inside the try) when the tenant has
+  // no active dispatch_notification_templates row for this trigger —
+  // which is common for tenants who never customized their lifecycle
+  // copy. The photo email is a *separate* concern (it's a transactional
+  // delivery of the technician's proof-of-completion attachments, not a
+  // template-driven nudge), so it must run regardless of what's in the
+  // templates table. Tenant opt-out, missing-email, and zero-photos
+  // gates live inside the helper; this caller only checks the trigger.
+  if (triggerEvent === 'completed') {
+    void sendCompletionPhotosEmail(pool, tenantId, jobId).catch((err) => {
+      logger.error('sendCompletionPhotosEmail rejected', {
+        tenantId,
+        jobId,
+        error: String(err),
+      });
+    });
+  }
+
   try {
     const { rows: templates } = await pool.query(
       `SELECT id, channel, subject, body_template FROM dispatch_notification_templates
@@ -306,6 +331,181 @@ export async function fireNotifications(
     }
   } catch (err) {
     logger.error('Failed to fire notifications', { tenantId, jobId, triggerEvent, error: String(err) });
+  }
+}
+
+/**
+ * Email the customer a copy of the proof-of-completion photos for a
+ * just-completed job. Idempotent in the sense that re-firing with no
+ * new photos sends the same set again — callers gate on
+ * `triggerEvent === 'completed'` (i.e. only on the first transition
+ * into a completion status, not the `completed → done` follow-up) so
+ * the customer gets exactly one email per completion.
+ *
+ * Skips silently — never throws to the caller — when:
+ *   - the tenant has opted out via `tenants.dispatch_completion_photo_email_enabled`
+ *   - the job has no `contact_email`
+ *   - the job has no `proof_of_completion` attachments
+ *   - SMTP send returns an error (logged, not propagated)
+ *
+ * Each photo link is a tenant-scoped, time-limited URL minted by
+ * `buildCompletionPhotoUrl` — never a raw object-storage URL — so a
+ * forwarded link cannot leak the underlying GCS path or expose
+ * attachments from another tenant.
+ */
+export async function sendCompletionPhotosEmail(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  jobId: string,
+): Promise<void> {
+  try {
+    const { rows: jobRows } = await pool.query(
+      `SELECT j.id, j.title, j.status, j.contact_email, j.contact_name,
+              j.completed_at, j.tracking_token,
+              r.name AS resource_name,
+              t.name AS tenant_name,
+              COALESCE(t.dispatch_completion_photo_email_enabled, TRUE) AS email_enabled
+         FROM dispatch_jobs j
+         LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+         LEFT JOIN tenants t ON t.id = j.tenant_id
+        WHERE j.id = $1 AND j.tenant_id = $2
+        LIMIT 1`,
+      [jobId, tenantId],
+    );
+    if (jobRows.length === 0) return;
+    const job = jobRows[0] as Record<string, unknown>;
+
+    if (job.email_enabled === false) {
+      logger.info('Skipping completion-photo email — tenant opted out', { tenantId, jobId });
+      return;
+    }
+
+    const contactEmail = String(job.contact_email ?? '').trim();
+    // Bare-bones syntax check so we don't waste an SMTP round-trip on
+    // an obviously malformed address (the most common case is the
+    // booking widget seeding `contact_email = ''` when the customer
+    // didn't provide one).
+    if (!contactEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      return;
+    }
+
+    const { rows: photoRows } = await pool.query(
+      `SELECT id, title, mime_type, object_path
+         FROM dispatch_job_attachments
+        WHERE job_id = $1 AND tenant_id = $2
+          AND attachment_type = 'proof_of_completion'
+          AND object_path IS NOT NULL
+        ORDER BY created_at ASC`,
+      [jobId, tenantId],
+    );
+    if (photoRows.length === 0) return;
+
+    // Cap the number of photos we link in one email so an unusually
+    // chatty job doesn't produce a multi-megabyte HTML body that
+    // bounces against the recipient mailbox quota. The full set is
+    // still accessible inside the dispatcher console.
+    const MAX_PHOTOS_PER_EMAIL = 12;
+    const limitedPhotos = photoRows.slice(0, MAX_PHOTOS_PER_EMAIL);
+
+    let earliestExpiresAtSec = Number.POSITIVE_INFINITY;
+    const photos = limitedPhotos.map((row) => {
+      const attachmentId = String(row.id);
+      const { url, expiresAtSec } = buildCompletionPhotoUrl({
+        tenantId,
+        attachmentId,
+      });
+      if (expiresAtSec < earliestExpiresAtSec) {
+        earliestExpiresAtSec = expiresAtSec;
+      }
+      const filename = (row.title as string | null)?.trim() || `photo-${attachmentId.slice(0, 8)}`;
+      return {
+        url,
+        filename,
+        mimeType: (row.mime_type as string | null) ?? null,
+      };
+    });
+
+    const trackingToken =
+      typeof job.tracking_token === 'string' && (job.tracking_token as string).length > 0
+        ? (job.tracking_token as string)
+        : null;
+    const trackingUrl = trackingToken ? publicTrackerUrl(trackingToken) : null;
+
+    const completedAtHuman = job.completed_at
+      ? new Date(job.completed_at as string | Date).toLocaleString()
+      : null;
+    const expiresAtHuman = Number.isFinite(earliestExpiresAtSec)
+      ? new Date(earliestExpiresAtSec * 1000).toUTCString()
+      : '';
+
+    const email = dispatchCompletionPhotosEmail({
+      tenantName: (job.tenant_name as string | null) ?? null,
+      contactName: (job.contact_name as string | null) ?? null,
+      jobTitle: (job.title as string | null) ?? null,
+      resourceName: (job.resource_name as string | null) ?? null,
+      completedAtHuman,
+      trackingUrl,
+      photos,
+      expiresAtHuman,
+    });
+
+    const sendResult = await sendEmail({
+      to: contactEmail,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+
+    // Mirror the dispatch_notifications_log shape used by the
+    // template-driven path so dispatchers see this email alongside
+    // the SMS/email lifecycle nudges in the per-job activity feed.
+    try {
+      await pool.query(
+        `INSERT INTO dispatch_notifications_log
+           (job_id, tenant_id, template_id, channel, recipient, subject, body, status)
+         VALUES ($1, $2, NULL, 'email', $3, $4, $5, $6)`,
+        [
+          jobId,
+          tenantId,
+          contactEmail,
+          email.subject,
+          // Keep the body trimmed so a misbehaving HTML template
+          // never blows up the log row. The full body is reproducible
+          // from the template + photos any time we need it.
+          email.html.slice(0, 4000),
+          sendResult.success ? 'sent' : 'failed',
+        ],
+      );
+    } catch (logErr) {
+      logger.warn('Failed to log completion-photo email row', {
+        tenantId,
+        jobId,
+        error: String(logErr),
+      });
+    }
+
+    if (!sendResult.success) {
+      logger.error('Failed to send completion-photo email', {
+        tenantId,
+        jobId,
+        photoCount: photos.length,
+        error: sendResult.error,
+        permanent: sendResult.permanent,
+      });
+    } else {
+      logger.info('Completion-photo email sent', {
+        tenantId,
+        jobId,
+        photoCount: photos.length,
+        recipient: contactEmail,
+      });
+    }
+  } catch (err) {
+    logger.error('sendCompletionPhotosEmail failed', {
+      tenantId,
+      jobId,
+      error: String(err),
+    });
   }
 }
 
@@ -1104,6 +1304,35 @@ async function readDispatchSmsSegmentLimit(
 }
 
 /**
+ * Tenant-level master switch for the customer-facing completion-photo
+ * email (migration 098). Defaults to TRUE — the column is NOT NULL
+ * with a TRUE default, so the only way to read FALSE is for an admin
+ * to have explicitly opted out. On read error we conservatively return
+ * `true`: the worst case is sending a duplicate email after a tenant
+ * just disabled the feature; the alternative (silently disabling on a
+ * transient DB hiccup) would surprise tenants who rely on it.
+ */
+async function readDispatchCompletionPhotoEmailEnabled(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+): Promise<boolean> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(dispatch_completion_photo_email_enabled, TRUE) AS enabled
+         FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    if (rows.length === 0) return true;
+    return rows[0].enabled !== false;
+  } catch (err) {
+    logger.warn('Failed to read tenants.dispatch_completion_photo_email_enabled, defaulting to enabled', {
+      tenantId, error: String(err),
+    });
+    return true;
+  }
+}
+
+/**
  * Compute the closest distance (in meters) the technician's GPS breadcrumbs
  * came to the geocoded customer address for a single job, then — if it
  * exceeds the tenant's configured "bad arrival" threshold — auto-create a
@@ -1237,10 +1466,11 @@ export const getDispatchSettingsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   try {
-    const [m, longEnRouteMin, smsLimit] = await Promise.all([
+    const [m, longEnRouteMin, smsLimit, completionPhotoEmail] = await Promise.all([
       readDispatchBadArrivalThresholdM(pool, tenantId),
       readDispatchLongEnRouteThresholdMinutes(pool, tenantId),
       readDispatchSmsSegmentLimit(pool, tenantId),
+      readDispatchCompletionPhotoEmailEnabled(pool, tenantId),
     ]);
     return res.json({
       settings: {
@@ -1255,6 +1485,7 @@ export const getDispatchSettingsHandler: RequestHandler = async (req, res) => {
         sms_segment_limit: smsLimit,
         sms_segment_limit_min: DISPATCH_SMS_SEGMENT_LIMIT_MIN,
         sms_segment_limit_max: DISPATCH_SMS_SEGMENT_LIMIT_MAX,
+        completion_photo_email_enabled: completionPhotoEmail,
       },
     });
   } catch (err) {
@@ -1335,6 +1566,25 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
     }
   }
 
+  if (body.completion_photo_email_enabled !== undefined) {
+    // Strict boolean — accept only `true` / `false` (and the
+    // string forms that come through fetch JSON bodies). Anything
+    // else is a 400 so the client can't accidentally toggle the
+    // feature off by sending an empty string.
+    const raw = body.completion_photo_email_enabled;
+    let bool: boolean | null = null;
+    if (typeof raw === 'boolean') bool = raw;
+    else if (raw === 'true') bool = true;
+    else if (raw === 'false') bool = false;
+    if (bool === null) {
+      return res.status(400).json({
+        error: 'completion_photo_email_enabled must be a boolean',
+      });
+    }
+    values.push(bool);
+    updates.push(`dispatch_completion_photo_email_enabled = $${values.length}`);
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No supported settings provided' });
   }
@@ -1344,10 +1594,11 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
       `UPDATE tenants SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`,
       values,
     );
-    const [m, longEnRouteMin, smsLimit] = await Promise.all([
+    const [m, longEnRouteMin, smsLimit, completionPhotoEmail] = await Promise.all([
       readDispatchBadArrivalThresholdM(pool, tenantId),
       readDispatchLongEnRouteThresholdMinutes(pool, tenantId),
       readDispatchSmsSegmentLimit(pool, tenantId),
+      readDispatchCompletionPhotoEmailEnabled(pool, tenantId),
     ]);
     return res.json({
       settings: {
@@ -1362,6 +1613,7 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
         sms_segment_limit: smsLimit,
         sms_segment_limit_min: DISPATCH_SMS_SEGMENT_LIMIT_MIN,
         sms_segment_limit_max: DISPATCH_SMS_SEGMENT_LIMIT_MAX,
+        completion_photo_email_enabled: completionPhotoEmail,
       },
     });
   } catch (err) {
@@ -3792,6 +4044,148 @@ export async function processRouteExportJob(exportJobId: string): Promise<void> 
 }
 
 /**
+ * GET /dispatch/completion-photos/:attachmentId?t=<sig>&exp=<unixSec>&tid=<tenantId>
+ *
+ * Token-authenticated proxy that streams a single proof-of-completion
+ * photo to the customer's browser. The link is delivered by email,
+ * where the recipient's mail client fetches it without our session
+ * cookie — so this endpoint is intentionally **unauthenticated**. The
+ * HMAC-signed token (over `(tenantId, attachmentId, expiresAtSec)`,
+ * see `platform/dispatch/completionPhotoToken.ts`) is the only
+ * credential, and it expires; the tenant id rides in the URL but is
+ * bound to the signature so it cannot be swapped.
+ *
+ * Returns:
+ *   400 — missing/blank token, attachment id, expiry, or tenant id
+ *   404 — token mismatch, attachment not found, or attachment has no
+ *         object_path (we never serve an attachment we can't fetch
+ *         from storage, even if the row exists)
+ *   410 — token expired
+ */
+export const getCompletionPhotoHandler: RequestHandler = async (req, res) => {
+  const { attachmentId } = req.params;
+  const token = typeof req.query.t === 'string' ? req.query.t : '';
+  const tenantId = typeof req.query.tid === 'string' ? req.query.tid : '';
+  const expRaw = typeof req.query.exp === 'string' ? req.query.exp : '';
+  const expiresAtSec = expRaw ? Number(expRaw) : NaN;
+
+  if (!attachmentId || !token || !tenantId || !Number.isFinite(expiresAtSec)) {
+    return res.status(400).json({ error: 'Missing or malformed token' });
+  }
+
+  // Verify expiry first (also performed inside verifyCompletionPhotoToken,
+  // but the explicit 410 status helps customers distinguish "stale link
+  // — request a fresh one" from "this link was never valid").
+  if (expiresAtSec * 1000 < Date.now()) {
+    return res.status(410).json({ error: 'Photo link has expired' });
+  }
+
+  const ok = verifyCompletionPhotoToken({
+    tenantId,
+    attachmentId,
+    expiresAtSec,
+    signature: token,
+  });
+  if (!ok) {
+    return res.status(404).json({ error: 'Photo not found' });
+  }
+
+  try {
+    // RLS on dispatch_job_attachments is keyed on `app.tenant_id`, which
+    // we have no way to set on this unauthenticated request — so we
+    // fetch through `withPrivilegedClient` (which disables row_security
+    // in the surrounding transaction). The HMAC token is still the
+    // credential gating access; the tenant predicate below provides
+    // the tenant scope.
+    const { withPrivilegedClient } = await import('../../../platform/db');
+    const row = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, object_path, mime_type, title, attachment_type
+           FROM dispatch_job_attachments
+          WHERE id = $1 AND tenant_id = $2
+          LIMIT 1`,
+        [attachmentId, tenantId],
+      );
+      return rows[0] as Record<string, unknown> | undefined;
+    });
+
+    if (!row || !row.object_path) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    // Defence in depth: only serve attachments we explicitly classify
+    // as proof-of-completion through this endpoint. A token leaked
+    // from a different attachment type (e.g. an internal note) would
+    // already fail HMAC verification because the id wouldn't match,
+    // but checking here means a future code path that reuses the
+    // helper for a non-photo attachment can't accidentally open this
+    // door.
+    if (row.attachment_type !== 'proof_of_completion') {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const storage = new ObjectStorageService();
+    // Translate the stored `/objects/<entityId>` path into the
+    // absolute `/<bucket>/<object>` form `streamPrivateObject`
+    // expects. The two formats are interchangeable here because
+    // `streamPrivateObject` resolves bucket + object from the path
+    // it's given; we delegate to `getObjectEntityFile` to handle the
+    // `/objects/...` form so the same handler works whether the
+    // attachment was saved by the mobile upload flow (object path) or
+    // by a legacy uploader (full bucket path).
+    const objectPath = String(row.object_path);
+    const file = objectPath.startsWith('/objects/')
+      ? await storage.getObjectEntityFile(objectPath)
+      : null;
+
+    if (file) {
+      // Mirror the cache-control + content-disposition behaviour of
+      // streamPrivateObject. We don't want browsers caching the
+      // photo across users, but a short same-session cache is fine
+      // and saves a re-fetch when the customer toggles back to the
+      // email tab.
+      const [metadata] = await file.getMetadata();
+      const filename = (row.title as string | null)?.trim() || `completion-photo-${attachmentId.slice(0, 8)}`;
+      const safeName = filename.replace(/"/g, '');
+      res.setHeader('Content-Type', metadata.contentType || (row.mime_type as string | null) || 'application/octet-stream');
+      if (metadata.size != null) {
+        res.setHeader('Content-Length', String(metadata.size));
+      }
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+      await new Promise<void>((resolve, reject) => {
+        const stream = file.createReadStream();
+        stream.on('error', reject);
+        stream.on('end', resolve);
+        stream.on('close', resolve);
+        stream.pipe(res);
+      });
+      return;
+    }
+
+    // Legacy / non-`/objects/` path — treat the stored value as an
+    // absolute `/<bucket>/<object>` path the same way the route
+    // export download does.
+    await storage.streamPrivateObject(objectPath, res, {
+      cacheTtlSec: 300,
+      downloadFilename:
+        (row.title as string | null)?.trim() || `completion-photo-${attachmentId.slice(0, 8)}`,
+    });
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      return res.status(404).json({ error: 'Photo no longer in storage' });
+    }
+    logger.error('Failed to stream completion photo', {
+      tenantId,
+      attachmentId,
+      error: String(err),
+    });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to load photo' });
+    }
+  }
+};
+
+/**
  * GET /dispatch/route-exports/:id
  *
  * Status poll for the async route-export job. Used by the dispatcher
@@ -5305,6 +5699,12 @@ router.post('/dispatch/route-exports/:id/retry', requireAuth, retryRouteExportHa
 // `downloadRouteExportHandler` for the full token / expiry / status
 // gating that protects this endpoint.
 router.get('/dispatch/route-exports/:id/download', downloadRouteExportHandler);
+
+// Public, token-authenticated proof-of-completion photo proxy. NO
+// requireAuth — the HMAC-signed token in the email link (over
+// `(tenantId, attachmentId, expiresAtSec)`) is the only credential.
+// See `getCompletionPhotoHandler` for the full token / expiry gating.
+router.get('/dispatch/completion-photos/:attachmentId', getCompletionPhotoHandler);
 router.get(
   '/dispatch/route-exports/:id/file',
   requireAuth,

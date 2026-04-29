@@ -871,3 +871,112 @@ export function encryptionInitializationReminderEmail(params: {
 
   return { subject, html, text };
 }
+
+/**
+ * Customer-facing email sent automatically when a job is marked
+ * `completed` (or `done`) and has at least one `proof_of_completion`
+ * attachment. Each photo is rendered both as an inline preview (so the
+ * customer can see the work without leaving their inbox when their MUA
+ * follows links) and as an explicit "View photo" link, because most
+ * email clients refuse to render <img src> from third-party hosts by
+ * default.
+ *
+ * The `photos[].url` values must be tenant-scoped, time-limited URLs
+ * minted by `platform/dispatch/completionPhotoToken.ts`. The template
+ * does not validate them — that's the caller's responsibility — but
+ * it does HTML-escape the surrounding metadata (job title, contact
+ * name, tenant name) so a malicious title field cannot inject markup
+ * into the customer's inbox.
+ *
+ * `tracking_url` is optional but recommended: when the tenant has a
+ * `tracking_token` on the job, embedding the public booking-tracker
+ * URL gives the customer a stable place to revisit the visit summary
+ * after the photo links expire.
+ */
+export function dispatchCompletionPhotosEmail(params: {
+  tenantName?: string | null;
+  contactName?: string | null;
+  jobTitle?: string | null;
+  resourceName?: string | null;
+  completedAtHuman?: string | null;
+  trackingUrl?: string | null;
+  photos: Array<{ url: string; filename?: string | null; mimeType?: string | null }>;
+  expiresAtHuman: string;
+}): { subject: string; html: string; text: string } {
+  const escape = (s: string | null | undefined): string =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const org = escape(params.tenantName) || 'your service team';
+  const contact = escape(params.contactName);
+  const job = escape(params.jobTitle) || 'your job';
+  const tech = escape(params.resourceName);
+  const completedAt = escape(params.completedAtHuman);
+  const greeting = contact ? `Hi ${contact},` : 'Hi,';
+
+  const subjectJob = params.jobTitle ? params.jobTitle : 'your job';
+  const subject = `Completion photos for ${subjectJob}`;
+
+  // Render each photo as an inline preview wrapped in the explicit
+  // download link. Many MUAs (Gmail, most mobile clients) silently
+  // proxy image src= through their own caches, so the underlying URL
+  // never sees the recipient's IP — that's fine for a one-time
+  // private link, but the user-visible "View photo" link is what
+  // matters when the MUA strips images entirely.
+  const photoBlocks = params.photos
+    .map((p) => {
+      const safeUrl = escape(p.url);
+      const safeName = escape(p.filename) || 'Completion photo';
+      const isImage = (p.mimeType ?? '').toLowerCase().startsWith('image/');
+      const preview = isImage
+        ? `<a href="${safeUrl}" style="display:inline-block;text-decoration:none;">` +
+          `<img src="${safeUrl}" alt="${safeName}" style="max-width:100%;height:auto;border-radius:8px;border:1px solid #e5e7eb;display:block;margin:0 0 8px;" />` +
+          `</a>`
+        : '';
+      return (
+        `<div style="margin:0 0 20px;">` +
+        preview +
+        `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">${safeName}</p>` +
+        `<p style="margin:0"><a href="${safeUrl}" style="color:#2563eb;font-size:14px;">View photo</a></p>` +
+        `</div>`
+      );
+    })
+    .join('');
+
+  const techLine = tech
+    ? `<p>${tech} just wrapped up ${job}${completedAt ? ` (${completedAt})` : ''}.</p>`
+    : `<p>${job} is complete${completedAt ? ` (${completedAt})` : ''}.</p>`;
+
+  const trackingLine = params.trackingUrl
+    ? `<p class="muted">Want a recap of the visit? <a href="${escape(params.trackingUrl)}">Open the visit summary</a>.</p>`
+    : '';
+
+  const html = baseLayout(`
+    <p>${greeting}</p>
+    ${techLine}
+    <p>Here ${params.photos.length === 1 ? 'is the photo' : `are the ${params.photos.length} photos`} from <strong>${org}</strong> documenting the work that was done:</p>
+    ${photoBlocks}
+    <p class="muted">These photo links are private to you and stop working on ${escape(params.expiresAtHuman)}. Save any copies you want to keep before then.</p>
+    ${trackingLine}
+  `);
+
+  // Plain-text variant lists the photo filenames and their links so
+  // recipients on text-only mail clients still get a usable email.
+  const textPhotos = params.photos
+    .map((p, idx) => `${idx + 1}. ${p.filename || 'Completion photo'}\n   ${p.url}`)
+    .join('\n');
+  const text = `${greeting}\n\n` +
+    (tech
+      ? `${tech} just wrapped up ${params.jobTitle || 'your job'}${params.completedAtHuman ? ` (${params.completedAtHuman})` : ''}.\n\n`
+      : `${params.jobTitle || 'Your job'} is complete${params.completedAtHuman ? ` (${params.completedAtHuman})` : ''}.\n\n`) +
+    `Here ${params.photos.length === 1 ? 'is the photo' : `are the ${params.photos.length} photos`} from ${params.tenantName || 'your service team'} documenting the work that was done:\n\n` +
+    `${textPhotos}\n\n` +
+    `These links are private to you and stop working on ${params.expiresAtHuman}. Save any copies you want to keep before then.` +
+    (params.trackingUrl ? `\n\nVisit summary: ${params.trackingUrl}` : '');
+
+  return { subject, html, text };
+}

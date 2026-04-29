@@ -228,6 +228,12 @@ describe('fireNotifications live ETA substitution', () => {
     const { __resetRoutingCachesForTests } = await import('../../platform/integrations/routing');
     __resetRoutingCachesForTests();
 
+    // Task #664: fireNotifications now also fires sendCompletionPhotosEmail
+    // when triggerEvent === 'completed'. Stub its FIRST query (job
+    // lookup) to return zero rows so the helper bails before reaching
+    // the photo / log queries.
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
     queryMock.mockResolvedValueOnce({
       rows: [{
         id: 'tpl-1',
@@ -258,8 +264,14 @@ describe('fireNotifications live ETA substitution', () => {
       t: string, j: string, e: string,
     ) => Promise<void>)({ query: queryMock }, 'tenant-A', 'job-1', 'completed');
 
-    expect(queryMock).toHaveBeenCalledTimes(3);
-    const body = String((queryMock.mock.calls[2][1] as unknown[])[6]);
+    // Drain microtasks so the void sendCompletionPhotosEmail call
+    // settles before reading the queryMock call sequence.
+    await new Promise((r) => setImmediate(r));
+
+    // Order: [0] sendCompletionPhotosEmail job lookup (returns []),
+    //        [1] template lookup, [2] job context, [3] INSERT.
+    const insertCallIdx = 3;
+    const body = String((queryMock.mock.calls[insertCallIdx][1] as unknown[])[6]);
     expect(body).toBe('Job Job marked completed');
   });
 });

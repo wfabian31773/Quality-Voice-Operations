@@ -68,11 +68,35 @@ function parseSupportedLocales() {
   return codes;
 }
 
-/** Parse the namespaces out of the i18n init call. */
+/** Parse the namespaces out of the i18n init call.
+ *
+ * Supports both shapes:
+ *   ns: ['common', 'docs', ...]                          (inline literal)
+ *   const NAMESPACES = ['common', ...] as const;
+ *   ...
+ *   ns: NAMESPACES as unknown as string[]                (named constant)
+ */
 function parseNamespaces() {
   const src = readFileSync(i18nFile, "utf8");
-  const m = /\bns:\s*\[([^\]]+)\]/m.exec(src);
-  if (!m) {
+  let listSrc = null;
+  const inline = /\bns:\s*\[([^\]]+)\]/m.exec(src);
+  if (inline) {
+    listSrc = inline[1];
+  } else {
+    const nsRef = /\bns:\s*([A-Za-z_$][\w$]*)\b/m.exec(src);
+    if (nsRef) {
+      const ident = nsRef[1];
+      const constRe = new RegExp(
+        `\\b(?:const|let|var)\\s+${ident}\\s*=\\s*\\[([^\\]]+)\\]`,
+        "m",
+      );
+      const constMatch = constRe.exec(src);
+      if (constMatch) {
+        listSrc = constMatch[1];
+      }
+    }
+  }
+  if (!listSrc) {
     throw new Error(
       `Could not find \`ns: [...]\` in ${i18nFile}. Update scripts/check-i18n-keys.mjs.`,
     );
@@ -80,7 +104,7 @@ function parseNamespaces() {
   const names = [];
   const nameRe = /'([^']+)'/g;
   let nm;
-  while ((nm = nameRe.exec(m[1])) !== null) {
+  while ((nm = nameRe.exec(listSrc)) !== null) {
     names.push(nm[1]);
   }
   if (names.length === 0) {
