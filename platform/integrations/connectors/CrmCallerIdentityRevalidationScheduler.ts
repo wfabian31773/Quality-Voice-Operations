@@ -11,6 +11,10 @@ import { validateHubSpotCachedIdentity } from './adapters/hubspot';
 import { validateSalesforceCachedIdentity } from './adapters/salesforce';
 import { validatePipedriveCachedIdentity } from './adapters/pipedrive';
 import { validateZohoCachedIdentity } from './adapters/zoho';
+import {
+  recordRevalidationCycle,
+  type PerTenantBreakdown,
+} from './CrmCallerIdentityRevalidationMetrics';
 import type { ConnectorConfig } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -109,14 +113,37 @@ export async function runCrmCallerIdentityRevalidationCycle(
     skippedNoConfig: 0,
     failed: 0,
   };
+  const perTenantDeltas = new Map<string, PerTenantBreakdown>();
+  const startedAtMs = Date.now();
+  let threw = false;
 
-  const due = await listCrmCallerIdentitiesDueForRevalidation(
-    [...SUPPORTED_PROVIDERS],
-    stalenessThresholdMs,
-    batchLimit,
-  );
+  const finishMetrics = () => {
+    recordRevalidationCycle({
+      startedAtMs,
+      finishedAtMs: Date.now(),
+      result,
+      perTenantDeltas,
+      threw,
+    });
+  };
+
+  let due: CrmCallerIdentityDueRow[];
+  try {
+    due = await listCrmCallerIdentitiesDueForRevalidation(
+      [...SUPPORTED_PROVIDERS],
+      stalenessThresholdMs,
+      batchLimit,
+    );
+  } catch (err) {
+    threw = true;
+    finishMetrics();
+    throw err;
+  }
   result.scanned = due.length;
-  if (due.length === 0) return result;
+  if (due.length === 0) {
+    finishMetrics();
+    return result;
+  }
 
   // Resolve enabled CRM configs per tenant exactly once per cycle, even
   // when several rows for the same tenant share a provider. The decrypt
@@ -154,7 +181,20 @@ export async function runCrmCallerIdentityRevalidationCycle(
     }
   };
 
+  const bumpTenant = (tenantId: string, key: keyof PerTenantBreakdown): void => {
+    let entry = perTenantDeltas.get(tenantId);
+    if (!entry) {
+      entry = {
+        scanned: 0, validated: 0, staleScrubbed: 0, skippedNoConfig: 0, failed: 0,
+      };
+      perTenantDeltas.set(tenantId, entry);
+    }
+    entry[key] += 1;
+  };
+
   for (const row of due) {
+    bumpTenant(row.tenantId, 'scanned');
+    const before = { ...result };
     try {
       await processRow(row, loadConfigsForTenant, result);
     } catch (err) {
@@ -166,11 +206,21 @@ export async function runCrmCallerIdentityRevalidationCycle(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+    if (result.validated > before.validated) bumpTenant(row.tenantId, 'validated');
+    if (result.staleScrubbed > before.staleScrubbed) bumpTenant(row.tenantId, 'staleScrubbed');
+    if (result.skippedNoConfig > before.skippedNoConfig) bumpTenant(row.tenantId, 'skippedNoConfig');
+    if (result.failed > before.failed) bumpTenant(row.tenantId, 'failed');
   }
+
+  // The scanned counter on `result` was set up-front from `due.length`;
+  // per-tenant `scanned` was bumped per row above. The map already
+  // accounts for every row that entered the loop, including those that
+  // threw. (Cycle-level scanned is still the source of truth for totals.)
 
   if (result.scanned > 0) {
     logger.info('CRM caller identity revalidation cycle complete', { ...result });
   }
+  finishMetrics();
   return result;
 }
 

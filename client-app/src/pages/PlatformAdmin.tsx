@@ -951,6 +951,46 @@ interface StuckOutboxSummary {
   affectedTenants: number;
 }
 
+interface CrmRevalidationCycleEntry {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  scanned: number;
+  validated: number;
+  staleScrubbed: number;
+  skippedNoConfig: number;
+  failed: number;
+  threw: boolean;
+}
+
+interface CrmRevalidationPerTenantRow {
+  tenantId: string;
+  scanned: number;
+  validated: number;
+  staleScrubbed: number;
+  skippedNoConfig: number;
+  failed: number;
+  lastTouchedAt: string;
+}
+
+interface CrmRevalidationMetrics {
+  startedAt: string;
+  totals: {
+    cyclesRun: number;
+    cyclesThrew: number;
+    scanned: number;
+    validated: number;
+    staleScrubbed: number;
+    skippedNoConfig: number;
+    failed: number;
+  };
+  lastCycle: CrmRevalidationCycleEntry | null;
+  recentCycles: CrmRevalidationCycleEntry[];
+  perTenant: CrmRevalidationPerTenantRow[];
+  perTenantTracked: number;
+  perTenantLimit: number;
+}
+
 interface ConnectorHealthResponse {
   connectors: ConnectorHealthRow[];
   recentRefreshFailures: ConnectorRefreshFailure[];
@@ -972,6 +1012,7 @@ interface ConnectorHealthResponse {
   stuckOutboxEvents?: StuckOutboxEventRow[];
   stuckOutboxSummary?: StuckOutboxSummary;
   stuckOutboxLimit?: number;
+  crmRevalidation?: CrmRevalidationMetrics | null;
   window: {
     sinceDays: number;
     eventsLimit: number;
@@ -1032,6 +1073,7 @@ function ConnectorHealthPanel() {
     expiringSoonWithinHours,
     stuckOutboxEvents,
     stuckOutboxSummary,
+    crmRevalidation,
   } = data;
   const reconnectConnectors = connectors.filter((c) => c.lastSyncStatus === 'needs_reconnect');
   const erroredConnectors = connectors.filter((c) => c.lastSyncStatus === 'error');
@@ -1137,6 +1179,8 @@ function ConnectorHealthPanel() {
       />
 
       <StuckOutboxEventsPanel rows={stuckRows} summary={stuckSummary} />
+
+      <CrmRevalidationMetricsPanel metrics={crmRevalidation ?? null} />
 
       <VerifiedCallerHealthPanel />
 
@@ -2118,6 +2162,257 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (ms < 1_000) return `${ms}ms`;
+  const sec = ms / 1_000;
+  if (sec < 60) return `${sec.toFixed(sec < 10 ? 2 : 1)}s`;
+  const min = sec / 60;
+  return `${min.toFixed(min < 10 ? 1 : 0)}m`;
+}
+
+function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetrics | null }) {
+  const [showCycles, setShowCycles] = useState(false);
+  const [showTenants, setShowTenants] = useState(false);
+
+  if (!metrics) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-4">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <Database className="h-4 w-4 text-primary" />
+          CRM caller-identity revalidation
+        </h3>
+        <p className="text-xs text-text-muted mt-1">
+          Metrics unavailable. The background sweep has not reported counters yet, or the
+          metrics module failed to load.
+        </p>
+      </div>
+    );
+  }
+
+  const { totals, lastCycle, recentCycles, perTenant } = metrics;
+  const totalScrubbed = totals.staleScrubbed;
+  const totalFailed = totals.failed;
+  const tenantsWithFailures = perTenant.filter((t) => t.failed > 0);
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" />
+            CRM caller-identity revalidation
+            {totalFailed > 0 && (
+              <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                {totalFailed} failed
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Background sweep that re-probes cached CRM IDs against the upstream provider and
+            scrubs stale entries. Counters are in-memory and reset whenever the admin API
+            restarts (since {formatRelativeTime(metrics.startedAt)}).
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4">
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <div className="text-xs text-text-muted">Cycles run</div>
+          <div className="text-2xl font-bold">{totals.cyclesRun}</div>
+          {totals.cyclesThrew > 0 && (
+            <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+              {totals.cyclesThrew} threw
+            </div>
+          )}
+        </div>
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <div className="text-xs text-text-muted">Scanned</div>
+          <div className="text-2xl font-bold">{totals.scanned}</div>
+        </div>
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <div className="text-xs text-text-muted">Validated</div>
+          <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+            {totals.validated}
+          </div>
+        </div>
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <div className="text-xs text-text-muted" title="Cached IDs that no longer existed upstream and were cleared">
+            Stale scrubbed
+          </div>
+          <div className={`text-2xl font-bold ${totalScrubbed > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+            {totalScrubbed}
+          </div>
+        </div>
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <div className="text-xs text-text-muted" title="Rows whose tenant has no enabled CRM connector — bumped to avoid churn">
+            Skipped (no config)
+          </div>
+          <div className="text-2xl font-bold">{totals.skippedNoConfig}</div>
+        </div>
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <div className="text-xs text-text-muted">Failed</div>
+          <div className={`text-2xl font-bold ${totalFailed > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+            {totalFailed}
+          </div>
+        </div>
+      </div>
+
+      {lastCycle && (
+        <div className="px-4 pb-3 text-xs text-text-muted">
+          Last cycle <span title={new Date(lastCycle.finishedAt).toLocaleString()}>
+            {formatRelativeTime(lastCycle.finishedAt)}
+          </span>
+          : scanned <strong>{lastCycle.scanned}</strong>, validated <strong>{lastCycle.validated}</strong>,
+          scrubbed <strong>{lastCycle.staleScrubbed}</strong>, failed{' '}
+          <strong className={lastCycle.failed > 0 ? 'text-red-600 dark:text-red-400' : ''}>
+            {lastCycle.failed}
+          </strong>{' '}
+          ({formatDurationMs(lastCycle.durationMs)})
+          {lastCycle.threw && (
+            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              cycle threw
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="px-4 pb-4 flex flex-wrap gap-2">
+        <button
+          onClick={() => setShowCycles((v) => !v)}
+          className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
+        >
+          {showCycles ? 'Hide' : 'Show'} cycle history ({recentCycles.length})
+        </button>
+        <button
+          onClick={() => setShowTenants((v) => !v)}
+          className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
+          disabled={perTenant.length === 0}
+        >
+          {showTenants ? 'Hide' : 'Show'} per-tenant breakdown ({perTenant.length}
+          {metrics.perTenantTracked >= metrics.perTenantLimit ? '+' : ''})
+        </button>
+        {tenantsWithFailures.length > 0 && (
+          <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            {tenantsWithFailures.length} tenant{tenantsWithFailures.length === 1 ? '' : 's'} with
+            repeated failures
+          </span>
+        )}
+      </div>
+
+      {showCycles && (
+        <div className="border-t border-border overflow-x-auto">
+          {recentCycles.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-text-muted">
+              No cycles have completed yet. The first sweep runs ~5 minutes after admin API
+              startup.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">When</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Scanned</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Validated</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Scrubbed</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Skipped</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Failed</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentCycles.map((c) => (
+                  <tr key={`${c.startedAt}-${c.finishedAt}`} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
+                      <span title={new Date(c.finishedAt).toLocaleString()}>
+                        {formatRelativeTime(c.finishedAt)}
+                      </span>
+                      {c.threw && (
+                        <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                          threw
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">{c.scanned}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-green-600 dark:text-green-400">
+                      {c.validated}
+                    </td>
+                    <td className={`px-4 py-2 text-right tabular-nums ${c.staleScrubbed > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}>
+                      {c.staleScrubbed}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">{c.skippedNoConfig}</td>
+                    <td className={`px-4 py-2 text-right tabular-nums ${c.failed > 0 ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
+                      {c.failed}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                      {formatDurationMs(c.durationMs)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {showTenants && (
+        <div className="border-t border-border overflow-x-auto">
+          {perTenant.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-text-muted">
+              No per-tenant activity recorded yet.
+            </div>
+          ) : (
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface-secondary">
+                    <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                    <th className="text-right px-4 py-2 font-medium text-text-muted">Scanned</th>
+                    <th className="text-right px-4 py-2 font-medium text-text-muted">Validated</th>
+                    <th className="text-right px-4 py-2 font-medium text-text-muted">Scrubbed</th>
+                    <th className="text-right px-4 py-2 font-medium text-text-muted">Skipped</th>
+                    <th className="text-right px-4 py-2 font-medium text-text-muted">Failed</th>
+                    <th className="text-left px-4 py-2 font-medium text-text-muted">Last touched</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perTenant.map((t) => (
+                    <tr key={t.tenantId} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2 text-xs font-mono break-all">{t.tenantId}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{t.scanned}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-green-600 dark:text-green-400">
+                        {t.validated}
+                      </td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${t.staleScrubbed > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}>
+                        {t.staleScrubbed}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">{t.skippedNoConfig}</td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${t.failed > 0 ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
+                        {t.failed}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
+                        <span title={new Date(t.lastTouchedAt).toLocaleString()}>
+                          {formatRelativeTime(t.lastTouchedAt)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {metrics.perTenantTracked >= metrics.perTenantLimit && (
+                <div className="px-4 py-2 text-xs text-text-muted border-t border-border">
+                  Showing the most recent {metrics.perTenantLimit} tenants. Older entries are
+                  evicted to bound memory.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

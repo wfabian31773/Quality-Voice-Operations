@@ -19,6 +19,9 @@ import {
   computeStaleEvaluation,
   type TokenHealthStatus,
 } from '../../../platform/integrations/connectors/connectorStaleHealth';
+import {
+  getCrmRevalidationMetricsSnapshot,
+} from '../../../platform/integrations/connectors/CrmCallerIdentityRevalidationMetrics';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import type { ConnectorType } from '../../../platform/integrations/connectors/types';
 import {
@@ -433,6 +436,19 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
 
     summary.expiringSoon = expiringSoon.length;
 
+    // Snapshot the in-process CRM caller-identity revalidation sweep
+    // counters so the Connector Health view can render scanned /
+    // validated / staleScrubbed / failed totals alongside the existing
+    // observability tables. Cheap (in-memory) and best-effort: the rest
+    // of the payload is far too valuable to fail the response over a
+    // metrics snapshot bug.
+    let crmRevalidation: ReturnType<typeof getCrmRevalidationMetricsSnapshot> | null = null;
+    try {
+      crmRevalidation = getCrmRevalidationMetricsSnapshot();
+    } catch (err) {
+      logger.warn('Failed to load CRM revalidation metrics snapshot', { error: String(err) });
+    }
+
     return res.json({
       connectors,
       recentRefreshFailures,
@@ -447,6 +463,7 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       stuckOutboxEvents,
       stuckOutboxSummary,
       stuckOutboxLimit,
+      crmRevalidation,
       window: { sinceDays, eventsLimit, expiringWithinHours, stuckOutboxLimit },
     });
   } catch (err) {

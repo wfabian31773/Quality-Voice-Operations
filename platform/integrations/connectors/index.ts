@@ -26,6 +26,15 @@ export {
 } from './CrmStaleCacheRetentionScheduler';
 export type { CrmStaleCacheRetentionResult } from './CrmStaleCacheRetentionScheduler';
 export {
+  getCrmRevalidationMetricsSnapshot,
+  resetCrmRevalidationMetricsForTest,
+} from './CrmCallerIdentityRevalidationMetrics';
+export type {
+  CrmRevalidationMetricsSnapshot,
+  PerTenantSnapshot as CrmRevalidationPerTenantSnapshot,
+  CycleHistoryEntry as CrmRevalidationCycleHistoryEntry,
+} from './CrmCallerIdentityRevalidationMetrics';
+export {
   startConnectorStaleAlertScheduler,
   stopConnectorStaleAlertScheduler,
   runConnectorStaleAlertCycle,
