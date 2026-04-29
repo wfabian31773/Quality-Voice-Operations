@@ -18,6 +18,7 @@ import {
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import {
+  type AgentBuilderTKey,
   type IndustryTemplateKey,
   getDefaultWelcomeGreeting,
   getDefaultSystemPrompt,
@@ -98,6 +99,31 @@ const AGENT_TYPES = [
   'home-services', 'legal', 'customer-support', 'outbound-sales',
   'technical-support', 'collections', 'real-estate', 'restaurant', 'salon',
 ];
+
+/**
+ * Maps each agent-type slug to its localized label key in the Agent Builder
+ * i18n table. Keeps the underlying slug intact for backend validation while
+ * showing friendly, translated names in the dropdown.
+ */
+const AGENT_TYPE_LABEL_KEYS: Record<string, AgentBuilderTKey> = {
+  'general': 'agentTypeGeneral',
+  'answering-service': 'agentTypeAnsweringService',
+  'medical-after-hours': 'agentTypeMedicalAfterHours',
+  'outbound-scheduling': 'agentTypeOutboundScheduling',
+  'appointment-confirmation': 'agentTypeAppointmentConfirmation',
+  'custom': 'agentTypeCustom',
+  'dental': 'agentTypeDental',
+  'property-management': 'agentTypePropertyManagement',
+  'home-services': 'agentTypeHomeServices',
+  'legal': 'agentTypeLegal',
+  'customer-support': 'agentTypeCustomerSupport',
+  'outbound-sales': 'agentTypeOutboundSales',
+  'technical-support': 'agentTypeTechnicalSupport',
+  'collections': 'agentTypeCollections',
+  'real-estate': 'agentTypeRealEstate',
+  'restaurant': 'agentTypeRestaurant',
+  'salon': 'agentTypeSalon',
+};
 
 const TOOL_LABELS: Record<string, string> = {
   createServiceTicket: 'Create Service Ticket',
@@ -470,7 +496,11 @@ function AgentModal({
                 <label className="block text-sm font-medium text-text-primary mb-1">Type</label>
                 <select value={form.type} onChange={(e) => set('type', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                  {AGENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {AGENT_TYPES.map((slug) => {
+                    const labelKey = AGENT_TYPE_LABEL_KEYS[slug];
+                    const label = labelKey ? makeBuilderT(form.language)(labelKey) : slug;
+                    return <option key={slug} value={slug}>{label}</option>;
+                  })}
                 </select>
               </div>
               <div>
