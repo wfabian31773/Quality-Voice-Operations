@@ -685,7 +685,8 @@ export async function attachBookingToLeadById(
       : [];
 
     if (isDuplicateBooking(history, booking)) {
-      logger.info('Duplicate Cal.com webhook ignored (already recorded)', {
+      logger.info('Duplicate booking webhook ignored (already recorded)', {
+        provider: booking.provider,
         leadId: existing.id,
         eventType: booking.eventType,
         bookingUid: booking.bookingUid,
@@ -704,6 +705,7 @@ export async function attachBookingToLeadById(
       [JSON.stringify(nextPayload), existing.id],
     );
     logger.info('Booking attached to lead by id', {
+      provider: booking.provider,
       leadId: existing.id,
       eventType: booking.eventType,
       bookingId: booking.bookingId,
@@ -772,7 +774,8 @@ export async function attachBookingToLead(
         : [];
 
       if (isDuplicateBooking(history, booking)) {
-        logger.info('Duplicate Cal.com webhook ignored (already recorded)', {
+        logger.info('Duplicate booking webhook ignored (already recorded)', {
+          provider: booking.provider,
           leadId: existing.id,
           email,
           eventType: booking.eventType,
@@ -792,6 +795,7 @@ export async function attachBookingToLead(
         [JSON.stringify(nextPayload), existing.id],
       );
       logger.info('Booking attached to existing lead', {
+        provider: booking.provider,
         leadId: existing.id,
         email,
         eventType: booking.eventType,
@@ -812,13 +816,17 @@ export async function attachBookingToLead(
       ],
     );
     const newId = Number(insertResult.rows[0]?.id ?? 0);
-    logger.info('Booking created new lead row (no prior submission found)', { leadId: newId, email });
+    logger.info('Booking created new lead row (no prior submission found)', {
+      provider: booking.provider,
+      leadId: newId,
+      email,
+    });
     if (newId) {
       await recordLeadEvent(newId, {
         eventType: 'created',
         newStatus: 'new',
         author: email,
-        notes: 'Lead auto-created from Cal.com booking webhook',
+        notes: `Lead auto-created from ${booking.provider} booking webhook`,
       });
     }
     return { leadId: newId, duplicate: false };

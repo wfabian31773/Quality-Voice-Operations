@@ -181,6 +181,26 @@ export function assertProductionSecrets(): void {
     ['ALLOWED_ORIGINS', 'comma-separated list of CORS origins allowed in production'],
     ['TURNSTILE_SECRET_KEY', 'Cloudflare Turnstile secret key for sign-up CAPTCHA'],
   ];
+
+  // Defense-in-depth: when the deployment is wired to Calendly (either via the
+  // server-readable BOOK_DEMO_SCHEDULER_PROVIDER override or the build-time
+  // VITE_BOOK_DEMO_SCHEDULER_PROVIDER fallback), the Calendly webhook verifier
+  // must have its signing key configured, otherwise /book-demo/calendly-webhook
+  // will return 500 for every signed delivery in production.
+  const provider = (
+    process.env.BOOK_DEMO_SCHEDULER_PROVIDER ??
+    process.env.VITE_BOOK_DEMO_SCHEDULER_PROVIDER ??
+    ''
+  )
+    .trim()
+    .toLowerCase();
+  if (provider === 'calendly') {
+    required.push([
+      'CALENDLY_WEBHOOK_SECRET',
+      'HMAC-SHA256 signing key for Calendly /book-demo/calendly-webhook (required because BOOK_DEMO_SCHEDULER_PROVIDER=calendly)',
+    ]);
+  }
+
   const missing = required.filter(([name]) => !process.env[name]);
   if (missing.length > 0) {
     const names = missing.map(([name]) => name).join(', ');

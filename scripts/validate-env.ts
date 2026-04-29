@@ -35,6 +35,12 @@ const ENV_VARS: EnvVar[] = [
   { name: 'EMAIL_FROM', required: 'production', purpose: 'Default sender address for outbound email' },
   { name: 'APP_URL', required: 'production', purpose: 'Public application URL (for invite links, redirects)' },
   { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com /book-demo/calendar-webhook requests; signature is computed over `${timestamp}.${body}` and rejected when the signed timestamp falls outside a 5-minute window (production fails closed without it)' },
+  // CALENDLY_WEBHOOK_SECRET is conditionally required in production — only when
+  // VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is set
+  // to "calendly". The conditional check runs in `validateEnvironment` below
+  // rather than this static table so the var stays optional for the default
+  // Cal.com configuration.
+
   { name: 'SALES_NOTIFICATION_EMAIL', required: 'production', purpose: 'Sales inbox that receives demo lead and Cal.com booking lifecycle emails' },
   { name: 'VITE_BOOK_DEMO_SCHEDULER_URL', required: 'production', purpose: 'Embedded scheduler URL inlined into the /book-demo client bundle at vite build time' },
   { name: 'TURNSTILE_SECRET_KEY', required: 'production', purpose: 'Cloudflare Turnstile secret key for verifying sign-up CAPTCHA (production fails closed without it)' },
@@ -57,10 +63,26 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'ADMIN_PASSWORD', required: 'development', purpose: 'Seed admin password (used by seed-admin script)' },
   { name: 'ADMIN_INTERNAL_TOKEN', required: 'development', purpose: 'Internal bearer token for inter-service calls' },
   { name: 'OPS_SLACK_WEBHOOK_URL', required: 'development', purpose: 'Incoming-webhook URL for the ops Slack channel (used by docs-feedback alerts; falls back to SLACK_WEBHOOK_URL / SLACK_WEBHOOK)' },
-  { name: 'CALENDLY_WEBHOOK_SECRET', required: 'development', purpose: 'HMAC-SHA256 secret for verifying Calendly /book-demo/calendar-webhook requests (required only when VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly; route fails closed without it in production)' },
+  { name: 'VITE_BOOK_DEMO_SCHEDULER_PROVIDER', required: 'development', purpose: 'Scheduler provider for the /book-demo embed: "cal.com" (default) or "calendly". Inlined into the client bundle at vite build time' },
+  { name: 'BOOK_DEMO_SCHEDULER_PROVIDER', required: 'development', purpose: 'Server-readable mirror of VITE_BOOK_DEMO_SCHEDULER_PROVIDER. Set to "calendly" so validate-env can require CALENDLY_WEBHOOK_SECRET in production builds where the VITE_-prefixed value is consumed only at vite build time' },
+  { name: 'CALENDLY_WEBHOOK_SECRET', required: 'development', purpose: 'HMAC-SHA256 secret for verifying Calendly webhook requests (handled by both the unified /book-demo/calendar-webhook and the dedicated /book-demo/calendly-webhook routes). Conditionally required in production when VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly"' },
   { name: 'CALENDLY_WEBHOOK_TOLERANCE_SECONDS', required: 'development', purpose: 'Optional override (default 300) for Calendly signature timestamp replay window' },
-  { name: 'VITE_BOOK_DEMO_SCHEDULER_PROVIDER', required: 'development', purpose: 'Scheduler provider for the /book-demo embed: "cal.com" (default) or "calendly"' },
+  { name: 'CALENDLY_WEBHOOK_ALLOW_UNSIGNED', required: 'development', purpose: 'Dev/staging only. Set to "1" to accept unsigned Calendly webhook requests when CALENDLY_WEBHOOK_SECRET is not configured. Production always fails closed' },
 ];
+
+/**
+ * Returns the configured /book-demo scheduler provider, normalised to lower
+ * case. We check the server-readable BOOK_DEMO_SCHEDULER_PROVIDER first and
+ * fall back to the VITE_-prefixed build-time variable so deployments that set
+ * either form are covered.
+ */
+function resolveBookDemoSchedulerProvider(): string {
+  const v =
+    (process.env.BOOK_DEMO_SCHEDULER_PROVIDER ?? process.env.VITE_BOOK_DEMO_SCHEDULER_PROVIDER ?? '')
+      .trim()
+      .toLowerCase();
+  return v || 'cal.com';
+}
 
 export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
   passed: boolean;
@@ -105,6 +127,22 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
     }
   }
 
+  // Conditional production requirement: when the /book-demo page is wired to
+  // Calendly we must have a webhook secret so the verifier can authenticate
+  // Calendly's deliveries (the route fails closed in production without it).
+  const provider = resolveBookDemoSchedulerProvider();
+  if (isProd && provider === 'calendly') {
+    console.log('\nConditional variables:');
+    if (!process.env.CALENDLY_WEBHOOK_SECRET) {
+      console.log(
+        `  FAIL  CALENDLY_WEBHOOK_SECRET — required because BOOK_DEMO_SCHEDULER_PROVIDER (or VITE_BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly"`,
+      );
+      missing.push('CALENDLY_WEBHOOK_SECRET');
+    } else {
+      console.log(`  PASS  CALENDLY_WEBHOOK_SECRET (Calendly provider selected)`);
+    }
+  }
+
   if (isProd && process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
     warnings.push('STRIPE_SECRET_KEY appears to be a test key in production');
   }
@@ -115,17 +153,6 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   if (isProd && process.env.PLATFORM_DB_POOL_URL && !process.env.PLATFORM_DB_POOL_URL.includes('6543')) {
     warnings.push('PLATFORM_DB_POOL_URL may not be using transaction pooler port 6543');
-  }
-
-  if (
-    isProd &&
-    process.env.VITE_BOOK_DEMO_SCHEDULER_PROVIDER === 'calendly' &&
-    !process.env.CALENDLY_WEBHOOK_SECRET
-  ) {
-    console.log(
-      `  FAIL  CALENDLY_WEBHOOK_SECRET — required when VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly (route fails closed in production)`,
-    );
-    missing.push('CALENDLY_WEBHOOK_SECRET');
   }
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {

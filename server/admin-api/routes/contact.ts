@@ -487,7 +487,15 @@ async function handleCalendlyWebhook(raw: Buffer, signature: string | undefined,
     return;
   }
 
-  const eventType = calendlyEventToBookingType(eventName);
+  // Promote `invitee.created` deliveries with `payload.rescheduled === true`
+  // to the `rescheduled` lifecycle so the sales-inbox UI matches Cal.com's
+  // BOOKING_RESCHEDULED behaviour (Calendly fires `invitee.canceled` for the
+  // old slot and a separate `invitee.created` with `rescheduled: true` for
+  // the new slot).
+  const eventType: BookingDetails['eventType'] =
+    eventName === 'invitee.created' && payload.rescheduled === true
+      ? 'rescheduled'
+      : calendlyEventToBookingType(eventName);
   const attendeeEmail = payload.email?.trim() || null;
 
   // Calendly's `name` field is the full display name. Fall back to first/last
@@ -651,5 +659,23 @@ router.post('/book-demo/calendar-webhook', async (req: Request, res: Response) =
 
   await handleCalcomWebhook(raw, calcomSig, calcomTimestamp, res);
 });
+
+
+// Dedicated Calendly-only webhook endpoint. Some deployments prefer a
+// provider-specific URL (e.g. when registering with Calendly's
+// /webhook_subscriptions API) instead of the unified
+// /book-demo/calendar-webhook above. Both routes share the same verifier,
+// type definitions, and lifecycle mapping via handleCalendlyWebhook so the
+// behaviour is identical regardless of which URL the subscription targets.
+router.post('/book-demo/calendly-webhook', async (req: Request, res: Response) => {
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+  const signature =
+    req.header('calendly-webhook-signature') ||
+    req.header('Calendly-Webhook-Signature') ||
+    req.header('x-calendly-webhook-signature') ||
+    undefined;
+  await handleCalendlyWebhook(raw, signature, res);
+});
+
 
 export default router;
