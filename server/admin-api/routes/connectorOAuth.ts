@@ -31,10 +31,58 @@ import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 const router = Router();
 const logger = createLogger('CONNECTOR_OAUTH');
 
+/**
+ * Sends the standard 400 `OAUTH_NOT_CONFIGURED` response and records a
+ * `connector.oauth_attempt_blocked` audit event so the Platform Admin
+ * Integrations Status panel can surface real demand for missing
+ * credentials (Task #919).
+ *
+ * `connectorProvider` is the canonical provider identifier used by
+ * `integrations.provider` and the `connector.oauth_connected` audit log
+ * `resource_id` (e.g. `google-calendar` rather than the route-level
+ * `google`). Passing it explicitly keeps the demand join in
+ * `platformIntegrationsStatus.ts` consistent across the connected and
+ * blocked counts.
+ */
+// Audit-write is fire-and-forget on this hot error path: the user is
+// already getting a 400, so a slow/unavailable audit pool must not
+// stretch the latency. Failures fall back to a logger.warn so ops still
+// notice when the demand signal stops flowing.
 function sendOAuthNotConfigured(
+  req: Request,
   res: Response,
-  opts: { provider: string; providerLabel: string; missingEnv: string; docsUrl: string },
+  opts: {
+    provider: string;
+    connectorProvider: string;
+    providerLabel: string;
+    missingEnv: string;
+    docsUrl: string;
+  },
 ) {
+  void writeAuditLog({
+    tenantId: req.user!.tenantId,
+    actorUserId: req.user!.userId,
+    actorRole: req.user!.role,
+    action: 'connector.oauth_attempt_blocked',
+    resourceType: 'connector',
+    resourceId: opts.connectorProvider,
+    changes: {
+      provider: opts.connectorProvider,
+      routeProvider: opts.provider,
+      missingEnv: opts.missingEnv,
+    },
+    severity: 'warning',
+    ipAddress: extractIp(req),
+    userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+  }).catch((err) => {
+    // `writeAuditLog` already logs internally for non-critical events;
+    // log here too so a missing demand signal is loud at the route boundary.
+    logger.warn('Failed to record oauth_attempt_blocked audit event', {
+      provider: opts.connectorProvider,
+      error: String(err),
+    });
+  });
+
   return res.status(400).json({
     error: `${opts.providerLabel} OAuth not configured: ${opts.missingEnv} missing`,
     code: 'OAUTH_NOT_CONFIGURED',
@@ -226,8 +274,9 @@ function oauthSuccessHtml(provider: string, appOrigin: string, displayName: stri
 router.get('/connectors/oauth/hubspot/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.HUBSPOT_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'hubspot',
+      connectorProvider: 'hubspot',
       providerLabel: 'HubSpot',
       missingEnv: 'HUBSPOT_CLIENT_ID',
       docsUrl: '/docs/connecting-hubspot',
@@ -339,8 +388,9 @@ router.get('/connectors/oauth/hubspot/callback', async (req, res) => {
 router.get('/connectors/oauth/google/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'google',
+      connectorProvider: 'google-calendar',
       providerLabel: 'Google',
       missingEnv: 'GOOGLE_CLIENT_ID',
       docsUrl: '/docs/connecting-calendar',
@@ -451,8 +501,9 @@ router.get('/connectors/oauth/google/callback', async (req, res) => {
 router.get('/connectors/oauth/outlook/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.MICROSOFT_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'outlook',
+      connectorProvider: 'outlook-calendar',
       providerLabel: 'Microsoft',
       missingEnv: 'MICROSOFT_CLIENT_ID',
       docsUrl: '/docs/connecting-outlook',
@@ -567,8 +618,9 @@ router.get('/connectors/oauth/outlook/callback', async (req, res) => {
 router.get('/connectors/oauth/slack/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.SLACK_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'slack',
+      connectorProvider: 'slack',
       providerLabel: 'Slack',
       missingEnv: 'SLACK_CLIENT_ID',
       docsUrl: '/docs/connecting-slack',
@@ -679,8 +731,9 @@ router.get('/connectors/oauth/slack/callback', async (req, res) => {
 router.get('/connectors/oauth/pipedrive/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.PIPEDRIVE_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'pipedrive',
+      connectorProvider: 'pipedrive',
       providerLabel: 'Pipedrive',
       missingEnv: 'PIPEDRIVE_CLIENT_ID',
       docsUrl: '/docs/connecting-pipedrive',
@@ -700,8 +753,9 @@ router.get('/connectors/oauth/pipedrive/init', requireAuth, requireRole('manager
 router.get('/connectors/oauth/salesforce/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.SALESFORCE_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'salesforce',
+      connectorProvider: 'salesforce',
       providerLabel: 'Salesforce',
       missingEnv: 'SALESFORCE_CLIENT_ID',
       docsUrl: '/docs/connecting-salesforce',
@@ -915,8 +969,9 @@ router.get('/connectors/oauth/salesforce/callback', async (req, res) => {
 router.get('/connectors/oauth/quickbooks/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'quickbooks',
+      connectorProvider: 'quickbooks',
       providerLabel: 'QuickBooks',
       missingEnv: 'QUICKBOOKS_CLIENT_ID',
       docsUrl: '/docs/connecting-quickbooks',
@@ -1032,8 +1087,9 @@ router.get('/connectors/oauth/quickbooks/callback', async (req, res) => {
 router.get('/connectors/oauth/zoho/init', requireAuth, requireRole('manager'), (req, res) => {
   const clientId = process.env.ZOHO_CLIENT_ID ?? '';
   if (!clientId) {
-    return sendOAuthNotConfigured(res, {
+    return sendOAuthNotConfigured(req, res, {
       provider: 'zoho',
+      connectorProvider: 'zoho',
       providerLabel: 'Zoho CRM',
       missingEnv: 'ZOHO_CLIENT_ID',
       docsUrl: '/docs/connecting-zoho',

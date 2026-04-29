@@ -107,6 +107,24 @@ interface AuditDemandRow {
   attempted_tenants: number;
 }
 
+interface BlockedAttemptDemandRow {
+  provider: string;
+  blocked_tenants: number;
+}
+
+interface ProviderDemand {
+  enabled: number;
+  total: number;
+  attempted: number;
+  /**
+   * Distinct tenants that hit `OAUTH_NOT_CONFIGURED` when initiating an
+   * OAuth flow for this provider — Task #919. Surfaces real demand for
+   * credentials that haven't been wired up yet, separate from the
+   * historical "ever connected" count.
+   */
+  blocked: number;
+}
+
 /**
  * Returns per-provider tenant demand:
  *   - enabledTenantCount: distinct tenants with that provider's connector
@@ -116,18 +134,27 @@ interface AuditDemandRow {
  *   - attemptedTenantCount: distinct tenants that have ever successfully
  *     completed an OAuth connect for that provider, as recorded in
  *     `audit_logs(action='connector.oauth_connected', resource_id=<provider>)`.
- *     This is the best-effort historical demand signal — failed attempts
- *     are not currently audited.
+ *   - blockedAttemptCount: distinct tenants that ever tried to start the
+ *     OAuth flow but were rejected with `OAUTH_NOT_CONFIGURED` because
+ *     the server's `*_CLIENT_ID`/`*_CLIENT_SECRET` weren't set. Recorded
+ *     by `connectorOAuth.ts` as
+ *     `audit_logs(action='connector.oauth_attempt_blocked', resource_id=<provider>)`.
+ *     This is the truest demand signal for *missing* providers because
+ *     by definition no row will ever appear in `integrations` for them.
  *
- * Both queries run with RLS disabled (`withPrivilegedClient`) so the
- * platform admin console can aggregate across all tenants.
+ * All three queries run with RLS disabled (`withPrivilegedClient`) so
+ * the platform admin console can aggregate across all tenants.
  */
-async function loadTenantDemand(): Promise<Map<string, {
-  enabled: number;
-  total: number;
-  attempted: number;
-}>> {
-  const demand = new Map<string, { enabled: number; total: number; attempted: number }>();
+async function loadTenantDemand(): Promise<Map<string, ProviderDemand>> {
+  const demand = new Map<string, ProviderDemand>();
+  const ensure = (provider: string): ProviderDemand => {
+    let existing = demand.get(provider);
+    if (!existing) {
+      existing = { enabled: 0, total: 0, attempted: 0, blocked: 0 };
+      demand.set(provider, existing);
+    }
+    return existing;
+  };
 
   try {
     await withPrivilegedClient(async (client) => {
@@ -142,12 +169,9 @@ async function loadTenantDemand(): Promise<Map<string, {
       for (const row of integrationsRes.rows as unknown as TenantDemandRow[]) {
         const provider = String(row.provider ?? '');
         if (!provider) continue;
-        const enabled = Number(row.enabled_tenants ?? 0);
-        const total = Number(row.total_tenants ?? 0);
-        const existing = demand.get(provider) ?? { enabled: 0, total: 0, attempted: 0 };
-        existing.enabled = enabled;
-        existing.total = total;
-        demand.set(provider, existing);
+        const entry = ensure(provider);
+        entry.enabled = Number(row.enabled_tenants ?? 0);
+        entry.total = Number(row.total_tenants ?? 0);
       }
 
       const auditRes = await client.query(
@@ -162,10 +186,22 @@ async function loadTenantDemand(): Promise<Map<string, {
       for (const row of auditRes.rows as unknown as AuditDemandRow[]) {
         const provider = String(row.provider ?? '');
         if (!provider) continue;
-        const attempted = Number(row.attempted_tenants ?? 0);
-        const existing = demand.get(provider) ?? { enabled: 0, total: 0, attempted: 0 };
-        existing.attempted = attempted;
-        demand.set(provider, existing);
+        ensure(provider).attempted = Number(row.attempted_tenants ?? 0);
+      }
+
+      const blockedRes = await client.query(
+        `SELECT
+           resource_id AS provider,
+           COUNT(DISTINCT tenant_id) AS blocked_tenants
+         FROM audit_logs
+         WHERE action = 'connector.oauth_attempt_blocked'
+           AND resource_id IS NOT NULL
+         GROUP BY resource_id`,
+      );
+      for (const row of blockedRes.rows as unknown as BlockedAttemptDemandRow[]) {
+        const provider = String(row.provider ?? '');
+        if (!provider) continue;
+        ensure(provider).blocked = Number(row.blocked_tenants ?? 0);
       }
     });
   } catch (err) {
@@ -187,7 +223,12 @@ router.get('/platform/integrations-status', requireAuth, requirePlatformAdmin, a
       name,
       set: Boolean(process.env[name] && process.env[name] !== ''),
     }));
-    const counts = demand.get(spec.connectorProvider) ?? { enabled: 0, total: 0, attempted: 0 };
+    const counts = demand.get(spec.connectorProvider) ?? {
+      enabled: 0,
+      total: 0,
+      attempted: 0,
+      blocked: 0,
+    };
     return {
       provider: spec.provider,
       connectorProvider: spec.connectorProvider,
@@ -201,13 +242,24 @@ router.get('/platform/integrations-status', requireAuth, requirePlatformAdmin, a
       enabledTenantCount: counts.enabled,
       totalTenantCount: counts.total,
       attemptedTenantCount: counts.attempted,
+      blockedAttemptCount: counts.blocked,
     };
   });
 
   const configuredCount = providers.filter((p) => p.configured).length;
+  // Sum the strongest demand signal per missing provider so admins can
+  // size the credential backlog at a glance. Per-provider we take the
+  // max of enabled (legacy / pre-revocation), attempted (ever connected),
+  // and blocked (Task #919 — tenants who tried after credentials were
+  // missing) so we don't double-count the same tenant on the same row.
   const blockedTenantDemand = providers
     .filter((p) => !p.configured)
-    .reduce((sum, p) => sum + Math.max(p.enabledTenantCount, p.attemptedTenantCount), 0);
+    .reduce(
+      (sum, p) =>
+        sum +
+        Math.max(p.enabledTenantCount, p.attemptedTenantCount, p.blockedAttemptCount),
+      0,
+    );
 
   return res.json({
     providers,

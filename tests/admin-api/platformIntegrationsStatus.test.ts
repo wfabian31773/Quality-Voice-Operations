@@ -9,6 +9,12 @@
  *     for the "enabled" subtotal, full count for "total")
  *   - `audit_logs(action='connector.oauth_connected')` grouped by
  *     `resource_id` (lifetime "attempted" count)
+ *   - `audit_logs(action='connector.oauth_attempt_blocked')` grouped by
+ *     `resource_id` — Task #919: tenants who tried to start the OAuth
+ *     flow but hit `OAUTH_NOT_CONFIGURED`. Surfaced as
+ *     `blockedAttemptCount` on each provider so admins can prioritise
+ *     wiring credentials for the integrations tenants are actually
+ *     trying to use.
  *
  * We mount the real router with stubbed auth/RBAC middleware and
  * intercept the privileged DB client so we can assert the SQL shape and
@@ -94,6 +100,7 @@ interface IntegrationsStatusBody {
     enabledTenantCount: number;
     totalTenantCount: number;
     attemptedTenantCount: number;
+    blockedAttemptCount: number;
   }>;
   summary: { total: number; configured: number; missing: number; blockedTenantDemand: number };
 }
@@ -116,12 +123,27 @@ describe('GET /platform/integrations-status', () => {
           ],
         };
       }
-      if (text.includes('FROM audit_logs')) {
+      if (text.includes("action = 'connector.oauth_connected'")) {
         return {
           rows: [
             { provider: 'hubspot', attempted_tenants: '9' },
             { provider: 'salesforce', attempted_tenants: '4' },
             { provider: 'pipedrive', attempted_tenants: '1' },
+          ],
+        };
+      }
+      if (text.includes("action = 'connector.oauth_attempt_blocked'")) {
+        return {
+          rows: [
+            // Salesforce drives the strongest blocked-attempt demand:
+            { provider: 'salesforce', blocked_tenants: '6' },
+            // Outlook's blocked count exceeds its connected count and
+            // proves the demand metric is independent of `integrations`:
+            { provider: 'outlook-calendar', blocked_tenants: '2' },
+            // Pipedrive has both a connected attempt AND blocked
+            // attempts — we assert the higher (blocked) wins for the
+            // summary roll-up.
+            { provider: 'pipedrive', blocked_tenants: '3' },
           ],
         };
       }
@@ -140,10 +162,12 @@ describe('GET /platform/integrations-status', () => {
     expect(byProvider['hubspot'].enabledTenantCount).toBe(5);
     expect(byProvider['hubspot'].totalTenantCount).toBe(7);
     expect(byProvider['hubspot'].attemptedTenantCount).toBe(9);
+    expect(byProvider['hubspot'].blockedAttemptCount).toBe(0);
 
     expect(byProvider['google-calendar'].configured).toBe(true);
     expect(byProvider['google-calendar'].enabledTenantCount).toBe(2);
     expect(byProvider['google-calendar'].attemptedTenantCount).toBe(0);
+    expect(byProvider['google-calendar'].blockedAttemptCount).toBe(0);
 
     expect(byProvider['salesforce'].configured).toBe(false);
     expect(byProvider['salesforce'].missingEnv).toEqual([
@@ -153,24 +177,37 @@ describe('GET /platform/integrations-status', () => {
     expect(byProvider['salesforce'].enabledTenantCount).toBe(0);
     expect(byProvider['salesforce'].totalTenantCount).toBe(3);
     expect(byProvider['salesforce'].attemptedTenantCount).toBe(4);
+    expect(byProvider['salesforce'].blockedAttemptCount).toBe(6);
 
     expect(byProvider['pipedrive'].configured).toBe(false);
     expect(byProvider['pipedrive'].enabledTenantCount).toBe(0);
     expect(byProvider['pipedrive'].attemptedTenantCount).toBe(1);
+    expect(byProvider['pipedrive'].blockedAttemptCount).toBe(3);
+
+    // Outlook has only blocked attempts — no `integrations` row, no
+    // `oauth_connected` audit. The blocked count surfaces demand that
+    // would otherwise be invisible.
+    expect(byProvider['outlook-calendar'].configured).toBe(false);
+    expect(byProvider['outlook-calendar'].enabledTenantCount).toBe(0);
+    expect(byProvider['outlook-calendar'].attemptedTenantCount).toBe(0);
+    expect(byProvider['outlook-calendar'].blockedAttemptCount).toBe(2);
 
     expect(byProvider['zoho']).toBeDefined();
     expect(byProvider['zoho'].configured).toBe(false);
     expect(byProvider['zoho'].enabledTenantCount).toBe(0);
     expect(byProvider['zoho'].attemptedTenantCount).toBe(0);
+    expect(byProvider['zoho'].blockedAttemptCount).toBe(0);
 
     expect(body.summary.total).toBe(body.providers.length);
     expect(body.summary.configured).toBe(2);
     expect(body.summary.missing).toBe(body.providers.length - 2);
-    // blockedTenantDemand sums max(enabled, attempted) across UN-configured providers:
-    //   salesforce: max(0, 4) = 4
-    //   pipedrive:  max(0, 1) = 1
-    //   others:     0
-    expect(body.summary.blockedTenantDemand).toBe(5);
+    // blockedTenantDemand sums max(enabled, attempted, blocked) across
+    // UN-configured providers:
+    //   salesforce:        max(0, 4, 6) = 6
+    //   pipedrive:         max(0, 1, 3) = 3
+    //   outlook-calendar:  max(0, 0, 2) = 2
+    //   others:            0
+    expect(body.summary.blockedTenantDemand).toBe(11);
   });
 
   it('falls back to zero counts and continues serving when the demand query fails', async () => {
@@ -185,23 +222,31 @@ describe('GET /platform/integrations-status', () => {
       expect(p.enabledTenantCount).toBe(0);
       expect(p.totalTenantCount).toBe(0);
       expect(p.attemptedTenantCount).toBe(0);
+      expect(p.blockedAttemptCount).toBe(0);
     }
     expect(body.summary.blockedTenantDemand).toBe(0);
   });
 
-  it('issues both the integrations and audit_logs aggregations with the expected shape', async () => {
+  it('issues integrations + connected + blocked-attempt aggregations with the expected shape', async () => {
     queryMock.mockResolvedValue({ rows: [] });
     const app = await buildApp();
     await request(app).get('/platform/integrations-status');
 
     const sqlTexts = queryMock.mock.calls.map((c) => String(c[0]));
     const integrationsCall = sqlTexts.find((s) => s.includes('FROM integrations'));
-    const auditCall = sqlTexts.find((s) => s.includes('FROM audit_logs'));
+    const connectedCall = sqlTexts.find((s) =>
+      s.includes("action = 'connector.oauth_connected'"),
+    );
+    const blockedCall = sqlTexts.find((s) =>
+      s.includes("action = 'connector.oauth_attempt_blocked'"),
+    );
     expect(integrationsCall).toBeDefined();
-    expect(auditCall).toBeDefined();
+    expect(connectedCall).toBeDefined();
+    expect(blockedCall).toBeDefined();
     expect(integrationsCall!).toContain('GROUP BY provider');
     expect(integrationsCall!).toContain("FILTER (WHERE is_enabled = true)");
-    expect(auditCall!).toContain("action = 'connector.oauth_connected'");
-    expect(auditCall!).toContain('GROUP BY resource_id');
+    expect(connectedCall!).toContain('GROUP BY resource_id');
+    expect(blockedCall!).toContain('GROUP BY resource_id');
+    expect(blockedCall!).toContain('resource_id IS NOT NULL');
   });
 });

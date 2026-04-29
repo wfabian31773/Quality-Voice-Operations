@@ -2736,6 +2736,14 @@ interface IntegrationProviderStatus {
   enabledTenantCount: number;
   totalTenantCount: number;
   attemptedTenantCount: number;
+  /**
+   * Distinct tenants who tried to start the OAuth flow for this provider
+   * but were blocked because the server's credentials weren't configured
+   * (Task #919). For un-configured providers this is usually the truest
+   * demand signal since by definition no row will ever land in the
+   * `integrations` table for them.
+   */
+  blockedAttemptCount: number;
 }
 
 interface IntegrationsStatusResponse {
@@ -2819,7 +2827,9 @@ function IntegrationsStatusPanel() {
               <p className="text-xs mt-1 font-medium">
                 {data.summary.blockedTenantDemand} tenant{data.summary.blockedTenantDemand === 1 ? '' : 's'}-by-provider
                 {' '}signal{data.summary.blockedTenantDemand === 1 ? '' : 's'} of demand on missing providers
-                {' '}(a tenant blocked on two providers counts twice). Prioritize the rows with the highest counts below.
+                {' '}(a tenant blocked on two providers counts twice). Each row's
+                {' '}<strong>blocked attempts</strong> badge shows tenants who tried to connect
+                {' '}but hit "OAuth not configured" — wire those credentials first.
               </p>
             )}
           </div>
@@ -2834,8 +2844,16 @@ function IntegrationsStatusPanel() {
           <div className="divide-y divide-border">
             {[...providers]
               .sort((a, b) => {
-                const aDemand = Math.max(a.enabledTenantCount, a.attemptedTenantCount);
-                const bDemand = Math.max(b.enabledTenantCount, b.attemptedTenantCount);
+                const aDemand = Math.max(
+                  a.enabledTenantCount,
+                  a.attemptedTenantCount,
+                  a.blockedAttemptCount,
+                );
+                const bDemand = Math.max(
+                  b.enabledTenantCount,
+                  b.attemptedTenantCount,
+                  b.blockedAttemptCount,
+                );
                 if (a.configured !== b.configured) return a.configured ? 1 : -1;
                 return bDemand - aDemand;
               })
@@ -2873,6 +2891,15 @@ function IntegrationsStatusPanel() {
                             {' '}/ {p.attemptedTenantCount} ever
                           </span>
                         )}
+                      </span>
+                    )}
+                    {p.blockedAttemptCount > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                        title={`${p.blockedAttemptCount} tenant(s) tried to connect but were blocked because the server's ${p.requiredEnv.join(' / ')} environment variable(s) weren't configured. Recorded from connector.oauth_attempt_blocked audit events.`}
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {p.blockedAttemptCount} blocked attempt{p.blockedAttemptCount === 1 ? '' : 's'}
                       </span>
                     )}
                   </div>
