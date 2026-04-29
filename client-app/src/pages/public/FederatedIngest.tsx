@@ -16,7 +16,19 @@ const ingestStepIcons = [KeyRound, Webhook, Database, BarChart3];
 const platformBenefitIcons = [BarChart3, Activity, GitBranch, Plug, Zap, ShieldCheck];
 const securityIcons = [KeyRound, RefreshCw, Lock, AlertTriangle];
 
-const sampleRequest = `POST /ingest/calls HTTP/1.1
+type TextItem = { title: string; desc: string };
+
+export default function FederatedIngest() {
+  const { t } = useTranslation();
+
+  const transcriptAssistant = JSON.stringify(
+    t('federated_ingest_page.ingest_steps.sample.transcript_assistant'),
+  );
+  const transcriptUser = JSON.stringify(
+    t('federated_ingest_page.ingest_steps.sample.transcript_user'),
+  );
+
+  const sampleRequest = `POST /ingest/calls HTTP/1.1
 Host: api.qvo.ai
 Authorization: Bearer qvo_fed_live_***
 Content-Type: application/json
@@ -31,19 +43,14 @@ Idempotency-Key: ext_call_8f02a7c1
   "ended_at":   "2026-04-27T15:11:42Z",
   "outcome": "appointment_booked",
   "transcript": [
-    { "role": "assistant", "text": "Thanks for calling Lakeside Eye Care..." },
-    { "role": "user",      "text": "I need to reschedule my Friday appointment." }
+    { "role": "assistant", "text": ${transcriptAssistant} },
+    { "role": "user",      "text": ${transcriptUser} }
   ],
   "tool_calls": [
     { "name": "scheduling.reschedule", "args": { "patient_id": "p_4521" }, "ok": true }
   ],
   "metadata": { "vertical": "ophthalmology", "language": "en-US" }
 }`;
-
-type TextItem = { title: string; desc: string };
-
-export default function FederatedIngest() {
-  const { t } = useTranslation();
 
   useEffect(() => {
     trackPageView('/product/federated-ingest');

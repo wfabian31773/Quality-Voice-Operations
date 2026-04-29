@@ -215,6 +215,10 @@
       "heading": "Quatro passos da chamada externa às operações unificadas",
       "step_label": "Passo {{n}}",
       "code_caption": "Um POST por chamada. Chaves de idempotência tornam as reentregas seguras por padrão.",
+      "sample": {
+        "transcript_assistant": "Obrigado por ligar para a Lakeside Eye Care...",
+        "transcript_user": "Preciso remarcar minha consulta de sexta-feira."
+      },
       "items": [
         {
           "title": "Gere uma chave de API federada",

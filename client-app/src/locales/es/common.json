@@ -215,6 +215,10 @@
       "heading": "Cuatro pasos desde una llamada externa hasta operaciones unificadas",
       "step_label": "Paso {{n}}",
       "code_caption": "Un POST por llamada. Las claves de idempotencia hacen que los reintentos sean seguros por defecto.",
+      "sample": {
+        "transcript_assistant": "Gracias por llamar a Lakeside Eye Care...",
+        "transcript_user": "Necesito reprogramar mi cita del viernes."
+      },
       "items": [
         {
           "title": "Genera una clave de API federada",

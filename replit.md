@@ -14,6 +14,13 @@ The QVO platform consists of a React-based admin dashboard (`client-app`), an Ad
 ### UI/UX
 The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and Zustand, supporting multiple languages (English default, Spanish PoC) via `i18next`. It features a responsive design for public marketing pages and a protected dashboard. Key UI elements include the **Agent Builder (Agent Studio)** for visual workflow creation using `@xyflow/react`, with version control and a voice picker featuring OpenAI TTS previews. A **Platform Assistant** provides context-aware guidance through OpenAI function calling. The **Design System — Refined Harbor** defines the visual language using a unified approach for runtime CSS variables and typed design tokens, ensuring consistent branding across the platform.
 
+#### i18n convention — code samples on marketing pages
+When a marketing page (e.g. `client-app/src/pages/public/FederatedIngest.tsx`) embeds a code snippet such as an HTTP request, follow this split so the snippet stays a copy-pastable, contract-accurate example while still feeling native to non-English visitors:
+- **Keep in English (never translate):** HTTP method/path/version, header names and values, JSON keys, enum-like string values, IDs, timestamps, currency codes, and anything else that is part of the wire-format contract (e.g. `tenant_id`, `idempotency_key`, `"inbound"`, `"appointment_booked"`).
+- **Translate via `t()`:** human-readable labels — transcript text, comment lines (`// ...` / `# ...`), and any prose that a developer would never paste literally into a real request.
+- **Where to put the keys:** colocate them with the rest of the page's copy under a `sample` sub-object on the same section (see `federated_ingest_page.ingest_steps.sample.transcript_assistant` / `.transcript_user` in `client-app/src/locales/{en,de,es,fr,pt-BR}/common.json`).
+- **Embedding safely:** when the translated string is interpolated into a JSON literal, wrap it in `JSON.stringify(t('...'))` so quotes and non-ASCII characters from translators cannot break the surrounding JSON.
+
 ### Technical Implementation
 - **Admin API (`server/admin-api/`):** An Express 5 application offering JWT-authenticated, RBAC-enabled access to tenant configurations, agent workflows, billing, usage metering, campaign management, knowledge base operations, and analytics. It enforces trial guardrails, rate limiting, and auto-suspension policies.
 - **Voice Gateway (`server/voice-gateway/`):** Acts as a Twilio webhook and OpenAI Realtime WebSocket bridge, managing call lifecycles, routing, and audio streaming for the embedded website widget.

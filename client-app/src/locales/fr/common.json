@@ -215,6 +215,10 @@
       "heading": "Quatre étapes de l'appel externe aux opérations unifiées",
       "step_label": "Étape {{n}}",
       "code_caption": "Un POST par appel. Les clés d'idempotence rendent les reprises sûres par défaut.",
+      "sample": {
+        "transcript_assistant": "Merci d'appeler Lakeside Eye Care...",
+        "transcript_user": "Je dois reporter mon rendez-vous de vendredi."
+      },
       "items": [
         {
           "title": "Générez une clé API fédérée",

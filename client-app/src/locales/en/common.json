@@ -215,6 +215,10 @@
       "heading": "Four steps from external call to unified operations",
       "step_label": "Step {{n}}",
       "code_caption": "One POST per call. Idempotency keys make retries safe by default.",
+      "sample": {
+        "transcript_assistant": "Thanks for calling Lakeside Eye Care...",
+        "transcript_user": "I need to reschedule my Friday appointment."
+      },
       "items": [
         {
           "title": "Mint a federated API key",

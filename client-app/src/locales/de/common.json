@@ -215,6 +215,10 @@
       "heading": "Vier Schritte vom externen Anruf zu vereinheitlichten Operations",
       "step_label": "Schritt {{n}}",
       "code_caption": "Ein POST pro Anruf. Idempotenz-Schlüssel machen Wiederholungen standardmäßig sicher.",
+      "sample": {
+        "transcript_assistant": "Danke, dass Sie Lakeside Eye Care anrufen...",
+        "transcript_user": "Ich muss meinen Termin am Freitag verschieben."
+      },
       "items": [
         {
           "title": "Erstellen Sie einen föderierten API-Schlüssel",
