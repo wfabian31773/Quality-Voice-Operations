@@ -75,8 +75,9 @@ export default function Contact() {
                   <div className="space-y-5">
                     <div className="grid md:grid-cols-2 gap-5">
                       <div>
-                        <label className="block text-sm font-medium font-body text-text-primary mb-1.5">Full name</label>
+                        <label htmlFor="contact-name" className="block text-sm font-medium font-body text-text-primary mb-1.5">Full name</label>
                         <input
+                          id="contact-name"
                           type="text"
                           required
                           value={form.name}
@@ -86,8 +87,9 @@ export default function Contact() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium font-body text-text-primary mb-1.5">Email</label>
+                        <label htmlFor="contact-email" className="block text-sm font-medium font-body text-text-primary mb-1.5">Email</label>
                         <input
+                          id="contact-email"
                           type="email"
                           required
                           value={form.email}
@@ -98,8 +100,9 @@ export default function Contact() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium font-body text-text-primary mb-1.5">Company or practice name</label>
+                      <label htmlFor="contact-company" className="block text-sm font-medium font-body text-text-primary mb-1.5">Company or practice name</label>
                       <input
+                        id="contact-company"
                         type="text"
                         value={form.company}
                         onChange={(e) => setForm({ ...form, company: e.target.value })}
@@ -108,8 +111,9 @@ export default function Contact() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium font-body text-text-primary mb-1.5">How can we help?</label>
+                      <label htmlFor="contact-message" className="block text-sm font-medium font-body text-text-primary mb-1.5">How can we help?</label>
                       <textarea
+                        id="contact-message"
                         required
                         rows={5}
                         value={form.message}

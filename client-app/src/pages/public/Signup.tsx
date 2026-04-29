@@ -183,8 +183,9 @@ export default function Signup() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.organization_name')}</label>
+                  <label htmlFor="signup-org-name" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.organization_name')}</label>
                   <input
+                    id="signup-org-name"
                     type="text"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
@@ -195,8 +196,9 @@ export default function Signup() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.email')}</label>
+                  <label htmlFor="signup-email" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.email')}</label>
                   <input
+                    id="signup-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -207,8 +209,9 @@ export default function Signup() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
+                  <label htmlFor="signup-password" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
                   <input
+                    id="signup-password"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -220,8 +223,8 @@ export default function Signup() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">{t('auth.select_plan')}</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <span id="signup-plan-label" className="block text-sm font-medium text-text-primary mb-2">{t('auth.select_plan')}</span>
+                  <div role="group" aria-labelledby="signup-plan-label" className="grid grid-cols-3 gap-2">
                     {plans.map((p) => (
                       <button
                         key={p.key}
