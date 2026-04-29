@@ -24,25 +24,116 @@ const router = Router();
 const logger = createLogger('PRODUCTION_ESSENTIALS');
 
 // ---------- Maintenance mode ----------
+// Task #968: 1s in-process cache + ETag/Cache-Control to keep the 5s
+// maintenance gate poll from hammering platform_settings.
 
-router.get('/platform/maintenance', async (_req, res) => {
+type MaintenancePayload = {
+  enabled: boolean;
+  message: string | null;
+  scheduled_for: string | null;
+  updated_at: string | null;
+};
+
+const MAINTENANCE_CACHE_TTL_MS = 1_000;
+const MAINTENANCE_BROWSER_MAX_AGE_S = 2;
+
+let cachedMaintenance: { payload: MaintenancePayload; expiresAt: number } | null = null;
+// In-flight read so concurrent cache misses share one DB query
+// (thundering-herd protection at TTL boundaries).
+let pendingMaintenanceRead: Promise<MaintenancePayload> | null = null;
+
+function invalidateMaintenanceCache() {
+  cachedMaintenance = null;
+}
+
+async function fetchMaintenanceFromDb(): Promise<MaintenancePayload> {
   const pool = getPlatformPool();
-  try {
-    const { rows } = await pool.query(
-      `SELECT value, updated_at FROM platform_settings WHERE key = 'maintenance_mode'`,
-    );
-    if (rows.length === 0) {
-      return res.json({ enabled: false, message: null, scheduled_for: null });
+  const { rows } = await pool.query(
+    `SELECT value, updated_at FROM platform_settings WHERE key = 'maintenance_mode'`,
+  );
+  if (rows.length === 0) {
+    return { enabled: false, message: null, scheduled_for: null, updated_at: null };
+  }
+  const v = rows[0].value || {};
+  const updatedAt = rows[0].updated_at;
+  return {
+    enabled: !!v.enabled,
+    message: v.message ?? null,
+    scheduled_for: v.scheduled_for ?? null,
+    updated_at: updatedAt instanceof Date ? updatedAt.toISOString() : updatedAt ?? null,
+  };
+}
+
+async function readMaintenancePayload(): Promise<MaintenancePayload> {
+  const now = Date.now();
+  if (cachedMaintenance && cachedMaintenance.expiresAt > now) {
+    return cachedMaintenance.payload;
+  }
+  if (pendingMaintenanceRead) {
+    return pendingMaintenanceRead;
+  }
+  pendingMaintenanceRead = (async () => {
+    try {
+      const payload = await fetchMaintenanceFromDb();
+      cachedMaintenance = { payload, expiresAt: Date.now() + MAINTENANCE_CACHE_TTL_MS };
+      return payload;
+    } finally {
+      pendingMaintenanceRead = null;
     }
-    const v = rows[0].value || {};
+  })();
+  return pendingMaintenanceRead;
+}
+
+function maintenanceETag(payload: MaintenancePayload): string {
+  const stamp = payload.updated_at ?? 'empty';
+  return `W/"maint-${payload.enabled ? 'on' : 'off'}-${stamp}"`;
+}
+
+router.get('/platform/maintenance', async (req, res) => {
+  try {
+    const payload = await readMaintenancePayload();
+    const etag = maintenanceETag(payload);
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', `private, max-age=${MAINTENANCE_BROWSER_MAX_AGE_S}, must-revalidate`);
+    let updatedAtMs: number | null = null;
+    if (payload.updated_at) {
+      const d = new Date(payload.updated_at);
+      if (!Number.isNaN(d.getTime())) {
+        updatedAtMs = d.getTime();
+        res.setHeader('Last-Modified', d.toUTCString());
+      }
+    }
+
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (typeof ifNoneMatch === 'string' && ifNoneMatch === etag) {
+      return res.status(304).end();
+    }
+    // Honour If-Modified-Since for clients that revalidate via the date
+    // header instead of (or in addition to) ETag.
+    const ifModifiedSince = req.headers['if-modified-since'];
+    if (
+      typeof ifNoneMatch !== 'string' &&
+      typeof ifModifiedSince === 'string' &&
+      updatedAtMs !== null
+    ) {
+      const since = Date.parse(ifModifiedSince);
+      // Compare at second resolution since HTTP-date drops sub-second precision.
+      if (!Number.isNaN(since) && Math.floor(updatedAtMs / 1000) <= Math.floor(since / 1000)) {
+        return res.status(304).end();
+      }
+    }
+
     return res.json({
-      enabled: !!v.enabled,
-      message: v.message ?? null,
-      scheduled_for: v.scheduled_for ?? null,
-      updated_at: rows[0].updated_at,
+      enabled: payload.enabled,
+      message: payload.message,
+      scheduled_for: payload.scheduled_for,
+      updated_at: payload.updated_at,
     });
   } catch (err) {
     logger.error('maintenance get failed', { error: String(err) });
+    // Don't let the DB-failure fallback get pinned in the browser cache.
+    res.setHeader('Cache-Control', 'no-store');
+    res.removeHeader('Last-Modified');
     return res.json({ enabled: false, message: null, scheduled_for: null });
   }
 });
@@ -57,6 +148,7 @@ router.put('/platform/maintenance', requireAuth, requirePlatformAdmin, async (re
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
       [JSON.stringify({ enabled: !!enabled, message: message ?? null, scheduled_for: scheduled_for ?? null }), req.user!.userId],
     );
+    invalidateMaintenanceCache();
     return res.json({ success: true });
   } catch (err) {
     logger.error('maintenance set failed', { error: String(err) });
