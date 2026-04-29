@@ -348,6 +348,31 @@ export default function AdminSalesInbox() {
     setPage(1);
   };
 
+  // True when any of the six toolbar filters is non-default. Drives the
+  // visibility of the "Clear filters" affordance — we hide it entirely when
+  // there's nothing to clear so the toolbar stays quiet in the common case.
+  const hasActiveFilters =
+    source !== 'all' ||
+    booking !== 'all' ||
+    status !== 'all' ||
+    search.trim() !== '' ||
+    actedOnBy.trim() !== '' ||
+    inactiveDays.trim() !== '';
+
+  const handleClearFilters = () => {
+    setSource('all');
+    setBooking('all');
+    setStatus('all');
+    setSearch('');
+    setActedOnBy('');
+    setInactiveDays('');
+    // Sort/order also live in the URL — reset them too so the resulting
+    // address is truly /admin/sales-inbox with no query string.
+    setSort('created_at');
+    setOrder('desc');
+    setPage(1);
+  };
+
   const handleExportCsv = async () => {
     if (exporting) return;
     setExporting(true);
@@ -466,9 +491,22 @@ export default function AdminSalesInbox() {
       )}
 
       <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4 space-y-3">
-        <div className="flex items-center gap-2 text-sm text-slate-300">
-          <Filter className="h-4 w-4" />
-          <span className="font-semibold">Filters</span>
+        <div className="flex items-center justify-between gap-2 text-sm text-slate-300">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            <span className="font-semibold">Filters</span>
+          </div>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              title="Reset every filter and return to the default view"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-700 bg-slate-800/80 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+              Clear filters
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <FilterGroup
