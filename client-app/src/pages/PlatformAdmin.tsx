@@ -19,7 +19,7 @@ import {
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
   AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
-  Clock, ArrowUpDown, Database, PhoneOff,
+  Clock, ArrowUpDown, Database, PhoneOff, BellRing,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -1241,6 +1241,326 @@ function ConnectorHealthPanel() {
                     <td className="px-4 py-2 text-xs font-medium capitalize">{ev.provider ?? '—'}</td>
                     <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[420px]">
                       {ev.errorMessage ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Push delivery health (cross-tenant view of push fan-outs into Expo from
+// `platform/notifications/PushDispatcher.ts`). Surfaces totals, the worst-
+// offender tenants, and recent failures so a tenant whose techs aren't
+// getting pushes is visible to ops without grepping logs.
+// ----------------------------------------------------------------------------
+
+interface PushHealthTotals {
+  attempts: number;
+  attempted: number;
+  accepted: number;
+  retired: number;
+  dropped: number;
+  failureCount: number;
+  affectedTenants: number;
+}
+
+interface PushHealthPerTenantRow {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  attempts: number;
+  attempted: number;
+  accepted: number;
+  retired: number;
+  dropped: number;
+  failureCount: number;
+  lastAttemptAt: string | null;
+}
+
+interface PushHealthRecentFailureRow {
+  id: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  event: string | null;
+  attempted: number;
+  accepted: number;
+  retired: number;
+  dropped: number;
+  failureReason: string | null;
+  occurredAt: string;
+}
+
+interface PushHealthResponse {
+  windowDays: number;
+  generatedAt: string;
+  totals: PushHealthTotals;
+  perTenant: PushHealthPerTenantRow[];
+  perTenantTracked: number;
+  perTenantLimit: number;
+  recentFailures: PushHealthRecentFailureRow[];
+  recentFailuresLimit: number;
+}
+
+function PushDeliveryHealthPanel() {
+  const [windowDays, setWindowDays] = useState<number>(7);
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-push-health', windowDays],
+    queryFn: () =>
+      api.get<PushHealthResponse>(
+        `/platform/push-health?windowDays=${windowDays}`,
+      ),
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
+        Loading push delivery health…
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+        Failed to load push delivery health: {error ? (error as Error).message : 'no data'}
+      </div>
+    );
+  }
+
+  const { totals, perTenant, recentFailures } = data;
+  const acceptanceRate =
+    totals.attempted > 0
+      ? Math.round((totals.accepted / totals.attempted) * 100)
+      : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <BellRing className="h-4 w-4 text-primary" /> Push Delivery Health
+          </h2>
+          <p className="text-xs text-text-muted mt-1">
+            Cross-tenant view of technician push fan-outs into Expo over the
+            last {data.windowDays} days. Recorded by{' '}
+            <code className="font-mono">PushDispatcher</code> on every attempt.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-text-muted flex items-center gap-1">
+            Window
+            <select
+              value={windowDays}
+              onChange={(e) => setWindowDays(parseInt(e.target.value, 10))}
+              className="bg-surface border border-border rounded px-2 py-1 text-xs"
+            >
+              <option value={1}>1d</option>
+              <option value={7}>7d</option>
+              <option value={14}>14d</option>
+              <option value={30}>30d</option>
+            </select>
+          </label>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
+            title="Refresh"
+          >
+            <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Attempts</div>
+          <div className="text-2xl font-bold">{totals.attempts}</div>
+          <div className="text-xs text-text-muted mt-0.5">
+            {totals.attempted} devices
+          </div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Accepted</div>
+          <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+            {totals.accepted}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">
+            {acceptanceRate === null ? '—' : `${acceptanceRate}% rate`}
+          </div>
+        </div>
+        <div
+          className="bg-surface border border-border rounded-xl p-3"
+          title="Devices Expo flagged as DeviceNotRegistered or InvalidCredentials and that PushDispatcher flipped push_enabled = FALSE on"
+        >
+          <div className="text-xs text-text-muted">Retired</div>
+          <div className={`text-2xl font-bold ${totals.retired > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+            {totals.retired}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">devices</div>
+        </div>
+        <div
+          className="bg-surface border border-border rounded-xl p-3"
+          title="Devices we attempted to deliver to but Expo neither accepted nor retired (HTTP 5xx, network blip, transient ticket error, etc.)"
+        >
+          <div className="text-xs text-text-muted">Dropped</div>
+          <div className={`text-2xl font-bold ${totals.dropped > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+            {totals.dropped}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">devices</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Failed attempts</div>
+          <div className={`text-2xl font-bold ${totals.failureCount > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+            {totals.failureCount}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">of {totals.attempts}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Affected tenants</div>
+          <div className="text-2xl font-bold">{totals.affectedTenants}</div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Per-tenant push delivery
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Worst offenders first — most dropped + retired devices over the
+            last {data.windowDays} days. Showing up to {data.perTenantLimit} tenants.
+          </p>
+        </div>
+        {perTenant.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-text-muted">
+            No push fan-outs in the last {data.windowDays} days.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Attempts</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Devices</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Accepted</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Retired</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Dropped</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Failed</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Last attempt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perTenant.map((r) => {
+                  const rate =
+                    r.attempted > 0
+                      ? Math.round((r.accepted / r.attempted) * 100)
+                      : null;
+                  return (
+                    <tr key={r.tenantId} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2 text-xs">
+                        <div className="font-medium">{r.tenantName ?? '—'}</div>
+                        {r.tenantSlug && (
+                          <div className="text-text-muted font-mono">{r.tenantSlug}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums">{r.attempts}</td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums">{r.attempted}</td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums">
+                        {r.accepted}
+                        {rate !== null && (
+                          <span className="text-text-muted ml-1">({rate}%)</span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.retired > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
+                        {r.retired}
+                      </td>
+                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.dropped > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                        {r.dropped}
+                      </td>
+                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.failureCount > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                        {r.failureCount}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
+                        <span title={r.lastAttemptAt ? new Date(r.lastAttemptAt).toLocaleString() : ''}>
+                          {formatRelativeTime(r.lastAttemptAt)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            Recent push delivery failures
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Up to {data.recentFailuresLimit} most recent fan-outs where at
+            least one device was dropped or a batch-level failure occurred.
+          </p>
+        </div>
+        {recentFailures.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-text-muted">
+            No push delivery failures in the last {data.windowDays} days.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">When</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Event</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Att.</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Acc.</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Ret.</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Drop.</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentFailures.map((row) => (
+                  <tr key={row.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
+                      <span title={new Date(row.occurredAt).toLocaleString()}>
+                        {formatRelativeTime(row.occurredAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium">{row.tenantName ?? '—'}</div>
+                      {row.tenantSlug && (
+                        <div className="text-text-muted font-mono">{row.tenantSlug}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs font-mono text-text-muted">
+                      {row.event ?? '—'}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-right tabular-nums">{row.attempted}</td>
+                    <td className="px-4 py-2 text-xs text-right tabular-nums">{row.accepted}</td>
+                    <td className={`px-4 py-2 text-xs text-right tabular-nums ${row.retired > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                      {row.retired}
+                    </td>
+                    <td className={`px-4 py-2 text-xs text-right tabular-nums ${row.dropped > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                      {row.dropped}
+                    </td>
+                    <td className="px-4 py-2 text-xs font-mono text-red-600 dark:text-red-400 break-all max-w-[280px]">
+                      {row.failureReason ?? (row.dropped > 0 ? 'unknown' : '—')}
                     </td>
                   </tr>
                 ))}
@@ -3605,6 +3925,7 @@ type PlatformAdminTab =
   | 'support'
   | 'integrations'
   | 'connector-health'
+  | 'push-health'
   | 'retention';
 
 const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; label: string; icon: typeof Building2 }[] = [
@@ -3617,6 +3938,7 @@ const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; label: string; icon: typeof 
   { key: 'support', label: 'Support', icon: LifeBuoy },
   { key: 'integrations', label: 'Integrations', icon: Plug },
   { key: 'connector-health', label: 'Connector Health', icon: ShieldAlert },
+  { key: 'push-health', label: 'Push Health', icon: BellRing },
   { key: 'retention', label: 'Call Event Retention', icon: Database },
 ];
 
@@ -3794,6 +4116,7 @@ export default function PlatformAdmin() {
 
       {activeTab === 'integrations' && <IntegrationsStatusPanel />}
       {activeTab === 'connector-health' && <ConnectorHealthPanel />}
+      {activeTab === 'push-health' && <PushDeliveryHealthPanel />}
       {activeTab === 'retention' && <CallEventsRetentionPanel />}
 
       {activeTab === 'tenants' && (

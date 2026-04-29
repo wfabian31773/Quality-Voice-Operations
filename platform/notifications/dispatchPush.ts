@@ -121,6 +121,10 @@ export async function fireDispatchPush(params: FireParams): Promise<PushResult |
         tenantId: params.tenantId,
         resourceIds: params.resourceIds,
         userIds: params.userIds,
+        // Tag the persisted telemetry row with the lifecycle event name so
+        // the Platform Admin "push delivery health" panel can break down
+        // failures by event type ('job_assigned' vs 'booking_cancelled').
+        event: params.event,
       },
       {
         title,

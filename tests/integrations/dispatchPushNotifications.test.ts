@@ -46,7 +46,15 @@ describe('fireDispatchPush copy + payload', () => {
 
     expect(sendMock).toHaveBeenCalledTimes(1);
     const [target, payload] = sendMock.mock.calls[0];
-    expect(target).toEqual({ tenantId: 'tenant-A', resourceIds: ['res-1'], userIds: undefined });
+    expect(target).toEqual({
+      tenantId: 'tenant-A',
+      resourceIds: ['res-1'],
+      userIds: undefined,
+      // The dispatcher tags the persisted telemetry row with the lifecycle
+      // event name so the Platform Admin "push delivery health" panel can
+      // break failures down by event type.
+      event: 'job_cancelled',
+    });
     expect(payload.title).toBe('Job cancelled');
     expect(payload.body).toContain('Replace water heater');
     expect(payload.body).toContain('Jane Doe');
@@ -214,7 +222,7 @@ describe('PushDispatcher.sendDispatchPush — device-token resolution', () => {
       fetchMock as unknown as typeof fetch,
     );
 
-    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0 });
+    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0, dropped: 0, failureReason: null });
     expect(queryMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -229,7 +237,7 @@ describe('PushDispatcher.sendDispatchPush — device-token resolution', () => {
       fetchMock as unknown as typeof fetch,
     );
 
-    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0 });
+    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0, dropped: 0, failureReason: null });
     expect(queryMock).not.toHaveBeenCalled();
   });
 
@@ -244,7 +252,7 @@ describe('PushDispatcher.sendDispatchPush — device-token resolution', () => {
       fetchMock as unknown as typeof fetch,
     );
 
-    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0 });
+    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0, dropped: 0, failureReason: null });
     expect(queryMock).not.toHaveBeenCalled();
   });
 
@@ -317,7 +325,7 @@ describe('PushDispatcher.sendDispatchPush — device-token resolution', () => {
       fetchMock as unknown as typeof fetch,
     );
 
-    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0 });
+    expect(result).toEqual({ attempted: 0, accepted: 0, retired: 0, dropped: 0, failureReason: null });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

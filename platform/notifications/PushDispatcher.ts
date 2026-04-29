@@ -12,6 +12,12 @@ export interface PushTarget {
   resourceIds?: string[];
   /** Route by users.id — used when we have a real JWT user. */
   userIds?: string[];
+  /**
+   * Optional lifecycle event name (e.g. 'job_assigned'). Persisted alongside
+   * the push delivery telemetry so the Platform Admin "push delivery health"
+   * panel can break failures down by event type.
+   */
+  event?: string;
 }
 
 export interface PushPayload {
@@ -34,6 +40,19 @@ export interface PushResult {
   accepted: number;
   /** Tokens marked as unregistered (push_enabled flipped to FALSE). */
   retired: number;
+  /**
+   * Devices we attempted to deliver to but neither accepted nor retired —
+   * dropped on the floor (transient ticket errors, HTTP 5xx, network blip,
+   * non-JSON body, etc.). Surfaced to operators so a flaky upstream is
+   * visible instead of silently swallowed.
+   */
+  dropped: number;
+  /**
+   * Coarse, single-string summary of the most recent failure category
+   * encountered during this fan-out. NULL when every device succeeded
+   * cleanly. Used to power the "recent failures" table.
+   */
+  failureReason: string | null;
 }
 
 interface DeviceRow {
@@ -105,6 +124,43 @@ interface ExpoResponse {
 }
 
 /**
+ * Persist a single fan-out outcome to the push_delivery_attempts table so
+ * the Platform Admin "push delivery health" panel has data to render.
+ * Errors are swallowed — telemetry must never break delivery.
+ */
+async function recordPushAttempt(
+  target: PushTarget,
+  result: PushResult,
+): Promise<void> {
+  // Skip no-op fan-outs (no devices matched the target). The panel only
+  // cares about real attempts; recording empty rows would just bloat the
+  // table without surfacing any useful operational signal.
+  if (result.attempted === 0) return;
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO push_delivery_attempts
+         (tenant_id, event, attempted, accepted, retired, dropped, failure_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        target.tenantId,
+        target.event ?? null,
+        result.attempted,
+        result.accepted,
+        result.retired,
+        result.dropped,
+        result.failureReason,
+      ],
+    );
+  } catch (err) {
+    logger.warn('Failed to persist push delivery telemetry', {
+      tenantId: target.tenantId,
+      error: String(err),
+    });
+  }
+}
+
+/**
  * Send a push to every active device matching the target. Network/Expo
  * errors are logged but never thrown — push delivery is fire-and-forget so
  * a flaky upstream cannot block the dispatch state-machine.
@@ -115,7 +171,13 @@ export async function sendDispatchPush(
   fetchImpl: typeof fetch = fetch,
 ): Promise<PushResult> {
   const devices = await loadDevices(target);
-  const result: PushResult = { attempted: devices.length, accepted: 0, retired: 0 };
+  const result: PushResult = {
+    attempted: devices.length,
+    accepted: 0,
+    retired: 0,
+    dropped: 0,
+    failureReason: null,
+  };
   if (devices.length === 0) return result;
 
   const pool = getPlatformPool();
@@ -148,6 +210,7 @@ export async function sendDispatchPush(
         tenantId: target.tenantId,
         error: String(err),
       });
+      result.failureReason = 'network_error';
       continue;
     }
 
@@ -156,6 +219,7 @@ export async function sendDispatchPush(
         tenantId: target.tenantId,
         status: response.status,
       });
+      result.failureReason = `http_status_${response.status}`;
       continue;
     }
 
@@ -167,6 +231,7 @@ export async function sendDispatchPush(
         tenantId: target.tenantId,
         error: String(err),
       });
+      result.failureReason = 'invalid_json';
       continue;
     }
 
@@ -196,6 +261,7 @@ export async function sendDispatchPush(
             deviceId: device.id,
             error: String(err),
           });
+          result.failureReason = 'retire_failed';
         }
       } else {
         logger.warn('Expo push ticket error', {
@@ -204,9 +270,19 @@ export async function sendDispatchPush(
           code: errCode,
           message: ticket.message,
         });
+        result.failureReason = `ticket_error:${errCode ?? 'unknown'}`;
       }
     }
   }
+
+  // Anything we attempted but neither accepted nor retired counts as
+  // "dropped" — the operator-visible signal that something is silently
+  // failing upstream (Expo 5xx, network blip, transient ticket error, etc.).
+  result.dropped = Math.max(0, result.attempted - result.accepted - result.retired);
+
+  // Fire-and-forget telemetry persistence. Errors are swallowed inside
+  // recordPushAttempt so a hiccup writing the row never breaks delivery.
+  await recordPushAttempt(target, result);
 
   return result;
 }
