@@ -8,6 +8,7 @@ import { searchMarketingPages } from '../../data/marketingPages';
 
 export default function Resources() {
   const { t } = useTranslation();
+  const { t: tm } = useTranslation('marketing');
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<GuideCategory | 'All'>('All');
 
@@ -29,13 +30,13 @@ export default function Resources() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-              Resources
+              {tm('resources.hero.eyebrow')}
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
-              Guides &amp; documentation.
+              {tm('resources.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl">
-              Step-by-step guides, integration tutorials, and best practices to help you get the most from QVO.
+              {tm('resources.hero.description')}
             </p>
           </div>
           <div className="mt-10 max-w-md relative">
@@ -59,7 +60,7 @@ export default function Resources() {
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="font-display text-2xl font-bold text-text-primary">Browse by category</h2>
+              <h2 className="font-display text-2xl font-bold text-text-primary">{tm('resources.browse_by_category')}</h2>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-16">
               {categories.map((cat) => (
@@ -133,21 +134,21 @@ export default function Resources() {
           <RevealSection>
             <div className="flex items-center justify-between mb-8">
               <h2 className="font-display text-2xl font-bold text-text-primary">
-                {activeCategory === 'All' ? 'All guides' : activeCategory}
+                {activeCategory === 'All' ? tm('resources.all_guides') : activeCategory}
               </h2>
               {activeCategory !== 'All' && (
                 <button
                   onClick={() => setActiveCategory('All')}
                   className="text-sm text-primary hover:text-primary-hover font-medium transition-colors"
                 >
-                  Show all
+                  {tm('resources.show_all')}
                 </button>
               )}
             </div>
 
             {filtered.length === 0 ? (
               <div className="text-center py-16">
-                <p className="text-text-primary/50 font-body">No guides match your search. Try a different term.</p>
+                <p className="text-text-primary/50 font-body">{tm('resources.no_guides')}</p>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-6">
@@ -177,7 +178,7 @@ export default function Resources() {
                         {guide.readTime}
                       </span>
                       <span className="flex items-center gap-1 text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                        Read guide
+                        {tm('resources.read_guide')}
                         <ArrowRight className="h-3.5 w-3.5" />
                       </span>
                     </div>
@@ -195,17 +196,17 @@ export default function Resources() {
                 </div>
                 <div className="flex-1 text-center md:text-left">
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-1">
-                    Looking for API reference?
+                    {tm('resources.api_card.title')}
                   </h3>
                   <p className="text-sm text-text-primary/60 font-body">
-                    Full API documentation with endpoints, authentication, and code examples.
+                    {tm('resources.api_card.desc')}
                   </p>
                 </div>
                 <Link
                   to="/docs"
                   className="inline-flex items-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors shrink-0"
                 >
-                  View API docs
+                  {tm('resources.api_card.cta')}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
@@ -217,16 +218,16 @@ export default function Resources() {
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold mb-4">
-            Can't find what you're looking for?
+            {tm('resources.bottom_cta.title')}
           </h2>
           <p className="text-white/60 font-body mb-8">
-            Our team is here to help you with setup, integration, and best practices.
+            {tm('resources.bottom_cta.subtitle')}
           </p>
           <Link
             to="/contact"
             className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
           >
-            Contact us
+            {tm('resources.bottom_cta.cta')}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
