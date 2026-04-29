@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useColorScheme, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { NotificationLogProvider } from '@/hooks/useNotificationLog';
 import { queryClient } from '@/lib/queryClient';
 import { LoadingView } from '@/components/LoadingView';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -109,35 +110,37 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <AuthGate>
-              <Stack
-                screenOptions={{
-                  headerShadowVisible: false,
-                  contentStyle: {
-                    backgroundColor:
-                      scheme === 'dark' ? '#020617' : '#F8FAFC',
-                  },
-                }}
-              >
-                <Stack.Screen
-                  name="(auth)"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="(tabs)"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="jobs/[id]"
-                  options={{ title: 'Job Details', presentation: 'card' }}
-                />
-                <Stack.Screen
-                  name="bookings/[id]"
-                  options={{ title: 'Appointment', presentation: 'card' }}
-                />
-              </Stack>
-              <StatusBar style="auto" />
-            </AuthGate>
+            <NotificationLogProvider>
+              <AuthGate>
+                <Stack
+                  screenOptions={{
+                    headerShadowVisible: false,
+                    contentStyle: {
+                      backgroundColor:
+                        scheme === 'dark' ? '#020617' : '#F8FAFC',
+                    },
+                  }}
+                >
+                  <Stack.Screen
+                    name="(auth)"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="(tabs)"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="jobs/[id]"
+                    options={{ title: 'Job Details', presentation: 'card' }}
+                  />
+                  <Stack.Screen
+                    name="bookings/[id]"
+                    options={{ title: 'Appointment', presentation: 'card' }}
+                  />
+                </Stack>
+                <StatusBar style="auto" />
+              </AuthGate>
+            </NotificationLogProvider>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

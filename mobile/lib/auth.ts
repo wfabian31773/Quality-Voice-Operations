@@ -90,6 +90,14 @@ export async function clearCredentials(): Promise<void> {
     write(STORAGE_KEYS.pushEnabled, null),
     write(STORAGE_KEYS.deviceSecret, null),
   ]);
+  // Clear the locally-cached push history so a subsequent sign-in (possibly
+  // for a different tenant on the same device) starts with a fresh inbox.
+  try {
+    const { clearStoredNotifications } = await import('./notificationLog');
+    await clearStoredNotifications();
+  } catch {
+    // best-effort; falling back to whatever is in AsyncStorage is acceptable
+  }
 }
 
 export async function updateStoredDeviceSecret(
