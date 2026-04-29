@@ -22,6 +22,7 @@ import {
   Radio,
 } from 'lucide-react';
 import { useRole } from '../lib/useRole';
+import { parseOAuthNotConfigured, type OAuthNotConfigured } from '../lib/oauthErrors';
 import BrandLogo from '../components/BrandLogo';
 import Modal from '../components/Modal';
 import { PageHeader } from '../components/ui';
@@ -47,12 +48,6 @@ function isAuthError(message: string | null | undefined): boolean {
   return AUTH_ERROR_REGEX.test(message);
 }
 
-interface OAuthNotConfigured {
-  providerLabel: string;
-  missingEnv: string;
-  docsUrl: string;
-}
-
 interface OAuthProviderAvailability {
   available: boolean;
   providerLabel: string;
@@ -62,17 +57,6 @@ interface OAuthProviderAvailability {
 
 interface OAuthAvailabilityResponse {
   providers: Record<string, OAuthProviderAvailability>;
-}
-
-function parseOAuthNotConfigured(err: unknown, fallback: { providerLabel: string; docsUrl?: string }): OAuthNotConfigured | null {
-  if (!err || typeof err !== 'object') return null;
-  const body = (err as { body?: { code?: string; providerLabel?: string; missingEnv?: string; docsUrl?: string } }).body;
-  if (!body || body.code !== 'OAUTH_NOT_CONFIGURED') return null;
-  return {
-    providerLabel: body.providerLabel || fallback.providerLabel,
-    missingEnv: body.missingEnv || '',
-    docsUrl: body.docsUrl || fallback.docsUrl || '',
-  };
 }
 
 type Category = 'CRM' | 'Scheduling' | 'SMS' | 'Notifications' | 'Automation' | 'Ticketing' | 'Accounting';
@@ -1105,30 +1089,58 @@ function ConnectModal({
                   <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
                     <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                     <div className="min-w-0 space-y-1">
-                      <p className="font-semibold">QVO is missing the {oauthConfigError.providerLabel} server credentials.</p>
-                      <p className="text-amber-700 dark:text-amber-200/90">
-                        Your platform admin needs to set{' '}
-                        {oauthConfigError.missingEnv ? (
-                          <code className="font-mono">{oauthConfigError.missingEnv}</code>
-                        ) : (
-                          'the OAuth client credentials'
-                        )}{' '}
-                        before this integration can be connected.
-                        {oauthConfigError.docsUrl && (
-                          <>
-                            {' '}
-                            <a
-                              href={oauthConfigError.docsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
-                            >
-                              See the setup guide
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          </>
-                        )}
-                      </p>
+                      {oauthConfigError.kind === 'state_secret' ? (
+                        <>
+                          <p className="font-semibold">OAuth signing secret missing</p>
+                          <p className="text-amber-700 dark:text-amber-200/90">
+                            Your platform admin needs to set{' '}
+                            <code className="font-mono">{oauthConfigError.missingEnv}</code>{' '}
+                            (or <code className="font-mono">CONNECTOR_ENCRYPTION_KEY</code>){' '}
+                            on the server before OAuth can be enabled.
+                            {oauthConfigError.docsUrl && (
+                              <>
+                                {' '}
+                                <a
+                                  href={oauthConfigError.docsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                                >
+                                  See the setup guide
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </>
+                            )}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-semibold">QVO is missing the {oauthConfigError.providerLabel} server credentials.</p>
+                          <p className="text-amber-700 dark:text-amber-200/90">
+                            Your platform admin needs to set{' '}
+                            {oauthConfigError.missingEnv ? (
+                              <code className="font-mono">{oauthConfigError.missingEnv}</code>
+                            ) : (
+                              'the OAuth client credentials'
+                            )}{' '}
+                            before this integration can be connected.
+                            {oauthConfigError.docsUrl && (
+                              <>
+                                {' '}
+                                <a
+                                  href={oauthConfigError.docsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                                >
+                                  See the setup guide
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </>
+                            )}
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2088,30 +2100,58 @@ function ConnectedCard({
           )}
           {reauthConfigError && (
             <div role="alert" className="mt-2 rounded-md border border-amber-400/70 bg-amber-100/70 dark:bg-amber-900/30 p-2 text-amber-900 dark:text-amber-200">
-              <p className="font-semibold">QVO is missing the {reauthConfigError.providerLabel} server credentials.</p>
-              <p>
-                Ask your platform admin to set{' '}
-                {reauthConfigError.missingEnv ? (
-                  <code className="font-mono">{reauthConfigError.missingEnv}</code>
-                ) : (
-                  'the OAuth client credentials'
-                )}
-                .
-                {reauthConfigError.docsUrl && (
-                  <>
-                    {' '}
-                    <a
-                      href={reauthConfigError.docsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
-                    >
-                      See the setup guide
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </>
-                )}
-              </p>
+              {reauthConfigError.kind === 'state_secret' ? (
+                <>
+                  <p className="font-semibold">OAuth signing secret missing</p>
+                  <p>
+                    Ask your platform admin to set{' '}
+                    <code className="font-mono">{reauthConfigError.missingEnv}</code>{' '}
+                    (or <code className="font-mono">CONNECTOR_ENCRYPTION_KEY</code>){' '}
+                    on the server before OAuth can be enabled.
+                    {reauthConfigError.docsUrl && (
+                      <>
+                        {' '}
+                        <a
+                          href={reauthConfigError.docsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                        >
+                          See the setup guide
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </>
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">QVO is missing the {reauthConfigError.providerLabel} server credentials.</p>
+                  <p>
+                    Ask your platform admin to set{' '}
+                    {reauthConfigError.missingEnv ? (
+                      <code className="font-mono">{reauthConfigError.missingEnv}</code>
+                    ) : (
+                      'the OAuth client credentials'
+                    )}
+                    .
+                    {reauthConfigError.docsUrl && (
+                      <>
+                        {' '}
+                        <a
+                          href={reauthConfigError.docsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold underline hover:no-underline inline-flex items-center gap-0.5"
+                        >
+                          See the setup guide
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </>
+                    )}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>
