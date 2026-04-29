@@ -60,6 +60,11 @@ export function categoryForNotificationType(type: string | null | undefined): No
     t === 'trusted_caller_trust_hub_approved'
   )
     return 'integration';
+  // CRM stale-cache hygiene alerts share the integration toggle so an admin
+  // who muted connector outage emails also mutes these — they're the same
+  // class of "your integration needs attention" notification, just sourced
+  // from the dispatch layer instead of the auth health checker.
+  if (t === 'crm_stale_cache_alert') return 'integration';
   if (t === 'integration_sms' || t === 'sms') return 'sms';
   if (t === 'campaign') return null; // not yet user-toggleable
   if (t === 'escalation') return 'escalation';

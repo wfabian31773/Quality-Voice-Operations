@@ -35,6 +35,7 @@ import {
   upsertCrmCallerIdentity,
   type StaleCrmIds,
 } from './crmCallerIdentity';
+import { recordStaleCacheScrub } from './CrmStaleCacheTracker';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType, StandardEventType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -803,16 +804,40 @@ export class ConnectorService {
     }
     if (Object.keys(stale).length === 0) return;
 
+    const staleErrorCode = typeof (meta as Record<string, unknown>).staleErrorCode === 'string'
+      ? ((meta as Record<string, unknown>).staleErrorCode as string)
+      : null;
     logger.info('Invalidating CRM caller identity due to stale-record dispatch failure', {
       tenantId,
       provider: config.provider,
       payloadType: payload.type,
       staleIds: stale,
-      errorCode: typeof (meta as Record<string, unknown>).staleErrorCode === 'string'
-        ? (meta as Record<string, unknown>).staleErrorCode
-        : undefined,
+      errorCode: staleErrorCode ?? undefined,
     });
     await clearCrmCallerIdentity(tenantId, config.provider, callerPhone, stale);
+
+    // Track this scrub event so the alerter can warn the customer when a
+    // single caller phone repeatedly hits stale records — almost always a
+    // sign of upstream CRM data hygiene problems (records being deleted/
+    // re-created or hand-removed by the customer's team after the AI just
+    // created them). Best-effort: tracker swallows its own DB errors and
+    // we wrap the call in case the module itself blows up so the dispatch
+    // path is never affected.
+    try {
+      await recordStaleCacheScrub({
+        tenantId,
+        provider: config.provider,
+        callerPhone,
+        staleIds: stale,
+        errorCode: staleErrorCode,
+      });
+    } catch (err) {
+      logger.warn('Failed to record stale-cache scrub for alerting', {
+        tenantId,
+        provider: config.provider,
+        error: String(err),
+      });
+    }
   }
 }
 
