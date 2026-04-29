@@ -476,6 +476,8 @@ function isValidConnection(sourceNodeType: string, targetNodeType: string): bool
 interface IndustryTemplate {
   label: string;
   labelKey: AgentBuilderTKey;
+  description: string;
+  descriptionKey: AgentBuilderTKey;
   key: IndustryTemplateKey;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
@@ -500,6 +502,7 @@ interface IndustryTemplateShapeNode {
 
 interface IndustryTemplateShape {
   labelKey: AgentBuilderTKey;
+  descriptionKey: AgentBuilderTKey;
   key: IndustryTemplateKey;
   nodes: IndustryTemplateShapeNode[];
   edges: WorkflowEdge[];
@@ -508,6 +511,7 @@ interface IndustryTemplateShape {
 const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   {
     labelKey: 'tplMedical',
+    descriptionKey: 'tplMedicalDesc',
     key: 'medical',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -528,6 +532,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplDental',
+    descriptionKey: 'tplDentalDesc',
     key: 'dental',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -545,6 +550,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplHvac',
+    descriptionKey: 'tplHvacDesc',
     key: 'hvac',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -565,6 +571,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplLegal',
+    descriptionKey: 'tplLegalDesc',
     key: 'legal',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -582,6 +589,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplSupport',
+    descriptionKey: 'tplSupportDesc',
     key: 'support',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -599,6 +607,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplRealEstate',
+    descriptionKey: 'tplRealEstateDesc',
     key: 'realestate',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -616,6 +625,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplRestaurant',
+    descriptionKey: 'tplRestaurantDesc',
     key: 'restaurant',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -636,6 +646,7 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
   {
     labelKey: 'tplSalon',
+    descriptionKey: 'tplSalonDesc',
     key: 'salon',
     nodes: [
       { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
@@ -675,6 +686,8 @@ function buildIndustryTemplates(t: BuilderT, language: string): IndustryTemplate
     return {
       label: t(tpl.labelKey),
       labelKey: tpl.labelKey,
+      description: t(tpl.descriptionKey),
+      descriptionKey: tpl.descriptionKey,
       key: tpl.key,
       nodes,
       edges: tpl.edges,
@@ -2399,7 +2412,10 @@ function AgentBuilderInner() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-medium">{tpl.label}</div>
-                      <div className="text-[10px] text-text-muted">
+                      <div className="text-[10px] text-text-secondary leading-snug line-clamp-2">
+                        {tpl.description}
+                      </div>
+                      <div className="text-[10px] text-text-muted mt-0.5">
                         {t('templateStepsLabel', {
                           nodes: tpl.nodes.length,
                           edges: tpl.edges.length,
@@ -2420,6 +2436,9 @@ function AgentBuilderInner() {
                 >
                   <p className="text-xs font-semibold text-text-primary mb-1 truncate">
                     {tpl.label}
+                  </p>
+                  <p className="text-[11px] text-text-secondary mb-1 leading-snug">
+                    {tpl.description}
                   </p>
                   <p className="text-[10px] text-text-muted mb-2">
                     {t('templateStepsLabel', {
