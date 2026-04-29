@@ -889,6 +889,128 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
 
 // ============ BOARD VIEW ============
 
+// Cadence at which the dispatch board polls live customer ETAs for the
+// jobs currently sitting in the En Route lane. Matches the job-detail
+// panel's poll cadence (`JOB_DETAIL_LIVE_ETA_POLL_MS`) so the two
+// surfaces stay visually in sync when a dispatcher has both open. The
+// shared server-side routing-adapter cache (keyed per
+// tenant/resource/job) absorbs the cost — polling N visible cards does
+// not multiply geocode/drive-time provider calls when the cache is
+// already warm from the Live Map, the SMS substitution, the public
+// booking-tracker page, or the open job-detail panel.
+const BOARD_EN_ROUTE_LIVE_ETA_POLL_MS = 15_000;
+
+// Polls the lightweight `/dispatch/jobs/:id/live-eta` endpoint for
+// every en_route job currently visible on the board, so the En Route
+// lane's cards can show the same "~12 min away — 3:42 PM" ETA the
+// customer sees without the dispatcher having to open each card. The
+// hook keys results by job id, drops entries when a job leaves the
+// en_route status (or disappears entirely), and fires the next round
+// of fetches without re-pulling the full job list. We deliberately
+// fan out per-job rather than introducing a list-endpoint variant so
+// we can reuse the existing handler verbatim — the routing-adapter
+// cache already dedupes the underlying drive-time computation across
+// surfaces.
+function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | null> {
+  const [etas, setEtas] = useState<Record<string, LiveEta | null>>({});
+
+  // Stable, sorted list of en_route ids that have the inputs the
+  // server needs to compute an ETA (resource + address). Sorting +
+  // joining gives us a primitive dependency the effects can compare
+  // by value, so we don't restart polling on every parent re-render.
+  const enRouteIds = useMemo(() => {
+    return jobs
+      .filter((j) => j.status === 'en_route' && j.resource_id && j.address)
+      .map((j) => j.id)
+      .sort();
+  }, [jobs]);
+  const enRouteKey = enRouteIds.join(',');
+
+  // Drop cached ETAs for jobs that are no longer en_route or no
+  // longer visible on the board, so a job that arrives and gets
+  // dropped from the lane doesn't keep showing a stale "~12 min away"
+  // value the next time it briefly reappears.
+  useEffect(() => {
+    setEtas((prev) => {
+      const visible = new Set(enRouteIds);
+      let changed = false;
+      const next: Record<string, LiveEta | null> = {};
+      for (const [id, val] of Object.entries(prev)) {
+        if (visible.has(id)) {
+          next[id] = val;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [enRouteKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (enRouteIds.length === 0) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      // Fan requests out in parallel — the server reuses the shared
+      // routing-adapter cache, so opening N cards does not multiply
+      // geocode/drive-time provider calls.
+      const results = await Promise.allSettled(
+        enRouteIds.map(async (id) => ({
+          id,
+          data: await api.get<{ live_eta: LiveEta | null; status: string }>(
+            `/dispatch/jobs/${id}/live-eta`,
+          ),
+        })),
+      );
+      if (cancelled) return;
+      setEtas((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const r of results) {
+          if (r.status !== 'fulfilled') continue;
+          const { id, data } = r.value;
+          const incoming = data.live_eta;
+          const hadKey = Object.prototype.hasOwnProperty.call(prev, id);
+          const existing = prev[id];
+          // Cheap shallow comparison to avoid re-rendering the whole
+          // board every 15s when nothing actually moved. Treat
+          // "still null" as no-op (otherwise persistently un-routable
+          // jobs would force a state update on every tick).
+          let isSame = false;
+          if (hadKey) {
+            if (existing === null && incoming === null) {
+              isSame = true;
+            } else if (
+              existing &&
+              incoming &&
+              existing.minutes === incoming.minutes &&
+              existing.arrival_at === incoming.arrival_at
+            ) {
+              isSame = true;
+            }
+          }
+          if (!isSame) {
+            next[id] = incoming;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
+
+    void tick();
+    const t = setInterval(() => {
+      void tick();
+    }, BOARD_EN_ROUTE_LIVE_ETA_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [enRouteKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return etas;
+}
+
 function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setShowFilters,
   territories, resources, isReadOnly, transitionJob, openJobDetail, setEditingJob, setShowJobForm,
   selectedJobs, setSelectedJobs, batchUpdate, getJobsByStatus }: {
@@ -903,6 +1025,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
   batchUpdate: (u: Record<string, unknown>) => void;
   getJobsByStatus: (s: string) => DispatchJob[];
 }) {
+  const liveEtas = useBoardEnRouteLiveEtas(jobs);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1001,6 +1124,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
                   />
                 ) : colJobs.map(job => (
                   <JobCard key={job.id} job={job} isReadOnly={isReadOnly} selected={selectedJobs.has(job.id)}
+                    liveEta={job.status === 'en_route' ? liveEtas[job.id] ?? null : null}
                     onSelect={() => { const s = new Set(selectedJobs); s.has(job.id) ? s.delete(job.id) : s.add(job.id); setSelectedJobs(s); }}
                     onClick={() => openJobDetail(job.id)}
                     onTransition={(s) => transitionJob(job.id, s)} />
@@ -1014,8 +1138,14 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
   );
 }
 
-function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }: {
+function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTransition }: {
   job: DispatchJob; isReadOnly: boolean; selected: boolean;
+  // Live customer ETA the board polls for cards in the En Route lane
+  // (see `useBoardEnRouteLiveEtas`). `null` for non-en_route cards
+  // and for en_route cards where the server has nothing to report
+  // (no fresh GPS fix, no geocodable address, etc.) — in either case
+  // we just don't render the inline ETA badge.
+  liveEta?: LiveEta | null;
   onSelect: () => void; onClick: () => void; onTransition: (s: string) => void;
 }) {
   const nextStates = VALID_TRANSITIONS[job.status] || [];
@@ -1027,6 +1157,7 @@ function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }:
   const showCloseness =
     job.closest_approach_m != null
     && SHOW_CLOSEST_APPROACH_STATUSES.has(job.status);
+  const showLiveEta = job.status === 'en_route' && liveEta != null;
   return (
     <div onClick={onClick}
       className={`bg-surface-secondary rounded-lg p-2.5 cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all ${selected ? 'ring-2 ring-primary' : ''}`}>
@@ -1059,6 +1190,17 @@ function JobCard({ job, isReadOnly, selected, onSelect, onClick, onTransition }:
         <div className="flex items-center gap-1 text-[10px] text-muted mt-1">
           <Clock className="h-2.5 w-2.5" />
           <span>{new Date(job.scheduled_at).toLocaleDateString()} {new Date(job.scheduled_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+        </div>
+      )}
+      {showLiveEta && liveEta && (
+        <div data-testid="board-card-live-eta"
+          className="flex items-center gap-1 text-[10px] mt-1 text-cyan-700 dark:text-cyan-300"
+          title="Same live ETA the customer sees on their tracking page">
+          <Clock className="h-2.5 w-2.5" />
+          <span className="font-semibold">~{liveEta.minutes} min away</span>
+          <span className="text-muted">
+            · {new Date(liveEta.arrival_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </span>
         </div>
       )}
       {showCloseness && (
