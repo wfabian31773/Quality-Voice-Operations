@@ -249,6 +249,32 @@ export class ObjectStorageService {
     return fullPath;
   }
 
+  // Deletes a private object previously written by uploadPrivateObject.
+  // Background sweepers (e.g. the dispatch route-export archive cleanup
+  // worker) call this once a download window has expired so the bucket
+  // doesn't accumulate stale customer data forever. Returns true when
+  // an object was removed, false when it was already gone — callers
+  // can treat both as success and only need to surface other errors.
+  //
+  // We deliberately do NOT pass `ignoreNotFound: true` here because that
+  // option swallows the 404 silently, making it impossible to tell
+  // already-gone from actually-deleted — which would corrupt the
+  // sweeper's `alreadyGone` telemetry. Instead we let the GCS client
+  // throw its standard 404 and translate it into `false` ourselves.
+  async deletePrivateObject(fullObjectPath: string): Promise<boolean> {
+    const { bucketName, objectName } = parseObjectPath(fullObjectPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    try {
+      await file.delete();
+      return true;
+    } catch (err) {
+      const code = (err as { code?: number } | null)?.code;
+      if (code === 404) return false;
+      throw err;
+    }
+  }
+
   // Streams an object stored at the absolute /<bucket>/<object> path
   // (the value returned by `uploadPrivateObject`) straight into an
   // Express response. Throws ObjectNotFoundError if the file no longer
