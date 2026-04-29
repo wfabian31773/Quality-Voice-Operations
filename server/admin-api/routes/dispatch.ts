@@ -4273,7 +4273,20 @@ const TRACKER_PUBLIC_STATUSES = new Set([
 // (so the customer can revisit "what time were they here?") without
 // leaving the tech's first name + appointment window indefinitely
 // accessible to anyone who keeps the URL.
-const TRACKER_TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'no_show']);
+//
+// Mirrors TERMINAL_JOB_STATUSES above plus `no_show`: any status that
+// means "this visit is over" should also expire the public tracking
+// link. `done` and `incomplete` are codebase-wide synonyms for
+// completed (see TERMINAL_JOB_STATUSES and the completed_at write
+// further up), so techs who close a job as `done` shouldn't leave the
+// SMS link resolving forever.
+const TRACKER_TERMINAL_STATUSES = new Set([
+  'completed',
+  'done',
+  'incomplete',
+  'cancelled',
+  'no_show',
+]);
 
 // Grace period after a job enters a terminal status during which the
 // tracking link still resolves. Tune this single constant to make the

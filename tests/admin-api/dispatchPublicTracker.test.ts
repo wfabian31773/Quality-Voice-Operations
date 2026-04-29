@@ -268,6 +268,47 @@ describe('getPublicJobTrackerHandler', () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
+  it('returns 404 once a done job has been past the grace period', async () => {
+    // `done` is a codebase-wide synonym for `completed` (see
+    // TERMINAL_JOB_STATUSES in server/admin-api/routes/dispatch.ts), so
+    // a tech closing a job as `done` must expire the tracking link the
+    // same way `completed` does. Without this case the link would
+    // resolve forever for any job closed via the `done` path.
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'job-done',
+          tenant_id: 'tenant-A',
+          title: 'Repair',
+          status: 'done',
+          contact_name: 'Jane',
+          address: '500 Folsom',
+          scheduled_at: null,
+          eta_start: null,
+          eta_end: null,
+          completed_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+          resource_id: 'res-1',
+          address_lat: null,
+          address_lon: null,
+          address_geocoded_for: null,
+          resource_name: 'Alex',
+        },
+      ],
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getJson } = makeRes();
+    await (dispatch.getPublicJobTrackerHandler as (
+      req: Request,
+      res: Response,
+    ) => Promise<void>)(makeReq('77777777-7777-7777-7777-777777777777'), res);
+
+    expect(getStatus()).toBe(404);
+    expect((getJson() as Record<string, unknown>).error).toBe('Tracking link not found');
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
   it('expires cancelled and no_show jobs using updated_at as the reference', async () => {
     // cancelled / no_show transitions never write completed_at, so the
     // expiry check falls back to updated_at. This locks in that
