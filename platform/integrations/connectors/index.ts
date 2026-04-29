@@ -17,6 +17,28 @@ export type {
   CrmCallerIdentityRevalidationCycleResult,
   CrmCallerIdentityRevalidationCycleOptions,
 } from './CrmCallerIdentityRevalidationScheduler';
+export {
+  startConnectorStaleAlertScheduler,
+  stopConnectorStaleAlertScheduler,
+  runConnectorStaleAlertCycle,
+  findStaleConnectors,
+  decideStaleAlerts,
+  renderStaleConnectorDigest,
+} from './ConnectorStaleAlertScheduler';
+export type {
+  StaleConnectorEntry,
+  StaleAlertDecision,
+  StaleAlertCycleResult,
+  RenderedDigest,
+} from './ConnectorStaleAlertScheduler';
+export {
+  REFRESH_CYCLE_INTERVAL_MS,
+  STALE_CYCLE_THRESHOLD,
+  TOKEN_EXPIRING_HORIZON_MS,
+  computeTokenHealthStatus,
+  computeStaleEvaluation,
+} from './connectorStaleHealth';
+export type { TokenHealthStatus, StaleEvaluation } from './connectorStaleHealth';
 export { encryptValue, decryptValue } from './crypto';
 export type {
   ConnectorType,

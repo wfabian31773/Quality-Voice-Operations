@@ -755,9 +755,25 @@ export interface ConnectorTokenHealthRow {
  * Mirrors the per-tenant decrypt fan-out from `listRefreshableConnectorConfigs`
  * but includes `needs_reconnect` rows so ops can see the wedged ones too.
  */
+/**
+ * Per-tenant load behaviour for `listConnectorTokenHealth`. The default
+ * `'skip'` mode preserves the long-standing route behaviour (a single
+ * borked tenant doesn't break the admin dashboard for everyone else).
+ * Schedulers must pass `'throw'` so they can distinguish "no stale
+ * connectors" from "partial snapshot — some tenants didn't load" and
+ * avoid corrupting any dedup ledger they keep.
+ */
+export type ConnectorTokenHealthErrorMode = 'skip' | 'throw';
+
+export interface ListConnectorTokenHealthOptions {
+  onTenantError?: ConnectorTokenHealthErrorMode;
+}
+
 export async function listConnectorTokenHealth(
   providers: string[],
+  options: ListConnectorTokenHealthOptions = {},
 ): Promise<ConnectorTokenHealthRow[]> {
+  const onTenantError: ConnectorTokenHealthErrorMode = options.onTenantError ?? 'skip';
   if (providers.length === 0) return [];
 
   const pool = getPlatformPool();
@@ -875,6 +891,12 @@ export async function listConnectorTokenHealth(
       });
       results.push(...tenantRows);
     } catch (err) {
+      if (onTenantError === 'throw') {
+        // Strict mode: bubble the failure so the caller (e.g. the stale
+        // alert scheduler) can abort instead of treating a partial
+        // snapshot as authoritative.
+        throw err;
+      }
       logger.warn('Failed to load connector token health for tenant', {
         tenantId,
         error: String(err),

@@ -12,6 +12,13 @@ import {
 } from '../../../platform/integrations/connectors';
 import { getRefreshableProviders } from '../../../platform/integrations/connectors/tokenRefresh';
 import { dispatchConnectorAuthAlert } from '../../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
+import {
+  REFRESH_CYCLE_INTERVAL_MS,
+  STALE_CYCLE_THRESHOLD,
+  TOKEN_EXPIRING_HORIZON_MS,
+  computeStaleEvaluation,
+  type TokenHealthStatus,
+} from '../../../platform/integrations/connectors/connectorStaleHealth';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import type { ConnectorType } from '../../../platform/integrations/connectors/types';
 import {
@@ -59,8 +66,6 @@ interface RefreshFailureRow {
   occurredAt: string;
 }
 
-type TokenHealthStatus = 'healthy' | 'expiring' | 'expired' | 'needs_reconnect' | 'unknown';
-
 interface TokenHealthRow {
   tenantId: string;
   tenantName: string | null;
@@ -93,17 +98,6 @@ interface TokenHealthRow {
   stale: boolean;
 }
 
-// Mirror the scheduler's check interval so the UI can render
-// "X cycles since refresh" using the same yardstick the worker uses.
-// Kept locally (vs. exported from the scheduler) to avoid pulling the
-// scheduler module — and its setInterval side effects — into the route.
-const REFRESH_CYCLE_INTERVAL_MS = 15 * 60 * 1000;
-// Window inside which we treat a still-valid token as "expiring soon" for
-// the green/yellow/red badge. Matches the scheduler's refresh horizon.
-const TOKEN_EXPIRING_HORIZON_MS = 24 * 60 * 60 * 1000;
-// Number of sweep cycles past expiry before we badge a connector as
-// "stale" (worker keeps failing). 2 cycles ≈ 30min of missed refreshes.
-const STALE_CYCLE_THRESHOLD = 2;
 // Default window for the proactive "Expiring soon" triage bucket. Wider
 // than the per-row badge horizon so ops can plan reconnect work a couple of
 // days ahead instead of only after the worker has failed. Caller can
@@ -111,17 +105,6 @@ const STALE_CYCLE_THRESHOLD = 2;
 const DEFAULT_EXPIRING_SOON_HOURS = 48;
 const MIN_EXPIRING_SOON_HOURS = 1;
 const MAX_EXPIRING_SOON_HOURS = 24 * 7;
-
-function computeTokenHealthStatus(
-  lastSyncStatus: string | null,
-  expiresInMs: number | null,
-): TokenHealthStatus {
-  if (lastSyncStatus === 'needs_reconnect') return 'needs_reconnect';
-  if (expiresInMs === null) return 'unknown';
-  if (expiresInMs <= 0) return 'expired';
-  if (expiresInMs <= TOKEN_EXPIRING_HORIZON_MS) return 'expiring';
-  return 'healthy';
-}
 
 /**
  * Row shape for the proactive "Expiring soon" triage bucket — a slim view
@@ -385,41 +368,10 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       const snapshots = await listConnectorTokenHealth(refreshableProviders);
       const now = Date.now();
       tokenHealth = snapshots.map((s) => {
-        const expiresInMs = s.tokenExpiresAt !== null ? s.tokenExpiresAt - now : null;
-        const status = computeTokenHealthStatus(s.lastSyncStatus, expiresInMs);
-
-        // "Cycles since refresh" prefers the worker's view (when did we
-        // last successfully mint a token), falling back to "how long has
-        // this token been expired" so we can still flag wedged connectors
-        // that never had an issued_at recorded.
-        let cyclesSinceRefresh: number | null = null;
-        if (s.tokenIssuedAt !== null) {
-          const ageMs = now - s.tokenIssuedAt;
-          cyclesSinceRefresh = Math.max(0, Math.floor(ageMs / REFRESH_CYCLE_INTERVAL_MS));
-        } else if (expiresInMs !== null && expiresInMs < 0) {
-          cyclesSinceRefresh = Math.floor(-expiresInMs / REFRESH_CYCLE_INTERVAL_MS);
-        }
-
-        // Stale = the worker should have rotated this token by now but
-        // hasn't. Captures both "expired & untouched" and
-        // "needs_reconnect & nothing has happened since".
-        let stale = false;
-        if (status === 'needs_reconnect') {
-          if (s.lastSyncErrorAt) {
-            const errAgeMs = now - Date.parse(s.lastSyncErrorAt);
-            if (
-              Number.isFinite(errAgeMs)
-              && errAgeMs >= STALE_CYCLE_THRESHOLD * REFRESH_CYCLE_INTERVAL_MS
-            ) {
-              stale = true;
-            }
-          }
-        } else if (status === 'expired') {
-          if (expiresInMs !== null && -expiresInMs >= STALE_CYCLE_THRESHOLD * REFRESH_CYCLE_INTERVAL_MS) {
-            stale = true;
-          }
-        }
-
+        // Single source of truth for "is this connector stale?". Same
+        // helper backs the off-hours `ConnectorStaleAlertScheduler` digest
+        // so the badge in the UI and the email never disagree.
+        const evaluation = computeStaleEvaluation(s, now);
         return {
           tenantId: s.tenantId,
           tenantName: s.tenantName,
@@ -434,10 +386,10 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
           tokenIssuedAt: s.tokenIssuedAt !== null ? new Date(s.tokenIssuedAt).toISOString() : null,
           tokenExpiresAt: s.tokenExpiresAt !== null ? new Date(s.tokenExpiresAt).toISOString() : null,
           tokenDecryptFailed: s.tokenDecryptFailed,
-          status,
-          expiresInMs,
-          cyclesSinceRefresh,
-          stale,
+          status: evaluation.status,
+          expiresInMs: evaluation.expiresInMs,
+          cyclesSinceRefresh: evaluation.cyclesSinceRefresh,
+          stale: evaluation.stale,
         };
       });
     } catch (err) {
