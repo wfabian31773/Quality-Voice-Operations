@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { createLogger } from '../../../platform/core/logger';
 import { getConversationCost } from '../../../platform/billing/cost';
+import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 import { notifySubscriberChanges, diffSubscribers } from '../../../platform/analytics/CallViewSubscriberNotifier';
 
 const logger = createLogger('ADMIN_CALLS');
@@ -171,7 +172,12 @@ export const getCallHandler: RequestHandler = async (req, res) => {
       costBreakdown = await getConversationCost(tenantId, id);
     } catch {}
 
-    return res.json({ call, costBreakdown });
+    let currency: string | undefined;
+    try {
+      currency = await getTenantBillingCurrency(tenantId);
+    } catch {}
+
+    return res.json({ call, costBreakdown, currency });
   } catch (err) {
     await client.query('ROLLBACK');
     return res.status(500).json({ error: 'Failed to retrieve call' });
