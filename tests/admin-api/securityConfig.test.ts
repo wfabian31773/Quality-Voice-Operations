@@ -270,6 +270,60 @@ describe('assertProductionSecrets()', () => {
     const { assertProductionSecrets } = await loadSecurity();
     expect(() => assertProductionSecrets()).not.toThrow();
   });
+
+  // Task #995: dedicated, OAuth-flavoured boot guard. The ADMIN_JWT_SECRET
+  // requirement above already covers most cases, but operators need to see
+  // an unambiguous "this breaks connector OAuth" message — naming both
+  // candidate env vars — so they don't think only admin auth is at risk.
+  it('flags the connector OAuth state-signing case with both candidate env vars when both are missing', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    delete process.env.ADMIN_JWT_SECRET;
+    delete process.env.CONNECTOR_ENCRYPTION_KEY;
+    const { assertProductionSecrets } = await loadSecurity();
+    let err: Error | null = null;
+    try {
+      assertProductionSecrets();
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).not.toBeNull();
+    expect(err?.message).toMatch(/ADMIN_JWT_SECRET/);
+    expect(err?.message).toMatch(/CONNECTOR_ENCRYPTION_KEY/);
+    expect(err?.message).toMatch(/connector OAuth/i);
+    expect(err?.message).toMatch(/\/connectors\/oauth/);
+  });
+
+  it('does NOT flag the OAuth state-signing case when CONNECTOR_ENCRYPTION_KEY is set even if ADMIN_JWT_SECRET is missing', async () => {
+    // ADMIN_JWT_SECRET is still required on its own (admin auth), so this
+    // should still throw — but the OAuth-specific clause must not appear,
+    // because connector OAuth state signing has a working secret via
+    // CONNECTOR_ENCRYPTION_KEY.
+    process.env.APP_ENV = 'production';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    process.env.CONNECTOR_ENCRYPTION_KEY = 'a'.repeat(64);
+    delete process.env.ADMIN_JWT_SECRET;
+    const { assertProductionSecrets } = await loadSecurity();
+    let err: Error | null = null;
+    try {
+      assertProductionSecrets();
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).not.toBeNull();
+    expect(err?.message).toMatch(/ADMIN_JWT_SECRET/);
+    expect(err?.message).not.toMatch(/connector OAuth/i);
+  });
+
+  it('preserves dev-fallback behaviour: no throw in development even with both OAuth secrets unset', async () => {
+    process.env.APP_ENV = 'development';
+    delete process.env.ADMIN_JWT_SECRET;
+    delete process.env.CONNECTOR_ENCRYPTION_KEY;
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).not.toThrow();
+  });
 });
 
 describe('JWT algorithm pinning', () => {

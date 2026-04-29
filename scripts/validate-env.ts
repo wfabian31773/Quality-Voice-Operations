@@ -155,6 +155,33 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
     }
   }
 
+  // Task #995: connector OAuth state signing accepts EITHER ADMIN_JWT_SECRET
+  // or CONNECTOR_ENCRYPTION_KEY (see `getStateSecret()` in
+  // server/admin-api/routes/connectorOAuth.ts). Fail boot with a message that
+  // names both candidate vars and explicitly mentions OAuth so operators
+  // notice during deploy rather than after the first tenant clicks "Connect"
+  // and gets a 500. ADMIN_JWT_SECRET is also required on its own (admin auth),
+  // so under normal operation this guard piggybacks on that error — but it
+  // makes the connector OAuth blast radius unambiguous.
+  //
+  // We deliberately do NOT push a synthetic name into `missing` here — the
+  // failure scenario implies `ADMIN_JWT_SECRET` is already missing (which is
+  // a hard production requirement on its own and already in `missing`), so
+  // `passed` will be false regardless. Keeping `missing` to real env-var
+  // names protects downstream consumers (e.g. log scrapers, runbook tooling)
+  // that may treat the array as a list of literal vars to set.
+  if (isProd) {
+    const oauthSecretConfigured = !!(
+      process.env.ADMIN_JWT_SECRET || process.env.CONNECTOR_ENCRYPTION_KEY
+    );
+    if (!oauthSecretConfigured) {
+      console.log('\nConnector OAuth state signing:');
+      console.log(
+        '  FAIL  ADMIN_JWT_SECRET or CONNECTOR_ENCRYPTION_KEY — neither is set. Connector OAuth flows (/connectors/oauth/<provider>/init) will refuse every tenant request until one of these env vars is configured.',
+      );
+    }
+  }
+
   if (isProd && process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
     warnings.push('STRIPE_SECRET_KEY appears to be a test key in production');
   }

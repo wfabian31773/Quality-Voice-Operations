@@ -202,10 +202,34 @@ export function assertProductionSecrets(): void {
   }
 
   const missing = required.filter(([name]) => !process.env[name]);
+
+  // Task #995: Surface the connector OAuth state-signing requirement
+  // explicitly at boot. `connectorOAuth.ts::getStateSecret()` accepts
+  // *either* `ADMIN_JWT_SECRET` or `CONNECTOR_ENCRYPTION_KEY` and fails
+  // closed in production-like envs when neither is set (the runtime guard
+  // added in Task #621). The `required` list above already demands
+  // `ADMIN_JWT_SECRET`, so under normal operation this branch piggybacks
+  // on that error — but we add a dedicated message that names *both*
+  // candidate vars and points at the OAuth flows specifically so
+  // operators understand the blast radius (every tenant clicking
+  // "Connect" gets a 500 until this is fixed) without having to grep
+  // through the OAuth router.
+  const oauthSecretConfigured = !!(
+    process.env.ADMIN_JWT_SECRET || process.env.CONNECTOR_ENCRYPTION_KEY
+  );
+
+  const errors: string[] = [];
   if (missing.length > 0) {
     const names = missing.map(([name]) => name).join(', ');
-    throw new Error(
-      `Refusing to start admin API in production: missing required env var(s): ${names}`,
+    errors.push(`missing required env var(s): ${names}`);
+  }
+  if (!oauthSecretConfigured) {
+    errors.push(
+      'connector OAuth state signing requires ADMIN_JWT_SECRET or CONNECTOR_ENCRYPTION_KEY (neither is set; /connectors/oauth/<provider>/init will refuse every tenant request)',
     );
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Refusing to start admin API in production: ${errors.join('; ')}`);
   }
 }
