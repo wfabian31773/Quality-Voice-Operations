@@ -1,3 +1,8 @@
+import { getPlanMonthlyPriceWholeDollars } from '../../../shared/billing/planCatalog';
+
+const STARTER_PRICE = getPlanMonthlyPriceWholeDollars('starter');
+const ENTERPRISE_PRICE = getPlanMonthlyPriceWholeDollars('enterprise');
+
 export interface BlogArticle {
   title: string;
   slug: string;
@@ -367,7 +372,7 @@ Modern AI receptionists go beyond just answering questions. They can:
 |----------|-------------|----------|-------------------|
 | Full-time receptionist | $3,500-$5,000 | 40 hrs/week | 1 |
 | Answering service | $500-$1,500 | 24/7 | Varies |
-| AI receptionist | $99-$499 | 24/7 | Unlimited |
+| AI receptionist | $${STARTER_PRICE}-$${ENTERPRISE_PRICE} | 24/7 | Unlimited |
 
 The economics are clear: AI receptionists deliver better coverage at a fraction of the cost of any alternative.
 

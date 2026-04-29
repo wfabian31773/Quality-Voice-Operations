@@ -1,9 +1,30 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
+import { PLAN_CATALOG, getPlanMonthlyPriceWholeDollars } from '../../shared/billing/planCatalog';
 
 const logger = createLogger('WEBSITE_SALES_AGENT');
 
-const SYSTEM_PROMPT = `You are QVO's AI sales assistant on the QVO website. QVO (Quality Voice Operations) is an AI voice agent platform for small businesses.
+function buildPricingBlock(): string {
+  const starter = PLAN_CATALOG.starter;
+  const pro = PLAN_CATALOG.pro;
+  const enterprise = PLAN_CATALOG.enterprise;
+
+  const starterPrice = getPlanMonthlyPriceWholeDollars('starter');
+  const proPrice = getPlanMonthlyPriceWholeDollars('pro');
+  const enterprisePrice = getPlanMonthlyPriceWholeDollars('enterprise');
+
+  return [
+    `- Starter: $${starterPrice}/month — ${starter.includedMinutes.toLocaleString()} AI minutes, up to 3 phone numbers, 3 team members, inbound calls, transcripts, analytics. Best for small practices getting started.`,
+    `- Pro: $${proPrice}/month — ${pro.includedMinutes.toLocaleString()} AI minutes, up to 10 phone numbers, 10 team members, outbound campaigns, quality scoring, API access, CRM integrations, custom templates, priority support. Best for growing businesses. MOST POPULAR.`,
+    `- Enterprise: $${enterprisePrice}/month — ${enterprise.includedMinutes.toLocaleString()} AI minutes, unlimited phone numbers & team members, audit logs, multi-location support, dedicated onboarding. Best for multi-location organizations.`,
+    `- All plans include a 14-day free trial, no credit card required.`,
+    `- Overage rates: Starter $${starter.overageRatePerMinute.toFixed(2)}/min, Pro $${pro.overageRatePerMinute.toFixed(2)}/min, Enterprise $${enterprise.overageRatePerMinute.toFixed(2)}/min.`,
+    `- Annual billing saves 20%.`,
+  ].join('\n');
+}
+
+export function buildSystemPrompt(): string {
+  return `You are QVO's AI sales assistant on the QVO website. QVO (Quality Voice Operations) is an AI voice agent platform for small businesses.
 
 YOUR ROLE: Help website visitors understand QVO, answer questions, recommend plans, launch demos, and capture leads — all through natural conversation.
 
@@ -37,12 +58,7 @@ AGENT TEMPLATES (Pre-built, ready to deploy):
 12. Appointment Reminder — Automated reminders, rescheduling, waitlist management
 
 PRICING:
-- Starter: $99/month — 500 AI minutes, up to 3 phone numbers, 3 team members, inbound calls, transcripts, analytics. Best for small practices getting started.
-- Pro: $399/month — 2,500 AI minutes, up to 10 phone numbers, 10 team members, outbound campaigns, quality scoring, API access, CRM integrations, custom templates, priority support. Best for growing businesses. MOST POPULAR.
-- Enterprise: $999/month — 10,000 AI minutes, unlimited phone numbers & team members, audit logs, multi-location support, dedicated onboarding. Best for multi-location organizations.
-- All plans include a 14-day free trial, no credit card required.
-- Overage rates: Starter $0.15/min, Pro $0.12/min, Enterprise $0.08/min.
-- Annual billing saves 20%.
+${buildPricingBlock()}
 
 INSTRUCTIONS:
 1. When a visitor asks about a product feature, explain it clearly and suggest trying a demo.
@@ -59,6 +75,7 @@ IMPORTANT:
 - Be conversational, not robotic.
 - Don't repeat information the visitor already knows.
 - If you don't know something specific, say so honestly and offer to connect them with the sales team.`;
+}
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -252,7 +269,7 @@ export async function chat(
       messages: [
         {
           role: 'system',
-          content: `${SYSTEM_PROMPT}\n\nCURRENT PAGE CONTEXT: ${pageContext}\nVisitor is currently on: ${sourcePage}`,
+          content: `${buildSystemPrompt()}\n\nCURRENT PAGE CONTEXT: ${pageContext}\nVisitor is currently on: ${sourcePage}`,
         },
       ],
       leadData: {},
@@ -268,7 +285,7 @@ export async function chat(
       const newContext = getPageContext(sourcePage);
       state.messages[0] = {
         role: 'system',
-        content: `${SYSTEM_PROMPT}\n\nCURRENT PAGE CONTEXT: ${newContext}\nVisitor is currently on: ${sourcePage} (previously on: ${state.lastPage})`,
+        content: `${buildSystemPrompt()}\n\nCURRENT PAGE CONTEXT: ${newContext}\nVisitor is currently on: ${sourcePage} (previously on: ${state.lastPage})`,
       };
       trackAnalytics('page_changed', conversationId, sourcePage, { from: state.lastPage }).catch(() => {});
       state.lastPage = sourcePage;
