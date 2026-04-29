@@ -615,5 +615,35 @@
       "cta_primary": "Iniciar prueba gratis",
       "cta_secondary": "Ver casos de uso"
     }
+  },
+  "verify_email": {
+    "verifying": "Verificando tu correo...",
+    "missing_token": "Falta el token de verificación.",
+    "success_title": "Correo verificado",
+    "success_message": "Tu correo ha sido verificado. Tu cuenta ya está activa.",
+    "failed_title": "Verificación fallida",
+    "failed_default": "No se pudo verificar.",
+    "request_failed": "No se pudo verificar el correo. Inténtalo de nuevo.",
+    "go_to_login": "Ir a iniciar sesión",
+    "back_to_login": "Volver a iniciar sesión"
+  },
+  "accept_invite": {
+    "title": "Aceptar invitación",
+    "invalid_link": "Enlace de invitación no válido. No se proporcionó token.",
+    "invalid_or_expired": "Esta invitación no es válida o ha expirado.",
+    "go_to_login": "Ir a iniciar sesión",
+    "activated": "¡Cuenta activada!",
+    "redirecting": "Redirigiendo al panel...",
+    "invitation_intro": "Te han invitado a unirte a <strong>{{tenantName}}</strong> como <strong>{{role}}</strong>.",
+    "email_label": "Correo",
+    "password_label": "Contraseña",
+    "password_placeholder": "Elige una contraseña (mín. 8 caracteres)",
+    "confirm_password_label": "Confirmar contraseña",
+    "confirm_password_placeholder": "Confirma tu contraseña",
+    "password_too_short": "La contraseña debe tener al menos 8 caracteres.",
+    "passwords_do_not_match": "Las contraseñas no coinciden.",
+    "submit_failed": "No se pudo aceptar la invitación.",
+    "submit_button": "Establecer contraseña y unirse",
+    "submitting": "Activando..."
   }
 }

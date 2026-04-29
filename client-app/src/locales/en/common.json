@@ -615,5 +615,35 @@
       "cta_primary": "Start free trial",
       "cta_secondary": "See use cases"
     }
+  },
+  "verify_email": {
+    "verifying": "Verifying your email...",
+    "missing_token": "Missing verification token.",
+    "success_title": "Email Verified",
+    "success_message": "Your email has been verified. Your account is now active.",
+    "failed_title": "Verification Failed",
+    "failed_default": "Verification failed.",
+    "request_failed": "Unable to verify email. Please try again.",
+    "go_to_login": "Go to Login",
+    "back_to_login": "Back to Login"
+  },
+  "accept_invite": {
+    "title": "Accept Invitation",
+    "invalid_link": "Invalid invitation link. No token provided.",
+    "invalid_or_expired": "This invitation is invalid or has expired.",
+    "go_to_login": "Go to login",
+    "activated": "Account activated!",
+    "redirecting": "Redirecting to dashboard...",
+    "invitation_intro": "You've been invited to join <strong>{{tenantName}}</strong> as a <strong>{{role}}</strong>.",
+    "email_label": "Email",
+    "password_label": "Password",
+    "password_placeholder": "Choose a password (min 8 chars)",
+    "confirm_password_label": "Confirm Password",
+    "confirm_password_placeholder": "Confirm your password",
+    "password_too_short": "Password must be at least 8 characters.",
+    "passwords_do_not_match": "Passwords do not match.",
+    "submit_failed": "Failed to accept invitation.",
+    "submit_button": "Set Password & Join",
+    "submitting": "Activating..."
   }
 }
