@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   History,
+  Download,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
@@ -1222,6 +1223,69 @@ function snapshotEntries(event: AuditEvent): Array<[string, string]> {
   return entries;
 }
 
+// Escapes a value for inclusion in a CSV cell per RFC 4180. Wraps anything
+// containing commas, quotes, or newlines in double quotes and escapes embedded
+// quotes by doubling them. Null/undefined become an empty cell.
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (/[",\r\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+// Flattens an audit event's snapshot fields into a single `key=value; key=value`
+// cell so a regulator can read the meaningful state changes without unpacking
+// JSON. Reuses snapshotEntries() so the CSV column matches what the drawer UI
+// shows (curated labels for known actions, raw fields for unknown ones).
+function snapshotCell(event: AuditEvent): string {
+  return snapshotEntries(event)
+    .map(([label, value]) => `${label}=${value}`)
+    .join('; ');
+}
+
+function buildHistoryCsv(events: AuditEvent[]): string {
+  const header = [
+    'occurred_at',
+    'action',
+    'actor_email',
+    'actor_role',
+    'ip_address',
+    'severity',
+    'snapshot',
+  ];
+  const rows = events.map((event) => [
+    new Date(event.occurred_at).toISOString(),
+    event.action,
+    event.actor_email ?? (event.actor_user_id ? '' : 'system'),
+    event.actor_role ?? '',
+    event.ip_address ?? '',
+    event.severity,
+    snapshotCell(event),
+  ]);
+  return [header, ...rows]
+    .map((row) => row.map(csvEscape).join(','))
+    .join('\r\n');
+}
+
+function downloadHistoryCsv(caller: TrustedCaller, events: AuditEvent[]) {
+  const csv = buildHistoryCsv(events);
+  // Prepend a UTF-8 BOM so Excel auto-detects the encoding for any unicode
+  // characters in actor emails or friendly names.
+  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const safePhone = caller.phoneNumber.replace(/[^0-9A-Za-z+]/g, '') || caller.id;
+  const stamp = new Date().toISOString().slice(0, 10);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `trusted-caller-${safePhone}-history-${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function HistoryDrawer({
   caller,
   onClose,
@@ -1255,13 +1319,26 @@ function HistoryDrawer({
             {caller.friendlyName ? ` · ${caller.friendlyName}` : ''}
           </p>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="text-text-muted hover:text-text-primary"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => downloadHistoryCsv(caller, events)}
+            disabled={isLoading || events.length === 0}
+            aria-label="Download CSV"
+            title="Download CSV"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed border border-border rounded-md px-2 py-1"
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV
+          </button>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-text-muted hover:text-text-primary p-1"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
       <div className="p-5 space-y-3">
         {isLoading && <div className="text-text-muted text-sm">Loading…</div>}
