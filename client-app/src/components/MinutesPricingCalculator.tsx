@@ -12,7 +12,10 @@ interface CalculatorTier {
   popular?: boolean;
 }
 
+type BillingPeriod = 'monthly' | 'annual';
+
 const POPULAR_TIER: PlanTier = 'pro';
+export const ANNUAL_DISCOUNT = 0.2;
 
 const CALC_TIERS: CalculatorTier[] = PLAN_TIERS.map((key) => {
   const plan = PLAN_CATALOG[key];
@@ -48,19 +51,27 @@ export function calculateEffectiveRate(tier: Pick<CalculatorTier, 'basePrice' | 
   return calculateMonthlyCost(tier, minutes) / minutes;
 }
 
+export function getDiscountedBasePrice(basePrice: number, period: BillingPeriod): number {
+  return period === 'annual' ? basePrice * (1 - ANNUAL_DISCOUNT) : basePrice;
+}
+
 export default function MinutesPricingCalculator() {
   const [minutes, setMinutes] = useState<number>(1_500);
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
 
   const results = useMemo(() => {
     const safeMinutes = Math.max(0, Math.min(MAX_MINUTES, Math.round(minutes)));
     return CALC_TIERS.map((tier) => {
-      const monthlyCost = calculateMonthlyCost(tier, safeMinutes);
+      const effectiveBase = getDiscountedBasePrice(tier.basePrice, billingPeriod);
+      const billingTier = { ...tier, basePrice: effectiveBase };
+      const monthlyCost = calculateMonthlyCost(billingTier, safeMinutes);
       const effectiveRate = safeMinutes > 0 ? monthlyCost / safeMinutes : 0;
       const overageMinutes = Math.max(0, safeMinutes - tier.includedMinutes);
       const overageCost = overageMinutes * tier.overageRate;
-      return { tier, monthlyCost, effectiveRate, overageMinutes, overageCost };
+      const annualSavings = (tier.basePrice - effectiveBase) * 12;
+      return { tier, effectiveBase, monthlyCost, effectiveRate, overageMinutes, overageCost, annualSavings };
     });
-  }, [minutes]);
+  }, [minutes, billingPeriod]);
 
   const cheapest = useMemo(() => {
     if (minutes <= 0) return null;
@@ -69,18 +80,63 @@ export default function MinutesPricingCalculator() {
     results[0]);
   }, [results, minutes]);
 
+  const isAnnual = billingPeriod === 'annual';
+
   return (
     <div className="bg-white rounded-2xl border border-border-strong/50 shadow-sm overflow-hidden">
       <div className="p-6 lg:p-8 border-b border-border-strong/30 bg-surface-secondary/30">
-        <div className="flex items-start gap-3 mb-5">
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <Calculator className="h-4.5 w-4.5 text-primary" />
+        <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Calculator className="h-4.5 w-4.5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-bold text-sidebar-bg">Estimate your monthly bill</h3>
+              <p className="text-sm text-text-primary/60 font-body mt-0.5">
+                Pick how many AI minutes you expect to use each month and see the effective per-minute price for every plan.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-display text-lg font-bold text-sidebar-bg">Estimate your monthly bill</h3>
-            <p className="text-sm text-text-primary/60 font-body mt-0.5">
-              Pick how many AI minutes you expect to use each month and see the effective per-minute price for every plan.
-            </p>
+
+          <div
+            role="group"
+            aria-label="Billing period"
+            data-testid="calc-billing-toggle"
+            className="inline-flex items-center bg-white border border-border-strong/50 rounded-lg p-0.5 shrink-0"
+          >
+            <button
+              type="button"
+              data-testid="calc-billing-monthly"
+              aria-pressed={!isAnnual}
+              onClick={() => setBillingPeriod('monthly')}
+              className={`px-3 py-1.5 text-xs font-display font-semibold rounded-md transition-colors ${
+                !isAnnual
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-text-primary/70 hover:text-sidebar-bg'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              data-testid="calc-billing-annual"
+              aria-pressed={isAnnual}
+              onClick={() => setBillingPeriod('annual')}
+              className={`px-3 py-1.5 text-xs font-display font-semibold rounded-md transition-colors inline-flex items-center gap-1.5 ${
+                isAnnual
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-text-primary/70 hover:text-sidebar-bg'
+              }`}
+            >
+              Annual
+              <span
+                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                  isAnnual ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                }`}
+              >
+                −20%
+              </span>
+            </button>
           </div>
         </div>
 
@@ -126,7 +182,7 @@ export default function MinutesPricingCalculator() {
       </div>
 
       <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border-strong/30">
-        {results.map(({ tier, monthlyCost, effectiveRate, overageMinutes, overageCost }) => {
+        {results.map(({ tier, effectiveBase, monthlyCost, effectiveRate, overageMinutes, overageCost, annualSavings }) => {
           const isBest = cheapest && cheapest.tier.key === tier.key && minutes > 0;
           return (
             <div
@@ -164,12 +220,32 @@ export default function MinutesPricingCalculator() {
                 >
                   {minutes > 0 ? formatPerMinute(effectiveRate) : '—'} effective per minute
                 </div>
+                {isAnnual && (
+                  <div
+                    data-testid={`calc-savings-${tier.key}`}
+                    className="text-[11px] text-success font-body font-medium mt-1.5"
+                  >
+                    Saves {formatCurrency(annualSavings)}/yr vs monthly billing
+                  </div>
+                )}
               </div>
 
               <dl className="space-y-1.5 text-xs font-body border-t border-border-strong/30 pt-3">
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Base plan</dt>
-                  <dd className="text-sidebar-bg font-medium">{formatCurrency(tier.basePrice)}/mo</dd>
+                  <dd
+                    data-testid={`calc-base-${tier.key}`}
+                    className="text-sidebar-bg font-medium"
+                  >
+                    {isAnnual ? (
+                      <span className="inline-flex items-baseline gap-1.5">
+                        <span className="line-through text-text-primary/40">{formatCurrency(tier.basePrice)}</span>
+                        <span>{formatCurrency(effectiveBase)}/mo</span>
+                      </span>
+                    ) : (
+                      <span>{formatCurrency(tier.basePrice)}/mo</span>
+                    )}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Minutes included</dt>
@@ -194,7 +270,9 @@ export default function MinutesPricingCalculator() {
       </div>
 
       <div className="px-6 lg:px-8 py-4 bg-surface-secondary/40 border-t border-border-strong/30 text-xs text-text-primary/60 font-body">
-        Estimates use the same per-minute rates billed by your usage meter. Only active conversation time counts toward AI minutes — hold time, ringing, and processing are not billed.
+        {isAnnual
+          ? 'Annual billing saves 20% off the base plan. Estimates assume the same per-minute usage every month — overage is still billed monthly at the published rate.'
+          : 'Estimates use the same per-minute rates billed by your usage meter. Only active conversation time counts toward AI minutes — hold time, ringing, and processing are not billed.'}
       </div>
     </div>
   );
