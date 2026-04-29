@@ -930,17 +930,18 @@ interface ImprovementSuggestion {
   createdAt: string;
 }
 
-function categoryLabel(cat: string): string {
-  const labels: Record<string, string> = {
-    prompt_structure: 'Prompt Structure',
-    question_ordering: 'Question Ordering',
-    objection_handling: 'Objection Handling',
-    workflow_efficiency: 'Workflow Efficiency',
-    tone: 'Tone',
-    accuracy: 'Accuracy',
-    resolution: 'Resolution',
+function categoryLabel(cat: string, t: BuilderT): string {
+  const keyMap: Record<string, AgentBuilderTKey> = {
+    prompt_structure: 'weaknessPromptStructure',
+    question_ordering: 'weaknessQuestionOrdering',
+    objection_handling: 'weaknessObjectionHandling',
+    workflow_efficiency: 'weaknessWorkflowEfficiency',
+    tone: 'weaknessTone',
+    accuracy: 'weaknessAccuracy',
+    resolution: 'weaknessResolution',
   };
-  return labels[cat] || cat;
+  const key = keyMap[cat];
+  return key ? t(key) : cat;
 }
 
 function categoryColor(cat: string): string {
@@ -1038,7 +1039,7 @@ function ImprovementSuggestionsPanel({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mb-1 ${categoryColor(s.weaknessCategory)}`}>
-                        {categoryLabel(s.weaknessCategory)}
+                        {categoryLabel(s.weaknessCategory, t)}
                       </span>
                       <p className="text-xs text-text-primary line-clamp-2">{s.weaknessDescription}</p>
                     </div>
