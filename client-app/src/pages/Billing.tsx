@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
 import { formatCents as formatCentsHelper, formatCurrency } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
+import BillingEstimator from '../components/BillingEstimator';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
@@ -344,6 +345,11 @@ export default function Billing() {
               </p>
             )}
           </div>
+
+          <BillingEstimator
+            currentPlan={plan}
+            monthToDateAiMinutes={aiMinutesUsed}
+          />
 
           {sub && isAdmin && (
             <div className="bg-surface border border-border rounded-xl">
