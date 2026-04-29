@@ -1,3 +1,4 @@
+import '../styles/tw-public.css';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

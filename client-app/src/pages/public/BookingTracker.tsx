@@ -1,3 +1,4 @@
+import '../../styles/tw-public.css';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 

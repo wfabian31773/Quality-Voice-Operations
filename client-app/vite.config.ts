@@ -11,6 +11,18 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Rollup-generated virtuals (e.g. \0commonjsHelpers.js) are shared
+          // by every vendor chunk that goes through commonjs interop. Pin
+          // them to `react-vendor` so they live in the chunk that loads
+          // first and other vendor chunks just import from it. Without this
+          // they would land in whichever chunk happened to need them first
+          // and create cross-chunk cycles (e.g. `react-vendor` ↔
+          // `i18n-vendor`) that Rollup warns about and that produce fragile
+          // preload ordering.
+          if (id.startsWith('\0') || id.includes('/vite/dist/client/')) {
+            return 'react-vendor';
+          }
+
           if (!id.includes('node_modules')) return undefined;
 
           if (

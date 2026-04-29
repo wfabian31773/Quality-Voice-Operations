@@ -1,17 +1,24 @@
 import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import TenantLayout from './components/TenantLayout';
-import AdminLayout from './components/AdminLayout';
-import OpsLayout from './components/OpsLayout';
-import PublicLayout from './components/PublicLayout';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import OpsGuard from './components/OpsGuard';
 import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
 import MaintenanceGate from './components/MaintenanceGate';
-import PlatformAssistant from './components/PlatformAssistant';
 import PageSkeleton from './components/PageSkeleton';
+
+// Layouts are lazy so each surface ships its own JS+CSS only when its
+// routes are visited. Visiting /pricing should not preload TenantLayout
+// or AdminLayout, and vice-versa for /admin/*.
+const TenantLayout = lazy(() => import('./components/TenantLayout'));
+const AdminLayout = lazy(() => import('./components/AdminLayout'));
+const OpsLayout = lazy(() => import('./components/OpsLayout'));
+const PublicLayout = lazy(() => import('./components/PublicLayout'));
+// PlatformAssistant is only mounted on a couple of layout-less routes
+// (Onboarding, AgentBuilder); the in-app layouts mount their own copy
+// internally so it doesn't need to be eager either.
+const PlatformAssistant = lazy(() => import('./components/PlatformAssistant'));
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));

@@ -1,3 +1,4 @@
+import '../../styles/tw-public.css';
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';

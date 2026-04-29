@@ -1,0 +1,114 @@
+/* =================================================================
+ * QVO TAILWIND — IN-APP SURFACE
+ *
+ * Loaded with each lazy-loaded in-app layout chunk (TenantLayout,
+ * AdminLayout, OpsLayout) and the handful of top-level in-app entry
+ * pages (Onboarding, AgentBuilder, DesignDirections). Scoped via
+ * `source(none)` + explicit `@source` directives so it doesn't have
+ * to ship the Tailwind utility set used by the public marketing
+ * surface.
+ *
+ * Custom CSS classes that are only used inside the in-app shell
+ * (the mobile responsive table mixin used on detail pages) live here
+ * so they don't ship inside the public surface.
+ * ================================================================= */
+@import "tailwindcss" source(none);
+@import "./_theme.css";
+
+/* In-app layouts + the components they pull in */
+@source "../components/TenantLayout.tsx";
+@source "../components/AdminLayout.tsx";
+@source "../components/OpsLayout.tsx";
+
+@source "../components/AccessDenied.tsx";
+@source "../components/AppFooter.tsx";
+@source "../components/BillingEstimator.tsx";
+@source "../components/BrandLogo.tsx";
+@source "../components/Celebration.tsx";
+@source "../components/CommandPalette.tsx";
+@source "../components/ComparisonTable.tsx";
+@source "../components/ConnectorAuthBanner.tsx";
+@source "../components/DocBlocks.tsx";
+@source "../components/DocsSidebar.tsx";
+@source "../components/EmptyState.tsx";
+@source "../components/GlobalScopeBanner.tsx";
+@source "../components/HelpDrawer.tsx";
+@source "../components/HelpWidget.tsx";
+@source "../components/IndustryShowcase.tsx";
+@source "../components/KeyboardShortcuts.tsx";
+@source "../components/LanguageSwitcher.tsx";
+@source "../components/LiveTranscriptMock.tsx";
+@source "../components/LogosStrip.tsx";
+@source "../components/MinutesPricingCalculator.tsx";
+@source "../components/Modal.tsx";
+@source "../components/NotificationsCenter.tsx";
+@source "../components/OnboardingChecklist.tsx";
+@source "../components/OperationsAlertsBanner.tsx";
+@source "../components/PhoneVerification.tsx";
+@source "../components/PlatformAssistant.tsx";
+@source "../components/PortalSwitcher.tsx";
+@source "../components/ProductTour.tsx";
+@source "../components/RevealSection.tsx";
+@source "../components/ROICalculator.tsx";
+@source "../components/SchedulingDriftBanner.tsx";
+@source "../components/SEO.tsx";
+@source "../components/TestimonialsCarousel.tsx";
+@source "../components/TooltipWalkthrough.tsx";
+@source "../components/TourLauncher.tsx";
+@source "../components/state/**/*.{tsx,ts}";
+@source "../components/illustrations/**/*.{tsx,ts}";
+@source "../components/demo/**/*.{tsx,ts}";
+
+/* Every in-app page (everything under pages/ that isn't `pages/public/*`
+ * or one of the public-styled top-level entry pages handled by
+ * `tw-public.css`). The negative `@source not` lines keep this list
+ * resilient to new pages being added under `pages/`. */
+@source "../pages/**/*.{tsx,ts}";
+@source not "../pages/public/**";
+@source not "../pages/Login.tsx";
+@source not "../pages/AcceptInvite.tsx";
+@source not "../pages/Demo.tsx";
+@source not "../pages/ServerError.tsx";
+@source not "../pages/Maintenance.tsx";
+@source not "../pages/NotFound.tsx";
+
+/* ----- In-app custom CSS (mobile responsive table mixin) --------- */
+@media (max-width: 640px) {
+  .responsive-table thead { display: none; }
+  .responsive-table tbody, .responsive-table tr, .responsive-table td {
+    display: block;
+    width: 100%;
+  }
+  .responsive-table tr {
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    background: var(--color-surface);
+  }
+  .responsive-table td {
+    padding: 0.25rem 0;
+    border: none;
+  }
+  .responsive-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-right: 0.5rem;
+  }
+}
+
+/* React Flow nodes/edges are keyboard-focusable but render their own
+ * styling, so the global focus rule in tokens.css doesn't reliably reach
+ * them. Make the focus state unmistakable in the agent builder canvas
+ * (audit A-05). Lives in tw-app.css because @xyflow/react is only ever
+ * mounted inside AgentBuilder, which loads this sheet. */
+.react-flow__node:focus-visible,
+.react-flow__edge:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.react-flow__node:focus-visible {
+  box-shadow: 0 0 0 4px rgba(61, 179, 166, 0.18);
+}

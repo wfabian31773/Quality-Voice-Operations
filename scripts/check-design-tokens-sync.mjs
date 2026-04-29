@@ -5,9 +5,9 @@
  * Asserts that the locked Refined Harbor token values in
  * `client-app/src/lib/designTokens.ts` match the corresponding
  * CSS custom properties in the `@theme` block of
- * `client-app/src/index.css`. Drift between the two would cause
- * charts/programmatic UI to render in a different palette than
- * the rest of the app.
+ * `client-app/src/styles/_theme.css`. Drift between the two would
+ * cause charts/programmatic UI to render in a different palette
+ * than the rest of the app.
  *
  * Exits non-zero on any mismatch. Designed to be cheap enough to
  * run in CI on every PR that touches either file.
@@ -23,7 +23,7 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 
-const cssPath = resolve(root, "client-app/src/index.css");
+const cssPath = resolve(root, "client-app/src/styles/_theme.css");
 const tsPath = resolve(root, "client-app/src/lib/designTokens.ts");
 
 const css = readFileSync(cssPath, "utf8");
@@ -175,7 +175,7 @@ if (failures.length > 0) {
   );
   console.error(failures.join("\n"));
   console.error(
-    `\nFix: edit BOTH client-app/src/index.css AND client-app/src/lib/designTokens.ts so the values match. See docs/design-system.md.\n`,
+    `\nFix: edit BOTH client-app/src/styles/_theme.css AND client-app/src/lib/designTokens.ts so the values match. See docs/design-system.md.\n`,
   );
   process.exit(1);
 }

@@ -1,0 +1,322 @@
+/* =================================================================
+ * QVO TAILWIND — PUBLIC SURFACE
+ *
+ * Loaded with the public marketing layout chunk and the handful of
+ * top-level public-styled entry pages (Login, AcceptInvite, Demo).
+ * Scoped via `source(none)` + explicit `@source` directives so it
+ * doesn't have to ship the Tailwind utility set used by the
+ * tenant-portal/admin/ops surfaces.
+ *
+ * Custom CSS classes that are only used on the public surface
+ * (gradient hero text, glass cards, scroll-reveal helpers, the demo
+ * widget styling, and the `.public-surface` dark-mode adapters) live
+ * here so they don't ship inside the in-app shell.
+ * ================================================================= */
+@import "tailwindcss" source(none);
+@import "./_theme.css";
+
+/* Components used on the public marketing surface */
+@source "../components/PublicLayout.tsx";
+@source "../components/AppFooter.tsx";
+@source "../components/CookieConsent.tsx";
+@source "../components/WebsiteSalesWidget.tsx";
+@source "../components/LanguageSwitcher.tsx";
+@source "../components/SEO.tsx";
+@source "../components/BrandLogo.tsx";
+@source "../components/RevealSection.tsx";
+@source "../components/MinutesPricingCalculator.tsx";
+@source "../components/ROICalculator.tsx";
+@source "../components/ComparisonTable.tsx";
+@source "../components/IndustryShowcase.tsx";
+@source "../components/LiveTranscriptMock.tsx";
+@source "../components/LogosStrip.tsx";
+@source "../components/TestimonialsCarousel.tsx";
+@source "../components/EmptyState.tsx";
+@source "../components/Modal.tsx";
+@source "../components/PhoneVerification.tsx";
+@source "../components/HelpDrawer.tsx";
+@source "../components/DocsSidebar.tsx";
+@source "../components/DocBlocks.tsx";
+@source "../components/SchedulingDriftBanner.tsx";
+@source "../components/state/**/*.tsx";
+@source "../components/illustrations/**/*.{tsx,ts}";
+@source "../components/demo/**/*.{tsx,ts}";
+
+/* All public marketing pages + public-styled top-level entry pages */
+@source "../pages/public/**/*.{tsx,ts}";
+@source "../pages/Login.tsx";
+@source "../pages/AcceptInvite.tsx";
+@source "../pages/Demo.tsx";
+
+/* ----- Public marketing custom CSS ------------------------------- */
+
+.hero-gradient-text {
+  background: linear-gradient(135deg, #2E8C83, #4CC9BB, #2E8C83);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 4s ease-in-out infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-card-light {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.scroll-reveal {
+  opacity: 1;
+  transform: none;
+}
+
+.scroll-reveal.scroll-ready {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.scroll-reveal.scroll-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scroll-delay-1 { transition-delay: 0.1s; }
+.scroll-delay-2 { transition-delay: 0.2s; }
+.scroll-delay-3 { transition-delay: 0.3s; }
+.scroll-delay-4 { transition-delay: 0.4s; }
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes transcript-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-gradient-text {
+    animation: none;
+  }
+
+  .scroll-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .scroll-reveal.scroll-revealed {
+    opacity: 1;
+    transform: none;
+  }
+
+  .scroll-delay-1,
+  .scroll-delay-2,
+  .scroll-delay-3,
+  .scroll-delay-4 {
+    transition-delay: 0s;
+  }
+}
+
+/* ----- Demo page custom CSS -------------------------------------- */
+.demo-glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(18, 48, 71, 0.06), 0 1px 3px rgba(18, 48, 71, 0.04);
+}
+
+.demo-waveform-bar {
+  animation: demo-waveform ease-in-out infinite;
+}
+
+@keyframes demo-waveform {
+  0%, 100% { height: 4px; }
+  25% { height: 20px; }
+  50% { height: 8px; }
+  75% { height: 28px; }
+}
+
+.demo-call-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  transition: all 0.4s ease;
+}
+
+.demo-call-status-active {
+  background: rgba(76, 155, 107, 0.1);
+  border: 1px solid rgba(76, 155, 107, 0.2);
+}
+
+.demo-call-status-idle {
+  background: rgba(205, 215, 219, 0.15);
+  border: 1px solid rgba(205, 215, 219, 0.2);
+}
+
+.demo-event-enter {
+  animation: demo-event-slide-in 0.3s ease-out both;
+}
+
+@keyframes demo-event-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.demo-celebration-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 48, 71, 0.3);
+  backdrop-filter: blur(4px);
+  animation: demo-celebration-fade-in 0.3s ease-out;
+}
+
+.demo-celebration-content {
+  text-align: center;
+  padding: 2.5rem;
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 48px rgba(18, 48, 71, 0.15);
+  animation: demo-celebration-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.demo-celebration-icon {
+  animation: demo-celebration-bounce 0.6s ease-out 0.2s both;
+}
+
+@keyframes demo-celebration-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes demo-celebration-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes demo-celebration-bounce {
+  0% { transform: scale(0.5); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.demo-cta-section {
+  background: linear-gradient(180deg, var(--color-surface-secondary) 0%, white 30%, var(--color-info-light) 100%);
+  animation: demo-cta-fade-in 0.6s ease-out;
+}
+
+@keyframes demo-cta-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.demo-grid-pattern {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.demo-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.demo-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.demo-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(205, 215, 219, 0.4);
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-waveform-bar {
+    animation: none;
+    height: 12px;
+  }
+
+  .demo-event-enter,
+  .demo-celebration-overlay,
+  .demo-celebration-content,
+  .demo-celebration-icon,
+  .demo-cta-section {
+    animation: none;
+  }
+}
+
+/* =================================================================
+ * PUBLIC MARKETING SURFACE — DARK MODE ADAPTERS
+ * Scoped to `.public-surface` so dark mode in marketing chrome doesn't
+ * leak into in-app surfaces. Adapts Tailwind built-ins (bg-white,
+ * text-white opacity variants used inside content cards) that don't
+ * resolve to design tokens.
+ * ================================================================= */
+.dark .public-surface .bg-white { background-color: var(--color-surface); }
+.dark .public-surface .bg-white\/50 { background-color: rgba(255, 255, 255, 0.04); }
+.dark .public-surface .bg-white\/60 { background-color: rgba(255, 255, 255, 0.05); }
+.dark .public-surface .bg-white\/70 { background-color: rgba(255, 255, 255, 0.06); }
+.dark .public-surface .bg-white\/80 { background-color: var(--color-surface); }
+.dark .public-surface .bg-white\/90 { background-color: var(--color-surface); }
+.dark .public-surface .bg-white\/95 { background-color: var(--color-surface); }
+
+/* Card hover surfaces inside marketing content sections */
+.dark .public-surface .hover\:bg-white:hover { background-color: var(--color-surface-hover); }
+
+/* Primary CTA glow on harbor sections — keeps brand presence in dark */
+.public-surface .btn-primary-glow {
+  box-shadow: 0 4px 16px rgba(31, 142, 131, 0.25);
+}
+.dark .public-surface .btn-primary-glow {
+  box-shadow: 0 4px 18px rgba(61, 179, 166, 0.32);
+}

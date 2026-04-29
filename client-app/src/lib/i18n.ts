@@ -1,32 +1,8 @@
-import i18n from 'i18next';
+import i18n, { type ReadCallback } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import enCommon from '../locales/en/common.json';
-import enDocs from '../locales/en/docs.json';
-import enMarketing from '../locales/en/marketing.json';
-import enTenant from '../locales/en/tenant.json';
-import enAdmin from '../locales/en/admin.json';
-import esCommon from '../locales/es/common.json';
-import esDocs from '../locales/es/docs.json';
-import esMarketing from '../locales/es/marketing.json';
-import esTenant from '../locales/es/tenant.json';
-import esAdmin from '../locales/es/admin.json';
-import ptBRCommon from '../locales/pt-BR/common.json';
-import ptBRDocs from '../locales/pt-BR/docs.json';
-import ptBRMarketing from '../locales/pt-BR/marketing.json';
-import ptBRTenant from '../locales/pt-BR/tenant.json';
-import ptBRAdmin from '../locales/pt-BR/admin.json';
-import frCommon from '../locales/fr/common.json';
-import frDocs from '../locales/fr/docs.json';
-import frMarketing from '../locales/fr/marketing.json';
-import frTenant from '../locales/fr/tenant.json';
-import frAdmin from '../locales/fr/admin.json';
-import deCommon from '../locales/de/common.json';
-import deDocs from '../locales/de/docs.json';
-import deMarketing from '../locales/de/marketing.json';
-import deTenant from '../locales/de/tenant.json';
-import deAdmin from '../locales/de/admin.json';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English', nativeLabel: 'English' },
@@ -42,15 +18,77 @@ export const DEFAULT_LANGUAGE: SupportedLanguageCode = 'en';
 
 export const I18N_STORAGE_KEY = 'qvo_lang';
 
-const resources = {
-  en: { common: enCommon, docs: enDocs, marketing: enMarketing, tenant: enTenant, admin: enAdmin },
-  es: { common: esCommon, docs: esDocs, marketing: esMarketing, tenant: esTenant, admin: esAdmin },
-  'pt-BR': { common: ptBRCommon, docs: ptBRDocs, marketing: ptBRMarketing, tenant: ptBRTenant, admin: ptBRAdmin },
-  fr: { common: frCommon, docs: frDocs, marketing: frMarketing, tenant: frTenant, admin: frAdmin },
-  de: { common: deCommon, docs: deDocs, marketing: deMarketing, tenant: deTenant, admin: deAdmin },
+const SUPPORTED_CODES = SUPPORTED_LANGUAGES.map((l) => l.code) as readonly SupportedLanguageCode[];
+
+const NAMESPACES = ['common', 'docs', 'marketing', 'tenant', 'admin'] as const;
+type Namespace = (typeof NAMESPACES)[number];
+
+/**
+ * Eager bundle: only English `common` ships with the entry chunk. Every other
+ * (language, namespace) pair is fetched on demand by the dynamic-import backend
+ * below so the public marketing landing, sign-in, and shell pages don't pay for
+ * tenant/admin/docs/marketing translations they never render.
+ */
+const eagerResources = {
+  en: { common: enCommon },
 } as const;
 
-const SUPPORTED_CODES = SUPPORTED_LANGUAGES.map((l) => l.code) as readonly SupportedLanguageCode[];
+/**
+ * Lazy loaders for every (language, namespace) pair NOT in `eagerResources`.
+ * Each `import(...)` becomes its own async chunk so a visitor browsing the
+ * Spanish marketing site never downloads German tenant translations.
+ */
+const localeLoaders: Record<SupportedLanguageCode, Partial<Record<Namespace, () => Promise<{ default: Record<string, unknown> }>>>> = {
+  en: {
+    docs: () => import('../locales/en/docs.json'),
+    marketing: () => import('../locales/en/marketing.json'),
+    tenant: () => import('../locales/en/tenant.json'),
+    admin: () => import('../locales/en/admin.json'),
+  },
+  es: {
+    common: () => import('../locales/es/common.json'),
+    docs: () => import('../locales/es/docs.json'),
+    marketing: () => import('../locales/es/marketing.json'),
+    tenant: () => import('../locales/es/tenant.json'),
+    admin: () => import('../locales/es/admin.json'),
+  },
+  'pt-BR': {
+    common: () => import('../locales/pt-BR/common.json'),
+    docs: () => import('../locales/pt-BR/docs.json'),
+    marketing: () => import('../locales/pt-BR/marketing.json'),
+    tenant: () => import('../locales/pt-BR/tenant.json'),
+    admin: () => import('../locales/pt-BR/admin.json'),
+  },
+  fr: {
+    common: () => import('../locales/fr/common.json'),
+    docs: () => import('../locales/fr/docs.json'),
+    marketing: () => import('../locales/fr/marketing.json'),
+    tenant: () => import('../locales/fr/tenant.json'),
+    admin: () => import('../locales/fr/admin.json'),
+  },
+  de: {
+    common: () => import('../locales/de/common.json'),
+    docs: () => import('../locales/de/docs.json'),
+    marketing: () => import('../locales/de/marketing.json'),
+    tenant: () => import('../locales/de/tenant.json'),
+    admin: () => import('../locales/de/admin.json'),
+  },
+};
+
+const dynamicImportBackend = {
+  type: 'backend' as const,
+  init() {},
+  read(language: string, namespace: string, callback: ReadCallback) {
+    const loader = localeLoaders[language as SupportedLanguageCode]?.[namespace as Namespace];
+    if (!loader) {
+      callback(null, {});
+      return;
+    }
+    loader()
+      .then((mod) => callback(null, (mod as { default?: unknown }).default ?? mod))
+      .catch((err: Error) => callback(err, null));
+  },
+};
 
 /**
  * Map a raw BCP-47 tag (e.g. from `navigator.language` or `localStorage`) to one of
@@ -94,14 +132,17 @@ export function resolveSupportedLanguage(detected: string | undefined | null): S
 
 if (!i18n.isInitialized) {
   i18n
+    .use(dynamicImportBackend)
     .use(LanguageDetector)
     .use(initReactI18next)
     .init({
-      resources,
+      resources: eagerResources,
+      partialBundledLanguages: true,
       fallbackLng: DEFAULT_LANGUAGE,
       supportedLngs: SUPPORTED_CODES as unknown as string[],
       defaultNS: 'common',
-      ns: ['common', 'docs', 'marketing', 'tenant', 'admin'],
+      ns: NAMESPACES as unknown as string[],
+      load: 'currentOnly',
       interpolation: { escapeValue: false },
       detection: {
         order: ['localStorage', 'navigator', 'htmlTag'],

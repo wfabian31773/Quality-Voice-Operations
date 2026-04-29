@@ -3,7 +3,7 @@
 #
 #   1. `check:design-tokens` — static check that the locked Refined Harbor
 #      tokens in `client-app/src/lib/designTokens.ts` match the CSS custom
-#      properties in `client-app/src/index.css`.
+#      properties in `client-app/src/styles/_theme.css`.
 #
 #   2. `check:public-dark-mode` — Playwright-based check that every
 #      top-level public route renders with legible contrast in both light

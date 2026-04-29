@@ -1,0 +1,28 @@
+/* =================================================================
+ * QVO TAILWIND — EAGER SHELL
+ *
+ * Eagerly imported by main.tsx alongside `tokens.css`. This is the
+ * Tailwind sheet that ships on every initial paint, scoped with
+ * `source(none)` + explicit `@source` directives so it only contains
+ * the utility classes used by the eager-render path:
+ *
+ *   - <App> shell (Routes, Suspense fallback)
+ *   - PageSkeleton + the rest of `components/state/*` (loading UIs)
+ *   - ErrorBoundary -> ServerError fallback
+ *   - MaintenanceGate -> Maintenance fallback
+ *   - NotFound (rendered if a route is missing before any layout)
+ *
+ * Everything else lives behind a per-surface sheet
+ * (`tw-public.css` / `tw-app.css`) that loads alongside the
+ * lazy-loaded layout chunk for the current route.
+ * ================================================================= */
+@import "tailwindcss" source(none);
+@import "./_theme.css";
+
+@source "../App.tsx";
+@source "../components/state/**/*.tsx";
+@source "../components/ErrorBoundary.tsx";
+@source "../components/MaintenanceGate.tsx";
+@source "../pages/ServerError.tsx";
+@source "../pages/Maintenance.tsx";
+@source "../pages/NotFound.tsx";

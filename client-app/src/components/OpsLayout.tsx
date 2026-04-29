@@ -1,3 +1,4 @@
+import '../styles/tw-app.css';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
