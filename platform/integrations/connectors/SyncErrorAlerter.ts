@@ -716,6 +716,10 @@ export async function notifySustainedConnectorFailure(
           integrationId,
           connectorType,
           provider,
+          // Preserved so the admin "Resend to failed recipients" flow can
+          // rebuild the original SMS body without guessing at the failure
+          // text (the sustained-failure path used to drop this).
+          errorMessage: errorMessage.slice(0, 500),
           firstFailedAt,
           outageMinutes,
           recipientCount: optedIn.length,
@@ -1004,4 +1008,323 @@ export async function notifyConnectorRecovery(params: RecoveryAlertParams): Prom
     recipients: recipients.length,
     outageDurationMs,
   });
+}
+
+export interface ResendConnectorAlertParams {
+  tenantId: TenantId;
+  integrationId: string;
+  dispatchId: string;
+  notificationType: 'integration' | 'integration_sms';
+  provider: string;
+  errorMessage: string | null;
+  firstFailedAt: string | null;
+  outageMinutes: number | null;
+  tenantName?: string | null;
+}
+
+export interface ResendConnectorAlertOutcome {
+  channel: 'email' | 'sms';
+  candidates: number;
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  twilioConfigured: boolean;
+}
+
+/**
+ * Re-dispatch a connector outage alert to recipients whose latest delivery
+ * status for the original `dispatch_id` is `failed` or `skipped`. Used by the
+ * admin "Resend to failed recipients" action so a misconfigured Twilio
+ * account or a temporarily-bouncing inbox can be retried after the operator
+ * fixes the underlying problem, without re-paging recipients that already
+ * received the alert.
+ *
+ * Behaviour:
+ *   - Channel is derived from `notificationType`. We resend on the same
+ *     channel the original alert used (email or SMS) — never escalate or
+ *     downgrade.
+ *   - Recipients are de-duplicated to the LATEST audit row per
+ *     (recipient_email, recipient_phone). A retry that already succeeded
+ *     in a previous resend is skipped automatically; only recipients still
+ *     in `failed`/`skipped` state are paged again.
+ *   - New audit rows are inserted with the SAME `dispatch_id` so the
+ *     timeline view for this alert grows with the retry attempts in
+ *     `dispatched_at` order.
+ *   - Per-tenant mute / digest / opt-out preferences are intentionally
+ *     NOT re-checked — those gates already passed at original-dispatch
+ *     time and a recipient's presence in the audit table is the proof.
+ *     The admin is making an explicit, audited resend decision.
+ */
+export async function resendConnectorAlertToFailedRecipients(
+  params: ResendConnectorAlertParams,
+): Promise<ResendConnectorAlertOutcome> {
+  const {
+    tenantId,
+    integrationId,
+    dispatchId,
+    notificationType,
+    provider,
+    firstFailedAt,
+  } = params;
+  const channel: 'email' | 'sms' =
+    notificationType === 'integration_sms' ? 'sms' : 'email';
+
+  const pool = getPlatformPool();
+
+  // Pull the latest audit row per (recipient_email, recipient_phone) on this
+  // dispatch + channel, then keep only those whose latest status is still
+  // failed or skipped. DISTINCT ON gives us a one-shot "current state"
+  // projection without an extra round-trip.
+  const { rows: candidateRows } = await pool.query<{
+    user_id: string | null;
+    recipient_name: string | null;
+    recipient_email: string | null;
+    recipient_phone: string | null;
+    delivery_status: string;
+  }>(
+    `WITH latest AS (
+       SELECT DISTINCT ON (
+                COALESCE(recipient_email, ''),
+                COALESCE(recipient_phone, '')
+              )
+              user_id, recipient_name, recipient_email, recipient_phone,
+              delivery_status
+         FROM connector_alert_recipients
+        WHERE tenant_id = $1
+          AND dispatch_id = $2
+          AND channel = $3
+        ORDER BY COALESCE(recipient_email, ''),
+                 COALESCE(recipient_phone, ''),
+                 dispatched_at DESC, id DESC
+     )
+     SELECT user_id, recipient_name, recipient_email, recipient_phone,
+            delivery_status
+       FROM latest
+      WHERE delivery_status IN ('failed', 'skipped')`,
+    [tenantId, dispatchId, channel],
+  );
+
+  const twilio = channel === 'sms' ? getTwilioConfig() : null;
+  const outcome: ResendConnectorAlertOutcome = {
+    channel,
+    candidates: candidateRows.length,
+    attempted: 0,
+    succeeded: 0,
+    failed: 0,
+    skipped: 0,
+    twilioConfigured: channel === 'sms' ? Boolean(twilio) : true,
+  };
+
+  if (candidateRows.length === 0) {
+    return outcome;
+  }
+
+  const providerLabel = PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
+  const errorMessage = params.errorMessage ?? 'Sync failed';
+  const reconnectPath = `/connectors?provider=${encodeURIComponent(provider)}`;
+  const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
+
+  if (channel === 'email') {
+    const detectedAt = new Date().toUTCString();
+    const { subject, html, text } = connectorSyncErrorEmail({
+      tenantName: params.tenantName ?? undefined,
+      providerLabel,
+      errorMessage,
+      reconnectUrl,
+      detectedAt,
+    });
+
+    for (const row of candidateRows) {
+      const to = row.recipient_email;
+      if (!to) {
+        outcome.skipped += 1;
+        await recordRecipientAudit({
+          tenantId,
+          integrationId,
+          dispatchId,
+          notificationType: 'integration',
+          channel: 'email',
+          userId: row.user_id,
+          recipientName: row.recipient_name,
+          recipientEmail: row.recipient_email,
+          recipientPhone: null,
+          deliveryStatus: 'skipped',
+          deliveryError: 'No email address on file for recipient',
+          twilioStatusCode: null,
+        });
+        continue;
+      }
+
+      outcome.attempted += 1;
+      let deliveryStatus: 'sent' | 'failed' = 'sent';
+      let deliveryError: string | null = null;
+      try {
+        const result = await sendEmail({ to, subject, html, text });
+        if (!result.success) {
+          deliveryStatus = 'failed';
+          deliveryError = result.error ?? 'sendEmail returned success=false';
+          logger.warn('Connector sync alert email resend failed', {
+            tenantId,
+            integrationId,
+            to,
+            error: result.error,
+          });
+        }
+      } catch (err) {
+        deliveryStatus = 'failed';
+        deliveryError = String(err);
+        logger.warn('Connector sync alert email resend threw', {
+          tenantId,
+          integrationId,
+          to,
+          error: String(err),
+        });
+      }
+      if (deliveryStatus === 'sent') outcome.succeeded += 1;
+      else outcome.failed += 1;
+
+      await recordRecipientAudit({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: 'integration',
+        channel: 'email',
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientEmail: to,
+        recipientPhone: null,
+        deliveryStatus,
+        deliveryError,
+        twilioStatusCode: null,
+      });
+    }
+
+    logger.info('Connector outage alert resend (email) complete', {
+      tenantId,
+      integrationId,
+      dispatchId,
+      provider,
+      candidates: outcome.candidates,
+      attempted: outcome.attempted,
+      succeeded: outcome.succeeded,
+      failed: outcome.failed,
+      skipped: outcome.skipped,
+    });
+    return outcome;
+  }
+
+  // SMS path: rebuild the body using the stored outage metadata so the
+  // retry text matches what the original dispatch would have read.
+  let outageMinutes = params.outageMinutes;
+  if (outageMinutes == null && firstFailedAt) {
+    const failedAtMs = Date.parse(firstFailedAt);
+    if (Number.isFinite(failedAtMs)) {
+      outageMinutes = Math.max(0, Math.round((Date.now() - failedAtMs) / 60000));
+    }
+  }
+  const tenantPrefix = params.tenantName ? `[${params.tenantName}] ` : '';
+  const minutesForBody = outageMinutes ?? 0;
+  const smsBody =
+    `${tenantPrefix}QVO alert: ${providerLabel} integration has been failing for ` +
+    `${minutesForBody} min. Latest error: ${errorMessage.slice(0, 100)}. ` +
+    `Reconnect at ${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
+
+  for (const row of candidateRows) {
+    const to = row.recipient_phone;
+    if (!to) {
+      outcome.skipped += 1;
+      await recordRecipientAudit({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: 'integration_sms',
+        channel: 'sms',
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientEmail: row.recipient_email,
+        recipientPhone: null,
+        deliveryStatus: 'skipped',
+        deliveryError: 'No phone number on file for recipient',
+        twilioStatusCode: null,
+      });
+      continue;
+    }
+
+    if (!twilio) {
+      outcome.skipped += 1;
+      await recordRecipientAudit({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: 'integration_sms',
+        channel: 'sms',
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientEmail: row.recipient_email,
+        recipientPhone: to,
+        deliveryStatus: 'skipped',
+        deliveryError: 'Twilio is not configured on this server',
+        twilioStatusCode: null,
+      });
+      continue;
+    }
+
+    outcome.attempted += 1;
+    const result = await sendTwilioSms(twilio, to, smsBody);
+    if (result.ok) {
+      outcome.succeeded += 1;
+      await recordRecipientAudit({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: 'integration_sms',
+        channel: 'sms',
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientEmail: row.recipient_email,
+        recipientPhone: to,
+        deliveryStatus: 'sent',
+        deliveryError: null,
+        twilioStatusCode: result.status ?? null,
+      });
+    } else {
+      outcome.failed += 1;
+      logger.warn('Connector outage SMS resend failed', {
+        tenantId,
+        integrationId,
+        to,
+        status: result.status,
+        error: result.error,
+      });
+      await recordRecipientAudit({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: 'integration_sms',
+        channel: 'sms',
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientEmail: row.recipient_email,
+        recipientPhone: to,
+        deliveryStatus: 'failed',
+        deliveryError: result.error ?? `Twilio HTTP ${result.status ?? 'error'}`,
+        twilioStatusCode: result.status ?? null,
+      });
+    }
+  }
+
+  logger.info('Connector outage alert resend (sms) complete', {
+    tenantId,
+    integrationId,
+    dispatchId,
+    provider,
+    candidates: outcome.candidates,
+    attempted: outcome.attempted,
+    succeeded: outcome.succeeded,
+    failed: outcome.failed,
+    skipped: outcome.skipped,
+    twilioConfigured: outcome.twilioConfigured,
+  });
+  return outcome;
 }

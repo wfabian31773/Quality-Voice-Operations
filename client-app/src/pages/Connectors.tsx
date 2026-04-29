@@ -2664,6 +2664,18 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
   }
 }
 
+interface ResendAlertResponse {
+  alertId: string;
+  dispatchId: string;
+  channel: 'email' | 'sms';
+  candidates: number;
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  twilioConfigured: boolean;
+}
+
 function OutageAlertDetailPanel({
   alertId,
   onClose,
@@ -2672,6 +2684,12 @@ function OutageAlertDetailPanel({
   onClose: () => void;
 }) {
   const open = alertId !== null;
+  const queryClient = useQueryClient();
+  const { isManager } = useRole();
+  const [resendBanner, setResendBanner] = useState<{
+    kind: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Encode the composite alert id (`integrationId:type:timestamp`) — the
   // colons round-trip cleanly through Express path params, but encoding
@@ -2684,6 +2702,55 @@ function OutageAlertDetailPanel({
         `/connectors/alerts/${encodeURIComponent(alertId as string)}`,
       ),
   });
+
+  // Reset the inline banner whenever we open a different alert so a stale
+  // success/error from a previous resend doesn't carry over.
+  useEffect(() => {
+    setResendBanner(null);
+  }, [alertId]);
+
+  const resendMutation = useMutation({
+    mutationFn: (id: string) =>
+      api.post<ResendAlertResponse>(
+        `/connectors/alerts/${encodeURIComponent(id)}/resend`,
+      ),
+    onSuccess: (result) => {
+      const channelLabel = result.channel === 'sms' ? 'SMS' : 'email';
+      if (result.candidates === 0) {
+        setResendBanner({
+          kind: 'success',
+          message: 'No failed or skipped recipients left to retry.',
+        });
+      } else if (result.succeeded > 0 && result.failed === 0 && result.skipped === 0) {
+        setResendBanner({
+          kind: 'success',
+          message: `Resent ${channelLabel} to ${result.succeeded} recipient${result.succeeded === 1 ? '' : 's'}.`,
+        });
+      } else {
+        setResendBanner({
+          kind: result.succeeded > 0 ? 'success' : 'error',
+          message: `Resend complete: ${result.succeeded} sent, ${result.failed} failed, ${result.skipped} skipped.`,
+        });
+      }
+      // Refresh the detail panel so the new audit rows appear in the
+      // recipients list, and refresh the listing so the in-app counts
+      // (which group fan-out rows) stay in sync.
+      queryClient.invalidateQueries({ queryKey: ['connector-outage-alert-detail', alertId] });
+      queryClient.invalidateQueries({ queryKey: ['connector-outage-alerts'] });
+    },
+    onError: (err) => {
+      setResendBanner({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to resend alert.',
+      });
+    },
+  });
+
+  const failedRecipientCount = data?.recipientsAvailable
+    ? countLatestFailedRecipients(data.recipients)
+    : 0;
+  const isSms = data?.channel === 'sms';
+  const twilioBlocked = isSms && data?.twilioConfigured === false;
 
   return (
     <Modal
@@ -2721,10 +2788,87 @@ function OutageAlertDetailPanel({
           {error instanceof Error ? error.message : null}
         </div>
       ) : (
-        <OutageAlertDetailBody detail={data} />
+        <>
+          {isManager && data.recipientsAvailable && (
+            <div className="px-5 pt-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap border border-border rounded-md bg-surface-hover/40 p-3">
+                <div className="min-w-0 text-xs text-text-secondary">
+                  <div className="text-text-primary font-medium text-sm flex items-center gap-1.5">
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Resend to failed recipients
+                  </div>
+                  <p className="mt-1">
+                    {failedRecipientCount === 0
+                      ? 'Every recipient on this dispatch was reached. Nothing to retry.'
+                      : `Re-runs the same ${isSms ? 'SMS' : 'email'} for ${failedRecipientCount} recipient${failedRecipientCount === 1 ? '' : 's'} whose latest delivery is failed or skipped. New audit rows are appended to the timeline below.`}
+                  </p>
+                  {twilioBlocked && (
+                    <p className="mt-1 text-amber-700 dark:text-amber-400">
+                      Twilio is not configured on this server, so SMS sends will be skipped again.
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alertId && resendMutation.mutate(alertId)}
+                  disabled={
+                    !alertId ||
+                    failedRecipientCount === 0 ||
+                    resendMutation.isPending
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${resendMutation.isPending ? 'animate-spin' : ''}`}
+                  />
+                  {resendMutation.isPending ? 'Resending…' : 'Resend'}
+                </button>
+              </div>
+              {resendBanner && (
+                <div
+                  className={`mt-2 text-xs rounded-md border px-3 py-2 ${
+                    resendBanner.kind === 'success'
+                      ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300'
+                      : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
+                  }`}
+                  role="status"
+                >
+                  {resendBanner.message}
+                </div>
+              )}
+            </div>
+          )}
+          <OutageAlertDetailBody detail={data} />
+        </>
       )}
     </Modal>
   );
+}
+
+/**
+ * Count recipients whose LATEST audit row is failed or skipped. Mirrors the
+ * server-side de-duplication used by the resend endpoint so the button's
+ * count agrees with what the backend will actually retry.
+ */
+function countLatestFailedRecipients(recipients: OutageAlertRecipient[]): number {
+  const latestByContact = new Map<string, OutageAlertRecipient>();
+  for (const r of recipients) {
+    const key = `${r.email ?? ''}|${r.phone ?? ''}`;
+    const existing = latestByContact.get(key);
+    if (
+      !existing ||
+      Date.parse(r.dispatchedAt) >= Date.parse(existing.dispatchedAt)
+    ) {
+      latestByContact.set(key, r);
+    }
+  }
+  let count = 0;
+  for (const r of latestByContact.values()) {
+    if (r.deliveryStatus === 'failed' || r.deliveryStatus === 'skipped') {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function OutageAlertDetailBody({ detail }: { detail: OutageAlertDetail }) {
@@ -2889,50 +3033,72 @@ function OutageAlertDetailBody({ detail }: { detail: OutageAlertDetail }) {
           </div>
         ) : (
           <ul className="space-y-2">
-            {detail.recipients.map((recipient, idx) => {
-              const badge = statusBadge(recipient.deliveryStatus);
-              const Icon = badge.Icon;
-              const contact = isSms ? recipient.phone : recipient.email;
-              return (
-                <li
-                  key={`${recipient.userId ?? 'anon'}-${idx}`}
-                  className="border border-border rounded-md p-3 bg-surface"
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-text-primary">
-                        {recipient.name ?? contact ?? 'Unknown recipient'}
-                      </div>
-                      {contact && recipient.name ? (
-                        <div className="text-xs text-text-secondary mt-0.5 truncate">
-                          {contact}
+            {(() => {
+              // Track how many times we've already seen each recipient on
+              // this dispatch so the second/third audit row for the same
+              // person renders as "Retry · timestamp" instead of looking
+              // like a duplicate. Recipients are returned in
+              // dispatched_at order so the first row per contact is the
+              // original send.
+              const seenByContact = new Map<string, number>();
+              return detail.recipients.map((recipient, idx) => {
+                const badge = statusBadge(recipient.deliveryStatus);
+                const Icon = badge.Icon;
+                const contact = isSms ? recipient.phone : recipient.email;
+                const contactKey = `${recipient.email ?? ''}|${recipient.phone ?? ''}`;
+                const attemptIndex = seenByContact.get(contactKey) ?? 0;
+                seenByContact.set(contactKey, attemptIndex + 1);
+                const isRetry = attemptIndex > 0;
+                return (
+                  <li
+                    key={`${recipient.userId ?? 'anon'}-${idx}`}
+                    className="border border-border rounded-md p-3 bg-surface"
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-text-primary flex items-center gap-2 flex-wrap">
+                          <span>{recipient.name ?? contact ?? 'Unknown recipient'}</span>
+                          {isRetry && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
+                              <RefreshCw className="h-2.5 w-2.5" />
+                              Retry #{attemptIndex}
+                            </span>
+                          )}
                         </div>
-                      ) : null}
-                      {/* Show the secondary contact (email if SMS row, phone if email row) when present */}
-                      {isSms && recipient.email ? (
+                        {contact && recipient.name ? (
+                          <div className="text-xs text-text-secondary mt-0.5 truncate">
+                            {contact}
+                          </div>
+                        ) : null}
+                        {/* Show the secondary contact (email if SMS row, phone if email row) when present */}
+                        {isSms && recipient.email ? (
+                          <div className="text-[11px] text-text-secondary mt-0.5">
+                            {recipient.email}
+                          </div>
+                        ) : null}
                         <div className="text-[11px] text-text-secondary mt-0.5">
-                          {recipient.email}
+                          Dispatched {formatExactTimestamp(recipient.dispatchedAt)}
                         </div>
-                      ) : null}
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${badge.className}`}
+                      >
+                        <Icon className="h-3 w-3" />
+                        {badge.label}
+                        {isSms && recipient.twilioStatusCode != null
+                          ? ` · HTTP ${recipient.twilioStatusCode}`
+                          : ''}
+                      </span>
                     </div>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${badge.className}`}
-                    >
-                      <Icon className="h-3 w-3" />
-                      {badge.label}
-                      {isSms && recipient.twilioStatusCode != null
-                        ? ` · HTTP ${recipient.twilioStatusCode}`
-                        : ''}
-                    </span>
-                  </div>
-                  {recipient.deliveryError && (
-                    <div className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words">
-                      {recipient.deliveryError}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
+                    {recipient.deliveryError && (
+                      <div className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words">
+                        {recipient.deliveryError}
+                      </div>
+                    )}
+                  </li>
+                );
+              });
+            })()}
           </ul>
         )}
       </div>

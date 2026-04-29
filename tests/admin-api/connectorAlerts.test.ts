@@ -794,3 +794,192 @@ describe('GET /connectors/alerts/:alertId', () => {
     expect(res.body.recipients).toHaveLength(1);
   });
 });
+
+// --------------------------------------------------------------------------
+// POST /connectors/alerts/:alertId/resend — admin "Resend to failed
+// recipients" action.
+//
+// The handler:
+//   1. Re-aggregates the alert metadata to recover the dispatchId/provider
+//      it was originally sent under.
+//   2. Defers the actual resend to
+//      `resendConnectorAlertToFailedRecipients` in SyncErrorAlerter (mocked
+//      here so we can assert the route wires it up correctly without
+//      touching email/Twilio).
+//   3. Writes an audit log entry and echoes the resend outcome counts.
+// --------------------------------------------------------------------------
+const resendMock = vi.fn();
+vi.mock('../../platform/integrations/connectors/SyncErrorAlerter', () => ({
+  resendConnectorAlertToFailedRecipients: (...args: unknown[]) =>
+    resendMock(...(args as [])),
+}));
+
+describe('POST /connectors/alerts/:alertId/resend', () => {
+  beforeEach(() => {
+    resendMock.mockReset();
+  });
+
+  function installResendDispatcher(payload: {
+    alertRow?: Record<string, unknown> | null;
+    tenantRow?: { name: string | null } | null;
+  }): void {
+    queryMock.mockImplementation(async (sql: string) => {
+      const text = String(sql);
+      if (text.includes('FROM tenant_notifications')) {
+        return { rows: payload.alertRow ? [payload.alertRow] : [] };
+      }
+      if (text.includes('FROM tenants')) {
+        return { rows: payload.tenantRow ? [payload.tenantRow] : [] };
+      }
+      return { rows: [] };
+    });
+  }
+
+  it('resends to failed recipients and echoes the per-channel outcome counts', async () => {
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installResendDispatcher({
+      alertRow: {
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'salesforce',
+          dispatchId: 'disp-1',
+          errorMessage: 'API rate limit',
+          firstFailedAt: '2026-04-26T17:45:00.000Z',
+          outageMinutes: 45,
+        },
+      },
+      tenantRow: { name: 'Acme Corp' },
+    });
+    resendMock.mockResolvedValue({
+      channel: 'email',
+      candidates: 2,
+      attempted: 2,
+      succeeded: 1,
+      failed: 1,
+      skipped: 0,
+      twilioConfigured: true,
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration:${createdAt.getTime()}`;
+    const res = await request(app).post(
+      `/connectors/alerts/${encodeURIComponent(alertId)}/resend`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      alertId,
+      dispatchId: 'disp-1',
+      channel: 'email',
+      candidates: 2,
+      attempted: 2,
+      succeeded: 1,
+      failed: 1,
+      skipped: 0,
+    });
+
+    // The route must hand the resend helper the metadata it just looked up
+    // — including the original dispatchId, the channel-derived
+    // notificationType, and the tenant name so the SMS/email body can be
+    // rebuilt with the same prefix the original used.
+    expect(resendMock).toHaveBeenCalledTimes(1);
+    expect(resendMock.mock.calls[0][0]).toMatchObject({
+      tenantId: 'tenant-A',
+      integrationId: 'int-1',
+      dispatchId: 'disp-1',
+      notificationType: 'integration',
+      provider: 'salesforce',
+      errorMessage: 'API rate limit',
+      firstFailedAt: '2026-04-26T17:45:00.000Z',
+      outageMinutes: 45,
+      tenantName: 'Acme Corp',
+    });
+  });
+
+  it('passes notificationType=integration_sms when the alert id is for an SMS dispatch', async () => {
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installResendDispatcher({
+      alertRow: {
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'hubspot',
+          dispatchId: 'disp-sms',
+          errorMessage: 'Auth failed',
+          firstFailedAt: '2026-04-26T16:00:00.000Z',
+          outageMinutes: 150,
+        },
+      },
+      tenantRow: { name: 'Acme' },
+    });
+    resendMock.mockResolvedValue({
+      channel: 'sms',
+      candidates: 1,
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: 1,
+      twilioConfigured: false,
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration_sms:${createdAt.getTime()}`;
+    const res = await request(app).post(
+      `/connectors/alerts/${encodeURIComponent(alertId)}/resend`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.channel).toBe('sms');
+    expect(res.body.skipped).toBe(1);
+    expect(res.body.twilioConfigured).toBe(false);
+    expect(resendMock.mock.calls[0][0].notificationType).toBe('integration_sms');
+  });
+
+  it('returns 409 when the original alert pre-dates the dispatchId migration', async () => {
+    // Old alerts with no dispatchId in metadata can't be resent because we
+    // have no way to look up the per-recipient audit rows that drive the
+    // retry. The endpoint must say so explicitly instead of attempting the
+    // resend with a null dispatchId.
+    const createdAt = new Date('2026-01-01T12:00:00.000Z');
+    installResendDispatcher({
+      alertRow: {
+        metadata: { integrationId: 'int-old', provider: 'salesforce' },
+      },
+      tenantRow: { name: 'Acme' },
+    });
+
+    const app = await buildApp();
+    const alertId = `int-old:integration:${createdAt.getTime()}`;
+    const res = await request(app).post(
+      `/connectors/alerts/${encodeURIComponent(alertId)}/resend`,
+    );
+
+    expect(res.status).toBe(409);
+    expect(resendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when no matching alert exists for the requesting tenant', async () => {
+    installResendDispatcher({ alertRow: null });
+
+    const app = await buildApp();
+    const alertId = `int-x:integration:${Date.now()}`;
+    const res = await request(app).post(
+      `/connectors/alerts/${encodeURIComponent(alertId)}/resend`,
+    );
+
+    expect(res.status).toBe(404);
+    expect(resendMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed alert ids with 400 without invoking the resender', async () => {
+    const app = await buildApp();
+    const bad = await request(app).post('/connectors/alerts/not-a-real-id/resend');
+    expect(bad.status).toBe(400);
+    expect(resendMock).not.toHaveBeenCalled();
+
+    const wrongType = await request(app).post(
+      `/connectors/alerts/${encodeURIComponent('int-1:nope:123')}/resend`,
+    );
+    expect(wrongType.status).toBe(400);
+    expect(resendMock).not.toHaveBeenCalled();
+  });
+});

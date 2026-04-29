@@ -450,6 +450,147 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Resend an outage alert to recipients whose latest delivery status is
+ * `failed` or `skipped`. Re-runs the same channel (email or SMS) the
+ * original alert used and writes new audit rows to
+ * `connector_alert_recipients` against the original `dispatch_id` so the
+ * detail timeline shows the retry attempts inline with the original.
+ *
+ * Tenant-scoped via req.user. Requires manager role to match the rest of
+ * the connector mutation surface (POST/PATCH/DELETE).
+ */
+router.post(
+  '/connectors/alerts/:alertId/resend',
+  requireAuth,
+  requireRole('manager'),
+  async (req, res) => {
+    const { tenantId } = req.user!;
+    const { alertId } = req.params;
+
+    // Composite id format mirrors the GET detail handler.
+    const parts = alertId.split(':');
+    if (parts.length < 3) {
+      return res.status(400).json({ error: 'Invalid alert id format' });
+    }
+    const createdAtMsStr = parts[parts.length - 1];
+    const type = parts[parts.length - 2];
+    const integrationId = parts.slice(0, parts.length - 2).join(':');
+    const createdAtMs = Number(createdAtMsStr);
+    if (
+      !integrationId ||
+      (type !== 'integration' && type !== 'integration_sms') ||
+      !Number.isFinite(createdAtMs)
+    ) {
+      return res.status(400).json({ error: 'Invalid alert id format' });
+    }
+
+    try {
+      const { getPlatformPool } = await import('../../../platform/db');
+      const pool = getPlatformPool();
+
+      // Re-aggregate the original alert event to extract metadata
+      // (dispatchId, provider, error message, outage timing) needed to
+      // rebuild the email subject/body or SMS text.
+      const minuteIso = new Date(createdAtMs - (createdAtMs % 60000)).toISOString();
+      const { rows: alertRows } = await pool.query<{
+        metadata: Record<string, unknown> | null;
+      }>(
+        `SELECT (array_agg(metadata ORDER BY created_at))[1] AS metadata
+           FROM tenant_notifications
+          WHERE tenant_id = $1
+            AND type = $2
+            AND metadata->>'integrationId' = $3
+            AND date_trunc('minute', created_at) = date_trunc('minute', $4::timestamptz)
+          GROUP BY metadata->>'integrationId', type, date_trunc('minute', created_at)
+          LIMIT 1`,
+        [tenantId, type, integrationId, minuteIso],
+      );
+      if (alertRows.length === 0) {
+        return res.status(404).json({ error: 'Alert not found' });
+      }
+      const meta = (alertRows[0].metadata ?? {}) as Record<string, unknown>;
+      const dispatchId = (meta.dispatchId as string | undefined) ?? null;
+      if (!dispatchId) {
+        return res.status(409).json({
+          error:
+            'This alert was sent before per-recipient audit logging was enabled, so it cannot be resent.',
+        });
+      }
+      const provider =
+        (meta.provider as string | undefined) ?? null;
+      if (!provider) {
+        return res.status(409).json({
+          error: 'Original alert is missing provider metadata; cannot resend.',
+        });
+      }
+
+      let tenantName: string | null = null;
+      try {
+        const { rows: tenantRows } = await pool.query<{ name: string | null }>(
+          `SELECT name FROM tenants WHERE id = $1`,
+          [tenantId],
+        );
+        if (tenantRows.length > 0) {
+          tenantName = (tenantRows[0].name as string | null) ?? null;
+        }
+      } catch (err) {
+        logger.warn('Failed to look up tenant name for outage alert resend', {
+          tenantId,
+          error: String(err),
+        });
+      }
+
+      const { resendConnectorAlertToFailedRecipients } = await import(
+        '../../../platform/integrations/connectors/SyncErrorAlerter'
+      );
+      const outcome = await resendConnectorAlertToFailedRecipients({
+        tenantId,
+        integrationId,
+        dispatchId,
+        notificationType: type,
+        provider,
+        errorMessage: (meta.errorMessage as string | null) ?? null,
+        firstFailedAt: (meta.firstFailedAt as string | null) ?? null,
+        outageMinutes:
+          typeof meta.outageMinutes === 'number'
+            ? (meta.outageMinutes as number)
+            : null,
+        tenantName,
+      });
+
+      writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: req.user!.role,
+        action: 'connector_alert.resent',
+        resourceType: 'connector_alert',
+        resourceId: alertId,
+        changes: {
+          dispatchId,
+          channel: outcome.channel,
+          candidates: outcome.candidates,
+          attempted: outcome.attempted,
+          succeeded: outcome.succeeded,
+          failed: outcome.failed,
+          skipped: outcome.skipped,
+        },
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.json({ alertId, dispatchId, ...outcome });
+    } catch (err) {
+      logger.error('Failed to resend connector outage alert', {
+        tenantId,
+        alertId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to resend connector outage alert' });
+    }
+  },
+);
+
 router.post('/connectors', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const {

@@ -1230,3 +1230,259 @@ describe('notifyConnectorSyncError', () => {
     );
   });
 });
+
+describe('resendConnectorAlertToFailedRecipients', () => {
+  // Common shape: candidate row dispatcher + audit-insert capture.
+  function installResendDispatcher(rows: Array<Record<string, unknown>>): void {
+    queryMock.mockImplementation(async (sql: string) => {
+      const text = String(sql);
+      // Latest-failed candidate query.
+      if (text.includes('FROM connector_alert_recipients')) {
+        return { rows };
+      }
+      // Per-recipient INSERT in recordRecipientAudit.
+      if (text.includes('INSERT INTO connector_alert_recipients')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+  }
+
+  it('resends an email to each failed recipient and writes new audit rows under the same dispatchId', async () => {
+    installResendDispatcher([
+      {
+        user_id: 'user-a',
+        recipient_name: 'Ada Lovelace',
+        recipient_email: 'ada@acme.test',
+        recipient_phone: null,
+        delivery_status: 'failed',
+      },
+      {
+        user_id: 'user-b',
+        recipient_name: 'Grace Hopper',
+        recipient_email: 'grace@acme.test',
+        recipient_phone: null,
+        delivery_status: 'skipped',
+      },
+    ]);
+
+    const { resendConnectorAlertToFailedRecipients } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    const outcome = await resendConnectorAlertToFailedRecipients({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      dispatchId: 'disp-1',
+      notificationType: 'integration',
+      provider: 'salesforce',
+      errorMessage: 'API rate limit',
+      firstFailedAt: '2026-04-26T17:45:00.000Z',
+      outageMinutes: 45,
+      tenantName: 'Acme',
+    });
+
+    expect(outcome).toMatchObject({
+      channel: 'email',
+      candidates: 2,
+      attempted: 2,
+      succeeded: 2,
+      failed: 0,
+      skipped: 0,
+    });
+
+    // Each candidate triggered an email send.
+    expect(sendEmailMock).toHaveBeenCalledTimes(2);
+    const sentTos = sendEmailMock.mock.calls.map(
+      (c) => (c[0] as { to: string }).to,
+    );
+    expect(sentTos).toEqual(
+      expect.arrayContaining(['ada@acme.test', 'grace@acme.test']),
+    );
+
+    // Each candidate also produced a new INSERT into
+    // connector_alert_recipients carrying the SAME dispatch_id and channel
+    // 'email' so the timeline view shows the retry attempts.
+    const inserts = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
+    );
+    expect(inserts).toHaveLength(2);
+    for (const call of inserts) {
+      const params = call[1] as unknown[];
+      expect(params[0]).toBe('tenant-1');
+      expect(params[1]).toBe('int-1');
+      expect(params[2]).toBe('disp-1'); // dispatch_id preserved
+      expect(params[3]).toBe('integration'); // notification_type
+      expect(params[4]).toBe('email'); // channel
+      expect(params[9]).toBe('sent'); // delivery_status
+    }
+  });
+
+  it('records failed delivery (with the error) and counts it under failed in the outcome', async () => {
+    installResendDispatcher([
+      {
+        user_id: 'user-a',
+        recipient_name: 'Ada',
+        recipient_email: 'ada@acme.test',
+        recipient_phone: null,
+        delivery_status: 'failed',
+      },
+    ]);
+    sendEmailMock.mockResolvedValueOnce({ success: false, error: 'SMTP 550' });
+
+    const { resendConnectorAlertToFailedRecipients } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    const outcome = await resendConnectorAlertToFailedRecipients({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      dispatchId: 'disp-1',
+      notificationType: 'integration',
+      provider: 'hubspot',
+      errorMessage: 'oops',
+      firstFailedAt: null,
+      outageMinutes: null,
+    });
+
+    expect(outcome.attempted).toBe(1);
+    expect(outcome.succeeded).toBe(0);
+    expect(outcome.failed).toBe(1);
+    const insert = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
+    );
+    expect(insert).toBeDefined();
+    const params = insert![1] as unknown[];
+    expect(params[9]).toBe('failed'); // delivery_status
+    expect(params[10]).toBe('SMTP 550'); // delivery_error
+  });
+
+  it('returns candidates=0 and never sends when no failed/skipped recipients remain', async () => {
+    installResendDispatcher([]);
+
+    const { resendConnectorAlertToFailedRecipients } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    const outcome = await resendConnectorAlertToFailedRecipients({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      dispatchId: 'disp-1',
+      notificationType: 'integration',
+      provider: 'salesforce',
+      errorMessage: null,
+      firstFailedAt: null,
+      outageMinutes: null,
+    });
+
+    expect(outcome.candidates).toBe(0);
+    expect(outcome.attempted).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    // Should NOT issue any audit-insert when there's nothing to retry.
+    const inserts = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
+    );
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('skips SMS recipients (and records skipped audit rows) when Twilio is not configured', async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    delete process.env.TWILIO_AUTH_TOKEN;
+    delete process.env.TWILIO_SMS_FROM;
+    installResendDispatcher([
+      {
+        user_id: 'user-a',
+        recipient_name: 'Ada',
+        recipient_email: 'ada@acme.test',
+        recipient_phone: '+15551234567',
+        delivery_status: 'failed',
+      },
+    ]);
+
+    const { resendConnectorAlertToFailedRecipients } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    const outcome = await resendConnectorAlertToFailedRecipients({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      dispatchId: 'disp-2',
+      notificationType: 'integration_sms',
+      provider: 'salesforce',
+      errorMessage: 'API rate limit',
+      firstFailedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      outageMinutes: 60,
+      tenantName: 'Acme',
+    });
+
+    expect(outcome.channel).toBe('sms');
+    expect(outcome.twilioConfigured).toBe(false);
+    expect(outcome.skipped).toBe(1);
+    expect(outcome.attempted).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // The audit row records why we couldn't send.
+    const insert = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
+    );
+    const params = insert![1] as unknown[];
+    expect(params[3]).toBe('integration_sms');
+    expect(params[4]).toBe('sms');
+    expect(params[9]).toBe('skipped'); // delivery_status
+    expect(String(params[10])).toMatch(/Twilio/);
+  });
+
+  it('sends an SMS via Twilio for each failed phone recipient and records sent/failed outcomes', async () => {
+    installResendDispatcher([
+      {
+        user_id: 'user-a',
+        recipient_name: 'Ada',
+        recipient_email: 'ada@acme.test',
+        recipient_phone: '+15551111111',
+        delivery_status: 'failed',
+      },
+      {
+        user_id: 'user-b',
+        recipient_name: 'Grace',
+        recipient_email: 'grace@acme.test',
+        recipient_phone: '+15552222222',
+        delivery_status: 'skipped',
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 201 })
+      .mockResolvedValueOnce({ ok: false, status: 400 });
+
+    const { resendConnectorAlertToFailedRecipients } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    const outcome = await resendConnectorAlertToFailedRecipients({
+      tenantId: 'tenant-1',
+      integrationId: 'int-1',
+      dispatchId: 'disp-3',
+      notificationType: 'integration_sms',
+      provider: 'hubspot',
+      errorMessage: 'auth failed',
+      firstFailedAt: null,
+      outageMinutes: 90,
+      tenantName: 'Acme',
+    });
+
+    expect(outcome.channel).toBe('sms');
+    expect(outcome.twilioConfigured).toBe(true);
+    expect(outcome.attempted).toBe(2);
+    expect(outcome.succeeded).toBe(1);
+    expect(outcome.failed).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // Both SMS attempts produced a new audit row under the original
+    // dispatch_id with channel='sms'.
+    const inserts = queryMock.mock.calls.filter((c) =>
+      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
+    );
+    expect(inserts).toHaveLength(2);
+    const statuses = inserts.map((c) => (c[1] as unknown[])[9]);
+    expect(statuses).toEqual(expect.arrayContaining(['sent', 'failed']));
+    for (const c of inserts) {
+      const params = c[1] as unknown[];
+      expect(params[2]).toBe('disp-3'); // dispatch_id
+      expect(params[4]).toBe('sms');
+    }
+  });
+});
