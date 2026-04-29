@@ -1147,20 +1147,33 @@ router.get('/agents/templates/custom', requireAuth, async (req, res) => {
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `SELECT id, tenant_id, created_by_user_id, name, description,
-              workflow_definition, welcome_greeting, system_prompt, language,
-              is_shared, created_at, updated_at
-         FROM agent_templates
-        WHERE tenant_id = $1 AND (is_shared = TRUE OR created_by_user_id = $2)
-        ORDER BY created_at DESC`,
+      `SELECT t.id, t.tenant_id, t.created_by_user_id, t.name, t.description,
+              t.workflow_definition, t.welcome_greeting, t.system_prompt, t.language,
+              t.is_shared, t.created_at, t.updated_at,
+              u.first_name AS author_first_name,
+              u.last_name  AS author_last_name,
+              u.email      AS author_email
+         FROM agent_templates t
+         LEFT JOIN users u ON u.id = t.created_by_user_id
+        WHERE t.tenant_id = $1 AND (t.is_shared = TRUE OR t.created_by_user_id = $2)
+        ORDER BY t.created_at DESC`,
       [tenantId, userId],
     );
     await client.query('COMMIT');
 
-    const templates = rows.map((row) => ({
-      ...row,
-      is_owner: row.created_by_user_id === userId,
-    }));
+    const templates = rows.map((row) => {
+      const first = (row.author_first_name as string | null)?.trim() || '';
+      const last = (row.author_last_name as string | null)?.trim() || '';
+      const fullName = `${first} ${last}`.trim();
+      const author_display_name = fullName.length > 0
+        ? fullName
+        : (row.author_email as string | null) || null;
+      return {
+        ...row,
+        is_owner: row.created_by_user_id === userId,
+        author_display_name,
+      };
+    });
     return res.json({ templates });
   } catch (err) {
     await client.query('ROLLBACK');

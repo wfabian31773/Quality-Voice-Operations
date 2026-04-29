@@ -133,7 +133,7 @@ describe('GET /agents/templates/custom', () => {
   it('returns owned and tenant-shared templates with is_owner annotation', async () => {
     installQueryStubs([
       {
-        match: (sql) => /FROM agent_templates/i.test(sql) && /WHERE tenant_id/i.test(sql),
+        match: (sql) => /FROM agent_templates/i.test(sql) && /WHERE/i.test(sql),
         rows: [
           {
             id: 'tpl-mine',
@@ -148,6 +148,9 @@ describe('GET /agents/templates/custom', () => {
             is_shared: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            author_first_name: 'Avery',
+            author_last_name: 'Operator',
+            author_email: 'manager@acme.test',
           },
           {
             id: 'tpl-shared',
@@ -162,6 +165,9 @@ describe('GET /agents/templates/custom', () => {
             is_shared: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            author_first_name: 'Sam',
+            author_last_name: 'Teammate',
+            author_email: 'sam@acme.test',
           },
         ],
       },
@@ -171,8 +177,81 @@ describe('GET /agents/templates/custom', () => {
     const res = await request(app).get('/agents/templates/custom');
     expect(res.status).toBe(200);
     expect(res.body.templates).toHaveLength(2);
-    expect(res.body.templates[0]).toMatchObject({ id: 'tpl-mine', is_owner: true });
-    expect(res.body.templates[1]).toMatchObject({ id: 'tpl-shared', is_owner: false });
+    expect(res.body.templates[0]).toMatchObject({
+      id: 'tpl-mine',
+      is_owner: true,
+      author_display_name: 'Avery Operator',
+      author_email: 'manager@acme.test',
+    });
+    expect(res.body.templates[1]).toMatchObject({
+      id: 'tpl-shared',
+      is_owner: false,
+      author_display_name: 'Sam Teammate',
+      author_email: 'sam@acme.test',
+    });
+  });
+
+  it('joins users to surface author info and falls back to email when no name is set', async () => {
+    installQueryStubs([
+      {
+        match: (sql) => /FROM agent_templates/i.test(sql) && /LEFT JOIN users/i.test(sql),
+        rows: [
+          {
+            id: 'tpl-no-name',
+            tenant_id: 'tenant-1',
+            created_by_user_id: 'other-user',
+            name: 'Anonymous author',
+            description: null,
+            workflow_definition: validWorkflow,
+            welcome_greeting: null,
+            system_prompt: null,
+            language: 'en',
+            is_shared: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            author_first_name: null,
+            author_last_name: null,
+            author_email: 'someone@acme.test',
+          },
+          {
+            id: 'tpl-deleted-author',
+            tenant_id: 'tenant-1',
+            created_by_user_id: 'gone-user',
+            name: 'Orphaned template',
+            description: null,
+            workflow_definition: validWorkflow,
+            welcome_greeting: null,
+            system_prompt: null,
+            language: 'en',
+            is_shared: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            author_first_name: null,
+            author_last_name: null,
+            author_email: null,
+          },
+        ],
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await request(app).get('/agents/templates/custom');
+
+    expect(res.status).toBe(200);
+    // We rely on a LEFT JOIN so templates whose author was deleted still come back.
+    const sqls = queryMock.mock.calls.map((c) => String(c[0]));
+    expect(sqls.some((s) => /LEFT JOIN users/i.test(s))).toBe(true);
+
+    expect(res.body.templates[0]).toMatchObject({
+      id: 'tpl-no-name',
+      author_display_name: 'someone@acme.test',
+      author_email: 'someone@acme.test',
+    });
+    expect(res.body.templates[1]).toMatchObject({
+      id: 'tpl-deleted-author',
+      author_display_name: null,
+      author_email: null,
+    });
   });
 
   it('binds tenant context inside a transaction so RLS scopes the rows', async () => {

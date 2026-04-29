@@ -512,6 +512,45 @@ interface CustomTemplate {
   created_by_user_id: string;
   created_at: string;
   updated_at: string;
+  author_display_name: string | null;
+  author_email: string | null;
+}
+
+/**
+ * Format an ISO timestamp as a short relative time using locale-aware
+ * builder translations. Falls back to a localized date string for anything
+ * older than ~30 days.
+ */
+function formatTemplateRelativeTime(
+  iso: string,
+  t: (key: AgentBuilderTKey, params?: Record<string, string | number>) => string,
+): string {
+  const date = new Date(iso);
+  const ms = Date.now() - date.getTime();
+  if (Number.isNaN(ms)) return '';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return t('customTemplateUpdatedJustNow');
+  if (minutes < 60) return t('customTemplateUpdatedMinutes', { minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('customTemplateUpdatedHours', { hours });
+  const days = Math.floor(hours / 24);
+  if (days < 30) return t('customTemplateUpdatedDays', { days });
+  return date.toLocaleDateString();
+}
+
+/**
+ * Resolve the human-friendly label shown for the author of a custom template.
+ * Prefers "Created by you" for the current user, then the joined display name
+ * from the users table, then their email, and finally an "unknown" fallback.
+ */
+function getCustomTemplateAuthorLabel(
+  tpl: CustomTemplate,
+  t: (key: AgentBuilderTKey, params?: Record<string, string | number>) => string,
+): string {
+  if (tpl.is_owner) return t('createdByYouLabel');
+  const name = tpl.author_display_name?.trim() || tpl.author_email?.trim() || '';
+  if (name.length === 0) return t('customTemplateUnknownAuthor');
+  return t('customTemplateAuthorLabel', { name });
 }
 
 /**
@@ -2744,6 +2783,16 @@ function AgentBuilderInner() {
                                   edges: tplEdges.length,
                                 })}
                             </div>
+                            <div
+                              className="text-[10px] text-text-muted truncate"
+                              title={`${getCustomTemplateAuthorLabel(tpl, t)} · ${t('customTemplateUpdatedLabel', { when: new Date(tpl.updated_at).toLocaleString() })}`}
+                            >
+                              {getCustomTemplateAuthorLabel(tpl, t)}
+                              {' · '}
+                              {t('customTemplateUpdatedLabel', {
+                                when: formatTemplateRelativeTime(tpl.updated_at, t),
+                              })}
+                            </div>
                           </div>
                         </button>
                         {tpl.is_owner && (
@@ -2954,6 +3003,16 @@ function AgentBuilderInner() {
                                 nodes: tplNodes.length,
                                 edges: tplEdges.length,
                               })}
+                          </div>
+                          <div
+                            className="text-[10px] text-text-muted truncate"
+                            title={`${getCustomTemplateAuthorLabel(tpl, t)} · ${t('customTemplateUpdatedLabel', { when: new Date(tpl.updated_at).toLocaleString() })}`}
+                          >
+                            {getCustomTemplateAuthorLabel(tpl, t)}
+                            {' · '}
+                            {t('customTemplateUpdatedLabel', {
+                              when: formatTemplateRelativeTime(tpl.updated_at, t),
+                            })}
                           </div>
                         </div>
                       </button>

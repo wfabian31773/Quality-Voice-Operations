@@ -216,7 +216,14 @@ export type AgentBuilderTKey =
   | 'deleteCustomTemplateConfirm'
   | 'deleteCustomTemplateSuccess'
   | 'sharedBadge'
-  | 'createdByYouLabel';
+  | 'createdByYouLabel'
+  | 'customTemplateAuthorLabel'
+  | 'customTemplateUpdatedLabel'
+  | 'customTemplateUpdatedJustNow'
+  | 'customTemplateUpdatedMinutes'
+  | 'customTemplateUpdatedHours'
+  | 'customTemplateUpdatedDays'
+  | 'customTemplateUnknownAuthor';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -435,6 +442,13 @@ const EN: Record<AgentBuilderTKey, string> = {
   deleteCustomTemplateSuccess: 'Template deleted',
   sharedBadge: 'Shared',
   createdByYouLabel: 'Created by you',
+  customTemplateAuthorLabel: 'By {name}',
+  customTemplateUpdatedLabel: 'Updated {when}',
+  customTemplateUpdatedJustNow: 'just now',
+  customTemplateUpdatedMinutes: '{minutes}m ago',
+  customTemplateUpdatedHours: '{hours}h ago',
+  customTemplateUpdatedDays: '{days}d ago',
+  customTemplateUnknownAuthor: 'Unknown author',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -642,6 +656,13 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   deleteCustomTemplateSuccess: 'Plantilla eliminada',
   sharedBadge: 'Compartida',
   createdByYouLabel: 'Creada por ti',
+  customTemplateAuthorLabel: 'Por {name}',
+  customTemplateUpdatedLabel: 'Actualizada {when}',
+  customTemplateUpdatedJustNow: 'ahora mismo',
+  customTemplateUpdatedMinutes: 'hace {minutes}m',
+  customTemplateUpdatedHours: 'hace {hours}h',
+  customTemplateUpdatedDays: 'hace {days}d',
+  customTemplateUnknownAuthor: 'Autor desconocido',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
