@@ -1,5 +1,9 @@
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
+import {
+  LEADERSHIP_RECIPIENT_WHERE_CLAUSE,
+  LEADERSHIP_USER_ROLES_LEFT_JOIN,
+} from '../../notifications/LeadershipRoles';
 
 const logger = createLogger('CONNECTOR_ALERT_RECIPIENTS');
 
@@ -54,15 +58,11 @@ export async function getTenantAlertEmailRecipients(
     }>(
       `SELECT DISTINCT u.id, u.email, u.first_name, u.last_name, u.created_at
          FROM users u
-         LEFT JOIN user_roles ur
-           ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+         ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
         WHERE u.tenant_id = $1
           AND COALESCE(u.is_active, TRUE) = TRUE
           AND u.email IS NOT NULL
-          AND (
-            ur.role IN ('tenant_owner', 'operations_manager')
-            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
-          )
+          AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
         ORDER BY u.created_at NULLS LAST, u.id
         LIMIT $2`,
       [tenantId, limit],
@@ -116,16 +116,12 @@ export async function getTenantAlertPhoneRecipients(
     }>(
       `SELECT DISTINCT u.id, u.phone_number, u.first_name, u.last_name, u.email, u.created_at
          FROM users u
-         LEFT JOIN user_roles ur
-           ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+         ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
         WHERE u.tenant_id = $1
           AND COALESCE(u.is_active, TRUE) = TRUE
           AND u.phone_number IS NOT NULL
           AND u.phone_number <> ''
-          AND (
-            ur.role IN ('tenant_owner', 'operations_manager')
-            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
-          )
+          AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
         ORDER BY u.created_at NULLS LAST, u.id
         LIMIT $2`,
       [tenantId, limit],

@@ -5,6 +5,14 @@ import {
   fanoutInAppNotification,
   filterEmailRecipientsByPreference,
 } from '../notifications/NotificationPreferences';
+import {
+  isLeadershipRole,
+  LEADERSHIP_PRIORITY_ORDER_BY,
+  LEADERSHIP_RBAC_ROLES_SQL_LIST,
+  LEADERSHIP_RECIPIENT_WHERE_CLAUSE,
+  LEADERSHIP_USER_ROLES_LEFT_JOIN,
+  type LeadershipRole,
+} from '../notifications/LeadershipRoles';
 import { sendEmail, escalationAlertEmail } from '../email';
 
 const logger = createLogger('HUMAN_ESCALATION');
@@ -201,16 +209,12 @@ export async function notifyHumanEscalation(task: EscalationTask): Promise<void>
     const { rows: userRows } = await pool.query(
       `SELECT DISTINCT u.email, u.role
          FROM users u
-         LEFT JOIN user_roles ur
-           ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+         ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
         WHERE u.tenant_id = $1
           AND u.email IS NOT NULL
           AND COALESCE(u.is_active, TRUE) = TRUE
-          AND (
-            ur.role IN ('tenant_owner', 'operations_manager')
-            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
-          )
-        ORDER BY CASE WHEN u.role IN ('owner', 'tenant_owner') THEN 0 ELSE 1 END,
+          AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
+        ORDER BY ${LEADERSHIP_PRIORITY_ORDER_BY},
                  LOWER(u.email) ASC`,
       [task.tenantId],
     );
@@ -363,22 +367,10 @@ export async function updateEscalationTask(
   });
 }
 
-export type EscalationRecipientRole =
-  | 'admin'
-  | 'owner'
-  | 'tenant_owner'
-  | 'operations_manager';
-
-const LEADERSHIP_ROLES: ReadonlySet<EscalationRecipientRole> = new Set([
-  'admin',
-  'owner',
-  'tenant_owner',
-  'operations_manager',
-]);
-
-function isLeadershipRole(value: string | null | undefined): value is EscalationRecipientRole {
-  return !!value && LEADERSHIP_ROLES.has(value as EscalationRecipientRole);
-}
+// Re-exported from the shared LeadershipRoles module so escalation
+// callers can keep importing this name verbatim while every dispatch
+// path agrees on the role union.
+export type EscalationRecipientRole = LeadershipRole;
 
 export interface EscalationRecipient {
   id: string;
@@ -425,14 +417,13 @@ export async function listEscalationRecipients(
                  FROM user_roles ur2
                 WHERE ur2.user_id = u.id
                   AND ur2.tenant_id = u.tenant_id
-                  AND ur2.role IN ('tenant_owner', 'operations_manager')
+                  AND ur2.role IN (${LEADERSHIP_RBAC_ROLES_SQL_LIST})
                 ORDER BY CASE ur2.role WHEN 'tenant_owner' THEN 0 ELSE 1 END
                 LIMIT 1) AS rbac_role,
               COALESCE(in_app_pref.enabled, TRUE) AS in_app_enabled,
               COALESCE(email_pref.enabled, TRUE)  AS email_enabled
          FROM users u
-         LEFT JOIN user_roles ur
-                ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+         ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
          LEFT JOIN user_notification_preferences in_app_pref
                 ON in_app_pref.user_id = u.id
                AND in_app_pref.category = 'escalation'
@@ -444,11 +435,8 @@ export async function listEscalationRecipients(
         WHERE u.tenant_id = $1
           AND u.email IS NOT NULL
           AND COALESCE(u.is_active, TRUE) = TRUE
-          AND (
-            ur.role IN ('tenant_owner', 'operations_manager')
-            OR u.role IN ('admin', 'owner', 'tenant_owner', 'operations_manager')
-          )
-        ORDER BY CASE WHEN u.role IN ('owner', 'tenant_owner') THEN 0 ELSE 1 END,
+          AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
+        ORDER BY ${LEADERSHIP_PRIORITY_ORDER_BY},
                  LOWER(u.email) ASC`,
       [tenantId],
     );
