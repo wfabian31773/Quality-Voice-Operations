@@ -4,11 +4,34 @@
 --
 -- Two changes:
 --
---   1. Add a composite index on usage_metrics over (tenant_id, time DESC, metric_type)
---      so the analytics rollups stop sequential-scanning when filtering by tenant
---      and ordering by time. The audit recommends `recorded_at` but our schema
---      stores the time-of-record in `period_start` (see migrations/008_billing.sql),
---      so the index is built on `period_start DESC`.
+--   1. Add a composite index on usage_metrics built for the
+--      AnalyticsService.getCostAnalytics rollup access pattern
+--      (tenant_id = X AND metric_type IN (...) AND period_start range).
+--
+--      The audit (I-23) recommends an index on (tenant_id, time DESC,
+--      metric_type) so the rollups stop sequential-scanning. We use that
+--      column order's spirit but reorder to (tenant_id, metric_type,
+--      period_start DESC): with the audit's literal ordering the planner
+--      would not naturally pick this index because metric_type is
+--      always pinned to a single value (or a small IN list) in the
+--      rollup, so an index whose middle column is `period_start` forces
+--      a recheck of metric_type after the period scan. With metric_type
+--      promoted to position #2, the same index serves the rollup as a
+--      perfect-prefix index scan and `period_start DESC` keeps it useful
+--      for tenant + recent-time scans elsewhere.
+--
+--      As part of this we drop the now-redundant
+--      idx_usage_metrics_tenant_type_period from migration 012: that
+--      index has the same leading three columns as the new index plus
+--      a fourth column (period_end) that no production query filters
+--      on, so the new index is a strict superset for every query path.
+--      Removing it avoids carrying a duplicate index and lets the
+--      planner converge on a single tenant+type+time access path.
+--
+--      schema notes: the audit recommends `recorded_at` but our schema
+--      stores the time-of-record in `period_start` (see
+--      migrations/008_billing.sql), so the index is built on
+--      `period_start DESC`.
 --
 --   2. Convert `call_events` into a monthly RANGE-partitioned table on
 --      `occurred_at`, with helper functions to create future partitions and
@@ -22,8 +45,19 @@
 -- 1. usage_metrics composite index
 -- ---------------------------------------------------------------------------
 
+-- Drop-then-create so environments that already applied an earlier draft of
+-- this migration (which used the column order
+-- (tenant_id, period_start DESC, metric_type)) get the corrected order
+-- (tenant_id, metric_type, period_start DESC) on re-deploy. On fresh
+-- deploys the DROP is a no-op. The migration only ever runs once per
+-- environment (gated by schema_migrations), so this is not "always
+-- rebuild on every boot".
+DROP INDEX IF EXISTS idx_usage_metrics_tenant_time_type;
 CREATE INDEX IF NOT EXISTS idx_usage_metrics_tenant_time_type
-  ON usage_metrics(tenant_id, period_start DESC, metric_type);
+  ON usage_metrics(tenant_id, metric_type, period_start DESC);
+
+-- Drop the now-redundant 4-column index from migration 012 (see header).
+DROP INDEX IF EXISTS idx_usage_metrics_tenant_type_period;
 
 -- ---------------------------------------------------------------------------
 -- 2. call_events monthly partitioning
