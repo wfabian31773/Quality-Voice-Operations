@@ -29,6 +29,7 @@ import {
   dispatchRouteExportFailedEmail,
 } from '../../../platform/email';
 import {
+  enqueueJobGeocode,
   geocodeAddressCached,
   getDriveEta,
   haversineMeters,
@@ -833,6 +834,14 @@ const createJobHandler: RequestHandler = async (req, res) => {
       void pushAssigneeForJob(pool, tenantId, rows[0].id as string, 'job_assigned');
     }
 
+    // Kick off an out-of-band geocode so the very first live-map / route-
+    // replay read for this row finds cached `address_lat`/`address_lon`
+    // already populated. Fire-and-forget — the create response never
+    // waits on the provider, and the queue rate-limits per provider.
+    if (rows[0].address) {
+      enqueueJobGeocode(pool, tenantId, rows[0].id as string, String(rows[0].address));
+    }
+
     return res.status(201).json({ job: rows[0] });
   } catch (err) {
     logger.error('Failed to create dispatch job', { tenantId, error: String(err) });
@@ -864,7 +873,8 @@ const updateJobHandler: RequestHandler = async (req, res) => {
     }
     const { rows: existing } = await pool.query(
       `SELECT id, status as current_status, assignee_user_id, territory_id AS cur_territory_id,
-              required_skills AS cur_required_skills, scheduled_at AS cur_scheduled_at
+              required_skills AS cur_required_skills, scheduled_at AS cur_scheduled_at,
+              address AS cur_address
        FROM dispatch_jobs WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
@@ -917,7 +927,24 @@ const updateJobHandler: RequestHandler = async (req, res) => {
     if (estimated_duration_minutes !== undefined) { updates.push(`estimated_duration_minutes = $${idx++}`); values.push(estimated_duration_minutes); }
     if (eta_start !== undefined) { updates.push(`eta_start = $${idx++}`); values.push(eta_start); }
     if (eta_end !== undefined) { updates.push(`eta_end = $${idx++}`); values.push(eta_end); }
-    if (address !== undefined) { updates.push(`address = $${idx++}`); values.push(address); }
+    // When the address changes, also reset the geocode cache columns so
+    // the lazy readers (live-map ETA, route-replay) treat the row as
+    // needing a re-geocode in the brief window before the write-path
+    // queue (`enqueueJobGeocode`, called below) finishes resolving the
+    // new coords. Leaving the stale `address_lat`/`address_lon` would
+    // pin the dispatcher map at the *old* address until the queue
+    // catches up, which is exactly the bug this hook is meant to close.
+    const prevAddress = String(existing[0].cur_address ?? '');
+    const addressChanged = address !== undefined && String(address ?? '') !== prevAddress;
+    if (address !== undefined) {
+      updates.push(`address = $${idx++}`); values.push(address);
+      if (addressChanged) {
+        updates.push('address_lat = NULL');
+        updates.push('address_lon = NULL');
+        updates.push('address_geocoded_at = NULL');
+        updates.push('address_geocoded_for = NULL');
+      }
+    }
     if (contact_phone !== undefined) { updates.push(`contact_phone = $${idx++}`); values.push(contact_phone); }
     if (contact_email !== undefined) { updates.push(`contact_email = $${idx++}`); values.push(contact_email); }
     if (required_skills !== undefined) { updates.push(`required_skills = $${idx++}`); values.push(required_skills); }
@@ -963,6 +990,14 @@ const updateJobHandler: RequestHandler = async (req, res) => {
     // the push reflects the post-update resource_id / assignee.
     if (assignmentChanged && (rows[0].resource_id || rows[0].assignee_user_id)) {
       void pushAssigneeForJob(pool, tenantId, id, 'job_assigned');
+    }
+
+    // Address changed → kick off an out-of-band re-geocode so the next
+    // live-map / route-replay read finds fresh cached coords (the cleared
+    // `address_lat`/`address_lon` columns above hide the stale value in
+    // the meantime). Empty addresses are a no-op inside the queue.
+    if (addressChanged && rows[0].address) {
+      enqueueJobGeocode(pool, tenantId, id, String(rows[0].address));
     }
 
     return res.json({ job: rows[0] });
@@ -1616,6 +1651,16 @@ const createFollowUpHandler: RequestHandler = async (req, res) => {
        VALUES ($1, $2, 'follow_up_created', $3, 'Follow-up job created', $4)`,
       [rows[0].id, tenantId, userId, JSON.stringify({ parent_job_id: id })],
     );
+
+    // Follow-ups inherit the parent's address, so the parent's cached
+    // coords often still apply — but we don't *copy* the cache columns
+    // on INSERT, so the new row starts NULL and would otherwise lazy-
+    // geocode on the first read. Enqueue here for symmetry with the
+    // primary create handler; `geocodeAddressCached` will short-circuit
+    // to the cached value with no provider call.
+    if (rows[0].address) {
+      enqueueJobGeocode(pool, tenantId, rows[0].id as string, String(rows[0].address));
+    }
 
     return res.status(201).json({ job: rows[0] });
   } catch (err) {

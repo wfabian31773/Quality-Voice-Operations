@@ -143,4 +143,12 @@ export {
   haversineMeters,
 } from './providers';
 export { getConfiguredGeocoderProvider } from './geocoder';
+export { defaultRpsFor } from './rateLimits';
+export {
+  enqueueJobGeocode,
+  __resetJobGeocodeQueueForTests,
+  __setJobGeocodeQueueOverridesForTests,
+  __waitForJobGeocodeQueueIdleForTests,
+} from './jobGeocodeQueue';
+export type { JobGeocodeQueueOverrides } from './jobGeocodeQueue';
 export type { DriveEta, GeoPoint, RoutingProviderName } from './types';

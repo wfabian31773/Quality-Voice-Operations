@@ -1,9 +1,23 @@
 /**
- * One-shot backfill for the geocode columns added by
+ * Catch-up backfill for the geocode columns added by
  * `migrations/087_dispatch_jobs_geocode.sql`.
  *
- * Why: two product surfaces read these cached coords and pay an
- * on-demand geocode round-trip when they're missing —
+ * Since Task #787 the primary mechanism for populating
+ * `address_lat`/`address_lon` is the write-path enqueue (see
+ * `platform/integrations/routing/jobGeocodeQueue.ts`): create + edit
+ * endpoints kick off a geocode out-of-band, so freshly written jobs
+ * land with cached coords without a dispatcher ever waiting.
+ *
+ * This script is now the *catch-up* tool — useful when:
+ *   - the migration is first deployed and there's a historical backlog
+ *     to seed before the write path has had a chance to work through it;
+ *   - the write-path queue dropped a job (e.g. transient provider
+ *     outage that exceeded the queue's retry window);
+ *   - an operator switches `DISPATCH_GEOCODE_PROVIDER` and wants the
+ *     existing rows re-coded against the new provider.
+ *
+ * Why we still want it: two product surfaces read these cached coords
+ * and pay an on-demand geocode round-trip when they're missing —
  *   1. The dispatcher live map lazy-geocodes when a tech goes en_route,
  *      so the very first ETA after the status flip can be slow on the
  *      free Nominatim provider.
@@ -62,7 +76,10 @@ import {
   geocodeAddress,
   getConfiguredGeocoderProvider,
 } from '../platform/integrations/routing/geocoder';
+import { defaultRpsFor } from '../platform/integrations/routing/rateLimits';
 import type { GeocoderProviderName } from '../platform/integrations/routing/types';
+
+export { defaultRpsFor };
 
 export interface CliOptions {
   dryRun: boolean;
@@ -101,31 +118,6 @@ export function parseArgs(argv: readonly string[]): CliOptions {
   }
 
   return { dryRun, actionableOnly, tenantId, limit, rps };
-}
-
-/**
- * Default request-per-second cap by provider. These match each
- * provider's published free-tier policy, NOT a paid contract — operators
- * should override with `--rps=` when they have a higher quota.
- *   - nominatim: 1 req/sec absolute max (OSM usage policy)
- *   - mapbox:    600 req/min on the free tier → 10 req/sec; we leave a
- *                little headroom and default to 5 req/sec
- *   - google:    50 req/sec hard limit on the Geocoding API; we default
- *                to 10 req/sec to stay polite and predictable
- *   - none:      irrelevant (no requests issued)
- */
-export function defaultRpsFor(provider: GeocoderProviderName): number {
-  switch (provider) {
-    case 'mapbox':
-      return 5;
-    case 'google':
-      return 10;
-    case 'none':
-      return 1;
-    case 'nominatim':
-    default:
-      return 1;
-  }
 }
 
 export function getRpsCap(provider: GeocoderProviderName, override: number | null): number {
