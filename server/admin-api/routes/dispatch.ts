@@ -442,6 +442,20 @@ const CLOSEST_APPROACH_BAD_M_DEFAULT = 250;
 const DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN = 10;
 const DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX = 5000;
 
+// Default per-tenant "tech has been driving too long" threshold (in
+// minutes). Surfaced inline on each en_route board card next to the
+// live customer ETA so dispatchers can spot stuck or stalled trucks
+// at a glance — the duration badge stays grey below this value, flips
+// amber once it crosses, and turns red once it doubles. Matches the
+// column default in migration 092.
+const LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT = 30;
+
+// CHECK constraint range from migration 092. Mirrored here so the
+// settings endpoint rejects out-of-range writes with a 400 instead of
+// bubbling a Postgres constraint error to the client.
+const DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN = 5;
+const DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX = 480;
+
 // Cap how many history rows we keep per resource. The live map only needs
 // the most recent fix; the breadcrumb is a "last hour or so" replay tool.
 // 200 pings ≈ ~1.5 hours at the 30-second mobile cadence.
@@ -492,6 +506,13 @@ export const listJobsHandler: RequestHandler = async (req, res) => {
               r.name AS resource_name,
               t.name AS territory_name,
               ca.closest_approach_m,
+              CASE WHEN d.status = 'en_route' THEN (
+                SELECT MAX(e.created_at)
+                  FROM dispatch_job_events e
+                 WHERE e.tenant_id = d.tenant_id
+                   AND e.job_id = d.id
+                   AND e.to_status = 'en_route'
+              ) ELSE NULL END AS en_route_since,
               COUNT(*) OVER() AS _total_count
        FROM dispatch_jobs d
        LEFT JOIN users u ON u.id = d.assignee_user_id
@@ -574,7 +595,14 @@ export const getJobHandler: RequestHandler = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.*, u.email AS assignee_email,
               r.name AS resource_name,
-              t.name AS territory_name
+              t.name AS territory_name,
+              CASE WHEN d.status = 'en_route' THEN (
+                SELECT MAX(e.created_at)
+                  FROM dispatch_job_events e
+                 WHERE e.tenant_id = d.tenant_id
+                   AND e.job_id = d.id
+                   AND e.to_status = 'en_route'
+              ) ELSE NULL END AS en_route_since
        FROM dispatch_jobs d
        LEFT JOIN users u ON u.id = d.assignee_user_id
        LEFT JOIN dispatch_resources r ON r.id = d.resource_id AND r.tenant_id = d.tenant_id
@@ -670,10 +698,24 @@ export const getJobLiveEtaHandler: RequestHandler = async (req, res) => {
   const pool = getPlatformPool();
 
   try {
+    // Pull the row plus the most-recent `to_status='en_route'` event
+    // timestamp. The latter powers the inline "driving X min" badge
+    // on the en_route board card so dispatchers can spot trucks
+    // that have been rolling far longer than the live ETA suggests
+    // (e.g. ETA still 12 min, but already driving 45 min). Returned
+    // null for non-en_route jobs and for jobs that somehow lack a
+    // status_change event.
     const { rows } = await pool.query(
-      `SELECT status, resource_id, address
-         FROM dispatch_jobs
-        WHERE id = $1 AND tenant_id = $2`,
+      `SELECT d.status, d.resource_id, d.address,
+              CASE WHEN d.status = 'en_route' THEN (
+                SELECT MAX(e.created_at)
+                  FROM dispatch_job_events e
+                 WHERE e.tenant_id = d.tenant_id
+                   AND e.job_id = d.id
+                   AND e.to_status = 'en_route'
+              ) ELSE NULL END AS en_route_since
+         FROM dispatch_jobs d
+        WHERE d.id = $1 AND d.tenant_id = $2`,
       [id, tenantId],
     );
 
@@ -685,6 +727,13 @@ export const getJobLiveEtaHandler: RequestHandler = async (req, res) => {
     const status = String(row.status ?? '');
     const resourceId = (row.resource_id as string | null) ?? null;
     const address = String(row.address ?? '').trim();
+    const enRouteSinceRaw = row.en_route_since;
+    const enRouteSince =
+      enRouteSinceRaw instanceof Date
+        ? enRouteSinceRaw.toISOString()
+        : enRouteSinceRaw == null
+          ? null
+          : String(enRouteSinceRaw);
 
     let liveEta: { minutes: number; arrival_at: string } | null = null;
     if (status === 'en_route' && resourceId && address) {
@@ -697,7 +746,7 @@ export const getJobLiveEtaHandler: RequestHandler = async (req, res) => {
       }
     }
 
-    return res.json({ live_eta: liveEta, status });
+    return res.json({ live_eta: liveEta, status, en_route_since: enRouteSince });
   } catch (err) {
     logger.error('Failed to get dispatch job live ETA', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to get live ETA' });
@@ -943,6 +992,37 @@ async function readDispatchBadArrivalThresholdM(
 }
 
 /**
+ * Read the per-tenant "tech has been driving too long" threshold (in
+ * minutes). Falls back to {@link LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT}
+ * when the tenant row is missing, the column is NULL, or the value is
+ * non-numeric — we'd rather color the inline duration badge against
+ * the platform default than silently leave dispatchers without a
+ * visual signal. Out-of-range values are pinned by the column's CHECK
+ * constraint, so we don't re-validate here.
+ */
+async function readDispatchLongEnRouteThresholdMinutes(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+): Promise<number> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT dispatch_long_en_route_threshold_minutes AS m
+         FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    const raw = rows[0]?.m;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT;
+    return n;
+  } catch (err) {
+    logger.warn('Failed to read tenants.dispatch_long_en_route_threshold_minutes, using default', {
+      tenantId, error: String(err),
+    });
+    return LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT;
+  }
+}
+
+/**
  * Compute the closest distance (in meters) the technician's GPS breadcrumbs
  * came to the geocoded customer address for a single job, then — if it
  * exceeds the tenant's configured "bad arrival" threshold — auto-create a
@@ -1076,13 +1156,20 @@ export const getDispatchSettingsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   try {
-    const m = await readDispatchBadArrivalThresholdM(pool, tenantId);
+    const [m, longEnRouteMin] = await Promise.all([
+      readDispatchBadArrivalThresholdM(pool, tenantId),
+      readDispatchLongEnRouteThresholdMinutes(pool, tenantId),
+    ]);
     return res.json({
       settings: {
         bad_arrival_threshold_m: m,
         bad_arrival_threshold_m_min: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN,
         bad_arrival_threshold_m_max: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX,
         bad_arrival_threshold_m_default: CLOSEST_APPROACH_BAD_M_DEFAULT,
+        long_en_route_threshold_minutes: longEnRouteMin,
+        long_en_route_threshold_minutes_min: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN,
+        long_en_route_threshold_minutes_max: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX,
+        long_en_route_threshold_minutes_default: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
       },
     });
   } catch (err) {
@@ -1122,6 +1209,22 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
     updates.push(`dispatch_bad_arrival_threshold_m = $${values.length}`);
   }
 
+  if (body.long_en_route_threshold_minutes !== undefined) {
+    const n = Number(body.long_en_route_threshold_minutes);
+    if (
+      !Number.isFinite(n)
+      || !Number.isInteger(n)
+      || n < DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN
+      || n > DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX
+    ) {
+      return res.status(400).json({
+        error: `long_en_route_threshold_minutes must be an integer between ${DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN} and ${DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX} (minutes)`,
+      });
+    }
+    values.push(n);
+    updates.push(`dispatch_long_en_route_threshold_minutes = $${values.length}`);
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No supported settings provided' });
   }
@@ -1131,13 +1234,20 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
       `UPDATE tenants SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`,
       values,
     );
-    const m = await readDispatchBadArrivalThresholdM(pool, tenantId);
+    const [m, longEnRouteMin] = await Promise.all([
+      readDispatchBadArrivalThresholdM(pool, tenantId),
+      readDispatchLongEnRouteThresholdMinutes(pool, tenantId),
+    ]);
     return res.json({
       settings: {
         bad_arrival_threshold_m: m,
         bad_arrival_threshold_m_min: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN,
         bad_arrival_threshold_m_max: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX,
         bad_arrival_threshold_m_default: CLOSEST_APPROACH_BAD_M_DEFAULT,
+        long_en_route_threshold_minutes: longEnRouteMin,
+        long_en_route_threshold_minutes_min: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN,
+        long_en_route_threshold_minutes_max: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX,
+        long_en_route_threshold_minutes_default: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
       },
     });
   } catch (err) {

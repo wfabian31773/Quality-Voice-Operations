@@ -98,13 +98,17 @@ describe('getJobLiveEtaHandler', () => {
     );
     __resetRoutingCachesForTests();
 
+    const enRouteSinceDate = new Date(Date.now() - 18 * 60 * 1000);
     // 1. SELECT status/resource_id/address (existence + ETA inputs)
+    //    plus the most-recent en_route status_change timestamp so the
+    //    board card can render "driving X min" without an extra DB hit.
     queryMock.mockResolvedValueOnce({
       rows: [
         {
           status: 'en_route',
           resource_id: 'res-1',
           address: '500 Folsom St, SF',
+          en_route_since: enRouteSinceDate,
         },
       ],
     });
@@ -139,6 +143,10 @@ describe('getJobLiveEtaHandler', () => {
     expect(getStatus()).toBe(200);
     const body = getJson() as Record<string, unknown>;
     expect(body.status).toBe('en_route');
+    // The en_route_since timestamp travels with the live ETA so the
+    // board card's "driving X min" badge stays in sync without a
+    // separate fetch.
+    expect(body.en_route_since).toBe(enRouteSinceDate.toISOString());
     const liveEta = body.live_eta as Record<string, unknown> | null;
     expect(liveEta).not.toBeNull();
     expect(typeof liveEta!.minutes).toBe('number');
@@ -146,6 +154,11 @@ describe('getJobLiveEtaHandler', () => {
     expect(typeof liveEta!.arrival_at).toBe('string');
     const arrivalAt = new Date(liveEta!.arrival_at as string);
     expect(Number.isFinite(arrivalAt.getTime())).toBe(true);
+    // The first SELECT must include the en_route_since computed
+    // column so the board card has the timestamp it needs.
+    const firstSql = String(queryMock.mock.calls[0][0]);
+    expect(firstSql).toMatch(/en_route_since/);
+    expect(firstSql).toMatch(/dispatch_job_events/);
     // The lite endpoint never re-fetches events / exceptions /
     // attachments / joined resource+territory rows.
     expect(body.job).toBeUndefined();
@@ -164,6 +177,10 @@ describe('getJobLiveEtaHandler', () => {
           status: 'scheduled',
           resource_id: 'res-1',
           address: '500 Folsom St, SF',
+          // The CASE-WHEN guard in the SELECT returns NULL for any
+          // non-en_route status, so the lite handler never gets a
+          // timestamp to surface for these rows.
+          en_route_since: null,
         },
       ],
     });
@@ -179,6 +196,7 @@ describe('getJobLiveEtaHandler', () => {
     const body = getJson() as Record<string, unknown>;
     expect(body.status).toBe('scheduled');
     expect(body.live_eta).toBeNull();
+    expect(body.en_route_since).toBeNull();
     // Just the row-existence query — no location/geocode lookup.
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
@@ -195,6 +213,7 @@ describe('getJobLiveEtaHandler', () => {
           status: 'en_route',
           resource_id: 'res-1',
           address: '500 Folsom St, SF',
+          en_route_since: new Date(Date.now() - 5 * 60 * 1000),
         },
       ],
     });

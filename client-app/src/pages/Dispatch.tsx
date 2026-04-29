@@ -36,6 +36,13 @@ interface LiveEta {
   arrival_at: string;
 }
 
+// ISO timestamp of the most recent transition INTO `en_route` for the
+// job. Travels alongside the live ETA so the board card can render the
+// inline "driving X min" badge that ticks live without re-fetching the
+// whole job list. `null` when the job isn't en_route or we can't
+// reconstruct the transition timestamp from the status-event history.
+type EnRouteSince = string | null;
+
 interface DispatchJob {
   id: string;
   title: string;
@@ -72,6 +79,12 @@ interface DispatchJob {
   // cards so supervisors can spot jobs that probably never reached the
   // right house without opening the route replay tab.
   closest_approach_m: number | null;
+  // ISO timestamp of the latest transition INTO en_route, derived
+  // server-side from dispatch_job_events. Hydrated on the initial job
+  // list so the board card can render "driving X min" the moment the
+  // page mounts; the live-eta poll keeps it fresh as status changes
+  // without re-fetching the full list.
+  en_route_since: string | null;
 }
 
 interface Resource {
@@ -192,7 +205,22 @@ interface DispatchSettings {
   bad_arrival_threshold_m_min: number;
   bad_arrival_threshold_m_max: number;
   bad_arrival_threshold_m_default: number;
+  // Per-tenant tunable that paints the inline "driving X min" badge
+  // amber once a tech has been en route past this many minutes (and
+  // red at 2x). Mirrors the column CHECK on
+  // tenants.dispatch_long_en_route_threshold_minutes (5–480).
+  long_en_route_threshold_minutes: number;
+  long_en_route_threshold_minutes_min: number;
+  long_en_route_threshold_minutes_max: number;
+  long_en_route_threshold_minutes_default: number;
 }
+
+// Platform default for the "long en route" badge tone threshold —
+// must match LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT in
+// server/admin-api/routes/dispatch.ts. Used as the optimistic local
+// fallback before /dispatch/settings resolves and as the rendered
+// default in the settings panel.
+const LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT = 30;
 
 interface JobAttachment {
   id: string;
@@ -359,6 +387,10 @@ export default function Dispatch() {
     bad_arrival_threshold_m_min: 10,
     bad_arrival_threshold_m_max: 5000,
     bad_arrival_threshold_m_default: CLOSEST_APPROACH_BAD_M_DEFAULT,
+    long_en_route_threshold_minutes: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
+    long_en_route_threshold_minutes_min: 5,
+    long_en_route_threshold_minutes_max: 480,
+    long_en_route_threshold_minutes_default: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
   });
 
   const fetchDispatchSettings = useCallback(async () => {
@@ -564,7 +596,8 @@ export default function Dispatch() {
           openJobDetail={openJobDetail} setEditingJob={setEditingJob} setShowJobForm={setShowJobForm}
           selectedJobs={selectedJobs} setSelectedJobs={setSelectedJobs} batchUpdate={batchUpdate}
           getJobsByStatus={getJobsByStatus}
-          badThresholdM={dispatchSettings.bad_arrival_threshold_m} />
+          badThresholdM={dispatchSettings.bad_arrival_threshold_m}
+          longEnRouteThresholdMin={dispatchSettings.long_en_route_threshold_minutes} />
       )}
 
       {activeTab === 'queue' && (
@@ -1450,8 +1483,20 @@ const BOARD_EN_ROUTE_LIVE_ETA_POLL_MS = 15_000;
 // we can reuse the existing handler verbatim — the routing-adapter
 // cache already dedupes the underlying drive-time computation across
 // surfaces.
-function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | null> {
-  const [etas, setEtas] = useState<Record<string, LiveEta | null>>({});
+// One slot per en_route job tracked by `useBoardEnRouteLiveEtas`. Both
+// fields ride the same hook so the JobCard can render the customer
+// "~12 min away" ETA AND the dispatcher-only "driving X min" elapsed
+// duration off a single source of truth, without the parent having to
+// re-fetch the whole job list when either value changes.
+interface BoardEnRouteLiveSlot {
+  live_eta: LiveEta | null;
+  en_route_since: EnRouteSince;
+}
+
+function useBoardEnRouteLiveEtas(
+  jobs: DispatchJob[],
+): Record<string, BoardEnRouteLiveSlot> {
+  const [etas, setEtas] = useState<Record<string, BoardEnRouteLiveSlot>>({});
 
   // Stable, sorted list of en_route ids that have the inputs the
   // server needs to compute an ETA (resource + address). Sorting +
@@ -1465,15 +1510,35 @@ function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | 
   }, [jobs]);
   const enRouteKey = enRouteIds.join(',');
 
+  // Map of id -> en_route_since pulled from the parent job list — used
+  // to seed the slot the moment a card enters the en_route lane so the
+  // "driving X min" badge is correct on first paint (before the first
+  // /live-eta poll completes). Joined into a primitive dep so effects
+  // re-run only when the underlying timestamps actually change, not on
+  // every parent re-render.
+  const seedSinces = useMemo(() => {
+    const m: Record<string, string | null> = {};
+    for (const j of jobs) {
+      if (j.status === 'en_route' && j.resource_id && j.address) {
+        m[j.id] = j.en_route_since;
+      }
+    }
+    return m;
+  }, [jobs]);
+  const seedSincesKey = enRouteIds.map((id) => `${id}:${seedSinces[id] ?? ''}`).join('|');
+
   // Drop cached ETAs for jobs that are no longer en_route or no
   // longer visible on the board, so a job that arrives and gets
   // dropped from the lane doesn't keep showing a stale "~12 min away"
-  // value the next time it briefly reappears.
+  // value the next time it briefly reappears. Also seeds the slot
+  // (with the parent-supplied en_route_since) for jobs that just
+  // entered the lane so the elapsed-driving badge has data to paint
+  // before the /live-eta poll completes.
   useEffect(() => {
     setEtas((prev) => {
       const visible = new Set(enRouteIds);
       let changed = false;
-      const next: Record<string, LiveEta | null> = {};
+      const next: Record<string, BoardEnRouteLiveSlot> = {};
       for (const [id, val] of Object.entries(prev)) {
         if (visible.has(id)) {
           next[id] = val;
@@ -1481,9 +1546,24 @@ function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | 
           changed = true;
         }
       }
+      for (const id of enRouteIds) {
+        const seedSince = seedSinces[id] ?? null;
+        if (!next[id]) {
+          next[id] = { live_eta: null, en_route_since: seedSince };
+          changed = true;
+        } else if (
+          next[id].en_route_since == null &&
+          seedSince != null
+        ) {
+          // Server-rendered list now has a timestamp the slot didn't —
+          // adopt it without clobbering an already-fetched live_eta.
+          next[id] = { ...next[id], en_route_since: seedSince };
+          changed = true;
+        }
+      }
       return changed ? next : prev;
     });
-  }, [enRouteKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enRouteKey, seedSincesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (enRouteIds.length === 0) return;
@@ -1496,9 +1576,11 @@ function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | 
       const results = await Promise.allSettled(
         enRouteIds.map(async (id) => ({
           id,
-          data: await api.get<{ live_eta: LiveEta | null; status: string }>(
-            `/dispatch/jobs/${id}/live-eta`,
-          ),
+          data: await api.get<{
+            live_eta: LiveEta | null;
+            status: string;
+            en_route_since: string | null;
+          }>(`/dispatch/jobs/${id}/live-eta`),
         })),
       );
       if (cancelled) return;
@@ -1508,30 +1590,35 @@ function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | 
         for (const r of results) {
           if (r.status !== 'fulfilled') continue;
           const { id, data } = r.value;
-          const incoming = data.live_eta;
-          const hadKey = Object.prototype.hasOwnProperty.call(prev, id);
+          const incomingEta = data.live_eta;
+          const incomingSince = data.en_route_since ?? null;
           const existing = prev[id];
           // Cheap shallow comparison to avoid re-rendering the whole
-          // board every 15s when nothing actually moved. Treat
-          // "still null" as no-op (otherwise persistently un-routable
-          // jobs would force a state update on every tick).
-          let isSame = false;
-          if (hadKey) {
-            if (existing === null && incoming === null) {
-              isSame = true;
+          // board every 15s when nothing actually moved. Treat both
+          // values being unchanged as a no-op (otherwise persistently
+          // un-routable jobs would still force a state update on
+          // every tick).
+          let etaSame = false;
+          if (existing) {
+            if (existing.live_eta === null && incomingEta === null) {
+              etaSame = true;
             } else if (
-              existing &&
-              incoming &&
-              existing.minutes === incoming.minutes &&
-              existing.arrival_at === incoming.arrival_at
+              existing.live_eta &&
+              incomingEta &&
+              existing.live_eta.minutes === incomingEta.minutes &&
+              existing.live_eta.arrival_at === incomingEta.arrival_at
             ) {
-              isSame = true;
+              etaSame = true;
             }
           }
-          if (!isSame) {
-            next[id] = incoming;
-            changed = true;
-          }
+          const sinceSame =
+            existing != null && existing.en_route_since === incomingSince;
+          if (existing && etaSame && sinceSame) continue;
+          next[id] = {
+            live_eta: incomingEta,
+            en_route_since: incomingSince,
+          };
+          changed = true;
         }
         return changed ? next : prev;
       });
@@ -1550,9 +1637,17 @@ function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | 
   return etas;
 }
 
+// How often the board re-renders the en-route cards so the inline
+// "driving X min" badge ticks forward without waiting on the next
+// /live-eta poll. 30 seconds is fine-grained enough that the elapsed
+// counter never visibly lags reality but coarse enough that we don't
+// re-render a quiet board for nothing.
+const BOARD_EN_ROUTE_DURATION_TICK_MS = 30_000;
+
 function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setShowFilters,
   territories, resources, isReadOnly, transitionJob, openJobDetail, setEditingJob, setShowJobForm,
-  selectedJobs, setSelectedJobs, batchUpdate, getJobsByStatus, badThresholdM }: {
+  selectedJobs, setSelectedJobs, batchUpdate, getJobsByStatus, badThresholdM,
+  longEnRouteThresholdMin }: {
   jobs: DispatchJob[]; statusCounts: Record<string, number>;
   filters: Record<string, string>; setFilters: React.Dispatch<React.SetStateAction<{ status: string; priority: string; territory_id: string; resource_id: string; search: string }>>;
   showFilters: boolean; setShowFilters: (b: boolean) => void;
@@ -1564,8 +1659,19 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
   batchUpdate: (u: Record<string, unknown>) => void;
   getJobsByStatus: (s: string) => DispatchJob[];
   badThresholdM: number;
+  longEnRouteThresholdMin: number;
 }) {
   const liveEtas = useBoardEnRouteLiveEtas(jobs);
+  // Tick-clock that nudges the board to re-render every 30s purely so
+  // the inline "driving X min" elapsed badge stays current between
+  // /live-eta polls. We pass `now` down to JobCard explicitly so React
+  // doesn't have to invalidate the whole subtree — only en_route cards
+  // actually look at it.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), BOARD_EN_ROUTE_DURATION_TICK_MS);
+    return () => clearInterval(t);
+  }, []);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1662,14 +1768,20 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
                     title="No jobs"
                     variant="compact"
                   />
-                ) : colJobs.map(job => (
-                  <JobCard key={job.id} job={job} isReadOnly={isReadOnly} selected={selectedJobs.has(job.id)}
-                    liveEta={job.status === 'en_route' ? liveEtas[job.id] ?? null : null}
-                    onSelect={() => { const s = new Set(selectedJobs); s.has(job.id) ? s.delete(job.id) : s.add(job.id); setSelectedJobs(s); }}
-                    onClick={() => openJobDetail(job.id)}
-                    onTransition={(s) => transitionJob(job.id, s)}
-                    badThresholdM={badThresholdM} />
-                ))}
+                ) : colJobs.map(job => {
+                  const slot = job.status === 'en_route' ? liveEtas[job.id] : undefined;
+                  return (
+                    <JobCard key={job.id} job={job} isReadOnly={isReadOnly} selected={selectedJobs.has(job.id)}
+                      liveEta={slot?.live_eta ?? null}
+                      enRouteSince={slot?.en_route_since ?? (job.status === 'en_route' ? job.en_route_since : null)}
+                      now={now}
+                      longEnRouteThresholdMin={longEnRouteThresholdMin}
+                      onSelect={() => { const s = new Set(selectedJobs); s.has(job.id) ? s.delete(job.id) : s.add(job.id); setSelectedJobs(s); }}
+                      onClick={() => openJobDetail(job.id)}
+                      onTransition={(s) => transitionJob(job.id, s)}
+                      badThresholdM={badThresholdM} />
+                  );
+                })}
               </div>
             </div>
           );
@@ -1679,7 +1791,8 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
   );
 }
 
-function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTransition, badThresholdM }: {
+function JobCard({ job, isReadOnly, selected, liveEta, enRouteSince, now, longEnRouteThresholdMin,
+  onSelect, onClick, onTransition, badThresholdM }: {
   job: DispatchJob; isReadOnly: boolean; selected: boolean;
   // Live customer ETA the board polls for cards in the En Route lane
   // (see `useBoardEnRouteLiveEtas`). `null` for non-en_route cards
@@ -1687,6 +1800,18 @@ function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTran
   // (no fresh GPS fix, no geocodable address, etc.) — in either case
   // we just don't render the inline ETA badge.
   liveEta?: LiveEta | null;
+  // ISO timestamp of the latest transition INTO en_route (from
+  // `useBoardEnRouteLiveEtas` for live-polled cards, or job.en_route_since
+  // for the optimistic first paint). Drives the inline "driving X min"
+  // duration badge so dispatchers can spot trucks that have been on
+  // the road far longer than the customer ETA implied.
+  enRouteSince?: EnRouteSince;
+  // Tick-clock from BoardView so the elapsed-driving badge advances
+  // every 30s without refetching the job list.
+  now?: number;
+  // Per-tenant tone threshold (minutes) — once driving time crosses
+  // this, the badge goes amber; at 2x it goes red.
+  longEnRouteThresholdMin?: number;
   onSelect: () => void; onClick: () => void; onTransition: (s: string) => void;
   badThresholdM: number;
 }) {
@@ -1700,6 +1825,36 @@ function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTran
     job.closest_approach_m != null
     && SHOW_CLOSEST_APPROACH_STATUSES.has(job.status);
   const showLiveEta = job.status === 'en_route' && liveEta != null;
+  // Elapsed driving minutes since the latest en_route transition.
+  // Floor at 0 to absorb tiny clock skew between client and server,
+  // and only render once we have a parseable timestamp — otherwise
+  // we'd flash a misleading "driving 0 min" on a card whose history
+  // doesn't include an en_route event yet.
+  const drivingMinutes = (() => {
+    if (job.status !== 'en_route' || !enRouteSince) return null;
+    const startedMs = Date.parse(enRouteSince);
+    if (!Number.isFinite(startedMs)) return null;
+    const ref = typeof now === 'number' ? now : Date.now();
+    const minutes = Math.floor((ref - startedMs) / 60_000);
+    return minutes >= 0 ? minutes : 0;
+  })();
+  const showDrivingDuration = drivingMinutes != null;
+  // Tone scale mirrors the closest-approach badge: grey while
+  // everything's normal, amber once we cross the configured
+  // threshold, red once we hit 2x — calibrated so a quick glance at
+  // the En Route lane surfaces stuck trucks without making every
+  // card scream for attention.
+  const longThreshold = longEnRouteThresholdMin ?? LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT;
+  const drivingTone = (() => {
+    if (drivingMinutes == null) return 'text-muted';
+    if (drivingMinutes >= longThreshold * 2) {
+      return 'text-red-700 dark:text-red-300 font-semibold';
+    }
+    if (drivingMinutes >= longThreshold) {
+      return 'text-amber-700 dark:text-amber-300 font-semibold';
+    }
+    return 'text-muted';
+  })();
   return (
     <div onClick={onClick}
       className={`bg-surface-secondary rounded-lg p-2.5 cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all ${selected ? 'ring-2 ring-primary' : ''}`}>
@@ -1734,15 +1889,38 @@ function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTran
           <span>{new Date(job.scheduled_at).toLocaleDateString()} {new Date(job.scheduled_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
         </div>
       )}
-      {showLiveEta && liveEta && (
+      {(showLiveEta || showDrivingDuration) && (
         <div data-testid="board-card-live-eta"
-          className="flex items-center gap-1 text-[10px] mt-1 text-cyan-700 dark:text-cyan-300"
-          title="Same live ETA the customer sees on their tracking page">
-          <Clock className="h-2.5 w-2.5" />
-          <span className="font-semibold">~{liveEta.minutes} min away</span>
-          <span className="text-muted">
-            · {new Date(liveEta.arrival_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-          </span>
+          className="flex items-center gap-1 text-[10px] mt-1"
+          title={
+            showLiveEta
+              ? 'Live ETA the customer sees, plus how long the tech has been driving'
+              : 'How long the tech has been en route'
+          }>
+          <Clock className="h-2.5 w-2.5 text-cyan-700 dark:text-cyan-300" />
+          {showLiveEta && liveEta && (
+            <>
+              <span className="font-semibold text-cyan-700 dark:text-cyan-300">
+                ~{liveEta.minutes} min away
+              </span>
+              <span className="text-muted">
+                · {new Date(liveEta.arrival_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </span>
+            </>
+          )}
+          {showDrivingDuration && (
+            <span
+              data-testid="board-card-driving-duration"
+              className={drivingTone}
+              title={
+                drivingMinutes != null && drivingMinutes >= longThreshold
+                  ? `Tech has been en route for ${drivingMinutes} min — past the ${longThreshold} min threshold`
+                  : `Tech has been en route for ${drivingMinutes} min`
+              }
+            >
+              {showLiveEta ? '· ' : ''}driving {drivingMinutes} min
+            </span>
+          )}
         </div>
       )}
       {showCloseness && (
@@ -3500,19 +3678,74 @@ function DispatchSettingsPanel({ isReadOnly, dispatchSettings, setDispatchSettin
   setDispatchSettings: React.Dispatch<React.SetStateAction<DispatchSettings>>;
   onError: (msg: string | null) => void;
 }) {
-  const [draft, setDraft] = useState<string>(String(dispatchSettings.bad_arrival_threshold_m));
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">Tune dispatch thresholds and automation for your tenant.</p>
+      <DispatchThresholdField
+        title="Far-from-address arrival flag"
+        description="When a tech's closest GPS point to the job address is farther than this many meters, the job is automatically flagged for review and shown with a red badge on the dispatch board."
+        unitLabel="Threshold (meters)"
+        unitShort="m"
+        currentValue={dispatchSettings.bad_arrival_threshold_m}
+        min={dispatchSettings.bad_arrival_threshold_m_min}
+        max={dispatchSettings.bad_arrival_threshold_m_max}
+        bodyKey="bad_arrival_threshold_m"
+        isReadOnly={isReadOnly}
+        setDispatchSettings={setDispatchSettings}
+        onError={onError}
+      />
+      <DispatchThresholdField
+        title="Long-en-route warning"
+        description="Once a tech has been en route past this many minutes, the inline 'driving X min' badge on the dispatch board turns amber, and red at twice the threshold — so you can spot trucks stuck in traffic or stopped along the way."
+        unitLabel="Threshold (minutes)"
+        unitShort="min"
+        currentValue={dispatchSettings.long_en_route_threshold_minutes}
+        min={dispatchSettings.long_en_route_threshold_minutes_min}
+        max={dispatchSettings.long_en_route_threshold_minutes_max}
+        bodyKey="long_en_route_threshold_minutes"
+        isReadOnly={isReadOnly}
+        setDispatchSettings={setDispatchSettings}
+        onError={onError}
+      />
+    </div>
+  );
+}
+
+// Single tenant-tunable threshold row. Factored out so the two
+// dispatch knobs (far-from-address meters and long-en-route minutes)
+// share validation, saving, and "Saved." feedback without each
+// section reimplementing its own draft state. The `bodyKey` is the
+// PUT /dispatch/settings field this row writes to — both columns are
+// validated server-side against their column CHECK ranges, so the
+// client validation here is purely for fast feedback.
+function DispatchThresholdField({
+  title, description, unitLabel, unitShort,
+  currentValue, min, max, bodyKey,
+  isReadOnly, setDispatchSettings, onError,
+}: {
+  title: string;
+  description: string;
+  unitLabel: string;
+  unitShort: string;
+  currentValue: number;
+  min: number;
+  max: number;
+  bodyKey: 'bad_arrival_threshold_m' | 'long_en_route_threshold_minutes';
+  isReadOnly: boolean;
+  setDispatchSettings: React.Dispatch<React.SetStateAction<DispatchSettings>>;
+  onError: (msg: string | null) => void;
+}) {
+  const [draft, setDraft] = useState<string>(String(currentValue));
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
-    setDraft(String(dispatchSettings.bad_arrival_threshold_m));
-  }, [dispatchSettings.bad_arrival_threshold_m]);
+    setDraft(String(currentValue));
+  }, [currentValue]);
 
-  const min = dispatchSettings.bad_arrival_threshold_m_min;
-  const max = dispatchSettings.bad_arrival_threshold_m_max;
   const parsed = Number(draft);
   const valid = Number.isInteger(parsed) && parsed >= min && parsed <= max;
-  const dirty = String(parsed) !== String(dispatchSettings.bad_arrival_threshold_m);
+  const dirty = String(parsed) !== String(currentValue);
 
   const save = async () => {
     if (!valid) return;
@@ -3520,7 +3753,7 @@ function DispatchSettingsPanel({ isReadOnly, dispatchSettings, setDispatchSettin
       setSaving(true);
       onError(null);
       const data = await api.put<{ settings: DispatchSettings }>('/dispatch/settings', {
-        bad_arrival_threshold_m: parsed,
+        [bodyKey]: parsed,
       });
       setDispatchSettings(data.settings);
       setSavedAt(Date.now());
@@ -3532,49 +3765,43 @@ function DispatchSettingsPanel({ isReadOnly, dispatchSettings, setDispatchSettin
   };
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted">Tune dispatch thresholds and automation for your tenant.</p>
-      <div className="bg-surface border border-border rounded-xl p-4 max-w-xl space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold text-heading">Far-from-address arrival flag</h3>
-          <p className="text-xs text-muted mt-1">
-            When a tech&apos;s closest GPS point to the job address is farther than this many meters,
-            the job is automatically flagged for review and shown with a red badge on the dispatch board.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted w-40 shrink-0">Threshold (meters)</label>
-          <input
-            type="number"
-            min={min}
-            max={max}
-            step={1}
-            value={draft}
-            disabled={isReadOnly || saving}
-            onChange={e => setDraft(e.target.value)}
-            className="w-32 px-2 py-1.5 text-xs border border-border rounded bg-surface-secondary text-heading"
-          />
-          <span className="text-[10px] text-muted">Allowed: {min}–{max} m</span>
-        </div>
-        {!valid && draft !== '' && (
-          <p className="text-[11px] text-red-600">Enter a whole number between {min} and {max}.</p>
-        )}
-        {!isReadOnly && (
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={save}
-              disabled={!valid || !dirty || saving}
-              className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            {savedAt && !dirty && (
-              <span className="text-[11px] text-green-600">Saved.</span>
-            )}
-          </div>
-        )}
+    <div className="bg-surface border border-border rounded-xl p-4 max-w-xl space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-heading">{title}</h3>
+        <p className="text-xs text-muted mt-1">{description}</p>
       </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted w-40 shrink-0">{unitLabel}</label>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={1}
+          value={draft}
+          disabled={isReadOnly || saving}
+          onChange={e => setDraft(e.target.value)}
+          className="w-32 px-2 py-1.5 text-xs border border-border rounded bg-surface-secondary text-heading"
+        />
+        <span className="text-[10px] text-muted">Allowed: {min}–{max} {unitShort}</span>
+      </div>
+      {!valid && draft !== '' && (
+        <p className="text-[11px] text-red-600">Enter a whole number between {min} and {max}.</p>
+      )}
+      {!isReadOnly && (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={save}
+            disabled={!valid || !dirty || saving}
+            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          {savedAt && !dirty && (
+            <span className="text-[11px] text-green-600">Saved.</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
