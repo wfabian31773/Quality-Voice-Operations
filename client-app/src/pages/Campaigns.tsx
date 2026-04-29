@@ -45,9 +45,14 @@ interface CampaignTypeDefinition {
 /**
  * Mirrors `platform/campaigns/types.ts#CampaignScheduleConfig` but every field
  * is optional because rows persisted before a given setting was introduced can
- * (and do) omit it. Per-campaign-type config fields are still dynamic — they
- * come from `CampaignTypeDefinition.configFields[].key` — so `CampaignConfig`
- * intersects with `Record<string, unknown>` to keep that escape hatch typed.
+ * (and do) omit it. Per-campaign-type config fields (appointment date field,
+ * lead source field, review URL, etc.) live on the same blob and are
+ * intersected in via `CampaignTypeConfigFields` below — so a typo like
+ * `appointmentDateFiled` becomes a compile error instead of silently slipping
+ * through an index signature. Dynamic registry-driven reads/writes that key in
+ * by `CampaignTypeDefinition.configFields[].key` use a one-line
+ * `as Record<string, unknown>` view inside their loops, not a type-system
+ * escape hatch on the underlying shape.
  */
 interface CampaignScheduleConfig {
   timezone?: string;
@@ -65,7 +70,60 @@ interface CampaignScheduleConfig {
   verifiedCallerId?: string | null;
 }
 
-type CampaignConfig = CampaignScheduleConfig & Record<string, unknown>;
+/**
+ * Per-campaign-type config interfaces. These mirror the same-named interfaces
+ * in `platform/campaigns/types.ts` and must stay in sync — adding a field on
+ * one side without the other will silently drop it from the UI form / detail
+ * panel. All fields are optional because the registry decides which ones to
+ * render for each campaign type.
+ */
+interface AppointmentReminderConfig {
+  appointmentDateField?: string;
+  appointmentTimeField?: string;
+  providerNameField?: string;
+  locationField?: string;
+  allowReschedule?: boolean;
+}
+
+interface LeadFollowupConfig {
+  sourceField?: string;
+  productInterestField?: string;
+  followupGoal?: string;
+}
+
+interface ReviewRequestConfig {
+  serviceNameField?: string;
+  reviewUrl?: string;
+  minimumSatisfactionToAskReview?: number;
+}
+
+interface ReactivationConfig {
+  inactiveDaysThreshold?: number;
+  offerField?: string;
+  reengagementMessage?: string;
+}
+
+interface UpsellConfig {
+  currentProductField?: string;
+  upsellProductField?: string;
+  discountField?: string;
+}
+
+/**
+ * Flattened intersection of every per-campaign-type config interface. All
+ * keys are optional, so this is safe to merge into the schedule config
+ * without forcing any one type's fields. Adding a new type-specific field
+ * (in one of the source interfaces above) automatically propagates here and
+ * into `CampaignConfig`.
+ */
+type CampaignTypeConfigFields =
+  & AppointmentReminderConfig
+  & LeadFollowupConfig
+  & ReviewRequestConfig
+  & ReactivationConfig
+  & UpsellConfig;
+
+type CampaignConfig = CampaignScheduleConfig & CampaignTypeConfigFields;
 
 interface Campaign {
   id: string;
@@ -289,10 +347,16 @@ function TypeConfigFields({
   onChange,
 }: {
   typeDef: CampaignTypeDefinition;
-  typeConfig: Record<string, unknown>;
-  onChange: (config: Record<string, unknown>) => void;
+  typeConfig: CampaignTypeConfigFields;
+  onChange: (config: CampaignTypeConfigFields) => void;
 }) {
   if (typeDef.configFields.length === 0) return null;
+
+  // Per-field reads/writes are keyed by `CampaignTypeDefinition.configFields[].key`,
+  // so we take a one-line `Record<string, unknown>` view of the typed config to
+  // keep the dynamic loop ergonomic without giving up compile-time checking on
+  // the underlying shape.
+  const view = typeConfig as Record<string, unknown>;
 
   return (
     <div className="space-y-3">
@@ -312,8 +376,8 @@ function TypeConfigFields({
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={!!typeConfig[field.key]}
-                onChange={(e) => onChange({ ...typeConfig, [field.key]: e.target.checked })}
+                checked={!!view[field.key]}
+                onChange={(e) => onChange({ ...view, [field.key]: e.target.checked } as CampaignTypeConfigFields)}
                 className="rounded border-border text-primary focus:ring-primary/30"
               />
               <span className="text-sm text-text-secondary">{field.helpText}</span>
@@ -322,8 +386,8 @@ function TypeConfigFields({
             <>
               <input
                 type={field.type === 'number' ? 'number' : 'text'}
-                value={(typeConfig[field.key] as string | number) ?? ''}
-                onChange={(e) => onChange({ ...typeConfig, [field.key]: field.type === 'number' ? (e.target.value ? parseInt(e.target.value) : '') : e.target.value })}
+                value={(view[field.key] as string | number) ?? ''}
+                onChange={(e) => onChange({ ...view, [field.key]: field.type === 'number' ? (e.target.value ? parseInt(e.target.value) : '') : e.target.value } as CampaignTypeConfigFields)}
                 placeholder={field.placeholder}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
@@ -367,7 +431,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
     retryDelayMinutes: 30,
     verifiedCallerId: '',
   });
-  const [typeConfig, setTypeConfig] = useState<Record<string, unknown>>({});
+  const [typeConfig, setTypeConfig] = useState<CampaignTypeConfigFields>({});
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -1316,7 +1380,10 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               <h3 className="text-sm font-semibold text-text-primary mb-3">{typeDef.label} Configuration</h3>
               <div className="bg-surface border border-border rounded-lg divide-y divide-border">
                 {typeDef.configFields.map((field) => {
-                  const val = config[field.key];
+                  // Per-field reads keyed by `CampaignTypeDefinition.configFields[].key`
+                  // — same one-line `Record<string, unknown>` view trick as the
+                  // create/edit form, no type-system escape hatch on `CampaignConfig`.
+                  const val = (config as Record<string, unknown>)[field.key];
                   if (val === undefined || val === null || val === '') return null;
                   return (
                     <div key={field.key} className="flex items-center justify-between px-4 py-3">
