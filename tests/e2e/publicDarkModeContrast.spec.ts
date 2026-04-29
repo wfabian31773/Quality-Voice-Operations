@@ -132,6 +132,46 @@ function buildContrastProbe(minContrast: number, maxReport: number): string {
       ];
     }
 
+    // Pull every rgb()/rgba() colour stop out of a computed background-image
+    // value (linear-gradient, radial-gradient, conic-gradient, multi-layer,
+    // etc.). Used so that hero sections relying on bg-gradient-to-* register
+    // as opaque without needing a manual bg-* backstop class — the original
+    // probe only inspected backgroundColor, which left such sections looking
+    // "transparent" and falling through to the document body's white.
+    function parseGradientStops(bgImage) {
+      if (!bgImage || bgImage === 'none') return [];
+      const stops = [];
+      const re = /rgba?\\([^)]+\\)/gi;
+      let m;
+      while ((m = re.exec(bgImage)) !== null) {
+        const parsed = parseColor(m[0]);
+        if (parsed) stops.push(parsed);
+      }
+      return stops;
+    }
+
+    // Common public-hero pattern: <section class="relative">
+    //   <div class="absolute inset-0 bg-gradient-to-..."></div>
+    //   <div class="relative">…content…</div>
+    // </section>
+    // The gradient div is a SIBLING of the content div, not an ancestor of
+    // the text inside, so an ancestor-only walk misses it. Recognise direct
+    // children that fully fill their parent (position:absolute|fixed with
+    // inset:0) as a visual backstop layer.
+    function findFillBackstop(parent) {
+      for (const child of parent.children) {
+        const ccs = getComputedStyle(child);
+        if (ccs.position !== 'absolute' && ccs.position !== 'fixed') continue;
+        if (ccs.top !== '0px' || ccs.left !== '0px' || ccs.right !== '0px' || ccs.bottom !== '0px') continue;
+        const childBg = parseColor(ccs.backgroundColor);
+        if (childBg && childBg[3] >= 0.999) return childBg;
+        const childStops = parseGradientStops(ccs.backgroundImage);
+        const co = childStops.find((s) => s[3] >= 0.999);
+        if (co) return co;
+      }
+      return null;
+    }
+
     function effectiveBackground(el) {
       const stack = [];
       let cur = el;
@@ -141,6 +181,19 @@ function buildContrastProbe(minContrast: number, maxReport: number): string {
         if (bg && bg[3] > 0) {
           stack.push(bg);
           if (bg[3] >= 0.999) break;
+        }
+        // Element-level gradient (e.g. <section class="bg-gradient-to-br ...">).
+        const stops = parseGradientStops(cs.backgroundImage);
+        const opaqueGradient = stops.find((s) => s[3] >= 0.999);
+        if (opaqueGradient) {
+          stack.push(opaqueGradient);
+          break;
+        }
+        // Child-fill backstop (e.g. absolute inset-0 gradient div).
+        const fillBg = findFillBackstop(cur);
+        if (fillBg) {
+          stack.push(fillBg);
+          break;
         }
         cur = cur.parentElement;
       }

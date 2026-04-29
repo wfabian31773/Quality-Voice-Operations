@@ -268,7 +268,7 @@ export default function Landing() {
         canonicalPath="/"
         structuredData={organizationSchema}
       />
-      <section className="relative bg-sidebar-bg text-white overflow-hidden">
+      <section className="relative text-white overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-hover/30 to-sidebar-bg" />
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-10 w-72 h-72 bg-primary rounded-full blur-[128px]" />
@@ -473,7 +473,7 @@ export default function Landing() {
       </section>
 
       <section className="relative py-20 lg:py-28 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-white via-surface-secondary to-info-light/20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-surface via-surface-secondary to-info-light/20" />
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="grid lg:grid-cols-[1fr,2fr] gap-10 lg:gap-14 items-end mb-14">
