@@ -1208,3 +1208,84 @@ export async function claimExpiryAlertSlot(
     return (result.rowCount ?? 0) === 1;
   });
 }
+
+/**
+ * Unconditional throttle stamp used by the operator-triggered re-issue
+ * path on the Platform Admin verified-caller health panel. Skips the
+ * throttle predicate so the slot is reset to NOW() even when an alert
+ * was sent inside the current weekly window. Subsequent automated
+ * cycles still respect the freshly-stamped window.
+ */
+export async function stampExpiryAlertSlot(
+  callerId: string,
+  tenantId: string,
+): Promise<void> {
+  await withPrivilegedClient(async (client) => {
+    await client.query(
+      `UPDATE verified_caller_ids
+          SET expiry_alert_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2`,
+      [callerId, tenantId],
+    );
+  });
+}
+
+/**
+ * One row in the cross-tenant unhealthy-verified-callers view that backs
+ * the Platform Admin health panel. Joins the row with its owning tenant
+ * so the UI can render `tenantName` without an extra round-trip per row.
+ */
+export interface UnhealthyVerifiedCallerRow {
+  caller: VerifiedCallerId;
+  tenantName: string | null;
+  tenantSlug: string | null;
+}
+
+/**
+ * Cross-tenant view of verified callers whose last health check came back
+ * as `expiring_soon`, `expired`, or `revoked`. Backs the Platform Admin
+ * "Verified caller health" panel so support can proactively reach out
+ * before outbound deliverability degrades.
+ *
+ * Sorted by computed days-remaining ascending so the most urgent rows
+ * surface first. `revoked` rows are treated as the most urgent
+ * (effectively -infinity days remaining) since carrier attestation is
+ * already gone and the `expires_at` column is typically NULL for them.
+ * Within the rest, the row with the soonest (or most-overdue) `expires_at`
+ * sorts first — a row already 5 days expired ranks ahead of one expiring
+ * tomorrow.
+ *
+ * Uses `withPrivilegedClient` because the table has RLS enabled and is
+ * otherwise locked to a single `app.tenant_id` setting.
+ */
+export async function listUnhealthyVerifiedCallers(
+  limit: number = 200,
+): Promise<UnhealthyVerifiedCallerRow[]> {
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT v.*, t.name AS __tenant_name, t.slug AS __tenant_slug
+         FROM verified_caller_ids v
+         LEFT JOIN tenants t ON t.id = v.tenant_id
+        WHERE v.status = 'verified'
+          AND v.last_health_status IN ('expiring_soon', 'expired', 'revoked')
+        ORDER BY
+          -- "Days remaining" sort key. Revoked rows sort first
+          -- unconditionally (carrier no longer attests), then expired,
+          -- then expiring_soon — within each bucket the soonest /
+          -- most-overdue expires_at wins.
+          CASE
+            WHEN v.last_health_status = 'revoked' THEN -2147483648
+            WHEN v.expires_at IS NULL THEN -2147483647
+            ELSE EXTRACT(EPOCH FROM (v.expires_at - NOW()))::bigint / 86400
+          END ASC,
+          v.last_health_check_at DESC NULLS LAST
+        LIMIT $1`,
+      [limit],
+    );
+    return rows.map((r) => ({
+      caller: rowToCaller(r),
+      tenantName: (r.__tenant_name as string) ?? null,
+      tenantSlug: (r.__tenant_slug as string) ?? null,
+    }));
+  });
+}

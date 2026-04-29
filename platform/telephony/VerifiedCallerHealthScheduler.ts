@@ -21,6 +21,7 @@ import {
   promoteCallerAttestation,
   readTrustHubSnapshot,
   recordCallerHealth,
+  stampExpiryAlertSlot,
   type CallerHealthResult,
   type VerifiedCallerId,
 } from './TrustedCallerService';
@@ -124,6 +125,14 @@ export interface VerifiedCallerHealthCycleResult {
 interface DispatchInput {
   caller: VerifiedCallerId;
   result: CallerHealthResult;
+  /**
+   * When true, bypasses the weekly throttle slot (`claimExpiryAlertSlot`)
+   * but still stamps `expiry_alert_sent_at` so the next automated cycle
+   * keeps respecting the freshly-stamped throttle window. Used by the
+   * Platform Admin "Re-issue alert" action so support can nudge a tenant
+   * even if the scheduler already alerted this week.
+   */
+  force?: boolean;
 }
 
 function emptyCycleResult(): VerifiedCallerHealthCycleResult {
@@ -151,21 +160,29 @@ function emptyCycleResult(): VerifiedCallerHealthCycleResult {
 export async function dispatchVerifiedCallerAlert(
   input: DispatchInput,
 ): Promise<{ status: 'sent' | 'throttled' | 'no_recipients'; emailedRecipients: number }> {
-  const { caller, result } = input;
+  const { caller, result, force } = input;
 
-  const claimed = await claimExpiryAlertSlot(
-    caller.id,
-    caller.tenantId,
-    ALERT_THROTTLE_MS,
-  );
-  if (!claimed) {
-    logger.debug('Verified-caller alert throttled (slot claim lost)', {
-      tenantId: caller.tenantId,
-      callerId: caller.id,
-      phoneNumber: caller.phoneNumber,
-      status: result.status,
-    });
-    return { status: 'throttled', emailedRecipients: 0 };
+  if (force) {
+    // Operator-triggered re-issue: skip the conditional claim and
+    // unconditionally stamp the slot so the next automated cycle still
+    // respects the freshly-stamped throttle window. Mirrors the
+    // `stampAuthAlertSlot` path in `ConnectorAuthAlertScheduler`.
+    await stampExpiryAlertSlot(caller.id, caller.tenantId);
+  } else {
+    const claimed = await claimExpiryAlertSlot(
+      caller.id,
+      caller.tenantId,
+      ALERT_THROTTLE_MS,
+    );
+    if (!claimed) {
+      logger.debug('Verified-caller alert throttled (slot claim lost)', {
+        tenantId: caller.tenantId,
+        callerId: caller.id,
+        phoneNumber: caller.phoneNumber,
+        status: result.status,
+      });
+      return { status: 'throttled', emailedRecipients: 0 };
+    }
   }
 
   const tenantName = await getTenantName(caller.tenantId);

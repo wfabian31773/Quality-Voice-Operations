@@ -14,6 +14,15 @@ import { getRefreshableProviders } from '../../../platform/integrations/connecto
 import { dispatchConnectorAuthAlert } from '../../../platform/integrations/connectors/ConnectorAuthAlertScheduler';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import type { ConnectorType } from '../../../platform/integrations/connectors/types';
+import {
+  getCallerId,
+  listUnhealthyVerifiedCallers,
+  type CallerHealthResult,
+  type CallerHealthStatus,
+  type UnhealthyVerifiedCallerRow,
+  type VerifiedCallerId,
+} from '../../../platform/telephony/TrustedCallerService';
+import { dispatchVerifiedCallerAlert } from '../../../platform/telephony/VerifiedCallerHealthScheduler';
 
 const router = Router();
 const logger = createLogger('PLATFORM_CONNECTOR_HEALTH');
@@ -1102,6 +1111,278 @@ router.post(
     return res.json({
       ok: true,
       message: 'Outbox event archived. It will no longer appear in the Stuck panel.',
+    });
+  },
+);
+
+// ============================================================================
+// Verified caller health (cross-tenant view of expiring / expired / revoked
+// caller IDs surfaced from the weekly VerifiedCallerHealthScheduler).
+// ============================================================================
+
+/**
+ * One row in the Platform Admin verified-caller health table. Carries
+ * just the fields the UI needs (we deliberately do NOT spread the full
+ * `VerifiedCallerId` so secrets like `verification_code` never escape
+ * the platform tenant boundary).
+ *
+ * Narrow alias for the only health statuses this endpoint ever surfaces.
+ * The cross-tenant query in `listUnhealthyVerifiedCallers` filters on
+ * exactly these three values, so the response shape is locked to them.
+ * Using a tighter union here (rather than `CallerHealthStatus`) makes the
+ * API contract self-documenting and keeps consumers from having to handle
+ * `'healthy' | 'unknown'` cases that can never appear in this payload.
+ */
+type UnhealthyVerifiedCallerStatus = 'expiring_soon' | 'expired' | 'revoked';
+
+const UNHEALTHY_VERIFIED_CALLER_STATUSES: readonly UnhealthyVerifiedCallerStatus[] = [
+  'expiring_soon',
+  'expired',
+  'revoked',
+];
+
+function isUnhealthyVerifiedCallerStatus(
+  s: CallerHealthStatus | null | undefined,
+): s is UnhealthyVerifiedCallerStatus {
+  return s !== null && s !== undefined && (UNHEALTHY_VERIFIED_CALLER_STATUSES as readonly string[]).includes(s);
+}
+
+interface UnhealthyVerifiedCallerResponseRow {
+  id: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  phoneNumber: string;
+  friendlyName: string | null;
+  status: UnhealthyVerifiedCallerStatus;
+  /**
+   * Days until `expires_at` (ceil). Negative when already expired,
+   * `null` when the row has no `expires_at` (typical for `revoked`).
+   */
+  daysRemaining: number | null;
+  expiresAt: string | null;
+  lastHealthCheckAt: string | null;
+  lastHealthMessage: string | null;
+  expiryAlertSentAt: string | null;
+}
+
+const VERIFIED_CALLER_DEFAULT_LIMIT = 200;
+const VERIFIED_CALLER_MAX_LIMIT = 500;
+
+function daysUntil(expiresAt: Date | null): number | null {
+  if (!expiresAt) return null;
+  const ms = expiresAt.getTime() - Date.now();
+  // Ceil so a row 23h59m out still reads "1 day", and an already-expired
+  // row reads as a negative number that the UI can render as "expired N
+  // days ago".
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+function toUnhealthyVerifiedCallerResponseRow(
+  row: UnhealthyVerifiedCallerRow,
+): UnhealthyVerifiedCallerResponseRow | null {
+  const c = row.caller;
+  // The list query is filtered to exactly the three unhealthy statuses,
+  // but DB rows could theoretically arrive in any state (manual update,
+  // race with the health scheduler, etc). Narrow at runtime so the API
+  // contract really is `expiring_soon | expired | revoked`. Anything
+  // outside that set is dropped from the payload — better to under-report
+  // than to mislabel a row in a support workflow.
+  if (!isUnhealthyVerifiedCallerStatus(c.lastHealthStatus)) {
+    return null;
+  }
+  const status: UnhealthyVerifiedCallerStatus = c.lastHealthStatus;
+  return {
+    id: c.id,
+    tenantId: c.tenantId,
+    tenantName: row.tenantName,
+    tenantSlug: row.tenantSlug,
+    phoneNumber: c.phoneNumber,
+    friendlyName: c.friendlyName,
+    status,
+    daysRemaining: daysUntil(c.expiresAt),
+    expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+    lastHealthCheckAt: c.lastHealthCheckAt ? c.lastHealthCheckAt.toISOString() : null,
+    lastHealthMessage: c.lastHealthMessage,
+    expiryAlertSentAt: c.expiryAlertSentAt ? c.expiryAlertSentAt.toISOString() : null,
+  };
+}
+
+router.get(
+  '/platform/verified-caller-health',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const limit = clampInt(
+      req.query.limit,
+      VERIFIED_CALLER_DEFAULT_LIMIT,
+      1,
+      VERIFIED_CALLER_MAX_LIMIT,
+    );
+
+    try {
+      const rows = await listUnhealthyVerifiedCallers(limit);
+      const callers = rows
+        .map(toUnhealthyVerifiedCallerResponseRow)
+        .filter((r): r is UnhealthyVerifiedCallerResponseRow => r !== null);
+
+      const summary = callers.reduce(
+        (acc, r) => {
+          if (r.status === 'revoked') acc.revoked += 1;
+          else if (r.status === 'expired') acc.expired += 1;
+          else if (r.status === 'expiring_soon') acc.expiringSoon += 1;
+          acc.tenants.add(r.tenantId);
+          return acc;
+        },
+        {
+          revoked: 0,
+          expired: 0,
+          expiringSoon: 0,
+          tenants: new Set<string>(),
+        },
+      );
+
+      return res.json({
+        callers,
+        summary: {
+          revoked: summary.revoked,
+          expired: summary.expired,
+          expiringSoon: summary.expiringSoon,
+          total: callers.length,
+          affectedTenants: summary.tenants.size,
+        },
+        limit,
+      });
+    } catch (err) {
+      logger.error('Failed to query verified caller health', { error: String(err) });
+      return res.status(500).json({ error: 'Failed to query verified caller health' });
+    }
+  },
+);
+
+/**
+ * Reconstruct a `CallerHealthResult` from the persisted row so we can
+ * call `dispatchVerifiedCallerAlert` without having to re-query Twilio.
+ * Defensive: if the row's status isn't an alertable value, the route
+ * rejects the request (see handler) — this helper assumes a valid
+ * unhealthy status.
+ */
+function callerHealthResultFromRow(caller: VerifiedCallerId): CallerHealthResult {
+  return {
+    status: (caller.lastHealthStatus ?? 'unknown') as CallerHealthStatus,
+    expiresAt: caller.expiresAt,
+    message: caller.lastHealthMessage,
+    // Defaults to false because we're not re-running the actual health
+    // check — we're just re-issuing the existing alert. Attestation
+    // demotion is the scheduler's job, not the operator nudge's.
+    demoteAttestation: false,
+  };
+}
+
+router.post(
+  '/platform/verified-caller-health/:tenantId/:callerId/alert',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId, callerId } = req.params;
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(callerId)) {
+      return res.status(400).json({ error: 'Invalid tenantId or callerId' });
+    }
+
+    let caller: VerifiedCallerId | null;
+    try {
+      caller = await getCallerId(tenantId, callerId);
+    } catch (err) {
+      logger.error('Failed to load verified caller for alert re-issue', {
+        tenantId,
+        callerId,
+        adminUserId: req.user?.userId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to load verified caller' });
+    }
+
+    if (!caller) {
+      return res.status(404).json({ error: 'Verified caller not found' });
+    }
+
+    // Operators can only re-issue alerts for rows that are actually in
+    // an alertable state. `healthy` / `unknown` / `null` would dispatch
+    // a misleading "your number is expiring" email to a tenant whose
+    // number is fine.
+    const alertableStatuses: CallerHealthStatus[] = ['expiring_soon', 'expired', 'revoked'];
+    if (!caller.lastHealthStatus || !alertableStatuses.includes(caller.lastHealthStatus)) {
+      return res.status(409).json({
+        error:
+          'Verified caller is not in an alertable state. Only expiring_soon, expired, or revoked rows can be re-issued.',
+        status: caller.lastHealthStatus,
+      });
+    }
+
+    let result;
+    try {
+      result = await dispatchVerifiedCallerAlert({
+        caller,
+        result: callerHealthResultFromRow(caller),
+        force: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Admin-triggered verified-caller alert dispatch threw', {
+        tenantId,
+        callerId,
+        adminUserId: req.user?.userId,
+        error: message,
+      });
+      return res.status(500).json({ ok: false, error: message });
+    }
+
+    try {
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: 'platform_admin',
+        action: 'verified_caller.admin_alert_reissued',
+        resourceType: 'verified_caller_id',
+        resourceId: callerId,
+        severity: 'info',
+        changes: {
+          phoneNumber: caller.phoneNumber,
+          healthStatus: caller.lastHealthStatus,
+          status: result.status,
+          emailedRecipients: result.emailedRecipients,
+        },
+        ipAddress: extractIp(req),
+      });
+    } catch {
+      // best-effort
+    }
+
+    logger.info('Admin-triggered verified-caller alert dispatched', {
+      tenantId,
+      callerId,
+      phoneNumber: caller.phoneNumber,
+      adminUserId: req.user!.userId,
+      status: result.status,
+      emailedRecipients: result.emailedRecipients,
+    });
+
+    let message: string;
+    if (result.status === 'sent' && result.emailedRecipients > 0) {
+      message = `Alert email sent to ${result.emailedRecipients} admin${result.emailedRecipients === 1 ? '' : 's'}.`;
+    } else if (result.status === 'sent') {
+      message = 'Alert delivered (in-app only — no admin recipients eligible for email).';
+    } else if (result.status === 'no_recipients') {
+      message = 'No tenant admin recipients are eligible for verified-caller emails. In-app notification was still fanned out.';
+    } else {
+      message = `Alert status: ${result.status}.`;
+    }
+
+    return res.json({
+      ok: true,
+      message,
+      status: result.status,
+      emailedRecipients: result.emailedRecipients,
     });
   },
 );

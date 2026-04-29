@@ -19,7 +19,7 @@ import {
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
   AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
-  Clock, ArrowUpDown, Database,
+  Clock, ArrowUpDown, Database, PhoneOff,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -1138,6 +1138,8 @@ function ConnectorHealthPanel() {
 
       <StuckOutboxEventsPanel rows={stuckRows} summary={stuckSummary} />
 
+      <VerifiedCallerHealthPanel />
+
       <ConnectorTokenHealthPanel
         rows={tokenHealth ?? []}
         refreshIntervalMs={tokenHealthRefreshIntervalMs ?? 15 * 60 * 1000}
@@ -1197,6 +1199,327 @@ function ConnectorHealthPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Verified caller health (cross-tenant view of expiring / expired / revoked
+// outbound caller IDs surfaced from the weekly health scheduler).
+// ----------------------------------------------------------------------------
+
+type VerifiedCallerHealthStatus = 'expiring_soon' | 'expired' | 'revoked';
+
+interface VerifiedCallerHealthRow {
+  id: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  phoneNumber: string;
+  friendlyName: string | null;
+  status: VerifiedCallerHealthStatus;
+  daysRemaining: number | null;
+  expiresAt: string | null;
+  lastHealthCheckAt: string | null;
+  lastHealthMessage: string | null;
+  expiryAlertSentAt: string | null;
+}
+
+interface VerifiedCallerHealthResponse {
+  callers: VerifiedCallerHealthRow[];
+  summary: {
+    revoked: number;
+    expired: number;
+    expiringSoon: number;
+    total: number;
+    affectedTenants: number;
+  };
+  limit: number;
+}
+
+function verifiedCallerStatusBadge(status: VerifiedCallerHealthStatus): {
+  label: string;
+  classes: string;
+} {
+  switch (status) {
+    case 'revoked':
+      return {
+        label: 'Revoked',
+        classes:
+          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800',
+      };
+    case 'expired':
+      return {
+        label: 'Expired',
+        classes:
+          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800',
+      };
+    case 'expiring_soon':
+      return {
+        label: 'Expiring soon',
+        classes:
+          'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
+      };
+  }
+}
+
+/**
+ * Render the days-remaining cell. Negative numbers (already expired) read
+ * as "expired N days ago", `null` (no `expires_at` — typical for
+ * `revoked`) reads as an em-dash with a tooltip.
+ */
+function VerifiedCallerDaysCell({
+  status,
+  daysRemaining,
+}: {
+  status: VerifiedCallerHealthStatus;
+  daysRemaining: number | null;
+}) {
+  if (daysRemaining === null) {
+    return (
+      <span
+        className="text-text-muted"
+        title="No expiry timestamp available — typical for revoked callers."
+      >
+        —
+      </span>
+    );
+  }
+  if (daysRemaining < 0) {
+    const ago = Math.abs(daysRemaining);
+    return (
+      <span className="text-red-600 dark:text-red-400 font-medium">
+        Expired {ago}d ago
+      </span>
+    );
+  }
+  if (daysRemaining === 0) {
+    return (
+      <span className="text-red-600 dark:text-red-400 font-medium">
+        Expires today
+      </span>
+    );
+  }
+  const tone =
+    status === 'expiring_soon' && daysRemaining <= 7
+      ? 'text-amber-700 dark:text-amber-300 font-medium'
+      : 'text-text-primary';
+  return <span className={tone}>{daysRemaining}d</span>;
+}
+
+function VerifiedCallerHealthPanel() {
+  const queryClient = useQueryClient();
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-verified-caller-health'],
+    queryFn: () => api.get<VerifiedCallerHealthResponse>('/platform/verified-caller-health'),
+    refetchInterval: 60_000,
+  });
+
+  // Client-side sort toggle on the days-remaining column. Default is
+  // ascending (most urgent first), matching the server's default order.
+  // Clicking the header flips between asc / desc so an admin can also
+  // see "least urgent first" without paginating.
+  const [daysSort, setDaysSort] = useState<'asc' | 'desc'>('asc');
+
+  const reissueAlert = useMutation({
+    mutationFn: async (row: VerifiedCallerHealthRow) =>
+      api.post<{ ok: boolean; message: string; status: string; emailedRecipients: number }>(
+        `/platform/verified-caller-health/${row.tenantId}/${row.id}/alert`,
+        {},
+      ),
+    onSuccess: (resp) => {
+      window.alert(resp.message ?? 'Verified caller alert re-issued.');
+      queryClient.invalidateQueries({ queryKey: ['platform-verified-caller-health'] });
+    },
+    onError: (err) => {
+      window.alert(`Failed to re-issue alert: ${(err as Error).message}`);
+    },
+  });
+
+  const baseCallers = data?.callers ?? [];
+  const summary = data?.summary;
+
+  // Sort by days-remaining with the same urgency rules the server uses
+  // when sorting ascending (revoked first, then null expires_at, then
+  // numeric). Descending is the literal reverse so least-urgent rows
+  // bubble to the top.
+  const sortKey = (r: VerifiedCallerHealthRow): number => {
+    if (r.status === 'revoked') return -Number.MAX_SAFE_INTEGER;
+    if (r.daysRemaining === null) return -Number.MAX_SAFE_INTEGER + 1;
+    return r.daysRemaining;
+  };
+  const callers = [...baseCallers].sort((a, b) => {
+    const diff = sortKey(a) - sortKey(b);
+    return daysSort === 'asc' ? diff : -diff;
+  });
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <PhoneOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            Verified caller health
+            <span
+              className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                callers.length > 0
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  : 'bg-surface-secondary text-text-muted border border-border'
+              }`}
+            >
+              {callers.length}
+            </span>
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Cross-tenant view of verified outbound caller IDs that are about to expire,
+            already expired, or were revoked by Twilio. Sourced from the weekly health
+            scheduler.
+          </p>
+          {summary && summary.total > 0 && (
+            <p className="text-xs text-text-muted mt-1">
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                {summary.revoked} revoked
+              </span>{' '}
+              ·{' '}
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                {summary.expired} expired
+              </span>{' '}
+              ·{' '}
+              <span className="text-amber-700 dark:text-amber-300 font-medium">
+                {summary.expiringSoon} expiring soon
+              </span>{' '}
+              · {summary.affectedTenants} tenant{summary.affectedTenants === 1 ? '' : 's'} affected
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
+          title="Refresh"
+        >
+          <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+      {isLoading ? (
+        <div className="px-4 py-6 text-center text-sm text-text-muted">
+          Loading verified caller health…
+        </div>
+      ) : error ? (
+        <div className="px-4 py-6 text-center text-sm text-red-600 dark:text-red-400">
+          Failed to load verified caller health: {(error as Error).message}
+        </div>
+      ) : callers.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-text-muted">
+          No verified callers are flagged as expiring, expired, or revoked. All tenants are healthy.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Phone number</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">
+                  <button
+                    type="button"
+                    onClick={() => setDaysSort((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                    className="inline-flex items-center gap-1 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-border rounded"
+                    aria-label={`Sort by days remaining, currently ${daysSort === 'asc' ? 'ascending (most urgent first)' : 'descending (least urgent first)'}. Click to toggle.`}
+                  >
+                    Days remaining
+                    <span aria-hidden="true">{daysSort === 'asc' ? '↑' : '↓'}</span>
+                  </button>
+                </th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Last check</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {callers.map((row) => {
+                const badge = verifiedCallerStatusBadge(row.status);
+                const isPending =
+                  reissueAlert.isPending && reissueAlert.variables?.id === row.id;
+                return (
+                  <tr key={row.id} className="border-b border-border last:border-0 align-top">
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium">{row.tenantName ?? '—'}</div>
+                      {row.tenantSlug && (
+                        <div className="text-text-muted font-mono">{row.tenantSlug}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-mono">{row.phoneNumber}</div>
+                      {row.friendlyName && (
+                        <div className="text-text-muted">{row.friendlyName}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.classes}`}
+                      >
+                        {badge.label}
+                      </span>
+                      {row.lastHealthMessage && (
+                        <div
+                          className="text-text-muted mt-1 max-w-[260px] truncate"
+                          title={row.lastHealthMessage}
+                        >
+                          {row.lastHealthMessage}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs whitespace-nowrap">
+                      <VerifiedCallerDaysCell
+                        status={row.status}
+                        daysRemaining={row.daysRemaining}
+                      />
+                      {row.expiresAt && (
+                        <div className="text-text-muted">
+                          {new Date(row.expiresAt).toLocaleDateString()}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
+                      <span title={row.lastHealthCheckAt ?? undefined}>
+                        {formatRelativeTime(row.lastHealthCheckAt)}
+                      </span>
+                      {row.expiryAlertSentAt && (
+                        <div
+                          className="text-text-muted mt-0.5"
+                          title={`Last alert sent ${new Date(row.expiryAlertSentAt).toLocaleString()}`}
+                        >
+                          Alerted {formatRelativeTime(row.expiryAlertSentAt)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <button
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Re-issue alert email + in-app notification for ${row.phoneNumber} to ${row.tenantName ?? 'this tenant'}?`,
+                            )
+                          ) {
+                            reissueAlert.mutate(row);
+                          }
+                        }}
+                        disabled={isPending}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary text-text-primary text-xs disabled:opacity-50"
+                        title="Send the verified-caller alert email to the tenant's admins again, even if one was already sent this week"
+                      >
+                        <Send className="h-3 w-3" />
+                        {isPending ? 'Sending…' : 'Re-issue alert'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
