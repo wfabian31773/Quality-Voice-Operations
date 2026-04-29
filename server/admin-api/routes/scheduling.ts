@@ -1024,6 +1024,8 @@ const createBookingHandler: RequestHandler = async (req, res) => {
   const pool = getPlatformPool();
 
   try {
+    let tenantTz: string | null = null;
+
     if (!override_reason) {
       const rules = await getBookingRules(pool, tenantId, appointment_type_id);
       const startDate = new Date(start_time);
@@ -1056,13 +1058,26 @@ const createBookingHandler: RequestHandler = async (req, res) => {
       // could be silently booked into a blocked window. The tenant TZ is
       // also reused as the booking row's `timezone` default below so the
       // two paths agree on a single source of truth.
-      const tenantTz = await getTenantTimezone(pool, tenantId);
+      tenantTz = await getTenantTimezone(pool, tenantId);
       const overrideConflict = await buildOverrideConflictResponse(
         pool, tenantId, start_time, end_time, provider_id || null, tenantTz,
       );
       if (overrideConflict) {
         return res.status(overrideConflict.status).json(overrideConflict.body);
       }
+    }
+
+    // Stamp the booking with the tenant's configured timezone when the
+    // caller did not supply one. Migration 097 made `tenants.timezone` the
+    // source of truth, so a tenant configured for Pacific Time should not
+    // see new appointments saved as Eastern just because the create payload
+    // omitted the field. Reuse the lookup performed for the override gate
+    // above when available; otherwise fetch it now.
+    let resolvedTimezone: string;
+    if (typeof timezone === 'string' && timezone.trim()) {
+      resolvedTimezone = timezone;
+    } else {
+      resolvedTimezone = tenantTz ?? (await getTenantTimezone(pool, tenantId));
     }
 
     const { rows } = await pool.query(
@@ -1076,7 +1091,7 @@ const createBookingHandler: RequestHandler = async (req, res) => {
         contact_name || '', contact_phone || '', contact_email || '',
         agent_id || null, req.user!.userId, notes || '',
         provider_id || null, appointment_type_id || null, resource_id || null, recurring_series_id || null,
-        JSON.stringify(intake_data || {}), timezone || DEFAULT_TENANT_TIMEZONE, location || '', booking_source || 'manual'],
+        JSON.stringify(intake_data || {}), resolvedTimezone, location || '', booking_source || 'manual'],
     );
 
     await auditLog(pool, tenantId, rows[0].id, 'created', null, rows[0].status, req.user!.userId, { title, provider_id, appointment_type_id }, override_reason || '');

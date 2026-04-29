@@ -420,6 +420,11 @@ describe('booking endpoints honour schedule overrides', () => {
 
   it('POST /scheduling/bookings with override_reason bypasses the override gate (201)', async () => {
     queryQueue.push(
+      // getTenantTimezone — even when override_reason short-circuits the
+      // gate, the handler still resolves the tenant's configured timezone
+      // so the booking row gets stamped with the right zone instead of the
+      // hardcoded eastern-time default.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // INSERT INTO bookings
       {
         match: /INSERT INTO bookings/i,
@@ -449,8 +454,9 @@ describe('booking endpoints honour schedule overrides', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.booking.id).toBe('bk-1');
-    // Booking-rules / conflicts / override queries were all skipped.
-    expect(queryMock).toHaveBeenCalledTimes(2);
+    // Booking-rules / conflicts / override queries were all skipped; the
+    // only extra read is the tenant-timezone lookup for the INSERT.
+    expect(queryMock).toHaveBeenCalledTimes(3);
   });
 
   it('POST /scheduling/bookings/:id/transition reopen → 409 if an override now blocks the original window', async () => {
