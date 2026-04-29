@@ -972,5 +972,375 @@
       "subtitle": "Todavía no tenemos una página para esa industria.",
       "view_all": "Ver todos los casos de uso"
     }
+  },
+  "agents_data": {
+    "medical-intake": {
+      "name": "Agente de admisión médica",
+      "description": "Atiende llamadas de pacientes fuera del horario habitual con protocolos clínicos de admisión. Clasifica la urgencia, agenda citas y deriva las preocupaciones críticas a los proveedores de guardia.",
+      "capabilities": [
+        "Triaje clínico",
+        "Programación de citas",
+        "Solicitudes de renovación de recetas",
+        "Verificación de seguro",
+        "Transcripción conforme a HIPAA"
+      ],
+      "conversation": [
+        "Hola, necesito agendar una cita de seguimiento con la Dra. Chen.",
+        "¡Por supuesto! Puedo ayudarle a agendarla. ¿Podría darme su fecha de nacimiento para acceder a su expediente?",
+        "Claro, es el 15 de marzo de 1985.",
+        "Gracias. Veo su historial. La Dra. Chen tiene disponibilidad este jueves a las 2 PM o el viernes a las 10 AM. ¿Cuál le viene mejor?",
+        "El jueves a las 2 me funciona.",
+        "Queda confirmada para el jueves a las 2 PM con la Dra. Chen. Recibirá un mensaje de confirmación en breve. ¿Hay algo más en lo que pueda ayudarle?"
+      ],
+      "workflow_steps": [
+        "Atender la llamada y saludar al paciente",
+        "Verificar identidad (fecha de nacimiento/nombre)",
+        "Evaluar intención y urgencia",
+        "Encaminar a agenda, triaje o renovación de recetas",
+        "Confirmar la acción y enviar seguimiento"
+      ],
+      "tools_used": [
+        "Integración con HCE",
+        "Sistema de agenda",
+        "Notificaciones por SMS",
+        "Clasificador de urgencia"
+      ],
+      "escalation_behavior": "Deriva inmediatamente al proveedor de guardia ante síntomas que indiquen emergencias (dolor de pecho, dificultad para respirar, hemorragia grave). Las solicitudes no urgentes fuera de horario se ponen en cola para revisión por la mañana."
+    },
+    "dental-scheduling": {
+      "name": "Agente de agenda dental",
+      "description": "Gestiona la programación de citas dentales, las campañas de recordatorio de higiene y la comunicación con el paciente. Atiende el desbordamiento de llamadas en horas pico.",
+      "capabilities": [
+        "Reserva de citas",
+        "Recordatorios de higiene",
+        "Pre-autorización del seguro",
+        "Gestión de cancelaciones",
+        "Admisión de pacientes nuevos"
+      ],
+      "conversation": [
+        "Necesito reprogramar mi cita de limpieza.",
+        "Con gusto le ayudo. ¿Puede darme su nombre y la fecha de su cita actual?",
+        "Soy Lisa Martínez, tengo algo el próximo martes.",
+        "Encontré su cita para el martes a las 9 AM. Tengo el miércoles a las 11 AM o el jueves a las 3 PM disponibles. ¿Le funciona alguno?",
+        "El miércoles a las 11 es perfecto.",
+        "¡Listo! Su limpieza queda para el miércoles a las 11 AM. Le enviaremos un recordatorio el día anterior."
+      ],
+      "workflow_steps": [
+        "Saludar al paciente e identificar la cuenta",
+        "Determinar el tipo de solicitud",
+        "Verificar disponibilidad en el sistema de agenda",
+        "Confirmar los datos de la nueva cita",
+        "Enviar confirmación por SMS"
+      ],
+      "tools_used": [
+        "Sistema de gestión clínica",
+        "Pasarela de SMS",
+        "API de calendario",
+        "Base de datos de pacientes"
+      ],
+      "escalation_behavior": "Las urgencias dentales (dolor intenso, diente caído, hemorragia abundante) se transfieren al dentista de guardia. Las disputas de seguro se ponen en cola para el equipo de facturación."
+    },
+    "legal-intake": {
+      "name": "Agente de admisión legal",
+      "description": "Realiza entrevistas estructuradas de admisión legal 24/7. Captura los detalles del caso, califica los prospectos y los enruta al abogado del área de práctica adecuada.",
+      "capabilities": [
+        "Entrevistas de admisión de casos",
+        "Calificación de prospectos",
+        "Comprobaciones de conflicto",
+        "Alertas de plazos de prescripción",
+        "Asignación de abogados"
+      ],
+      "conversation": [
+        "Tuve un accidente de tránsito la semana pasada y creo que necesito un abogado.",
+        "Lamento lo de su accidente. Puedo ayudarle a contactar con el abogado adecuado. ¿Puede decirme cuándo y dónde ocurrió?",
+        "Fue el jueves pasado en la Ruta 9. El otro conductor se pasó un semáforo en rojo.",
+        "Gracias. ¿Resultó herido? ¿Ha recibido atención médica?",
+        "Sí, fui a urgencias por un latigazo cervical y me sigue doliendo la espalda.",
+        "Lo he registrado todo. Esto suena a un caso de lesiones personales. Lo marco como alta prioridad y un abogado de nuestro equipo de PI le devolverá la llamada en menos de 2 horas. ¿Puede confirmarme su número de devolución?"
+      ],
+      "workflow_steps": [
+        "Atender y establecer el tipo de caso",
+        "Preguntas de admisión estructuradas",
+        "Evaluar el mérito y la urgencia del caso",
+        "Realizar comprobación de conflictos",
+        "Asignar al área de práctica y agendar devolución de llamada"
+      ],
+      "tools_used": [
+        "Sistema de gestión de casos",
+        "Base de datos de conflictos",
+        "Calendario de disponibilidad de abogados",
+        "Motor de calificación de prospectos"
+      ],
+      "escalation_behavior": "Los asuntos urgentes (audiencias próximas, plazos de prescripción a 30 días o menos) se escalan de inmediato al socio gestor. Los casos penales con clientes detenidos activan los protocolos de contacto de emergencia."
+    },
+    "hvac-home-services": {
+      "name": "Agente de climatización y servicios para el hogar",
+      "description": "Atiende llamadas de servicio para empresas de climatización, plomería y servicios para el hogar. Triajea emergencias, despacha técnicos y envía a los clientes tiempos de llegada en tiempo real.",
+      "capabilities": [
+        "Recepción de llamadas de servicio",
+        "Triaje de emergencias",
+        "Despacho de técnicos",
+        "Programación de citas",
+        "Actualizaciones de ETA por SMS"
+      ],
+      "conversation": [
+        "Mi aire acondicionado dejó de funcionar y hay 35 grados en la casa.",
+        "Lamento escuchar eso — déjeme conseguirle ayuda de inmediato. ¿Me da su nombre y dirección?",
+        "Soy Mike Torres, 412 Birch Lane.",
+        "Gracias, Mike. ¿Hay alguien en la casa que sea adulto mayor o tenga una condición médica afectada por el calor?",
+        "No, solo mi esposa y yo.",
+        "Entendido. Estoy enviando a un técnico ahora — debería llegar en menos de 2 horas. Recibirá un mensaje con su nombre y su ETA en vivo. Mientras tanto, manténganse hidratados y cierren las persianas para mantener fuera el calor."
+      ],
+      "workflow_steps": [
+        "Capturar los detalles de la solicitud de servicio",
+        "Evaluar urgencia y riesgos de seguridad",
+        "Crear ticket de servicio",
+        "Despachar al técnico disponible más cercano",
+        "Enviar SMS con el nombre del técnico y la ETA"
+      ],
+      "tools_used": [
+        "Plataforma de gestión de servicios",
+        "Sistema de despacho de técnicos",
+        "Pasarela de SMS",
+        "Calendario de programación",
+        "Base de datos de órdenes de trabajo"
+      ],
+      "escalation_behavior": "Las fugas de gas, alertas de monóxido de carbono y emergencias por falta de calefacción en frío extremo activan el despacho inmediato y guías de seguridad. Las solicitudes no urgentes se programan para la próxima ventana disponible."
+    },
+    "outbound-sales": {
+      "name": "Agente de ventas salientes",
+      "description": "Ejecuta campañas automatizadas de llamadas salientes para calificar prospectos, agendar citas y secuencias de seguimiento, con detección de contestador automático.",
+      "capabilities": [
+        "Marcación automatizada",
+        "Calificación de prospectos",
+        "Agendamiento de citas",
+        "Detección de contestador",
+        "Integración con CRM"
+      ],
+      "conversation": [
+        "Hola, soy Alex, le llamo de Bright Solutions. Hablamos brevemente en la feria la semana pasada. ¿Tiene un momento?",
+        "Ah sí, lo recuerdo. Estábamos interesados en su producto de agendamiento.",
+        "¡Genial! Me encantaría agendar una demo de 15 minutos con nuestro equipo de producto. ¿Le funcionaría este jueves o viernes por la tarde?",
+        "El viernes a las 2 PM estaría bien.",
+        "Perfecto — le enviaré una invitación de calendario al correo que tenemos registrado. Antes de eso, ¿podría decirme cuántas ubicaciones gestiona actualmente?",
+        "Tenemos unas 12 oficinas en el estado.",
+        "Es un contexto muy útil para nuestro equipo. Queda agendado para el viernes a las 2 PM. Recibirá un correo de confirmación en breve. ¡Gracias por su tiempo!"
+      ],
+      "workflow_steps": [
+        "Marcar desde la lista de la campaña",
+        "Detectar contestador automático vs. respuesta en vivo",
+        "Entregar el discurso personalizado",
+        "Calificar el interés y recopilar información",
+        "Reservar reunión o agendar seguimiento"
+      ],
+      "tools_used": [
+        "Marcador de campañas",
+        "Integración con CRM",
+        "Reserva de calendario",
+        "Detección de AMD",
+        "Calificación de prospectos"
+      ],
+      "escalation_behavior": "Los prospectos de alto valor (nivel empresa, 10+ ubicaciones) se transfieren en caliente de inmediato a un representante de ventas senior. Las solicitudes de no llamar se registran y el número se añade a la lista de supresión."
+    },
+    "customer-support": {
+      "name": "Agente de atención al cliente",
+      "description": "Brinda atención al cliente de primera línea para consultas comunes, resolución de problemas y creación de tickets. Atiende altos volúmenes de llamadas con calidad constante.",
+      "capabilities": [
+        "Atención de preguntas frecuentes",
+        "Creación de tickets",
+        "Búsqueda de cuenta",
+        "Resolución básica de problemas",
+        "Encuestas de satisfacción"
+      ],
+      "conversation": [
+        "Tengo problemas para iniciar sesión en mi cuenta.",
+        "Puedo ayudarle con eso. ¿Podría facilitarme el correo electrónico asociado a su cuenta?",
+        "Es john@example.com.",
+        "Encontré su cuenta. Parece que su contraseña se restableció recientemente. Acabo de enviarle un nuevo enlace de restablecimiento a su correo. Debería recibirlo en menos de un minuto.",
+        "Entendido, ¡gracias!",
+        "¡De nada! Si tiene cualquier otro problema tras el restablecimiento, no dude en volver a llamar. ¡Que tenga un buen día!"
+      ],
+      "workflow_steps": [
+        "Saludar e identificar al cliente",
+        "Clasificar la categoría del problema",
+        "Intentar resolver desde la base de conocimiento",
+        "Crear ticket si no se resuelve",
+        "Recoger valoración de satisfacción"
+      ],
+      "tools_used": [
+        "Base de conocimiento",
+        "Sistema de tickets",
+        "Búsqueda en CRM",
+        "Notificaciones por SMS",
+        "Encuesta CSAT"
+      ],
+      "escalation_behavior": "Los problemas no resueltos tras dos intentos de resolución se escalan a un agente humano con todo el contexto. Los clientes VIP se enrutan de inmediato a soporte senior."
+    },
+    "insurance-verification": {
+      "name": "Agente de verificación de seguros",
+      "description": "Automatiza las verificaciones de elegibilidad del seguro, las comprobaciones de beneficios y los seguimientos de autorizaciones previas para consultorios médicos y dentales.",
+      "capabilities": [
+        "Verificación de elegibilidad",
+        "Desglose de beneficios",
+        "Seguimiento de autorización previa",
+        "Estimaciones de costo para el paciente",
+        "Comunicación con la aseguradora"
+      ],
+      "conversation": [
+        "Necesito verificar si mi seguro cubre una resonancia magnética.",
+        "Puedo revisarlo por usted. ¿Me facilita su aseguradora y su número de afiliado?",
+        "Blue Cross, número de afiliado BX-445521.",
+        "Gracias. Estoy revisando sus beneficios ahora. Su plan cubre las resonancias diagnósticas al 80% después del deducible. Su deducible restante es de 350 USD. ¿Quiere que le proporcione una estimación del costo de su visita?"
+      ],
+      "workflow_steps": [
+        "Recopilar datos del paciente y del seguro",
+        "Consultar el sistema de elegibilidad de la aseguradora",
+        "Determinar la cobertura y la parte a cargo",
+        "Comunicar los resultados al paciente",
+        "Registrar la verificación en la HCE"
+      ],
+      "tools_used": [
+        "Integración con el portal de la aseguradora",
+        "Sistema HCE",
+        "Calculadora de beneficios",
+        "Comunicación con el paciente"
+      ],
+      "escalation_behavior": "Las autorizaciones previas denegadas se escalan al equipo de facturación con los códigos de motivo de denegación. Los pacientes con cobertura caducada se conectan con el asesor financiero."
+    },
+    "appointment-reminder": {
+      "name": "Agente de recordatorio de citas",
+      "description": "Contacta proactivamente a pacientes y clientes para confirmar citas próximas, gestionar reprogramaciones y reducir la tasa de inasistencia.",
+      "capabilities": [
+        "Recordatorios automatizados",
+        "Recogida de confirmaciones",
+        "Reprogramaciones",
+        "Gestión de lista de espera",
+        "Seguimiento de inasistencias"
+      ],
+      "conversation": [
+        "Hola, este es un recordatorio de Westside Medical. Tiene una cita con el Dr. Patel mañana a las 10:30 AM. ¿Puede confirmar su asistencia?",
+        "En realidad, necesito moverla. ¿Puedo ir por la tarde?",
+        "Por supuesto. El Dr. Patel tiene disponibles las 2:15 PM y las 3:45 PM mañana por la tarde. ¿Cuál prefiere?",
+        "Las 2:15 me funciona.",
+        "Queda reprogramado para mañana a las 2:15 PM con el Dr. Patel. Le enviaremos un mensaje de confirmación. ¡Hasta entonces!"
+      ],
+      "workflow_steps": [
+        "Obtener las citas próximas",
+        "Contactar al paciente por su canal preferido",
+        "Recoger confirmación o reprogramación",
+        "Actualizar el sistema de calendario",
+        "Cubrir las plazas canceladas desde la lista de espera"
+      ],
+      "tools_used": [
+        "Sistema de agenda",
+        "Pasarela de SMS",
+        "Marcador saliente",
+        "Gestor de lista de espera"
+      ],
+      "escalation_behavior": "Los pacientes que faltan a múltiples citas se marcan para revisión del gerente de la consulta. Las cancelaciones del mismo día activan la automatización de cobertura desde la lista de espera."
+    },
+    "property-management": {
+      "name": "Agente de administración de propiedades",
+      "description": "Gestiona solicitudes de mantenimiento de inquilinos, llamadas de emergencia fuera de horario y consultas sobre arrendamientos para administradoras de propiedades. Triajea la urgencia y despacha al personal de mantenimiento.",
+      "capabilities": [
+        "Recepción de solicitudes de mantenimiento",
+        "Triaje de emergencias",
+        "Comunicación con el inquilino",
+        "Creación de órdenes de trabajo",
+        "Soporte multipropiedad"
+      ],
+      "conversation": [
+        "Hola, mi grifo de la cocina tiene una fuga bastante fuerte.",
+        "Lamento escuchar eso. Permítame ayudarle a resolverlo. ¿Me da su nombre y número de unidad?",
+        "Soy Sarah Mitchell, unidad 304 en Parkview Apartments.",
+        "Gracias, Sarah. ¿La fuga está contenida o hay una inundación activa?",
+        "Está goteando constantemente, pero no se está inundando.",
+        "Entendido. He creado una solicitud de mantenimiento y la marqué como urgente. Un fontanero le contactará en menos de 4 horas para agendar una visita. Recibirá un SMS con los detalles. Mientras tanto, intente cerrar la llave de paso debajo del fregadero."
+      ],
+      "workflow_steps": [
+        "Identificar al inquilino y la propiedad",
+        "Capturar los detalles del problema de mantenimiento",
+        "Clasificar el nivel de urgencia",
+        "Crear orden de trabajo en el sistema",
+        "Despachar mantenimiento o agendar visita",
+        "Enviar confirmación por SMS al inquilino"
+      ],
+      "tools_used": [
+        "Sistema de administración de propiedades",
+        "Base de datos de órdenes de trabajo",
+        "Pasarela de SMS",
+        "Despacho de mantenimiento",
+        "Base de datos de inquilinos"
+      ],
+      "escalation_behavior": "Inundaciones activas, fugas de gas, daños por incendio y emergencias por falta de calefacción en invierno se escalan inmediatamente al supervisor de mantenimiento de guardia con guía de seguridad simultánea para el inquilino."
+    },
+    "restaurant": {
+      "name": "Agente de restaurante",
+      "description": "Gestiona reservas, pedidos para llevar y consultas generales para restaurantes. Atiende el desbordamiento de llamadas en horas pico y solicitudes de reserva fuera de horario.",
+      "capabilities": [
+        "Reserva de mesa",
+        "Recepción de pedidos para llevar",
+        "Consultas de menú",
+        "Actualizaciones de tiempo de espera",
+        "Reserva de eventos especiales"
+      ],
+      "conversation": [
+        "Hola, me gustaría hacer una reserva para este sábado.",
+        "¡Por supuesto! ¿Cuántas personas y a qué hora pensaba?",
+        "Grupo de 6, alrededor de las 7 PM.",
+        "Déjeme verificar la disponibilidad. Tengo las 6:45 PM o las 7:30 PM libres para un grupo de 6 este sábado. ¿Cuál le funciona mejor?",
+        "Las 7:30 son perfectas. ¿Alguien en la cocina maneja alergias a frutos secos?",
+        "Sí, nuestra cocina contempla alergias a frutos secos — añadiré esa nota a su reserva. Queda confirmado para las 7:30 PM este sábado, grupo de 6. Recibirá un mensaje de confirmación en breve."
+      ],
+      "workflow_steps": [
+        "Saludar al cliente e identificar el tipo de solicitud",
+        "Verificar disponibilidad de reserva",
+        "Confirmar detalles de la reserva y necesidades dietéticas",
+        "Crear la reserva en el sistema",
+        "Enviar confirmación por SMS"
+      ],
+      "tools_used": [
+        "Sistema de reservas",
+        "Base de datos del menú",
+        "Pasarela de SMS",
+        "API de calendario",
+        "Gestor de lista de espera"
+      ],
+      "escalation_behavior": "Las solicitudes de grupos grandes (12+), las consultas de eventos privados y las solicitudes de catering se transfieren al gerente del restaurante. Las quejas sobre la calidad de la comida o el servicio se marcan para devolución de llamada del gerente en menos de 1 hora."
+    },
+    "real-estate": {
+      "name": "Agente inmobiliario",
+      "description": "Capta prospectos de compradores y vendedores, responde preguntas sobre listados y agenda visitas automáticamente. Se integra con sistemas MLS y CRM.",
+      "capabilities": [
+        "Captura de prospectos",
+        "Preguntas y respuestas sobre propiedades",
+        "Programador de visitas",
+        "Sincronización con CRM",
+        "Información de listados"
+      ],
+      "conversation": [
+        "Vi el listado en Oak Street. ¿Sigue disponible?",
+        "¡Sí, la propiedad en 215 Oak Street sigue en el mercado! Es de 3 dormitorios y 2 baños, listada en 425.000 USD. ¿Le gustaría agendar una visita?",
+        "Sí, ¿qué disponibilidad hay este fin de semana?",
+        "Tengo el sábado a las 11 AM o el domingo a las 2 PM. ¿Cuál le funciona mejor?",
+        "El sábado a las 11.",
+        "Queda confirmada una visita en 215 Oak Street, sábado a las 11 AM. ¿Me da su nombre y correo para enviarle los detalles del listado y la confirmación?"
+      ],
+      "workflow_steps": [
+        "Atender la consulta e identificar la propiedad",
+        "Proporcionar los detalles del listado desde el MLS",
+        "Calificar el interés y los plazos del comprador",
+        "Agendar la visita en el calendario",
+        "Sincronizar el prospecto al CRM y enviar confirmación"
+      ],
+      "tools_used": [
+        "Integración con MLS",
+        "Sistema CRM",
+        "Reserva de calendario",
+        "Pasarela de SMS",
+        "Motor de calificación de prospectos"
+      ],
+      "escalation_behavior": "Los compradores preaprobados listos para hacer ofertas se conectan inmediatamente con el agente del listado. Las consultas de vendedores que quieren listar su propiedad se enrutan al líder del equipo."
+    }
   }
 }

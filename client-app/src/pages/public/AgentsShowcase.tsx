@@ -5,7 +5,7 @@ import {
   Stethoscope, Scale, Megaphone, Headphones, Users, Home,
   Phone, Globe, MessageSquare, ArrowRight, ChevronDown, ChevronUp,
   CheckCircle2, AlertTriangle, Bot, Zap, Calendar, Shield,
-  Clock, BarChart3, FileText, Wrench, Building2, UtensilsCrossed,
+  Wrench, Building2, UtensilsCrossed,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
@@ -24,20 +24,16 @@ const categoryToI18nKey: Record<Category, string> = {
   Support: 'support',
 };
 
+type ConversationRole = 'caller' | 'agent';
+
 interface AgentTemplate {
   id: string;
-  name: string;
   category: Category;
-  description: string;
   channels: Array<'phone' | 'web' | 'sms'>;
-  capabilities: string[];
   icon: React.ElementType;
   color: string;
   avatar?: string;
-  conversationExample: { role: 'caller' | 'agent'; text: string }[];
-  workflowSteps: string[];
-  toolsUsed: string[];
-  escalationBehavior: string;
+  conversationRoles: ConversationRole[];
 }
 
 const channelIcons: Record<string, { icon: React.ElementType; i18nKey: string }> = {
@@ -57,245 +53,120 @@ const categoryIcons: Record<Category, React.ElementType> = {
   Support: Users,
 };
 
+const C: ConversationRole = 'caller';
+const A: ConversationRole = 'agent';
+
 const agentTemplates: AgentTemplate[] = [
   {
     id: 'medical-intake',
-    name: 'Medical Intake Agent',
     category: 'Healthcare',
-    description: 'Handles after-hours patient calls with clinical intake protocols. Triages urgency, schedules appointments, and escalates critical concerns to on-call providers.',
     channels: ['phone', 'web'],
-    capabilities: ['Clinical triage', 'Appointment scheduling', 'Prescription refill requests', 'Insurance verification', 'HIPAA-compliant transcription'],
     icon: Stethoscope,
     color: 'bg-primary/10 text-primary border-primary/20',
     avatar: '/assets/avatars/medical.png',
-    conversationExample: [
-      { role: 'caller', text: 'Hi, I need to schedule a follow-up appointment with Dr. Chen.' },
-      { role: 'agent', text: 'Of course! I can help you schedule that. Could you provide your date of birth so I can pull up your records?' },
-      { role: 'caller', text: 'Sure, it\'s March 15, 1985.' },
-      { role: 'agent', text: 'Thank you. I see your chart. Dr. Chen has openings this Thursday at 2 PM or Friday at 10 AM. Which works better for you?' },
-      { role: 'caller', text: 'Thursday at 2 works.' },
-      { role: 'agent', text: 'You\'re confirmed for Thursday at 2 PM with Dr. Chen. You\'ll receive a confirmation text shortly. Is there anything else I can help with?' },
-    ],
-    workflowSteps: ['Answer call & greet patient', 'Verify identity (DOB/name)', 'Assess intent & urgency', 'Route to scheduling, triage, or refill flow', 'Confirm action & send follow-up'],
-    toolsUsed: ['EHR integration', 'Scheduling system', 'SMS notifications', 'Urgency classifier'],
-    escalationBehavior: 'Immediately escalates to on-call provider for symptoms indicating emergencies (chest pain, difficulty breathing, severe bleeding). Non-urgent after-hours requests are queued for morning review.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'dental-scheduling',
-    name: 'Dental Scheduling Agent',
     category: 'Healthcare',
-    description: 'Manages dental appointment scheduling, hygiene recall campaigns, and patient communication. Handles overflow calls during peak hours.',
     channels: ['phone', 'sms'],
-    capabilities: ['Appointment booking', 'Hygiene recall outreach', 'Insurance pre-authorization', 'Cancellation management', 'New patient intake'],
     icon: Headphones,
     color: 'bg-sidebar-bg/10 text-text-primary border-sidebar-bg/20',
     avatar: '/assets/avatars/dental.png',
-    conversationExample: [
-      { role: 'caller', text: 'I need to reschedule my cleaning appointment.' },
-      { role: 'agent', text: 'I\'d be happy to help with that. Can I get your name and the date of your current appointment?' },
-      { role: 'caller', text: 'It\'s Lisa Martinez, I have something next Tuesday.' },
-      { role: 'agent', text: 'I found your appointment for Tuesday at 9 AM. I have Wednesday at 11 AM or Thursday at 3 PM available. Would either work?' },
-      { role: 'caller', text: 'Wednesday at 11 is perfect.' },
-      { role: 'agent', text: 'Done! Your cleaning is now Wednesday at 11 AM. We\'ll send you a reminder the day before.' },
-    ],
-    workflowSteps: ['Greet patient & identify account', 'Determine request type', 'Check availability in scheduling system', 'Confirm new appointment details', 'Send SMS confirmation'],
-    toolsUsed: ['Practice management system', 'SMS gateway', 'Calendar API', 'Patient database'],
-    escalationBehavior: 'Dental emergencies (severe pain, knocked-out tooth, excessive bleeding) are transferred to the on-call dentist. Insurance disputes are queued for billing staff.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'legal-intake',
-    name: 'Legal Intake Agent',
     category: 'Legal',
-    description: 'Conducts structured legal intake conversations 24/7. Captures case details, qualifies leads, and routes to the appropriate practice area attorney.',
     channels: ['phone', 'web', 'sms'],
-    capabilities: ['Case intake interviews', 'Lead qualification', 'Conflict checks', 'Statute of limitations alerts', 'Attorney matching'],
     icon: Scale,
     color: 'bg-amber-100/80 text-amber-700 border-amber-200',
     avatar: '/assets/avatars/legal.png',
-    conversationExample: [
-      { role: 'caller', text: 'I was in a car accident last week and I think I need a lawyer.' },
-      { role: 'agent', text: 'I\'m sorry to hear about your accident. I can help connect you with the right attorney. Can you tell me when and where the accident occurred?' },
-      { role: 'caller', text: 'It was last Thursday on Route 9. The other driver ran a red light.' },
-      { role: 'agent', text: 'Thank you. Were you injured? And have you received any medical treatment?' },
-      { role: 'caller', text: 'Yes, I went to the ER for whiplash and my back has been hurting.' },
-      { role: 'agent', text: 'I\'ve noted all of that. This sounds like a personal injury case. I\'m flagging this as high priority and an attorney from our PI team will call you back within 2 hours. Can I confirm your callback number?' },
-    ],
-    workflowSteps: ['Answer & establish case type', 'Structured intake questions', 'Assess case merit & urgency', 'Run conflict check', 'Assign to practice area & schedule callback'],
-    toolsUsed: ['Case management system', 'Conflict database', 'Attorney availability calendar', 'Lead scoring engine'],
-    escalationBehavior: 'Time-sensitive matters (upcoming court dates, statute of limitations within 30 days) are immediately escalated to the managing partner. Criminal matters with clients in custody trigger emergency contact protocols.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'hvac-home-services',
-    name: 'HVAC / Home Services Agent',
     category: 'Operations',
-    description: 'Handles service calls for HVAC, plumbing, and home services companies. Triages emergencies, dispatches technicians, and sends customers real-time ETAs.',
     channels: ['phone', 'sms'],
-    capabilities: ['Service call intake', 'Emergency triage', 'Technician dispatch', 'Appointment scheduling', 'SMS ETA updates'],
     icon: Wrench,
     color: 'bg-orange-100/80 text-orange-700 border-orange-200',
     avatar: '/assets/avatars/hvac.png',
-    conversationExample: [
-      { role: 'caller', text: 'My AC stopped working and it\'s 95 degrees in the house.' },
-      { role: 'agent', text: 'I\'m sorry to hear that — let me get you help right away. Can I get your name and address?' },
-      { role: 'caller', text: 'It\'s Mike Torres, 412 Birch Lane.' },
-      { role: 'agent', text: 'Thank you, Mike. Is anyone in the home who is elderly or has a medical condition affected by the heat?' },
-      { role: 'caller', text: 'No, just me and my wife.' },
-      { role: 'agent', text: 'Got it. I\'m dispatching a technician now — they should arrive within 2 hours. You\'ll receive a text with their name and live ETA. In the meantime, stay hydrated and close your blinds to keep the heat out.' },
-    ],
-    workflowSteps: ['Capture service request details', 'Assess urgency & safety risks', 'Create service ticket', 'Dispatch nearest available technician', 'Send SMS with tech name & ETA'],
-    toolsUsed: ['Service management platform', 'Technician dispatch system', 'SMS gateway', 'Scheduling calendar', 'Work order database'],
-    escalationBehavior: 'Gas leaks, carbon monoxide alerts, and no-heat emergencies in extreme cold trigger immediate dispatch and safety guidance. Non-urgent requests are scheduled for the next available window.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'outbound-sales',
-    name: 'Outbound Sales Agent',
     category: 'Sales & Marketing',
-    description: 'Runs automated outbound calling campaigns for lead qualification, appointment setting, and follow-up sequences with answering machine detection.',
     channels: ['phone', 'sms'],
-    capabilities: ['Automated dialing', 'Lead qualification', 'Appointment setting', 'Answering machine detection', 'CRM integration'],
     icon: Megaphone,
     color: 'bg-purple-100/80 text-purple-700 border-purple-200',
     avatar: '/assets/avatars/collections.png',
-    conversationExample: [
-      { role: 'agent', text: 'Hi, this is Alex calling from Bright Solutions. We spoke briefly at the trade show last week. Do you have a moment?' },
-      { role: 'caller', text: 'Oh yes, I remember. We were interested in your scheduling product.' },
-      { role: 'agent', text: 'Great! I\'d love to set up a 15-minute demo with our product team. Would this Thursday or Friday afternoon work for you?' },
-      { role: 'caller', text: 'Friday at 2 PM would be good.' },
-      { role: 'agent', text: 'Perfect — I\'ll send a calendar invite to your email on file. Before that, could you tell me how many locations you\'re currently managing?' },
-      { role: 'caller', text: 'We have about 12 offices across the state.' },
-      { role: 'agent', text: 'That\'s helpful context for our team. You\'re all set for Friday at 2 PM. You\'ll get a confirmation email shortly. Thanks for your time!' },
-    ],
-    workflowSteps: ['Dial from campaign list', 'Detect answering machine vs. live pickup', 'Deliver personalized pitch', 'Qualify interest & gather info', 'Book meeting or schedule follow-up'],
-    toolsUsed: ['Campaign dialer', 'CRM integration', 'Calendar booking', 'AMD detection', 'Lead scoring'],
-    escalationBehavior: 'High-value leads (enterprise tier, 10+ locations) are immediately warm-transferred to a senior sales rep. Do-not-call requests are logged and the number is added to the suppression list.',
+    conversationRoles: [A, C, A, C, A, C, A],
   },
   {
     id: 'customer-support',
-    name: 'Customer Support Agent',
     category: 'Support',
-    description: 'Provides first-line customer support for common inquiries, troubleshooting, and ticket creation. Handles high call volumes with consistent quality.',
     channels: ['phone', 'web', 'sms'],
-    capabilities: ['FAQ handling', 'Ticket creation', 'Account lookup', 'Basic troubleshooting', 'Satisfaction surveys'],
     icon: Users,
     color: 'bg-blue-100/80 text-blue-700 border-blue-200',
     avatar: '/assets/avatars/customer-support.png',
-    conversationExample: [
-      { role: 'caller', text: 'I\'m having trouble logging into my account.' },
-      { role: 'agent', text: 'I can help with that. Could you provide the email address associated with your account?' },
-      { role: 'caller', text: 'It\'s john@example.com.' },
-      { role: 'agent', text: 'I found your account. It looks like your password was reset recently. I\'ve just sent a new password reset link to your email. You should receive it within a minute.' },
-      { role: 'caller', text: 'Got it, thanks!' },
-      { role: 'agent', text: 'You\'re welcome! If you have any other issues after resetting, don\'t hesitate to call back. Have a great day!' },
-    ],
-    workflowSteps: ['Greet & identify customer', 'Classify issue category', 'Attempt resolution from knowledge base', 'Create ticket if unresolved', 'Collect satisfaction feedback'],
-    toolsUsed: ['Knowledge base', 'Ticketing system', 'CRM lookup', 'SMS notifications', 'CSAT survey'],
-    escalationBehavior: 'Issues unresolved after two troubleshooting attempts are escalated to a human agent with full context. VIP customers are immediately routed to senior support.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'insurance-verification',
-    name: 'Insurance Verification Agent',
     category: 'Healthcare',
-    description: 'Automates insurance eligibility checks, benefits verification, and prior authorization follow-ups for medical and dental practices.',
     channels: ['phone', 'web'],
-    capabilities: ['Eligibility verification', 'Benefits breakdown', 'Prior auth tracking', 'Patient cost estimates', 'Payer communication'],
     icon: Shield,
     color: 'bg-primary/10 text-primary border-primary/20',
     avatar: '/assets/avatars/insurance.png',
-    conversationExample: [
-      { role: 'caller', text: 'I need to check if my insurance covers an MRI.' },
-      { role: 'agent', text: 'I can look into that for you. May I have your insurance provider and member ID number?' },
-      { role: 'caller', text: 'Blue Cross, member ID BX-445521.' },
-      { role: 'agent', text: 'Thank you. I\'m checking your benefits now. Your plan covers diagnostic MRIs at 80% after your deductible. Your remaining deductible is $350. Would you like me to provide a cost estimate for your visit?' },
-    ],
-    workflowSteps: ['Collect patient & insurance info', 'Query payer eligibility system', 'Determine coverage & cost share', 'Communicate results to patient', 'Log verification in EHR'],
-    toolsUsed: ['Payer portal integration', 'EHR system', 'Benefits calculator', 'Patient communication'],
-    escalationBehavior: 'Denied prior authorizations are escalated to the billing team with denial reason codes. Patients with lapsed coverage are connected to the financial counselor.',
+    conversationRoles: [C, A, C, A],
   },
   {
     id: 'appointment-reminder',
-    name: 'Appointment Reminder Agent',
     category: 'Operations',
-    description: 'Proactively contacts patients and clients to confirm upcoming appointments, handle rescheduling, and reduce no-show rates.',
     channels: ['phone', 'sms'],
-    capabilities: ['Automated reminders', 'Confirmation collection', 'Rescheduling', 'Waitlist management', 'No-show follow-up'],
     icon: Calendar,
     color: 'bg-emerald-100/80 text-emerald-700 border-emerald-200',
     avatar: '/assets/avatars/answering-service.png',
-    conversationExample: [
-      { role: 'agent', text: 'Hi, this is a reminder from Westside Medical. You have an appointment with Dr. Patel tomorrow at 10:30 AM. Can you confirm you\'ll be there?' },
-      { role: 'caller', text: 'Actually, I need to push it back. Can I come in the afternoon instead?' },
-      { role: 'agent', text: 'Of course. Dr. Patel has 2:15 PM and 3:45 PM available tomorrow afternoon. Which would you prefer?' },
-      { role: 'caller', text: '2:15 works.' },
-      { role: 'agent', text: 'You\'re rescheduled for 2:15 PM tomorrow with Dr. Patel. We\'ll send a confirmation text. See you then!' },
-    ],
-    workflowSteps: ['Pull upcoming appointments', 'Contact patient via preferred channel', 'Collect confirmation or reschedule', 'Update calendar system', 'Backfill cancelled slots from waitlist'],
-    toolsUsed: ['Scheduling system', 'SMS gateway', 'Outbound dialer', 'Waitlist manager'],
-    escalationBehavior: 'Patients who miss multiple appointments are flagged for office manager review. Same-day cancellations trigger waitlist backfill automation.',
+    conversationRoles: [A, C, A, C, A],
   },
   {
     id: 'property-management',
-    name: 'Property Management Agent',
     category: 'Operations',
-    description: 'Handles tenant maintenance requests, emergency after-hours calls, and lease inquiries for property management companies. Triages urgency and dispatches maintenance staff.',
     channels: ['phone', 'sms'],
-    capabilities: ['Maintenance request intake', 'Emergency triage', 'Tenant communication', 'Work order creation', 'Multi-property support'],
     icon: Building2,
     color: 'bg-indigo-100/80 text-indigo-700 border-indigo-200',
-    conversationExample: [
-      { role: 'caller', text: 'Hi, my kitchen faucet is leaking pretty badly.' },
-      { role: 'agent', text: 'I\'m sorry to hear that. Let me help get that resolved. Can I get your name and unit number?' },
-      { role: 'caller', text: 'It\'s Sarah Mitchell, unit 304 at Parkview Apartments.' },
-      { role: 'agent', text: 'Thank you, Sarah. Is the leak contained, or is water actively flooding?' },
-      { role: 'caller', text: 'It\'s dripping steadily but not flooding.' },
-      { role: 'agent', text: 'Got it. I\'ve created a maintenance request and flagged it as urgent. A plumber will contact you within 4 hours to schedule a visit. You\'ll get an SMS with the details. In the meantime, try turning off the water valve under the sink.' },
-    ],
-    workflowSteps: ['Identify tenant and property', 'Capture maintenance issue details', 'Classify urgency level', 'Create work order in system', 'Dispatch maintenance or schedule visit', 'Send SMS confirmation to tenant'],
-    toolsUsed: ['Property management system', 'Work order database', 'SMS gateway', 'Maintenance dispatch', 'Tenant database'],
-    escalationBehavior: 'Active flooding, gas leaks, fire damage, and no-heat emergencies in winter are immediately escalated to the on-call maintenance supervisor with simultaneous tenant safety guidance.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'restaurant',
-    name: 'Restaurant Agent',
     category: 'Operations',
-    description: 'Manages reservations, takeout orders, and general inquiries for restaurants. Handles peak-hour overflow calls and after-hours booking requests.',
     channels: ['phone', 'sms'],
-    capabilities: ['Reservation booking', 'Takeout order intake', 'Menu inquiries', 'Wait time updates', 'Special event booking'],
     icon: UtensilsCrossed,
     color: 'bg-rose-100/80 text-rose-700 border-rose-200',
-    conversationExample: [
-      { role: 'caller', text: 'Hi, I\'d like to make a reservation for this Saturday.' },
-      { role: 'agent', text: 'Of course! How many guests and what time were you thinking?' },
-      { role: 'caller', text: 'Party of 6, around 7 PM.' },
-      { role: 'agent', text: 'Let me check availability. I have 6:45 PM or 7:30 PM open for a party of 6 this Saturday. Which works better?' },
-      { role: 'caller', text: '7:30 is perfect. And does anyone in the kitchen handle nut allergies?' },
-      { role: 'agent', text: 'Yes, our kitchen accommodates nut allergies — I\'ll add that note to your reservation. You\'re confirmed for 7:30 PM this Saturday, party of 6. You\'ll receive a confirmation text shortly.' },
-    ],
-    workflowSteps: ['Greet caller and identify request type', 'Check reservation availability', 'Confirm booking details and dietary needs', 'Create reservation in system', 'Send SMS confirmation'],
-    toolsUsed: ['Reservation system', 'Menu database', 'SMS gateway', 'Calendar API', 'Waitlist manager'],
-    escalationBehavior: 'Large party requests (12+), private event inquiries, and catering requests are transferred to the restaurant manager. Complaints about food quality or service are flagged for manager callback within 1 hour.',
+    conversationRoles: [C, A, C, A, C, A],
   },
   {
     id: 'real-estate',
-    name: 'Real Estate Agent',
     category: 'Sales & Marketing',
-    description: 'Captures buyer and seller leads, answers property listing questions, and schedules showings automatically. Integrates with MLS and CRM systems.',
     channels: ['phone', 'web', 'sms'],
-    capabilities: ['Lead capture', 'Property Q&A', 'Showing scheduler', 'CRM sync', 'Listing information'],
     icon: Home,
     color: 'bg-amber-100/80 text-amber-700 border-amber-200',
-    conversationExample: [
-      { role: 'caller', text: 'I saw the listing on Oak Street. Is it still available?' },
-      { role: 'agent', text: 'Yes, the property at 215 Oak Street is still on the market! It\'s a 3-bedroom, 2-bath listed at $425,000. Would you like to schedule a showing?' },
-      { role: 'caller', text: 'Yes, what\'s available this weekend?' },
-      { role: 'agent', text: 'I have Saturday at 11 AM or Sunday at 2 PM. Which works better for you?' },
-      { role: 'caller', text: 'Saturday at 11.' },
-      { role: 'agent', text: 'You\'re confirmed for a showing at 215 Oak Street, Saturday at 11 AM. Can I get your name and email to send the listing details and confirmation?' },
-    ],
-    workflowSteps: ['Answer inquiry and identify property', 'Provide listing details from MLS', 'Qualify buyer interest and timeline', 'Schedule showing in calendar', 'Sync lead to CRM and send confirmation'],
-    toolsUsed: ['MLS integration', 'CRM system', 'Calendar booking', 'SMS gateway', 'Lead scoring engine'],
-    escalationBehavior: 'Pre-approved buyers ready to make offers are immediately connected to the listing agent. Seller inquiries about listing their property are routed to the team lead.',
+    conversationRoles: [C, A, C, A, C, A],
   },
 ];
+
+function asStringArray(value: unknown, debugKey?: string): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === 'string');
+  }
+  if (debugKey) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[AgentsShowcase] Expected array for translation key "${debugKey}", got ${typeof value}. Check marketing.json locale files.`,
+    );
+  }
+  return [];
+}
 
 function ChannelBadge({ channel }: { channel: string }) {
   const { t } = useTranslation('marketing');
@@ -315,13 +186,22 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = agent.icon;
 
+  const base = `agents_data.${agent.id}`;
+  const name = t(`${base}.name`);
+  const description = t(`${base}.description`);
+  const capabilities = asStringArray(t(`${base}.capabilities`, { returnObjects: true }), `${base}.capabilities`);
+  const conversationTexts = asStringArray(t(`${base}.conversation`, { returnObjects: true }), `${base}.conversation`);
+  const workflowSteps = asStringArray(t(`${base}.workflow_steps`, { returnObjects: true }), `${base}.workflow_steps`);
+  const toolsUsed = asStringArray(t(`${base}.tools_used`, { returnObjects: true }), `${base}.tools_used`);
+  const escalationBehavior = t(`${base}.escalation_behavior`);
+
   return (
     <div className="bg-white rounded-xl border border-border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
       <div className="p-6">
         <div className="flex items-start gap-4 mb-4">
           {agent.avatar ? (
             <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-border/20">
-              <img src={agent.avatar} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
+              <img src={agent.avatar} alt={`${name} avatar`} className="w-full h-full object-cover" loading="lazy" />
             </div>
           ) : (
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${agent.color}`}>
@@ -329,12 +209,14 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="font-display text-lg font-bold text-text-primary mb-1">{agent.name}</h3>
-            <span className="text-xs font-medium text-primary uppercase tracking-wide">{agent.category}</span>
+            <h3 className="font-display text-lg font-bold text-text-primary mb-1">{name}</h3>
+            <span className="text-xs font-medium text-primary uppercase tracking-wide">
+              {t(`agents_page.categories.${categoryToI18nKey[agent.category]}`)}
+            </span>
           </div>
         </div>
 
-        <p className="text-sm text-text-primary/70 leading-relaxed mb-4">{agent.description}</p>
+        <p className="text-sm text-text-primary/70 leading-relaxed mb-4">{description}</p>
 
         <div className="flex flex-wrap gap-1.5 mb-4">
           {agent.channels.map((ch) => (
@@ -343,14 +225,14 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
         </div>
 
         <div className="space-y-1.5 mb-5">
-          {agent.capabilities.slice(0, 4).map((cap) => (
+          {capabilities.slice(0, 4).map((cap) => (
             <div key={cap} className="flex items-center gap-2 text-sm text-text-primary/80">
               <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
               {cap}
             </div>
           ))}
-          {agent.capabilities.length > 4 && (
-            <p className="text-xs text-text-muted ml-5.5">{t('agents_page.card.more_capabilities', { count: agent.capabilities.length - 4 })}</p>
+          {capabilities.length > 4 && (
+            <p className="text-xs text-text-muted ml-5.5">{t('agents_page.card.more_capabilities', { count: capabilities.length - 4 })}</p>
           )}
         </div>
 
@@ -381,22 +263,25 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
               {t('agents_page.card.example_conversation')}
             </h4>
             <div className="space-y-2.5 bg-white rounded-lg border border-border p-4">
-              {agent.conversationExample.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'agent' ? 'justify-start' : 'justify-end'}`}>
-                  <div
-                    className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                      msg.role === 'agent'
-                        ? 'bg-primary/10 text-text-primary border border-primary/20'
-                        : 'bg-sidebar-bg/10 text-text-primary border border-sidebar-bg/20'
-                    }`}
-                  >
-                    <span className="block text-[10px] font-semibold uppercase tracking-wider mb-0.5 opacity-60">
-                      {msg.role === 'agent' ? t('agents_page.card.ai_agent_label') : t('agents_page.card.caller_label')}
-                    </span>
-                    {msg.text}
+              {conversationTexts.map((text, i) => {
+                const role: ConversationRole = agent.conversationRoles[i] ?? 'agent';
+                return (
+                  <div key={i} className={`flex ${role === 'agent' ? 'justify-start' : 'justify-end'}`}>
+                    <div
+                      className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                        role === 'agent'
+                          ? 'bg-primary/10 text-text-primary border border-primary/20'
+                          : 'bg-sidebar-bg/10 text-text-primary border border-sidebar-bg/20'
+                      }`}
+                    >
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider mb-0.5 opacity-60">
+                        {role === 'agent' ? t('agents_page.card.ai_agent_label') : t('agents_page.card.caller_label')}
+                      </span>
+                      {text}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -406,7 +291,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
               {t('agents_page.card.workflow_steps')}
             </h4>
             <ol className="space-y-1.5">
-              {agent.workflowSteps.map((step, i) => (
+              {workflowSteps.map((step, i) => (
                 <li key={i} className="flex items-start gap-2.5 text-sm text-text-primary/80">
                   <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                     {i + 1}
@@ -424,7 +309,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
                 {t('agents_page.card.tools_used')}
               </h4>
               <ul className="space-y-1">
-                {agent.toolsUsed.map((tool) => (
+                {toolsUsed.map((tool) => (
                   <li key={tool} className="text-sm text-text-primary/70 flex items-center gap-1.5">
                     <span className="w-1 h-1 rounded-full bg-primary shrink-0" />
                     {tool}
@@ -437,7 +322,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 {t('agents_page.card.escalation_behavior')}
               </h4>
-              <p className="text-sm text-text-primary/70 leading-relaxed">{agent.escalationBehavior}</p>
+              <p className="text-sm text-text-primary/70 leading-relaxed">{escalationBehavior}</p>
             </div>
           </div>
         </div>

@@ -972,5 +972,375 @@
       "subtitle": "Für diese Branche haben wir noch keine Seite.",
       "view_all": "Alle Anwendungsfälle ansehen"
     }
+  },
+  "agents_data": {
+    "medical-intake": {
+      "name": "Medizinischer Aufnahme-Agent",
+      "description": "Bearbeitet Patientenanrufe außerhalb der Sprechzeiten mit klinischen Aufnahmeprotokollen. Stuft Dringlichkeiten ein, vereinbart Termine und eskaliert kritische Anliegen an die diensthabenden Behandler.",
+      "capabilities": [
+        "Klinische Triage",
+        "Terminvereinbarung",
+        "Anfragen für Rezeptverlängerungen",
+        "Versicherungsprüfung",
+        "HIPAA-konforme Transkription"
+      ],
+      "conversation": [
+        "Hallo, ich möchte einen Folgetermin bei Dr. Chen vereinbaren.",
+        "Sehr gerne! Ich kann das für Sie planen. Können Sie mir Ihr Geburtsdatum nennen, damit ich Ihre Akte aufrufen kann?",
+        "Klar, der 15. März 1985.",
+        "Danke. Ich sehe Ihre Akte. Dr. Chen hat diesen Donnerstag um 14 Uhr oder Freitag um 10 Uhr Zeit. Was passt Ihnen besser?",
+        "Donnerstag um 14 Uhr passt.",
+        "Sie sind für Donnerstag um 14 Uhr bei Dr. Chen bestätigt. Sie erhalten in Kürze eine SMS-Bestätigung. Kann ich Ihnen sonst noch helfen?"
+      ],
+      "workflow_steps": [
+        "Anruf entgegennehmen und Patient begrüßen",
+        "Identität bestätigen (Geburtsdatum/Name)",
+        "Anliegen und Dringlichkeit einschätzen",
+        "An Termin-, Triage- oder Rezeptverlängerungs-Workflow weiterleiten",
+        "Aktion bestätigen und Folgenachricht senden"
+      ],
+      "tools_used": [
+        "EHR-Integration",
+        "Terminsystem",
+        "SMS-Benachrichtigungen",
+        "Dringlichkeitsklassifizierer"
+      ],
+      "escalation_behavior": "Eskaliert sofort an den diensthabenden Behandler bei Symptomen, die auf einen Notfall hindeuten (Brustschmerzen, Atemnot, starke Blutung). Nicht dringende Anfragen außerhalb der Sprechzeiten werden für die morgendliche Sichtung in die Warteschlange gestellt."
+    },
+    "dental-scheduling": {
+      "name": "Zahnärztlicher Termin-Agent",
+      "description": "Verwaltet zahnärztliche Terminvergabe, Recall-Kampagnen für die Prophylaxe und Patientenkommunikation. Fängt Anrufspitzen in Stoßzeiten ab.",
+      "capabilities": [
+        "Terminbuchung",
+        "Recall-Aktionen für die Prophylaxe",
+        "Kostenvoranschlag bei der Versicherung",
+        "Verwaltung von Absagen",
+        "Aufnahme neuer Patienten"
+      ],
+      "conversation": [
+        "Ich muss meinen Termin für die Zahnreinigung verschieben.",
+        "Gerne helfe ich Ihnen dabei. Können Sie mir Ihren Namen und das Datum Ihres aktuellen Termins nennen?",
+        "Lisa Martinez, ich habe etwas nächsten Dienstag.",
+        "Ich habe Ihren Termin am Dienstag um 9 Uhr gefunden. Mittwoch um 11 Uhr oder Donnerstag um 15 Uhr wären verfügbar. Würde Ihnen einer davon passen?",
+        "Mittwoch um 11 Uhr ist perfekt.",
+        "Erledigt! Ihre Reinigung ist jetzt am Mittwoch um 11 Uhr. Wir senden Ihnen am Vortag eine Erinnerung."
+      ],
+      "workflow_steps": [
+        "Patient begrüßen und Konto identifizieren",
+        "Art der Anfrage bestimmen",
+        "Verfügbarkeit im Terminsystem prüfen",
+        "Details des neuen Termins bestätigen",
+        "SMS-Bestätigung senden"
+      ],
+      "tools_used": [
+        "Praxisverwaltungssoftware",
+        "SMS-Gateway",
+        "Kalender-API",
+        "Patientendatenbank"
+      ],
+      "escalation_behavior": "Zahnärztliche Notfälle (starke Schmerzen, ausgeschlagener Zahn, starke Blutung) werden an den diensthabenden Zahnarzt weitergeleitet. Versicherungsstreitigkeiten werden an die Abrechnungsstelle in die Warteschlange gestellt."
+    },
+    "legal-intake": {
+      "name": "Juristischer Aufnahme-Agent",
+      "description": "Führt rund um die Uhr strukturierte juristische Aufnahmegespräche. Erfasst Falldetails, qualifiziert Leads und leitet an die zuständige Anwältin oder den zuständigen Anwalt im jeweiligen Rechtsgebiet weiter.",
+      "capabilities": [
+        "Aufnahmegespräche",
+        "Lead-Qualifizierung",
+        "Konfliktprüfungen",
+        "Hinweise zur Verjährung",
+        "Anwaltszuordnung"
+      ],
+      "conversation": [
+        "Ich hatte letzte Woche einen Autounfall und denke, ich brauche einen Anwalt.",
+        "Das tut mir leid mit dem Unfall. Ich kann Sie an den richtigen Anwalt weiterleiten. Können Sie mir sagen, wann und wo der Unfall passiert ist?",
+        "Letzten Donnerstag auf der Route 9. Der andere Fahrer hat eine rote Ampel überfahren.",
+        "Danke. Wurden Sie verletzt? Haben Sie ärztliche Behandlung erhalten?",
+        "Ja, ich war wegen eines Schleudertraumas in der Notaufnahme und mein Rücken schmerzt seither.",
+        "Ich habe alles notiert. Das klingt nach einem Personenschadenfall. Ich kennzeichne den Vorgang als hohe Priorität, und ein Anwalt aus unserem PI-Team ruft Sie innerhalb von 2 Stunden zurück. Darf ich Ihre Rückrufnummer bestätigen?"
+      ],
+      "workflow_steps": [
+        "Anruf entgegennehmen und Fallart bestimmen",
+        "Strukturierte Aufnahmefragen",
+        "Erfolgsaussichten und Dringlichkeit bewerten",
+        "Konfliktprüfung durchführen",
+        "Rechtsgebiet zuweisen und Rückruf planen"
+      ],
+      "tools_used": [
+        "Fallmanagementsystem",
+        "Konfliktdatenbank",
+        "Verfügbarkeitskalender der Anwälte",
+        "Lead-Scoring-Engine"
+      ],
+      "escalation_behavior": "Zeitkritische Angelegenheiten (anstehende Gerichtstermine, Verjährung innerhalb von 30 Tagen) werden sofort an den geschäftsführenden Partner eskaliert. Strafsachen mit Mandanten in Haft lösen Notfall-Kontaktprotokolle aus."
+    },
+    "hvac-home-services": {
+      "name": "HLK- / Hausservice-Agent",
+      "description": "Bearbeitet Serviceanrufe für HLK-, Sanitär- und Hausservicebetriebe. Stuft Notfälle ein, disponiert Techniker und sendet Kunden Echtzeit-Ankunftszeiten.",
+      "capabilities": [
+        "Aufnahme von Serviceanrufen",
+        "Notfall-Triage",
+        "Technikerdisposition",
+        "Terminvereinbarung",
+        "ETA-Aktualisierungen per SMS"
+      ],
+      "conversation": [
+        "Meine Klimaanlage ist ausgefallen und es sind 35 Grad im Haus.",
+        "Das tut mir leid – ich kümmere mich sofort um Hilfe. Können Sie mir Ihren Namen und Ihre Adresse nennen?",
+        "Mike Torres, 412 Birch Lane.",
+        "Danke, Mike. Ist jemand im Haus, der älter ist oder eine Erkrankung hat, die durch die Hitze verschlimmert wird?",
+        "Nein, nur meine Frau und ich.",
+        "Verstanden. Ich disponiere jetzt einen Techniker – er sollte in spätestens 2 Stunden da sein. Sie erhalten eine SMS mit seinem Namen und der Live-Ankunftszeit. Trinken Sie in der Zwischenzeit ausreichend und schließen Sie die Jalousien, um die Hitze draußen zu halten."
+      ],
+      "workflow_steps": [
+        "Details der Serviceanfrage erfassen",
+        "Dringlichkeit und Sicherheitsrisiken bewerten",
+        "Service-Ticket anlegen",
+        "Nächstgelegenen verfügbaren Techniker disponieren",
+        "SMS mit Technikername und ETA senden"
+      ],
+      "tools_used": [
+        "Service-Management-Plattform",
+        "Technikerdispositionssystem",
+        "SMS-Gateway",
+        "Terminkalender",
+        "Auftragsdatenbank"
+      ],
+      "escalation_behavior": "Gaslecks, Kohlenmonoxid-Alarme und Heizungsausfälle bei extremer Kälte lösen sofortige Disposition und Sicherheitsanweisungen aus. Nicht dringende Anfragen werden für das nächste verfügbare Zeitfenster geplant."
+    },
+    "outbound-sales": {
+      "name": "Outbound-Vertriebs-Agent",
+      "description": "Führt automatisierte Outbound-Anrufkampagnen zur Lead-Qualifizierung, Terminvereinbarung und für Follow-up-Sequenzen mit Anrufbeantworter-Erkennung durch.",
+      "capabilities": [
+        "Automatisiertes Wählen",
+        "Lead-Qualifizierung",
+        "Terminvereinbarung",
+        "Anrufbeantworter-Erkennung",
+        "CRM-Integration"
+      ],
+      "conversation": [
+        "Hallo, hier ist Alex von Bright Solutions. Wir haben uns letzte Woche kurz auf der Messe unterhalten. Haben Sie einen Moment?",
+        "Ah ja, ich erinnere mich. Wir hatten Interesse an Ihrem Terminprodukt.",
+        "Super! Ich würde gern eine 15-minütige Demo mit unserem Produktteam vereinbaren. Würden Sie diesen Donnerstag oder Freitagnachmittag passen?",
+        "Freitag um 14 Uhr wäre gut.",
+        "Perfekt – ich sende eine Kalendereinladung an die hinterlegte E-Mail-Adresse. Vorher: Können Sie mir sagen, wie viele Standorte Sie aktuell betreuen?",
+        "Wir haben etwa 12 Büros im Bundesstaat.",
+        "Das ist hilfreicher Kontext für unser Team. Sie sind für Freitag um 14 Uhr eingetragen. Eine Bestätigungs-E-Mail folgt in Kürze. Vielen Dank für Ihre Zeit!"
+      ],
+      "workflow_steps": [
+        "Aus der Kampagnenliste anrufen",
+        "Anrufbeantworter vs. Live-Annahme erkennen",
+        "Personalisiertes Pitch-Gespräch führen",
+        "Interesse qualifizieren und Informationen erfassen",
+        "Termin buchen oder Follow-up planen"
+      ],
+      "tools_used": [
+        "Kampagnen-Dialer",
+        "CRM-Integration",
+        "Kalenderbuchung",
+        "AMD-Erkennung",
+        "Lead-Scoring"
+      ],
+      "escalation_behavior": "Hochwertige Leads (Enterprise-Segment, 10+ Standorte) werden sofort warm an einen Senior Sales Rep übergeben. Anfragen zur Sperrung von Anrufen werden protokolliert und die Nummer auf die Sperrliste gesetzt."
+    },
+    "customer-support": {
+      "name": "Kundensupport-Agent",
+      "description": "Bietet First-Level-Support für gängige Anfragen, Fehlersuche und Ticketerstellung. Bewältigt hohe Anrufvolumen mit gleichbleibender Qualität.",
+      "capabilities": [
+        "Bearbeitung von FAQs",
+        "Ticketerstellung",
+        "Kontosuche",
+        "Grundlegende Fehlersuche",
+        "Zufriedenheitsumfragen"
+      ],
+      "conversation": [
+        "Ich habe Probleme, mich in mein Konto einzuloggen.",
+        "Ich kann Ihnen helfen. Können Sie mir die mit Ihrem Konto verknüpfte E-Mail-Adresse nennen?",
+        "john@example.com.",
+        "Ich habe Ihr Konto gefunden. Es sieht so aus, als wäre Ihr Passwort kürzlich zurückgesetzt worden. Ich habe gerade einen neuen Link zum Zurücksetzen an Ihre E-Mail geschickt. Sie sollten ihn innerhalb einer Minute erhalten.",
+        "Alles klar, danke!",
+        "Gern geschehen! Falls nach dem Zurücksetzen weitere Probleme auftreten, melden Sie sich einfach wieder. Einen schönen Tag noch!"
+      ],
+      "workflow_steps": [
+        "Begrüßen und Kunde identifizieren",
+        "Problemkategorie klassifizieren",
+        "Lösung über die Wissensdatenbank versuchen",
+        "Bei ungelöstem Problem Ticket anlegen",
+        "Zufriedenheitsfeedback einholen"
+      ],
+      "tools_used": [
+        "Wissensdatenbank",
+        "Ticket-System",
+        "CRM-Suche",
+        "SMS-Benachrichtigungen",
+        "CSAT-Umfrage"
+      ],
+      "escalation_behavior": "Probleme, die nach zwei Lösungsversuchen ungelöst bleiben, werden mit vollständigem Kontext an einen menschlichen Agenten eskaliert. VIP-Kunden werden sofort an den Senior-Support weitergeleitet."
+    },
+    "insurance-verification": {
+      "name": "Versicherungsprüfungs-Agent",
+      "description": "Automatisiert Anspruchsprüfungen, Leistungsabgleiche und Nachverfolgung von Vorabgenehmigungen für medizinische und zahnärztliche Praxen.",
+      "capabilities": [
+        "Anspruchsprüfung",
+        "Leistungsaufschlüsselung",
+        "Nachverfolgung von Vorabgenehmigungen",
+        "Kostenschätzungen für Patienten",
+        "Kommunikation mit dem Kostenträger"
+      ],
+      "conversation": [
+        "Ich möchte prüfen, ob meine Versicherung ein MRT übernimmt.",
+        "Das kann ich für Sie nachsehen. Können Sie mir Ihren Versicherer und Ihre Mitgliedsnummer nennen?",
+        "Blue Cross, Mitgliedsnummer BX-445521.",
+        "Danke. Ich prüfe gerade Ihre Leistungen. Ihr Tarif übernimmt diagnostische MRTs zu 80 % nach Ihrem Selbstbehalt. Ihr verbleibender Selbstbehalt beträgt 350 USD. Möchten Sie eine Kostenschätzung für Ihren Besuch?"
+      ],
+      "workflow_steps": [
+        "Patienten- und Versicherungsdaten erfassen",
+        "Anspruchssystem des Kostenträgers abfragen",
+        "Leistungsumfang und Eigenanteil ermitteln",
+        "Ergebnisse an den Patienten kommunizieren",
+        "Prüfung im EHR dokumentieren"
+      ],
+      "tools_used": [
+        "Integration des Kostenträgerportals",
+        "EHR-System",
+        "Leistungsrechner",
+        "Patientenkommunikation"
+      ],
+      "escalation_behavior": "Abgelehnte Vorabgenehmigungen werden mit den Ablehnungsgründen an die Abrechnungsstelle eskaliert. Patienten mit abgelaufenem Versicherungsschutz werden mit der Finanzberatung verbunden."
+    },
+    "appointment-reminder": {
+      "name": "Terminerinnerungs-Agent",
+      "description": "Kontaktiert Patienten und Kunden proaktiv, um anstehende Termine zu bestätigen, Verschiebungen abzuwickeln und die Nichterscheinensrate zu senken.",
+      "capabilities": [
+        "Automatisierte Erinnerungen",
+        "Erfassen von Bestätigungen",
+        "Verschieben von Terminen",
+        "Verwaltung der Warteliste",
+        "Nachverfolgung von No-Shows"
+      ],
+      "conversation": [
+        "Hallo, dies ist eine Erinnerung von Westside Medical. Sie haben morgen um 10:30 Uhr einen Termin bei Dr. Patel. Können Sie Ihr Erscheinen bestätigen?",
+        "Eigentlich muss ich ihn nach hinten verschieben. Kann ich stattdessen am Nachmittag kommen?",
+        "Natürlich. Dr. Patel hat morgen Nachmittag um 14:15 Uhr und 15:45 Uhr Zeit. Was bevorzugen Sie?",
+        "14:15 Uhr passt.",
+        "Ihr Termin wurde auf morgen 14:15 Uhr bei Dr. Patel verschoben. Wir senden Ihnen eine SMS-Bestätigung. Bis dann!"
+      ],
+      "workflow_steps": [
+        "Anstehende Termine abrufen",
+        "Patienten über den bevorzugten Kanal kontaktieren",
+        "Bestätigung oder Verschiebung erfassen",
+        "Kalendersystem aktualisieren",
+        "Stornierte Slots aus der Warteliste auffüllen"
+      ],
+      "tools_used": [
+        "Terminsystem",
+        "SMS-Gateway",
+        "Outbound-Dialer",
+        "Wartelisten-Manager"
+      ],
+      "escalation_behavior": "Patienten, die mehrere Termine versäumen, werden zur Prüfung durch die Praxisleitung markiert. Stornierungen am selben Tag lösen die automatische Auffüllung aus der Warteliste aus."
+    },
+    "property-management": {
+      "name": "Immobilienverwaltungs-Agent",
+      "description": "Bearbeitet Wartungsanfragen von Mietern, Notrufe außerhalb der Geschäftszeiten und Mietvertragsfragen für Hausverwaltungen. Stuft Dringlichkeiten ein und disponiert das Wartungspersonal.",
+      "capabilities": [
+        "Aufnahme von Wartungsanfragen",
+        "Notfall-Triage",
+        "Mieterkommunikation",
+        "Erstellung von Arbeitsaufträgen",
+        "Unterstützung mehrerer Objekte"
+      ],
+      "conversation": [
+        "Hallo, mein Küchenwasserhahn tropft ziemlich stark.",
+        "Das tut mir leid. Ich helfe Ihnen, das zu beheben. Können Sie mir Ihren Namen und Ihre Wohnungsnummer nennen?",
+        "Sarah Mitchell, Wohnung 304 in den Parkview Apartments.",
+        "Danke, Sarah. Ist das Leck eingedämmt oder läuft das Wasser aktiv über?",
+        "Es tropft stetig, läuft aber nicht über.",
+        "Verstanden. Ich habe eine Wartungsanfrage erstellt und als dringend markiert. Ein Klempner meldet sich innerhalb von 4 Stunden, um einen Besuch zu vereinbaren. Sie erhalten eine SMS mit den Details. Versuchen Sie in der Zwischenzeit, das Wasserabsperrventil unter dem Spülbecken zu schließen."
+      ],
+      "workflow_steps": [
+        "Mieter und Objekt identifizieren",
+        "Details des Wartungsproblems erfassen",
+        "Dringlichkeitsstufe einstufen",
+        "Arbeitsauftrag im System anlegen",
+        "Wartung disponieren oder Besuch planen",
+        "SMS-Bestätigung an den Mieter senden"
+      ],
+      "tools_used": [
+        "Hausverwaltungssoftware",
+        "Auftragsdatenbank",
+        "SMS-Gateway",
+        "Wartungsdisposition",
+        "Mieterdatenbank"
+      ],
+      "escalation_behavior": "Aktive Überschwemmungen, Gaslecks, Brandschäden und Heizungsausfälle im Winter werden sofort an den diensthabenden Wartungsleiter eskaliert, mit gleichzeitigen Sicherheitsanweisungen für den Mieter."
+    },
+    "restaurant": {
+      "name": "Restaurant-Agent",
+      "description": "Verwaltet Reservierungen, Take-away-Bestellungen und allgemeine Anfragen für Restaurants. Fängt Anrufspitzen in Stoßzeiten und Reservierungswünsche außerhalb der Öffnungszeiten ab.",
+      "capabilities": [
+        "Tischreservierung",
+        "Aufnahme von Take-away-Bestellungen",
+        "Menü-Anfragen",
+        "Aktualisierungen der Wartezeit",
+        "Buchung von besonderen Anlässen"
+      ],
+      "conversation": [
+        "Hallo, ich möchte einen Tisch für diesen Samstag reservieren.",
+        "Sehr gerne! Für wie viele Personen und um wie viel Uhr?",
+        "Eine Gruppe von 6, gegen 19 Uhr.",
+        "Ich prüfe die Verfügbarkeit. Ich habe 18:45 Uhr oder 19:30 Uhr für eine Gruppe von 6 an diesem Samstag frei. Was passt besser?",
+        "19:30 Uhr ist perfekt. Geht die Küche mit Nussallergien um?",
+        "Ja, unsere Küche berücksichtigt Nussallergien – ich vermerke das bei Ihrer Reservierung. Sie sind für 19:30 Uhr an diesem Samstag bestätigt, Gruppe von 6. Sie erhalten in Kürze eine SMS-Bestätigung."
+      ],
+      "workflow_steps": [
+        "Anrufer begrüßen und Anfragetyp identifizieren",
+        "Reservierungsverfügbarkeit prüfen",
+        "Buchungsdetails und Ernährungsbedürfnisse bestätigen",
+        "Reservierung im System anlegen",
+        "SMS-Bestätigung senden"
+      ],
+      "tools_used": [
+        "Reservierungssystem",
+        "Menü-Datenbank",
+        "SMS-Gateway",
+        "Kalender-API",
+        "Wartelisten-Manager"
+      ],
+      "escalation_behavior": "Anfragen für große Gruppen (12+), Anfragen für private Veranstaltungen und Catering-Anfragen werden an die Restaurantleitung übergeben. Beschwerden zu Speisenqualität oder Service werden für einen Rückruf der Leitung innerhalb von 1 Stunde markiert."
+    },
+    "real-estate": {
+      "name": "Immobilien-Agent",
+      "description": "Erfasst Käufer- und Verkäufer-Leads, beantwortet Fragen zu Inseraten und plant Besichtigungen automatisch. Integriert sich mit MLS- und CRM-Systemen.",
+      "capabilities": [
+        "Lead-Erfassung",
+        "Fragen und Antworten zu Objekten",
+        "Besichtigungsplaner",
+        "CRM-Synchronisation",
+        "Inserat-Informationen"
+      ],
+      "conversation": [
+        "Ich habe das Inserat in der Oak Street gesehen. Ist es noch verfügbar?",
+        "Ja, das Objekt in der 215 Oak Street ist weiterhin am Markt! Es handelt sich um ein 3-Zimmer-Haus mit 2 Bädern, ausgeschrieben für 425.000 USD. Möchten Sie eine Besichtigung vereinbaren?",
+        "Ja, was ist dieses Wochenende verfügbar?",
+        "Ich habe Samstag um 11 Uhr oder Sonntag um 14 Uhr. Was passt Ihnen besser?",
+        "Samstag um 11 Uhr.",
+        "Ihre Besichtigung in der 215 Oak Street am Samstag um 11 Uhr ist bestätigt. Können Sie mir Ihren Namen und Ihre E-Mail-Adresse nennen, damit ich Ihnen die Inserat-Details und die Bestätigung schicken kann?"
+      ],
+      "workflow_steps": [
+        "Anfrage entgegennehmen und Objekt identifizieren",
+        "Inserat-Details aus dem MLS bereitstellen",
+        "Käuferinteresse und Zeitrahmen qualifizieren",
+        "Besichtigung im Kalender planen",
+        "Lead ins CRM synchronisieren und Bestätigung senden"
+      ],
+      "tools_used": [
+        "MLS-Integration",
+        "CRM-System",
+        "Kalenderbuchung",
+        "SMS-Gateway",
+        "Lead-Scoring-Engine"
+      ],
+      "escalation_behavior": "Vorab genehmigte Käufer, die zum Angebot bereit sind, werden sofort mit dem zuständigen Makler verbunden. Anfragen von Verkäufern, die ihr Objekt inserieren möchten, werden an die Teamleitung weitergeleitet."
+    }
   }
 }
