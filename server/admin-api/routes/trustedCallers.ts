@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import {
   registerCallerId,
@@ -76,6 +77,65 @@ router.get('/trusted-callers/:id', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('Failed to fetch trusted caller', { tenantId, id: req.params.id, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch trusted caller' });
+  }
+});
+
+// Surfaces the audit trail for a single caller so compliance investigators can
+// answer "who submitted this Trust Hub bundle a month ago and what business
+// profile did they use?" without diving into the platform-wide audit log.
+// Includes events filed against the retired side of a rotation so the timeline
+// stays continuous when viewing a previous number with `includeRotated=true`.
+//
+// Gated to manager+ because audit metadata exposes actor email, IP address,
+// and Trust Hub identifiers — the same bar as the platform-wide /audit-log.
+router.get('/trusted-callers/:id/history', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '100'), 10) || 100, 1), 200);
+
+  try {
+    const caller = await getCallerId(tenantId, req.params.id);
+    if (!caller) return res.status(404).json({ error: 'Trusted caller not found' });
+
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const rows = await withTenantContext(client, tenantId, async () => {
+        const result = await client.query(
+          `SELECT a.id, a.action, a.resource_type, a.resource_id,
+                  a.changes, a.before_state, a.after_state, a.severity,
+                  a.ip_address, a.occurred_at,
+                  a.actor_user_id, a.actor_role,
+                  u.email AS actor_email
+             FROM audit_logs a
+             LEFT JOIN users u ON u.id = a.actor_user_id
+            WHERE a.tenant_id = $1
+              AND a.resource_type = 'trusted_caller'
+              AND (
+                a.resource_id = $2
+                OR (a.action = 'trusted_caller.rotated' AND a.changes->>'fromId' = $2)
+              )
+            ORDER BY a.occurred_at DESC
+            LIMIT $3`,
+          [tenantId, req.params.id, limit],
+        );
+        return result.rows;
+      });
+      await client.query('COMMIT');
+      return res.json({ callerId: caller.id, events: rows });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error('Failed to fetch trusted caller history', {
+      tenantId,
+      id: req.params.id,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to fetch trusted caller history' });
   }
 });
 

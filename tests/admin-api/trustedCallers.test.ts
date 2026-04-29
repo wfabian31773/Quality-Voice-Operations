@@ -59,28 +59,56 @@ vi.mock('../../platform/audit/AuditService', () => ({
   extractIp: () => '127.0.0.1',
 }));
 
+// Role overrides per request — mutated via vi.hoisted so the vi.mock factory
+// can capture them safely. Defaults match the original behavior (manager-equivalent
+// owner on tenant-A) so all existing assertions keep passing unchanged.
+const mockAuthState = vi.hoisted(() => ({ role: 'tenant_owner' as string }));
+
 vi.mock('../../server/admin-api/middleware/auth', () => ({
   requireAuth: (req: Request, _res: Response, next: NextFunction) => {
     req.user = {
       userId: 'user-1',
       tenantId: 'tenant-A',
       email: 'mgr@acme.test',
-      role: 'tenant_owner',
-      isPlatformAdmin: false,
+      role: mockAuthState.role,
+      isPlatformAdmin: mockAuthState.role === 'platform_admin',
     };
     next();
   },
 }));
 
+const ROLE_RANK: Record<string, number> = {
+  agent: 1,
+  operator: 2,
+  manager: 3,
+  tenant_owner: 4,
+  platform_admin: 5,
+};
+
 vi.mock('../../server/admin-api/middleware/rbac', () => ({
-  requireRole: () => (_req: Request, _res: Response, next: NextFunction) => next(),
+  requireRole: (required: string) =>
+    (req: Request, res: Response, next: NextFunction) => {
+      const userRank = ROLE_RANK[req.user?.role ?? ''] ?? 0;
+      const requiredRank = ROLE_RANK[required] ?? 0;
+      if (userRank >= requiredRank) return next();
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    },
 }));
 
 const poolQueryMock = vi.fn();
+const clientQueryMock = vi.fn();
+const clientReleaseMock = vi.fn();
 vi.mock('../../platform/db', () => ({
-  getPlatformPool: () => ({ query: poolQueryMock }),
+  getPlatformPool: () => ({
+    query: poolQueryMock,
+    connect: async () => ({ query: clientQueryMock, release: clientReleaseMock }),
+  }),
   withPrivilegedClient: vi.fn(),
-  withTenantContext: vi.fn(),
+  withTenantContext: async (
+    _client: unknown,
+    _tenantId: string,
+    fn: () => Promise<unknown>,
+  ) => fn(),
 }));
 
 const campaignsServiceMock = {
@@ -122,6 +150,9 @@ beforeEach(() => {
   });
   auditMock.mockReset();
   poolQueryMock.mockReset();
+  clientQueryMock.mockReset();
+  clientReleaseMock.mockReset();
+  mockAuthState.role = 'tenant_owner';
 });
 
 async function buildTrustedApp(): Promise<express.Express> {
@@ -737,5 +768,118 @@ describe('GET /trusted-callers/:id/trust-hub', () => {
     expect(res.status).toBe(200);
     expect(res.body.stored).not.toBeNull();
     expect(res.body.live).toBeNull();
+  });
+});
+
+describe('GET /trusted-callers/:id/history', () => {
+  it('returns 403 when the caller is below manager role', async () => {
+    mockAuthState.role = 'operator';
+    const app = await buildTrustedApp();
+    const res = await request(app).get('/trusted-callers/vc-1/history');
+    expect(res.status).toBe(403);
+    expect(trustedCallerMocks.getCallerId).not.toHaveBeenCalled();
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the caller does not belong to the tenant', async () => {
+    trustedCallerMocks.getCallerId.mockResolvedValue(null);
+    const app = await buildTrustedApp();
+    const res = await request(app).get('/trusted-callers/vc-missing/history');
+    expect(res.status).toBe(404);
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns audit events filtered to the caller and tenant, newest first', async () => {
+    trustedCallerMocks.getCallerId.mockResolvedValue({
+      id: 'vc-1',
+      tenantId: 'tenant-A',
+      phoneNumber: '+12125550123',
+    });
+    const sampleRows = [
+      {
+        id: 'a3',
+        action: 'trusted_caller.trust_hub_submitted',
+        resource_type: 'trusted_caller',
+        resource_id: 'vc-1',
+        changes: {},
+        before_state: null,
+        after_state: { customerProfileSid: 'BU-cp', trustProductSid: 'BU-tp', brandSid: null },
+        severity: 'info',
+        ip_address: '10.0.0.1',
+        occurred_at: '2026-04-29T12:34:56Z',
+        actor_user_id: 'user-1',
+        actor_role: 'tenant_owner',
+        actor_email: 'mgr@acme.test',
+      },
+      {
+        id: 'a1',
+        action: 'trusted_caller.registered',
+        resource_type: 'trusted_caller',
+        resource_id: 'vc-1',
+        changes: {},
+        before_state: null,
+        after_state: { phoneNumber: '+12125550123', friendlyName: 'Sales' },
+        severity: 'info',
+        ip_address: '10.0.0.1',
+        occurred_at: '2026-04-01T00:00:00Z',
+        actor_user_id: 'user-1',
+        actor_role: 'tenant_owner',
+        actor_email: 'mgr@acme.test',
+      },
+    ];
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('audit_logs')) return { rows: sampleRows };
+      return { rows: [] };
+    });
+
+    const app = await buildTrustedApp();
+    const res = await request(app).get('/trusted-callers/vc-1/history');
+
+    expect(res.status).toBe(200);
+    expect(res.body.callerId).toBe('vc-1');
+    expect(res.body.events).toHaveLength(2);
+    expect(res.body.events[0].action).toBe('trusted_caller.trust_hub_submitted');
+    expect(res.body.events[1].action).toBe('trusted_caller.registered');
+
+    // Confirm the SQL bound the caller id and tenant, and ordered by occurred_at DESC.
+    const auditCall = clientQueryMock.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('audit_logs'),
+    );
+    expect(auditCall).toBeDefined();
+    const [, params] = auditCall as [string, unknown[]];
+    expect(params[0]).toBe('tenant-A');
+    expect(params[1]).toBe('vc-1');
+    expect((auditCall as [string, unknown[]])[0]).toMatch(/ORDER BY a\.occurred_at DESC/);
+    // The query also pulls in rotated-from events tied to the retired side.
+    expect((auditCall as [string, unknown[]])[0]).toMatch(/changes->>'fromId'/);
+    expect(clientReleaseMock).toHaveBeenCalled();
+  });
+
+  it('clamps the limit query param to the [1, 200] range', async () => {
+    trustedCallerMocks.getCallerId.mockResolvedValue({ id: 'vc-1', tenantId: 'tenant-A' });
+    clientQueryMock.mockResolvedValue({ rows: [] });
+
+    const app = await buildTrustedApp();
+    const res = await request(app).get('/trusted-callers/vc-1/history?limit=9999');
+    expect(res.status).toBe(200);
+    const auditCall = clientQueryMock.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('audit_logs'),
+    );
+    const [, params] = auditCall as [string, unknown[]];
+    expect(params[2]).toBe(200);
+  });
+
+  it('returns 500 when the audit query fails and releases the client', async () => {
+    trustedCallerMocks.getCallerId.mockResolvedValue({ id: 'vc-1', tenantId: 'tenant-A' });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('audit_logs')) throw new Error('db down');
+      return { rows: [] };
+    });
+
+    const app = await buildTrustedApp();
+    const res = await request(app).get('/trusted-callers/vc-1/history');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/history/);
+    expect(clientReleaseMock).toHaveBeenCalled();
   });
 });

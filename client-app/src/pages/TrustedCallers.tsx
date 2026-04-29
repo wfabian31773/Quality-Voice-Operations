@@ -14,6 +14,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  History,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
@@ -1129,6 +1130,205 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+interface AuditEvent {
+  id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  changes: Record<string, unknown> | null;
+  before_state: Record<string, unknown> | null;
+  after_state: Record<string, unknown> | null;
+  severity: 'info' | 'warning' | 'critical';
+  ip_address: string | null;
+  occurred_at: string;
+  actor_user_id: string | null;
+  actor_role: string | null;
+  actor_email: string | null;
+}
+
+const HISTORY_ACTION_LABELS: Record<string, string> = {
+  'trusted_caller.registered': 'Registered',
+  'trusted_caller.verified': 'Verified',
+  'trusted_caller.verified_manual_override': 'Verified (manual override)',
+  'trusted_caller.auto_verified': 'Auto-verified by Twilio sync',
+  'trusted_caller.auto_failed': 'Auto-verification failed',
+  'trusted_caller.rotated': 'Rotated',
+  'trusted_caller.trust_hub_submitted': 'Trust Hub submitted',
+  'trusted_caller.deleted': 'Deleted',
+};
+
+function prettyAction(action: string): string {
+  return HISTORY_ACTION_LABELS[action] ?? action;
+}
+
+const HISTORY_SEVERITY_STYLES: Record<AuditEvent['severity'], string> = {
+  info: 'bg-text-muted/10 text-text-muted',
+  warning: 'bg-warning/10 text-warning',
+  critical: 'bg-danger/10 text-danger',
+};
+
+// Maps each action to the snapshot field that's worth highlighting in the
+// timeline summary. Falls back to dumping `changes` / `after_state` as
+// formatted JSON when no curated mapping exists.
+function snapshotEntries(event: AuditEvent): Array<[string, string]> {
+  const after = event.after_state ?? {};
+  const changes = event.changes ?? {};
+  const entries: Array<[string, string]> = [];
+
+  const push = (label: string, value: unknown) => {
+    if (value === undefined || value === null || value === '') return;
+    if (typeof value === 'object') {
+      entries.push([label, JSON.stringify(value)]);
+    } else {
+      entries.push([label, String(value)]);
+    }
+  };
+
+  switch (event.action) {
+    case 'trusted_caller.registered':
+      push('Phone number', after.phoneNumber);
+      push('Friendly name', after.friendlyName);
+      break;
+    case 'trusted_caller.verified':
+    case 'trusted_caller.verified_manual_override':
+      push('Attestation', after.attestationLevel);
+      if (after.manualOverride) push('Manual override', 'yes');
+      push('Reason', after.reason);
+      break;
+    case 'trusted_caller.auto_verified':
+    case 'trusted_caller.auto_failed':
+      push('Attestation', after.attestationLevel);
+      push('Reason', after.reason ?? changes.reason);
+      break;
+    case 'trusted_caller.rotated':
+      push('From', changes.fromPhone);
+      push('To', changes.toPhone);
+      push('Retired ID', changes.fromId);
+      break;
+    case 'trusted_caller.trust_hub_submitted':
+      push('Customer Profile SID', after.customerProfileSid);
+      push('Trust Product SID', after.trustProductSid);
+      push('Brand SID', after.brandSid);
+      break;
+    case 'trusted_caller.deleted':
+      // Deletion events don't record a snapshot; the timestamp + actor say it all.
+      break;
+    default:
+      // Unknown action — surface the raw maps so we don't silently swallow data.
+      for (const [k, v] of Object.entries(after)) push(k, v);
+      for (const [k, v] of Object.entries(changes)) push(k, v);
+  }
+
+  return entries;
+}
+
+function HistoryDrawer({
+  caller,
+  onClose,
+}: {
+  caller: TrustedCaller;
+  onClose: () => void;
+}) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['trusted-caller-history', caller.id],
+    queryFn: () => api.get<{ callerId: string; events: AuditEvent[] }>(
+      `/trusted-callers/${caller.id}/history`,
+    ),
+  });
+  const events = data?.events ?? [];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel={`History for ${caller.phoneNumber}`}
+      containerClassName="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40"
+      panelClassName="bg-surface border-l border-border shadow-xl w-full max-w-md h-full overflow-y-auto"
+    >
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
+            <History className="h-4 w-4" /> Audit history
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            {formatPhone(caller.phoneNumber)}
+            {caller.friendlyName ? ` · ${caller.friendlyName}` : ''}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="text-text-muted hover:text-text-primary"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="p-5 space-y-3">
+        {isLoading && <div className="text-text-muted text-sm">Loading…</div>}
+        {error && (
+          <div className="bg-danger/10 text-danger text-sm px-3 py-2 rounded-lg">
+            Failed to load history: {(error as Error).message}
+          </div>
+        )}
+        {!isLoading && !error && events.length === 0 && (
+          <div className="text-text-muted text-sm">
+            No audit events recorded for this caller yet.
+          </div>
+        )}
+        {events.length > 0 && (
+          <ol className="relative border-l border-border pl-4 space-y-4">
+            {events.map((event) => {
+              const fields = snapshotEntries(event);
+              return (
+                <li key={event.id} className="relative">
+                  <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-surface" />
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {prettyAction(event.action)}
+                      </div>
+                      <div className="text-xs text-text-muted mt-0.5">
+                        {new Date(event.occurred_at).toLocaleString()}
+                      </div>
+                    </div>
+                    {event.severity !== 'info' && (
+                      <span
+                        className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-medium ${HISTORY_SEVERITY_STYLES[event.severity]}`}
+                      >
+                        {event.severity}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-text-secondary mt-1">
+                    By{' '}
+                    <span className="font-medium text-text-primary">
+                      {event.actor_email ?? (event.actor_user_id ? 'Unknown user' : 'System')}
+                    </span>
+                    {event.actor_role ? ` · ${event.actor_role.replace(/_/g, ' ')}` : ''}
+                    {event.ip_address ? ` · ${event.ip_address}` : ''}
+                  </div>
+                  {fields.length > 0 && (
+                    <dl className="mt-2 border border-border rounded-md bg-surface-hover/40 divide-y divide-border text-xs">
+                      {fields.map(([label, value]) => (
+                        <div key={label} className="flex items-start justify-between gap-3 px-2.5 py-1.5">
+                          <dt className="text-text-muted">{label}</dt>
+                          <dd className="text-text-primary font-mono break-all text-right max-w-[60%]">
+                            {value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function TrustedCallers() {
   const { isManager } = useRole();
   const canManage = isManager;
@@ -1138,6 +1338,7 @@ export default function TrustedCallers() {
   const [verifyTarget, setVerifyTarget] = useState<TrustedCaller | null>(null);
   const [rotateTarget, setRotateTarget] = useState<TrustedCaller | null>(null);
   const [trustHubTarget, setTrustHubTarget] = useState<TrustedCaller | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<TrustedCaller | null>(null);
   const [includeRotated, setIncludeRotated] = useState(false);
   const [lastValidationCode, setLastValidationCode] = useState<{ code: string; phone: string } | null>(null);
 
@@ -1360,6 +1561,15 @@ export default function TrustedCallers() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center gap-1">
+                        {canManage && (
+                          <button
+                            onClick={() => setHistoryTarget(caller)}
+                            className="p-1.5 text-text-secondary hover:text-text-primary"
+                            title="View audit history"
+                          >
+                            <History className="h-4 w-4" />
+                          </button>
+                        )}
                         {caller.status === 'pending' && (
                           <>
                             <button
@@ -1460,6 +1670,12 @@ export default function TrustedCallers() {
           caller={trustHubTarget}
           onClose={() => setTrustHubTarget(null)}
           onSubmitted={() => queryClient.invalidateQueries({ queryKey: ['trusted-callers'] })}
+        />
+      )}
+      {historyTarget && (
+        <HistoryDrawer
+          caller={historyTarget}
+          onClose={() => setHistoryTarget(null)}
         />
       )}
     </div>
