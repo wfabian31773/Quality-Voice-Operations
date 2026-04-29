@@ -175,7 +175,28 @@ export type AgentBuilderTKey =
   | 'templateFallbackHint'
   | 'templatePreviewAria'
   | 'templateStepsLabel'
-  | 'templatesPickerHint';
+  | 'templatesPickerHint'
+  | 'customTemplatesHeader'
+  | 'customTemplatesEmpty'
+  | 'saveAsTemplate'
+  | 'saveTemplateTitle'
+  | 'saveTemplateNameLabel'
+  | 'saveTemplateNamePlaceholder'
+  | 'saveTemplateDescLabel'
+  | 'saveTemplateDescPlaceholder'
+  | 'saveTemplateShareLabel'
+  | 'saveTemplateShareHelper'
+  | 'saveTemplateConfirm'
+  | 'saveTemplateCancel'
+  | 'saveTemplateSaving'
+  | 'saveTemplateSuccess'
+  | 'saveTemplateEmptyCanvas'
+  | 'saveTemplateError'
+  | 'deleteCustomTemplate'
+  | 'deleteCustomTemplateConfirm'
+  | 'deleteCustomTemplateSuccess'
+  | 'sharedBadge'
+  | 'createdByYouLabel';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -353,6 +374,27 @@ const EN: Record<AgentBuilderTKey, string> = {
   templatePreviewAria: 'Preview of {label} workflow',
   templateStepsLabel: '{nodes} steps · {edges} connections',
   templatesPickerHint: 'Hover a template to see a larger preview before loading.',
+  customTemplatesHeader: 'Your saved templates',
+  customTemplatesEmpty: "You haven't saved any templates yet.",
+  saveAsTemplate: 'Save as template',
+  saveTemplateTitle: 'Save canvas as template',
+  saveTemplateNameLabel: 'Template name',
+  saveTemplateNamePlaceholder: 'e.g. Roofing intake — after-hours',
+  saveTemplateDescLabel: 'Description (optional)',
+  saveTemplateDescPlaceholder: 'What does this workflow do?',
+  saveTemplateShareLabel: 'Share with my team',
+  saveTemplateShareHelper: 'Other users in this tenant will see and be able to load this template.',
+  saveTemplateConfirm: 'Save template',
+  saveTemplateCancel: 'Cancel',
+  saveTemplateSaving: 'Saving template…',
+  saveTemplateSuccess: 'Template saved',
+  saveTemplateEmptyCanvas: 'Add at least one node to the canvas before saving a template.',
+  saveTemplateError: "Couldn't save template: {message}",
+  deleteCustomTemplate: 'Delete template',
+  deleteCustomTemplateConfirm: 'Delete template "{name}"? This cannot be undone.',
+  deleteCustomTemplateSuccess: 'Template deleted',
+  sharedBadge: 'Shared',
+  createdByYouLabel: 'Created by you',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {

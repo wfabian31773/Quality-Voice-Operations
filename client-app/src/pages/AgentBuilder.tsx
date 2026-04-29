@@ -46,7 +46,7 @@ import {
   Ticket, UserPlus, Calendar, Send, Truck, Phone,
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
   RotateCcw, Eye, Trash2, Lightbulb, Check, XCircle, TrendingUp,
-  Keyboard, Search, MoreHorizontal,
+  Keyboard, Search, MoreHorizontal, BookmarkPlus, Users,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import VoicePicker from '../components/VoicePicker';
@@ -483,6 +483,30 @@ interface IndustryTemplate {
   edges: WorkflowEdge[];
   /** True when the active language has no translated industry copy and English fallback was used. */
   usedEnglishFallback: boolean;
+}
+
+/**
+ * Tenant-defined template saved by an operator from the current canvas. Unlike
+ * {@link IndustryTemplate} these are not localized server-side: the saved
+ * `welcome_greeting` and `system_prompt` are applied verbatim when loaded.
+ */
+interface CustomTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  workflow_definition: {
+    nodes?: WorkflowNode[];
+    edges?: WorkflowEdge[];
+    settings?: Record<string, unknown>;
+  };
+  welcome_greeting: string | null;
+  system_prompt: string | null;
+  language: string;
+  is_shared: boolean;
+  is_owner: boolean;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
@@ -1814,6 +1838,13 @@ function AgentBuilderInner() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const templatesMenuRef = useRef<HTMLDivElement>(null);
   const [hoveredTemplateKey, setHoveredTemplateKey] = useState<IndustryTemplateKey | null>(null);
+  const [hoveredCustomTemplateId, setHoveredCustomTemplateId] = useState<string | null>(null);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [saveTemplateForm, setSaveTemplateForm] = useState({
+    name: '',
+    description: '',
+    is_shared: false,
+  });
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
 
@@ -1839,6 +1870,7 @@ function AgentBuilderInner() {
   useEffect(() => {
     if (!templatesOpen) {
       setHoveredTemplateKey(null);
+      setHoveredCustomTemplateId(null);
       return;
     }
     const handleClickOutside = (e: MouseEvent) => {
@@ -1888,6 +1920,16 @@ function AgentBuilderInner() {
     queryFn: () => api.get<{ versions: VersionInfo[] }>(`/agents/${id}/versions`),
     enabled: !!id && id !== 'new',
   });
+
+  const { data: customTemplatesData } = useQuery({
+    queryKey: ['agent-templates-custom'],
+    queryFn: () =>
+      api
+        .get<{ templates: CustomTemplate[] }>('/agents/templates/custom')
+        .catch(() => ({ templates: [] as CustomTemplate[] })),
+    retry: false,
+  });
+  const customTemplates: CustomTemplate[] = customTemplatesData?.templates ?? [];
 
   useEffect(() => {
     if (agentData?.agent) {
@@ -2139,6 +2181,120 @@ function AgentBuilderInner() {
     [setNodes, setEdges, setAgentSettings, t, agentSettings.language],
   );
 
+  const loadCustomTemplate = useCallback(
+    (template: CustomTemplate) => {
+      const wd = template.workflow_definition || {};
+      const tplNodes = (wd.nodes as WorkflowNode[]) || [];
+      const tplEdges = (wd.edges as WorkflowEdge[]) || [];
+      setNodes(tplNodes);
+      setEdges(
+        tplEdges.map((e) => ({
+          ...e,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { strokeWidth: 2 },
+        })),
+      );
+      // Custom templates store the operator's authored copy verbatim, so we
+      // apply welcome_greeting / system_prompt unconditionally — the operator
+      // explicitly chose to load this template.
+      setAgentSettings((prev) => ({
+        ...prev,
+        welcome_greeting: template.welcome_greeting ?? prev.welcome_greeting,
+        system_prompt: template.system_prompt ?? prev.system_prompt,
+      }));
+      setHasChanges(true);
+    },
+    [setNodes, setEdges, setAgentSettings],
+  );
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (input: { name: string; description: string; is_shared: boolean }) => {
+      const workflowDef = {
+        nodes: nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+        edges: edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
+          label: e.label,
+        })),
+        settings: {
+          voice: agentSettings.voice,
+          model: agentSettings.model,
+          temperature: agentSettings.temperature,
+          system_prompt: agentSettings.system_prompt,
+          welcome_greeting: agentSettings.welcome_greeting,
+          language: agentSettings.language,
+          tone: agentSettings.tone,
+          speakingRate: agentSettings.speakingRate,
+        },
+      };
+      return api.post<{ template: CustomTemplate }>('/agents/templates/custom', {
+        name: input.name,
+        description: input.description || null,
+        workflow_definition: workflowDef,
+        welcome_greeting: agentSettings.welcome_greeting,
+        system_prompt: agentSettings.system_prompt,
+        language: agentSettings.language,
+        is_shared: input.is_shared,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-templates-custom'] });
+      setSaveTemplateOpen(false);
+      setSaveTemplateForm({ name: '', description: '', is_shared: false });
+      setSaveMessage({ text: t('saveTemplateSuccess'), tone: 'success' });
+      setTimeout(() => setSaveMessage(null), 2500);
+    },
+    onError: (err) => {
+      setSaveMessage({
+        text: t('saveTemplateError', { message: (err as Error).message }),
+        tone: 'error',
+      });
+      setTimeout(() => setSaveMessage(null), 4000);
+    },
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => api.delete(`/agents/templates/custom/${templateId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-templates-custom'] });
+      setSaveMessage({ text: t('deleteCustomTemplateSuccess'), tone: 'success' });
+      setTimeout(() => setSaveMessage(null), 2500);
+    },
+    onError: (err) => {
+      setSaveMessage({
+        text: t('saveTemplateError', { message: (err as Error).message }),
+        tone: 'error',
+      });
+      setTimeout(() => setSaveMessage(null), 4000);
+    },
+  });
+
+  const openSaveTemplateModal = useCallback(() => {
+    if (nodes.length === 0) {
+      setSaveMessage({ text: t('saveTemplateEmptyCanvas'), tone: 'error' });
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+    setSaveTemplateForm({
+      name: agentSettings.name || '',
+      description: '',
+      is_shared: false,
+    });
+    setSaveTemplateOpen(true);
+  }, [nodes.length, agentSettings.name, t]);
+
+  const handleDeleteCustomTemplate = useCallback(
+    (template: CustomTemplate) => {
+      const confirmMsg = t('deleteCustomTemplateConfirm', { name: template.name });
+      if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) return;
+      deleteTemplateMutation.mutate(template.id);
+    },
+    [deleteTemplateMutation, t],
+  );
+
   const currentSelectedNode = useMemo(
     () => (selectedNode ? nodes.find((n) => n.id === selectedNode.id) || null : null),
     [selectedNode, nodes],
@@ -2358,6 +2514,15 @@ function AgentBuilderInner() {
               ⌘K
             </kbd>
           </button>
+          <button
+            type="button"
+            onClick={openSaveTemplateModal}
+            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+            title={t('saveAsTemplate')}
+            aria-label={t('saveAsTemplate')}
+          >
+            <BookmarkPlus className="h-3.5 w-3.5" /> {t('saveAsTemplate')}
+          </button>
           <div className="relative group hidden xl:block" ref={templatesMenuRef}>
             <button
               type="button"
@@ -2394,8 +2559,14 @@ function AgentBuilderInner() {
                       setHoveredTemplateKey(null);
                       loadTemplate(tpl);
                     }}
-                    onMouseEnter={() => setHoveredTemplateKey(tpl.key)}
-                    onFocus={() => setHoveredTemplateKey(tpl.key)}
+                    onMouseEnter={() => {
+                      setHoveredTemplateKey(tpl.key);
+                      setHoveredCustomTemplateId(null);
+                    }}
+                    onFocus={() => {
+                      setHoveredTemplateKey(tpl.key);
+                      setHoveredCustomTemplateId(null);
+                    }}
                     onBlur={() =>
                       setHoveredTemplateKey((curr) => (curr === tpl.key ? null : curr))
                     }
@@ -2424,6 +2595,93 @@ function AgentBuilderInner() {
                     </div>
                   </button>
                 ))}
+                <div className="px-3 py-2 border-t border-border bg-surface-secondary/40">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                    {t('customTemplatesHeader')}
+                  </p>
+                </div>
+                {customTemplates.length === 0 ? (
+                  <p className="px-3 py-3 text-[11px] text-text-muted">
+                    {t('customTemplatesEmpty')}
+                  </p>
+                ) : (
+                  customTemplates.map((tpl) => {
+                    const tplNodes = (tpl.workflow_definition?.nodes as WorkflowNode[]) || [];
+                    const tplEdges = (tpl.workflow_definition?.edges as WorkflowEdge[]) || [];
+                    return (
+                      <div
+                        key={tpl.id}
+                        className="flex items-center gap-3 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover focus-within:bg-surface-hover transition"
+                        onMouseEnter={() => {
+                          setHoveredCustomTemplateId(tpl.id);
+                          setHoveredTemplateKey(null);
+                        }}
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setTemplatesOpen(false);
+                            setHoveredCustomTemplateId(null);
+                            loadCustomTemplate(tpl);
+                          }}
+                          onFocus={() => {
+                            setHoveredCustomTemplateId(tpl.id);
+                            setHoveredTemplateKey(null);
+                          }}
+                          onBlur={() =>
+                            setHoveredCustomTemplateId((curr) => (curr === tpl.id ? null : curr))
+                          }
+                          className="flex items-center gap-3 flex-1 min-w-0 text-left focus:outline-none"
+                        >
+                          <div className="flex-shrink-0 w-12 h-9 rounded border border-border bg-surface-secondary overflow-hidden">
+                            <TemplatePreview
+                              nodes={tplNodes}
+                              edges={tplEdges}
+                              width={48}
+                              height={36}
+                              ariaLabel={t('templatePreviewAria', { label: tpl.name })}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="truncate font-medium flex items-center gap-1">
+                              <span className="truncate">{tpl.name}</span>
+                              {tpl.is_shared && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-medium"
+                                  title={t('sharedBadge')}
+                                >
+                                  <Users className="h-2.5 w-2.5" /> {t('sharedBadge')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-text-muted truncate">
+                              {tpl.description ||
+                                t('templateStepsLabel', {
+                                  nodes: tplNodes.length,
+                                  edges: tplEdges.length,
+                                })}
+                            </div>
+                          </div>
+                        </button>
+                        {tpl.is_owner && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCustomTemplate(tpl);
+                            }}
+                            className="flex-shrink-0 p-1 rounded text-text-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                            aria-label={t('deleteCustomTemplate')}
+                            title={t('deleteCustomTemplate')}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
             {templatesOpen && hoveredTemplateKey && (() => {
@@ -2453,6 +2711,35 @@ function AgentBuilderInner() {
                       width={264}
                       height={200}
                       ariaLabel={t('templatePreviewAria', { label: tpl.label })}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+            {templatesOpen && hoveredCustomTemplateId && (() => {
+              const tpl = customTemplates.find((x) => x.id === hoveredCustomTemplateId);
+              if (!tpl) return null;
+              const tplNodes = (tpl.workflow_definition?.nodes as WorkflowNode[]) || [];
+              const tplEdges = (tpl.workflow_definition?.edges as WorkflowEdge[]) || [];
+              return (
+                <div
+                  className="absolute right-full top-full mt-1 mr-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-30 p-3 pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <p className="text-xs font-semibold text-text-primary mb-1 truncate">{tpl.name}</p>
+                  <p className="text-[10px] text-text-muted mb-2">
+                    {t('templateStepsLabel', {
+                      nodes: tplNodes.length,
+                      edges: tplEdges.length,
+                    })}
+                  </p>
+                  <div className="rounded-md border border-border bg-surface-secondary overflow-hidden">
+                    <TemplatePreview
+                      nodes={tplNodes}
+                      edges={tplEdges}
+                      width={264}
+                      height={200}
+                      ariaLabel={t('templatePreviewAria', { label: tpl.name })}
                     />
                   </div>
                 </div>
@@ -2492,6 +2779,18 @@ function AgentBuilderInner() {
                     ⌘K
                   </kbd>
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    openSaveTemplateModal();
+                  }}
+                  className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition"
+                >
+                  <BookmarkPlus className="h-3.5 w-3.5 text-text-secondary" />
+                  <span className="flex-1">{t('saveAsTemplate')}</span>
+                </button>
                 <div className="border-t border-border my-1" />
                 <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                   {t('templates')}
@@ -2527,6 +2826,55 @@ function AgentBuilderInner() {
                     </div>
                   </button>
                 ))}
+                <div className="border-t border-border my-1" />
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                  {t('customTemplatesHeader')}
+                </div>
+                {customTemplates.length === 0 ? (
+                  <p className="px-3 py-2 text-[11px] text-text-muted">
+                    {t('customTemplatesEmpty')}
+                  </p>
+                ) : (
+                  customTemplates.map((tpl) => {
+                    const tplNodes = (tpl.workflow_definition?.nodes as WorkflowNode[]) || [];
+                    const tplEdges = (tpl.workflow_definition?.edges as WorkflowEdge[]) || [];
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOverflowOpen(false);
+                          loadCustomTemplate(tpl);
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition"
+                      >
+                        <div className="flex-shrink-0 w-10 h-7 rounded border border-border bg-surface-secondary overflow-hidden">
+                          <TemplatePreview
+                            nodes={tplNodes}
+                            edges={tplEdges}
+                            width={40}
+                            height={28}
+                            ariaLabel={t('templatePreviewAria', { label: tpl.name })}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate flex items-center gap-1">
+                            <span className="truncate">{tpl.name}</span>
+                            {tpl.is_shared && <Users className="h-2.5 w-2.5 text-primary flex-shrink-0" aria-label={t('sharedBadge')} />}
+                          </div>
+                          <div className="text-[10px] text-text-muted truncate">
+                            {tpl.description ||
+                              t('templateStepsLabel', {
+                                nodes: tplNodes.length,
+                                edges: tplEdges.length,
+                              })}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>
@@ -2720,6 +3068,159 @@ function AgentBuilderInner() {
         onFocusNode={focusNodeById}
         t={t}
       />
+      {saveTemplateOpen && (
+        <SaveTemplateModal
+          form={saveTemplateForm}
+          onChange={setSaveTemplateForm}
+          onClose={() => setSaveTemplateOpen(false)}
+          onSave={() => saveTemplateMutation.mutate(saveTemplateForm)}
+          isSaving={saveTemplateMutation.isPending}
+          t={t}
+        />
+      )}
+    </div>
+  );
+}
+
+interface SaveTemplateForm {
+  name: string;
+  description: string;
+  is_shared: boolean;
+}
+
+function SaveTemplateModal({
+  form,
+  onChange,
+  onClose,
+  onSave,
+  isSaving,
+  t,
+}: {
+  form: SaveTemplateForm;
+  onChange: (next: SaveTemplateForm) => void;
+  onClose: () => void;
+  onSave: () => void;
+  isSaving: boolean;
+  t: BuilderT;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+  const trimmed = form.name.trim();
+  const canSave = trimmed.length > 0 && trimmed.length <= 120 && !isSaving;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="save-template-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="w-full max-w-md bg-surface border border-border rounded-xl shadow-xl"
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <h2 id="save-template-title" className="text-sm font-semibold text-text-primary">
+            {t('saveTemplateTitle')}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('saveTemplateCancel')}
+            className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-surface-hover transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form
+          className="px-5 py-4 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (canSave) onSave();
+          }}
+        >
+          <div>
+            <label
+              htmlFor="save-template-name"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
+              {t('saveTemplateNameLabel')}
+            </label>
+            <input
+              id="save-template-name"
+              type="text"
+              autoFocus
+              value={form.name}
+              onChange={(e) => onChange({ ...form, name: e.target.value })}
+              maxLength={120}
+              placeholder={t('saveTemplateNamePlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="save-template-desc"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
+              {t('saveTemplateDescLabel')}
+            </label>
+            <textarea
+              id="save-template-desc"
+              value={form.description}
+              onChange={(e) => onChange({ ...form, description: e.target.value })}
+              maxLength={500}
+              rows={3}
+              placeholder={t('saveTemplateDescPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+            />
+          </div>
+          <label
+            htmlFor="save-template-shared"
+            className="flex items-start gap-2 cursor-pointer"
+          >
+            <input
+              id="save-template-shared"
+              type="checkbox"
+              checked={form.is_shared}
+              onChange={(e) => onChange({ ...form, is_shared: e.target.checked })}
+              className="mt-0.5 h-4 w-4 text-primary rounded border-border focus:ring-primary/40"
+            />
+            <span>
+              <span className="block text-xs font-medium text-text-primary">
+                {t('saveTemplateShareLabel')}
+              </span>
+              <span className="block text-[11px] text-text-muted leading-snug">
+                {t('saveTemplateShareHelper')}
+              </span>
+            </span>
+          </label>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+            >
+              {t('saveTemplateCancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={!canSave}
+              className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              <BookmarkPlus className="h-3.5 w-3.5" />
+              {isSaving ? t('saveTemplateSaving') : t('saveTemplateConfirm')}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

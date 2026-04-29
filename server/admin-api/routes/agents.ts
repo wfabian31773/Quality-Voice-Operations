@@ -1073,4 +1073,343 @@ router.post('/agents/:id/rollback', requireAuth, requireRole('manager'), async (
   }
 });
 
+// ===== Custom (user-authored) workflow templates =====
+//
+// The Templates picker in Agent Builder seeds operators with 8 built-in
+// industry templates (medical, dental, …). These endpoints let any operator
+// snapshot the current canvas — workflow + greeting + system prompt — as a
+// reusable named template. Templates are tenant-scoped via RLS; within a
+// tenant a template is private to its creator unless `is_shared` is set,
+// at which point every member of the tenant can list and load it.
+//
+// The compiled workflow shape we store mirrors `validateWorkflowDefinition`
+// above (the same validator the canvas uses), so loading a custom template
+// is symmetric with loading a built-in one — both produce a `{ nodes,
+// edges }` graph the React Flow canvas can render directly.
+
+const MAX_TEMPLATE_NAME_LENGTH = 120;
+const MAX_TEMPLATE_DESCRIPTION_LENGTH = 1_000;
+
+function validateTemplateInput(
+  body: Record<string, unknown>,
+  isCreate: boolean,
+): string | null {
+  if (isCreate) {
+    if (typeof body.name !== 'string' || !body.name.trim()) {
+      return 'name is required';
+    }
+  } else if (body.name !== undefined) {
+    if (typeof body.name !== 'string' || !body.name.trim()) {
+      return 'name must be a non-empty string';
+    }
+  }
+  if (typeof body.name === 'string' && body.name.length > MAX_TEMPLATE_NAME_LENGTH) {
+    return `name exceeds maximum length of ${MAX_TEMPLATE_NAME_LENGTH} characters`;
+  }
+  if (body.description !== undefined && body.description !== null) {
+    if (typeof body.description !== 'string') return 'description must be a string';
+    if ((body.description as string).length > MAX_TEMPLATE_DESCRIPTION_LENGTH) {
+      return `description exceeds maximum length of ${MAX_TEMPLATE_DESCRIPTION_LENGTH} characters`;
+    }
+  }
+  if (body.welcome_greeting !== undefined && body.welcome_greeting !== null) {
+    if (typeof body.welcome_greeting !== 'string') return 'welcome_greeting must be a string';
+  }
+  if (body.system_prompt !== undefined && body.system_prompt !== null) {
+    if (typeof body.system_prompt !== 'string') return 'system_prompt must be a string';
+    if ((body.system_prompt as string).length > MAX_SYSTEM_PROMPT_LENGTH) {
+      return `system_prompt exceeds maximum length of ${MAX_SYSTEM_PROMPT_LENGTH} characters`;
+    }
+  }
+  if (body.language !== undefined) {
+    if (!isSupportedAgentLanguage(body.language)) {
+      const codes = AGENT_LANGUAGES.map((l) => l.code).join(', ');
+      return `language must be one of: ${codes}`;
+    }
+  }
+  if (body.is_shared !== undefined && typeof body.is_shared !== 'boolean') {
+    return 'is_shared must be a boolean';
+  }
+  if (isCreate || body.workflow_definition !== undefined) {
+    const validationError = validateWorkflowDefinition(body.workflow_definition);
+    if (validationError) return validationError;
+  }
+  return null;
+}
+
+router.get('/agents/templates/custom', requireAuth, async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows } = await client.query(
+      `SELECT id, tenant_id, created_by_user_id, name, description,
+              workflow_definition, welcome_greeting, system_prompt, language,
+              is_shared, created_at, updated_at
+         FROM agent_templates
+        WHERE tenant_id = $1 AND (is_shared = TRUE OR created_by_user_id = $2)
+        ORDER BY created_at DESC`,
+      [tenantId, userId],
+    );
+    await client.query('COMMIT');
+
+    const templates = rows.map((row) => ({
+      ...row,
+      is_owner: row.created_by_user_id === userId,
+    }));
+    return res.json({ templates });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to list custom templates', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list custom templates' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post(
+  '/agents/templates/custom',
+  requireAuth,
+  requireRole('manager'),
+  async (req, res) => {
+    const { tenantId, userId } = req.user!;
+    const body = req.body as Record<string, unknown>;
+
+    const validationError = validateTemplateInput(body, true);
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    const language = body.language !== undefined
+      ? normalizeAgentLanguage(body.language)
+      : DEFAULT_AGENT_LANGUAGE;
+
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
+
+      const { rows } = await client.query(
+        `INSERT INTO agent_templates
+           (tenant_id, created_by_user_id, name, description,
+            workflow_definition, welcome_greeting, system_prompt,
+            language, is_shared)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          tenantId,
+          userId,
+          (body.name as string).trim(),
+          body.description ? (body.description as string) : null,
+          JSON.stringify(body.workflow_definition),
+          body.welcome_greeting ? (body.welcome_greeting as string) : null,
+          body.system_prompt ? (body.system_prompt as string) : null,
+          language,
+          body.is_shared === true,
+        ],
+      );
+      await client.query('COMMIT');
+
+      writeAuditLog({
+        tenantId,
+        actorUserId: userId,
+        actorRole: req.user!.role,
+        action: 'agent_template.created',
+        resourceType: 'agent_template',
+        resourceId: rows[0].id,
+        changes: { name: rows[0].name, is_shared: rows[0].is_shared },
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+
+      logger.info('Custom agent template created', {
+        tenantId,
+        templateId: rows[0].id,
+        isShared: rows[0].is_shared,
+      });
+      return res.status(201).json({ template: { ...rows[0], is_owner: true } });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to create custom template', { tenantId, error: String(err) });
+      return res.status(500).json({ error: 'Failed to create custom template' });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+router.patch(
+  '/agents/templates/custom/:id',
+  requireAuth,
+  requireRole('manager'),
+  async (req, res) => {
+    const { tenantId, userId, role, isPlatformAdmin } = req.user!;
+    const { id } = req.params;
+    const body = req.body as Record<string, unknown>;
+
+    const validationError = validateTemplateInput(body, false);
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    const allowed = [
+      'name',
+      'description',
+      'workflow_definition',
+      'welcome_greeting',
+      'system_prompt',
+      'language',
+      'is_shared',
+    ];
+    const updates: string[] = ['updated_at = NOW()'];
+    const values: unknown[] = [id, tenantId];
+
+    for (const key of allowed) {
+      if (key in body) {
+        let val: unknown = body[key];
+        if (key === 'workflow_definition') {
+          val = JSON.stringify(body[key]);
+        } else if (key === 'name' && typeof body.name === 'string') {
+          val = body.name.trim();
+        } else if (key === 'language') {
+          val = normalizeAgentLanguage(body.language);
+        }
+        values.push(val);
+        updates.push(`${key} = $${values.length}`);
+      }
+    }
+
+    if (updates.length === 1) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
+
+      // Authorization: a non-admin can only edit their own templates. Admins
+      // can edit any template inside the tenant so they can clean up
+      // org-wide blueprints when an operator leaves the team.
+      const { rows: ownerRows } = await client.query(
+        `SELECT created_by_user_id FROM agent_templates WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
+      );
+      if (ownerRows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      const isOwnerRole = role === 'tenant_owner' || role === 'owner' || isPlatformAdmin;
+      if (!isOwnerRole && ownerRows[0].created_by_user_id !== userId) {
+        await client.query('ROLLBACK');
+        return res
+          .status(403)
+          .json({ error: 'Only the template owner or a tenant owner can modify this template' });
+      }
+
+      const { rows } = await client.query(
+        `UPDATE agent_templates SET ${updates.join(', ')}
+          WHERE id = $1 AND tenant_id = $2
+          RETURNING *`,
+        values,
+      );
+      await client.query('COMMIT');
+
+      writeAuditLog({
+        tenantId,
+        actorUserId: userId,
+        actorRole: role,
+        action: 'agent_template.updated',
+        resourceType: 'agent_template',
+        resourceId: id,
+        changes: { fields: Object.keys(body).filter((k) => allowed.includes(k)) },
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.json({
+        template: { ...rows[0], is_owner: rows[0].created_by_user_id === userId },
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to update custom template', {
+        tenantId,
+        templateId: id,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to update custom template' });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+router.delete(
+  '/agents/templates/custom/:id',
+  requireAuth,
+  requireRole('manager'),
+  async (req, res) => {
+    const { tenantId, userId, role, isPlatformAdmin } = req.user!;
+    const { id } = req.params;
+
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
+
+      const { rows: ownerRows } = await client.query(
+        `SELECT created_by_user_id FROM agent_templates WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
+      );
+      if (ownerRows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      const isOwnerRole = role === 'tenant_owner' || role === 'owner' || isPlatformAdmin;
+      if (!isOwnerRole && ownerRows[0].created_by_user_id !== userId) {
+        await client.query('ROLLBACK');
+        return res
+          .status(403)
+          .json({ error: 'Only the template owner or a tenant owner can delete this template' });
+      }
+
+      await client.query(
+        `DELETE FROM agent_templates WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
+      );
+      await client.query('COMMIT');
+
+      writeAuditLog({
+        tenantId,
+        actorUserId: userId,
+        actorRole: role,
+        action: 'agent_template.deleted',
+        resourceType: 'agent_template',
+        resourceId: id,
+        changes: {},
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.json({ deleted: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to delete custom template', {
+        tenantId,
+        templateId: id,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to delete custom template' });
+    } finally {
+      client.release();
+    }
+  },
+);
+
 export default router;
