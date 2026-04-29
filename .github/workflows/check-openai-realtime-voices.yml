@@ -1,0 +1,208 @@
+name: Check OpenAI Realtime voices
+
+# Runs once a day to detect when OpenAI ships a new (or removes an
+# existing) Realtime voice. Compares the canonical `VOICES` list in
+# `client-app/src/lib/agentVoices.ts` against the voices the OpenAI
+# Realtime API actually accepts right now (probed via
+# `scripts/check-openai-realtime-voices.ts`). On drift it opens — or
+# updates the body of — a single tracking issue so the team is
+# notified within a day instead of finding out months later from the
+# changelog.
+#
+# Why a daily cron instead of running on every PR:
+#   - The check requires a live OpenAI API key (we don't want to
+#     expose that to PRs from forks).
+#   - "OpenAI shipped a new voice" is independent of code changes, so
+#     pinning it to PR/push events would either miss real drift (if no
+#     PR opens for a week) or generate noise on every PR.
+#   - Daily is the cadence the task ("within a day") asks for.
+#
+# Manual trigger (`workflow_dispatch`) is enabled so a maintainer can
+# rerun the check immediately after merging an update to `VOICES` to
+# confirm the diff has cleared without waiting for the next cron tick.
+
+on:
+  schedule:
+    # 13:17 UTC daily — odd minute on purpose so we don't pile up on
+    # the top-of-the-hour cron storm GitHub Actions runs.
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: check-openai-realtime-voices
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Probe OpenAI Realtime voices and diff against VOICES
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies (root)
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Run voice probe
+        id: probe
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set +e
+          mkdir -p .ci-out
+          npx tsx scripts/check-openai-realtime-voices.ts > .ci-out/result.json 2> .ci-out/summary.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          # Surface the JSON + human summary in the workflow log for easy debugging.
+          echo "----- result.json -----"
+          cat .ci-out/result.json || true
+          echo "----- summary.txt -----"
+          cat .ci-out/summary.txt || true
+
+      - name: Build issue body
+        if: steps.probe.outputs.exit_code != '0'
+        id: body
+        run: |
+          {
+            echo "The daily OpenAI Realtime voice check failed (exit code ${{ steps.probe.outputs.exit_code }})."
+            echo
+            echo "## Human-readable summary"
+            echo
+            echo '```'
+            cat .ci-out/summary.txt || true
+            echo '```'
+            echo
+            echo "## Raw probe result"
+            echo
+            echo '```json'
+            cat .ci-out/result.json || true
+            echo '```'
+            echo
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > .ci-out/issue-body.md
+          cat .ci-out/issue-body.md
+
+      - name: Open or update tracking issue
+        if: steps.probe.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('.ci-out/issue-body.md', 'utf8');
+            const title = 'OpenAI Realtime voice list drift detected';
+            const label = 'openai-voices-check';
+
+            // Best-effort: ensure our tracking label exists so the
+            // de-duplication search is reliable.
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+              });
+            } catch (err) {
+              if (err.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: 'fbca04',
+                  description: 'Tracking issue for the daily OpenAI Realtime voice diff check.',
+                });
+              } else {
+                throw err;
+              }
+            }
+
+            // De-duplicate: if there's already an open issue with our
+            // label, update its body instead of opening a new one.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+
+            if (existing.data.length > 0) {
+              const issue = existing.data[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Re-detected on ${new Date().toISOString()} — see updated body above.`,
+              });
+              core.notice(`Updated existing tracking issue #${issue.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened tracking issue #${created.data.number}.`);
+            }
+
+      - name: Auto-close tracking issue when probe is back in sync
+        if: steps.probe.outputs.exit_code == '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // When the probe succeeds (exit 0 = in_sync), close any
+            // open tracking issue from a previous drift run so the
+            // team isn't left with stale "drift detected" issues after
+            // they've fixed the canonical VOICES list. We comment
+            // before closing so there's a permanent audit trail of
+            // *why* the issue closed (and a link to the run that
+            // verified the fix).
+            const label = 'openai-voices-check';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Voice list is back in sync as of ${new Date().toISOString()} — ` +
+                  `auto-closing. Workflow run: ` +
+                  `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.notice(`Auto-closed tracking issue #${issue.number}.`);
+            }
+
+      - name: Fail the job if drift / parser-broken / request-failed
+        if: steps.probe.outputs.exit_code != '0'
+        run: |
+          echo "Probe exited with ${{ steps.probe.outputs.exit_code }} — see tracking issue."
+          exit 1

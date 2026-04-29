@@ -13,6 +13,14 @@
  *   Quarterly (or sooner if OpenAI announces new/removed Realtime voices on
  *   the changelog: https://platform.openai.com/docs/changelog).
  *
+ *   In addition to the manual quarterly review, the daily GitHub Action
+ *   `.github/workflows/check-openai-realtime-voices.yml` probes the OpenAI
+ *   Realtime API and opens (or updates) a tracking issue if the upstream
+ *   voice set differs from `VOICES` below — see
+ *   `scripts/check-openai-realtime-voices.ts` for how detection works.
+ *   That auto-detect catches *additions* the day they ship; the manual
+ *   cadence still covers per-language grading and recommendation updates.
+ *
  * LISTENING TEST (used to grade voices per-language)
  * --------------------------------------------------
  *   For each candidate voice / language pair, generate a 25–40 second sample

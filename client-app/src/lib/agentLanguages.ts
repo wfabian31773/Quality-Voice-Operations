@@ -8,6 +8,14 @@
  *
  *   • Review cadence: quarterly (or sooner if OpenAI announces new/removed
  *     Realtime voices on the changelog).
+ *   • Auto-detect (additions): the daily GitHub Action
+ *     `.github/workflows/check-openai-realtime-voices.yml` probes the
+ *     OpenAI Realtime API and opens a tracking issue when the upstream
+ *     voice set drifts from `VOICES` in `./agentVoices.ts`. When that
+ *     issue fires, run the per-language listening test below for the
+ *     newly-shipped voice and update the relevant arrays in
+ *     `RECOMMENDED_VOICES_BY_LANGUAGE` instead of waiting for the next
+ *     quarterly review.
  *   • Listening test: see the rubric in `./agentVoices.ts` (4-line script,
  *     two reviewers, must average ≥ 3.5 on pronunciation, prosody, and
  *     comfort to be added to a language's recommended list).
