@@ -18,13 +18,13 @@
  * Per-provider regression coverage for the cookie attributes lives in
  * `tests/security/tenantPortalConnectorOAuthStateCookie.test.ts`.
  */
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { upsertConnector } from '../../../platform/integrations/connectors';
 import { resolveZohoAccountsServer, resolveZohoApiDomain } from '../../../platform/integrations/connectors/zohoRegion';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
-import { oauthStateCookieOptions } from '../middleware/security';
+import { isProductionLike, oauthStateCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
@@ -91,8 +91,43 @@ router.get('/connectors/oauth/availability', requireAuth, (_req, res) => {
   return res.json({ providers });
 });
 
+/**
+ * Thrown when an init/callback handler tries to sign or verify the OAuth
+ * `state` parameter while neither `ADMIN_JWT_SECRET` nor
+ * `CONNECTOR_ENCRYPTION_KEY` is configured in a production-like env.
+ *
+ * The router-level error middleware below converts this into a 500 with a
+ * clear configuration-error payload so an admin sees what's wrong instead
+ * of the flow silently degrading to the literal `'fallback-dev-secret'`
+ * (which would let any party who knows the fallback forge a valid state
+ * value and sidestep the BL-027 / Task #540 HMAC half of the protection).
+ */
+export class OAuthStateSecretNotConfiguredError extends Error {
+  constructor() {
+    super(
+      'OAuth state signing secret not configured: set ADMIN_JWT_SECRET or CONNECTOR_ENCRYPTION_KEY before starting an OAuth flow in production.',
+    );
+    this.name = 'OAuthStateSecretNotConfiguredError';
+  }
+}
+
+/**
+ * Returns the secret used to HMAC-sign the OAuth `state` parameter.
+ *
+ * In production-like envs (`APP_ENV`/`NODE_ENV` of `production` or
+ * `staging`, per `isProductionLike()`) we fail closed when neither
+ * `ADMIN_JWT_SECRET` nor `CONNECTOR_ENCRYPTION_KEY` is set so the HMAC
+ * half of the BL-027 protection cannot silently degrade to a guessable
+ * literal. Dev environments preserve the historic fallback so local
+ * setups continue to work without the env vars configured.
+ */
 function getStateSecret(): string {
-  return process.env.ADMIN_JWT_SECRET ?? process.env.CONNECTOR_ENCRYPTION_KEY ?? 'fallback-dev-secret';
+  const configured = process.env.ADMIN_JWT_SECRET ?? process.env.CONNECTOR_ENCRYPTION_KEY;
+  if (configured) return configured;
+  if (isProductionLike()) {
+    throw new OAuthStateSecretNotConfiguredError();
+  }
+  return 'fallback-dev-secret';
 }
 
 function signState(payload: { tenantId: string; userId: string; provider: string }): string {
@@ -106,7 +141,17 @@ function verifyState(state: string, expectedProvider: string): { tenantId: strin
   const parts = state.split('.');
   if (parts.length !== 2) return null;
   const [dataB64, sig] = parts;
-  const expectedSig = crypto.createHmac('sha256', getStateSecret()).update(dataB64).digest('base64url');
+  let secret: string;
+  try {
+    secret = getStateSecret();
+  } catch {
+    // Fail closed: a missing signing secret in prod must not cause any
+    // state value to validate. The init handler will already have
+    // rejected with a 500 via the router error middleware, so a
+    // legitimate callback for this flow cannot reach us anyway.
+    return null;
+  }
+  const expectedSig = crypto.createHmac('sha256', secret).update(dataB64).digest('base64url');
   if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
   try {
     const parsed = JSON.parse(Buffer.from(dataB64, 'base64url').toString()) as {
@@ -1159,6 +1204,30 @@ router.get('/connectors/oauth/zoho/callback', async (req, res) => {
     logger.error('Zoho OAuth callback failed', { error: String(err) });
     return res.status(500).send('<html><body><script>window.close();</script>OAuth failed</body></html>');
   }
+});
+
+/**
+ * Router-level error middleware that converts a missing OAuth state signing
+ * secret into a 500 with a clear configuration-error payload (Task #621).
+ *
+ * Init handlers are synchronous up to the `signState` call, so a thrown
+ * `OAuthStateSecretNotConfiguredError` is caught by Express and forwarded
+ * here. Without this middleware the request would 500 with the generic
+ * Express error page, which is much harder to diagnose for an operator.
+ */
+router.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof OAuthStateSecretNotConfiguredError) {
+    logger.error('Refusing to start OAuth flow: state signing secret missing', {
+      message: err.message,
+    });
+    if (res.headersSent) return next(err);
+    return res.status(500).json({
+      error: err.message,
+      code: 'OAUTH_STATE_SECRET_NOT_CONFIGURED',
+      missingEnv: 'ADMIN_JWT_SECRET',
+    });
+  }
+  return next(err);
 });
 
 export default router;
