@@ -378,7 +378,7 @@ function ProvisionFlow({
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-text-secondary text-sm">
-                      <DollarSign className="h-4 w-4" /> $2.00/month
+                      <DollarSign className="h-4 w-4" /> {formatCents(200)}/month
                     </span>
                   )}
                 </div>
@@ -408,7 +408,7 @@ function ProvisionFlow({
                 disabled={provisionMutation.isPending}
                 className="w-full bg-primary hover:bg-primary-hover text-white font-semibold py-3 rounded-xl transition text-sm disabled:opacity-50"
               >
-                {isFree ? 'Get this number — Free!' : 'Get this number — $2.00/mo'}
+                {isFree ? 'Get this number — Free!' : `Get this number — ${formatCents(200)}/mo`}
               </button>
 
               <button

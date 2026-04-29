@@ -10,9 +10,17 @@ import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
 import { PLAN_CATALOG, getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
+import { formatDollars } from '../../lib/formatCurrency';
 
 function formatOverageRate(ratePerMinute: number): string {
-  return `$${ratePerMinute.toFixed(2)}/min`;
+  return `${formatDollars(ratePerMinute)}/min`;
+}
+
+function formatPlanMonthlyPrice(tier: 'starter' | 'pro' | 'enterprise'): string {
+  return formatDollars(getPlanMonthlyPriceWholeDollars(tier), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
 }
 
 interface Feature {
@@ -128,7 +136,6 @@ export default function Pricing() {
     return {
       key,
       name: plan.name,
-      price: getPlanMonthlyPriceWholeDollars(key),
       desc: copy.desc,
       popular: copy.popular,
       minutes: t('pricing.tier_card.minutes_included', { minutes: plan.includedMinutes.toLocaleString() }),
@@ -169,7 +176,7 @@ export default function Pricing() {
       {
         '@type': 'Question',
         name: 'How much does QVO cost?',
-        acceptedAnswer: { '@type': 'Answer', text: `QVO offers three plans: Starter at $${getPlanMonthlyPriceWholeDollars('starter')}/month, Pro at $${getPlanMonthlyPriceWholeDollars('pro')}/month, and Enterprise at $${getPlanMonthlyPriceWholeDollars('enterprise')}/month. All plans include a 14-day free trial.` },
+        acceptedAnswer: { '@type': 'Answer', text: `QVO offers three plans: Starter at ${formatPlanMonthlyPrice('starter')}/month, Pro at ${formatPlanMonthlyPrice('pro')}/month, and Enterprise at ${formatPlanMonthlyPrice('enterprise')}/month. All plans include a 14-day free trial.` },
       },
       {
         '@type': 'Question',
@@ -188,7 +195,7 @@ export default function Pricing() {
     <div>
       <SEO
         title={t('pricing.seo_title')}
-        description={t('pricing.seo_description', { starter: getPlanMonthlyPriceWholeDollars('starter') })}
+        description={t('pricing.seo_description', { starter: formatPlanMonthlyPrice('starter') })}
         canonicalPath="/pricing"
         structuredData={faqSchema}
       />
@@ -234,7 +241,7 @@ export default function Pricing() {
                 <h3 className="font-display text-xl font-bold text-text-primary mb-1">{tier.name}</h3>
                 <p className="text-sm text-text-primary/50 font-body mb-5">{tier.desc}</p>
                 <div className="mb-2">
-                  <span className="font-display text-5xl font-bold text-text-primary">${tier.price}</span>
+                  <span className="font-display text-5xl font-bold text-text-primary">{formatPlanMonthlyPrice(tier.key)}</span>
                   <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
                 </div>
                 <div className="flex flex-col gap-1 mb-6">

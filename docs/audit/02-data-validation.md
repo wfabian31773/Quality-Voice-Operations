@@ -14,11 +14,15 @@ UI ↔ backend ↔ DB consistency. Findings here are about **rendered values tha
 - A call recorded at 31.4s shows as **31s** in the list and **31.4s** in the debugger.
 - Fix: pick one source (recommend `call_sessions` for the canonical duration; `usage_metrics` is a billing-rounded copy).
 
-## D-03 — `Currency` formatting is inconsistent
-- `Billing.tsx` uses `Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })`.
-- `RevenueAnalytics.tsx` (embedded in the Analytics → Revenue & Sentiment tab) uses string `"$" + value.toFixed(2)`.
-- `AdminAnalytics.tsx` uses `value / 100` (cents → dollars) for some Stripe-derived fields and full dollars for others.
-- Fix: centralise in a `formatCurrency(value, unit)` helper that takes `'cents'` or `'dollars'`.
+## D-03 — `Currency` formatting is inconsistent (Resolved)
+- ~~`Billing.tsx` uses `Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })`.~~
+- ~~`RevenueAnalytics.tsx` (embedded in the Analytics → Revenue & Sentiment tab) uses string `"$" + value.toFixed(2)`.~~
+- ~~`AdminAnalytics.tsx` uses `value / 100` (cents → dollars) for some Stripe-derived fields and full dollars for others.~~
+- Resolution: a single helper in `client-app/src/lib/formatCurrency.ts` exposes `formatCents` / `formatDollars` / `formatCurrency`. It accepts a `unit` (`'cents'` | `'dollars'`), reads the tenant currency from `useTenantCurrency`, and produces locale-formatted output (commas, decimals, currency symbol).
+  - Already on the helper before this pass (verified by grep): `Billing.tsx` (`formatCentsHelper` + `formatCurrency` for invoices), `RevenueAnalytics.tsx` (`formatCentsHelper` for KPIs, chart axes, tooltips, agent rows), `AdminAnalytics.tsx` (`formatCentsHelper` wrapped in a local USD `formatCents`), `Analytics.tsx` (Performance + child cards via `formatCentsHelper`), and `AdminTenantAnalytics.tsx`, `AdminMarketplace.tsx`, `Marketplace.tsx`, `Calls.tsx`, `CallDebug.tsx`, `EvolutionEngine.tsx`, `Autopilot.tsx`, `CostOptimization.tsx`, `DeveloperPortal.tsx`, `Dashboard.tsx`, `PlatformAdmin.tsx`, `AdminTenantCalls.tsx`.
+  - Cleaned up in this pass: `client-app/src/pages/public/Pricing.tsx` now uses `formatDollars` for plan prices (`formatPlanMonthlyPrice`) — including the FAQPage JSON-LD and the tier card price spans — and for per-minute overage rates (`formatOverageRate`); `client-app/src/pages/PhoneNumbers.tsx` replaces both hardcoded `$2.00/month` (display row) and `$2.00/mo` (CTA button) literals with `formatCents(200)`.
+  - Out of scope (intentionally left as static marketing copy): hand-authored case-study labels such as `$180K`/`$184K` in `client-app/src/pages/public/VerticalLanding.tsx`, `client-app/src/pages/public/CaseStudies.tsx`, and `client-app/src/components/IndustryShowcase.tsx`; demo slider tick labels in `ROICalculator`; and descriptive copy in `LiveTranscriptMock`. These are not dynamic currency renderings of source-of-truth values.
+  - Regression guard: the `local/no-cents-divided-by-100` ESLint rule continues to flag inline `value / 100` formatting. Catching ad-hoc `"$" + value.toFixed(2)` template literals is tracked as a follow-up rule extension.
 
 ## D-04 — `Created at` and `Last activity` columns mix UTC ISO strings and locale-formatted timestamps
 - `Tickets`, `SmsInbox`, `Dispatch`, `Scheduling` each call `new Date(x).toLocaleString()` directly.

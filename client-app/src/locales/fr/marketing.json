@@ -458,7 +458,7 @@
   },
   "pricing": {
     "seo_title": "Tarifs — Plans d'agents vocaux IA, minutes IA, agents et intégrations",
-    "seo_description": "Les tarifs QVO commencent à {{starter}} $/mois. Comparez les plans Starter, Pro et Enterprise avec minutes IA, agents illimités, intégrations CRM et accès à la démo. Essai gratuit de 14 jours.",
+    "seo_description": "Les tarifs QVO commencent à {{starter}}/mois. Comparez les plans Starter, Pro et Enterprise avec minutes IA, agents illimités, intégrations CRM et accès à la démo. Essai gratuit de 14 jours.",
     "hero": {
       "eyebrow": "Tarifs",
       "title": "Plans simples, tarifs honnêtes.",

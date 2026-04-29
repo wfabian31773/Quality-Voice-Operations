@@ -458,7 +458,7 @@
   },
   "pricing": {
     "seo_title": "Pricing — AI Voice Agent Plans with AI Minutes, Agents & Integrations",
-    "seo_description": "QVO pricing starts at ${{starter}}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial.",
+    "seo_description": "QVO pricing starts at {{starter}}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial.",
     "hero": {
       "eyebrow": "Pricing",
       "title": "Simple plans, honest pricing.",
