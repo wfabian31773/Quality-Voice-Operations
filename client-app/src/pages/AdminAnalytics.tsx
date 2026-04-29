@@ -10,7 +10,7 @@ import { api } from '../lib/api';
 import { PageHeader } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
-import BillingBackfillAlertsBanner from '../components/BillingBackfillAlertsBanner';
+import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
 import { EmptyState, Skeleton, SkeletonRows } from '../components/state';
 
 interface PlatformStats {
@@ -197,7 +197,7 @@ export default function AdminAnalytics() {
 
       <GlobalScopeBanner />
 
-      <BillingBackfillAlertsBanner />
+      <OperationsAlertsBanner />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard

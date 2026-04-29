@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import BillingBackfillAlertsBanner from '../components/BillingBackfillAlertsBanner';
+import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { StatCard, PageHeader } from '../components/ui';
 import {
@@ -1991,7 +1991,7 @@ export default function PlatformAdmin() {
         className="mb-0"
       />
 
-      <BillingBackfillAlertsBanner />
+      <OperationsAlertsBanner />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard

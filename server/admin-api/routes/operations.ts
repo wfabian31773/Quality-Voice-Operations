@@ -202,6 +202,51 @@ router.get('/operations/alerts', requireAuth, async (req, res) => {
   }
 });
 
+// Cap to prevent an unbounded `types=` from blowing up the IN-clause.
+const ALERT_SUMMARY_MAX_TYPES = 32;
+
+router.get('/operations/alerts/summary', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+
+  const rawTypes = typeof req.query.types === 'string' ? req.query.types : '';
+  const requestedTypes = rawTypes
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+    .slice(0, ALERT_SUMMARY_MAX_TYPES);
+
+  const pool = getPlatformPool();
+  try {
+    const params: Array<string> = [tenantId];
+    let typeSql = '';
+    if (requestedTypes.length > 0) {
+      const placeholders = requestedTypes
+        .map((_, i) => `$${params.length + i + 1}`)
+        .join(', ');
+      params.push(...requestedTypes);
+      typeSql = ` AND type IN (${placeholders})`;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT type, COUNT(*)::int AS count
+         FROM operations_alerts
+        WHERE tenant_id = $1 AND acknowledged = false${typeSql}
+        GROUP BY type`,
+      params,
+    );
+
+    const counts: Record<string, number> = {};
+    for (const r of rows as Array<{ type: string; count: number }>) {
+      if (r.count > 0) counts[r.type] = r.count;
+    }
+
+    res.json({ counts });
+  } catch (err) {
+    logger.error('Failed to fetch alert summary', { tenantId, error: String(err) });
+    res.status(500).json({ error: 'Failed to fetch alert summary' });
+  }
+});
+
 router.post('/operations/alerts/:alertId/acknowledge', requireAuth, async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { alertId } = req.params;
