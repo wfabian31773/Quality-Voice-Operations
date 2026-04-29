@@ -12,6 +12,7 @@ import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
 import clsx from 'clsx';
 import Modal from '../components/Modal';
+import SchedulingDriftBanner from '../components/SchedulingDriftBanner';
 
 interface PhoneNumber {
   id: string;
@@ -671,6 +672,21 @@ export default function PhoneNumbers() {
   const agents = agentsData?.agents ?? [];
   const hasUsedFreeNumber = data?.hasUsedFreeNumber ?? false;
 
+  const numbersWithDisconnectedCalendar = connectorsLoaded
+    ? numbers.filter(
+        (pn) =>
+          !!pn.scheduling_provider &&
+          !enabledSchedulingProviders.has(pn.scheduling_provider),
+      )
+    : [];
+  const disconnectedNumberProviders = Array.from(
+    new Set(
+      numbersWithDisconnectedCalendar
+        .map((pn) => pn.scheduling_provider)
+        .filter((p): p is string => !!p),
+    ),
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -696,6 +712,16 @@ export default function PhoneNumbers() {
           </TooltipWalkthrough>
         )}
       </div>
+
+      {!isLoading && (
+        <SchedulingDriftBanner
+          count={numbersWithDisconnectedCalendar.length}
+          disconnectedProviders={disconnectedNumberProviders}
+          subjectSingular="phone number"
+          subjectPlural="phone numbers"
+          storageKey="phone-numbers"
+        />
+      )}
 
       {isLoading ? (
         <div className="text-center py-12 text-text-secondary">Loading...</div>

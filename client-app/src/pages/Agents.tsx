@@ -8,6 +8,7 @@ import { useRole } from '../lib/useRole';
 import { EmptyState, SkeletonGrid } from '../components/state';
 import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
+import SchedulingDriftBanner from '../components/SchedulingDriftBanner';
 import VoicePicker from '../components/VoicePicker';
 import {
   AGENT_LANGUAGES,
@@ -623,6 +624,21 @@ export default function Agents() {
   const agents = data?.agents ?? [];
   const enabledSchedulingProviders = connectedProviders;
 
+  const agentsWithDisconnectedCalendar = connectorsLoaded
+    ? agents.filter(
+        (a) =>
+          !!a.scheduling_provider &&
+          !enabledSchedulingProviders.has(a.scheduling_provider),
+      )
+    : [];
+  const disconnectedAgentProviders = Array.from(
+    new Set(
+      agentsWithDisconnectedCalendar
+        .map((a) => a.scheduling_provider)
+        .filter((p): p is string => !!p),
+    ),
+  );
+
   const mismatchedAgents = agents
     .filter((agent) => {
       const isFederated = agent.execution_mode === 'federated';
@@ -706,6 +722,16 @@ export default function Agents() {
           </TooltipWalkthrough>
         ) : undefined}
       />
+
+      {!isLoading && (
+        <SchedulingDriftBanner
+          count={agentsWithDisconnectedCalendar.length}
+          disconnectedProviders={disconnectedAgentProviders}
+          subjectSingular="agent"
+          subjectPlural="agents"
+          storageKey="agents"
+        />
+      )}
 
       {!isLoading && isManager && mismatchedAgents.length > 0 && (
         <div
