@@ -829,3 +829,74 @@ export class ZohoConnectorAdapter implements ConnectorAdapter {
     return `${mm}:${ss}`;
   }
 }
+
+/**
+ * Periodic re-validation entry point for the
+ * `CrmCallerIdentityRevalidationScheduler`. Probes each cached Zoho record
+ * ID with a cheap path-targeted GET (`/Contacts/{id}`, `/Accounts/{id}`,
+ * `/Deals/{id}`) and returns the IDs that came back stale (HTTP 404 /
+ * `RESOURCE_NOT_FOUND` / `RECORD_NOT_FOUND`) keyed by Zoho-native field
+ * names (`contactId`, `accountId`, `dealId`).
+ *
+ * Network errors / non-stale failures are deliberately ignored; only
+ * confirmed-gone records are returned for scrubbing.
+ */
+export async function validateZohoCachedIdentity(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+  identity: {
+    contactId?: string;
+    accountId?: string;
+    opportunityId?: string;
+    extras?: Record<string, string>;
+  },
+): Promise<{ stale: { contactId?: string; accountId?: string; dealId?: string } }> {
+  const stale: { contactId?: string; accountId?: string; dealId?: string } = {};
+
+  const probes: Array<{ module: 'Contacts' | 'Accounts' | 'Deals'; id: string; key: 'contactId' | 'accountId' | 'dealId' }> = [];
+  const seen = new Set<string>();
+  const enqueue = (module: 'Contacts' | 'Accounts' | 'Deals', id: string | undefined, key: 'contactId' | 'accountId' | 'dealId') => {
+    if (!id) return;
+    const dedupeKey = `${module}:${id}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    probes.push({ module, id, key });
+  };
+  enqueue('Contacts', identity.contactId, 'contactId');
+  enqueue('Accounts', identity.accountId, 'accountId');
+  enqueue('Deals', identity.opportunityId, 'dealId');
+  if (probes.length === 0) return { stale };
+
+  let activeConfig: ConnectorConfig;
+  try {
+    activeConfig = await ensureFreshOAuthToken(config);
+  } catch (err) {
+    logger.warn('Zoho validate identity skipped: token refresh failed', {
+      tenantId, error: err instanceof Error ? err.message : String(err),
+    });
+    return { stale };
+  }
+  const authResult = resolveAuth(activeConfig);
+  if (!authResult.ok) {
+    logger.warn('Zoho validate identity skipped: auth resolve failed', { tenantId, error: authResult.error });
+    return { stale };
+  }
+  const auth = authResult.auth;
+
+  for (const probe of probes) {
+    try {
+      const res = await zohoFetch(auth, `/${probe.module}/${encodeURIComponent(probe.id)}`, { method: 'GET' });
+      if (res.ok) continue;
+      const staleCode = extractZohoHttpStaleErrorCode(res.status, res.error);
+      if (staleCode) {
+        stale[probe.key] = probe.id;
+      }
+    } catch (err) {
+      logger.debug('Zoho validate probe errored', {
+        tenantId, module: probe.module, id: probe.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { stale };
+}

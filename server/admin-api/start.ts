@@ -33,7 +33,7 @@ import { startVerifiedCallerHealthScheduler, stopVerifiedCallerHealthScheduler, 
 import { startVerifiedCallerSyncScheduler, stopVerifiedCallerSyncScheduler } from '../../platform/telephony/VerifiedCallerSyncScheduler';
 import { startConnectorOutboxDrainScheduler, stopConnectorOutboxDrainScheduler } from '../../platform/integrations/connectors/ConnectorOutboxDrainScheduler';
 import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler } from '../../platform/integrations/connectors/SchedulingDriftAlertScheduler';
-import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler } from '../../platform/integrations/connectors';
+import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler, startCrmCallerIdentityRevalidationScheduler, stopCrmCallerIdentityRevalidationScheduler } from '../../platform/integrations/connectors';
 import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler } from '../../platform/billing/CallEventsRetentionScheduler';
 import { startTenantIsolationScheduler, stopTenantIsolationScheduler } from '../../platform/security/TenantIsolationScheduler';
 import { startRouteExportArchiveCleanupScheduler, stopRouteExportArchiveCleanupScheduler } from '../../platform/dispatch/RouteExportArchiveCleanupScheduler';
@@ -110,6 +110,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startConnectorOutboxDrainScheduler();
   startSchedulingDriftAlertScheduler();
   startOAuthTokenRefreshScheduler();
+  startCrmCallerIdentityRevalidationScheduler();
   startCallEventsRetentionScheduler();
   startTenantIsolationScheduler();
   startRouteExportArchiveCleanupScheduler();
@@ -144,6 +145,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopConnectorOutboxDrainScheduler();
   stopSchedulingDriftAlertScheduler();
   stopOAuthTokenRefreshScheduler();
+  stopCrmCallerIdentityRevalidationScheduler();
   stopCallEventsRetentionScheduler();
   stopTenantIsolationScheduler();
   stopRouteExportArchiveCleanupScheduler();

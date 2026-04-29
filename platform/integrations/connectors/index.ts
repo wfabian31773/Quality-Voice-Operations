@@ -8,6 +8,15 @@ export {
   runOAuthTokenRefreshCycle,
 } from './OAuthTokenRefreshScheduler';
 export type { OAuthTokenRefreshCycleResult } from './OAuthTokenRefreshScheduler';
+export {
+  startCrmCallerIdentityRevalidationScheduler,
+  stopCrmCallerIdentityRevalidationScheduler,
+  runCrmCallerIdentityRevalidationCycle,
+} from './CrmCallerIdentityRevalidationScheduler';
+export type {
+  CrmCallerIdentityRevalidationCycleResult,
+  CrmCallerIdentityRevalidationCycleOptions,
+} from './CrmCallerIdentityRevalidationScheduler';
 export { encryptValue, decryptValue } from './crypto';
 export type {
   ConnectorType,

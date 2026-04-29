@@ -1239,3 +1239,87 @@ function escapeHtml(input: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+/**
+ * Periodic re-validation entry point for the
+ * `CrmCallerIdentityRevalidationScheduler`. Probes each cached Salesforce
+ * record ID with a cheap path-targeted GET (`/sobjects/{Type}/{id}`) and
+ * returns the IDs that came back stale (404 / `ENTITY_IS_DELETED` /
+ * `MALFORMED_ID` / `INVALID_CROSS_REFERENCE_KEY`) keyed by the canonical
+ * field names (`contactId`, `accountId`, `opportunityId`).
+ *
+ * The sObject type for each ID is inferred from the standard 3-character
+ * Salesforce key prefix (003=Contact, 001=Account, 006=Opportunity), so we
+ * never mis-route a Lead ID through `/sobjects/Contact/`.
+ *
+ * Network errors / non-stale failures (auth, rate limit, etc.) are
+ * deliberately ignored; only confirmed-gone records are returned for
+ * scrubbing.
+ */
+export async function validateSalesforceCachedIdentity(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+  identity: {
+    contactId?: string;
+    accountId?: string;
+    opportunityId?: string;
+    extras?: Record<string, string>;
+  },
+): Promise<{ stale: { contactId?: string; accountId?: string; opportunityId?: string } }> {
+  const stale: { contactId?: string; accountId?: string; opportunityId?: string } = {};
+
+  const probes: Array<{ sobject: 'Contact' | 'Account' | 'Opportunity'; id: string; key: 'contactId' | 'accountId' | 'opportunityId' }> = [];
+  const enqueue = (id: string | undefined, key: 'contactId' | 'accountId' | 'opportunityId') => {
+    if (!id) return;
+    const cls = classifySalesforceId(id);
+    // Only probe IDs whose Salesforce prefix matches the slot we cached. A
+    // Lead ID (00Q) in `contactId`, or a stray ID with no recognised prefix,
+    // is treated as "not validatable" rather than risking a misrouted GET.
+    let sobject: 'Contact' | 'Account' | 'Opportunity';
+    if (key === 'contactId') {
+      if (cls !== 'Contact') return;
+      sobject = 'Contact';
+    } else if (key === 'accountId') {
+      if (cls !== 'Account') return;
+      sobject = 'Account';
+    } else {
+      if (cls !== 'Opportunity') return;
+      sobject = 'Opportunity';
+    }
+    probes.push({ sobject, id, key });
+  };
+  enqueue(identity.contactId, 'contactId');
+  enqueue(identity.accountId, 'accountId');
+  enqueue(identity.opportunityId, 'opportunityId');
+  if (probes.length === 0) return { stale };
+
+  const tokens = await ensureSalesforceAccessToken(tenantId, config);
+  if (!tokens) {
+    logger.warn('Salesforce validate identity skipped: missing credentials', { tenantId });
+    return { stale };
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${tokens.accessToken}`,
+    'Content-Type': 'application/json',
+  };
+
+  for (const probe of probes) {
+    try {
+      const url = `${tokens.instanceUrl}/services/data/${API_VERSION}/sobjects/${probe.sobject}/${encodeURIComponent(probe.id)}?fields=Id`;
+      const res = await salesforceFetchWithTimeout(url, { method: 'GET', headers });
+      if (res.ok) continue;
+      const text = await res.text().catch(() => '');
+      const staleCode = extractSalesforceStaleErrorCode(res.status, text);
+      if (staleCode) {
+        stale[probe.key] = probe.id;
+      }
+    } catch (err) {
+      logger.debug('Salesforce validate probe errored', {
+        tenantId, sobject: probe.sobject, id: probe.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { stale };
+}

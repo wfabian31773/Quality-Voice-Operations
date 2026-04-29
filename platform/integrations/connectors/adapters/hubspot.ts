@@ -942,3 +942,84 @@ export class HubSpotConnectorAdapter implements ConnectorAdapter {
     };
   }
 }
+
+/**
+ * Periodic re-validation entry point for the
+ * `CrmCallerIdentityRevalidationScheduler`. Probes each cached HubSpot
+ * record ID with a cheap path-targeted GET (`/crm/v3/objects/{type}/{id}`)
+ * and returns the IDs that came back stale (404 / `OBJECT_NOT_FOUND`)
+ * keyed by HubSpot-native field names (`contactId`, `companyId`, `dealId`).
+ *
+ * Network errors / non-stale failures (auth, rate limit, etc.) are
+ * deliberately ignored — they aren't a stale signal and the next sweep
+ * will re-probe. Only confirmed-gone records are returned for scrubbing.
+ */
+export async function validateHubSpotCachedIdentity(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+  identity: {
+    contactId?: string;
+    accountId?: string;
+    opportunityId?: string;
+    extras?: Record<string, string>;
+  },
+): Promise<{ stale: { contactId?: string; companyId?: string; dealId?: string } }> {
+  const stale: { contactId?: string; companyId?: string; dealId?: string } = {};
+
+  // HubSpot's native IDs live under `extras` (see PROVIDER_NATIVE_ID_FIELDS in
+  // crmCallerIdentity.ts). The canonical Salesforce-style slots may also carry
+  // them as a back-compat fallback for already-cached rows. Build a normalised
+  // probe set so we hit each native-typed object exactly once.
+  const probes: Array<{ type: 'contacts' | 'companies' | 'deals'; id: string; key: 'contactId' | 'companyId' | 'dealId' }> = [];
+  const seen = new Set<string>();
+  const enqueue = (type: 'contacts' | 'companies' | 'deals', id: string | undefined, key: 'contactId' | 'companyId' | 'dealId') => {
+    if (!id) return;
+    const dedupeKey = `${type}:${id}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    probes.push({ type, id, key });
+  };
+  enqueue('contacts', identity.extras?.contactId ?? identity.contactId, 'contactId');
+  enqueue('companies', identity.extras?.companyId ?? identity.accountId, 'companyId');
+  enqueue('deals', identity.extras?.dealId ?? identity.opportunityId, 'dealId');
+  if (probes.length === 0) return { stale };
+
+  let activeConfig: ConnectorConfig;
+  try {
+    activeConfig = await ensureFreshOAuthToken(config);
+  } catch (err) {
+    logger.warn('HubSpot validate identity skipped: token refresh failed', {
+      tenantId, error: err instanceof Error ? err.message : String(err),
+    });
+    return { stale };
+  }
+  const accessToken = activeConfig.credentials.access_token ?? '';
+  if (!accessToken) {
+    logger.warn('HubSpot validate identity skipped: missing access_token', { tenantId });
+    return { stale };
+  }
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+
+  for (const probe of probes) {
+    try {
+      const url = `${HUBSPOT_API}/crm/v3/objects/${probe.type}/${encodeURIComponent(probe.id)}?properties=hs_object_id`;
+      const res = await hubspotFetch(url, { method: 'GET', headers });
+      if (res.ok) continue;
+      const text = await res.text().catch(() => '');
+      const staleCode = extractHubSpotStaleErrorCode(res.status, text);
+      if (staleCode) {
+        stale[probe.key] = probe.id;
+      }
+    } catch (err) {
+      // Treat network/abort errors as "could not validate" — leave the cache.
+      logger.debug('HubSpot validate probe errored', {
+        tenantId, probe: probe.type, id: probe.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { stale };
+}

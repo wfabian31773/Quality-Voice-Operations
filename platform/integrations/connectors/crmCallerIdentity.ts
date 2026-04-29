@@ -147,6 +147,104 @@ function parseExtras(value: unknown): Record<string, string> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Cross-tenant snapshot of CRM caller identity rows due for upstream
+ * re-validation. Returns rows for the supplied providers whose
+ * `last_validated_at` is NULL (never validated) or older than `olderThanMs`,
+ * ordered "oldest first" so churn is bounded per cycle. Used by the
+ * periodic `CrmCallerIdentityRevalidationScheduler` to scrub cached IDs
+ * that have been deleted upstream when no event traffic would otherwise
+ * exercise them.
+ *
+ * Bypasses RLS via the platform pool (no tenant context). Mirrors the
+ * cross-tenant fan-out pattern used by `listRefreshableConnectorConfigs`.
+ */
+export interface CrmCallerIdentityDueRow {
+  tenantId: string;
+  provider: string;
+  phone: string;
+  identity: CrmCallerIdentity;
+  lastValidatedAt: Date | null;
+}
+
+export async function listCrmCallerIdentitiesDueForRevalidation(
+  providers: string[],
+  olderThanMs: number,
+  limit: number,
+): Promise<CrmCallerIdentityDueRow[]> {
+  if (providers.length === 0 || limit <= 0) return [];
+  const pool = getPlatformPool();
+  const cutoff = new Date(Date.now() - Math.max(0, olderThanMs));
+  try {
+    const { rows } = await pool.query(
+      `SELECT tenant_id, provider, phone_e164,
+              contact_id, account_id, opportunity_id, extras,
+              last_validated_at
+         FROM crm_caller_identities
+        WHERE provider = ANY($1::text[])
+          AND (last_validated_at IS NULL OR last_validated_at < $2)
+        ORDER BY last_validated_at NULLS FIRST, updated_at
+        LIMIT $3`,
+      [providers, cutoff, limit],
+    );
+    return rows.map((row) => {
+      const identity: CrmCallerIdentity = {};
+      if (row.contact_id) identity.contactId = row.contact_id as string;
+      if (row.account_id) identity.accountId = row.account_id as string;
+      if (row.opportunity_id) identity.opportunityId = row.opportunity_id as string;
+      const extras = parseExtras(row.extras);
+      if (extras) identity.extras = extras;
+      const lastValidated = row.last_validated_at;
+      return {
+        tenantId: row.tenant_id as string,
+        provider: row.provider as string,
+        phone: row.phone_e164 as string,
+        identity,
+        lastValidatedAt: lastValidated instanceof Date
+          ? lastValidated
+          : (lastValidated ? new Date(lastValidated as string) : null),
+      };
+    });
+  } catch (err) {
+    logger.warn('listCrmCallerIdentitiesDueForRevalidation failed', {
+      providers,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+/**
+ * Stamp a CRM caller identity row as "freshly validated against the
+ * upstream CRM at NOW()" so the next sweep cycle will skip it until it
+ * ages past the configured re-validation window. Idempotent; missing
+ * rows (already deleted by a concurrent scrub) are silently ignored.
+ */
+export async function markCrmCallerIdentityValidated(
+  tenantId: TenantId,
+  provider: string,
+  phone: string,
+): Promise<void> {
+  const normalized = normalizeCallerPhone(phone);
+  if (!normalized) return;
+  try {
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `UPDATE crm_caller_identities
+            SET last_validated_at = NOW()
+          WHERE tenant_id = $1 AND provider = $2 AND phone_e164 = $3`,
+        [tenantId, provider, normalized],
+      );
+    });
+  } catch (err) {
+    logger.warn('markCrmCallerIdentityValidated failed', {
+      tenantId,
+      provider,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export async function lookupCrmCallerIdentity(
   tenantId: TenantId,
   provider: string,

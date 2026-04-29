@@ -769,3 +769,73 @@ export class PipedriveConnectorAdapter implements ConnectorAdapter {
     return `${mm}:${ss}`;
   }
 }
+
+/**
+ * Periodic re-validation entry point for the
+ * `CrmCallerIdentityRevalidationScheduler`. Probes each cached Pipedrive
+ * record ID with a cheap path-targeted GET (`/persons/{id}`,
+ * `/organizations/{id}`, `/deals/{id}`) and returns the IDs that came back
+ * stale (404 / "not found") keyed by Pipedrive-native field names
+ * (`personId`, `orgId`, `dealId`).
+ *
+ * Network errors / non-stale failures are deliberately ignored; only
+ * confirmed-gone records are returned for scrubbing.
+ */
+export async function validatePipedriveCachedIdentity(
+  tenantId: TenantId,
+  config: ConnectorConfig,
+  identity: {
+    contactId?: string;
+    accountId?: string;
+    opportunityId?: string;
+    extras?: Record<string, string>;
+  },
+): Promise<{ stale: { personId?: string; orgId?: string; dealId?: string } }> {
+  const stale: { personId?: string; orgId?: string; dealId?: string } = {};
+
+  const probes: Array<{ path: string; id: string; key: 'personId' | 'orgId' | 'dealId' }> = [];
+  const seen = new Set<string>();
+  const enqueue = (path: string, id: string | undefined, key: 'personId' | 'orgId' | 'dealId') => {
+    if (!id) return;
+    const dedupeKey = `${path}:${id}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    probes.push({ path, id, key });
+  };
+  enqueue('/persons', identity.extras?.personId ?? identity.contactId, 'personId');
+  enqueue('/organizations', identity.extras?.orgId ?? identity.accountId, 'orgId');
+  enqueue('/deals', identity.extras?.dealId ?? identity.opportunityId, 'dealId');
+  if (probes.length === 0) return { stale };
+
+  let activeConfig: ConnectorConfig;
+  try {
+    activeConfig = await ensureFreshOAuthToken(config);
+  } catch (err) {
+    logger.warn('Pipedrive validate identity skipped: token refresh failed', {
+      tenantId, error: err instanceof Error ? err.message : String(err),
+    });
+    return { stale };
+  }
+  const auth = resolveAuth(activeConfig);
+  if (!auth) {
+    logger.warn('Pipedrive validate identity skipped: missing access_token/api_token', { tenantId });
+    return { stale };
+  }
+
+  for (const probe of probes) {
+    try {
+      const res = await pdFetch(auth, `${probe.path}/${encodeURIComponent(probe.id)}`, { method: 'GET' });
+      if (res.ok) continue;
+      const staleCode = extractPipedriveStaleErrorCode(res.status, res.error);
+      if (staleCode) {
+        stale[probe.key] = probe.id;
+      }
+    } catch (err) {
+      logger.debug('Pipedrive validate probe errored', {
+        tenantId, path: probe.path, id: probe.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { stale };
+}
