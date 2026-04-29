@@ -112,3 +112,18 @@ export function dollarsToCents(
   if (!Number.isFinite(numeric)) return 0;
   return Math.round(numeric * 100);
 }
+
+/**
+ * Canonical integer-cents→whole-dollar-integer converter. Use for cases
+ * (e.g. pricing-page round numbers) that need a whole-dollar primitive
+ * rather than a formatted string. For presentation, prefer
+ * `formatCents` / `formatCurrency` instead so the locale/currency
+ * formatting is consistent.
+ */
+export function centsToWholeDollars(
+  value: number | string | bigint | null | undefined,
+): number {
+  const numeric = toNumber(value);
+  if (numeric === null) return 0;
+  return Math.round(numeric / 100);
+}

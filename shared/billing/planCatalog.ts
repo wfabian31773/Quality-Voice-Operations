@@ -1,3 +1,5 @@
+import { centsToWholeDollars } from './formatCurrency';
+
 export type PlanTier = 'starter' | 'pro' | 'enterprise';
 
 export interface PlanCatalogEntry {
@@ -42,9 +44,7 @@ export function getPlanMonthlyPriceCents(tier: PlanTier): number {
   return PLAN_CATALOG[tier].monthlyPriceCents;
 }
 
-export function centsToWholeDollars(cents: number): number {
-  return Math.round(cents / 100);
-}
+export { centsToWholeDollars };
 
 export function getPlanMonthlyPriceWholeDollars(tier: PlanTier): number {
   return centsToWholeDollars(PLAN_CATALOG[tier].monthlyPriceCents);

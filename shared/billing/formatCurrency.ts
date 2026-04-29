@@ -1,3 +1,18 @@
+/**
+ * Canonical money helpers shared by the parts of the workspace that
+ * cannot directly import from `client-app/src/lib/formatCurrency.ts` or
+ * `platform/core/formatCurrency.ts` — namely `mobile/`, `widget/`,
+ * `server/`, and the rest of `shared/`.
+ *
+ * All monetary values stored in the platform are integer cents. These
+ * helpers are the single point of conversion to a presentation string
+ * (or to/from whole-dollar numbers) so that no caller accidentally
+ * divides cents by 100 twice (or forgets to divide at all). The custom
+ * ESLint rules `local/no-cents-divided-by-100` and
+ * `local/no-dollars-times-100` whitelist this file so the underlying
+ * `cents / 100` and `dollars * 100` math is allowed to live here.
+ */
+
 export type CurrencyUnit = 'cents' | 'dollars';
 
 export interface FormatCurrencyOptions {
@@ -34,13 +49,6 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
-/**
- * Canonical currency formatter shared by all platform code paths.
- *
- * All monetary values stored in the platform are integer cents. This helper
- * is the single point of conversion to a presentation string so that no caller
- * accidentally divides cents by 100 twice (or forgets to divide at all).
- */
 export function formatCurrency(
   value: number | string | bigint | null | undefined,
   options: FormatCurrencyOptions = {},
@@ -87,15 +95,10 @@ export function formatDollars(
 }
 
 /**
- * Canonical dollars→integer-cents converter shared by all platform code
- * paths. Pair with `formatCurrency` for the inverse direction. Use this
- * from any code path that takes a dollar-denominated number (or
- * user-entered string) and needs to persist/compare it as integer cents,
- * so the off-by-100x math (`Math.round(value * 100)`) lives in exactly
- * one place.
- *
- * Returns `0` for null/undefined/empty/non-finite input — matching the
- * defensive `parseFloat(value || '0')` idiom this helper is replacing.
+ * Canonical dollars→integer-cents converter. Pair with `formatCurrency`
+ * for the inverse direction. Returns `0` for null/undefined/empty/non-finite
+ * input — matching the defensive `parseFloat(value || '0')` idiom this
+ * helper is replacing.
  */
 export function dollarsToCents(
   value: number | string | bigint | null | undefined,

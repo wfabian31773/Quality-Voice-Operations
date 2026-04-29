@@ -1,10 +1,13 @@
 // Flat ESLint config (ESLint v9+).
 //
-// Scope: this configuration intentionally only enables a small set of
-// custom rules — `local/no-cents-divided-by-100`,
-// `local/no-dollars-times-100`, and `local/no-literal-cta-name` —
-// across `client-app/src/**` and `platform/**`. We are not (yet) trying
-// to lint the rest of the codebase; the goal is to fail CI when
+// Scope: this configuration enables a small set of custom rules —
+// `local/no-cents-divided-by-100`, `local/no-dollars-times-100`, and
+// `local/no-literal-cta-name`. The two off-by-100x money rules run
+// across `client-app/src/**`, `platform/**`, `mobile/**`, `widget/**`,
+// `server/**`, and `shared/**` so the same off-by-100x guard protects
+// every part of the workspace that handles money. The CTA literal rule
+// stays scoped to `client-app/src/**` and `platform/**` (mobile/widget
+// don't render marketing CTAs). The goal is to fail CI when
 // contributors reintroduce inline off-by-100x money math after the
 // BL-023 `formatCurrency` / `dollarsToCents` cleanup, or when new
 // marketing CTAs drift back to one-off string literals (Task #426 /
@@ -47,7 +50,7 @@ const noopRule = {
   },
 };
 const reactHooksStub = { rules: { 'exhaustive-deps': noopRule, 'rules-of-hooks': noopRule } };
-const tsEslintStub = { rules: { 'no-namespace': noopRule, 'no-explicit-any': noopRule, 'no-unused-vars': noopRule } };
+const tsEslintStub = { rules: { 'no-namespace': noopRule, 'no-explicit-any': noopRule, 'no-unused-vars': noopRule, 'no-require-imports': noopRule } };
 
 export default [
   {
@@ -61,20 +64,32 @@ export default [
       '**/.cache/**',
       '**/coverage/**',
       'client-app/dist/**',
-      'mobile/**',
+      'mobile/.expo/**',
       'tests/**',
       'scripts/**',
       'migrations/**',
       'attached_assets/**',
       'artifacts/**',
       // The canonical formatter helpers are the *only* place the
-      // `cents / 100` math is allowed to live.
+      // `cents / 100` and `dollars * 100` math is allowed to live.
       'client-app/src/lib/formatCurrency.ts',
       'platform/core/formatCurrency.ts',
+      'shared/billing/formatCurrency.ts',
     ],
   },
   {
-    files: ['client-app/src/**/*.{ts,tsx}', 'platform/**/*.{ts,tsx}'],
+    // Off-by-100x money guard — full workspace surface. Every directory
+    // that handles money (or could reasonably grow money math) goes
+    // here so the rules can't be reintroduced anywhere we ship code.
+    // `widget/embed.js` is plain ES5 JS so we include `.js` here too.
+    files: [
+      'client-app/src/**/*.{ts,tsx}',
+      'platform/**/*.{ts,tsx}',
+      'mobile/**/*.{ts,tsx}',
+      'widget/**/*.{js,ts,tsx}',
+      'server/**/*.{ts,tsx}',
+      'shared/**/*.{ts,tsx}',
+    ],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -96,6 +111,30 @@ export default [
     rules: {
       'local/no-cents-divided-by-100': 'error',
       'local/no-dollars-times-100': 'error',
+    },
+  },
+  {
+    // CTA literal guard — narrower scope. Only the web app and platform
+    // modules render marketing CTAs; mobile/widget/server/shared have
+    // no analyticsCtas equivalent.
+    files: ['client-app/src/**/*.{ts,tsx}', 'platform/**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: 'off',
+    },
+    plugins: {
+      local: localPlugin,
+      'react-hooks': reactHooksStub,
+      '@typescript-eslint': tsEslintStub,
+    },
+    rules: {
       'local/no-literal-cta-name': 'error',
     },
   },

@@ -137,9 +137,11 @@ function unitAmountToDollarsPerMinute(price: PriceLike): number | null {
   const decimal = price.unit_amount_decimal;
   if (decimal != null && decimal !== '') {
     const cents = Number(decimal);
+    // eslint-disable-next-line local/no-cents-divided-by-100 -- Need sub-cent decimal precision (e.g. $0.075/min). The shared `formatCurrency` returns a formatted string and `centsToWholeDollars` rounds to whole dollars; neither preserves the fractional precision the metered-rate quote requires.
     if (Number.isFinite(cents)) return cents / 100;
   }
   if (price.unit_amount != null && Number.isFinite(price.unit_amount)) {
+    // eslint-disable-next-line local/no-cents-divided-by-100 -- Same as above: per-minute rate needs sub-cent precision the shared helpers don't preserve.
     return price.unit_amount / 100;
   }
   return null;

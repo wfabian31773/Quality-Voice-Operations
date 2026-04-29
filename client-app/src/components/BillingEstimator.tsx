@@ -10,6 +10,7 @@ import {
 import {
   PLAN_CATALOG,
   PLAN_TIERS,
+  centsToWholeDollars,
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
@@ -89,7 +90,7 @@ function toTierSpec(
       : null;
 
   const basePrice = overrideBaseCents != null
-    ? Math.round(overrideBaseCents / 100)
+    ? centsToWholeDollars(overrideBaseCents)
     : getPlanMonthlyPriceWholeDollars(plan.key);
   const overageRate = overrideOverage != null
     ? overrideOverage
