@@ -55,6 +55,14 @@ interface DocsFeedbackComment {
   last_reply_retry_skipped_reason?: string | null;
   last_reply_failed?: boolean | null;
   last_reply_permanent?: boolean | null;
+  // Auto-retry counters from `docs_feedback_replies.retry_count` /
+  // `last_retry_at` on the most recent reply. Driven by the background
+  // DocsFeedbackReplyRetryScheduler so the inbox can show whether the
+  // pipeline has already burned all auto-retries (admin should reach out
+  // another way) or whether the failure is fresh and a retry hasn't
+  // kicked in yet (leave it alone for an hour).
+  last_reply_retry_count?: number | null;
+  last_reply_last_retry_at?: string | null;
 }
 
 interface DocsFeedbackReply {
@@ -67,6 +75,14 @@ interface DocsFeedbackReply {
   email_message_id: string | null;
   email_error: string | null;
   retry_skipped_reason: string | null;
+  // Number of background auto-retries the DocsFeedbackReplyRetryScheduler
+  // has already burned on this row, plus the timestamp of the most recent
+  // attempt. Both are bumped in the same conditional UPDATE the scheduler
+  // uses to claim a row, so they always advance together. Surfaced in the
+  // reply history so an admin can see at-a-glance whether a Failed row
+  // still has retries remaining or whether the scheduler has given up.
+  retry_count?: number | null;
+  last_retry_at?: string | null;
   retry_of: number | null;
   created_at: string;
 }
@@ -101,6 +117,64 @@ function groupDocsFeedbackReplyChains(
 
 type DocsFeedbackSort = 'lowest_ratio' | 'highest_ratio' | 'most_votes' | 'recent';
 type DocsFeedbackStatusFilter = DocsFeedbackStatus | 'all' | 'pending_reply';
+
+// Mirrors DOCS_FEEDBACK_REPLY_DELIVERY_ALERT_THRESHOLD on the server, which
+// the DocsFeedbackReplyRetryScheduler uses as MAX_RETRY_ATTEMPTS. We hard-
+// code it on the client so the inbox can render "Auto-retried N/3" without
+// an extra round-trip; if the server constant ever changes both sides need
+// to be updated together (see platform/help/docsFeedbackReplyDeliveryAlert.ts).
+const DOCS_FEEDBACK_REPLY_AUTO_RETRY_MAX = 3;
+
+/**
+ * Compact pill that renders "Auto-retried N/MAX" alongside a Failed badge
+ * for a docs feedback reply. Renders nothing when no auto-retries have
+ * happened yet. Painted amber when the auto-retry pool has been exhausted
+ * (the row will not be retried again) and red while retries are still
+ * remaining — same colour language the inbox uses for the Hard bounce
+ * vs. plain Failed badges. Hover title surfaces the timestamp of the
+ * last attempt so an admin can tell whether the scheduler just gave up
+ * (recent) or gave up an hour ago.
+ */
+function DocsFeedbackAutoRetryBadge({
+  retryCount,
+  lastRetryAt,
+  size = 'sm',
+}: {
+  retryCount: number | null | undefined;
+  lastRetryAt: string | null | undefined;
+  size?: 'xs' | 'sm';
+}) {
+  const retries = retryCount ?? 0;
+  if (retries <= 0) return null;
+  const exhausted = retries >= DOCS_FEEDBACK_REPLY_AUTO_RETRY_MAX;
+  const lastRetryLabel = lastRetryAt
+    ? new Date(lastRetryAt).toLocaleString()
+    : null;
+  const title = lastRetryLabel
+    ? `Last auto-retry attempt at ${lastRetryLabel}${
+        exhausted
+          ? ' — no further auto-retries; reach out another way.'
+          : '. The background scheduler will keep retrying every ~90s.'
+      }`
+    : exhausted
+      ? 'Auto-retries exhausted — reach out another way.'
+      : 'Background scheduler has retried this reply.';
+  const sizing =
+    size === 'xs'
+      ? 'px-1 py-0.5 text-[9px]'
+      : 'px-1.5 py-0.5 text-[10px]';
+  const palette = exhausted
+    ? 'border-amber-300 bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'
+    : 'border-red-300 bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900';
+  return (
+    <span
+      className={`rounded border uppercase tracking-wide font-medium ${sizing} ${palette}`}
+      title={title}
+    >
+      Auto-retried {retries}/{DOCS_FEEDBACK_REPLY_AUTO_RETRY_MAX}
+    </span>
+  );
+}
 
 interface PlatformStats {
   active_tenants: string;
@@ -2893,6 +2967,18 @@ function DocsFeedbackCommentRow({
                 }) && (
                   <RetrySkippedBadge reason={c.last_reply_retry_skipped_reason} />
                 )}
+              {/* Auto-retry counter: shown whenever the background
+                  DocsFeedbackReplyRetryScheduler has touched this reply at
+                  least once. The hover title surfaces the timestamp of the
+                  last attempt so an admin can tell whether the scheduler
+                  just gave up (recent) or gave up an hour ago — and the
+                  pill turns amber once the auto-retry cap is exhausted so
+                  it matches the "auto-retries exhausted" treatment of the
+                  hard-bounce badge above. */}
+              <DocsFeedbackAutoRetryBadge
+                retryCount={c.last_reply_retry_count}
+                lastRetryAt={c.last_reply_last_retry_at}
+              />
             </div>
             {c.last_reply_error && (
               <div className={lastReplyPermanent ? 'text-amber-700' : 'text-red-600'}>
@@ -3138,6 +3224,16 @@ function DocsFeedbackCommentRow({
                           {!isHardBounce(r) && r.retry_skipped_reason && (
                             <RetrySkippedBadge reason={r.retry_skipped_reason} size="xs" />
                           )}
+                          {/* Inline auto-retry counter from the background
+                              scheduler (not the same as the manual chain
+                              "{N} attempts" pill below — that one counts
+                              chain.retries rows, this one counts in-place
+                              auto-retries on this exact row). */}
+                          <DocsFeedbackAutoRetryBadge
+                            retryCount={r.retry_count}
+                            lastRetryAt={r.last_retry_at}
+                            size="xs"
+                          />
                         </span>
                       )
                       : <span className="text-green-700">· delivered</span>}
@@ -3185,6 +3281,11 @@ function DocsFeedbackCommentRow({
                                 {!isHardBounce(retry) && retry.retry_skipped_reason && (
                                   <RetrySkippedBadge reason={retry.retry_skipped_reason} size="xs" />
                                 )}
+                                <DocsFeedbackAutoRetryBadge
+                                  retryCount={retry.retry_count}
+                                  lastRetryAt={retry.last_retry_at}
+                                  size="xs"
+                                />
                               </span>
                             )
                             : <span className="text-green-700">· delivered</span>}

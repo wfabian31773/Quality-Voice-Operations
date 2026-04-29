@@ -515,3 +515,77 @@ describe('runDocsFeedbackReplyRetryCycle — manual-retry coexistence', () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---- Admin inbox surfacing of retry_count + last_retry_at ------------------
+//
+// The scheduler bumps these columns on every auto-retry attempt; the inbox
+// API and the admin UI must surface them so an admin looking at a Failed
+// badge can tell whether the auto-retry pipeline already burned all 3
+// attempts or whether the failure is still fresh.
+
+describe('admin inbox surfaces auto-retry counters', () => {
+  const platformAdminFile = readFileSync(
+    join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
+    'utf8',
+  );
+
+  it('GET /docs/feedback/comments returns last_reply_retry_count + last_reply_last_retry_at', () => {
+    // The LATERAL join must pull retry_count and last_retry_at off the
+    // most-recent reply and alias them onto the comment row so a single
+    // round-trip drives both the failed-reply banner and the chip rendering.
+    expect(supportFile).toMatch(/lr\.retry_count AS last_reply_retry_count/);
+    expect(supportFile).toMatch(/lr\.last_retry_at AS last_reply_last_retry_at/);
+    expect(supportFile).toMatch(/SELECT created_at, email_error, retry_skipped_reason,\s*\n\s*retry_count, last_retry_at/);
+  });
+
+  it('GET /docs/feedback/comments/:id/replies returns retry_count + last_retry_at', () => {
+    // The reply history endpoint also needs the per-row counters so the
+    // chain UI can render the same badge alongside each attempt — without
+    // these columns the history view would lose the auto-retry context.
+    expect(supportFile).toMatch(
+      /SELECT id, feedback_id, sent_by, to_email, subject, body,\s*\n\s*email_message_id, email_error, retry_skipped_reason,\s*\n\s*retry_count, last_retry_at,\s*\n\s*retry_of, created_at\s*\n\s*FROM docs_feedback_replies/,
+    );
+  });
+
+  it('inbox UI declares the new fields on DocsFeedbackComment + DocsFeedbackReply', () => {
+    expect(platformAdminFile).toMatch(/last_reply_retry_count\??: number \| null/);
+    expect(platformAdminFile).toMatch(/last_reply_last_retry_at\??: string \| null/);
+    expect(platformAdminFile).toMatch(/retry_count\??: number \| null/);
+    expect(platformAdminFile).toMatch(/last_retry_at\??: string \| null/);
+  });
+
+  it('inbox UI renders an Auto-retried N/MAX badge with last-attempt timestamp on hover', () => {
+    // Single shared badge component used in both the failed-reply banner
+    // and the reply-history chain so the two sites can never drift on
+    // colour / threshold / label.
+    expect(platformAdminFile).toMatch(/function DocsFeedbackAutoRetryBadge/);
+    expect(platformAdminFile).toMatch(/Auto-retried \{retries\}\/\{DOCS_FEEDBACK_REPLY_AUTO_RETRY_MAX\}/);
+    // Hover title surfaces the last_retry_at timestamp so admins can tell
+    // whether the scheduler just gave up (recent) or gave up an hour ago.
+    expect(platformAdminFile).toMatch(/Last auto-retry attempt at \$\{lastRetryLabel\}/);
+    // Wired into the failed-reply banner …
+    expect(platformAdminFile).toMatch(
+      /<DocsFeedbackAutoRetryBadge\s*\n\s*retryCount=\{c\.last_reply_retry_count\}\s*\n\s*lastRetryAt=\{c\.last_reply_last_retry_at\}/,
+    );
+    // … and into each reply row in the chain.
+    expect(platformAdminFile).toMatch(
+      /<DocsFeedbackAutoRetryBadge\s*\n\s*retryCount=\{r\.retry_count\}\s*\n\s*lastRetryAt=\{r\.last_retry_at\}/,
+    );
+  });
+
+  it('client-side max threshold matches the server-side alert/auto-retry cap', () => {
+    // If the server's DOCS_FEEDBACK_REPLY_DELIVERY_ALERT_THRESHOLD changes,
+    // this test fails so the client constant is updated in lockstep — both
+    // numbers feed the same "N/MAX" pill.
+    const alertFile = readFileSync(
+      join(process.cwd(), 'platform/help/docsFeedbackReplyDeliveryAlert.ts'),
+      'utf8',
+    );
+    const m = alertFile.match(/DOCS_FEEDBACK_REPLY_DELIVERY_ALERT_THRESHOLD\s*=\s*(\d+)/);
+    expect(m, 'server alert threshold not found').toBeTruthy();
+    const serverMax = m![1];
+    expect(platformAdminFile).toMatch(
+      new RegExp(`const DOCS_FEEDBACK_REPLY_AUTO_RETRY_MAX\\s*=\\s*${serverMax}`),
+    );
+  });
+});

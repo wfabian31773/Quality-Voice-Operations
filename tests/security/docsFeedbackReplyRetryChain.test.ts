@@ -38,8 +38,13 @@ describe('docs feedback reply retry-chain backend', () => {
   });
 
   it('returns retry_of from the replies list endpoint', () => {
+    // retry_count + last_retry_at were added later (task #442) so the
+    // failed-reply UI can show how many auto-retries the row has burned.
+    // They were inserted into the SELECT just before retry_of so each
+    // chain row carries both the chain-relationship column AND the
+    // per-row auto-retry counters.
     expect(supportFile).toMatch(
-      /SELECT id, feedback_id, sent_by, to_email, subject, body,\s*\n\s*email_message_id, email_error, retry_skipped_reason,\s*\n\s*retry_of, created_at\s*\n\s*FROM docs_feedback_replies/,
+      /SELECT id, feedback_id, sent_by, to_email, subject, body,\s*\n\s*email_message_id, email_error, retry_skipped_reason,\s*\n\s*retry_count, last_retry_at,\s*\n\s*retry_of, created_at\s*\n\s*FROM docs_feedback_replies/,
     );
   });
 

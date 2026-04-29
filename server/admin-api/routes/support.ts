@@ -526,17 +526,28 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
       last_reply_at: Date | null;
       last_reply_error: string | null;
       last_reply_failed: boolean;
+      last_reply_retry_count: number | null;
+      last_reply_last_retry_at: Date | null;
     }>(
+      // Surface retry_count + last_retry_at on the most recent reply so the
+      // inbox can render an "Auto-retried N/MAX" pill alongside the Failed
+      // badge — admins need to see whether the background
+      // DocsFeedbackReplyRetryScheduler has already burned all auto-retries
+      // (no point waiting; reach out another way) or whether the failure is
+      // fresh and a retry hasn't kicked in yet (leave it alone).
       `SELECT f.id, f.article_slug, f.vote, f.comment, f.page_path, f.created_at,
               f.status, f.status_updated_at, f.status_updated_by,
               f.reply_email, f.reply_count,
               lr.created_at AS last_reply_at,
               lr.email_error AS last_reply_error,
               lr.retry_skipped_reason AS last_reply_retry_skipped_reason,
+              lr.retry_count AS last_reply_retry_count,
+              lr.last_retry_at AS last_reply_last_retry_at,
               (lr.email_error IS NOT NULL) AS last_reply_failed
        FROM docs_feedback f
        LEFT JOIN LATERAL (
-         SELECT created_at, email_error, retry_skipped_reason
+         SELECT created_at, email_error, retry_skipped_reason,
+                retry_count, last_retry_at
          FROM docs_feedback_replies
          WHERE feedback_id = f.id
          ORDER BY created_at DESC
@@ -608,9 +619,14 @@ router.get('/docs/feedback/comments/:id/replies', requireAuth, requirePlatformAd
   }
   try {
     const pool = getPlatformPool();
+    // retry_count + last_retry_at let the reply history render the same
+    // "Auto-retried N/MAX" badge the inbox row uses, so an admin scrolling
+    // through the chain can see how many times the background scheduler
+    // already re-sent each row before it gave up.
     const r = await pool.query(
       `SELECT id, feedback_id, sent_by, to_email, subject, body,
               email_message_id, email_error, retry_skipped_reason,
+              retry_count, last_retry_at,
               retry_of, created_at
        FROM docs_feedback_replies
        WHERE feedback_id = $1
