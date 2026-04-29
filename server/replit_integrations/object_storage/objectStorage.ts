@@ -221,6 +221,81 @@ export class ObjectStorageService {
     return normalizedPath;
   }
 
+  // Uploads a Buffer (or string) to a key under the private object dir
+  // and returns the absolute /<bucket>/<object> path. Used by background
+  // workers (e.g. the dispatch route bulk-export worker) that need to
+  // park a generated file in object storage and hand back a download
+  // URL — there's no browser flow to get a presigned PUT, so we write
+  // through the sidecar-authenticated client directly.
+  //
+  // The returned path is what callers should persist: passing it back
+  // to `streamPrivateObject` (or any future signed-URL helper) avoids
+  // recomputing the bucket / private-dir resolution at read time.
+  async uploadPrivateObject(
+    relativeKey: string,
+    body: Buffer | string,
+    contentType: string,
+  ): Promise<string> {
+    const dir = this.getPrivateObjectDir();
+    const cleanKey = relativeKey.replace(/^\/+/, '');
+    const fullPath = dir.endsWith('/') ? `${dir}${cleanKey}` : `${dir}/${cleanKey}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    // resumable: false keeps the upload to a single HTTP call — the
+    // archives we write are well under the 5 MB threshold where the
+    // resumable protocol starts to pay off, and the simple path is
+    // dramatically less prone to background-worker stalls.
+    await file.save(body, { contentType, resumable: false });
+    return fullPath;
+  }
+
+  // Streams an object stored at the absolute /<bucket>/<object> path
+  // (the value returned by `uploadPrivateObject`) straight into an
+  // Express response. Throws ObjectNotFoundError if the file no longer
+  // exists, so callers can return a 404 to the user without leaking
+  // storage internals. The optional `downloadFilename` is wired into
+  // the Content-Disposition header so browsers save with a stable name
+  // even when the key in storage is a UUID.
+  async streamPrivateObject(
+    fullObjectPath: string,
+    res: Response,
+    options?: { downloadFilename?: string; cacheTtlSec?: number },
+  ): Promise<void> {
+    const { bucketName, objectName } = parseObjectPath(fullObjectPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+    const [metadata] = await file.getMetadata();
+    res.setHeader(
+      'Content-Type',
+      metadata.contentType || 'application/octet-stream',
+    );
+    if (metadata.size != null) {
+      res.setHeader('Content-Length', String(metadata.size));
+    }
+    res.setHeader(
+      'Cache-Control',
+      `private, max-age=${options?.cacheTtlSec ?? 0}`,
+    );
+    if (options?.downloadFilename) {
+      // Quote the filename to survive spaces / dots; sanitize quotes so
+      // a malformed key can't break the header.
+      const safe = options.downloadFilename.replace(/"/g, '');
+      res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const stream = file.createReadStream();
+      stream.on('error', reject);
+      stream.on('end', resolve);
+      stream.on('close', resolve);
+      stream.pipe(res);
+    });
+  }
+
   // Checks if the user can access the object entity.
   async canAccessObjectEntity({
     userId,

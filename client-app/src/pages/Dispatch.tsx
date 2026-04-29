@@ -602,6 +602,12 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
   const [dateTo, setDateTo] = useState<string>(todayISODate());
   const [format, setFormat] = useState<'gpx' | 'csv'>('gpx');
   const [includeEmpty, setIncludeEmpty] = useState(true);
+  // Delivery mode. The sync path streams the ZIP straight into the
+  // browser (capped at 500 jobs); the async path queues a background
+  // worker that emails the dispatcher a download link when the archive
+  // is ready (cap raised to 5000). Default to "download" so the
+  // existing single-click flow is unchanged for small batches.
+  const [delivery, setDelivery] = useState<'download' | 'email'>('download');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -614,6 +620,9 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
     setSummary(null);
     try {
       const body: Record<string, unknown> = { format, include_empty: includeEmpty };
+      if (delivery === 'email') {
+        body.async = true;
+      }
       if (mode === 'selected') {
         if (selectedJobs.size === 0) {
           throw new Error('No jobs selected.');
@@ -650,6 +659,33 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
           if (body?.error) msg = String(body.error);
         } catch { /* non-JSON error body */ }
         throw new Error(msg);
+      }
+
+      // Async path: the server returns 202 with `{ export_job: { id,
+      // job_count, requested_email, ... } }` and emails the dispatcher
+      // when the archive is ready. We don't poll here — the email link
+      // is the canonical pickup mechanism — but we surface a confident
+      // "we accepted it" message and let the dispatcher close the modal.
+      if (delivery === 'email') {
+        type AsyncJob = {
+          id: string;
+          status?: string;
+          job_count?: number;
+          requested_email?: string;
+        };
+        const payload = (await res.json()) as { export_job?: AsyncJob } | null;
+        const job = payload?.export_job;
+        const email = job?.requested_email ?? '';
+        const count = job?.job_count ?? 0;
+        setSummary(
+          email
+            ? `Building archive of ${count} routes — we'll email a download link to ${email} when it's ready.`
+            : `Building archive of ${count} routes — we'll email a download link when it's ready.`,
+        );
+        if (mode === 'selected') {
+          setTimeout(() => onCompleted(), 1500);
+        }
+        return;
       }
 
       const disposition = res.headers.get('Content-Disposition') || '';
@@ -779,6 +815,39 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
           </div>
         </div>
 
+        <div>
+          <label className="block text-[10px] font-medium text-muted mb-1">Delivery</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDelivery('download')}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                delivery === 'download'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-surface text-heading hover:bg-surface-hover'
+              }`}
+            >
+              Download now
+            </button>
+            <button
+              type="button"
+              onClick={() => setDelivery('email')}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                delivery === 'email'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-surface text-heading hover:bg-surface-hover'
+              }`}
+            >
+              Email me the archive
+            </button>
+          </div>
+          <p className="text-[11px] text-muted mt-1 leading-relaxed">
+            {delivery === 'download'
+              ? 'Streams the ZIP straight to your browser. Capped at 500 jobs — pick "Email me" for larger audits.'
+              : 'Builds the archive in the background and emails you a download link (good for up to 5,000 jobs / quarter-long audits).'}
+          </p>
+        </div>
+
         {error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300">
             {error}
@@ -804,7 +873,9 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="h-3.5 w-3.5" />
-          {busy ? 'Preparing…' : 'Download archive'}
+          {busy
+            ? (delivery === 'email' ? 'Queuing…' : 'Preparing…')
+            : (delivery === 'email' ? 'Email me the archive' : 'Download archive')}
         </button>
       </div>
     </Modal>

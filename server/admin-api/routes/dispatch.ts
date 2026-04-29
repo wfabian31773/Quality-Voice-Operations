@@ -12,6 +12,11 @@ import {
   ObjectNotFoundError,
 } from '../../replit_integrations/object_storage';
 import {
+  sendEmail,
+  dispatchRouteExportReadyEmail,
+  dispatchRouteExportFailedEmail,
+} from '../../../platform/email';
+import {
   geocodeAddressCached,
   getDriveEta,
   haversineMeters,
@@ -2399,6 +2404,22 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
 // this number when it's exceeded so the dispatcher can tighten filters.
 const BULK_ROUTE_EXPORT_MAX_JOBS = 500;
 
+// Async-mode cap. The async path runs the same archive build inside a
+// background worker after returning a 202 to the dispatcher, so we can
+// stomach a much larger batch — but we still bound it so a single
+// quarterly insurance review can't pin a worker for hours, blow Node's
+// heap on the manifest, or balloon into a multi-GB ZIP that exceeds
+// SMTP-friendly download URLs. 5000 jobs ≈ ~10× the sync cap and lines
+// up with the dispatcher persona's "every job last quarter" workflow.
+const BULK_ROUTE_EXPORT_ASYNC_MAX_JOBS = 5000;
+
+// How long the emailed download link stays valid. Long enough to
+// weather a long weekend / out-of-office; short enough that stale
+// links don't accumulate forever in mail clients. The worker stamps
+// `download_expires_at = now() + this` once the archive is uploaded;
+// the unauthenticated download endpoint hard-rejects clicks past it.
+const ROUTE_EXPORT_DOWNLOAD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 // Filter columns we accept for the "no explicit selection" mode. Mirrors
 // the subset of `listJobsHandler` filters that actually scope rows the
 // dispatcher cares about for a route audit. Anything not listed here is
@@ -2406,6 +2427,287 @@ const BULK_ROUTE_EXPORT_MAX_JOBS = 500;
 const BULK_ROUTE_EXPORT_ALLOWED_FILTERS = new Set([
   'status', 'priority', 'territory_id', 'resource_id', 'job_type', 'assignee_user_id',
 ]);
+
+// Shape used by both the sync and async paths once a job set has been
+// resolved against the DB. Keeping this typed (rather than passing
+// untyped pg rows around) makes the archive-build helper trivially
+// testable and prevents drift between the two callers.
+interface ResolvedRouteJob {
+  id: string;
+  title: string | null;
+  status: string | null;
+  scheduled_at: string | Date | null;
+  completed_at: string | Date | null;
+  resource_name: string | null;
+}
+
+interface ResolveExportJobsInput {
+  pool: ReturnType<typeof getPlatformPool>;
+  tenantId: string;
+  uniqueJobIds: string[];
+  filters: Record<string, unknown>;
+  search: string;
+  dateFrom: string;
+  dateTo: string;
+  cap: number;
+}
+
+interface ResolveExportJobsResult {
+  jobs: ResolvedRouteJob[];
+  // When the filter mode matches more rows than `cap`, we surface the
+  // "at least N" count to the caller so it can produce a friendly error
+  // ("Filter matched more than 500 jobs ..."). null when within the cap.
+  matchedAtLeast: number | null;
+}
+
+/**
+ * Resolves the dispatcher's selection (explicit job_ids or filter
+ * criteria) to the concrete `ResolvedRouteJob[]` we'll archive. Used by
+ * both the sync handler (`bulkExportJobRoutesHandler`) and the async
+ * worker (`processRouteExportJob`) so the two paths can never diverge
+ * on which jobs end up in the export.
+ *
+ * Tenant scoping is enforced via the explicit `j.tenant_id = $1`
+ * predicate (and again by the RLS policy on `dispatch_jobs`); we never
+ * inject caller-supplied keys, only the predefined whitelist.
+ */
+async function resolveExportJobs(
+  input: ResolveExportJobsInput,
+): Promise<ResolveExportJobsResult> {
+  const { pool, tenantId, uniqueJobIds, filters, search, dateFrom, dateTo, cap } = input;
+
+  if (uniqueJobIds.length > 0) {
+    const { rows } = await pool.query(
+      `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
+              r.name AS resource_name
+         FROM dispatch_jobs j
+         LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+        WHERE j.tenant_id = $1 AND j.id = ANY($2::uuid[])
+        ORDER BY j.scheduled_at ASC NULLS LAST, j.created_at ASC`,
+      [tenantId, uniqueJobIds],
+    );
+    return {
+      jobs: rows.map((r) => ({
+        id: String(r.id),
+        title: (r.title as string | null) ?? null,
+        status: (r.status as string | null) ?? null,
+        scheduled_at: (r.scheduled_at as string | Date | null) ?? null,
+        completed_at: (r.completed_at as string | Date | null) ?? null,
+        resource_name: (r.resource_name as string | null) ?? null,
+      })),
+      matchedAtLeast: null,
+    };
+  }
+
+  const conditions: string[] = ['j.tenant_id = $1'];
+  const values: unknown[] = [tenantId];
+  for (const key of BULK_ROUTE_EXPORT_ALLOWED_FILTERS) {
+    const val = filters[key];
+    if (val != null && String(val).length > 0) {
+      values.push(val);
+      conditions.push(`j.${key} = $${values.length}`);
+    }
+  }
+  if (search) {
+    values.push(`%${search}%`);
+    conditions.push(
+      `(j.title ILIKE $${values.length} OR j.description ILIKE $${values.length} OR j.contact_name ILIKE $${values.length})`,
+    );
+  }
+  if (dateFrom) {
+    values.push(dateFrom);
+    conditions.push(`COALESCE(j.scheduled_at, j.created_at) >= $${values.length}::timestamptz`);
+  }
+  if (dateTo) {
+    values.push(dateTo);
+    conditions.push(`COALESCE(j.scheduled_at, j.created_at) <= $${values.length}::timestamptz`);
+  }
+  // Cap+1 lets the caller distinguish "exactly at cap" from "exceeded
+  // cap" without a separate COUNT(*) round trip.
+  values.push(cap + 1);
+  const limitParam = `$${values.length}`;
+  const { rows } = await pool.query(
+    `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
+            r.name AS resource_name
+       FROM dispatch_jobs j
+       LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY j.scheduled_at ASC NULLS LAST, j.created_at ASC
+      LIMIT ${limitParam}`,
+    values,
+  );
+  if (rows.length > cap) {
+    return { jobs: [], matchedAtLeast: rows.length };
+  }
+  return {
+    jobs: rows.map((r) => ({
+      id: String(r.id),
+      title: (r.title as string | null) ?? null,
+      status: (r.status as string | null) ?? null,
+      scheduled_at: (r.scheduled_at as string | Date | null) ?? null,
+      completed_at: (r.completed_at as string | Date | null) ?? null,
+      resource_name: (r.resource_name as string | null) ?? null,
+    })),
+    matchedAtLeast: null,
+  };
+}
+
+interface BuildRouteArchiveResult {
+  buffer: Buffer;
+  archiveFilename: string;
+  jobCount: number;
+  includedCount: number;
+  skippedEmpty: number;
+}
+
+/**
+ * Builds the in-memory ZIP archive (per-job route file in `format` plus
+ * a `manifest.csv` index) for a resolved set of jobs. Hits the
+ * breadcrumb table once for the whole batch so we don't fan out into
+ * hundreds of N+1 queries while a dispatcher waits.
+ *
+ * Pure-ish: all I/O is the single breadcrumb SELECT against the pool;
+ * no email/storage side effects. Both the sync handler and the async
+ * worker call this so the two paths produce byte-identical archives.
+ */
+async function buildRouteArchive(input: {
+  pool: ReturnType<typeof getPlatformPool>;
+  tenantId: string;
+  jobs: ResolvedRouteJob[];
+  format: 'gpx' | 'csv';
+  includeEmpty: boolean;
+}): Promise<BuildRouteArchiveResult> {
+  const { pool, tenantId, jobs, format, includeEmpty } = input;
+
+  const jobIdList = jobs.map((j) => j.id);
+  const { rows: pointRows } = await pool.query(
+    `SELECT active_job_id, latitude, longitude, accuracy_m, heading_deg, speed_mps,
+            recorded_at, received_at
+       FROM dispatch_resource_location_history
+      WHERE tenant_id = $1
+        AND active_job_id = ANY($2::uuid[])
+      ORDER BY active_job_id ASC, recorded_at ASC, id ASC`,
+    [tenantId, jobIdList],
+  );
+
+  const pointsByJob = new Map<string, RoutePoint[]>();
+  for (const row of pointRows) {
+    const jid = String(row.active_job_id);
+    const list = pointsByJob.get(jid) ?? [];
+    list.push(mapRoutePoint(row as Record<string, unknown>));
+    pointsByJob.set(jid, list);
+  }
+
+  const zip = new JSZip();
+
+  type ManifestRow = {
+    job_id: string;
+    title: string;
+    resource_name: string;
+    status: string;
+    scheduled_at: string;
+    completed_at: string;
+    points: number;
+    window_start: string;
+    window_end: string;
+    file: string;
+  };
+  const manifest: ManifestRow[] = [];
+
+  let includedCount = 0;
+  let skippedEmpty = 0;
+  const usedFilenames = new Set<string>();
+
+  for (const job of jobs) {
+    const points = pointsByJob.get(job.id) ?? [];
+    const windowStart = points.length > 0 ? points[0].recorded_at : null;
+    const windowEnd = points.length > 0 ? points[points.length - 1].recorded_at : null;
+
+    if (points.length === 0 && !includeEmpty) {
+      skippedEmpty++;
+      manifest.push({
+        job_id: job.id,
+        title: job.title ?? '',
+        resource_name: job.resource_name ?? '',
+        status: job.status ?? '',
+        scheduled_at: job.scheduled_at ? new Date(job.scheduled_at).toISOString() : '',
+        completed_at: job.completed_at ? new Date(job.completed_at).toISOString() : '',
+        points: 0,
+        window_start: '',
+        window_end: '',
+        file: '',
+      });
+      continue;
+    }
+
+    // The canonical filename is collision-free across distinct job ids,
+    // but if a dispatcher manually re-uses ids in the selection (or two
+    // jobs share a date and the safe-id strip happens to collide) we
+    // disambiguate with a numeric suffix so JSZip doesn't silently
+    // overwrite an entry.
+    let filename = buildRouteFilename(
+      job.id, format, windowStart, job.scheduled_at, job.completed_at,
+    );
+    if (usedFilenames.has(filename)) {
+      const dot = filename.lastIndexOf('.');
+      const stem = dot === -1 ? filename : filename.slice(0, dot);
+      const ext = dot === -1 ? '' : filename.slice(dot);
+      let suffix = 2;
+      while (usedFilenames.has(`${stem}-${suffix}${ext}`)) suffix++;
+      filename = `${stem}-${suffix}${ext}`;
+    }
+    usedFilenames.add(filename);
+
+    const body = format === 'csv'
+      ? buildRouteCsv(points)
+      : buildRouteGpx(job.id, job.title, points);
+    zip.file(filename, body);
+    includedCount++;
+
+    manifest.push({
+      job_id: job.id,
+      title: job.title ?? '',
+      resource_name: job.resource_name ?? '',
+      status: job.status ?? '',
+      scheduled_at: job.scheduled_at ? new Date(job.scheduled_at).toISOString() : '',
+      completed_at: job.completed_at ? new Date(job.completed_at).toISOString() : '',
+      points: points.length,
+      window_start: windowStart ?? '',
+      window_end: windowEnd ?? '',
+      file: filename,
+    });
+  }
+
+  // CSV-escape per RFC 4180: wrap in quotes when the value contains a
+  // comma, quote, or newline; double up embedded quotes. Matches what
+  // Excel and Google Sheets expect.
+  const csvField = (raw: string): string => {
+    if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+    return raw;
+  };
+  const manifestHeader = [
+    'job_id', 'title', 'resource_name', 'status', 'scheduled_at',
+    'completed_at', 'points', 'window_start', 'window_end', 'file',
+  ];
+  const manifestLines = manifest.map((m) =>
+    manifestHeader.map((h) => csvField(String(m[h as keyof ManifestRow] ?? ''))).join(','),
+  );
+  zip.file('manifest.csv', [manifestHeader.join(','), ...manifestLines].join('\n') + '\n');
+
+  const generatedAt = new Date().toISOString();
+  const datePart = generatedAt.slice(0, 10);
+  const archiveFilename = `dispatch-routes-${datePart}.zip`;
+
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+  return {
+    buffer,
+    archiveFilename,
+    jobCount: jobs.length,
+    includedCount,
+    skippedEmpty,
+  };
+}
 
 /**
  * POST /dispatch/jobs/routes/export
@@ -2489,234 +2791,537 @@ export const bulkExportJobRoutesHandler: RequestHandler = async (req, res) => {
     });
   }
 
-  try {
-    // ---- Step 1: resolve the set of jobs to include in the archive ----
-    let jobs: Array<{
-      id: string;
-      title: string | null;
-      status: string | null;
-      scheduled_at: string | Date | null;
-      completed_at: string | Date | null;
-      resource_name: string | null;
-    }> = [];
+  // The dispatcher can opt into the async path explicitly via
+  // `async: true`. The sync path keeps the original 500-job cap (so a
+  // dispatcher who clicks "Download" gets a fast response or a clear
+  // "narrow your filters" error); the async path raises the cap to
+  // BULK_ROUTE_EXPORT_ASYNC_MAX_JOBS and emails the dispatcher a
+  // download link when the worker finishes.
+  const asyncMode = body.async === true;
+  const cap = asyncMode ? BULK_ROUTE_EXPORT_ASYNC_MAX_JOBS : BULK_ROUTE_EXPORT_MAX_JOBS;
 
-    if (uniqueJobIds.length > 0) {
-      if (uniqueJobIds.length > BULK_ROUTE_EXPORT_MAX_JOBS) {
-        return res.status(400).json({
-          error: `Too many jobs selected (${uniqueJobIds.length}). Limit is ${BULK_ROUTE_EXPORT_MAX_JOBS} per export.`,
-        });
-      }
-      const { rows } = await pool.query(
-        `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
-                r.name AS resource_name
-           FROM dispatch_jobs j
-           LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
-          WHERE j.tenant_id = $1 AND j.id = ANY($2::uuid[])
-          ORDER BY j.scheduled_at ASC NULLS LAST, j.created_at ASC`,
-        [tenantId, uniqueJobIds],
-      );
-      jobs = rows.map((r) => ({
-        id: String(r.id),
-        title: (r.title as string | null) ?? null,
-        status: (r.status as string | null) ?? null,
-        scheduled_at: (r.scheduled_at as string | Date | null) ?? null,
-        completed_at: (r.completed_at as string | Date | null) ?? null,
-        resource_name: (r.resource_name as string | null) ?? null,
-      }));
-    } else {
-      const conditions: string[] = ['j.tenant_id = $1'];
-      const values: unknown[] = [tenantId];
-      for (const key of BULK_ROUTE_EXPORT_ALLOWED_FILTERS) {
-        const val = filters[key];
-        if (val != null && String(val).length > 0) {
-          values.push(val);
-          conditions.push(`j.${key} = $${values.length}`);
-        }
-      }
-      if (search) {
-        values.push(`%${search}%`);
-        conditions.push(
-          `(j.title ILIKE $${values.length} OR j.description ILIKE $${values.length} OR j.contact_name ILIKE $${values.length})`,
-        );
-      }
-      if (dateFrom) {
-        values.push(dateFrom);
-        conditions.push(`COALESCE(j.scheduled_at, j.created_at) >= $${values.length}::timestamptz`);
-      }
-      if (dateTo) {
-        values.push(dateTo);
-        conditions.push(`COALESCE(j.scheduled_at, j.created_at) <= $${values.length}::timestamptz`);
-      }
-      values.push(BULK_ROUTE_EXPORT_MAX_JOBS + 1);
-      const limitParam = `$${values.length}`;
-      const { rows } = await pool.query(
-        `SELECT j.id, j.title, j.status, j.scheduled_at, j.completed_at,
-                r.name AS resource_name
-           FROM dispatch_jobs j
-           LEFT JOIN dispatch_resources r ON r.id = j.resource_id AND r.tenant_id = j.tenant_id
-          WHERE ${conditions.join(' AND ')}
-          ORDER BY j.scheduled_at ASC NULLS LAST, j.created_at ASC
-          LIMIT ${limitParam}`,
-        values,
-      );
-      if (rows.length > BULK_ROUTE_EXPORT_MAX_JOBS) {
-        return res.status(400).json({
-          error: `Filter matched more than ${BULK_ROUTE_EXPORT_MAX_JOBS} jobs. Narrow the date range or filters and try again.`,
-          matched_at_least: rows.length,
-        });
-      }
-      jobs = rows.map((r) => ({
-        id: String(r.id),
-        title: (r.title as string | null) ?? null,
-        status: (r.status as string | null) ?? null,
-        scheduled_at: (r.scheduled_at as string | Date | null) ?? null,
-        completed_at: (r.completed_at as string | Date | null) ?? null,
-        resource_name: (r.resource_name as string | null) ?? null,
-      }));
+  // The async path emails the resulting link to whoever requested the
+  // export — bail early if we don't have an address to send to. This
+  // happens vanishingly rarely (the auth middleware already requires
+  // an email-bearing JWT) but the worker can't recover from a missing
+  // email later, so we'd rather refuse the request now than let the
+  // archive land in object storage with no way to deliver it.
+  const requesterEmail = (req.user?.email ?? '').trim();
+  if (asyncMode && !requesterEmail) {
+    return res.status(400).json({
+      error: 'No email address on file for this user — cannot deliver the archive.',
+    });
+  }
+
+  try {
+    if (uniqueJobIds.length > cap) {
+      return res.status(400).json({
+        error: `Too many jobs selected (${uniqueJobIds.length}). Limit is ${cap} per ${asyncMode ? 'async ' : ''}export.`,
+      });
+    }
+
+    const { jobs, matchedAtLeast } = await resolveExportJobs({
+      pool,
+      tenantId,
+      uniqueJobIds,
+      filters,
+      search,
+      dateFrom,
+      dateTo,
+      cap,
+    });
+
+    if (matchedAtLeast != null) {
+      return res.status(400).json({
+        error: `Filter matched more than ${cap} jobs. Narrow the date range or filters and try again.`,
+        matched_at_least: matchedAtLeast,
+      });
     }
 
     if (jobs.length === 0) {
       return res.status(404).json({ error: 'No jobs matched the selection.' });
     }
 
-    // ---- Step 2: fetch every breadcrumb point in one tenant-scoped query ----
-    const jobIdList = jobs.map((j) => j.id);
-    const { rows: pointRows } = await pool.query(
-      `SELECT active_job_id, latitude, longitude, accuracy_m, heading_deg, speed_mps,
-              recorded_at, received_at
-         FROM dispatch_resource_location_history
-        WHERE tenant_id = $1
-          AND active_job_id = ANY($2::uuid[])
-        ORDER BY active_job_id ASC, recorded_at ASC, id ASC`,
-      [tenantId, jobIdList],
-    );
+    if (asyncMode) {
+      // Snapshot the resolved job ids so the worker doesn't drift if a
+      // dispatcher edits / deletes jobs between request time and the
+      // moment the worker actually runs. We persist the ids (not the
+      // filter criteria) precisely so the archive matches what the
+      // dispatcher saw on screen when they clicked "Email me".
+      const resolvedJobIds = jobs.map((j) => j.id);
 
-    const pointsByJob = new Map<string, RoutePoint[]>();
-    for (const row of pointRows) {
-      const jid = String(row.active_job_id);
-      const list = pointsByJob.get(jid) ?? [];
-      list.push(mapRoutePoint(row as Record<string, unknown>));
-      pointsByJob.set(jid, list);
-    }
-
-    // ---- Step 3: build the archive ----
-    const zip = new JSZip();
-
-    type ManifestRow = {
-      job_id: string;
-      title: string;
-      resource_name: string;
-      status: string;
-      scheduled_at: string;
-      completed_at: string;
-      points: number;
-      window_start: string;
-      window_end: string;
-      file: string;
-    };
-    const manifest: ManifestRow[] = [];
-
-    let includedCount = 0;
-    let skippedEmpty = 0;
-    const usedFilenames = new Set<string>();
-
-    for (const job of jobs) {
-      const points = pointsByJob.get(job.id) ?? [];
-      const windowStart = points.length > 0 ? points[0].recorded_at : null;
-      const windowEnd = points.length > 0 ? points[points.length - 1].recorded_at : null;
-
-      if (points.length === 0 && !includeEmpty) {
-        skippedEmpty++;
-        manifest.push({
-          job_id: job.id,
-          title: job.title ?? '',
-          resource_name: job.resource_name ?? '',
-          status: job.status ?? '',
-          scheduled_at: job.scheduled_at ? new Date(job.scheduled_at).toISOString() : '',
-          completed_at: job.completed_at ? new Date(job.completed_at).toISOString() : '',
-          points: 0,
-          window_start: '',
-          window_end: '',
-          file: '',
-        });
-        continue;
-      }
-
-      // The canonical filename is collision-free across distinct job ids,
-      // but if a dispatcher manually re-uses ids in the selection (or two
-      // jobs share a date and the safe-id strip happens to collide) we
-      // disambiguate with a numeric suffix so JSZip doesn't silently
-      // overwrite an entry.
-      let filename = buildRouteFilename(
-        job.id, exportFormat, windowStart, job.scheduled_at, job.completed_at,
+      const { rows: insertRows } = await pool.query(
+        `INSERT INTO dispatch_route_export_jobs (
+           tenant_id, requested_by_user_id, requested_by_email,
+           status, format, include_empty, selection, job_count
+         ) VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
+         RETURNING id, status, created_at`,
+        [
+          tenantId,
+          req.user!.userId,
+          requesterEmail,
+          exportFormat,
+          includeEmpty,
+          JSON.stringify({ resolved_job_ids: resolvedJobIds }),
+          jobs.length,
+        ],
       );
-      if (usedFilenames.has(filename)) {
-        const dot = filename.lastIndexOf('.');
-        const stem = dot === -1 ? filename : filename.slice(0, dot);
-        const ext = dot === -1 ? '' : filename.slice(dot);
-        let suffix = 2;
-        while (usedFilenames.has(`${stem}-${suffix}${ext}`)) suffix++;
-        filename = `${stem}-${suffix}${ext}`;
-      }
-      usedFilenames.add(filename);
+      const exportJobId = String(insertRows[0].id);
 
-      const body = exportFormat === 'csv'
-        ? buildRouteCsv(points)
-        : buildRouteGpx(job.id, job.title, points);
-      zip.file(filename, body);
-      includedCount++;
+      // Fire the worker on the next tick so the HTTP response goes out
+      // immediately. The worker swallows its own errors and writes the
+      // failure mode back to the row (and a failure email), so we do
+      // NOT await it here.
+      setImmediate(() => {
+        processRouteExportJob(exportJobId).catch((err) => {
+          logger.error('processRouteExportJob crashed outside its own try/catch', {
+            exportJobId,
+            error: String(err),
+          });
+        });
+      });
 
-      manifest.push({
-        job_id: job.id,
-        title: job.title ?? '',
-        resource_name: job.resource_name ?? '',
-        status: job.status ?? '',
-        scheduled_at: job.scheduled_at ? new Date(job.scheduled_at).toISOString() : '',
-        completed_at: job.completed_at ? new Date(job.completed_at).toISOString() : '',
-        points: points.length,
-        window_start: windowStart ?? '',
-        window_end: windowEnd ?? '',
-        file: filename,
+      return res.status(202).json({
+        export_job: {
+          id: exportJobId,
+          status: 'pending',
+          job_count: jobs.length,
+          format: exportFormat,
+          requested_email: requesterEmail,
+        },
       });
     }
 
-    // CSV-escape per RFC 4180: wrap in quotes when the value contains a
-    // comma, quote, or newline; double up embedded quotes. Matches what
-    // Excel and Google Sheets expect.
-    const csvField = (raw: string): string => {
-      if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
-      return raw;
-    };
-    const manifestHeader = [
-      'job_id', 'title', 'resource_name', 'status', 'scheduled_at',
-      'completed_at', 'points', 'window_start', 'window_end', 'file',
-    ];
-    const manifestLines = manifest.map((m) =>
-      manifestHeader.map((h) => csvField(String(m[h as keyof ManifestRow] ?? ''))).join(','),
-    );
-    zip.file('manifest.csv', [manifestHeader.join(','), ...manifestLines].join('\n') + '\n');
-
-    const generatedAt = new Date().toISOString();
-    const datePart = generatedAt.slice(0, 10);
-    const archiveName = `dispatch-routes-${datePart}.zip`;
-
-    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    // ---- Sync path: build the archive in-process and stream it back ----
+    const archive = await buildRouteArchive({
+      pool,
+      tenantId,
+      jobs,
+      format: exportFormat,
+      includeEmpty,
+    });
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${archiveName}"`);
-    res.setHeader('X-Route-Export-Job-Count', String(jobs.length));
-    res.setHeader('X-Route-Export-Included', String(includedCount));
-    res.setHeader('X-Route-Export-Skipped-Empty', String(skippedEmpty));
+    res.setHeader('Content-Disposition', `attachment; filename="${archive.archiveFilename}"`);
+    res.setHeader('X-Route-Export-Job-Count', String(archive.jobCount));
+    res.setHeader('X-Route-Export-Included', String(archive.includedCount));
+    res.setHeader('X-Route-Export-Skipped-Empty', String(archive.skippedEmpty));
     res.setHeader('X-Route-Export-Format', exportFormat);
-    return res.send(buffer);
+    return res.send(archive.buffer);
   } catch (err) {
     logger.error('Failed to bulk export dispatch routes', {
       tenantId,
       jobIdCount: uniqueJobIds.length,
       filterMode: uniqueJobIds.length === 0,
+      asyncMode,
       error: String(err),
     });
     return res.status(500).json({ error: 'Failed to export routes' });
+  }
+};
+
+// Resolve the absolute base URL we should embed in outbound emails. We
+// re-derive the same APP_URL → REPLIT_DEV_DOMAIN → localhost chain used
+// by `publicTrackerUrl` so dev / preview / prod all produce a tappable
+// link. Defined here (and not via a shared util) to keep the
+// dispatch-route export self-contained — it's the only async-email
+// surface in this file.
+function dispatchAppBaseUrl(): string {
+  const base =
+    process.env.APP_URL
+    ?? (process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : 'http://localhost:5173');
+  return base.replace(/\/+$/, '');
+}
+
+/**
+ * Background worker for the async route-export path.
+ *
+ * Runs after `bulkExportJobRoutesHandler` has already accepted the
+ * request, inserted the `dispatch_route_export_jobs` row in `pending`,
+ * and returned a 202 to the dispatcher. From here it owns the row's
+ * lifecycle:
+ *
+ *   pending → running → ready  (archive uploaded, email sent)
+ *   pending → running → failed (record error, send failure email)
+ *
+ * All errors are caught inside the function so a worker crash can never
+ * surface to the original Express response — instead we mark the row
+ * `failed` and send a failure email so the dispatcher knows to retry
+ * rather than waiting forever for a "ready" notification that never
+ * arrives. The function is exported only for tests; production callers
+ * always go through the handler above.
+ */
+export async function processRouteExportJob(exportJobId: string): Promise<void> {
+  const pool = getPlatformPool();
+
+  // Pull the export-job row first so subsequent error paths can email
+  // the requester. We deliberately read the email + format from the
+  // row (rather than re-deriving from a request) so a long-running
+  // worker can survive deploys without losing its delivery target.
+  let row: {
+    tenant_id: string;
+    requested_by_email: string;
+    requested_by_user_id: string | null;
+    format: 'gpx' | 'csv';
+    include_empty: boolean;
+    selection: { resolved_job_ids?: string[] } | null;
+  } | null = null;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT tenant_id, requested_by_email, requested_by_user_id,
+              format, include_empty, selection
+         FROM dispatch_route_export_jobs
+        WHERE id = $1
+        LIMIT 1`,
+      [exportJobId],
+    );
+    if (rows.length === 0) {
+      logger.warn('processRouteExportJob: row not found', { exportJobId });
+      return;
+    }
+    const r = rows[0] as Record<string, unknown>;
+    const rawSelection = r.selection;
+    const selection = typeof rawSelection === 'string'
+      ? JSON.parse(rawSelection)
+      : (rawSelection as { resolved_job_ids?: string[] } | null);
+    row = {
+      tenant_id: String(r.tenant_id),
+      requested_by_email: String(r.requested_by_email),
+      requested_by_user_id: (r.requested_by_user_id as string | null) ?? null,
+      format: (r.format as 'gpx' | 'csv'),
+      include_empty: r.include_empty !== false,
+      selection,
+    };
+
+    await pool.query(
+      `UPDATE dispatch_route_export_jobs
+          SET status = 'running', started_at = NOW()
+        WHERE id = $1 AND status = 'pending'`,
+      [exportJobId],
+    );
+
+    const resolvedJobIds = Array.isArray(row.selection?.resolved_job_ids)
+      ? row.selection!.resolved_job_ids!.filter((s): s is string => typeof s === 'string')
+      : [];
+    if (resolvedJobIds.length === 0) {
+      throw new Error('Export job has no resolved job ids in selection');
+    }
+
+    // Re-resolve the jobs through the same helper the sync path uses,
+    // scoped by the snapshotted ids. This deliberately re-applies tenant
+    // scoping (in case a job was reassigned to another tenant — defence
+    // in depth, since the original handler already filtered by tenant).
+    const { jobs } = await resolveExportJobs({
+      pool,
+      tenantId: row.tenant_id,
+      uniqueJobIds: resolvedJobIds,
+      filters: {},
+      search: '',
+      dateFrom: '',
+      dateTo: '',
+      cap: BULK_ROUTE_EXPORT_ASYNC_MAX_JOBS,
+    });
+
+    if (jobs.length === 0) {
+      throw new Error('No jobs matched the snapshotted selection — they may have been deleted.');
+    }
+
+    const archive = await buildRouteArchive({
+      pool,
+      tenantId: row.tenant_id,
+      jobs,
+      format: row.format,
+      includeEmpty: row.include_empty,
+    });
+
+    // Park the archive under the private object dir, namespaced by
+    // tenant + export id so every tenant's exports share the same
+    // bucket but never collide. The download endpoint maps a token →
+    // this path, so the random id alone is enough; the tenant prefix
+    // is just for human-readable triage of the bucket.
+    const objectKey = `dispatch-route-exports/${row.tenant_id}/${exportJobId}.zip`;
+    const storage = new ObjectStorageService();
+    const archiveObjectPath = await storage.uploadPrivateObject(
+      objectKey,
+      archive.buffer,
+      'application/zip',
+    );
+
+    // The download token is the only credential the unauthenticated
+    // download endpoint accepts. 32 random bytes (256 bits) is well
+    // beyond brute-force reach even at internet scale.
+    const downloadToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + ROUTE_EXPORT_DOWNLOAD_TTL_MS);
+
+    await pool.query(
+      `UPDATE dispatch_route_export_jobs
+          SET status = 'ready',
+              archive_object_path = $2,
+              archive_filename    = $3,
+              archive_bytes       = $4,
+              download_token      = $5,
+              download_expires_at = $6,
+              included_count      = $7,
+              skipped_empty       = $8,
+              completed_at        = NOW()
+        WHERE id = $1`,
+      [
+        exportJobId,
+        archiveObjectPath,
+        archive.archiveFilename,
+        archive.buffer.length,
+        downloadToken,
+        expiresAt.toISOString(),
+        archive.includedCount,
+        archive.skippedEmpty,
+      ],
+    );
+
+    // Look up the requester's first name + tenant display name so the
+    // email reads like a personal note rather than a system noise. Both
+    // queries are best-effort — missing data falls back to neutral
+    // defaults inside the template.
+    let firstName: string | null = null;
+    let tenantName: string | null = null;
+    try {
+      if (row.requested_by_user_id) {
+        const { rows: uRows } = await pool.query(
+          `SELECT first_name FROM users WHERE id = $1 LIMIT 1`,
+          [row.requested_by_user_id],
+        );
+        firstName = (uRows[0]?.first_name as string | null) ?? null;
+      }
+      const { rows: tRows } = await pool.query(
+        `SELECT name FROM tenants WHERE id = $1 LIMIT 1`,
+        [row.tenant_id],
+      );
+      tenantName = (tRows[0]?.name as string | null) ?? null;
+    } catch (lookupErr) {
+      logger.warn('processRouteExportJob: requester/tenant lookup failed', {
+        exportJobId,
+        error: String(lookupErr),
+      });
+    }
+
+    const downloadUrl = `${dispatchAppBaseUrl()}/api/dispatch/route-exports/${exportJobId}/download?token=${downloadToken}`;
+    const expiresAtHuman = expiresAt.toUTCString();
+
+    const email = dispatchRouteExportReadyEmail({
+      tenantName: tenantName ?? undefined,
+      requesterFirstName: firstName,
+      jobCount: archive.jobCount,
+      includedCount: archive.includedCount,
+      skippedEmpty: archive.skippedEmpty,
+      format: row.format,
+      archiveFilename: archive.archiveFilename,
+      archiveBytes: archive.buffer.length,
+      downloadUrl,
+      expiresAt: expiresAtHuman,
+    });
+
+    const sendResult = await sendEmail({
+      to: row.requested_by_email,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+
+    if (sendResult.success && sendResult.messageId) {
+      await pool.query(
+        `UPDATE dispatch_route_export_jobs
+            SET email_sent_at = NOW(), email_message_id = $2
+          WHERE id = $1`,
+        [exportJobId, sendResult.messageId],
+      );
+    } else {
+      // The archive is still ready and downloadable — only the email
+      // failed. Log loudly but don't flip the row to `failed`, since
+      // the dispatcher can still retrieve the archive via the status
+      // endpoint + download token if the email is recovered.
+      logger.error('processRouteExportJob: email send failed but archive is ready', {
+        exportJobId,
+        error: sendResult.error,
+        permanent: sendResult.permanent,
+      });
+    }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error('processRouteExportJob failed', {
+      exportJobId,
+      error: errorMessage,
+    });
+    try {
+      await pool.query(
+        `UPDATE dispatch_route_export_jobs
+            SET status = 'failed', error_message = $2, completed_at = NOW()
+          WHERE id = $1`,
+        [exportJobId, errorMessage.slice(0, 1000)],
+      );
+    } catch (updateErr) {
+      logger.error('processRouteExportJob: failed to record failure status', {
+        exportJobId,
+        error: String(updateErr),
+      });
+    }
+
+    if (row?.requested_by_email) {
+      try {
+        const failureEmail = dispatchRouteExportFailedEmail({
+          requesterFirstName: null,
+          format: row.format,
+          errorMessage,
+          dispatchBoardUrl: `${dispatchAppBaseUrl()}/dispatch`,
+        });
+        await sendEmail({
+          to: row.requested_by_email,
+          subject: failureEmail.subject,
+          html: failureEmail.html,
+          text: failureEmail.text,
+        });
+      } catch (mailErr) {
+        logger.error('processRouteExportJob: failure-email send failed', {
+          exportJobId,
+          error: String(mailErr),
+        });
+      }
+    }
+  }
+}
+
+/**
+ * GET /dispatch/route-exports/:id
+ *
+ * Status poll for the async route-export job. Used by the dispatcher
+ * UI's "Recent exports" panel and by the modal's optimistic flow that
+ * wants to confirm "we accepted your request" without waiting for the
+ * email round-trip. Tenant-scoped through the explicit predicate (and
+ * RLS on the table); returning 404 — instead of 403 — for a foreign
+ * tenant id keeps export ids opaque across tenants.
+ */
+export const getRouteExportStatusHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, format, job_count, included_count, skipped_empty,
+              archive_filename, archive_bytes, download_expires_at,
+              error_message, created_at, started_at, completed_at,
+              email_sent_at
+         FROM dispatch_route_export_jobs
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [id, tenantId],
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Export job not found' });
+    }
+    const r = rows[0] as Record<string, unknown>;
+    return res.json({
+      id: String(r.id),
+      status: r.status,
+      format: r.format,
+      job_count: r.job_count,
+      included_count: r.included_count,
+      skipped_empty: r.skipped_empty,
+      archive_filename: r.archive_filename,
+      archive_bytes: r.archive_bytes ? Number(r.archive_bytes) : null,
+      download_expires_at: r.download_expires_at,
+      error_message: r.error_message,
+      created_at: r.created_at,
+      started_at: r.started_at,
+      completed_at: r.completed_at,
+      email_sent_at: r.email_sent_at,
+    });
+  } catch (err) {
+    logger.error('Failed to load route export status', {
+      tenantId,
+      exportJobId: id,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to load export status' });
+  }
+};
+
+/**
+ * GET /dispatch/route-exports/:id/download?token=...
+ *
+ * Token-authenticated download of a ready route-export archive. This
+ * endpoint is intentionally **unauthenticated** (no JWT) because the
+ * link is delivered by email, where the dispatcher's mail client
+ * fetches it without our session cookie. The opaque `download_token`
+ * (32 random bytes, unique per export) acts as the only credential —
+ * combined with the explicit `download_expires_at` enforcement and the
+ * `status = 'ready'` gate, that gives us a tight, self-contained
+ * authorization surface that doesn't leak archives across tenants.
+ */
+export const downloadRouteExportHandler: RequestHandler = async (req, res) => {
+  const { id } = req.params;
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+
+  if (!token) {
+    return res.status(400).json({ error: 'Missing download token' });
+  }
+
+  const pool = getPlatformPool();
+  try {
+    // RLS on dispatch_route_export_jobs is keyed on `app.tenant_id`,
+    // which we have no way to set on this unauthenticated request — so
+    // we fetch the row through `withPrivilegedClient` (which disables
+    // row_security in the surrounding transaction). The token itself
+    // is still the credential gating access.
+    const { withPrivilegedClient } = await import('../../../platform/db');
+    const row = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, tenant_id, status, archive_object_path, archive_filename,
+                download_token, download_expires_at
+           FROM dispatch_route_export_jobs
+          WHERE id = $1 AND download_token = $2
+          LIMIT 1`,
+        [id, token],
+      );
+      return rows[0] as Record<string, unknown> | undefined;
+    });
+
+    if (!row) {
+      return res.status(404).json({ error: 'Export not found or token invalid' });
+    }
+    if (row.status !== 'ready') {
+      return res.status(409).json({ error: `Export is not ready (status: ${row.status})` });
+    }
+    const expiresAt = row.download_expires_at
+      ? new Date(row.download_expires_at as string | Date)
+      : null;
+    if (!expiresAt || expiresAt.getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Download link has expired' });
+    }
+    if (!row.archive_object_path) {
+      return res.status(500).json({ error: 'Archive path missing on export job' });
+    }
+
+    const storage = new ObjectStorageService();
+    await storage.streamPrivateObject(
+      String(row.archive_object_path),
+      res,
+      {
+        downloadFilename: String(row.archive_filename ?? `dispatch-routes-${id}.zip`),
+      },
+    );
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      return res.status(404).json({ error: 'Archive file no longer in storage' });
+    }
+    logger.error('Failed to stream route export archive', {
+      exportJobId: id,
+      error: String(err),
+    });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to download archive' });
+    }
   }
 };
 
@@ -3568,6 +4173,12 @@ router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite
 router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
 router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
 router.post('/dispatch/jobs/routes/export', requireAuth, bulkExportJobRoutesHandler);
+router.get('/dispatch/route-exports/:id', requireAuth, getRouteExportStatusHandler);
+// Intentionally NOT behind requireAuth — the per-export `download_token`
+// embedded in the email link is the only credential. See
+// `downloadRouteExportHandler` for the full token / expiry / status
+// gating that protects this endpoint.
+router.get('/dispatch/route-exports/:id/download', downloadRouteExportHandler);
 
 // Public, token-authenticated booking-tracker endpoint. NO requireAuth —
 // the per-job tracking_token (migration 088) is the only credential.

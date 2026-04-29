@@ -38,9 +38,33 @@ vi.mock('../../server/admin-api/middleware/rbac', () => ({
   requireRole: () => (_req: Request, _res: Response, next: () => void) => next(),
   requirePlatformAdmin: (_req: Request, _res: Response, next: () => void) => next(),
 }));
+// Captured per-test so async-mode tests can assert what we tried to
+// upload to object storage and what URL we baked into the email.
+const uploadPrivateObjectMock = vi.fn(async (key: string) => `/objects/private/${key}`);
+const streamPrivateObjectMock = vi.fn(async () => {});
 vi.mock('../../server/replit_integrations/object_storage', () => ({
-  ObjectStorageService: class {},
+  ObjectStorageService: class {
+    uploadPrivateObject = uploadPrivateObjectMock;
+    streamPrivateObject = streamPrivateObjectMock;
+  },
   ObjectNotFoundError: class extends Error {},
+}));
+
+const sendEmailMock = vi.fn(async () => ({ success: true, messageId: 'msg-test-1' }));
+const readyEmailMock = vi.fn(() => ({
+  subject: 'Your dispatch route archive is ready',
+  html: '<p>ready</p>',
+  text: 'ready',
+}));
+const failedEmailMock = vi.fn(() => ({
+  subject: 'Your dispatch route archive could not be built',
+  html: '<p>failed</p>',
+  text: 'failed',
+}));
+vi.mock('../../platform/email', () => ({
+  sendEmail: sendEmailMock,
+  dispatchRouteExportReadyEmail: readyEmailMock,
+  dispatchRouteExportFailedEmail: failedEmailMock,
 }));
 
 interface CapturedResponse {
@@ -74,9 +98,17 @@ function makeRes(): CapturedResponse {
   };
 }
 
-function makeReq(body: Record<string, unknown>): Request {
+function makeReq(
+  body: Record<string, unknown>,
+  overrides: { user?: Record<string, unknown> } = {},
+): Request {
   return {
-    user: { tenantId: 'tenant-1', userId: 'user-1', role: 'admin' },
+    user: overrides.user ?? {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      role: 'admin',
+      email: 'dispatcher@example.com',
+    },
     params: {},
     query: {},
     body,
@@ -89,6 +121,11 @@ function makeReq(body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   queryMock.mockReset();
+  uploadPrivateObjectMock.mockClear();
+  streamPrivateObjectMock.mockClear();
+  sendEmailMock.mockClear();
+  readyEmailMock.mockClear();
+  failedEmailMock.mockClear();
 });
 
 const TENANT_ID = 'tenant-1';
@@ -416,5 +453,287 @@ describe('bulkExportJobRoutesHandler', () => {
     expect(sql).toMatch(/j\.status\s*=\s*\$2/);
     const params = queryMock.mock.calls[0][1] as unknown[];
     expect(params).not.toContain('other-tenant');
+  });
+
+  // ----- Async (email-me-the-archive) path -----
+
+  it('async mode: 400 when the requesting user has no email on file', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.bulkExportJobRoutesHandler as (req: Request, res: Response) => Promise<void>)(
+      makeReq(
+        { job_ids: [JOB_ID_A], async: true },
+        { user: { tenantId: TENANT_ID, userId: 'user-1', role: 'admin' } },
+      ),
+      res,
+    );
+    expect(getStatus()).toBe(400);
+    expect(String((getBody() as Record<string, unknown>).error)).toMatch(/email/i);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('async mode: rejects job_ids selections larger than the raised cap of 5000', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const tooMany: string[] = [];
+    for (let i = 0; i < 5001; i++) {
+      // Pad to 12 chars so the resulting UUID-shaped string stays the same length.
+      tooMany.push(`00000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
+    }
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.bulkExportJobRoutesHandler as (req: Request, res: Response) => Promise<void>)(
+      makeReq({ job_ids: tooMany, async: true }),
+      res,
+    );
+    expect(getStatus()).toBe(400);
+    const body = getBody() as Record<string, unknown>;
+    // Error must reference the *async* limit (5000) — not the 500-job sync cap.
+    expect(String(body.error)).toMatch(/Too many jobs/i);
+    expect(String(body.error)).toContain('5000');
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('async mode: accepts job batches above the sync cap and returns 202 with export_job', async () => {
+    // Build a 600-row resolution result — well above the 500-job sync
+    // cap, comfortably under the 5000-job async cap. The async path
+    // should accept it; the sync path would 400.
+    const overSyncCapJobIds: string[] = [];
+    const resolvedRows: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < 600; i++) {
+      const id = `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`;
+      overSyncCapJobIds.push(id);
+      resolvedRows.push({
+        id,
+        title: `job-${i}`,
+        status: 'completed',
+        scheduled_at: new Date('2026-04-25T09:00:00Z'),
+        completed_at: null,
+        resource_name: null,
+      });
+    }
+
+    queryMock
+      // Step 1: jobs lookup — returns all 600 rows
+      .mockResolvedValueOnce({ rows: resolvedRows })
+      // Step 2: INSERT INTO dispatch_route_export_jobs — returns the row
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'export-job-async-1',
+            status: 'pending',
+            created_at: new Date('2026-04-29T10:00:00Z'),
+          },
+        ],
+      });
+
+    // Capture the worker callback so it doesn't actually run during the
+    // test — we only want to assert the synchronous 202 contract here.
+    // The worker itself is exercised in a separate test below.
+    const setImmediateSpy = vi.spyOn(global, 'setImmediate').mockImplementation(((
+      _cb: (...a: unknown[]) => void,
+    ) => ({}) as ReturnType<typeof setImmediate>) as typeof setImmediate);
+
+    try {
+      const dispatch = await import('../../server/admin-api/routes/dispatch');
+      const { res, getStatus, getBody } = makeRes();
+      await (dispatch.bulkExportJobRoutesHandler as (req: Request, res: Response) => Promise<void>)(
+        makeReq({ job_ids: overSyncCapJobIds, async: true, format: 'gpx' }),
+        res,
+      );
+
+      expect(getStatus()).toBe(202);
+      const body = getBody() as { export_job?: Record<string, unknown> };
+      expect(body.export_job).toBeTruthy();
+      expect(body.export_job!.id).toBe('export-job-async-1');
+      expect(body.export_job!.status).toBe('pending');
+      expect(body.export_job!.job_count).toBe(600);
+      expect(body.export_job!.format).toBe('gpx');
+      expect(body.export_job!.requested_email).toBe('dispatcher@example.com');
+
+      // INSERT must be tenant-scoped and capture user id, email, format,
+      // include_empty default (true), and the snapshotted resolved ids.
+      const insertCall = queryMock.mock.calls[1];
+      expect(String(insertCall[0])).toMatch(/INSERT INTO dispatch_route_export_jobs/);
+      const params = insertCall[1] as unknown[];
+      expect(params[0]).toBe(TENANT_ID);
+      expect(params[1]).toBe('user-1');
+      expect(params[2]).toBe('dispatcher@example.com');
+      expect(params[3]).toBe('gpx');
+      expect(params[4]).toBe(true); // include_empty default
+      const selection = JSON.parse(String(params[5])) as { resolved_job_ids: string[] };
+      expect(selection.resolved_job_ids).toHaveLength(600);
+      expect(selection.resolved_job_ids[0]).toBe(overSyncCapJobIds[0]);
+      expect(params[6]).toBe(600); // job_count
+
+      // The worker fires asynchronously — we captured the callback via
+      // the spy but never invoked it.
+      expect(setImmediateSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      setImmediateSpy.mockRestore();
+    }
+  });
+
+  it('async mode: 404 when the snapshotted selection resolves to zero jobs (no row inserted)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.bulkExportJobRoutesHandler as (req: Request, res: Response) => Promise<void>)(
+      makeReq({ job_ids: [JOB_ID_A], async: true }),
+      res,
+    );
+    expect(getStatus()).toBe(404);
+    expect(getBody()).toEqual({ error: 'No jobs matched the selection.' });
+    // Specifically: we never INSERTed an export-job row for an empty
+    // selection (otherwise the dispatcher would receive a "ready" email
+    // pointing at an archive containing nothing).
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(String(queryMock.mock.calls[0][0])).not.toMatch(/INSERT/);
+  });
+
+  // ----- processRouteExportJob worker -----
+
+  it('processRouteExportJob: builds archive, uploads to storage, marks ready, sends email', async () => {
+    queryMock
+      // 1. SELECT the export-job row
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            tenant_id: TENANT_ID,
+            requested_by_email: 'dispatcher@example.com',
+            requested_by_user_id: 'user-1',
+            format: 'gpx',
+            include_empty: true,
+            selection: { resolved_job_ids: [JOB_ID_A] },
+          },
+        ],
+      })
+      // 2. UPDATE pending → running
+      .mockResolvedValueOnce({ rows: [] })
+      // 3. resolveExportJobs: jobs lookup (snapshotted ids)
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: JOB_ID_A,
+            title: 'Furnace tune-up',
+            status: 'completed',
+            scheduled_at: new Date('2026-04-20T13:00:00Z'),
+            completed_at: new Date('2026-04-20T15:30:00Z'),
+            resource_name: 'Tech 1',
+          },
+        ],
+      })
+      // 4. buildRouteArchive: breadcrumb points
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            active_job_id: JOB_ID_A,
+            latitude: 47.6,
+            longitude: -122.3,
+            accuracy_m: 8,
+            heading_deg: 180,
+            speed_mps: 12,
+            recorded_at: new Date('2026-04-20T13:05:00Z'),
+            received_at: new Date('2026-04-20T13:05:01Z'),
+          },
+        ],
+      })
+      // 5. UPDATE → ready (with archive path / token / expiry)
+      .mockResolvedValueOnce({ rows: [] })
+      // 6. SELECT users (first_name lookup)
+      .mockResolvedValueOnce({ rows: [{ first_name: 'Dana' }] })
+      // 7. SELECT tenants (display name lookup)
+      .mockResolvedValueOnce({ rows: [{ name: 'Acme HVAC' }] })
+      // 8. UPDATE email_sent_at + email_message_id
+      .mockResolvedValueOnce({ rows: [] });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    await dispatch.processRouteExportJob('export-job-1');
+
+    // Archive was uploaded to the tenant-namespaced object storage key.
+    expect(uploadPrivateObjectMock).toHaveBeenCalledTimes(1);
+    const uploadArgs = uploadPrivateObjectMock.mock.calls[0];
+    expect(uploadArgs[0]).toBe(`dispatch-route-exports/${TENANT_ID}/export-job-1.zip`);
+    expect(Buffer.isBuffer(uploadArgs[1])).toBe(true);
+    expect(uploadArgs[2]).toBe('application/zip');
+
+    // The "ready" UPDATE writes the archive path, filename, byte count,
+    // download token, and a future expiry.
+    const readyUpdate = queryMock.mock.calls[4];
+    expect(String(readyUpdate[0])).toMatch(/SET status = 'ready'/);
+    const readyParams = readyUpdate[1] as unknown[];
+    expect(readyParams[0]).toBe('export-job-1');
+    expect(String(readyParams[1])).toContain(`dispatch-route-exports/${TENANT_ID}/export-job-1.zip`);
+    expect(String(readyParams[2])).toMatch(/^dispatch-routes-\d{4}-\d{2}-\d{2}\.zip$/);
+    expect(typeof readyParams[3]).toBe('number'); // archive_bytes
+    expect(String(readyParams[4])).toMatch(/^[a-f0-9]{64}$/); // 32-byte hex token
+    expect(new Date(String(readyParams[5])).getTime()).toBeGreaterThan(Date.now());
+    expect(readyParams[6]).toBe(1); // included_count
+    expect(readyParams[7]).toBe(0); // skipped_empty
+
+    // Email was rendered with the resolver context and sent to the
+    // requester. The signed download link must use the export-job id
+    // and the same hex token persisted on the row.
+    expect(readyEmailMock).toHaveBeenCalledTimes(1);
+    const emailCtx = readyEmailMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(emailCtx.tenantName).toBe('Acme HVAC');
+    expect(emailCtx.requesterFirstName).toBe('Dana');
+    expect(emailCtx.jobCount).toBe(1);
+    expect(emailCtx.includedCount).toBe(1);
+    expect(emailCtx.format).toBe('gpx');
+    expect(String(emailCtx.downloadUrl)).toContain('/api/dispatch/route-exports/export-job-1/download?token=');
+    expect(String(emailCtx.downloadUrl)).toContain(String(readyParams[4]));
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0]).toMatchObject({
+      to: 'dispatcher@example.com',
+      subject: expect.stringMatching(/ready/i) as unknown as string,
+    });
+    // Failure email path must NOT have fired.
+    expect(failedEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('processRouteExportJob: marks failed and sends failure email when archive build throws', async () => {
+    queryMock
+      // 1. SELECT the export-job row
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            tenant_id: TENANT_ID,
+            requested_by_email: 'dispatcher@example.com',
+            requested_by_user_id: 'user-1',
+            format: 'csv',
+            include_empty: true,
+            selection: { resolved_job_ids: [JOB_ID_A] },
+          },
+        ],
+      })
+      // 2. UPDATE pending → running
+      .mockResolvedValueOnce({ rows: [] })
+      // 3. resolveExportJobs: jobs lookup returns empty — worker raises
+      .mockResolvedValueOnce({ rows: [] })
+      // 4. UPDATE → failed
+      .mockResolvedValueOnce({ rows: [] });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    await dispatch.processRouteExportJob('export-job-fail-1');
+
+    // Archive was never built or uploaded.
+    expect(uploadPrivateObjectMock).not.toHaveBeenCalled();
+    expect(readyEmailMock).not.toHaveBeenCalled();
+
+    // The failure UPDATE captures the truncated error message.
+    const failedUpdate = queryMock.mock.calls[3];
+    expect(String(failedUpdate[0])).toMatch(/SET status = 'failed'/);
+    const failedParams = failedUpdate[1] as unknown[];
+    expect(failedParams[0]).toBe('export-job-fail-1');
+    expect(String(failedParams[1])).toMatch(/snapshotted selection/i);
+
+    // Failure email goes out so the dispatcher knows to retry rather
+    // than silently waiting for a "ready" email that will never arrive.
+    expect(failedEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0]).toMatchObject({
+      to: 'dispatcher@example.com',
+      subject: expect.stringMatching(/could not/i) as unknown as string,
+    });
   });
 });

@@ -702,6 +702,103 @@ export function deletionExecutedEmail(params: {
   return { subject: `Account permanently deleted: ${org}`, html, text };
 }
 
+export function dispatchRouteExportReadyEmail(params: {
+  tenantName?: string;
+  requesterFirstName?: string | null;
+  jobCount: number;
+  includedCount: number;
+  skippedEmpty: number;
+  format: 'gpx' | 'csv';
+  archiveFilename: string;
+  archiveBytes: number;
+  downloadUrl: string;
+  expiresAt: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const greeting = params.requesterFirstName
+    ? `Hi ${params.requesterFirstName},`
+    : 'Hi,';
+  const sizeLabel = formatBytesShort(params.archiveBytes);
+  const includedLine = params.skippedEmpty > 0
+    ? `${params.includedCount} of ${params.jobCount} jobs (${params.skippedEmpty} skipped because they had no GPS pings)`
+    : `${params.includedCount} of ${params.jobCount} jobs`;
+
+  const subject = `Your dispatch route export is ready — ${params.includedCount} routes`;
+
+  const html = baseLayout(`
+    <p>${greeting}</p>
+    <p>The bulk dispatch route archive you requested for <strong>${org}</strong> is ready to download.</p>
+    <p style="margin: 0 0 4px;"><strong>What's inside</strong></p>
+    <p style="margin: 0 0 16px; line-height: 1.6;">
+      ${includedLine}, exported as ${params.format.toUpperCase()} files plus a <code>manifest.csv</code> index.
+      Archive size: ${sizeLabel}.
+    </p>
+    <p><a href="${params.downloadUrl}" class="btn">Download archive</a></p>
+    <p class="muted">Filename: <code>${params.archiveFilename}</code></p>
+    <p class="muted">This link expires on ${params.expiresAt}. If it's gone stale, request a new export from the Download routes dialog on the dispatch board.</p>
+  `);
+
+  const text = `${greeting}\n\n` +
+    `The bulk dispatch route archive you requested for ${org} is ready to download.\n\n` +
+    `What's inside: ${includedLine}, exported as ${params.format.toUpperCase()} files plus a manifest.csv index.\n` +
+    `Archive size: ${sizeLabel}\n` +
+    `Filename: ${params.archiveFilename}\n\n` +
+    `Download: ${params.downloadUrl}\n\n` +
+    `This link expires on ${params.expiresAt}. If it's gone stale, request a new export from the Download routes dialog on the dispatch board.`;
+
+  return { subject, html, text };
+}
+
+export function dispatchRouteExportFailedEmail(params: {
+  tenantName?: string;
+  requesterFirstName?: string | null;
+  format: 'gpx' | 'csv';
+  errorMessage: string;
+  dispatchBoardUrl: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const greeting = params.requesterFirstName
+    ? `Hi ${params.requesterFirstName},`
+    : 'Hi,';
+  const safeError = (params.errorMessage || 'Unknown error').slice(0, 500);
+  const subject = `Dispatch route export failed`;
+
+  const html = baseLayout(`
+    <p>${greeting}</p>
+    <p>The bulk dispatch route archive you requested for <strong>${org}</strong> couldn't be built. No archive is available — please retry from the dispatch board.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>What went wrong</strong></p>
+      <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${safeError}</p>
+    </div>
+    <p>If the same error happens again, narrow your filters or shorten the date range and try once more.</p>
+    <p><a href="${params.dispatchBoardUrl}" class="btn">Open dispatch board</a></p>
+  `);
+
+  const text = `${greeting}\n\n` +
+    `The bulk dispatch route archive you requested for ${org} couldn't be built. No archive is available — please retry from the dispatch board.\n\n` +
+    `What went wrong: ${safeError}\n\n` +
+    `Dispatch board: ${params.dispatchBoardUrl}`;
+
+  return { subject, html, text };
+}
+
+// Tiny human-friendly byte formatter so the email shows e.g. "4.2 MB"
+// rather than the raw byte count. Kept local to the templates module so
+// it doesn't accidentally become a generic util that gets imported into
+// pricing / billing code where rounding behaviour matters.
+function formatBytesShort(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const fixed = value >= 100 || unit === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${fixed} ${units[unit]}`;
+}
+
 export function encryptionInitializationReminderEmail(params: {
   tenantName?: string;
   ownerName?: string | null;
