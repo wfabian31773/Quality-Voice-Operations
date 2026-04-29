@@ -164,7 +164,10 @@ export type AgentBuilderTKey =
   | 'cmdNoMatches'
   | 'keyboardShortcutsLabel'
   | 'moreActions'
-  | 'templateFallbackHint';
+  | 'templateFallbackHint'
+  | 'templatePreviewAria'
+  | 'templateStepsLabel'
+  | 'templatesPickerHint';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -331,6 +334,9 @@ const EN: Record<AgentBuilderTKey, string> = {
   keyboardShortcutsLabel: 'Keyboard',
   moreActions: 'More',
   templateFallbackHint: "Industry copy for this template hasn't been translated to {language} yet — using English. You can edit any field below.",
+  templatePreviewAria: 'Preview of {label} workflow',
+  templateStepsLabel: '{nodes} steps · {edges} connections',
+  templatesPickerHint: 'Hover a template to see a larger preview before loading.',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -489,6 +495,9 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'Teclado',
   moreActions: 'Más',
   templateFallbackHint: 'La copia específica del sector aún no se ha traducido al {language} — se muestra en inglés. Puedes editar cualquier campo abajo.',
+  templatePreviewAria: 'Vista previa del flujo {label}',
+  templateStepsLabel: '{nodes} pasos · {edges} conexiones',
+  templatesPickerHint: 'Pasa el cursor sobre una plantilla para ver una vista previa más grande antes de cargarla.',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -647,6 +656,9 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'Clavier',
   moreActions: 'Plus',
   templateFallbackHint: "Le contenu spécifique au secteur n'a pas encore été traduit en {language} — affiché en anglais. Vous pouvez modifier les champs ci-dessous.",
+  templatePreviewAria: 'Aperçu du flux {label}',
+  templateStepsLabel: '{nodes} étapes · {edges} connexions',
+  templatesPickerHint: 'Survolez un modèle pour voir un aperçu plus grand avant de le charger.',
 };
 
 const DE: Partial<Record<AgentBuilderTKey, string>> = {
@@ -805,6 +817,9 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'Tastatur',
   moreActions: 'Mehr',
   templateFallbackHint: 'Branchenspezifischer Inhalt für diese Vorlage ist noch nicht in {language} verfügbar – wird auf Englisch angezeigt. Sie können die Felder unten anpassen.',
+  templatePreviewAria: 'Vorschau des {label}-Workflows',
+  templateStepsLabel: '{nodes} Schritte · {edges} Verbindungen',
+  templatesPickerHint: 'Bewegen Sie den Mauszeiger über eine Vorlage, um eine größere Vorschau anzuzeigen.',
 };
 
 const PT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -963,6 +978,9 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'Teclado',
   moreActions: 'Mais',
   templateFallbackHint: 'O conteúdo específico do setor ainda não foi traduzido para {language} — exibido em inglês. Você pode editar qualquer campo abaixo.',
+  templatePreviewAria: 'Pré-visualização do fluxo {label}',
+  templateStepsLabel: '{nodes} etapas · {edges} conexões',
+  templatesPickerHint: 'Passe o cursor sobre um modelo para ver uma pré-visualização maior antes de carregá-lo.',
 };
 
 const IT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1121,6 +1139,9 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'Tastiera',
   moreActions: 'Altro',
   templateFallbackHint: 'I contenuti del settore per questo modello non sono ancora tradotti in {language} — mostrati in inglese. Puoi modificare i campi qui sotto.',
+  templatePreviewAria: 'Anteprima del flusso {label}',
+  templateStepsLabel: '{nodes} passaggi · {edges} connessioni',
+  templatesPickerHint: 'Passa il mouse su un modello per vedere un\'anteprima più grande prima di caricarlo.',
 };
 
 const NL: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1279,6 +1300,9 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'Toetsenbord',
   moreActions: 'Meer',
   templateFallbackHint: 'De branchespecifieke inhoud is nog niet vertaald naar {language} — wordt in het Engels weergegeven. Je kunt alle velden hieronder bewerken.',
+  templatePreviewAria: 'Voorbeeld van workflow {label}',
+  templateStepsLabel: '{nodes} stappen · {edges} verbindingen',
+  templatesPickerHint: 'Beweeg de muis over een sjabloon om een grotere voorvertoning te zien voordat je het laadt.',
 };
 
 const ZH: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1437,6 +1461,9 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: '键盘',
   moreActions: '更多',
   templateFallbackHint: '此模板的行业专用内容尚未翻译为{language},暂以英文显示。您可以在下方编辑任何字段。',
+  templatePreviewAria: '{label}流程预览',
+  templateStepsLabel: '{nodes} 个步骤 · {edges} 个连接',
+  templatesPickerHint: '将鼠标悬停在模板上,加载前查看更大的预览。',
 };
 
 const JA: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1595,6 +1622,9 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'キーボード',
   moreActions: 'その他',
   templateFallbackHint: 'このテンプレートの業界向けコピーはまだ{language}に翻訳されていないため、英語で表示しています。下記の各フィールドは自由に編集できます。',
+  templatePreviewAria: '{label}ワークフローのプレビュー',
+  templateStepsLabel: '{nodes} ステップ · {edges} 接続',
+  templatesPickerHint: 'テンプレートにカーソルを合わせると、読み込む前に大きなプレビューが表示されます。',
 };
 
 const KO: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1753,6 +1783,9 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: '키보드',
   moreActions: '더보기',
   templateFallbackHint: '이 템플릿의 업종별 문구는 아직 {language}로 번역되지 않아 영어로 표시됩니다. 아래 모든 필드를 수정할 수 있습니다.',
+  templatePreviewAria: '{label} 워크플로우 미리보기',
+  templateStepsLabel: '{nodes}단계 · {edges}개 연결',
+  templatesPickerHint: '템플릿에 마우스를 올리면 불러오기 전에 더 큰 미리보기를 볼 수 있습니다.',
 };
 
 const AR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1911,6 +1944,9 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'لوحة المفاتيح',
   moreActions: 'المزيد',
   templateFallbackHint: 'لم تتم ترجمة المحتوى الخاص بالقطاع لهذا القالب إلى {language} بعد — يتم عرضه بالإنجليزية. يمكنك تعديل أي حقل أدناه.',
+  templatePreviewAria: 'معاينة سير عمل {label}',
+  templateStepsLabel: '{nodes} خطوات · {edges} اتصالات',
+  templatesPickerHint: 'مرّر المؤشر فوق قالب لرؤية معاينة أكبر قبل تحميله.',
 };
 
 const HI: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2069,6 +2105,9 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   keyboardShortcutsLabel: 'कीबोर्ड',
   moreActions: 'अधिक',
   templateFallbackHint: 'इस टेम्पलेट की उद्योग-विशिष्ट प्रति अभी तक {language} में अनुवादित नहीं है — अंग्रेज़ी में दिखाई जा रही है। आप नीचे किसी भी फ़ील्ड को संपादित कर सकते हैं।',
+  templatePreviewAria: '{label} वर्कफ़्लो का पूर्वावलोकन',
+  templateStepsLabel: '{nodes} चरण · {edges} कनेक्शन',
+  templatesPickerHint: 'लोड करने से पहले बड़ा पूर्वावलोकन देखने के लिए किसी टेम्पलेट पर माउस घुमाएं।',
 };
 
 const TRANSLATIONS: Record<string, Partial<Record<AgentBuilderTKey, string>>> = {

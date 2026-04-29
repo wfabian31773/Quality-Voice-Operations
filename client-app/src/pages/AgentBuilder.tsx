@@ -203,6 +203,143 @@ const NODE_COLORS: Record<string, { bg: string; border: string; text: string; ha
 
 const DEFAULT_COLORS = { bg: 'bg-surface-hover', border: 'border-border', text: 'text-text-primary', handle: '#6b7280' };
 
+/**
+ * Auto-generated mini visualization of a template's node graph. Renders a
+ * scaled SVG of the actual node positions/edges so any new template added to
+ * INDUSTRY_TEMPLATES_RAW automatically gets a preview without needing a
+ * hand-authored screenshot asset.
+ *
+ * Edges between nodes positioned vertically use a smooth bezier so the preview
+ * resembles the React Flow layout. Node fill/stroke uses the same handle
+ * colors the runtime canvas uses, so the preview reads as a faithful
+ * thumbnail of the loaded template.
+ */
+interface TemplatePreviewNode {
+  id: string;
+  position: { x: number; y: number };
+  data?: Record<string, unknown>;
+  nodeType?: string;
+}
+interface TemplatePreviewEdge {
+  id?: string;
+  source: string;
+  target: string;
+}
+function TemplatePreview({
+  nodes,
+  edges,
+  width,
+  height,
+  showLabels = false,
+  ariaLabel,
+}: {
+  nodes: TemplatePreviewNode[];
+  edges: TemplatePreviewEdge[];
+  width: number;
+  height: number;
+  showLabels?: boolean;
+  ariaLabel?: string;
+}) {
+  if (nodes.length === 0) {
+    return <svg width={width} height={height} aria-hidden="true" />;
+  }
+  // Approximate the runtime node footprint so the bounding box matches what
+  // React Flow draws on the real canvas.
+  const NODE_W = 140;
+  const NODE_H = 56;
+  const padding = 12;
+
+  const minX = Math.min(...nodes.map((n) => n.position.x));
+  const minY = Math.min(...nodes.map((n) => n.position.y));
+  const maxX = Math.max(...nodes.map((n) => n.position.x + NODE_W));
+  const maxY = Math.max(...nodes.map((n) => n.position.y + NODE_H));
+  const graphW = maxX - minX;
+  const graphH = maxY - minY;
+  const innerW = Math.max(width - padding * 2, 1);
+  const innerH = Math.max(height - padding * 2, 1);
+  const scale = Math.min(innerW / graphW, innerH / graphH);
+  const offX = (width - graphW * scale) / 2 - minX * scale;
+  const offY = (height - graphH * scale) / 2 - minY * scale;
+
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const nodeColorOf = (n: TemplatePreviewNode) => {
+    const nt = (n.nodeType ?? (n.data?.nodeType as string) ?? '') as string;
+    return (NODE_COLORS[nt] || DEFAULT_COLORS).handle;
+  };
+
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      role={ariaLabel ? 'img' : undefined}
+      aria-label={ariaLabel}
+      aria-hidden={ariaLabel ? undefined : true}
+      className="block"
+    >
+      <g>
+        {edges.map((e, i) => {
+          const s = nodeMap.get(e.source);
+          const t = nodeMap.get(e.target);
+          if (!s || !t) return null;
+          const x1 = (s.position.x + NODE_W / 2) * scale + offX;
+          const y1 = (s.position.y + NODE_H) * scale + offY;
+          const x2 = (t.position.x + NODE_W / 2) * scale + offX;
+          const y2 = t.position.y * scale + offY;
+          const midY = (y1 + y2) / 2;
+          return (
+            <path
+              key={e.id ?? `${e.source}-${e.target}-${i}`}
+              d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1}
+              className="text-border"
+              opacity={0.85}
+            />
+          );
+        })}
+        {nodes.map((n) => {
+          const x = n.position.x * scale + offX;
+          const y = n.position.y * scale + offY;
+          const w = NODE_W * scale;
+          const h = NODE_H * scale;
+          const color = nodeColorOf(n);
+          return (
+            <g key={n.id}>
+              <rect
+                x={x}
+                y={y}
+                width={w}
+                height={h}
+                rx={Math.min(4, h / 4)}
+                fill={color}
+                fillOpacity={0.18}
+                stroke={color}
+                strokeWidth={1}
+              />
+              {showLabels && (n.data?.label as string) && h > 14 && (
+                <text
+                  x={x + w / 2}
+                  y={y + h / 2 + 3}
+                  textAnchor="middle"
+                  fontSize={Math.min(9, h / 3)}
+                  fill={color}
+                  className="font-medium"
+                >
+                  {String(n.data?.label).length > 14
+                    ? String(n.data?.label).slice(0, 13) + '…'
+                    : String(n.data?.label)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
 function getNodeIcon(type: string) {
   return NODE_TYPE_TO_ICON[type] ?? <MessageSquare className="h-4 w-4" />;
 }
@@ -1663,6 +1800,7 @@ function AgentBuilderInner() {
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const templatesMenuRef = useRef<HTMLDivElement>(null);
+  const [hoveredTemplateKey, setHoveredTemplateKey] = useState<IndustryTemplateKey | null>(null);
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
 
@@ -1686,7 +1824,10 @@ function AgentBuilderInner() {
   }, [overflowOpen]);
 
   useEffect(() => {
-    if (!templatesOpen) return;
+    if (!templatesOpen) {
+      setHoveredTemplateKey(null);
+      return;
+    }
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as globalThis.Node | null;
       if (templatesMenuRef.current && target && !templatesMenuRef.current.contains(target)) {
@@ -2216,25 +2357,88 @@ function AgentBuilderInner() {
             </button>
             <div
               role="menu"
-              className={`absolute right-0 top-full mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 group-hover:block ${
+              className={`absolute right-0 top-full mt-1 w-72 bg-surface border border-border rounded-lg shadow-lg z-20 group-hover:block overflow-hidden ${
                 templatesOpen ? 'block' : 'hidden'
               }`}
+              onMouseLeave={() => setHoveredTemplateKey(null)}
             >
-              {industryTemplates.map((tpl) => (
-                <button
-                  key={tpl.key}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setTemplatesOpen(false);
-                    loadTemplate(tpl);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition first:rounded-t-lg last:rounded-b-lg"
-                >
-                  {tpl.label}
-                </button>
-              ))}
+              <div className="px-3 py-2 border-b border-border bg-surface-secondary/40">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                  {t('templates')}
+                </p>
+                <p className="text-[10px] text-text-muted mt-0.5 leading-snug">
+                  {t('templatesPickerHint')}
+                </p>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto">
+                {industryTemplates.map((tpl) => (
+                  <button
+                    key={tpl.key}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setTemplatesOpen(false);
+                      setHoveredTemplateKey(null);
+                      loadTemplate(tpl);
+                    }}
+                    onMouseEnter={() => setHoveredTemplateKey(tpl.key)}
+                    onFocus={() => setHoveredTemplateKey(tpl.key)}
+                    onBlur={() =>
+                      setHoveredTemplateKey((curr) => (curr === tpl.key ? null : curr))
+                    }
+                    className="flex items-center gap-3 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover focus:bg-surface-hover focus:outline-none transition"
+                  >
+                    <div className="flex-shrink-0 w-12 h-9 rounded border border-border bg-surface-secondary overflow-hidden">
+                      <TemplatePreview
+                        nodes={tpl.nodes}
+                        edges={tpl.edges}
+                        width={48}
+                        height={36}
+                        ariaLabel={t('templatePreviewAria', { label: tpl.label })}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate font-medium">{tpl.label}</div>
+                      <div className="text-[10px] text-text-muted">
+                        {t('templateStepsLabel', {
+                          nodes: tpl.nodes.length,
+                          edges: tpl.edges.length,
+                        })}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
+            {templatesOpen && hoveredTemplateKey && (() => {
+              const tpl = industryTemplates.find((x) => x.key === hoveredTemplateKey);
+              if (!tpl) return null;
+              return (
+                <div
+                  className="absolute right-full top-full mt-1 mr-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-30 p-3 pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <p className="text-xs font-semibold text-text-primary mb-1 truncate">
+                    {tpl.label}
+                  </p>
+                  <p className="text-[10px] text-text-muted mb-2">
+                    {t('templateStepsLabel', {
+                      nodes: tpl.nodes.length,
+                      edges: tpl.edges.length,
+                    })}
+                  </p>
+                  <div className="rounded-md border border-border bg-surface-secondary overflow-hidden">
+                    <TemplatePreview
+                      nodes={tpl.nodes}
+                      edges={tpl.edges}
+                      width={264}
+                      height={200}
+                      ariaLabel={t('templatePreviewAria', { label: tpl.label })}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <div className="relative xl:hidden" ref={overflowMenuRef}>
             <button
@@ -2284,8 +2488,24 @@ function AgentBuilderInner() {
                     }}
                     className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover transition"
                   >
-                    <Eye className="h-3.5 w-3.5 text-text-secondary" />
-                    <span>{tpl.label}</span>
+                    <div className="flex-shrink-0 w-10 h-7 rounded border border-border bg-surface-secondary overflow-hidden">
+                      <TemplatePreview
+                        nodes={tpl.nodes}
+                        edges={tpl.edges}
+                        width={40}
+                        height={28}
+                        ariaLabel={t('templatePreviewAria', { label: tpl.label })}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">{tpl.label}</div>
+                      <div className="text-[10px] text-text-muted">
+                        {t('templateStepsLabel', {
+                          nodes: tpl.nodes.length,
+                          edges: tpl.edges.length,
+                        })}
+                      </div>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -2379,19 +2599,29 @@ function AgentBuilderInner() {
             />
             {nodes.length === 0 && (
               <Panel position="top-center">
-                <div className="bg-surface border border-border rounded-xl shadow-sm px-6 py-4 text-center mt-20">
+                <div className="bg-surface border border-border rounded-xl shadow-sm px-6 py-4 text-center mt-20 max-w-2xl">
                   <p className="text-sm text-text-primary font-medium mb-1">{t('startBuilding')}</p>
                   <p className="text-xs text-text-secondary mb-3">
                     {t('startBuildingHelper')}
                   </p>
-                  <div className="flex flex-wrap gap-2 justify-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                     {industryTemplates.map((tpl) => (
                       <button
                         key={tpl.key}
                         onClick={() => loadTemplate(tpl)}
-                        className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary"
+                        className="group flex flex-col items-stretch gap-1 p-2 text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary"
+                        title={tpl.label}
                       >
-                        {tpl.label}
+                        <div className="w-full h-16 rounded border border-border bg-surface-secondary overflow-hidden group-hover:border-primary/30 transition">
+                          <TemplatePreview
+                            nodes={tpl.nodes}
+                            edges={tpl.edges}
+                            width={140}
+                            height={64}
+                            ariaLabel={t('templatePreviewAria', { label: tpl.label })}
+                          />
+                        </div>
+                        <span className="truncate">{tpl.label}</span>
                       </button>
                     ))}
                   </div>
