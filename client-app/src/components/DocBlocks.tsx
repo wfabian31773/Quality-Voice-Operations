@@ -293,8 +293,15 @@ function isTouchDevice(): boolean {
   return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
 
-function LightboxHint({ onDismiss }: { onDismiss: () => void }) {
+function LightboxHint({
+  hasMultiple,
+  onDismiss,
+}: {
+  hasMultiple: boolean;
+  onDismiss: () => void;
+}) {
   const [visible, setVisible] = useState(true);
+  const { t, i18n } = useTranslation('docs');
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(false), HINT_FADE_MS);
@@ -305,6 +312,12 @@ function LightboxHint({ onDismiss }: { onDismiss: () => void }) {
     e.stopPropagation();
     setVisible(false);
   };
+
+  const key = hasMultiple ? 'lightbox.hintWithSwipe' : 'lightbox.hintZoomOnly';
+  const fallback = hasMultiple
+    ? 'Swipe to browse · Pinch to zoom · Double-tap for 2x'
+    : 'Pinch to zoom · Double-tap for 2x';
+  const text = i18n.exists(key, { ns: 'docs' }) ? t(key) : fallback;
 
   return (
     <button
@@ -318,7 +331,7 @@ function LightboxHint({ onDismiss }: { onDismiss: () => void }) {
       }}
       className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full bg-white/15 backdrop-blur-sm text-white text-xs sm:text-sm font-body shadow-lg transition-opacity duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     >
-      Pinch to zoom · Double-tap for 2x
+      {text}
     </button>
   );
 }
@@ -622,7 +635,10 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
           )}
         </figure>
         {showZoomHint && (
-          <LightboxHint onDismiss={() => setShowZoomHint(false)} />
+          <LightboxHint
+            hasMultiple={hasMultiple}
+            onDismiss={() => setShowZoomHint(false)}
+          />
         )}
       </Modal>
     )}

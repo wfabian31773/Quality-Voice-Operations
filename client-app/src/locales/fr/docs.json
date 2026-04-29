@@ -1,4 +1,8 @@
 {
+  "lightbox": {
+    "hintWithSwipe": "Balayez pour parcourir · Pincez pour zoomer · Double-tapez pour 2x",
+    "hintZoomOnly": "Pincez pour zoomer · Double-tapez pour 2x"
+  },
   "images": {
     "salesforce-app-manager": {
       "alt": "Page App Manager de Salesforce Setup avec un bouton New Connected App mis en évidence dans le coin supérieur droit",
