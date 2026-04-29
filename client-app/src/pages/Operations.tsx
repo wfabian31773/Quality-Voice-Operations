@@ -564,7 +564,7 @@ function ToolExecutionFeed({ tools, agentFilter, onAgentFilterChange }: {
   );
 }
 
-function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledgeAll, highlightType }: {
+export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledgeAll, highlightType }: {
   alerts: OperationsAlert[];
   unacknowledgedCount: number;
   onAcknowledge: (id: string) => void;
@@ -616,6 +616,13 @@ function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledge
           {alerts.map((alert) => {
             const SeverityIcon = severityIcon(alert.severity);
             const isHighlighted = !!highlightType && alert.type === highlightType;
+            const isAutoRebalanced =
+              alert.type === 'billing_backfill_cross_day' &&
+              alert.metadata?.auto_rebalanced === true;
+            const runbookUrl =
+              typeof alert.metadata?.runbook_url === 'string'
+                ? alert.metadata.runbook_url
+                : '';
             return (
               <div
                 key={alert.id}
@@ -629,13 +636,28 @@ function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAcknowledge
                   <SeverityIcon className="h-3.5 w-3.5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${severityColor(alert.severity)}`}>
                       {alert.severity}
                     </span>
                     <span className="text-[10px] text-text-secondary">
                       {alert.type.replace(/_/g, ' ')}
                     </span>
+                    {isAutoRebalanced && (
+                      <span
+                        data-testid="auto-rebalanced-badge"
+                        title={
+                          runbookUrl
+                            ? `Daily usage was auto-rebalanced inside the ingest transaction — no manual action required. Verify with the runbook: ${runbookUrl}`
+                            : 'Daily usage was auto-rebalanced inside the ingest transaction — no manual action required.'
+                        }
+                        aria-label="Auto-rebalanced — no manual action required"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                      >
+                        <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                        Auto-rebalanced
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-text-primary mt-0.5 line-clamp-2">{alert.message}</p>
                   <div className="flex items-center gap-2 mt-0.5">
