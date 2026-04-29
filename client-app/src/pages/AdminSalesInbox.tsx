@@ -1099,8 +1099,10 @@ function LeadDetail({
             {!booking && <p className="text-sm text-slate-500">No booking recorded.</p>}
             {booking && (
               <>
+                <div>
+                  <SchedulerBadge provider={booking.provider} />
+                </div>
                 <Detail label="Event type" value={booking.eventType ?? 'created'} />
-                <Detail label="Provider" value={booking.provider ?? '—'} />
                 <Detail label="When" value={`${formatDateTime(booking.startTime)}${booking.timezone ? ` · ${booking.timezone}` : ''}`} />
                 {booking.endTime && <Detail label="Until" value={formatDateTime(booking.endTime)} />}
                 {booking.attendeeName && <Detail label="Attendee" value={`${booking.attendeeName}${booking.attendeeEmail ? ` <${booking.attendeeEmail}>` : ''}`} />}
@@ -1132,12 +1134,15 @@ function LeadDetail({
                 <div className="text-xs text-slate-400 mb-1">Booking history ({history.length})</div>
                 <ul className="space-y-1 max-h-40 overflow-y-auto text-xs text-slate-300">
                   {history.slice().reverse().map((entry, idx) => (
-                    <li key={idx} className="flex items-center justify-between bg-slate-800/40 rounded px-2 py-1 border border-slate-700/40">
-                      <span>
-                        <span className="font-medium text-slate-200">{entry.eventType ?? 'created'}</span>
-                        {entry.startTime ? ` · ${formatDateTime(entry.startTime)}` : ''}
+                    <li key={idx} className="flex items-center justify-between gap-2 bg-slate-800/40 rounded px-2 py-1 border border-slate-700/40">
+                      <span className="flex items-center gap-2 min-w-0 flex-1">
+                        <SchedulerBadge provider={entry.provider} size="sm" />
+                        <span className="truncate">
+                          <span className="font-medium text-slate-200">{entry.eventType ?? 'created'}</span>
+                          {entry.startTime ? ` · ${formatDateTime(entry.startTime)}` : ''}
+                        </span>
                       </span>
-                      <span className="text-slate-500">{formatRelative(entry.recordedAt ?? null)}</span>
+                      <span className="text-slate-500 shrink-0">{formatRelative(entry.recordedAt ?? null)}</span>
                     </li>
                   ))}
                 </ul>
@@ -1300,6 +1305,43 @@ function describeEvent(event: LeadEvent): string {
     return `marked as ${to} (was ${from})`;
   }
   return `marked as ${to}`;
+}
+
+function formatSchedulerLabel(provider?: string | null): string {
+  if (!provider) return 'Unknown';
+  const lower = provider.toLowerCase();
+  if (lower === 'cal.com' || lower === 'calcom') return 'Cal.com';
+  if (lower === 'calendly') return 'Calendly';
+  if (lower === 'other') return 'Other';
+  return provider;
+}
+
+function SchedulerBadge({ provider, size = 'md' }: { provider?: string | null; size?: 'sm' | 'md' }) {
+  const label = formatSchedulerLabel(provider);
+  const lower = (provider || '').toLowerCase();
+  const tone =
+    lower === 'cal.com' || lower === 'calcom'
+      ? 'bg-blue-500/15 text-blue-200 border-blue-500/30'
+      : lower === 'calendly'
+        ? 'bg-orange-500/15 text-orange-200 border-orange-500/30'
+        : 'bg-slate-700/50 text-slate-300 border-slate-600/40';
+  const sizing =
+    size === 'sm'
+      ? 'px-1.5 py-0 text-[10px] gap-0.5'
+      : 'px-2 py-0.5 text-[11px] gap-1';
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center rounded border font-medium whitespace-nowrap',
+        tone,
+        sizing,
+      )}
+      title={`Booking captured via ${label}`}
+    >
+      <Calendar className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
+      Scheduler: {label}
+    </span>
+  );
 }
 
 function Detail({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof Inbox }) {
