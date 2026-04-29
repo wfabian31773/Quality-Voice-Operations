@@ -178,7 +178,7 @@ export class WorkforceOutboundService {
       if (params.contacts.length > 0) {
         await addContacts(tenantId, campaign.id, params.contacts.map((c) => ({
           phoneNumber: c.phoneNumber,
-          name: c.name ?? null,
+          name: c.name ?? undefined,
         })));
       }
 
