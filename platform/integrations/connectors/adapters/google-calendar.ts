@@ -1,11 +1,37 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('GCAL_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const GCAL_API = 'https://www.googleapis.com/calendar/v3';
+
+/**
+ * BL-014 (Task #505): every Google Calendar HTTP call goes through
+ * `gcalFetch`, which routes through `retryFetch` so a transient 429
+ * (Calendar API returns `Retry-After`) or 5xx is retried with the shared
+ * 1s/4s/16s ±20% jitter schedule before the failure surfaces. Each retry
+ * attempt gets a fresh `AbortController` armed at the `REQUEST_TIMEOUT_MS`
+ * per-attempt budget; the helper enforces the 60s total dispatch budget.
+ */
+async function gcalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const { signal: _ignored, ...rest } = init;
+  void _ignored;
+  return retryFetch(url, rest, {
+    label: 'google-calendar',
+    fetcher: async (input, opts) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(input, { ...opts, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
+}
 
 export interface GoogleCalendarSummary {
   id: string;
@@ -22,35 +48,28 @@ export async function fetchGoogleCalendarList(
   if (!accessToken) {
     throw new Error('Missing Google Calendar access token — please reconnect.');
   }
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GCAL_API}/users/me/calendarList?minAccessRole=writer&maxResults=250`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Google Calendar list error ${res.status}: ${text.slice(0, 200)}`);
-    }
-    const data = await res.json() as {
-      items?: Array<{
-        id: string;
-        summary?: string;
-        summaryOverride?: string;
-        primary?: boolean;
-      }>;
-    };
-    const items = data.items ?? [];
-    logger.info('Google Calendar list fetched', { tenantId, count: items.length });
-    return items.map((item) => ({
-      id: item.id,
-      name: item.summaryOverride ?? item.summary ?? item.id,
-      primary: !!item.primary,
-    }));
-  } finally {
-    clearTimeout(timeoutId);
+  const res = await gcalFetch(`${GCAL_API}/users/me/calendarList?minAccessRole=writer&maxResults=250`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Google Calendar list error ${res.status}: ${text.slice(0, 200)}`);
   }
+  const data = await res.json() as {
+    items?: Array<{
+      id: string;
+      summary?: string;
+      summaryOverride?: string;
+      primary?: boolean;
+    }>;
+  };
+  const items = data.items ?? [];
+  logger.info('Google Calendar list fetched', { tenantId, count: items.length });
+  return items.map((item) => ({
+    id: item.id,
+    name: item.summaryOverride ?? item.summary ?? item.id,
+    primary: !!item.primary,
+  }));
 }
 
 export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
@@ -93,8 +112,6 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
     const calendarId = config.credentials.calendar_id ?? 'primary';
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     const summary = (payload.summary as string) ?? 'Appointment (AI Booked)';
     const description = (payload.description as string) ?? '';
@@ -140,17 +157,14 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
     }
 
     try {
-      const res = await fetch(`${GCAL_API}/calendars/${encodeURIComponent(calendarId)}/events`, {
+      const res = await gcalFetch(`${GCAL_API}/calendars/${encodeURIComponent(calendarId)}/events`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(eventBody),
-        signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -166,7 +180,6 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
         meta: { eventId: data.id, htmlLink: data.htmlLink, provider: 'google-calendar' },
       };
     } catch (err) {
-      clearTimeout(timeoutId);
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Google Calendar request failed', { tenantId, error });
       return { success: false, error };
@@ -180,8 +193,6 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
     const calendarId = config.credentials.calendar_id ?? 'primary';
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     const timeMin = (payload.timeMin as string) ?? new Date().toISOString();
     const timeMax = (payload.timeMax as string) ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -194,12 +205,9 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
       url.searchParams.set('orderBy', 'startTime');
       url.searchParams.set('maxResults', '50');
 
-      const res = await fetch(url.toString(), {
+      const res = await gcalFetch(url.toString(), {
         headers: { Authorization: `Bearer ${accessToken}` },
-        signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -227,7 +235,6 @@ export class GoogleCalendarConnectorAdapter implements ConnectorAdapter {
         meta: { busySlots, provider: 'google-calendar' },
       };
     } catch (err) {
-      clearTimeout(timeoutId);
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Google Calendar availability check failed', { tenantId, error });
       return { success: false, error };

@@ -1,11 +1,37 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('OUTLOOK_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
+
+/**
+ * BL-014 (Task #505): every Microsoft Graph call goes through `outlookFetch`,
+ * which routes through `retryFetch` so a transient 429 (Graph returns
+ * `Retry-After`) or 5xx is retried with the shared 1s/4s/16s ±20% jitter
+ * schedule before the failure surfaces. Each retry attempt gets a fresh
+ * `AbortController` armed at `REQUEST_TIMEOUT_MS`; the helper enforces the
+ * 60s total dispatch budget.
+ */
+async function outlookFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const { signal: _ignored, ...rest } = init;
+  void _ignored;
+  return retryFetch(url, rest, {
+    label: 'outlook-calendar',
+    fetcher: async (input, opts) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(input, { ...opts, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
+}
 
 export interface OutlookCalendarSummary {
   id: string;
@@ -22,34 +48,27 @@ export async function fetchOutlookCalendarList(
   if (!accessToken) {
     throw new Error('Missing Outlook Calendar access token — please reconnect.');
   }
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GRAPH_API}/me/calendars?$select=id,name,isDefaultCalendar&$top=200`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Microsoft Graph calendars error ${res.status}: ${text.slice(0, 200)}`);
-    }
-    const data = await res.json() as {
-      value?: Array<{
-        id: string;
-        name?: string;
-        isDefaultCalendar?: boolean;
-      }>;
-    };
-    const items = data.value ?? [];
-    logger.info('Outlook Calendar list fetched', { tenantId, count: items.length });
-    return items.map((item) => ({
-      id: item.id,
-      name: item.name ?? item.id,
-      isDefault: !!item.isDefaultCalendar,
-    }));
-  } finally {
-    clearTimeout(timeoutId);
+  const res = await outlookFetch(`${GRAPH_API}/me/calendars?$select=id,name,isDefaultCalendar&$top=200`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Microsoft Graph calendars error ${res.status}: ${text.slice(0, 200)}`);
   }
+  const data = await res.json() as {
+    value?: Array<{
+      id: string;
+      name?: string;
+      isDefaultCalendar?: boolean;
+    }>;
+  };
+  const items = data.value ?? [];
+  logger.info('Outlook Calendar list fetched', { tenantId, count: items.length });
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name ?? item.id,
+    isDefault: !!item.isDefaultCalendar,
+  }));
 }
 
 export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
@@ -92,8 +111,6 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
     const calendarId = config.credentials.calendar_id;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     const summary = (payload.summary as string) ?? 'Appointment (AI Booked)';
     const description = (payload.description as string) ?? '';
@@ -149,17 +166,14 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
       : `${GRAPH_API}/me/events`;
 
     try {
-      const res = await fetch(url, {
+      const res = await outlookFetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(eventBody),
-        signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -175,7 +189,6 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
         meta: { eventId: data.id, htmlLink: data.webLink, provider: 'outlook-calendar' },
       };
     } catch (err) {
-      clearTimeout(timeoutId);
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Outlook Calendar request failed', { tenantId, error });
       return { success: false, error };
@@ -189,8 +202,6 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
     payload: ConnectorPayload,
   ): Promise<ConnectorResult> {
     const calendarId = config.credentials.calendar_id;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     const timeMin = (payload.timeMin as string) ?? new Date().toISOString();
     const timeMax = (payload.timeMax as string) ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -207,15 +218,12 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
       url.searchParams.set('$top', '50');
       url.searchParams.set('$orderby', 'start/dateTime');
 
-      const res = await fetch(url.toString(), {
+      const res = await outlookFetch(url.toString(), {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Prefer: `outlook.timezone="${timeZone}"`,
         },
-        signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -243,7 +251,6 @@ export class OutlookCalendarConnectorAdapter implements ConnectorAdapter {
         meta: { busySlots, provider: 'outlook-calendar' },
       };
     } catch (err) {
-      clearTimeout(timeoutId);
       const error = err instanceof Error ? err.message : String(err);
       logger.error('Outlook Calendar availability check failed', { tenantId, error });
       return { success: false, error };

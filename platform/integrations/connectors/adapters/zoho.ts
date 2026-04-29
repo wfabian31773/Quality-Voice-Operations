@@ -1,6 +1,7 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
 import { parseDispositionMap, mapDisposition } from '../dispositionMap';
+import { retryFetch } from '../retryWithBackoff';
 import { resolveZohoApiDomain } from '../zohoRegion';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
@@ -8,6 +9,31 @@ import type { TenantId } from '../../../core/types';
 const logger = createLogger('ZOHO_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_API_DOMAIN = 'https://www.zohoapis.com';
+
+/**
+ * BL-014 (Task #505): every Zoho HTTP call goes through `zohoFetch`, which
+ * routes through `retryFetch` so a transient 429 (Zoho returns
+ * `Retry-After`) or 5xx is retried with the shared 1s/4s/16s ±20% jitter
+ * schedule before the failure surfaces. Each attempt gets a fresh
+ * `AbortController` armed at `REQUEST_TIMEOUT_MS`; the helper enforces
+ * the 60s total dispatch budget.
+ */
+async function zohoHttpFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const { signal: _ignored, ...rest } = init;
+  void _ignored;
+  return retryFetch(url, rest, {
+    label: 'zoho',
+    fetcher: async (input, opts) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(input, { ...opts, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
+}
 
 interface ZohoAuth {
   accessToken: string;
@@ -209,15 +235,12 @@ async function zohoFetch<T = unknown>(
   path: string,
   init?: { method?: string; body?: unknown },
 ): Promise<ZohoFetchResult<T>> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const url = `${auth.apiBase}${path}`;
-    const res = await fetch(url, {
+    const res = await zohoHttpFetch(url, {
       method: init?.method ?? 'GET',
       headers: authHeaders(auth),
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: controller.signal,
     });
     // Zoho returns 204 (no records) for empty searches; treat as ok with empty data.
     if (res.status === 204) {
@@ -231,8 +254,6 @@ async function zohoFetch<T = unknown>(
     return { ok: true, status: res.status, data };
   } catch (err) {
     return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

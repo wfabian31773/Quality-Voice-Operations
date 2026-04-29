@@ -1,10 +1,36 @@
 import { createLogger } from '../../../core/logger';
 import { ensureFreshOAuthToken } from '../tokenRefresh';
+import { retryFetch } from '../retryWithBackoff';
 import type { ConnectorAdapter, ConnectorConfig, ConnectorPayload, ConnectorResult } from '../types';
 import type { TenantId } from '../../../core/types';
 
 const logger = createLogger('QUICKBOOKS_CONNECTOR');
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * BL-014 (Task #505): every QuickBooks HTTP call goes through `qboFetch`,
+ * which routes through `retryFetch` so a transient 429 (Intuit honours
+ * `Retry-After` on rate-limit responses) or 5xx is retried with the shared
+ * 1s/4s/16s ±20% jitter schedule before surfacing the failure. Each retry
+ * attempt gets a fresh `AbortController` armed at the `REQUEST_TIMEOUT_MS`
+ * per-attempt budget; the helper enforces the 60s total dispatch budget.
+ */
+async function qboHttpFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const { signal: _ignored, ...rest } = init;
+  void _ignored;
+  return retryFetch(url, rest, {
+    label: 'quickbooks',
+    fetcher: async (input, opts) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(input, { ...opts, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
+}
 
 interface QboAuth {
   accessToken: string;
@@ -29,12 +55,10 @@ async function qboFetch<T = unknown>(
   path: string,
   init?: { method?: string; body?: unknown },
 ): Promise<{ ok: boolean; status: number; data?: T; error?: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const sep = path.includes('?') ? '&' : '?';
     const url = `${auth.apiBase}/v3/company/${auth.realmId}${path}${sep}minorversion=${auth.minorVersion}`;
-    const res = await fetch(url, {
+    const res = await qboHttpFetch(url, {
       method: init?.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${auth.accessToken}`,
@@ -42,7 +66,6 @@ async function qboFetch<T = unknown>(
         'Content-Type': 'application/json',
       },
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: controller.signal,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -52,8 +75,6 @@ async function qboFetch<T = unknown>(
     return { ok: true, status: res.status, data };
   } catch (err) {
     return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

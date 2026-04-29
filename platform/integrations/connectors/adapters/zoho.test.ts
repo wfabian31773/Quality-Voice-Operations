@@ -358,3 +358,58 @@ describe('ZohoConnectorAdapter api_domain allowlist', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('ZohoConnectorAdapter retry-with-backoff (BL-014 Task #505)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // Real timers because retryFetch's backoff uses setTimeout.
+  test(
+    'a 429 with Retry-After is automatically retried after the recommended interval',
+    { timeout: 15_000 },
+    async () => {
+      const calls: Array<{ url: string; method: string }> = [];
+      let attempt = 0;
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push({ url, method });
+        attempt += 1;
+        if (attempt === 1) {
+          // Zoho rate-limits with 429 + Retry-After when the per-second
+          // request quota trips. The retry helper must honor it and try
+          // again before the call surfaces.
+          return new Response(
+            JSON.stringify({ code: 'TOO_MANY_REQUESTS', message: 'rate limited' }),
+            { status: 429, headers: { 'Retry-After': '1' } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: [{ code: 'SUCCESS', status: 'success', details: { id: 'call-retry' } }],
+          }),
+          { status: 200 },
+        );
+      }));
+
+      const adapter = new ZohoConnectorAdapter();
+      const payload: ConnectorPayload = {
+        type: 'call.completed',
+        contactId: 'contact-canonical',
+        accountId: 'account-canonical',
+        opportunityId: 'deal-canonical',
+        summary: 'Quick check-in',
+        durationSeconds: 30,
+      };
+      const result = await adapter.execute(TENANT, CONFIG, payload);
+
+      expect(result.success).toBe(true);
+      expect(result.externalId).toBe('call-retry');
+      expect(result.meta).toMatchObject({ provider: 'zoho', callId: 'call-retry' });
+      expect(calls).toHaveLength(2);
+      expect(calls.every((c) => c.url.endsWith('/crm/v2/Calls'))).toBe(true);
+      expect(calls.every((c) => c.method === 'POST')).toBe(true);
+    },
+  );
+});
