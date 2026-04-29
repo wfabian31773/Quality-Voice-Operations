@@ -14,8 +14,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
 import JSZip from 'jszip';
+import { withPrivilegedClient } from '../../platform/db';
 
 const queryMock = vi.fn();
+const withPrivilegedClientMock = withPrivilegedClient as unknown as ReturnType<typeof vi.fn>;
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
@@ -121,8 +123,13 @@ function makeReq(
 
 beforeEach(() => {
   queryMock.mockReset();
+  withPrivilegedClientMock.mockReset();
   uploadPrivateObjectMock.mockClear();
-  streamPrivateObjectMock.mockClear();
+  streamPrivateObjectMock.mockReset();
+  // Default behavior: streamPrivateObject is a no-op. Individual tests
+  // can override with mockImplementationOnce when they need to assert
+  // header writes or simulate ObjectNotFoundError.
+  streamPrivateObjectMock.mockImplementation(async () => {});
   sendEmailMock.mockClear();
   readyEmailMock.mockClear();
   failedEmailMock.mockClear();
@@ -735,5 +742,383 @@ describe('bulkExportJobRoutesHandler', () => {
       to: 'dispatcher@example.com',
       subject: expect.stringMatching(/could not/i) as unknown as string,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// downloadRouteExportHandler — public, token-authenticated archive download.
+//
+// This endpoint is intentionally **unauthenticated** (no JWT, no session
+// cookie) because the link is delivered by email and the dispatcher's mail
+// client follows it without our cookie. The opaque per-export
+// `download_token` is the only credential, with explicit gates for:
+//   - missing token         → 400
+//   - bad token / wrong id  → 404
+//   - status != 'ready'     → 409
+//   - expired link          → 410
+//   - happy path            → 200, streams archive with attachment filename
+//
+// A bug here could leak archives across tenants, so each gate is tested
+// in isolation against the same token-authenticated SQL the handler runs.
+// ---------------------------------------------------------------------------
+
+const EXPORT_JOB_ID = 'export-job-download-1';
+const VALID_TOKEN = 'a'.repeat(64);
+
+function makeDownloadReq(
+  params: { id?: string } = {},
+  query: { token?: string } = {},
+): Request {
+  return {
+    params: { id: params.id ?? EXPORT_JOB_ID },
+    query: query.token === undefined ? {} : { token: query.token },
+    body: {},
+    method: 'GET',
+    headers: {},
+    cookies: {},
+    ip: '127.0.0.1',
+  } as unknown as Request;
+}
+
+describe('downloadRouteExportHandler', () => {
+  it('returns 400 when the token query parameter is missing', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({}, {}),
+      res,
+    );
+    expect(getStatus()).toBe(400);
+    expect(getBody()).toEqual({ error: 'Missing download token' });
+    // Critically: we never opened a privileged DB connection for an
+    // obviously-malformed request — that keeps the unauthenticated
+    // surface cheap and keeps junk requests off the RLS-bypass path.
+    expect(withPrivilegedClientMock).not.toHaveBeenCalled();
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for an empty token string', async () => {
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({}, { token: '' }),
+      res,
+    );
+    expect(getStatus()).toBe(400);
+    expect(getBody()).toEqual({ error: 'Missing download token' });
+    expect(withPrivilegedClientMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the token does not match any export row', async () => {
+    // Privileged lookup runs but finds no row matching (id, token).
+    // This same shape covers both "token guess for a real id" and
+    // "wrong id supplied" — the WHERE clause filters on both.
+    const clientQuery = vi.fn().mockResolvedValueOnce({ rows: [] });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: 'not-a-real-token' }),
+      res,
+    );
+
+    expect(getStatus()).toBe(404);
+    expect(getBody()).toEqual({ error: 'Export not found or token invalid' });
+    // The WHERE clause must bind BOTH the id and the token — otherwise a
+    // valid token for export A would unlock export B.
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+    expect(String(clientQuery.mock.calls[0][0])).toMatch(/WHERE id = \$1 AND download_token = \$2/);
+    expect(clientQuery.mock.calls[0][1]).toEqual([EXPORT_JOB_ID, 'not-a-real-token']);
+    // Never streamed anything from object storage.
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when the export row exists but status is not 'ready'", async () => {
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'running',
+          archive_object_path: null,
+          archive_filename: null,
+          download_token: VALID_TOKEN,
+          // Future expiry — proves the 409 wins over the 410 path when
+          // status disqualifies the row first.
+          download_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    expect(getStatus()).toBe(409);
+    const body = getBody() as Record<string, unknown>;
+    expect(String(body.error)).toMatch(/not ready/i);
+    // The error message includes the actual status so the dispatcher
+    // (or our own debugging) can tell pending/running/failed apart.
+    expect(String(body.error)).toContain('running');
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 410 when the row is ready but the download link has expired', async () => {
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'ready',
+          archive_object_path: `/objects/private/dispatch-route-exports/${TENANT_ID}/${EXPORT_JOB_ID}.zip`,
+          archive_filename: 'dispatch-routes-2026-04-20.zip',
+          download_token: VALID_TOKEN,
+          // Expired one hour ago.
+          download_expires_at: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    expect(getStatus()).toBe(410);
+    expect(getBody()).toEqual({ error: 'Download link has expired' });
+    // No streaming after expiry — the archive may have been swept by
+    // the retention worker, but even if it's still on disk we must
+    // refuse to serve it once the per-export TTL has elapsed.
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 410 when download_expires_at is null on the row', async () => {
+    // A row without an expiry shouldn't be possible in practice (the
+    // worker always writes one), but if it ever happens we should fail
+    // closed rather than serving the archive forever.
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'ready',
+          archive_object_path: `/objects/private/dispatch-route-exports/${TENANT_ID}/${EXPORT_JOB_ID}.zip`,
+          archive_filename: 'dispatch-routes-2026-04-20.zip',
+          download_token: VALID_TOKEN,
+          download_expires_at: null,
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    expect(getStatus()).toBe(410);
+    expect(getBody()).toEqual({ error: 'Download link has expired' });
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('happy path: streams the archive from object storage with the persisted Content-Disposition filename', async () => {
+    const archivePath = `/objects/private/dispatch-route-exports/${TENANT_ID}/${EXPORT_JOB_ID}.zip`;
+    const archiveFilename = 'dispatch-routes-2026-04-20.zip';
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'ready',
+          archive_object_path: archivePath,
+          archive_filename: archiveFilename,
+          download_token: VALID_TOKEN,
+          download_expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000),
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    // For this single test, simulate the real streamer well enough to
+    // assert the headers it writes — the actual ObjectStorageService
+    // implementation sets Content-Type / Content-Length /
+    // Content-Disposition and pipes the GCS read stream into res. We
+    // mimic just the headers and a buffer "send".
+    streamPrivateObjectMock.mockImplementationOnce(async (
+      fullObjectPath: string,
+      response: Response,
+      options?: { downloadFilename?: string; cacheTtlSec?: number },
+    ) => {
+      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader('Content-Length', '12345');
+      response.setHeader(
+        'Cache-Control',
+        `private, max-age=${options?.cacheTtlSec ?? 0}`,
+      );
+      if (options?.downloadFilename) {
+        const safe = options.downloadFilename.replace(/"/g, '');
+        response.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${safe}"`,
+        );
+      }
+      // Fake archive bytes — proves the handler hands the response off
+      // to the storage helper rather than buffering JSON itself.
+      response.send(Buffer.from('PK\u0003\u0004fake-zip-bytes'));
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody, getHeaders } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    // The handler did not status-error before reaching the streamer.
+    expect(getStatus()).toBe(200);
+
+    // streamPrivateObject was called with the persisted archive path
+    // and the persisted filename — NOT with anything derived from the
+    // request URL, which would let an attacker influence the key.
+    expect(streamPrivateObjectMock).toHaveBeenCalledTimes(1);
+    const [pathArg, resArg, optsArg] = streamPrivateObjectMock.mock.calls[0];
+    expect(pathArg).toBe(archivePath);
+    expect(resArg).toBe(res);
+    expect(optsArg).toEqual({ downloadFilename: archiveFilename });
+
+    // Headers came from the streamer — including Content-Disposition,
+    // which is the actual contract this test is guarding.
+    const headers = getHeaders();
+    expect(headers['Content-Type']).toBe('application/zip');
+    expect(headers['Content-Disposition']).toBe(
+      `attachment; filename="${archiveFilename}"`,
+    );
+
+    // The body is the raw archive bytes the streamer piped through.
+    expect(Buffer.isBuffer(getBody())).toBe(true);
+  });
+
+  it('falls back to a synthesized filename when archive_filename is missing on the row', async () => {
+    // Defensive path: if a legacy row somehow lacks archive_filename we
+    // still hand the dispatcher a sensible attachment name rather than
+    // exposing the storage object key in the Content-Disposition.
+    const archivePath = `/objects/private/dispatch-route-exports/${TENANT_ID}/${EXPORT_JOB_ID}.zip`;
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'ready',
+          archive_object_path: archivePath,
+          archive_filename: null,
+          download_token: VALID_TOKEN,
+          download_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    expect(getStatus()).toBe(200);
+    expect(streamPrivateObjectMock).toHaveBeenCalledTimes(1);
+    const optsArg = streamPrivateObjectMock.mock.calls[0][2] as { downloadFilename?: string };
+    expect(optsArg.downloadFilename).toBe(`dispatch-routes-${EXPORT_JOB_ID}.zip`);
+  });
+
+  it('returns 500 when a ready row has no archive_object_path (corrupt state)', async () => {
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'ready',
+          archive_object_path: null,
+          archive_filename: 'dispatch-routes-2026-04-20.zip',
+          download_token: VALID_TOKEN,
+          download_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    expect(getStatus()).toBe(500);
+    expect(getBody()).toEqual({ error: 'Archive path missing on export job' });
+    expect(streamPrivateObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the archive file is gone from object storage (ObjectNotFoundError)', async () => {
+    const archivePath = `/objects/private/dispatch-route-exports/${TENANT_ID}/${EXPORT_JOB_ID}.zip`;
+    const clientQuery = vi.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          id: EXPORT_JOB_ID,
+          tenant_id: TENANT_ID,
+          status: 'ready',
+          archive_object_path: archivePath,
+          archive_filename: 'dispatch-routes-2026-04-20.zip',
+          download_token: VALID_TOKEN,
+          download_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ],
+    });
+    withPrivilegedClientMock.mockImplementation(async (cb: (c: { query: typeof clientQuery }) => unknown) => {
+      return cb({ query: clientQuery });
+    });
+
+    // Simulate the storage object having been swept after the row was
+    // marked ready — `ObjectNotFoundError` is raised by the streamer
+    // and the handler converts it to a friendly 404 instead of leaking
+    // the underlying storage error.
+    const objectStorage = await import('../../server/replit_integrations/object_storage');
+    streamPrivateObjectMock.mockImplementationOnce(async () => {
+      throw new objectStorage.ObjectNotFoundError();
+    });
+
+    const dispatch = await import('../../server/admin-api/routes/dispatch');
+    const { res, getStatus, getBody } = makeRes();
+    await (dispatch.downloadRouteExportHandler as (req: Request, res: Response) => Promise<void>)(
+      makeDownloadReq({ id: EXPORT_JOB_ID }, { token: VALID_TOKEN }),
+      res,
+    );
+
+    expect(getStatus()).toBe(404);
+    expect(getBody()).toEqual({ error: 'Archive file no longer in storage' });
   });
 });
