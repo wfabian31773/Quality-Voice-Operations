@@ -79,6 +79,7 @@ export default function StatusBadge({
   const radius = pill ? 'rounded-full' : 'rounded-md';
   return (
     <span
+      data-status-badge="true"
       className={clsx(
         'inline-flex items-center font-medium whitespace-nowrap',
         sizing,

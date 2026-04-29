@@ -48,6 +48,7 @@ export default function StatusDot({
   const colorCls = TONE_BG[tone];
   return (
     <span
+      data-status-dot="true"
       role="img"
       aria-label={label}
       title={label}
