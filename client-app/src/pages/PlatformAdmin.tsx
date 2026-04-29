@@ -1727,6 +1727,7 @@ function CallEventsRetentionPanel() {
 
 interface IntegrationProviderStatus {
   provider: string;
+  connectorProvider: string;
   label: string;
   category: string;
   configured: boolean;
@@ -1734,11 +1735,19 @@ interface IntegrationProviderStatus {
   missingEnv: string[];
   optionalEnv: { name: string; set: boolean }[];
   docsUrl: string;
+  enabledTenantCount: number;
+  totalTenantCount: number;
+  attemptedTenantCount: number;
 }
 
 interface IntegrationsStatusResponse {
   providers: IntegrationProviderStatus[];
-  summary: { total: number; configured: number; missing: number };
+  summary: {
+    total: number;
+    configured: number;
+    missing: number;
+    blockedTenantDemand: number;
+  };
 }
 
 function IntegrationsStatusPanel() {
@@ -1808,6 +1817,13 @@ function IntegrationsStatusPanel() {
             <p className="text-xs mt-1 opacity-80">
               Tenants will see a "not configured" message when they try to connect these providers. Set the listed environment variables and restart the server.
             </p>
+            {data.summary.blockedTenantDemand > 0 && (
+              <p className="text-xs mt-1 font-medium">
+                {data.summary.blockedTenantDemand} tenant{data.summary.blockedTenantDemand === 1 ? '' : 's'}-by-provider
+                {' '}signal{data.summary.blockedTenantDemand === 1 ? '' : 's'} of demand on missing providers
+                {' '}(a tenant blocked on two providers counts twice). Prioritize the rows with the highest counts below.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -1818,7 +1834,14 @@ function IntegrationsStatusPanel() {
             <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">{category}</h3>
           </div>
           <div className="divide-y divide-border">
-            {providers.map((p) => (
+            {[...providers]
+              .sort((a, b) => {
+                const aDemand = Math.max(a.enabledTenantCount, a.attemptedTenantCount);
+                const bDemand = Math.max(b.enabledTenantCount, b.attemptedTenantCount);
+                if (a.configured !== b.configured) return a.configured ? 1 : -1;
+                return bDemand - aDemand;
+              })
+              .map((p) => (
               <div key={p.provider} className="px-4 py-4 flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1830,6 +1853,28 @@ function IntegrationsStatusPanel() {
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                         <XCircle className="h-3 w-3" /> Missing credentials
+                      </span>
+                    )}
+                    {(p.enabledTenantCount > 0 || p.attemptedTenantCount > 0) && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          p.configured
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                        }`}
+                        title={
+                          p.configured
+                            ? `${p.enabledTenantCount} tenant(s) currently enabled; ${p.attemptedTenantCount} have ever connected`
+                            : `${p.enabledTenantCount} tenant(s) had this enabled before credentials were removed; ${p.attemptedTenantCount} have ever attempted`
+                        }
+                      >
+                        <Users className="h-3 w-3" />
+                        {p.enabledTenantCount} active
+                        {p.attemptedTenantCount > p.enabledTenantCount && (
+                          <span className="opacity-80">
+                            {' '}/ {p.attemptedTenantCount} ever
+                          </span>
+                        )}
                       </span>
                     )}
                   </div>
