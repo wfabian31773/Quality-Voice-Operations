@@ -20,6 +20,7 @@ import {
 import {
   DISPATCH_MERGE_TOKENS,
   DISPATCH_MERGE_TOKEN_SAMPLES,
+  countSmsSegments,
   findUnknownDispatchMergeTokens,
   renderDispatchTemplate,
 } from '../../../shared/dispatch/mergeTokens';
@@ -3040,6 +3041,15 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
     [formType, formData.body_template],
   );
   const previewChannel = (formData.channel as string) || 'sms';
+  // Carriers split anything over 160 GSM-7 chars (or 70 UCS-2 chars
+  // if a non-GSM character sneaks in) into multiple billed segments.
+  // Surface that under the rendered body so dispatchers can spot a
+  // 161-char message before it costs them double on the next bill.
+  const previewSegmentInfo = useMemo(
+    () => countSmsSegments(previewBody),
+    [previewBody],
+  );
+  const showSegmentWarning = previewSegmentInfo.segments > 1;
   return (
     <Modal open onClose={onClose} ariaLabel={`${formData.id ? 'Edit' : 'New'} ${titles[formType]}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -3195,6 +3205,39 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
                     ) : (
                       <div className="text-xs italic text-muted">
                         Start typing the body template to see a preview.
+                      </div>
+                    )}
+                    {previewChannel !== 'email' && previewBody.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                        <span
+                          data-testid="notification-template-preview-segments"
+                          data-encoding={previewSegmentInfo.encoding}
+                          data-segments={previewSegmentInfo.segments}
+                          className={
+                            showSegmentWarning
+                              ? 'text-amber-700 dark:text-amber-400 font-medium'
+                              : 'text-muted'
+                          }
+                        >
+                          {previewSegmentInfo.characters}{' '}
+                          character{previewSegmentInfo.characters === 1 ? '' : 's'}
+                          {' · '}
+                          {previewSegmentInfo.segments}{' '}
+                          segment{previewSegmentInfo.segments === 1 ? '' : 's'}
+                          {previewSegmentInfo.encoding === 'UCS-2' && ' (Unicode)'}
+                        </span>
+                        {showSegmentWarning && (
+                          <span
+                            role="alert"
+                            data-testid="notification-template-preview-segments-warning"
+                            className="text-[11px] text-amber-700 dark:text-amber-400"
+                          >
+                            — billed as {previewSegmentInfo.segments} SMS
+                            {previewSegmentInfo.encoding === 'UCS-2'
+                              ? ' (a non-GSM character forced Unicode mode, dropping the per-segment limit to 70).'
+                              : '. Trim to 160 characters to send as one.'}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

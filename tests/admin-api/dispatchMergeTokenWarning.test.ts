@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import {
   DISPATCH_MERGE_TOKENS,
   DISPATCH_MERGE_TOKEN_SAMPLES,
+  countSmsSegments,
   findUnknownDispatchMergeTokens,
   renderDispatchTemplate,
 } from '../../shared/dispatch/mergeTokens';
@@ -117,6 +118,122 @@ describe('renderDispatchTemplate', () => {
       contact_name: 'Tester',
     });
     expect(out).toBe('Hi Tester');
+  });
+});
+
+// Carriers split SMS bodies into multiple billed segments past 160
+// GSM-7 chars (or 70 UCS-2 chars). The dispatch template editor's
+// preview surfaces the live count so a dispatcher can spot a 161-char
+// message before it costs them double on the next Twilio bill.
+describe('countSmsSegments', () => {
+  it('returns zero segments for empty / non-string inputs (raw form state)', () => {
+    expect(countSmsSegments('')).toEqual({
+      encoding: 'GSM-7',
+      characters: 0,
+      charactersPerSegment: 160,
+      segments: 0,
+      remaining: 160,
+    });
+    expect(countSmsSegments(undefined)).toMatchObject({ segments: 0, characters: 0 });
+    expect(countSmsSegments(null)).toMatchObject({ segments: 0, characters: 0 });
+    expect(countSmsSegments(42)).toMatchObject({ segments: 0, characters: 0 });
+  });
+
+  it('counts a short GSM-7 body as a single 160-char segment', () => {
+    const info = countSmsSegments('Hello dispatcher!');
+    expect(info.encoding).toBe('GSM-7');
+    expect(info.characters).toBe(17);
+    expect(info.segments).toBe(1);
+    expect(info.charactersPerSegment).toBe(160);
+    expect(info.remaining).toBe(160 - 17);
+  });
+
+  it('treats exactly 160 GSM-7 characters as one segment, 161 as two', () => {
+    const oneSeg = 'a'.repeat(160);
+    const twoSeg = 'a'.repeat(161);
+    expect(countSmsSegments(oneSeg)).toMatchObject({
+      segments: 1,
+      characters: 160,
+      charactersPerSegment: 160,
+      remaining: 0,
+    });
+    // Once concatenated, each segment carries a UDH and only fits 153.
+    expect(countSmsSegments(twoSeg)).toMatchObject({
+      segments: 2,
+      characters: 161,
+      charactersPerSegment: 153,
+      remaining: 153 * 2 - 161,
+    });
+  });
+
+  it('counts GSM-7 extension-table characters as 2 (matches carrier billing)', () => {
+    // `{`, `}`, `[`, `]`, `\`, `^`, `~`, `|`, `€`, form-feed each
+    // travel as ESC + char on the wire. A 159-char message that ends
+    // in `€` therefore tips into a second segment — exactly the
+    // surprise the editor needs to flag.
+    expect(countSmsSegments('€').characters).toBe(2);
+    expect(countSmsSegments('{}[]').characters).toBe(8);
+    const dangerous = 'a'.repeat(159) + '€';
+    expect(countSmsSegments(dangerous)).toMatchObject({
+      encoding: 'GSM-7',
+      characters: 161,
+      segments: 2,
+    });
+  });
+
+  it('switches to UCS-2 (70-char single segment) on the first non-GSM character', () => {
+    // An em-dash isn't in the GSM-7 table — pasting one into an
+    // otherwise plain-ASCII template silently halves the per-segment
+    // budget. The preview must catch that.
+    const info = countSmsSegments('Hello — dispatcher');
+    expect(info.encoding).toBe('UCS-2');
+    expect(info.characters).toBe('Hello — dispatcher'.length);
+    expect(info.charactersPerSegment).toBe(70);
+    expect(info.segments).toBe(1);
+  });
+
+  it('counts UCS-2 boundary at 70 chars (one segment) and 71 chars (two)', () => {
+    // Use a non-GSM character (Cyrillic 'я') to force UCS-2 mode.
+    const oneSeg = 'я'.repeat(70);
+    const twoSeg = 'я'.repeat(71);
+    expect(countSmsSegments(oneSeg)).toMatchObject({
+      encoding: 'UCS-2',
+      characters: 70,
+      charactersPerSegment: 70,
+      segments: 1,
+      remaining: 0,
+    });
+    expect(countSmsSegments(twoSeg)).toMatchObject({
+      encoding: 'UCS-2',
+      characters: 71,
+      charactersPerSegment: 67,
+      segments: 2,
+      remaining: 67 * 2 - 71,
+    });
+  });
+
+  it('counts a non-BMP emoji as 2 UCS-2 code units (matches carrier metering)', () => {
+    // 😀 is a surrogate pair in UTF-16 — carriers bill it as 2 chars.
+    // We must not double-count it as two separate non-GSM characters.
+    const info = countSmsSegments('Hi 😀');
+    expect(info.encoding).toBe('UCS-2');
+    // 'Hi ' (3) + 😀 (2 UTF-16 code units) = 5
+    expect(info.characters).toBe(5);
+    expect(info.segments).toBe(1);
+  });
+
+  it('reports the segment count for a fully-rendered dispatch template', () => {
+    // Glue countSmsSegments to renderDispatchTemplate the same way
+    // the preview panel does, so a refactor that breaks the wiring
+    // (e.g. counting the raw template instead of the rendered body)
+    // gets caught here.
+    const rendered = renderDispatchTemplate(
+      'Hi {{contact_name}}, your tech {{resource_name}} arrives by {{eta_arrival_time}}. Track: {{tracking_url}}',
+    );
+    const info = countSmsSegments(rendered);
+    expect(info.encoding).toBe('GSM-7');
+    expect(info.characters).toBe(rendered.length);
+    expect(info.segments).toBeGreaterThanOrEqual(1);
   });
 });
 
