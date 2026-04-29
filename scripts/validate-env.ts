@@ -34,7 +34,7 @@ const ENV_VARS: EnvVar[] = [
   { name: 'SMTP_PASS', required: 'production', purpose: 'SMTP authentication password' },
   { name: 'EMAIL_FROM', required: 'production', purpose: 'Default sender address for outbound email' },
   { name: 'APP_URL', required: 'production', purpose: 'Public application URL (for invite links, redirects)' },
-  { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com /book-demo/calendar-webhook requests; signature is computed over `${timestamp}.${body}` and rejected when the signed timestamp falls outside a 5-minute window (production fails closed without it)' },
+  { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com booking webhooks. Cal.com itself signs only the body (no timestamp), so register the Cal.com webhook against the adapter URL `/book-demo/calcom-native-webhook` — that route authenticates the native body-only signature and re-signs the payload with the envelope `t=<unix>,v1=HMAC(secret,"<t>.<body>")` before handing it to the canonical `/book-demo/calendar-webhook` verifier (5-minute replay window). Production fails closed without this secret. See docs/deployment-checklist.md §5 (Cal.com Webhook).' },
   // CALENDLY_WEBHOOK_SECRET is conditionally required in production — only when
   // VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is set
   // to "calendly". The conditional check runs in `validateEnvironment` below

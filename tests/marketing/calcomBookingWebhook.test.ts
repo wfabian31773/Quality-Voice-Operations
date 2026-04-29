@@ -765,3 +765,289 @@ describe('POST /book-demo/calendar-webhook — idempotency', () => {
     expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
   });
 });
+
+// HMAC-SHA256 of the body alone — Cal.com's actual native signing scheme.
+function signBodyOnly(body: string, secret: string = TEST_SECRET): string {
+  return crypto.createHmac('sha256', secret).update(body).digest('hex');
+}
+
+const NATIVE_PATH = '/book-demo/calcom-native-webhook';
+
+async function buildAppWithNativeMount(opts: BuildAppOptions = {}): Promise<{ app: express.Express; mocks: MockHandles }> {
+  const mocks: MockHandles = {
+    findLeadById: opts.findLeadById ?? vi.fn(async () => null),
+    findLatestLeadByEmail: opts.findLatestLeadByEmail ?? vi.fn(async () => null),
+    attachBookingToLeadById:
+      opts.attachBookingToLeadById ?? vi.fn(async () => ({ leadId: null, duplicate: false })),
+    attachBookingToLead:
+      opts.attachBookingToLead ?? vi.fn(async () => ({ leadId: null, duplicate: false })),
+    notifyBookingConfirmed: opts.notifyBookingConfirmed ?? vi.fn(async () => {}),
+    recordLead: opts.recordLead ?? vi.fn(async () => ({ id: 1 })),
+  };
+
+  vi.doMock('../../server/admin-api/services/marketing-leads', () => ({
+    findLeadById: mocks.findLeadById,
+    findLatestLeadByEmail: mocks.findLatestLeadByEmail,
+    attachBookingToLeadById: mocks.attachBookingToLeadById,
+    attachBookingToLead: mocks.attachBookingToLead,
+    notifyBookingConfirmed: mocks.notifyBookingConfirmed,
+    recordLead: mocks.recordLead,
+  }));
+
+  const router = (await import('../../server/admin-api/routes/contact')).default;
+  const app = express();
+  // Mirror the production mount in server/admin-api/app.ts: raw body parser
+  // on both webhook paths (the canonical one is exercised internally by the
+  // adapter handler), JSON parser elsewhere.
+  app.use(WEBHOOK_PATH, express.raw({ type: 'application/json' }));
+  app.use(NATIVE_PATH, express.raw({ type: 'application/json' }));
+  app.use(express.json());
+  app.use('/', router);
+  return { app, mocks };
+}
+
+describe('POST /book-demo/calcom-native-webhook — Cal.com adapter', () => {
+  const ORIGINAL = {
+    NODE_ENV: process.env.NODE_ENV,
+    APP_ENV: process.env.APP_ENV,
+    CALCOM_WEBHOOK_SECRET: process.env.CALCOM_WEBHOOK_SECRET,
+    CALCOM_WEBHOOK_ALLOW_UNSIGNED: process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED,
+  };
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.NODE_ENV = 'test';
+    process.env.APP_ENV = 'test';
+    process.env.CALCOM_WEBHOOK_SECRET = TEST_SECRET;
+    delete process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(ORIGINAL)) {
+      if (v === undefined) delete (process.env as Record<string, string | undefined>)[k];
+      else (process.env as Record<string, string>)[k] = v;
+    }
+    vi.restoreAllMocks();
+    vi.doUnmock('../../server/admin-api/services/marketing-leads');
+  });
+
+  it("accepts Cal.com's native body-only HMAC signature, re-stamps internally, and processes the booking", async () => {
+    const { app, mocks } = await buildAppWithNativeMount({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'native@example.com',
+        payload: {},
+        name: 'Native',
+        company: 'Native Co',
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-native',
+        bookingId: 'bid-native',
+        startTime: '2026-05-02T10:00:00Z',
+        attendees: [{ email: 'native@example.com', name: 'Native', timeZone: 'UTC' }],
+        metadata: { leadId: 101 },
+      },
+    });
+
+    // Cal.com signs only the body (no timestamp); the adapter authenticates
+    // this and forwards into the canonical envelope verifier.
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', signBodyOnly(body))
+      .send(body);
+
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 101, duplicate: false });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledWith(
+      101,
+      expect.objectContaining({ eventType: 'created', bookingUid: 'uid-native' }),
+    );
+    expect(mocks.notifyBookingConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it("also accepts Cal.com's `sha256=<hex>` prefixed header form", async () => {
+    const { app, mocks } = await buildAppWithNativeMount({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'prefixed@example.com',
+        payload: {},
+        name: null,
+        company: null,
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-pfx',
+        bookingId: 'bid-pfx',
+        attendees: [{ email: 'prefixed@example.com' }],
+        metadata: { leadId: 102 },
+      },
+    });
+
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', `sha256=${signBodyOnly(body)}`)
+      .send(body);
+
+    expect(r.status).toBe(200);
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects with 401 when the signature header is missing', async () => {
+    const { app, mocks } = await buildAppWithNativeMount();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: { attendees: [{ email: 'a@example.com' }], metadata: { leadId: 1 } },
+    });
+
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Missing signature' });
+    expect(mocks.findLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 401 when the body-only signature does not match Cal.com's secret", async () => {
+    const { app, mocks } = await buildAppWithNativeMount();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: { attendees: [{ email: 'a@example.com' }], metadata: { leadId: 1 } },
+    });
+    const wrongSig = signBodyOnly(body, 'a-different-secret-entirely');
+
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', wrongSig)
+      .send(body);
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Invalid signature' });
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 401 when the signature is malformed (non-hex)', async () => {
+    const { app, mocks } = await buildAppWithNativeMount();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: { attendees: [{ email: 'a@example.com' }], metadata: { leadId: 1 } },
+    });
+
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', 'not-a-hex-string')
+      .send(body);
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Invalid signature format' });
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when CALCOM_WEBHOOK_SECRET is unset and the dev bypass is not enabled (production fail-closed posture)', async () => {
+    delete process.env.CALCOM_WEBHOOK_SECRET;
+    const { app, mocks } = await buildAppWithNativeMount();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: { attendees: [{ email: 'a@example.com' }], metadata: { leadId: 1 } },
+    });
+
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', signBodyOnly(body))
+      .send(body);
+
+    expect(r.status).toBe(500);
+    expect(r.body).toEqual({ error: 'Webhook secret not configured' });
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('honours the CALCOM_WEBHOOK_ALLOW_UNSIGNED dev bypass and forwards to the canonical handler', async () => {
+    delete process.env.CALCOM_WEBHOOK_SECRET;
+    process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED = '1';
+    const { app, mocks } = await buildAppWithNativeMount({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'bypass@example.com',
+        payload: {},
+        name: null,
+        company: null,
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-bypass',
+        bookingId: 'bid-bypass',
+        attendees: [{ email: 'bypass@example.com' }],
+        metadata: { leadId: 105 },
+      },
+    });
+
+    // Without a secret configured the adapter accepts under the dev bypass
+    // and forwards the request through the canonical handler (which also
+    // honours the bypass branch when no secret is present).
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 105 });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards the canonical pipeline so duplicate bookings still collapse onto a single notify', async () => {
+    const { app, mocks } = await buildAppWithNativeMount({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'dup-native@example.com',
+        payload: {},
+        name: 'Dup Native',
+        company: 'Dup Co',
+      })),
+      // Storage layer signals this booking event was already recorded.
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: true })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-dup-native',
+        bookingId: 'bid-dup-native',
+        attendees: [{ email: 'dup-native@example.com' }],
+        metadata: { leadId: 110 },
+      },
+    });
+
+    const r = await request(app)
+      .post(NATIVE_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', signBodyOnly(body))
+      .send(body);
+
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 110, duplicate: true });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+    // Idempotency mitigation: replays of the same booking do not re-notify
+    // the sales inbox even though Cal.com's native signature has no
+    // timestamp binding to defend against replays directly.
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+});

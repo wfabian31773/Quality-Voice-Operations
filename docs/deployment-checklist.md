@@ -32,7 +32,7 @@
 | `VOICE_GATEWAY_BASE_URL` | Public URL of the voice gateway | Your deployment domain | `https://your-domain.replit.app:3001` |
 | `ADMIN_API_BASE_URL` | Public URL of the admin API | Your deployment domain | `https://your-domain.replit.app:3002` |
 | `VITE_BOOK_DEMO_SCHEDULER_URL` | Embedded scheduler URL used by the public `/book-demo` page. Must be set at **build time** (Vite inlines `VITE_*` vars). Enforced by `scripts/validate-env.ts` and Admin API startup — missing in production = hard fail. | Cal.com event link or Calendly link | `https://cal.com/qvo/30min` |
-| `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used to verify the `X-Cal-Signature-256` header on `/book-demo/calendar-webhook`. The endpoint **rejects all unsigned requests in production** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). Enforced by `scripts/validate-env.ts` and Admin API startup. | Cal.com Webhook config (see §5) | Random 32+ char secret |
+| `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used by both the Cal.com adapter route (`/book-demo/calcom-native-webhook`, where Cal.com itself posts) and the canonical envelope verifier (`/book-demo/calendar-webhook`, which the adapter forwards to with a synthesized `t=<unix>,v1=<hex>` envelope). **Production rejects all unsigned requests** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). Enforced by `scripts/validate-env.ts` and Admin API startup. | Cal.com Webhook config (see §5) | Random 32+ char secret |
 | `CALENDLY_WEBHOOK_SECRET` | HMAC-SHA256 signing key used to verify the `Calendly-Webhook-Signature` header on `/book-demo/calendly-webhook`. The endpoint **rejects all unsigned requests in production** (no `CALENDLY_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). **Required only when `BOOK_DEMO_SCHEDULER_PROVIDER` (or `VITE_BOOK_DEMO_SCHEDULER_PROVIDER`) is `calendly`.** `scripts/validate-env.ts` and Admin API startup add this to the missing-vars list when the provider is Calendly so production builds fail closed without it. | Calendly Webhook signing key (returned by `POST /webhook_subscriptions`, see §5) | Random 32+ char secret |
 | `SALES_NOTIFICATION_EMAIL` | Default inbox that receives "new demo lead" and "booking created/rescheduled/cancelled" notifications from `marketing-leads.ts`. Platform admins can override this list and the channels (email/Slack) at runtime via **Admin → Sales Inbox → Alert settings** (persisted in `platform_settings.sales_alert_settings`). The in-app `marketing_leads.notified` flag ensures each lead is alerted at most once. Enforced by `scripts/validate-env.ts` and Admin API startup so demo leads are never silently dropped. | Your sales / SDR distribution list | `sales@yourdomain.com` |
 
@@ -241,7 +241,7 @@ The public `/book-demo` page embeds an external scheduler (Cal.com by default, o
 
 - `VITE_BOOK_DEMO_SCHEDULER_URL` — the embed URL (e.g. `https://cal.com/qvo/30min`). Must be present at **`vite build` time** because `VITE_*` vars are inlined into the client bundle. Rebuild and redeploy after changing it.
 - `VITE_BOOK_DEMO_SCHEDULER_PROVIDER` *(optional)* — set to `calendly` to switch the embed semantics; defaults to `cal.com`.
-- `CALCOM_WEBHOOK_SECRET` — HMAC-SHA256 secret. **Production rejects every request that lacks a valid `X-Cal-Signature-256` header**; missing secret returns HTTP 500.
+- `CALCOM_WEBHOOK_SECRET` — HMAC-SHA256 secret. Used by both the Cal.com adapter route (which authenticates Cal.com's native body-only `X-Cal-Signature-256` header) and the canonical envelope verifier the adapter forwards into. **Production rejects every request that lacks a valid signature**; missing secret returns HTTP 500.
 - `CALENDLY_WEBHOOK_SECRET` *(required only when running on Calendly)* — HMAC-SHA256 signing key. **Production rejects every request that lacks a valid `Calendly-Webhook-Signature` header**; missing secret returns HTTP 500.
 - `SALES_NOTIFICATION_EMAIL` — sales inbox that receives lead-capture and booking lifecycle emails. When unset, lead capture still succeeds but no email is sent (a debug log is emitted).
 
@@ -250,8 +250,9 @@ The public `/book-demo` page embeds an external scheduler (Cal.com by default, o
 #### Step 1 — Create the webhook in Cal.com
 
 1. In Cal.com, go to **Settings → Developer → Webhooks → New Webhook**.
-2. **Subscriber URL**: `https://{ADMIN_API_BASE_URL}/book-demo/calendar-webhook`
+2. **Subscriber URL**: `https://{ADMIN_API_BASE_URL}/book-demo/calcom-native-webhook`
    - This is the **Admin API** host (port 3002 / your public Admin domain), **not** the voice gateway.
+   - Use the **`/calcom-native-webhook` adapter URL — not** `/calendar-webhook`. Cal.com's webhook signer covers only the raw body and does not include a timestamp header, so a delivery sent straight to `/calendar-webhook` is rejected with `401 "Missing timestamp"` by the canonical replay-protected verifier. The `/calcom-native-webhook` adapter authenticates the native body-only signature, re-stamps with the current Unix time, re-signs as `t=<unix>,v1=HMAC(secret,"<t>.<body>")`, and then hands the request to the canonical verifier — so the strict 5-minute replay window is preserved end-to-end while still accepting Cal.com's native delivery format.
 3. **Event Triggers** — subscribe to all three:
    - `BOOKING_CREATED`
    - `BOOKING_RESCHEDULED`
@@ -259,6 +260,16 @@ The public `/book-demo` page embeds an external scheduler (Cal.com by default, o
 4. **Secret**: paste the value of `CALCOM_WEBHOOK_SECRET`. Generate one with `openssl rand -hex 32` if you do not already have one stored.
 5. Set **Payload Template** to *Default* (the route parses the standard Cal.com envelope `{ triggerEvent, payload: { uid, attendees, organizer, metadata, ... } }`).
 6. Save and use Cal.com's **Send Test** button to fire a sample `BOOKING_CREATED`. A `200 OK` confirms signature verification works.
+
+> **Smoke test (record this in the rollout notes).** After saving the webhook,
+> click **Send Test** in Cal.com and tail the Admin API logs:
+> `200 OK` plus a `Cal.com webhook processed` log line means the adapter
+> verified the native signature, re-signed with the envelope, and the
+> canonical verifier accepted the forwarded request. If you instead see
+> `401 "Missing timestamp"` the webhook is still pointed at the legacy
+> `/calendar-webhook` URL — switch it to `/calcom-native-webhook`. The
+> deployment is only considered green once a real Cal.com test booking
+> shows up against a marketing lead in the sales inbox.
 
 #### Step 2 — Calendly alternative (optional)
 

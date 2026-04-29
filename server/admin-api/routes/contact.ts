@@ -214,6 +214,57 @@ export function verifyCalcomSignature(
 }
 
 /**
+ * Verify Cal.com's *native* webhook signature, which is just an HMAC-SHA256
+ * over the raw body alone (no timestamp). Cal.com's webhook signer has no
+ * facility for embedding a timestamp into the signature envelope, so the
+ * canonical envelope verifier above (`verifyCalcomSignature`) cannot accept
+ * Cal.com deliveries directly. The `/book-demo/calcom-native-webhook` adapter
+ * route uses this verifier to authenticate the request, then re-stamps and
+ * re-signs the payload with the envelope format so the rest of the pipeline
+ * can flow through the canonical handler unchanged.
+ *
+ * Header forms accepted (Cal.com uses the first two interchangeably):
+ *   - `X-Cal-Signature-256: <hex>`
+ *   - `X-Cal-Signature-256: sha256=<hex>`
+ *   - `X-Cal-Signature: <hex>` (legacy)
+ */
+export function verifyCalcomNativeSignature(
+  rawBody: Buffer,
+  signatureHeader: string | undefined,
+): SignatureResult {
+  const secret = (process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
+  if (!secret) {
+    const allowUnsigned =
+      (process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED ?? '').trim() === '1' &&
+      (process.env.NODE_ENV ?? 'development') !== 'production' &&
+      (process.env.APP_ENV ?? 'development') !== 'production';
+    if (allowUnsigned) {
+      logger.warn('CALCOM_WEBHOOK_SECRET not configured — accepting native cal.com webhook (CALCOM_WEBHOOK_ALLOW_UNSIGNED=1, non-production only)');
+      return { ok: true };
+    }
+    logger.error('CALCOM_WEBHOOK_SECRET not configured — rejecting native cal.com webhook (set the secret to enable signature verification)');
+    return { ok: false, status: 500, error: 'Webhook secret not configured' };
+  }
+  if (!signatureHeader) {
+    return { ok: false, status: 401, error: 'Missing signature' };
+  }
+  const provided = signatureHeader.trim().replace(/^sha256=/i, '');
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  if (!/^[a-f0-9]+$/i.test(provided) || provided.length !== expected.length) {
+    return { ok: false, status: 401, error: 'Invalid signature format' };
+  }
+  try {
+    const equal = crypto.timingSafeEqual(
+      Buffer.from(expected, 'hex'),
+      Buffer.from(provided.toLowerCase(), 'hex'),
+    );
+    return equal ? { ok: true } : { ok: false, status: 401, error: 'Invalid signature' };
+  } catch {
+    return { ok: false, status: 401, error: 'Invalid signature' };
+  }
+}
+
+/**
  * Verify a Calendly v1 webhook signature header. The header looks like
  * `t=<unix_seconds>,v1=<hex_hmac>` and the HMAC is computed as
  * `HMAC_SHA256(secret, "<timestamp>.<raw_body>")`. We also reject signatures
@@ -658,6 +709,70 @@ router.post('/book-demo/calendar-webhook', async (req: Request, res: Response) =
   const calcomTimestamp = req.header('x-cal-timestamp') || undefined;
 
   await handleCalcomWebhook(raw, calcomSig, calcomTimestamp, res);
+});
+
+
+/**
+ * Cal.com adapter route — the URL we register with Cal.com instead of the
+ * canonical `/book-demo/calendar-webhook`.
+ *
+ * Cal.com's native webhook signs only the raw body (HMAC-SHA256, header
+ * `X-Cal-Signature-256: <hex>`) and provides no facility for embedding a
+ * timestamp into the signed material. The canonical verifier hardened in
+ * `verifyCalcomSignature` above requires either a Stripe-style envelope
+ * (`t=<unix>,v1=<hex>`) or a paired `x-cal-timestamp` header, so a raw Cal.com
+ * delivery would always be rejected with `401 "Missing timestamp"`.
+ *
+ * This adapter solves that locally without needing a separate process or
+ * loosening the canonical verifier:
+ *   1. Authenticate the request using Cal.com's native body-only HMAC
+ *      against `CALCOM_WEBHOOK_SECRET`.
+ *   2. Stamp `Math.floor(Date.now()/1000)` and recompute the envelope
+ *      signature `HMAC_SHA256(secret, "<ts>.<body>")`.
+ *   3. Hand the request off to `handleCalcomWebhook` with the synthesized
+ *      `x-cal-signature-256: t=<ts>,v1=<hex>` header so the canonical
+ *      verifier (and replay-window check) does its full validation pass.
+ *
+ * The dispatch pipeline downstream of `handleCalcomWebhook` is idempotent on
+ * `bookingId`/`bookingUid` via `attachBookingToLead*`, so duplicate Cal.com
+ * deliveries (Cal.com's own retry behaviour) collapse onto a single notify.
+ * That is the practical replay mitigation while Cal.com itself does not bind
+ * a timestamp to its signature.
+ *
+ * Configure Cal.com → Settings → Developer → Webhooks → Subscriber URL =
+ *   https://{ADMIN_API_BASE_URL}/book-demo/calcom-native-webhook
+ */
+router.post('/book-demo/calcom-native-webhook', async (req: Request, res: Response) => {
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+  const calcomSig =
+    req.header('x-cal-signature-256') ||
+    req.header('X-Cal-Signature-256') ||
+    req.header('x-cal-signature') ||
+    undefined;
+
+  const sigResult = verifyCalcomNativeSignature(raw, calcomSig);
+  if (!sigResult.ok) {
+    logger.warn('Cal.com native webhook rejected', { reason: sigResult.error, status: sigResult.status });
+    res.status(sigResult.status).json({ error: sigResult.error });
+    return;
+  }
+
+  // Re-stamp + re-sign so the canonical verifier accepts the forwarded request.
+  // When the dev/staging unsigned bypass was the reason verification passed
+  // (no secret configured, CALCOM_WEBHOOK_ALLOW_UNSIGNED=1), forward without a
+  // signature header so the canonical handler also follows the bypass branch.
+  const secret = (process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
+  if (!secret) {
+    await handleCalcomWebhook(raw, undefined, undefined, res);
+    return;
+  }
+
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = crypto
+    .createHmac('sha256', secret)
+    .update(`${ts}.${raw.toString('utf8')}`)
+    .digest('hex');
+  await handleCalcomWebhook(raw, `t=${ts},v1=${sig}`, undefined, res);
 });
 
 

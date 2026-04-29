@@ -84,6 +84,11 @@ app.use(
 );
 
 app.use(
+  '/book-demo/calcom-native-webhook',
+  express.raw({ type: 'application/json' }),
+);
+
+app.use(
   '/book-demo/calendly-webhook',
   express.raw({ type: 'application/json' }),
 );
