@@ -118,3 +118,28 @@ export type {
   ConversionStage,
   WebsiteFunnelMetrics,
 } from './WebsiteConversionService';
+export {
+  getTenantCsatSettings,
+  createCsatRequest,
+  recordCsatResponse,
+  tryRecordSmsCsatResponse,
+  markCsatOptedOut,
+  expireStaleCsatRequests,
+  getTenantCsatAggregate,
+  buildCsatSmsBody,
+  dispatchSmsCsatSurvey,
+  issueCsatDispatchToken,
+  getCsatByDispatchToken,
+  listRecentCsatResponses,
+  normalizeScore,
+} from './CsatSurveyService';
+export type {
+  CsatChannel,
+  CsatStatus,
+  CsatRow,
+  CsatTenantSettings,
+  AggregatedCsat,
+  CreateCsatRequestParams,
+  RecordCsatResponseParams,
+  DispatchSmsCsatParams,
+} from './CsatSurveyService';

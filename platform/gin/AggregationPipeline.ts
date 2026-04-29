@@ -1,6 +1,7 @@
 import { getPlatformPool, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 import { redactPHI } from '../core/phi/redact';
+import { getTenantCsatAggregate } from '../analytics/CsatSurveyService';
 
 const logger = createLogger('GIN_AGGREGATION');
 
@@ -17,7 +18,19 @@ export interface AggregatedSignal {
   commonQuestions: string[];
   promptPatterns: string[];
   workflowSequences: string[];
+  /** Real customer-reported CSAT averaged on a 0–10 scale across this
+   *  tenant's responded surveys in the period. NaN when the tenant has
+   *  not collected at least the per-tenant minimum sample (see
+   *  CSAT_TENANT_MIN_RESPONSES) — kept as NaN rather than 0 so a tenant
+   *  with no surveys does not drag the cohort average down. */
+  csatScoreOnTen: number;
+  csatResponseCount: number;
 }
+
+/** Minimum number of responded CSAT surveys a tenant needs in the window
+ *  before its CSAT contributes to the per-vertical benchmark. Set high
+ *  enough that one disgruntled customer does not anchor the metric. */
+const CSAT_TENANT_MIN_RESPONSES = Number(process.env.GIN_CSAT_TENANT_MIN_RESPONSES ?? 5);
 
 export interface AggregationRunResult {
   runId: string;
@@ -249,6 +262,19 @@ export async function runAggregationPipeline(): Promise<AggregationRunResult> {
           const convBookings = Number(convRaw.bookings || 0);
           const bookingRate = convStarted > 0 ? convBookings / convStarted : 0;
 
+          // Real customer-reported CSAT — distinct from the LLM-judged
+          // avg_quality_score above. We only count tenants who have
+          // collected at least CSAT_TENANT_MIN_RESPONSES so a single
+          // unhappy reply doesn't pin the cohort percentile.
+          const csat = await getTenantCsatAggregate(client, tenantId, thirtyDaysAgo, now)
+            .catch((err) => {
+              logger.warn('Failed to load tenant CSAT aggregate', { tenantId, error: String(err) });
+              return null;
+            });
+          const csatEligible = !!csat && csat.responseCount >= CSAT_TENANT_MIN_RESPONSES;
+          const csatScoreOnTen = csatEligible ? (csat as { meanOnTen: number }).meanOnTen : NaN;
+          const csatResponseCount = csat ? csat.responseCount : 0;
+
           const signal: AggregatedSignal = {
             industry,
             totalCalls: cm.total_calls || 0,
@@ -262,6 +288,8 @@ export async function runAggregationPipeline(): Promise<AggregationRunResult> {
             commonQuestions,
             promptPatterns: anonymizedPrompts,
             workflowSequences,
+            csatScoreOnTen,
+            csatResponseCount,
           };
 
           if (!industrySignals.has(industry)) {
@@ -297,13 +325,45 @@ export async function runAggregationPipeline(): Promise<AggregationRunResult> {
         const p50 = (arr: number[]) => arr[Math.floor(arr.length * 0.5)] || 0;
         const p75 = (arr: number[]) => arr[Math.floor(arr.length * 0.75)] || 0;
 
-        const benchmarks = [
-          { metric: 'booking_conversion_rate', value: avgBookingRate, sorted: sortedBooking },
-          { metric: 'avg_call_duration_seconds', value: avgDuration, sorted: sortedDuration },
-          { metric: 'avg_quality_score', value: avgQuality, sorted: sortedQuality },
-          { metric: 'call_completion_rate', value: completionRate, sorted: signals.map(s => s.totalCalls > 0 ? s.completedCalls / s.totalCalls : 0).sort((a, b) => a - b) },
-          { metric: 'escalation_rate', value: escalationRate, sorted: signals.map(s => s.totalCalls > 0 ? s.escalatedCalls / s.totalCalls : 0).sort((a, b) => a - b) },
+        // Real CSAT — only signals from tenants who actually surveyed
+        // their callers (NaN otherwise) contribute. We use the count of
+        // contributing tenants as the benchmark sample_size, NOT
+        // signals.length, so the public k-anonymity gate in publicGin.ts
+        // gates on real CSAT participation rather than total tenants.
+        const csatSamples = signals
+          .filter(s => Number.isFinite(s.csatScoreOnTen))
+          .map(s => s.csatScoreOnTen)
+          .sort((a, b) => a - b);
+        const csatTenantCount = csatSamples.length;
+        const csatAverage = csatTenantCount > 0
+          ? csatSamples.reduce((s, v) => s + v, 0) / csatTenantCount
+          : 0;
+
+        const benchmarks: Array<{
+          metric: string;
+          value: number;
+          sorted: number[];
+          sampleSize: number;
+        }> = [
+          { metric: 'booking_conversion_rate', value: avgBookingRate, sorted: sortedBooking, sampleSize: signals.length },
+          { metric: 'avg_call_duration_seconds', value: avgDuration, sorted: sortedDuration, sampleSize: signals.length },
+          { metric: 'avg_quality_score', value: avgQuality, sorted: sortedQuality, sampleSize: signals.length },
+          { metric: 'call_completion_rate', value: completionRate, sorted: signals.map(s => s.totalCalls > 0 ? s.completedCalls / s.totalCalls : 0).sort((a, b) => a - b), sampleSize: signals.length },
+          { metric: 'escalation_rate', value: escalationRate, sorted: signals.map(s => s.totalCalls > 0 ? s.escalatedCalls / s.totalCalls : 0).sort((a, b) => a - b), sampleSize: signals.length },
         ];
+
+        if (csatTenantCount > 0) {
+          // sampleSize is the number of contributing tenants — not the
+          // total response count (`csatTotalResponses`) — because the
+          // public k-anonymity gate in publicGin.ts is about how many
+          // distinct tenants are being aggregated, not raw rows.
+          benchmarks.push({
+            metric: 'csat_score',
+            value: csatAverage,
+            sorted: csatSamples,
+            sampleSize: csatTenantCount,
+          });
+        }
 
         for (const bm of benchmarks) {
           await client.query(
@@ -311,7 +371,7 @@ export async function runAggregationPipeline(): Promise<AggregationRunResult> {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              ON CONFLICT (industry_vertical, metric_name, period_start, period_end)
              DO UPDATE SET metric_value = $3, sample_size = $4, percentile_25 = $5, percentile_50 = $6, percentile_75 = $7, aggregation_run_id = $10, updated_at = NOW()`,
-            [industry, bm.metric, bm.value, signals.length, p25(bm.sorted), p50(bm.sorted), p75(bm.sorted), periodStart, periodEnd, runId],
+            [industry, bm.metric, bm.value, bm.sampleSize, p25(bm.sorted), p50(bm.sorted), p75(bm.sorted), periodStart, periodEnd, runId],
           );
         }
 

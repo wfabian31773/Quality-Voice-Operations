@@ -618,9 +618,40 @@ router.post('/twilio/sms', async (req: Request, res: Response) => {
     const isOptOut = isSmsOptOut(body);
     const isHelp = trimmedBody === 'help' || trimmedBody === 'info';
 
+    // CSAT response capture — runs BEFORE auto-reply / agent routing so a
+    // numeric reply ("5", "5 thanks!") to a pending survey is recorded as
+    // the rating instead of being treated as a normal inbound message.
+    // Returns silently with no TwiML so no auto-reply is sent on top.
+    try {
+      const csat = await import('../../../platform/analytics/CsatSurveyService');
+      const recorded = await csat.tryRecordSmsCsatResponse(tenantId, from, body);
+      if (recorded.handled) {
+        logger.info('CSAT SMS response recorded', {
+          tenantId,
+          phone: redactPHI(from),
+          csatId: recorded.csat.id,
+        });
+        return res.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+      }
+    } catch (csatErr) {
+      // Never let a CSAT-pipeline failure block the regular SMS flow.
+      logger.warn('CSAT SMS handling failed, falling through to normal flow', {
+        tenantId,
+        error: String(csatErr),
+      });
+    }
+
     if (isOptOut) {
       await addToDnc(tenantId, from, 'sms', `SMS opt-out: "${body.trim()}"`);
       await SmsService.logConsent(tenantId, from, 'opt_out', body.trim(), 'inbound_sms', messageSid || undefined);
+      // Also opt out any future CSAT surveys for this number — opt-out is
+      // a global do-not-contact signal, not just an SMS auto-reply concern.
+      try {
+        const csat = await import('../../../platform/analytics/CsatSurveyService');
+        await csat.markCsatOptedOut(tenantId, from);
+      } catch (csatErr) {
+        logger.warn('Failed to mark CSAT opt-out', { tenantId, error: String(csatErr) });
+      }
       logger.info('SMS opt-out processed — added to DNC', { tenantId, phone: redactPHI(from) });
     }
 

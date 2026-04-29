@@ -8,6 +8,10 @@ import {
   type PublicBenchmarkPayload,
   type PublicBenchmarkRow,
 } from '../../../platform/gin/publicBenchmarkCache';
+import {
+  getCsatByDispatchToken,
+  recordCsatResponse,
+} from '../../../platform/analytics/CsatSurveyService';
 
 const logger = createLogger('PUBLIC_GIN_API');
 const router = Router();
@@ -27,8 +31,13 @@ const PUBLIC_METRICS: PublicMetricSpec[] = [
   { vertical: 'home_services', verticalLabel: 'Field service', metric: 'avg_call_duration_seconds', metricLabel: 'Average handle time', format: 'duration' },
   { vertical: 'dental', verticalLabel: 'Dental', metric: 'booking_conversion_rate', metricLabel: 'Booking conversion', format: 'percent' },
   { vertical: 'property_management', verticalLabel: 'Real estate', metric: 'booking_conversion_rate', metricLabel: 'Lead-to-tour rate', format: 'percent' },
-  { vertical: 'medical', verticalLabel: 'Healthcare', metric: 'avg_quality_score', metricLabel: 'CSAT (quality score, 0–10)', format: 'score' },
-  { vertical: 'legal', verticalLabel: 'Legal', metric: 'avg_quality_score', metricLabel: 'CSAT (quality score, 0–10)', format: 'score' },
+  // Real customer-reported CSAT (0–10) from `call_csat_responses`. The
+  // GIN aggregation pipeline only writes a `csat_score` row for a vertical
+  // once at least CSAT_TENANT_MIN_RESPONSES tenants have collected real
+  // surveys; we additionally gate on the public k-anonymity threshold
+  // below so we never publish CSAT for a vertical with too few tenants.
+  { vertical: 'medical', verticalLabel: 'Healthcare', metric: 'csat_score', metricLabel: 'CSAT (post-call survey, 0–10)', format: 'score' },
+  { vertical: 'legal', verticalLabel: 'Legal', metric: 'csat_score', metricLabel: 'CSAT (post-call survey, 0–10)', format: 'score' },
 ];
 
 function formatValue(raw: number, format: PublicMetricSpec['format']): string {
@@ -175,6 +184,61 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
       rows: [],
       error: 'benchmarks_unavailable',
     });
+  }
+});
+
+// Public web survey endpoint. Customers receive an unauthenticated link
+// containing a one-time `dispatch_token` that resolves to a single pending
+// CSAT row scoped to a tenant + call session. We deliberately do not echo
+// any tenant identifiers or PHI back to the caller — the response simply
+// confirms the rating was recorded.
+const publicCsatLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 30,
+  message: 'CSAT submission rate limit exceeded.',
+  keyGenerator: (req) => `public-csat:${req.ip ?? 'anon'}`,
+});
+
+router.post('/public/csat/:token', publicCsatLimiter, async (req, res) => {
+  const token = String(req.params.token ?? '').trim();
+  if (!token || token.length < 16 || token.length > 128) {
+    return res.status(400).json({ error: 'invalid_token' });
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const scoreRaw = Number(body.score);
+  if (!Number.isFinite(scoreRaw)) {
+    return res.status(400).json({ error: 'invalid_score' });
+  }
+  const comment = typeof body.comment === 'string' ? body.comment.slice(0, 1000) : null;
+
+  try {
+    const csat = await getCsatByDispatchToken(token);
+    if (!csat) return res.status(404).json({ error: 'not_found' });
+    if (csat.status !== 'pending') {
+      return res.status(409).json({ error: 'already_recorded', status: csat.status });
+    }
+    if (csat.expiresAt.getTime() <= Date.now()) {
+      return res.status(410).json({ error: 'expired' });
+    }
+
+    const scale = Number(csat.scoreScale ?? 5);
+    const updated = await recordCsatResponse({
+      tenantId: csat.tenantId,
+      csatId: csat.id,
+      responseChannel: 'web',
+      scoreRaw,
+      scale,
+      comment,
+      rawResponse: JSON.stringify({ score: scoreRaw, comment }).slice(0, 1000),
+    });
+
+    if (!updated) return res.status(409).json({ error: 'race_lost' });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error('Public CSAT submission failed', { error: String(err) });
+    return res.status(500).json({ error: 'submission_failed' });
   }
 });
 

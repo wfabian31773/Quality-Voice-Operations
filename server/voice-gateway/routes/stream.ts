@@ -6,6 +6,8 @@ import { loadAgentConfig } from '../services/agentLoader';
 import { getAgentConfig, getAgentToolOverrides } from '../services/numberLookup';
 import { createRealtimeSession, type RealtimeSessionResult } from '../services/openaiSession';
 import { writeCallEvent, updateCallState, finalizeCallSession } from '../services/callPersistence';
+import { dispatchSmsCsatSurvey, getTenantCsatSettings } from '../../../platform/analytics/CsatSurveyService';
+import { sendTwilioSms } from '../../../platform/integrations/twilio/sender';
 import { sessionManager } from '../services/sessionManager';
 import { EscalationController } from '../services/escalation';
 import { getCoordinator, getTwilioAdapter } from './twilio';
@@ -115,6 +117,11 @@ export function attachWebSocket(server: HTTPServer): void {
     let campaignContactId: string | undefined;
     let streamAgentId: string | undefined;
     let callDirection: 'inbound' | 'outbound' = 'inbound';
+    // Lifted to outer scope so the post-call CSAT survey dispatcher in
+    // finalizeStream() has the customer phone number to text. Set inside
+    // the `start` event handler when stream params arrive.
+    let streamCallerNumber: string | undefined;
+    let streamCalledNumber: string | undefined;
     let sessionResult: RealtimeSessionResult | undefined;
     let sessionClosed = false;
     const streamStartedAt = Date.now();
@@ -144,6 +151,38 @@ export function attachWebSocket(server: HTTPServer): void {
           });
         } catch (err) {
           slog.error('Error finalizing call session', { error: String(err) });
+        }
+
+        // Post-call CSAT survey dispatch (fire-and-forget). Only inbound
+        // calls where the customer-supplied caller number is a real PSTN
+        // number qualify — outbound campaign callers may be unreachable
+        // by SMS reply, and 'widget' / 'unknown' aren't real numbers.
+        // The CsatSurveyService double-checks tenant settings (enabled,
+        // channel='sms', min duration) and skips silently otherwise.
+        if (
+          callDirection === 'inbound' &&
+          streamCallerNumber &&
+          /^\+?\d{8,}$/.test(streamCallerNumber) &&
+          streamCalledNumber
+        ) {
+          (async () => {
+            try {
+              const settings = await getTenantCsatSettings(tenantId!);
+              if (!settings.enabled || settings.channel !== 'sms') return;
+              if (durationSeconds < settings.minDurationSeconds) return;
+              await dispatchSmsCsatSurvey({
+                tenantId: tenantId!,
+                callSessionId: callSessionId!,
+                callerNumber: streamCallerNumber!,
+                fromNumber: streamCalledNumber!,
+                scale: settings.scale,
+                template: settings.smsTemplate,
+                send: (to, from, body) => sendTwilioSms(tenantId!, to, from, body),
+              });
+            } catch (err) {
+              slog.error('CSAT SMS dispatch failed (fire-and-forget)', { error: String(err) });
+            }
+          })();
         }
 
         recordCallUsage(tenantId, callDirection, durationSeconds).catch((err) => {
@@ -273,6 +312,8 @@ export function attachWebSocket(server: HTTPServer): void {
             campaignContactId = params.contactId || undefined;
             const callerNumber = params.callerNumber;
             const calledNumber = params.calledNumber;
+            streamCallerNumber = callerNumber;
+            streamCalledNumber = calledNumber;
             streamSid = msg.start?.streamSid;
 
             if (!tenantId || !agentId || !twilioCallSid) {
