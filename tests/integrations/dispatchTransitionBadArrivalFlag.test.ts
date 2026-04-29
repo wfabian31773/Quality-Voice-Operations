@@ -140,9 +140,12 @@ describe('POST /dispatch/jobs/:id/transition — bad-arrival auto-flag', () => {
     queryMock.mockResolvedValueOnce({ rows: [] });
     // 5) clear active_job_id on dispatch_resource_locations
     queryMock.mockResolvedValueOnce({ rows: [] });
-    // 6) flagBadArrivalIfNeeded — closest-approach SELECT
+    // 6) flagBadArrivalIfNeeded — closest-approach + threshold SELECT
+    //    (threshold is now per-tenant, joined via subquery in the same
+    //    round-trip; default 250 returned here to match the historical
+    //    constant.)
     queryMock.mockResolvedValueOnce({
-      rows: [{ closest_approach_m: 612.7 }],
+      rows: [{ closest_approach_m: 612.7, threshold_m: 250 }],
     });
     // 7) INSERT dispatch_job_exceptions
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'exc-1' }] });
@@ -231,7 +234,7 @@ describe('POST /dispatch/jobs/:id/transition — bad-arrival auto-flag', () => {
     // closest-approach SELECT returns a row but the aggregate is NULL
     // (no breadcrumbs) — no signal, must not insert an exception.
     queryMock.mockResolvedValueOnce({
-      rows: [{ closest_approach_m: null }],
+      rows: [{ closest_approach_m: null, threshold_m: 250 }],
     });
 
     const app = await buildApp();
@@ -284,7 +287,7 @@ describe('POST /dispatch/jobs/:id/transition — bad-arrival auto-flag', () => {
     // Right at the threshold — the gate is strict `>`, so this is a
     // good arrival and must not flag.
     queryMock.mockResolvedValueOnce({
-      rows: [{ closest_approach_m: 250 }],
+      rows: [{ closest_approach_m: 250, threshold_m: 250 }],
     });
 
     const app = await buildApp();
@@ -325,6 +328,95 @@ describe('POST /dispatch/jobs/:id/transition — bad-arrival auto-flag', () => {
     // No closest-approach SELECT, no exception INSERT.
     expect(calls.some(s => /6371000 \* 2 \* ASIN/.test(s))).toBe(false);
     expect(calls.some(s => /INSERT INTO dispatch_job_exceptions/.test(s))).toBe(false);
+  });
+
+  it('uses the per-tenant threshold (not the constant) when judging "too far"', async () => {
+    // A rural HVAC tenant has loosened the threshold to 800 m so
+    // multi-acre lots stop generating false positives. A 612 m closest
+    // approach is now *under* the threshold and must not flag.
+    queryMock.mockResolvedValueOnce({
+      rows: [{ id: 'job-rural', status: 'in_progress' }],
+    });
+    queryMock.mockResolvedValueOnce({
+      rows: [{ id: 'job-rural', status: 'completed' }],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({
+      rows: [{ closest_approach_m: 612.7, threshold_m: 800 }],
+    });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/dispatch/jobs/job-rural/transition')
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(200);
+    await flushAsync();
+
+    const calls = queryMock.mock.calls.map(c => String(c[0]));
+    // The tenant threshold lookup is part of the same closest-approach
+    // round-trip — must read from the tenants table.
+    const approachSql = calls.find(s =>
+      /6371000 \* 2 \* ASIN/.test(s)
+      && /dispatch_resource_location_history/.test(s),
+    );
+    expect(approachSql).toBeDefined();
+    expect(approachSql!).toMatch(/dispatch_bad_arrival_threshold_m/);
+    expect(approachSql!).toMatch(/FROM tenants/);
+
+    // Under the tenant's loosened threshold → no auto-exception.
+    expect(calls.some(s => /INSERT INTO dispatch_job_exceptions/.test(s))).toBe(false);
+  });
+
+  it('records the tenant-specific threshold in the auto-flag reason and event metadata', async () => {
+    // Urban locksmith tightened to 100 m. A 180 m closest approach now
+    // exceeds the threshold and must flag with the tenant value
+    // visible in both the exception reason and the event metadata —
+    // dispatchers need the actual threshold to make sense of the alert.
+    queryMock.mockResolvedValueOnce({
+      rows: [{ id: 'job-urban', status: 'in_progress' }],
+    });
+    queryMock.mockResolvedValueOnce({
+      rows: [{ id: 'job-urban', status: 'completed' }],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({
+      rows: [{ closest_approach_m: 180.0, threshold_m: 100 }],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'exc-urban' }] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/dispatch/jobs/job-urban/transition')
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(200);
+    await flushAsync();
+
+    const calls = queryMock.mock.calls;
+    const insertExceptionIdx = calls.findIndex(c =>
+      /INSERT INTO dispatch_job_exceptions/.test(String(c[0])),
+    );
+    expect(insertExceptionIdx).toBeGreaterThan(-1);
+    const reason = String((calls[insertExceptionIdx][1] as unknown[])[2]);
+    expect(reason).toMatch(/threshold 100 m/);
+
+    const insertEventIdx = calls.findIndex((c, i) =>
+      i > insertExceptionIdx
+      && /INSERT INTO dispatch_job_events/.test(String(c[0]))
+      && /exception_reported/.test(String(c[0])),
+    );
+    expect(insertEventIdx).toBeGreaterThan(-1);
+    const metadata = JSON.parse(
+      (calls[insertEventIdx][1] as unknown[])[4] as string,
+    );
+    expect(metadata.threshold_m).toBe(100);
   });
 
   it('does not flag when transitioning to a non-completion status (e.g. cancelled)', async () => {

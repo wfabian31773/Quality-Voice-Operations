@@ -165,6 +165,17 @@ interface JobException {
   auto_flagged?: string | null;
 }
 
+// Tenant-tunable dispatch settings, mirrored from the response shape
+// of GET /dispatch/settings. Today there's only one setting, but we
+// keep the bounds + default in the same payload so the admin form
+// can render an input without hard-coding the validation range.
+interface DispatchSettings {
+  bad_arrival_threshold_m: number;
+  bad_arrival_threshold_m_min: number;
+  bad_arrival_threshold_m_max: number;
+  bad_arrival_threshold_m_default: number;
+}
+
 interface JobAttachment {
   id: string;
   attachment_type: string;
@@ -228,22 +239,40 @@ const SHOW_CLOSEST_APPROACH_STATUSES = new Set([
 ]);
 
 // Distance thresholds (meters) for the closest-approach badge color.
-// > 250 m is "almost certainly didn't reach the right house" — that's
-// the threshold called out in the task spec; 100 m is a softer warning
-// for "GPS-noisy but probably OK" (urban canyons, multi-unit buildings).
-const CLOSEST_APPROACH_BAD_M = 250;
-const CLOSEST_APPROACH_WARN_M = 100;
+// The "bad" threshold is per-tenant — set on the Dispatch admin tab
+// and persisted on `tenants.dispatch_bad_arrival_threshold_m`. The
+// server hands us the live value via GET /dispatch/settings; we fall
+// back to {@link CLOSEST_APPROACH_BAD_M_DEFAULT} during the brief
+// pre-fetch window (and if that endpoint hiccups) so the badge never
+// renders a NaN comparison. The warn threshold (the softer amber tier
+// for "GPS-noisy but probably OK") stays a UI-only constant scaled to
+// 40% of the bad threshold so it tracks tenant-level tuning instead of
+// drifting away from it.
+const CLOSEST_APPROACH_BAD_M_DEFAULT = 250;
 
-function ClosestApproachBadge({ meters, compact = false }: { meters: number; compact?: boolean }) {
+function getClosestApproachWarnM(badM: number): number {
+  return Math.max(20, Math.round(badM * 0.4));
+}
+
+function ClosestApproachBadge({
+  meters,
+  badThresholdM,
+  compact = false,
+}: {
+  meters: number;
+  badThresholdM: number;
+  compact?: boolean;
+}) {
+  const warnM = getClosestApproachWarnM(badThresholdM);
   const tone =
-    meters > CLOSEST_APPROACH_BAD_M
+    meters > badThresholdM
       ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-      : meters > CLOSEST_APPROACH_WARN_M
+      : meters > warnM
       ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
       : 'bg-surface-hover text-muted';
   const title =
-    meters > CLOSEST_APPROACH_BAD_M
-      ? `Closest GPS ping was ${formatDistance(meters)} from the address — likely never reached the right location`
+    meters > badThresholdM
+      ? `Closest GPS ping was ${formatDistance(meters)} from the address — likely never reached the right location (threshold ${badThresholdM} m)`
       : `Closest GPS ping was ${formatDistance(meters)} from the address`;
   // The board-card variant sits below other badges and reads as a full
   // sentence ("X m from address"); the table-cell variant lives in its
@@ -287,6 +316,26 @@ export default function Dispatch() {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({ status: '', priority: '', territory_id: '', resource_id: '', search: '' });
   const [showFilters, setShowFilters] = useState(false);
+  // Tenant-tunable dispatch settings (today: just the bad-arrival
+  // threshold). Pre-fetched alongside jobs/counts so the inline board
+  // badge color renders against the live tenant value instead of the
+  // platform default. Hardcoded fallback shape keeps the badge
+  // operational during the brief window before the GET completes.
+  const [dispatchSettings, setDispatchSettings] = useState<DispatchSettings>({
+    bad_arrival_threshold_m: CLOSEST_APPROACH_BAD_M_DEFAULT,
+    bad_arrival_threshold_m_min: 10,
+    bad_arrival_threshold_m_max: 5000,
+    bad_arrival_threshold_m_default: CLOSEST_APPROACH_BAD_M_DEFAULT,
+  });
+
+  const fetchDispatchSettings = useCallback(async () => {
+    try {
+      const data = await api.get<{ settings: DispatchSettings }>('/dispatch/settings');
+      setDispatchSettings(data.settings);
+    } catch {
+      // Non-fatal: badge falls back to the default already in state.
+    }
+  }, []);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -355,7 +404,8 @@ export default function Dispatch() {
     api.get<{ users: TeamMember[] }>('/users?limit=100').then(d => setTeamMembers(d.users)).catch(() => {});
     fetchTerritories();
     fetchResources();
-  }, [fetchJobs, fetchCounts, fetchTerritories, fetchResources]);
+    fetchDispatchSettings();
+  }, [fetchJobs, fetchCounts, fetchTerritories, fetchResources, fetchDispatchSettings]);
 
   useEffect(() => {
     if (activeTab === 'resources') { fetchResources(); fetchSkillTypes(); }
@@ -480,7 +530,8 @@ export default function Dispatch() {
           resources={resources} isReadOnly={isReadOnly} transitionJob={transitionJob}
           openJobDetail={openJobDetail} setEditingJob={setEditingJob} setShowJobForm={setShowJobForm}
           selectedJobs={selectedJobs} setSelectedJobs={setSelectedJobs} batchUpdate={batchUpdate}
-          getJobsByStatus={getJobsByStatus} />
+          getJobsByStatus={getJobsByStatus}
+          badThresholdM={dispatchSettings.bad_arrival_threshold_m} />
       )}
 
       {activeTab === 'queue' && (
@@ -488,7 +539,8 @@ export default function Dispatch() {
           territories={territories} resources={resources} isReadOnly={isReadOnly}
           transitionJob={transitionJob} openJobDetail={openJobDetail}
           setEditingJob={setEditingJob} setShowJobForm={setShowJobForm}
-          selectedJobs={selectedJobs} setSelectedJobs={setSelectedJobs} batchUpdate={batchUpdate} />
+          selectedJobs={selectedJobs} setSelectedJobs={setSelectedJobs} batchUpdate={batchUpdate}
+          badThresholdM={dispatchSettings.bad_arrival_threshold_m} />
       )}
 
       {activeTab === 'map' && (
@@ -508,7 +560,8 @@ export default function Dispatch() {
         <AdminView territories={territories} skillTypes={skillTypes} notifTemplates={notifTemplates}
           assignmentRules={assignmentRules} isReadOnly={isReadOnly}
           fetchTerritories={fetchTerritories} fetchSkillTypes={fetchSkillTypes}
-          fetchNotifTemplates={fetchNotifTemplates} fetchAssignmentRules={fetchAssignmentRules} />
+          fetchNotifTemplates={fetchNotifTemplates} fetchAssignmentRules={fetchAssignmentRules}
+          dispatchSettings={dispatchSettings} setDispatchSettings={setDispatchSettings} />
       )}
 
       {showJobForm && (
@@ -1015,7 +1068,7 @@ function useBoardEnRouteLiveEtas(jobs: DispatchJob[]): Record<string, LiveEta | 
 
 function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setShowFilters,
   territories, resources, isReadOnly, transitionJob, openJobDetail, setEditingJob, setShowJobForm,
-  selectedJobs, setSelectedJobs, batchUpdate, getJobsByStatus }: {
+  selectedJobs, setSelectedJobs, batchUpdate, getJobsByStatus, badThresholdM }: {
   jobs: DispatchJob[]; statusCounts: Record<string, number>;
   filters: Record<string, string>; setFilters: React.Dispatch<React.SetStateAction<{ status: string; priority: string; territory_id: string; resource_id: string; search: string }>>;
   showFilters: boolean; setShowFilters: (b: boolean) => void;
@@ -1026,6 +1079,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
   selectedJobs: Set<string>; setSelectedJobs: (s: Set<string>) => void;
   batchUpdate: (u: Record<string, unknown>) => void;
   getJobsByStatus: (s: string) => DispatchJob[];
+  badThresholdM: number;
 }) {
   const liveEtas = useBoardEnRouteLiveEtas(jobs);
   return (
@@ -1129,7 +1183,8 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
                     liveEta={job.status === 'en_route' ? liveEtas[job.id] ?? null : null}
                     onSelect={() => { const s = new Set(selectedJobs); s.has(job.id) ? s.delete(job.id) : s.add(job.id); setSelectedJobs(s); }}
                     onClick={() => openJobDetail(job.id)}
-                    onTransition={(s) => transitionJob(job.id, s)} />
+                    onTransition={(s) => transitionJob(job.id, s)}
+                    badThresholdM={badThresholdM} />
                 ))}
               </div>
             </div>
@@ -1140,7 +1195,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
   );
 }
 
-function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTransition }: {
+function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTransition, badThresholdM }: {
   job: DispatchJob; isReadOnly: boolean; selected: boolean;
   // Live customer ETA the board polls for cards in the En Route lane
   // (see `useBoardEnRouteLiveEtas`). `null` for non-en_route cards
@@ -1149,6 +1204,7 @@ function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTran
   // we just don't render the inline ETA badge.
   liveEta?: LiveEta | null;
   onSelect: () => void; onClick: () => void; onTransition: (s: string) => void;
+  badThresholdM: number;
 }) {
   const nextStates = VALID_TRANSITIONS[job.status] || [];
   // Show the closest-approach badge once the tech has had a real chance
@@ -1206,7 +1262,7 @@ function JobCard({ job, isReadOnly, selected, liveEta, onSelect, onClick, onTran
         </div>
       )}
       {showCloseness && (
-        <ClosestApproachBadge meters={job.closest_approach_m as number} />
+        <ClosestApproachBadge meters={job.closest_approach_m as number} badThresholdM={badThresholdM} />
       )}
       {job.is_follow_up && <span className="text-[8px] px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded mt-1 inline-block">Follow-up</span>}
       {!isReadOnly && nextStates.length > 0 && (
@@ -1662,7 +1718,7 @@ function escapeHtml(s: string): string {
 // ============ QUEUE VIEW ============
 
 function QueueView({ jobs, statusCounts, filters, setFilters, territories, resources, isReadOnly,
-  transitionJob, openJobDetail, setEditingJob, setShowJobForm, selectedJobs, setSelectedJobs, batchUpdate }: {
+  transitionJob, openJobDetail, setEditingJob, setShowJobForm, selectedJobs, setSelectedJobs, batchUpdate, badThresholdM }: {
   jobs: DispatchJob[]; statusCounts: Record<string, number>;
   filters: Record<string, string>; setFilters: React.Dispatch<React.SetStateAction<{ status: string; priority: string; territory_id: string; resource_id: string; search: string }>>;
   territories: Territory[]; resources: Resource[]; isReadOnly: boolean;
@@ -1671,6 +1727,7 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
   setEditingJob: (j: DispatchJob | null) => void; setShowJobForm: (b: boolean) => void;
   selectedJobs: Set<string>; setSelectedJobs: (s: Set<string>) => void;
   batchUpdate: (u: Record<string, unknown>) => void;
+  badThresholdM: number;
 }) {
   const [queueFilter, setQueueFilter] = useState('');
   // Sort state for the closest-approach column. Cycles desc → asc → off
@@ -1791,7 +1848,7 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
                 <td className="p-2 text-muted">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleDateString() : '-'}</td>
                 <td className="p-2">
                   {SHOW_CLOSEST_APPROACH_STATUSES.has(job.status) && job.closest_approach_m != null
-                    ? <ClosestApproachBadge meters={job.closest_approach_m} compact />
+                    ? <ClosestApproachBadge meters={job.closest_approach_m} badThresholdM={badThresholdM} compact />
                     : null}
                 </td>
                 <td className="p-2" onClick={e => e.stopPropagation()}>
@@ -2275,13 +2332,16 @@ function ReportingView({ data, fetchReporting }: { data: ReportingData | null; f
 // ============ ADMIN VIEW ============
 
 function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, isReadOnly,
-  fetchTerritories, fetchSkillTypes, fetchNotifTemplates, fetchAssignmentRules }: {
+  fetchTerritories, fetchSkillTypes, fetchNotifTemplates, fetchAssignmentRules,
+  dispatchSettings, setDispatchSettings }: {
   territories: Territory[]; skillTypes: SkillType[]; notifTemplates: NotificationTemplate[];
   assignmentRules: AssignmentRule[]; isReadOnly: boolean;
   fetchTerritories: () => void; fetchSkillTypes: () => void;
   fetchNotifTemplates: () => void; fetchAssignmentRules: () => void;
+  dispatchSettings: DispatchSettings;
+  setDispatchSettings: React.Dispatch<React.SetStateAction<DispatchSettings>>;
 }) {
-  const [adminTab, setAdminTab] = useState<'territories' | 'skills' | 'notifications' | 'rules'>('territories');
+  const [adminTab, setAdminTab] = useState<'territories' | 'skills' | 'notifications' | 'rules' | 'settings'>('territories');
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<string>('');
   const [formData, setFormData] = useState<Record<string, unknown>>({});
@@ -2336,6 +2396,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
     { key: 'skills' as const, label: 'Skill Types', icon: Wrench },
     { key: 'notifications' as const, label: 'Notifications', icon: Bell },
     { key: 'rules' as const, label: 'Assignment Rules', icon: Shield },
+    { key: 'settings' as const, label: 'Settings', icon: Settings },
   ];
 
   return (
@@ -2546,10 +2607,104 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
         </div>
       )}
 
+      {adminTab === 'settings' && (
+        <DispatchSettingsPanel
+          isReadOnly={isReadOnly}
+          dispatchSettings={dispatchSettings}
+          setDispatchSettings={setDispatchSettings}
+          onError={setAdminError}
+        />
+      )}
+
       {showForm && (
         <AdminFormModal formType={formType} formData={formData} setFormData={setFormData}
           onClose={() => setShowForm(false)} onSave={saveForm} />
       )}
+    </div>
+  );
+}
+
+function DispatchSettingsPanel({ isReadOnly, dispatchSettings, setDispatchSettings, onError }: {
+  isReadOnly: boolean;
+  dispatchSettings: DispatchSettings;
+  setDispatchSettings: React.Dispatch<React.SetStateAction<DispatchSettings>>;
+  onError: (msg: string | null) => void;
+}) {
+  const [draft, setDraft] = useState<string>(String(dispatchSettings.bad_arrival_threshold_m));
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    setDraft(String(dispatchSettings.bad_arrival_threshold_m));
+  }, [dispatchSettings.bad_arrival_threshold_m]);
+
+  const min = dispatchSettings.bad_arrival_threshold_m_min;
+  const max = dispatchSettings.bad_arrival_threshold_m_max;
+  const parsed = Number(draft);
+  const valid = Number.isInteger(parsed) && parsed >= min && parsed <= max;
+  const dirty = String(parsed) !== String(dispatchSettings.bad_arrival_threshold_m);
+
+  const save = async () => {
+    if (!valid) return;
+    try {
+      setSaving(true);
+      onError(null);
+      const data = await api.put<{ settings: DispatchSettings }>('/dispatch/settings', {
+        bad_arrival_threshold_m: parsed,
+      });
+      setDispatchSettings(data.settings);
+      setSavedAt(Date.now());
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : 'Failed to save dispatch settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">Tune dispatch thresholds and automation for your tenant.</p>
+      <div className="bg-surface border border-border rounded-xl p-4 max-w-xl space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-heading">Far-from-address arrival flag</h3>
+          <p className="text-xs text-muted mt-1">
+            When a tech&apos;s closest GPS point to the job address is farther than this many meters,
+            the job is automatically flagged for review and shown with a red badge on the dispatch board.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted w-40 shrink-0">Threshold (meters)</label>
+          <input
+            type="number"
+            min={min}
+            max={max}
+            step={1}
+            value={draft}
+            disabled={isReadOnly || saving}
+            onChange={e => setDraft(e.target.value)}
+            className="w-32 px-2 py-1.5 text-xs border border-border rounded bg-surface-secondary text-heading"
+          />
+          <span className="text-[10px] text-muted">Allowed: {min}–{max} m</span>
+        </div>
+        {!valid && draft !== '' && (
+          <p className="text-[11px] text-red-600">Enter a whole number between {min} and {max}.</p>
+        )}
+        {!isReadOnly && (
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={save}
+              disabled={!valid || !dirty || saving}
+              className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            {savedAt && !dirty && (
+              <span className="text-[11px] text-green-600">Saved.</span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

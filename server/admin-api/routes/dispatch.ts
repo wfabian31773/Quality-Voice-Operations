@@ -412,10 +412,23 @@ const TERMINAL_JOB_STATUSES = new Set([
 // technician's GPS breadcrumbs and the customer's geocoded address. If
 // the closest ping is farther than this, we treat it as a strong signal
 // the tech serviced the wrong house and auto-flag the job as a dispatch
-// exception when it completes. Mirror of `CLOSEST_APPROACH_BAD_M` in
-// `client-app/src/pages/Dispatch.tsx` — keep both in lockstep so the
-// passive board badge and the active exception fire on the same value.
-const CLOSEST_APPROACH_BAD_M = 250;
+// exception when it completes. The dispatch board badge color reads
+// the same value via GET /dispatch/settings so the passive UI signal
+// and the active exception fire on identical math.
+//
+// This is only the platform-wide default; the live value is per-tenant
+// (`tenants.dispatch_bad_arrival_threshold_m`, migration 091) so a
+// rural HVAC company can loosen it for multi-acre lots and an urban
+// locksmith can tighten it. Reads route through
+// {@link readDispatchBadArrivalThresholdM} so the server can survive
+// a transient threshold-lookup failure without skipping the flag.
+const CLOSEST_APPROACH_BAD_M_DEFAULT = 250;
+
+// CHECK constraint range from migration 091. Mirrored here so the
+// settings endpoint rejects out-of-range writes with a 400 instead of
+// bubbling a Postgres constraint error to the client.
+const DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN = 10;
+const DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX = 5000;
 
 // Cap how many history rows we keep per resource. The live map only needs
 // the most recent fix; the breadcrumb is a "last hour or so" replay tool.
@@ -888,18 +901,53 @@ const updateJobHandler: RequestHandler = async (req, res) => {
 };
 
 /**
+ * Read the current per-tenant "bad arrival" threshold (in meters). Falls
+ * back to {@link CLOSEST_APPROACH_BAD_M_DEFAULT} when the tenant row is
+ * missing, the column is NULL, or the value is non-numeric — the goal is
+ * never to silently skip the auto-flag because the settings lookup
+ * hiccupped. Out-of-range values are pinned by the column's CHECK
+ * constraint, so we don't re-validate here.
+ */
+async function readDispatchBadArrivalThresholdM(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+): Promise<number> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT dispatch_bad_arrival_threshold_m AS m
+         FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    const raw = rows[0]?.m;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return CLOSEST_APPROACH_BAD_M_DEFAULT;
+    return n;
+  } catch (err) {
+    logger.warn('Failed to read tenants.dispatch_bad_arrival_threshold_m, using default', {
+      tenantId, error: String(err),
+    });
+    return CLOSEST_APPROACH_BAD_M_DEFAULT;
+  }
+}
+
+/**
  * Compute the closest distance (in meters) the technician's GPS breadcrumbs
  * came to the geocoded customer address for a single job, then — if it
- * exceeds {@link CLOSEST_APPROACH_BAD_M} — auto-create a dispatch exception
- * of type `other` and fire the existing 'exception' notification path so
- * dispatchers see it on the exception feed before the customer disputes
- * the visit.
+ * exceeds the tenant's configured "bad arrival" threshold — auto-create a
+ * dispatch exception of type `other` and fire the existing 'exception'
+ * notification path so dispatchers see it on the exception feed before the
+ * customer disputes the visit.
  *
  * The haversine SQL mirrors the LATERAL used by `listJobsHandler`, so the
  * passive "X m from address" badge on the board and this active flag fire
  * on identical math. Returns NULL when the job has no cached geocode or no
  * breadcrumbs (the LATERAL aggregate of an empty group is NULL), in which
  * case we skip silently — there's no signal to act on.
+ *
+ * The threshold is per-tenant (`tenants.dispatch_bad_arrival_threshold_m`,
+ * migration 091) so different operations (rural HVAC vs. urban locksmith)
+ * can tune it without a code change. The same value is exposed to the
+ * client via GET /dispatch/settings for the inline board badge color.
  *
  * Idempotency is the caller's job: only invoke when transitioning into a
  * completion status from a non-completion status, so a `completed → done`
@@ -915,27 +963,36 @@ async function flagBadArrivalIfNeeded(
   performedBy: string | null,
 ): Promise<void> {
   try {
+    // Single round-trip pulls both the tenant threshold and the
+    // closest-approach distance. The threshold lookup is wrapped in a
+    // COALESCE so a tenant row missing the column (e.g. mid-rollout)
+    // still gets the platform default rather than silently no-flagging.
     const { rows } = await pool.query(
-      `SELECT (
-         SELECT MIN(
-           6371000 * 2 * ASIN(
-             SQRT(LEAST(1.0,
-               POWER(SIN(RADIANS((h.latitude - d.address_lat::float8) / 2)), 2)
-               + COS(RADIANS(d.address_lat::float8)) * COS(RADIANS(h.latitude))
-                 * POWER(SIN(RADIANS((h.longitude - d.address_lon::float8) / 2)), 2)
-             ))
+      `SELECT
+         COALESCE(
+           (SELECT dispatch_bad_arrival_threshold_m FROM tenants WHERE id = $2),
+           $3::int
+         ) AS threshold_m,
+         (
+           SELECT MIN(
+             6371000 * 2 * ASIN(
+               SQRT(LEAST(1.0,
+                 POWER(SIN(RADIANS((h.latitude - d.address_lat::float8) / 2)), 2)
+                 + COS(RADIANS(d.address_lat::float8)) * COS(RADIANS(h.latitude))
+                   * POWER(SIN(RADIANS((h.longitude - d.address_lon::float8) / 2)), 2)
+               ))
+             )
            )
-         )
-         FROM dispatch_resource_location_history h
-         WHERE h.tenant_id = d.tenant_id
-           AND h.active_job_id = d.id
-       ) AS closest_approach_m
+           FROM dispatch_resource_location_history h
+           WHERE h.tenant_id = d.tenant_id
+             AND h.active_job_id = d.id
+         ) AS closest_approach_m
        FROM dispatch_jobs d
        WHERE d.id = $1
          AND d.tenant_id = $2
          AND d.address_lat IS NOT NULL
          AND d.address_lon IS NOT NULL`,
-      [jobId, tenantId],
+      [jobId, tenantId, CLOSEST_APPROACH_BAD_M_DEFAULT],
     );
 
     const raw = rows[0]?.closest_approach_m;
@@ -945,12 +1002,18 @@ async function flagBadArrivalIfNeeded(
 
     const meters = Number(raw);
     if (!Number.isFinite(meters)) return;
-    if (meters <= CLOSEST_APPROACH_BAD_M) return;
+
+    const thresholdRaw = rows[0]?.threshold_m;
+    const threshold = Number.isFinite(Number(thresholdRaw))
+      ? Number(thresholdRaw)
+      : CLOSEST_APPROACH_BAD_M_DEFAULT;
+
+    if (meters <= threshold) return;
 
     const rounded = Math.round(meters);
     const reason =
       `Auto-flagged: closest GPS ping was ${rounded} m from the customer address `
-      + `(threshold ${CLOSEST_APPROACH_BAD_M} m). The technician may have serviced the wrong location.`;
+      + `(threshold ${threshold} m). The technician may have serviced the wrong location.`;
 
     const { rows: ex } = await pool.query(
       `INSERT INTO dispatch_job_exceptions
@@ -974,7 +1037,7 @@ async function flagBadArrivalIfNeeded(
           exception_type: 'other',
           auto_flagged: 'bad_arrival',
           closest_approach_m: meters,
-          threshold_m: CLOSEST_APPROACH_BAD_M,
+          threshold_m: threshold,
         }),
       ],
     );
@@ -987,6 +1050,89 @@ async function flagBadArrivalIfNeeded(
     });
   }
 }
+
+// ============ DISPATCH SETTINGS ============
+
+/**
+ * Returns the tenant-tunable dispatch settings. Today this is just the
+ * "bad arrival" threshold (meters) used by both the auto-flag in
+ * {@link flagBadArrivalIfNeeded} and the client-side board badge color
+ * in `client-app/src/pages/Dispatch.tsx`. Defined as an object so we
+ * can grow the surface without churning the URL.
+ */
+export const getDispatchSettingsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  try {
+    const m = await readDispatchBadArrivalThresholdM(pool, tenantId);
+    return res.json({
+      settings: {
+        bad_arrival_threshold_m: m,
+        bad_arrival_threshold_m_min: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN,
+        bad_arrival_threshold_m_max: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX,
+        bad_arrival_threshold_m_default: CLOSEST_APPROACH_BAD_M_DEFAULT,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to load dispatch settings', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to load dispatch settings' });
+  }
+};
+
+/**
+ * Updates the tenant-tunable dispatch settings. Validates the
+ * threshold against the same range the column's CHECK constraint
+ * enforces so the client gets a clean 400 instead of a Postgres
+ * error. Returns the persisted value so the client can sync without
+ * a follow-up GET.
+ */
+export const updateDispatchSettingsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const pool = getPlatformPool();
+
+  const updates: string[] = [];
+  const values: unknown[] = [tenantId];
+
+  if (body.bad_arrival_threshold_m !== undefined) {
+    const n = Number(body.bad_arrival_threshold_m);
+    if (
+      !Number.isFinite(n)
+      || !Number.isInteger(n)
+      || n < DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN
+      || n > DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX
+    ) {
+      return res.status(400).json({
+        error: `bad_arrival_threshold_m must be an integer between ${DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN} and ${DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX} (meters)`,
+      });
+    }
+    values.push(n);
+    updates.push(`dispatch_bad_arrival_threshold_m = $${values.length}`);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No supported settings provided' });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE tenants SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`,
+      values,
+    );
+    const m = await readDispatchBadArrivalThresholdM(pool, tenantId);
+    return res.json({
+      settings: {
+        bad_arrival_threshold_m: m,
+        bad_arrival_threshold_m_min: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MIN,
+        bad_arrival_threshold_m_max: DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX,
+        bad_arrival_threshold_m_default: CLOSEST_APPROACH_BAD_M_DEFAULT,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to update dispatch settings', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update dispatch settings' });
+  }
+};
 
 export const transitionJobHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
@@ -4284,5 +4430,8 @@ router.put('/dispatch/assignment-rules/:id', requireAuth, requireMiniSystemWrite
 router.delete('/dispatch/assignment-rules/:id', requireAuth, requireMiniSystemWrite, deleteAssignmentRuleHandler);
 
 router.get('/dispatch/reporting', requireAuth, getReportingHandler);
+
+router.get('/dispatch/settings', requireAuth, getDispatchSettingsHandler);
+router.put('/dispatch/settings', requireAuth, requireMiniSystemWrite, updateDispatchSettingsHandler);
 
 export default router;
