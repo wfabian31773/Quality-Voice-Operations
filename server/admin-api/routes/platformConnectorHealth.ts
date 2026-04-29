@@ -94,6 +94,13 @@ const TOKEN_EXPIRING_HORIZON_MS = 24 * 60 * 60 * 1000;
 // Number of sweep cycles past expiry before we badge a connector as
 // "stale" (worker keeps failing). 2 cycles ≈ 30min of missed refreshes.
 const STALE_CYCLE_THRESHOLD = 2;
+// Default window for the proactive "Expiring soon" triage bucket. Wider
+// than the per-row badge horizon so ops can plan reconnect work a couple of
+// days ahead instead of only after the worker has failed. Caller can
+// override via `?expiringWithinHours=` (1h..7d).
+const DEFAULT_EXPIRING_SOON_HOURS = 48;
+const MIN_EXPIRING_SOON_HOURS = 1;
+const MAX_EXPIRING_SOON_HOURS = 24 * 7;
 
 function computeTokenHealthStatus(
   lastSyncStatus: string | null,
@@ -104,6 +111,33 @@ function computeTokenHealthStatus(
   if (expiresInMs <= 0) return 'expired';
   if (expiresInMs <= TOKEN_EXPIRING_HORIZON_MS) return 'expiring';
   return 'healthy';
+}
+
+/**
+ * Row shape for the proactive "Expiring soon" triage bucket — a slim view
+ * of `TokenHealthRow` shipped as a separate array so the UI can render a
+ * dedicated table without re-filtering the larger token-health snapshot.
+ *
+ * Only includes connectors that are still currently healthy
+ * (`lastSyncStatus` is neither `needs_reconnect` nor `error`) and whose
+ * token expires within the configured window. Already-expired or
+ * already-failed connectors continue to be surfaced in the existing
+ * `connectors` / `tokenHealth` arrays.
+ */
+interface ExpiringSoonRow {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string;
+  integrationType: string;
+  provider: string;
+  name: string | null;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  tokenIssuedAt: string | null;
+  tokenExpiresAt: string | null;
+  /** Milliseconds until expiry (always > 0 for rows in this bucket). */
+  expiresInMs: number;
 }
 
 /**
@@ -122,6 +156,13 @@ function clampInt(raw: unknown, fallback: number, min: number, max: number): num
 router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, async (req, res) => {
   const sinceDays = clampInt(req.query.sinceDays, 7, 1, 30);
   const eventsLimit = clampInt(req.query.eventsLimit, 50, 1, 200);
+  const expiringWithinHours = clampInt(
+    req.query.expiringWithinHours,
+    DEFAULT_EXPIRING_SOON_HOURS,
+    MIN_EXPIRING_SOON_HOURS,
+    MAX_EXPIRING_SOON_HOURS,
+  );
+  const expiringSoonWindowMs = expiringWithinHours * 60 * 60 * 1000;
 
   try {
     const result = await withPrivilegedClient(async (client) => {
@@ -206,6 +247,9 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       healthy: parseInt(String(summaryRow.healthy ?? '0'), 10),
       totalEnabled: parseInt(String(summaryRow.total ?? '0'), 10),
       affectedTenants: parseInt(String(summaryRow.affected_tenants ?? '0'), 10),
+      // Filled in below once the token health snapshot has been computed
+      // (or left at 0 when the snapshot helper failed).
+      expiringSoon: 0,
     };
 
     const recentRefreshFailures: RefreshFailureRow[] = result.eventRows.map((r) => {
@@ -293,6 +337,39 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       tokenHealth = [];
     }
 
+    // "Expiring soon" surfaces still-healthy connectors whose token will
+    // expire within the configured window so ops can plan reconnect work
+    // before the worker actually fails. We deliberately exclude rows that
+    // are already in `needs_reconnect` / `error` (those have their own
+    // tables) and rows whose token has already expired (also covered by
+    // tokenHealth's `expired` status). `expiresInMs > 0` guards against
+    // surfacing already-expired tokens here.
+    const expiringSoon: ExpiringSoonRow[] = tokenHealth
+      .filter((r) => {
+        if (r.lastSyncStatus === 'needs_reconnect' || r.lastSyncStatus === 'error') return false;
+        if (r.expiresInMs === null) return false;
+        if (r.expiresInMs <= 0) return false;
+        return r.expiresInMs <= expiringSoonWindowMs;
+      })
+      .map((r) => ({
+        tenantId: r.tenantId,
+        tenantName: r.tenantName,
+        tenantSlug: r.tenantSlug,
+        integrationId: r.integrationId,
+        integrationType: r.integrationType,
+        provider: r.provider,
+        name: r.name,
+        lastSyncStatus: r.lastSyncStatus,
+        lastSyncAt: r.lastSyncAt,
+        tokenIssuedAt: r.tokenIssuedAt,
+        tokenExpiresAt: r.tokenExpiresAt,
+        // Non-null guaranteed by the filter above.
+        expiresInMs: r.expiresInMs as number,
+      }))
+      .sort((a, b) => a.expiresInMs - b.expiresInMs);
+
+    summary.expiringSoon = expiringSoon.length;
+
     return res.json({
       connectors,
       recentRefreshFailures,
@@ -301,7 +378,10 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       tokenHealthRefreshIntervalMs: REFRESH_CYCLE_INTERVAL_MS,
       tokenHealthExpiringHorizonMs: TOKEN_EXPIRING_HORIZON_MS,
       tokenHealthStaleCycleThreshold: STALE_CYCLE_THRESHOLD,
-      window: { sinceDays, eventsLimit },
+      expiringSoon,
+      expiringSoonWindowMs,
+      expiringSoonWithinHours: expiringWithinHours,
+      window: { sinceDays, eventsLimit, expiringWithinHours },
     });
   } catch (err) {
     logger.error('Failed to query connector health', { error: String(err) });

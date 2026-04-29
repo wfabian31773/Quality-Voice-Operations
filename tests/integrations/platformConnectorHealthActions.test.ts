@@ -410,6 +410,90 @@ describe('GET /platform/connector-health (token health surface)', () => {
     expect(unknown.status).toBe('unknown');
     expect(unknown.expiresInMs).toBeNull();
     expect(unknown.cyclesSinceRefresh).toBeNull();
+
+    // The proactive "expiring soon" bucket should default to 48h and only
+    // include healthy-but-expiring rows. The expiring fixture is 30min from
+    // expiry — well within the default window — so it should appear. The
+    // already-expired and needs_reconnect fixtures must NOT appear because
+    // those have their own dedicated tables/buckets.
+    expect(Array.isArray(res.body.expiringSoon)).toBe(true);
+    expect(res.body.expiringSoonWithinHours).toBe(48);
+    expect(res.body.expiringSoonWindowMs).toBe(48 * 60 * 60 * 1000);
+    expect(res.body.window.expiringWithinHours).toBe(48);
+    const expiringIds = (res.body.expiringSoon as Array<{ integrationId: string }>).map((r) => r.integrationId);
+    expect(expiringIds).toEqual(['int-expiring']);
+    expect(res.body.summary.expiringSoon).toBe(1);
+    const expiringRow = res.body.expiringSoon[0];
+    expect(expiringRow.tenantId).toBe('t-expiring');
+    expect(expiringRow.provider).toBe('pipedrive');
+    expect(typeof expiringRow.expiresInMs).toBe('number');
+    expect(expiringRow.expiresInMs).toBeGreaterThan(0);
+  });
+
+  it('honours the expiringWithinHours query param and clamps out-of-range values', async () => {
+    withGetClient([]);
+    const now = Date.now();
+    listConnectorTokenHealthMock.mockResolvedValue([
+      {
+        // 6h to expiry — included only when window >= 6h.
+        tenantId: 't-6h',
+        tenantName: '6h Tenant',
+        tenantSlug: 'six',
+        integrationId: 'int-6h',
+        integrationType: 'crm',
+        provider: 'hubspot',
+        name: 'HubSpot',
+        isEnabled: true,
+        lastSyncStatus: 'success',
+        lastSyncAt: null,
+        lastSyncErrorAt: null,
+        tokenIssuedAt: null,
+        tokenExpiresAt: now + 6 * 60 * 60 * 1000,
+        tokenDecryptFailed: false,
+      },
+      {
+        // 5 days to expiry — included only when window covers it.
+        tenantId: 't-5d',
+        tenantName: '5d Tenant',
+        tenantSlug: 'five-days',
+        integrationId: 'int-5d',
+        integrationType: 'crm',
+        provider: 'hubspot',
+        name: 'HubSpot',
+        isEnabled: true,
+        lastSyncStatus: 'success',
+        lastSyncAt: null,
+        lastSyncErrorAt: null,
+        tokenIssuedAt: null,
+        tokenExpiresAt: now + 5 * 24 * 60 * 60 * 1000,
+        tokenDecryptFailed: false,
+      },
+    ]);
+
+    const app = await buildApp();
+
+    // Narrow window: only the 6h row qualifies.
+    const narrow = await request(app).get('/api/platform/connector-health?expiringWithinHours=12');
+    expect(narrow.status).toBe(200);
+    expect(narrow.body.expiringSoonWithinHours).toBe(12);
+    expect(narrow.body.expiringSoon.map((r: { integrationId: string }) => r.integrationId)).toEqual(['int-6h']);
+
+    // Wider window: both rows appear, sorted by soonest expiry first.
+    const wide = await request(app).get('/api/platform/connector-health?expiringWithinHours=168');
+    expect(wide.status).toBe(200);
+    expect(wide.body.expiringSoonWithinHours).toBe(168);
+    expect(wide.body.expiringSoon.map((r: { integrationId: string }) => r.integrationId)).toEqual([
+      'int-6h',
+      'int-5d',
+    ]);
+
+    // Out-of-range values clamp to the [1h, 168h] bounds.
+    const tooBig = await request(app).get('/api/platform/connector-health?expiringWithinHours=99999');
+    expect(tooBig.body.expiringSoonWithinHours).toBe(168);
+    const tooSmall = await request(app).get('/api/platform/connector-health?expiringWithinHours=0');
+    expect(tooSmall.body.expiringSoonWithinHours).toBe(1);
+    const garbage = await request(app).get('/api/platform/connector-health?expiringWithinHours=abc');
+    expect(garbage.body.expiringSoonWithinHours).toBe(48);
   });
 
   it('falls back to an empty tokenHealth array when the snapshot helper throws', async () => {

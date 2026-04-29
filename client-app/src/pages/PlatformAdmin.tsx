@@ -715,6 +715,21 @@ interface ConnectorTokenHealthRow {
   stale: boolean;
 }
 
+interface ConnectorExpiringSoonRow {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string;
+  integrationType: string;
+  provider: string;
+  name: string | null;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  tokenIssuedAt: string | null;
+  tokenExpiresAt: string | null;
+  expiresInMs: number;
+}
+
 interface ConnectorHealthResponse {
   connectors: ConnectorHealthRow[];
   recentRefreshFailures: ConnectorRefreshFailure[];
@@ -724,12 +739,16 @@ interface ConnectorHealthResponse {
     healthy: number;
     totalEnabled: number;
     affectedTenants: number;
+    expiringSoon?: number;
   };
   tokenHealth?: ConnectorTokenHealthRow[];
   tokenHealthRefreshIntervalMs?: number;
   tokenHealthExpiringHorizonMs?: number;
   tokenHealthStaleCycleThreshold?: number;
-  window: { sinceDays: number; eventsLimit: number };
+  expiringSoon?: ConnectorExpiringSoonRow[];
+  expiringSoonWindowMs?: number;
+  expiringSoonWithinHours?: number;
+  window: { sinceDays: number; eventsLimit: number; expiringWithinHours?: number };
 }
 
 function formatRelativeTime(iso: string | null): string {
@@ -779,9 +798,19 @@ function ConnectorHealthPanel() {
     tokenHealthRefreshIntervalMs,
     tokenHealthExpiringHorizonMs,
     tokenHealthStaleCycleThreshold,
+    expiringSoon,
+    expiringSoonWindowMs,
+    expiringSoonWithinHours,
   } = data;
   const reconnectConnectors = connectors.filter((c) => c.lastSyncStatus === 'needs_reconnect');
   const erroredConnectors = connectors.filter((c) => c.lastSyncStatus === 'error');
+  const expiringSoonRows = expiringSoon ?? [];
+  // Default 48h matches the backend default so the UI heading is sensible
+  // even when older payloads omit the explicit window.
+  const expiringSoonHours =
+    expiringSoonWithinHours
+    ?? (expiringSoonWindowMs ? Math.round(expiringSoonWindowMs / (60 * 60 * 1000)) : 48);
+  const expiringSoonCount = summary.expiringSoon ?? expiringSoonRows.length;
 
   return (
     <div className="space-y-4">
@@ -805,7 +834,7 @@ function ConnectorHealthPanel() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">Reconnect needed</div>
           <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
@@ -817,6 +846,15 @@ function ConnectorHealthPanel() {
           <div className={`text-2xl font-bold ${summary.syncError > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
             {summary.syncError}
           </div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted" title={`Healthy connectors expiring in the next ${expiringSoonHours}h`}>
+            Expiring soon
+          </div>
+          <div className={`text-2xl font-bold ${expiringSoonCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+            {expiringSoonCount}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">in {expiringSoonHours}h</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">Healthy</div>
@@ -841,6 +879,11 @@ function ConnectorHealthPanel() {
         emptyText="No connectors are currently in a sync-error state."
         rows={erroredConnectors}
         accent="red"
+      />
+
+      <ConnectorExpiringSoonTable
+        rows={expiringSoonRows}
+        windowHours={expiringSoonHours}
       />
 
       <ConnectorTokenHealthPanel
@@ -902,6 +945,141 @@ function ConnectorHealthPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Build the same tenant-scoped admin deep link the reconnect/sync-error
+ * tables use, so all three "open tenant" affordances behave identically.
+ */
+function buildTenantConnectorHref(
+  tenantId: string,
+  integrationId: string,
+  tenantSlug: string | null,
+): string {
+  return (
+    `/admin/analytics/tenants/${encodeURIComponent(tenantId)}` +
+    `?focus=connectors&integration=${encodeURIComponent(integrationId)}` +
+    (tenantSlug ? `&slug=${encodeURIComponent(tenantSlug)}` : '')
+  );
+}
+
+/**
+ * Proactive triage table for connectors whose OAuth token is still valid
+ * but expires within the configured window (default 48h). Lets ops nudge
+ * customers before the worker actually starts failing.
+ */
+function ConnectorExpiringSoonTable({
+  rows,
+  windowHours,
+}: {
+  rows: ConnectorExpiringSoonRow[];
+  windowHours: number;
+}) {
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            Expiring soon
+            <span
+              className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                rows.length > 0
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  : 'bg-surface-secondary text-text-muted border border-border'
+              }`}
+            >
+              {rows.length}
+            </span>
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Healthy OAuth connectors whose token expires in the next {windowHours}h. Reconnect proactively
+            to avoid downtime when the background sweep would otherwise fail.
+          </p>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-text-muted">
+          No healthy connectors are within {windowHours}h of token expiry. Ops queue is clear.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Connector</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Last refresh</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Expires</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const href = buildTenantConnectorHref(r.tenantId, r.integrationId, r.tenantSlug);
+                return (
+                  <tr key={r.integrationId} className="border-b border-border last:border-0 align-top">
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium">{r.tenantName ?? '—'}</div>
+                      {r.tenantSlug && (
+                        <div className="text-text-muted font-mono">{r.tenantSlug}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div className="font-medium capitalize">{r.name ?? r.provider}</div>
+                      <div className="text-text-muted">
+                        <span className="capitalize">{r.integrationType}</span>
+                        {r.provider && r.provider !== r.name && (
+                          <span className="font-mono"> · {r.provider}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-xs whitespace-nowrap">
+                      <div
+                        className="text-text-muted"
+                        title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : 'never'}
+                      >
+                        {formatRelativeTime(r.tokenIssuedAt)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-xs whitespace-nowrap">
+                      <div
+                        className="text-amber-700 dark:text-amber-300 font-medium"
+                        title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : 'unknown'}
+                      >
+                        {formatExpiresIn(r.expiresInMs)}
+                      </div>
+                      {r.tokenExpiresAt && (
+                        <div className="text-text-muted text-[10px] mt-0.5">
+                          {new Date(r.tokenExpiresAt).toLocaleString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs"
+                        title="Open the tenant's Connectors page in a new tab"
+                      >
+                        <ExternalLink className="h-3 w-3" /> Open tenant connectors
+                      </a>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -1006,16 +1184,9 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
   const alerting = alertMutation.isPending;
   // Tenant-scoped admin deep link: drop the platform admin straight into the
   // affected tenant's admin view (carrying the integration id as a focus
-  // hint). We use the existing admin tenant-scoped route family
-  // (`/admin/analytics/tenants/:tenantId`) so the URL is genuinely
-  // tenant-scoped — `tenantId` and `integration` are both encoded so the
-  // landing page can highlight the failing connector. Falls back to the
-  // tenant slug as a query hint when present, useful for support breadcrumbs
-  // and link previews in chat tools.
-  const openTenantConnectorsHref =
-    `/admin/analytics/tenants/${encodeURIComponent(c.tenantId)}` +
-    `?focus=connectors&integration=${encodeURIComponent(c.integrationId)}` +
-    (c.tenantSlug ? `&slug=${encodeURIComponent(c.tenantSlug)}` : '');
+  // hint). Shared with the Expiring soon table via `buildTenantConnectorHref`
+  // so URL formatting only lives in one place.
+  const openTenantConnectorsHref = buildTenantConnectorHref(c.tenantId, c.integrationId, c.tenantSlug);
 
   return (
     <tr className="border-b border-border last:border-0 align-top">
