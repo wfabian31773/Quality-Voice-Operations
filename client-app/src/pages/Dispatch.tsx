@@ -383,6 +383,33 @@ export default function Dispatch() {
     } catch { setError('Failed to load job details'); }
   };
 
+  // Lightweight refresh used by the job-detail panel's 15s polling
+  // effect while a job is en_route. Hits the dedicated `/live-eta`
+  // endpoint instead of the full job-detail payload — only the live
+  // ETA changes between polls, so we patch `live_eta` (and `status`,
+  // in case the truck has arrived and we should stop polling) in
+  // place rather than re-fetching events, exceptions, attachments,
+  // and the joined resource/territory rows. Failures are silently
+  // swallowed; the next tick will retry.
+  const refreshJobLiveEta = useCallback(async (jobId: string) => {
+    try {
+      const data = await api.get<{ live_eta: LiveEta | null; status: string }>(
+        `/dispatch/jobs/${jobId}/live-eta`,
+      );
+      setJobDetail(prev => {
+        if (!prev || prev.job.id !== jobId) return prev;
+        return {
+          ...prev,
+          live_eta: data.live_eta,
+          job: { ...prev.job, status: data.status },
+        };
+      });
+    } catch {
+      // Intentional no-op — a transient miss shouldn't disrupt the
+      // panel and the next interval tick will try again.
+    }
+  }, []);
+
   const totalActive = Object.entries(statusCounts)
     .filter(([k]) => !['done', 'completed', 'cancelled'].includes(k))
     .reduce((s, [, v]) => s + v, 0);
@@ -483,7 +510,9 @@ export default function Dispatch() {
       {jobDetail && (
         <JobDetailModal detail={jobDetail} isReadOnly={isReadOnly}
           transitionJob={transitionJob} onClose={() => setJobDetail(null)}
-          onRefresh={() => openJobDetail(jobDetail.job.id)} refreshAll={refreshAll} />
+          onRefresh={() => openJobDetail(jobDetail.job.id)}
+          onRefreshLiveEta={refreshJobLiveEta}
+          refreshAll={refreshAll} />
       )}
     </div>
   );
@@ -2541,10 +2570,12 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
 // Map has already computed the same job's ETA in the same window.
 const JOB_DETAIL_LIVE_ETA_POLL_MS = 15_000;
 
-function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh, refreshAll }: {
+function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh, onRefreshLiveEta, refreshAll }: {
   detail: { job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[]; live_eta: LiveEta | null };
   isReadOnly: boolean; transitionJob: (id: string, s: string, n?: string) => void;
-  onClose: () => void; onRefresh: () => void; refreshAll: () => void;
+  onClose: () => void; onRefresh: () => void;
+  onRefreshLiveEta: (jobId: string) => Promise<void>;
+  refreshAll: () => void;
 }) {
   const [detailTab, setDetailTab] = useState<'overview' | 'timeline' | 'route' | 'exceptions' | 'attachments'>('overview');
   const [showExceptionForm, setShowExceptionForm] = useState(false);
@@ -2566,15 +2597,21 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
   //   - For terminal states (on_site/completed/cancelled) the truck
   //     has either arrived or stopped reporting, so an ETA would be
   //     stale by definition.
-  // Using `onRefresh` (which re-pulls the whole detail payload) keeps
-  // the rest of the panel — events, exceptions, attachments — in sync
-  // for free, and the routing-adapter cache absorbs the cost of the
-  // ETA computation on the server.
+  // We hit the dedicated `/dispatch/jobs/:id/live-eta` endpoint here
+  // rather than re-pulling the entire job-detail payload — only the
+  // live ETA changes between ticks, and refetching events,
+  // exceptions, attachments, and the joined resource/territory rows
+  // every 15s across many open dispatcher panels was unnecessary DB
+  // and bandwidth load. Explicit user actions (transitions, adding
+  // exceptions/attachments, follow-ups) still call the full
+  // `onRefresh` so the rest of the panel stays in sync.
   useEffect(() => {
     if (job.status !== 'en_route') return;
-    const t = setInterval(onRefresh, JOB_DETAIL_LIVE_ETA_POLL_MS);
+    const t = setInterval(() => {
+      void onRefreshLiveEta(job.id);
+    }, JOB_DETAIL_LIVE_ETA_POLL_MS);
     return () => clearInterval(t);
-  }, [job.status, onRefresh]);
+  }, [job.status, job.id, onRefreshLiveEta]);
 
   const submitException = async () => {
     if (!exceptionData.reason) return;

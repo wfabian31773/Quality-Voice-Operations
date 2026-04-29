@@ -573,6 +573,61 @@ export const getJobHandler: RequestHandler = async (req, res) => {
   }
 };
 
+// Lightweight companion to `getJobHandler` for the dispatcher's
+// job-detail panel. The panel polls every 15 seconds while a job is
+// `en_route` just to keep the live customer ETA fresh — it does not
+// need a full re-fetch of the job, events, exceptions, attachments,
+// and joined resource/territory rows on each tick. This handler reads
+// only the columns required to drive `computeLiveEtaForJob` (status,
+// resource_id, address) plus the row-existence check, then reuses the
+// same shared routing-adapter cache as the full handler so opening
+// the panel does not trigger an extra geocode / drive-time provider
+// call when the Live Map (or any other surface) has already computed
+// the same job's ETA in the same window.
+//
+// Response shape mirrors the `live_eta` + `status` fields the full
+// handler returns so the client can patch them in place without
+// touching the rest of the panel state.
+export const getJobLiveEtaHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT status, resource_id, address
+         FROM dispatch_jobs
+        WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const row = rows[0] as Record<string, unknown>;
+    const status = String(row.status ?? '');
+    const resourceId = (row.resource_id as string | null) ?? null;
+    const address = String(row.address ?? '').trim();
+
+    let liveEta: { minutes: number; arrival_at: string } | null = null;
+    if (status === 'en_route' && resourceId && address) {
+      const eta = await computeLiveEtaForJob(pool, tenantId, id, resourceId, address);
+      if (eta) {
+        liveEta = {
+          minutes: eta.minutes,
+          arrival_at: eta.arrivalDate.toISOString(),
+        };
+      }
+    }
+
+    return res.json({ live_eta: liveEta, status });
+  } catch (err) {
+    logger.error('Failed to get dispatch job live ETA', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get live ETA' });
+  }
+};
+
 const createJobHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { title, description, status, priority, assignee_user_id, contact_id, contact_name,
@@ -3310,6 +3365,7 @@ const getReportingHandler: RequestHandler = async (req, res) => {
 router.get('/dispatch/jobs', requireAuth, listJobsHandler);
 router.get('/dispatch/jobs/counts', requireAuth, getStatusCountsHandler);
 router.get('/dispatch/jobs/:id', requireAuth, getJobHandler);
+router.get('/dispatch/jobs/:id/live-eta', requireAuth, getJobLiveEtaHandler);
 router.post('/dispatch/jobs', requireAuth, requireMiniSystemWrite, createJobHandler);
 router.put('/dispatch/jobs/:id', requireAuth, requireMiniSystemWrite, updateJobHandler);
 router.post('/dispatch/jobs/:id/transition', requireAuth, requireMiniSystemWrite, transitionJobHandler);
