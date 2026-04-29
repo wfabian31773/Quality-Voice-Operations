@@ -3,14 +3,15 @@ import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth';
 import { createLogger } from '../../../platform/core/logger';
 import { objectStorageClient } from '../../replit_integrations/object_storage';
+import { VOICES } from '../../../client-app/src/lib/agentVoices';
 
 const router = Router();
 const logger = createLogger('VOICE_PREVIEW');
 
-const SUPPORTED_VOICES = new Set([
-  'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable',
-  'onyx', 'nova', 'sage', 'shimmer', 'verse',
-]);
+// Derived from the canonical `VOICES` list in `client-app/src/lib/agentVoices.ts`
+// so a voice removed/added there is reflected here automatically. Exported for
+// the parity test in `tests/admin-api/voicePreviewSupportedVoices.test.ts`.
+export const SUPPORTED_VOICES: ReadonlySet<string> = new Set<string>(VOICES);
 
 const SUPPORTED_LANGUAGES = new Set([
   'en', 'es', 'fr', 'de', 'pt', 'it', 'nl', 'zh', 'ja', 'ko', 'ar', 'hi',
