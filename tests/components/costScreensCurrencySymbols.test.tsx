@@ -285,73 +285,53 @@ describe('cost screens render the tenant currency symbol (task #634)', () => {
     });
   });
 
-  it('Call detail cost-breakdown rows render with € when billing_currency=eur', async () => {
-    // Calls.tsx's <CallDetailDrawer> is an internal, non-exported helper
-    // that pulls in @dnd-kit and i18next at the page level (well outside
-    // the "currency on cost screens" surface this task targets). The
-    // assertion here mirrors the drawer's cost section verbatim:
-    // it loads the same useTenantCurrency hook + formatCents helper and
-    // renders the same row structure for a mocked call payload.
+  it('CallDetailDrawer cost-breakdown rows render with € when billing_currency=eur', async () => {
+    // Task #1008 made `CallDetailDrawer` a named export of `Calls.tsx`
+    // (and lazy-loaded the page's @dnd-kit-driven pinned-views bar) so
+    // we can mount the real drawer here instead of re-implementing it.
     loginAs('owner');
 
     handlers['/calls/call-1'] = () => ({
-      call: { id: 'call-1', total_cost_cents: 1234 },
+      call: {
+        id: 'call-1',
+        caller_number: '+15551234567',
+        called_number: '+15557654321',
+        direction: 'inbound',
+        lifecycle_state: 'completed',
+        start_time: '2025-04-01T12:00:00.000Z',
+        end_time: '2025-04-01T12:05:00.000Z',
+        agent_id: 'agent-1',
+        agent_name: 'Default Agent',
+        duration_seconds: 300,
+        total_cost_cents: 1234,
+        language: 'en',
+      },
       costBreakdown: {
         sttCostCents: 200,
         llmCostCents: 600,
         ttsCostCents: 300,
         infraCostCents: 134,
         totalCostCents: 1234,
+        modelTier: 'premium',
+        modelUsed: 'gpt-4o',
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheHits: 0,
+        cacheMisses: 0,
+        promptTokensSaved: 0,
       },
     });
+    handlers['/calls/call-1/transcript'] = () => ({ transcript: [] });
+    handlers['/calls/call-1/events'] = () => ({ events: [] });
+    handlers['/tool-executions'] = () => ({ executions: [] });
 
     vi.resetModules();
-    const useTenantCurrencyMod = await import(
-      '../../client-app/src/hooks/useTenantCurrency'
+    const callsMod = await import('../../client-app/src/pages/Calls');
+    const { CallDetailDrawer } = callsMod;
+
+    const { container } = renderPage(
+      <CallDetailDrawer callId="call-1" onClose={() => {}} />,
     );
-    const formatCurrencyMod = await import('../../client-app/src/lib/formatCurrency');
-    const apiMod = await import('../../client-app/src/lib/api');
-    const reactQueryMod = await import('@tanstack/react-query');
-
-    const useTenantCurrency = useTenantCurrencyMod.useTenantCurrency;
-    const { formatCents: formatCentsHelper } = formatCurrencyMod;
-    const { api } = apiMod;
-    const { useQuery } = reactQueryMod;
-
-    interface CostBreakdown {
-      sttCostCents: number;
-      llmCostCents: number;
-      ttsCostCents: number;
-      infraCostCents: number;
-      totalCostCents: number;
-    }
-    interface CallDetail {
-      call: { id: string; total_cost_cents: number };
-      costBreakdown: CostBreakdown | null;
-    }
-
-    function CallDrawerCostSection() {
-      const { data } = useQuery({
-        queryKey: ['call', 'call-1'],
-        queryFn: () => api.get<CallDetail>('/calls/call-1'),
-      });
-      const currency = useTenantCurrency();
-      const formatCents = (cents: number) =>
-        formatCentsHelper(cents, { currency });
-      const cb = data?.costBreakdown;
-      if (!cb) return <div>loading</div>;
-      return (
-        <div>
-          <div data-testid="stt">STT: {formatCents(cb.sttCostCents)}</div>
-          <div data-testid="llm">LLM: {formatCents(cb.llmCostCents)}</div>
-          <div data-testid="tts">TTS: {formatCents(cb.ttsCostCents)}</div>
-          <div data-testid="infra">Infra: {formatCents(cb.infraCostCents)}</div>
-          <div data-testid="total">Total: {formatCents(cb.totalCostCents)}</div>
-        </div>
-      );
-    }
-
-    const { container } = renderPage(<CallDrawerCostSection />);
 
     await waitFor(() => {
       const txt = normalize(container.textContent ?? '');
