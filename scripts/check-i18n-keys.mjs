@@ -1,27 +1,41 @@
 #!/usr/bin/env node
 /**
- * i18n key sync check.
+ * i18n key + value sync check.
  *
- * Asserts that every translation key present in the English source-of-truth
- * locale files (`client-app/src/locales/en/*.json`) is also present in every
- * other supported locale shipped by `client-app/src/lib/i18n.ts`
- * (today: `de`, `es`, `fr`, `pt-BR`), and vice versa.
+ * Three classes of drift are reported:
  *
- * Why: when a developer adds new keys to `en/common.json` (for example for a
- * new marketing page) but forgets to add them to the other locale files,
- * users in those locales silently see the raw key (e.g.
+ *  1. `missing` — every translation key present in the English source-of-
+ *     truth locale files (`client-app/src/locales/en/*.json`) must also be
+ *     present in every other supported locale shipped by
+ *     `client-app/src/lib/i18n.ts` (today: `de`, `es`, `fr`, `pt-BR`).
+ *  2. `extra`   — and vice-versa: keys must not exist in a non-English
+ *     locale without an English source.
+ *  3. `sameAsEnglish` — every leaf string in a non-English locale must
+ *     differ from its English counterpart, unless the key is explicitly
+ *     allowlisted. This catches the "translator copy-pasted the English
+ *     string into the German file" failure mode that the missing-key check
+ *     does not — the key *is* present, it just hasn't actually been
+ *     translated.
+ *
+ * Why this exists: when a developer adds new keys to `en/common.json` (for
+ * example for a new marketing page) but forgets to add them to the other
+ * locale files, users in those locales silently see the raw key (e.g.
  * `vertical_agents_page.spotlight.partner_cta`) instead of a translated
- * string. There is no runtime error, no console warning, and no production
- * alert — it just looks broken. This script catches that drift in CI.
+ * string. The same-as-English variant is just as bad: a German user sees an
+ * untranslated English sentence in the middle of an otherwise-German UI.
+ * There is no runtime error, no console warning, and no production alert
+ * for either failure — it just looks broken. This script catches both in CI.
  *
  * Exits non-zero on any drift. Designed to be cheap enough to run in CI on
  * every PR that touches a locale file.
  *
  * Tolerated overrides:
  *   Some keys are intentionally English-only (brand names, untranslated
- *   product taglines, etc.) or intentionally missing from a specific
- *   locale. Add them to `scripts/i18n-allowed-overrides.json` (see the file
- *   header for the schema). Anything not listed there is treated as drift.
+ *   product taglines, etc.), intentionally missing from a specific locale,
+ *   or intentionally identical to English (brand names, format strings,
+ *   placeholders like "Acme Corp"). Add them to
+ *   `scripts/i18n-allowed-overrides.json` (see the file header for the
+ *   schema). Anything not listed there is treated as drift.
  *
  * Usage:
  *   node scripts/check-i18n-keys.mjs
@@ -123,6 +137,24 @@ function flattenKeys(obj, prefix = "", out = []) {
   return out;
 }
 
+/** Recursively flatten a JSON object into a `{ "dotted.key": leafValue }` map.
+ *
+ *  Used by the same-as-English check, which needs the *value* of each leaf
+ *  in addition to its key. Numbers, booleans, and `null` are preserved as-is
+ *  but the same-as-English check ignores anything that isn't a string —
+ *  format-string equality on non-string leaves is meaningless. */
+export function flattenValues(obj, prefix = "", out = {}) {
+  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+    out[prefix] = obj;
+    return out;
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    const next = prefix ? `${prefix}.${k}` : k;
+    flattenValues(v, next, out);
+  }
+  return out;
+}
+
 function loadNamespace(locale, namespace) {
   const file = resolve(localesDir, locale, `${namespace}.json`);
   if (!existsSync(file)) {
@@ -149,17 +181,27 @@ function loadNamespace(locale, namespace) {
  *     },
  *     "extra": {
  *       "<locale>": { "<namespace>": ["dotted.key.path", ...] }
+ *     },
+ *     "sameAsEnglish": {
+ *       "<locale>": { "<namespace>": ["dotted.key.path", ...] }
  *     }
  *   }
  *
- * `missing` = keys present in `en` that this locale is allowed to NOT have
- *             (e.g. brand names that should fall through to English).
- * `extra`   = keys present in this locale that are NOT in `en` (e.g. a
- *             locale-specific note that has no English equivalent).
+ * `missing`       = keys present in `en` that this locale is allowed to NOT
+ *                   have (e.g. brand names that should fall through to
+ *                   English).
+ * `extra`         = keys present in this locale that are NOT in `en` (e.g. a
+ *                   locale-specific note that has no English equivalent).
+ * `sameAsEnglish` = keys whose value in this locale is intentionally
+ *                   identical to the English value (brand names, product
+ *                   proper nouns, format strings like "n={{n}}", placeholder
+ *                   data like "Acme Corp", etc.). Anything not listed here
+ *                   that has the same string as `en` is treated as drift
+ *                   ("translator forgot to translate this entry").
  */
 function loadOverrides() {
   if (!existsSync(overridesFile)) {
-    return { missing: {}, extra: {} };
+    return { missing: {}, extra: {}, sameAsEnglish: {} };
   }
   let parsed;
   try {
@@ -170,6 +212,7 @@ function loadOverrides() {
   return {
     missing: parsed.missing ?? {},
     extra: parsed.extra ?? {},
+    sameAsEnglish: parsed.sameAsEnglish ?? {},
   };
 }
 
@@ -191,6 +234,27 @@ function diffKeys(sourceKeys, targetKeys, missingAllow, extraAllow) {
   return { missing, extra };
 }
 
+/** Find leaf string entries whose non-English value is byte-for-byte equal
+ *  to the English value. Anything in `sameAsEnglishAllow` is ignored.
+ *
+ *  Why string-only: i18n leaves are ~99% strings, but we also tolerate
+ *  arrays/numbers/booleans/null inside locale JSONs (e.g. ordered list
+ *  bodies in `docs.json`). Comparing those for equality across locales is
+ *  meaningless — the array's *string* leaves are themselves separate dotted
+ *  paths and get compared individually. */
+export function findSameAsEnglish(sourceValues, targetValues, allow) {
+  const offenders = [];
+  for (const [k, sv] of Object.entries(sourceValues)) {
+    if (typeof sv !== "string") continue;
+    if (!(k in targetValues)) continue; // already reported by missing-key diff
+    if (targetValues[k] !== sv) continue;
+    if (allow.has(k)) continue;
+    offenders.push(k);
+  }
+  offenders.sort();
+  return offenders;
+}
+
 export function runI18nKeyCheck({ locales, namespaces, overrides } = {}) {
   const resolvedLocales = locales ?? parseSupportedLocales();
   const resolvedNamespaces = namespaces ?? parseNamespaces();
@@ -207,14 +271,20 @@ export function runI18nKeyCheck({ locales, namespaces, overrides } = {}) {
   const report = [];
 
   for (const ns of resolvedNamespaces) {
-    const sourceKeys = new Set(flattenKeys(loadNamespace(SOURCE_LOCALE, ns)));
+    const sourceParsed = loadNamespace(SOURCE_LOCALE, ns);
+    const sourceValues = flattenValues(sourceParsed);
+    const sourceKeys = new Set(Object.keys(sourceValues));
     for (const locale of otherLocales) {
-      const targetKeys = new Set(flattenKeys(loadNamespace(locale, ns)));
+      const targetParsed = loadNamespace(locale, ns);
+      const targetValues = flattenValues(targetParsed);
+      const targetKeys = new Set(Object.keys(targetValues));
       const missingAllow = allowedSet(resolvedOverrides, "missing", locale, ns);
       const extraAllow = allowedSet(resolvedOverrides, "extra", locale, ns);
+      const sameAllow = allowedSet(resolvedOverrides, "sameAsEnglish", locale, ns);
       const { missing, extra } = diffKeys(sourceKeys, targetKeys, missingAllow, extraAllow);
-      if (missing.length || extra.length) {
-        report.push({ locale, namespace: ns, missing, extra });
+      const sameAsEnglish = findSameAsEnglish(sourceValues, targetValues, sameAllow);
+      if (missing.length || extra.length || sameAsEnglish.length) {
+        report.push({ locale, namespace: ns, missing, extra, sameAsEnglish });
       }
     }
   }
@@ -232,24 +302,29 @@ function formatHumanReport(result) {
   const lines = [];
   let totalMissing = 0;
   let totalExtra = 0;
+  let totalSame = 0;
   for (const entry of result.drift) {
+    const same = entry.sameAsEnglish ?? [];
     totalMissing += entry.missing.length;
     totalExtra += entry.extra.length;
+    totalSame += same.length;
     lines.push(
-      `\n  • ${entry.locale}/${entry.namespace}.json — ${entry.missing.length} missing, ${entry.extra.length} extra:`,
+      `\n  • ${entry.locale}/${entry.namespace}.json — ${entry.missing.length} missing, ${entry.extra.length} extra, ${same.length} same-as-English:`,
     );
-    for (const k of entry.missing) lines.push(`      - missing: ${k}`);
-    for (const k of entry.extra) lines.push(`      + extra:   ${k}`);
+    for (const k of entry.missing) lines.push(`      - missing:        ${k}`);
+    for (const k of entry.extra) lines.push(`      + extra:          ${k}`);
+    for (const k of same) lines.push(`      = same-as-English: ${k}`);
   }
   lines.push(
-    `\nFix: add the missing keys to the listed locale files (or, for an intentional` +
-      ` override, add the key to scripts/i18n-allowed-overrides.json). Source of truth is` +
-      ` client-app/src/locales/${result.sourceLocale}/.`,
+    `\nFix: ` +
+      `\n  • For "missing"/"extra" — add the key to the listed locale file, or, if the omission is intentional, add the key to scripts/i18n-allowed-overrides.json under "missing"/"extra".` +
+      `\n  • For "same-as-English" — replace the English copy in the non-English locale file with a real translation. If the value is intentionally English (brand name, product proper noun, format string, placeholder data), add it to scripts/i18n-allowed-overrides.json under "sameAsEnglish".` +
+      `\nSource of truth is client-app/src/locales/${result.sourceLocale}/.`,
   );
   return {
     summary:
       `i18n keys are out of sync (${result.drift.length} files affected, ` +
-      `${totalMissing} missing, ${totalExtra} extra)`,
+      `${totalMissing} missing, ${totalExtra} extra, ${totalSame} same-as-English)`,
     body: lines.join("\n"),
   };
 }

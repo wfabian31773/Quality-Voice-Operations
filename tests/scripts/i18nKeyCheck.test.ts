@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 // @ts-expect-error: pure-JS Node script with no type declarations.
-import { runI18nKeyCheck, parseNamespacesFromSource } from '../../scripts/check-i18n-keys.mjs';
+import { runI18nKeyCheck, parseNamespacesFromSource, findSameAsEnglish, flattenValues } from '../../scripts/check-i18n-keys.mjs';
 
 /**
  * Two-layer test:
@@ -26,18 +26,23 @@ describe('i18n key check (real codebase)', () => {
         `Locale key drift detected (source=${result.sourceLocale}):`,
       ];
       for (const entry of result.drift) {
+        const same: string[] = entry.sameAsEnglish ?? [];
         lines.push(
-          `  • ${entry.locale}/${entry.namespace}.json — ${entry.missing.length} missing, ${entry.extra.length} extra`,
+          `  • ${entry.locale}/${entry.namespace}.json — ${entry.missing.length} missing, ${entry.extra.length} extra, ${same.length} same-as-English`,
         );
-        for (const k of entry.missing.slice(0, 20)) lines.push(`      - missing: ${k}`);
-        if (entry.missing.length > 20) lines.push(`      …and ${entry.missing.length - 20} more`);
-        for (const k of entry.extra.slice(0, 20)) lines.push(`      + extra:   ${k}`);
-        if (entry.extra.length > 20) lines.push(`      …and ${entry.extra.length - 20} more`);
+        for (const k of entry.missing.slice(0, 20)) lines.push(`      - missing:        ${k}`);
+        if (entry.missing.length > 20) lines.push(`      …and ${entry.missing.length - 20} more missing`);
+        for (const k of entry.extra.slice(0, 20)) lines.push(`      + extra:          ${k}`);
+        if (entry.extra.length > 20) lines.push(`      …and ${entry.extra.length - 20} more extra`);
+        for (const k of same.slice(0, 20)) lines.push(`      = same-as-English: ${k}`);
+        if (same.length > 20) lines.push(`      …and ${same.length - 20} more same-as-English`);
       }
       lines.push(
         '',
-        'Fix: add the missing keys to the listed locale files, OR — if the omission',
-        'is intentional — add the key to scripts/i18n-allowed-overrides.json.',
+        'Fix: add the missing/extra keys to the listed locale files, OR translate',
+        'same-as-English entries with a real translation. If the omission or',
+        'identical value is intentional, add the key to',
+        'scripts/i18n-allowed-overrides.json under the appropriate section.',
       );
       throw new Error(lines.join('\n'));
     }
@@ -48,27 +53,61 @@ describe('i18n key check (real codebase)', () => {
 });
 
 describe('i18n key check (allowlist + driver behavior on real codebase)', () => {
-  it('a spurious allowlist entry for a non-existent key is a no-op', () => {
-    // Adding a non-existent key to the missing-allowlist cannot make
-    // anything drift — it can only mask drift that's actually there. So
-    // the run must remain green just like the baseline.
+  it('a spurious allowlist entry for a non-existent key is a no-op (when merged with the on-disk seed)', () => {
+    // Adding a non-existent key to either bucket of the allowlist cannot
+    // create drift — it can only mask drift that's actually there. So the
+    // run must remain green just like the baseline. We merge with the
+    // on-disk seed because runI18nKeyCheck does not auto-load it when an
+    // explicit `overrides` payload is supplied.
     const baseline = runI18nKeyCheck();
     expect(baseline.ok).toBe(true);
 
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const onDisk = require('../../scripts/i18n-allowed-overrides.json');
     const withSpuriousAllow = runI18nKeyCheck({
       overrides: {
-        missing: { de: { common: ['this.key.does.not.exist'] } },
-        extra: {},
+        missing: {
+          ...(onDisk.missing ?? {}),
+          de: {
+            ...((onDisk.missing ?? {}).de ?? {}),
+            common: [
+              ...(((onDisk.missing ?? {}).de ?? {}).common ?? []),
+              'this.key.does.not.exist',
+            ],
+          },
+        },
+        extra: onDisk.extra ?? {},
+        sameAsEnglish: {
+          ...(onDisk.sameAsEnglish ?? {}),
+          de: {
+            ...((onDisk.sameAsEnglish ?? {}).de ?? {}),
+            common: [
+              ...(((onDisk.sameAsEnglish ?? {}).de ?? {}).common ?? []),
+              'this.key.does.not.exist',
+            ],
+          },
+        },
       },
     });
     expect(withSpuriousAllow.ok).toBe(true);
   });
 
-  it('an empty overrides payload is equivalent to no overrides', () => {
-    const a = runI18nKeyCheck({ overrides: { missing: {}, extra: {} } });
+  it('an empty overrides payload is NOT equivalent to no overrides', () => {
+    // The on-disk allowlist seeds the `sameAsEnglish` bucket with every
+    // currently-tolerated identical-to-English entry; an empty overrides
+    // payload removes that tolerance and surfaces real drift.
+    const a = runI18nKeyCheck({ overrides: { missing: {}, extra: {}, sameAsEnglish: {} } });
     const b = runI18nKeyCheck();
-    expect(a.ok).toBe(b.ok);
-    expect(a.drift).toEqual(b.drift);
+    expect(b.ok).toBe(true);
+    expect(a.ok).toBe(false);
+    // Every drift entry produced by the empty-override run must be a
+    // same-as-English finding (since the missing/extra allowlist is empty
+    // today as well, but the on-disk source has no missing/extra drift).
+    for (const entry of a.drift) {
+      expect(entry.missing).toEqual([]);
+      expect(entry.extra).toEqual([]);
+      expect(entry.sameAsEnglish.length).toBeGreaterThan(0);
+    }
   });
 
   it('explicitly omitting one supported locale produces no drift report for it', () => {
@@ -83,17 +122,19 @@ describe('i18n key check (allowlist + driver behavior on real codebase)', () => 
     expect(result.namespaces).toEqual(['common']);
   });
 
-  it('an allowlist entry suppresses real drift for the targeted key only, not for siblings', () => {
-    // Synthesize *real* drift by restricting the run to just `en` + a
-    // synthetic locale. We can't fabricate a fake locale on disk, so we
-    // exercise the allowlist filter at the locale-pair level by running
-    // against `en` and `de` after first manufacturing drift purely in
-    // memory: pretend `en` has an extra namespace `__synthetic__` that
-    // `de` does not. Since the script reads from disk, we instead prove
-    // the suppression contract via the public diff helper exercised by
-    // the synthetic-fixture suite below — and assert here that the real
-    // codebase remains green even when we pre-populate a long allowlist
-    // (proves `allowedSet` does not accidentally widen the diff).
+  it('phantom allowlist entries are no-ops; real same-as-English drift still surfaces', () => {
+    // We can't fabricate a fake locale on disk, so this test pre-populates
+    // every override bucket (missing, extra, sameAsEnglish) with phantom
+    // keys that do NOT exist anywhere in the codebase. The contract is
+    // that those phantom entries are inert — `allowedSet` must not turn
+    // them into manufactured drift. Real same-as-English drift in the
+    // codebase WILL still surface because passing an explicit `overrides`
+    // payload replaces the on-disk seed (see assertion comment below for
+    // detail). The fine-grained "suppress one specific key, leave its
+    // siblings alone" contract is exercised separately by the synthetic
+    // fixture suite further down and by the driver-level test
+    // "a single allowlist entry suppresses exactly that one
+    // same-as-English finding".
     const result = runI18nKeyCheck({
       overrides: {
         missing: {
@@ -103,10 +144,27 @@ describe('i18n key check (allowlist + driver behavior on real codebase)', () => 
         extra: {
           es: { common: ['phantom.d'] },
         },
+        sameAsEnglish: {
+          de: { common: ['phantom.e'] },
+          fr: { common: ['phantom.f'] },
+          es: { common: ['phantom.g'] },
+          'pt-BR': { common: ['phantom.h'] },
+        },
       },
     });
-    expect(result.ok).toBe(true);
-    expect(result.drift).toEqual([]);
+    // Note: passing an explicit `overrides` payload REPLACES the on-disk
+    // allowlist — the API does not merge. So this run intentionally drops
+    // the seeded `sameAsEnglish` tolerance and surfaces the real
+    // identical-to-English drift in the codebase. The contract being
+    // exercised is twofold: (a) phantom allowlist entries do not invent
+    // new drift (they're no-ops), and (b) the drift that DOES surface is
+    // purely from the same-as-English check, since the codebase has no
+    // missing/extra drift today.
+    expect(result.ok).toBe(false);
+    for (const entry of result.drift) {
+      expect(entry.missing).toEqual([]);
+      expect(entry.extra).toEqual([]);
+    }
   });
 
   it('reports the configured supported locales and namespaces', () => {
@@ -118,6 +176,44 @@ describe('i18n key check (allowlist + driver behavior on real codebase)', () => 
     // be rebaselined.
     expect(result.locales).toEqual(['en', 'es', 'pt-BR', 'fr', 'de']);
     expect(result.namespaces).toEqual(['common', 'docs', 'marketing', 'tenant', 'admin']);
+  });
+
+  it('every same-as-English entry from the seeded on-disk allowlist refers to a real identical-value pair', () => {
+    // Belt-and-braces guard: if anyone removes a key from a locale file
+    // without also pruning it from `i18n-allowed-overrides.json`, the
+    // allowlist grows stale (entries that no longer correspond to any
+    // identical-value pair). Re-running with an empty allowlist tells us
+    // which keys *currently* drift; every seeded entry must appear in that
+    // set or be a no-op (in which case it should be cleaned up).
+    const empty = runI18nKeyCheck({ overrides: { missing: {}, extra: {}, sameAsEnglish: {} } });
+    const realDrift: Record<string, Set<string>> = {};
+    for (const entry of empty.drift) {
+      const k = `${entry.locale}/${entry.namespace}`;
+      realDrift[k] = new Set(entry.sameAsEnglish);
+    }
+    // Re-load the on-disk overrides file the same way the script does and
+    // assert every entry still corresponds to a real identical-value pair.
+    // We do this by importing the JSON directly via a require call so we
+    // don't need to duplicate the loader.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const overrides: { sameAsEnglish?: Record<string, Record<string, string[]>> } = require('../../scripts/i18n-allowed-overrides.json');
+    const stale: string[] = [];
+    for (const [locale, byNs] of Object.entries(overrides.sameAsEnglish ?? {})) {
+      for (const [ns, keys] of Object.entries(byNs)) {
+        const real = realDrift[`${locale}/${ns}`];
+        for (const k of keys) {
+          if (!real || !real.has(k)) stale.push(`${locale}/${ns}.json :: ${k}`);
+        }
+      }
+    }
+    if (stale.length) {
+      throw new Error(
+        'Stale entries in scripts/i18n-allowed-overrides.json `sameAsEnglish` ' +
+          '(value no longer matches English — please remove from allowlist):\n  ' +
+          stale.join('\n  '),
+      );
+    }
+    expect(stale).toEqual([]);
   });
 });
 
@@ -319,5 +415,171 @@ describe('i18n key check (synthetic fixtures)', () => {
     const en = { x: 1, nested: { y: 2 } };
     const pt = { x: 99, nested: { y: 88 } };
     expect(diff(en, pt)).toEqual({ missing: [], extra: [] });
+  });
+});
+
+describe('i18n same-as-English check (findSameAsEnglish + flattenValues)', () => {
+  // Direct unit tests on the exported helpers — no disk I/O. Proves the
+  // algorithm catches identical-to-English string leaves, ignores
+  // non-strings, ignores keys that are missing in the target (those are
+  // surfaced by the missing-key check instead), and honours the allowlist.
+
+  it('flags every string leaf whose target value matches the source value', () => {
+    const en = flattenValues({
+      brand: 'QVO',
+      auth: { sign_in: 'Sign in', sign_up: 'Sign up' },
+    });
+    const de = flattenValues({
+      brand: 'QVO', // intentional brand name match
+      auth: { sign_in: 'Sign in', sign_up: 'Anmelden' }, // sign_in slipped through untranslated
+    });
+    expect(findSameAsEnglish(en, de, new Set())).toEqual(['auth.sign_in', 'brand']);
+  });
+
+  it('returns offenders sorted alphabetically for stable diffs', () => {
+    const en = flattenValues({ z: 'Z', a: 'A', m: 'M' });
+    const fr = flattenValues({ z: 'Z', a: 'A', m: 'M' });
+    expect(findSameAsEnglish(en, fr, new Set())).toEqual(['a', 'm', 'z']);
+  });
+
+  it('honours the allowlist — explicitly-allowed identical entries are not flagged', () => {
+    const en = flattenValues({ brand: 'QVO', greeting: 'Hello' });
+    const fr = flattenValues({ brand: 'QVO', greeting: 'Hello' });
+    expect(findSameAsEnglish(en, fr, new Set(['brand']))).toEqual(['greeting']);
+    expect(findSameAsEnglish(en, fr, new Set(['brand', 'greeting']))).toEqual([]);
+  });
+
+  it('does not flag a key missing from the target locale (covered by missing-key check)', () => {
+    const en = flattenValues({ brand: 'QVO', greeting: 'Hello' });
+    const fr = flattenValues({ brand: 'QVO' }); // greeting missing
+    expect(findSameAsEnglish(en, fr, new Set())).toEqual(['brand']);
+  });
+
+  it('does not flag a key with a different value in the target locale', () => {
+    const en = flattenValues({ greeting: 'Hello' });
+    const fr = flattenValues({ greeting: 'Bonjour' });
+    expect(findSameAsEnglish(en, fr, new Set())).toEqual([]);
+  });
+
+  it('skips non-string leaf values (numbers, booleans, null, arrays)', () => {
+    // Numbers / booleans / nulls / arrays are not user-visible copy in the
+    // i18next sense — they are sometimes used as ordering hints, feature
+    // flags, or pre-bundled lists of identifiers. Identical non-string
+    // values across locales must NOT be flagged. Only string leaves are
+    // candidates for the same-as-English check.
+    const en = flattenValues({
+      count: 0,
+      enabled: true,
+      missing_alt: null,
+      list: ['call.started', 'call.completed'], // identical API event names — array is a leaf, not flagged
+      copy: 'Hello',
+    });
+    const fr = flattenValues({
+      count: 0,
+      enabled: true,
+      missing_alt: null,
+      list: ['call.started', 'call.completed'],
+      copy: 'Hello',
+    });
+    expect(findSameAsEnglish(en, fr, new Set())).toEqual(['copy']);
+  });
+
+  it('flattenValues preserves leaf values keyed by dotted path', () => {
+    expect(flattenValues({ a: 'x', b: { c: 'y', d: 1 } })).toEqual({
+      a: 'x',
+      'b.c': 'y',
+      'b.d': 1,
+    });
+  });
+
+  it('flattenValues treats arrays as opaque leaf values (matches flattenKeys behaviour)', () => {
+    // The script's `flattenKeys` treats arrays as leaves (a single dotted
+    // path), and `flattenValues` mirrors that for symmetry — the two
+    // helpers produce identical key sets so the existing missing/extra
+    // check and the new same-as-English check agree on what counts as a
+    // single i18n entry.
+    expect(flattenValues({ list: ['a', 'b', 'c'] })).toEqual({
+      list: ['a', 'b', 'c'],
+    });
+  });
+
+  it('case-sensitivity matters — differing capitalisation is NOT same-as-English', () => {
+    // The check is byte-for-byte equality, so a locale that capitalises
+    // differently than English ("hello" vs "Hello") is treated as a real
+    // translation. This is intentional: catching subtle copy drift is the
+    // job of human review, not this guard.
+    const en = flattenValues({ greeting: 'Hello' });
+    const fr = flattenValues({ greeting: 'hello' });
+    expect(findSameAsEnglish(en, fr, new Set())).toEqual([]);
+  });
+
+  it('whitespace differences matter — trailing spaces are NOT same-as-English', () => {
+    const en = flattenValues({ greeting: 'Hello' });
+    const fr = flattenValues({ greeting: 'Hello ' });
+    expect(findSameAsEnglish(en, fr, new Set())).toEqual([]);
+  });
+});
+
+describe('i18n same-as-English check (driver: runI18nKeyCheck reports it as drift)', () => {
+  // End-to-end exercise: assert that the driver actually surfaces
+  // same-as-English findings in its drift report. Since we can't synthesise
+  // on-disk locale files easily, we lean on the real codebase + an empty
+  // overrides payload to produce real findings, then assert their shape.
+
+  it('drift report entries include a `sameAsEnglish` array of dotted keys', () => {
+    const result = runI18nKeyCheck({
+      overrides: { missing: {}, extra: {}, sameAsEnglish: {} },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.drift.length).toBeGreaterThan(0);
+    for (const entry of result.drift) {
+      expect(Array.isArray(entry.sameAsEnglish)).toBe(true);
+      // Every reported same-as-English key must be a non-empty dotted path.
+      for (const k of entry.sameAsEnglish) {
+        expect(typeof k).toBe('string');
+        expect(k.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('a single allowlist entry suppresses exactly that one same-as-English finding', () => {
+    // Pick a known-real same-as-English entry from the on-disk seed and
+    // prove that an allowlist containing only that entry suppresses it
+    // alone, leaving every other identical-value pair still reported.
+    const baseline = runI18nKeyCheck({
+      overrides: { missing: {}, extra: {}, sameAsEnglish: {} },
+    });
+    expect(baseline.ok).toBe(false);
+    const firstEntry = baseline.drift.find((d: { sameAsEnglish: string[] }) => d.sameAsEnglish.length > 0);
+    expect(firstEntry).toBeDefined();
+    const targetLocale = firstEntry!.locale;
+    const targetNamespace = firstEntry!.namespace;
+    const targetKey = firstEntry!.sameAsEnglish[0];
+
+    const suppressed = runI18nKeyCheck({
+      overrides: {
+        missing: {},
+        extra: {},
+        sameAsEnglish: { [targetLocale]: { [targetNamespace]: [targetKey] } },
+      },
+    });
+    const matchingEntry = suppressed.drift.find(
+      (d: { locale: string; namespace: string }) =>
+        d.locale === targetLocale && d.namespace === targetNamespace,
+    );
+    // Either the entry is gone entirely (only one finding existed), or it
+    // still exists but no longer contains the targeted key.
+    if (matchingEntry) {
+      expect(matchingEntry.sameAsEnglish).not.toContain(targetKey);
+      // And it must have shrunk by exactly one.
+      expect(matchingEntry.sameAsEnglish.length).toBe(firstEntry!.sameAsEnglish.length - 1);
+    } else {
+      // The whole entry vanished — that only makes sense if the targeted
+      // key was the *only* same-as-English finding in that file AND there
+      // were no missing/extra findings. Both conditions must hold.
+      expect(firstEntry!.sameAsEnglish.length).toBe(1);
+      expect(firstEntry!.missing).toEqual([]);
+      expect(firstEntry!.extra).toEqual([]);
+    }
   });
 });
