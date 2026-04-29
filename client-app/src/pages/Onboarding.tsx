@@ -63,6 +63,10 @@ export default function Onboarding() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
+  // Track the furthest step the user has reached so we know which progress
+  // dots are safe to make clickable. Steps the user hasn't unlocked yet stay
+  // non-interactive so they can't skip past required confirmations.
+  const [maxVisitedStep, setMaxVisitedStep] = useState(1);
   const [provisioningStatus, setProvisioningStatus] = useState<ProvisioningStatus | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState('answering-service');
   const [updatingAgent, setUpdatingAgent] = useState(false);
@@ -117,6 +121,31 @@ export default function Onboarding() {
       return target;
     });
   }, [persistStep]);
+
+  // Jump to a specific previously-visited step when the user clicks one of
+  // the progress dots. Mirrors `goBack`'s setState + persist pattern but
+  // accepts an arbitrary target. We refuse to jump past the furthest step
+  // the user has already reached so the dots can never be used to skip
+  // ahead past required confirmations.
+  const goToStep = useCallback(
+    (target: number) => {
+      setStep((current) => {
+        if (target === current) return current;
+        if (target < 1 || target > TOTAL_ONBOARDING_STEPS) return current;
+        if (target > Math.max(current, maxVisitedStep)) return current;
+        void persistStep(target);
+        return target;
+      });
+    },
+    [persistStep, maxVisitedStep],
+  );
+
+  // Keep `maxVisitedStep` in sync with the furthest step we've ever shown,
+  // including when we resume from saved progress (which sets `step`
+  // directly in the preferences-loading effect below).
+  useEffect(() => {
+    setMaxVisitedStep((prev) => Math.max(prev, step));
+  }, [step]);
 
   // Load saved progress before doing anything else so we don't overwrite
   // a higher saved step with the default `1`. Also pre-load the current
@@ -259,14 +288,43 @@ export default function Onboarding() {
         </div>
 
         <div className="flex items-center justify-center gap-2 mb-8">
-          {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              className={`h-2 rounded-full transition-all ${
-                s === step ? 'w-8 bg-primary' : s < step ? 'w-8 bg-green-500' : 'w-8 bg-border'
-              }`}
-            />
-          ))}
+          {[1, 2, 3].map((s) => {
+            const isActive = s === step;
+            // A dot counts as "completed" once the user has reached it,
+            // even if they later navigated back. That way the green
+            // colouring stays consistent for visited-but-not-current
+            // steps regardless of which direction the user is moving.
+            // Compare against `max(step, maxVisitedStep)` so the current
+            // step is always treated as visited even on the render pass
+            // before the `maxVisitedStep` sync effect has run.
+            const furthestUnlocked = Math.max(step, maxVisitedStep);
+            const isCompleted = !isActive && s <= furthestUnlocked;
+            const isClickable = s <= furthestUnlocked;
+            const colorClass = isActive
+              ? 'bg-primary'
+              : isCompleted
+                ? 'bg-green-500'
+                : 'bg-border';
+            const baseClass = `h-2 w-8 rounded-full transition-all ${colorClass}`;
+            if (isClickable) {
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => goToStep(s)}
+                  disabled={isActive}
+                  aria-label={`Go to step ${s}`}
+                  aria-current={isActive ? 'step' : undefined}
+                  className={`${baseClass} ${
+                    isActive
+                      ? 'cursor-default'
+                      : 'cursor-pointer hover:ring-2 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60'
+                  }`}
+                />
+              );
+            }
+            return <div key={s} aria-hidden="true" className={baseClass} />;
+          })}
         </div>
 
         <div className="bg-surface rounded-xl border border-border p-6 shadow-sm">
