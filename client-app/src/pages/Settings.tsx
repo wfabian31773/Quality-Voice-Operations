@@ -8,7 +8,7 @@ import {
   type ComponentType,
 } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, Navigate, Link } from 'react-router-dom';
+import { useNavigate, useParams, Navigate, Link, useBlocker } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 import VoicePicker from '../components/VoicePicker';
+import Modal from '../components/Modal';
 import { PageHeader } from '../components/ui';
 import {
   AGENT_LANGUAGES,
@@ -2048,6 +2049,48 @@ export default function Settings() {
     return set;
   }, [dirtyMap]);
 
+  // Aggregate "any panel dirty?" across every registration. Used to (a) warn
+  // on browser-level unloads (close tab, refresh, navigate the address bar)
+  // and (b) intercept in-app router navigation that leaves the Settings
+  // surface entirely. Tab-to-tab navigation inside `/settings/*` is allowed
+  // without prompting since each panel keeps its edits when re-mounted.
+  const anyDirty = useMemo(
+    () => Object.values(dirtyMap).some(Boolean),
+    [dirtyMap],
+  );
+
+  useEffect(() => {
+    if (!anyDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers ignore the returned string and show their own
+      // localized prompt, but a non-empty `returnValue` is still required
+      // to actually trigger the dialog.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [anyDirty]);
+
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (!anyDirty) return false;
+    // Keep tab switches inside Settings (and no-op same-path navigations)
+    // silent — the per-tab dot already telegraphs unsaved work, and the
+    // panels stay mounted while moving between tabs.
+    if (nextLocation.pathname.startsWith('/settings')) return false;
+    if (currentLocation.pathname === nextLocation.pathname) return false;
+    return true;
+  });
+
+  // If a save (or discard) clears the dirty state while the leave-prompt is
+  // already on screen, just let the pending navigation through instead of
+  // stranding the user behind a no-longer-needed dialog.
+  useEffect(() => {
+    if (blocker.state === 'blocked' && !anyDirty) {
+      blocker.proceed();
+    }
+  }, [blocker, anyDirty]);
+
   if (!isValidTab) {
     return <Navigate to="/settings/general" replace />;
   }
@@ -2115,6 +2158,53 @@ export default function Settings() {
           );
         })}
       </div>
+      <Modal
+        open={blocker.state === 'blocked'}
+        onClose={() => {
+          if (blocker.state === 'blocked') blocker.reset();
+        }}
+        labelledBy="settings-leave-confirm-title"
+      >
+        <div className="p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="h-5 w-5 text-warning" />
+            </div>
+            <div className="flex-1">
+              <h2
+                id="settings-leave-confirm-title"
+                className="text-base font-semibold text-text-primary"
+              >
+                Leave with unsaved changes?
+              </h2>
+              <p className="text-sm text-text-muted mt-1">
+                You have unsaved settings edits. If you leave now, your changes
+                will be lost.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (blocker.state === 'blocked') blocker.reset();
+              }}
+              className="inline-flex items-center px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-surface-hover"
+            >
+              Stay on page
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (blocker.state === 'blocked') blocker.proceed();
+              }}
+              className="inline-flex items-center px-4 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg"
+            >
+              Leave anyway
+            </button>
+          </div>
+        </div>
+      </Modal>
     </SettingsDirtyContext.Provider>
   );
 }
