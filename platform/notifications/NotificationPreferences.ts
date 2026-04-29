@@ -55,7 +55,9 @@ export function categoryForNotificationType(type: string | null | undefined): No
   if (
     t === 'trusted_caller_expiry' ||
     t === 'trusted_caller_revoked' ||
-    t === 'trusted_caller_verified'
+    t === 'trusted_caller_verified' ||
+    t === 'trusted_caller_trust_hub_rejected' ||
+    t === 'trusted_caller_trust_hub_approved'
   )
     return 'integration';
   if (t === 'integration_sms' || t === 'sms') return 'sms';

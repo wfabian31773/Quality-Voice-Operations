@@ -675,6 +675,46 @@ export function verifiedCallerRevokedEmail(params: {
   return { subject, html, text };
 }
 
+export function verifiedCallerTrustHubRejectedEmail(params: {
+  tenantName?: string;
+  phoneNumber: string;
+  friendlyName?: string | null;
+  /** Which leg of the bundle failed: customer profile, trust product, or A2P brand. */
+  resourceLabel: 'Customer Profile' | 'SHAKEN/STIR Trust Product' | 'A2P Brand Registration';
+  /** Twilio's reported `failure_reason` for the rejected resource. Empty fallback when Twilio omitted it. */
+  failureReason: string;
+  trustedCallersUrl: string;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const label = params.friendlyName
+    ? `${params.friendlyName} (${params.phoneNumber})`
+    : params.phoneNumber;
+  const reason = params.failureReason && params.failureReason.trim().length > 0
+    ? params.failureReason
+    : 'Twilio did not return a specific failure reason. Open the Trust Hub console to view details.';
+  const subject = `Trust Hub ${params.resourceLabel} rejected for ${params.phoneNumber}`;
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>Twilio rejected the <strong>${params.resourceLabel}</strong> backing <strong>${label}</strong> for <strong>${org}</strong>. Outbound campaigns dialing from this number will keep working but cannot claim level-A attestation until you re-submit the bundle.</p>
+    <div class="alert-error">
+      <p style="margin:0"><strong>Twilio's failure reason</strong></p>
+      <p style="margin:4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;">${reason}</p>
+    </div>
+    <p>Open Trusted Callers to review the rejection details and re-submit the bundle:</p>
+    <p><a href="${params.trustedCallersUrl}" class="btn">Open Trusted Callers</a></p>
+    <p class="muted">We'll only email you again if Twilio's status changes — you won't get a duplicate while this resource stays rejected.</p>
+  `);
+
+  const text = `${subject}\n\n` +
+    `Twilio rejected the ${params.resourceLabel} backing ${label} for ${org}.\n\n` +
+    `Failure reason: ${reason}\n\n` +
+    `Re-submit: ${params.trustedCallersUrl}\n\n` +
+    `We'll only email you again if Twilio's status changes — you won't get a duplicate while this resource stays rejected.`;
+
+  return { subject, html, text };
+}
+
 export function deletionExecutedEmail(params: {
   tenantName?: string;
   executedAt: string;

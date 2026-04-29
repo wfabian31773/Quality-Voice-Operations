@@ -598,6 +598,12 @@ export async function attachTrustHubRegistration(
     );
     const prior = existingRow.rows[0] ? rowToCaller(existingRow.rows[0]) : null;
     const priorSnapshot = prior ? readTrustHubSnapshot(prior) : null;
+    // The persisted blob carries `lastSubmittedAt` / `lastSyncedAt` even
+    // though `TrustHubSnapshot` does not type them — pull them off the
+    // raw metadata so we can preserve `lastSubmittedAt` across syncs.
+    const priorRawTrustHub = (prior?.metadata?.trustHub ?? null) as
+      | { lastSubmittedAt?: string | null }
+      | null;
 
     let brand = snapshot.brand
       ?? (prior?.brandSid && priorSnapshot?.brand ? priorSnapshot.brand : null);
@@ -614,7 +620,7 @@ export async function attachTrustHubRegistration(
       addressEndUserSid: snapshot.addressEndUserSid,
       representativeEndUserSid: snapshot.representativeEndUserSid,
       lastSubmittedAt: opts.source === 'sync'
-        ? priorSnapshot?.lastSubmittedAt ?? now
+        ? priorRawTrustHub?.lastSubmittedAt ?? now
         : now,
       lastSyncedAt: now,
     };
@@ -1078,6 +1084,96 @@ export async function claimVerifiedNotificationSlot(
           AND tenant_id = $2
           AND verified_notification_sent_at IS NULL`,
       [callerId, tenantId],
+    );
+    return (result.rowCount ?? 0) === 1;
+  });
+}
+
+/**
+ * Cross-tenant lookup of verified callers whose Trust Hub bundle is still
+ * waiting on Twilio approval. Used by the daily Trust Hub status poll to
+ * decide which rows need a fresh `fetchTrustHubStatus` call.
+ *
+ * A caller is considered "pending" when its `metadata.trustHub` snapshot
+ * has at least one resource (Customer Profile, Trust Product, or A2P
+ * brand registration) that is NOT yet in a terminal state. Terminal
+ * states for the Trust Hub products are `twilio-approved` and
+ * `twilio-rejected`; for brand registrations they are `APPROVED`,
+ * `FAILED`, `REJECTED`, and `SUSPENDED`. A caller with all resources in
+ * terminal states drops out of this query so the daily poll doesn't keep
+ * burning Twilio API calls on bundles that will never change again.
+ *
+ * Uses `withPrivilegedClient` so the platform pool can read across all
+ * tenants. The actual snapshot writes still go through
+ * `attachTrustHubRegistration` (which is tenant-scoped via `withTenant`),
+ * so RLS still protects writes.
+ */
+export async function listCallersWithPendingTrustHub(
+  limit: number = 200,
+): Promise<VerifiedCallerId[]> {
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM verified_caller_ids
+        WHERE status = 'verified'
+          AND metadata ? 'trustHub'
+          AND metadata #>> '{trustHub,customerProfile,sid}' IS NOT NULL
+          AND (
+            LOWER(COALESCE(metadata #>> '{trustHub,customerProfile,status}', ''))
+              NOT IN ('twilio-approved', 'twilio-rejected')
+            OR LOWER(COALESCE(metadata #>> '{trustHub,trustProduct,status}', ''))
+              NOT IN ('twilio-approved', 'twilio-rejected')
+            OR (
+              jsonb_typeof(metadata #> '{trustHub,brand}') = 'object'
+              AND UPPER(COALESCE(metadata #>> '{trustHub,brand,status}', ''))
+                NOT IN ('APPROVED', 'FAILED', 'REJECTED', 'SUSPENDED')
+            )
+          )
+        ORDER BY (metadata #>> '{trustHub,lastSyncedAt}') NULLS FIRST, updated_at ASC
+        LIMIT $1`,
+      [limit],
+    );
+    return rows.map(rowToCaller);
+  });
+}
+
+/**
+ * Promote a verified caller's stored attestation level. SHAKEN/STIR
+ * approval flips the Trust Hub product to `twilio-approved`, at which
+ * point the carrier will attest at level A — so we promote the row's
+ * attestation only when the new level is strictly higher than the
+ * current one. Level ordering: A > B > C > none. Returns `true` when
+ * the row was actually updated (so the caller can fan out a notice or
+ * audit entry), `false` when the existing level was already at or above
+ * the requested level.
+ */
+const ATTESTATION_RANK: Record<AttestationLevel | 'none', number> = {
+  none: 0,
+  C: 1,
+  B: 2,
+  A: 3,
+};
+
+export async function promoteCallerAttestation(
+  tenantId: string,
+  callerId: string,
+  level: AttestationLevel,
+): Promise<boolean> {
+  return withPrivilegedClient(async (client) => {
+    const result = await client.query(
+      `UPDATE verified_caller_ids
+          SET attestation_level = $3, updated_at = NOW()
+        WHERE id = $1
+          AND tenant_id = $2
+          AND COALESCE(
+            CASE attestation_level
+              WHEN 'A' THEN 3
+              WHEN 'B' THEN 2
+              WHEN 'C' THEN 1
+              ELSE 0
+            END,
+            0
+          ) < $4`,
+      [callerId, tenantId, level, ATTESTATION_RANK[level]],
     );
     return (result.rowCount ?? 0) === 1;
   });
