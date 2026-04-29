@@ -18,6 +18,24 @@ const router = Router();
 
 const PUBLIC_K_ANONYMITY = Number(process.env.GIN_PUBLIC_K_ANONYMITY ?? 8);
 
+/**
+ * Marketing / legal sign-off gate.
+ *
+ * The aggregation pipeline already enforces a k-anonymity threshold per row,
+ * but publishing the cohort statistics on the public marketing page also
+ * requires a human approval step (marketing + legal). Until this env var is
+ * explicitly set to a truthy value the route refuses to advertise the
+ * snapshot as "live" — it is downgraded to "preview" so the disclosure
+ * copy and status pill stay honest about the page being a private beta.
+ *
+ * Accepts: '1', 'true', 'yes', 'on' (case-insensitive). Anything else, or
+ * the variable being unset, keeps the gate closed.
+ */
+function isLivePublishingApproved(): boolean {
+  const raw = String(process.env.GIN_PUBLIC_LIVE_APPROVED ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 interface PublicMetricSpec {
   metric: string;
   vertical: string;
@@ -156,7 +174,13 @@ router.get('/public/gin/benchmarks', publicGinLimiter, async (_req, res) => {
       return res.json(payload);
     }
 
-    const status: PublicBenchmarkPayload['status'] = rows.length >= 3 ? 'live' : 'preview';
+    // Promote to "live" only if (a) we have enough cohorts AND (b) marketing/legal
+    // have explicitly signed off via the env gate. Without sign-off we still expose
+    // real cohort numbers but keep the status pill at "preview" so the marketing
+    // page does not over-claim while the statistics are awaiting approval.
+    const hasEnoughCohorts = rows.length >= 3;
+    const status: PublicBenchmarkPayload['status'] =
+      hasEnoughCohorts && isLivePublishingApproved() ? 'live' : 'preview';
 
     const payload: PublicBenchmarkPayload = {
       status,

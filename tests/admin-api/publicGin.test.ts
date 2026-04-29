@@ -43,6 +43,10 @@ function buildApp() {
 beforeEach(async () => {
   queryMock.mockReset();
   process.env.GIN_PUBLIC_K_ANONYMITY = '8';
+  // Most tests assume marketing/legal have already signed off, so they want
+  // to assert the "live" status flip. The dedicated gate test below clears
+  // this env var to assert the unapproved path.
+  process.env.GIN_PUBLIC_LIVE_APPROVED = 'true';
   // Reset the process-wide cache between tests so they don't leak state.
   __setCacheClientForTests(__createMemoryCacheForTests());
 });
@@ -159,12 +163,16 @@ describe('GET /public/gin/benchmarks', () => {
     expect(res.headers['cache-control']).toMatch(/s-maxage=\d+/);
   });
 
-  it('exposes a CSAT (avg quality score) row when the quality cohort is above k', async () => {
+  it('exposes a CSAT (post-call survey) row when the cohort is above k', async () => {
+    // Real customer-reported CSAT is written by the aggregation pipeline
+    // under the `csat_score` metric (separate from the LLM-judged
+    // `avg_quality_score`). The public route surfaces it as the
+    // "CSAT (post-call survey, 0–10)" row on the marketing page.
     queryMock.mockResolvedValueOnce({
       rows: [
         {
           industry_vertical: 'medical',
-          metric_name: 'avg_quality_score',
+          metric_name: 'csat_score',
           metric_value: '8.4',
           sample_size: 14,
           percentile_50: '8.2',
@@ -218,6 +226,99 @@ describe('GET /public/gin/benchmarks', () => {
     expect(res.body.rows).toEqual([]);
     // Transient errors must not be cached so the next request can retry.
     expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('keeps status at "preview" when marketing/legal sign-off is missing, even with enough cohorts', async () => {
+    // Clear the sign-off gate set in beforeEach so we hit the unapproved path.
+    delete process.env.GIN_PUBLIC_LIVE_APPROVED;
+
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          industry_vertical: 'medical',
+          metric_name: 'call_completion_rate',
+          metric_value: '0.85',
+          sample_size: 12,
+          percentile_50: '0.78',
+          percentile_75: '0.94',
+          period_end: '2026-04-15',
+          updated_at: '2026-04-15T00:00:00Z',
+        },
+        {
+          industry_vertical: 'dental',
+          metric_name: 'booking_conversion_rate',
+          metric_value: '0.58',
+          sample_size: 9,
+          percentile_50: '0.54',
+          percentile_75: '0.71',
+          period_end: '2026-04-10',
+          updated_at: '2026-04-10T00:00:00Z',
+        },
+        {
+          industry_vertical: 'home_services',
+          metric_name: 'avg_call_duration_seconds',
+          metric_value: '330',
+          sample_size: 11,
+          percentile_50: '450',
+          percentile_75: '190',
+          period_end: '2026-04-12',
+          updated_at: '2026-04-12T00:00:00Z',
+        },
+      ],
+    });
+
+    const res = await request(buildApp()).get('/public/gin/benchmarks');
+
+    expect(res.status).toBe(200);
+    // Real cohort rows still flow through (so internal review can see the
+    // numbers in production), but the public status pill stays at "preview"
+    // until marketing/legal flip the env-gated approval switch.
+    expect(res.body.status).toBe('preview');
+    expect(res.body.rows).toHaveLength(3);
+    expect(res.body.snapshotAt).toBe('2026-04-15');
+  });
+
+  it('honours additional truthy values for the sign-off gate', async () => {
+    process.env.GIN_PUBLIC_LIVE_APPROVED = 'YES';
+
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          industry_vertical: 'medical',
+          metric_name: 'call_completion_rate',
+          metric_value: '0.85',
+          sample_size: 12,
+          percentile_50: '0.78',
+          percentile_75: '0.94',
+          period_end: '2026-04-15',
+          updated_at: '2026-04-15T00:00:00Z',
+        },
+        {
+          industry_vertical: 'dental',
+          metric_name: 'booking_conversion_rate',
+          metric_value: '0.58',
+          sample_size: 9,
+          percentile_50: '0.54',
+          percentile_75: '0.71',
+          period_end: '2026-04-10',
+          updated_at: '2026-04-10T00:00:00Z',
+        },
+        {
+          industry_vertical: 'home_services',
+          metric_name: 'avg_call_duration_seconds',
+          metric_value: '330',
+          sample_size: 11,
+          percentile_50: '450',
+          percentile_75: '190',
+          period_end: '2026-04-12',
+          updated_at: '2026-04-12T00:00:00Z',
+        },
+      ],
+    });
+
+    const res = await request(buildApp()).get('/public/gin/benchmarks');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('live');
   });
 
   it('uses a short cache window for the empty/illustrative payload', async () => {
