@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { randomUUID } from 'node:crypto';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { redactPHI } from '../../../platform/core/phi/redact';
 import { requireAuth } from '../middleware/auth';
 import { requireOpsRole } from '../middleware/rbac';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
@@ -510,31 +511,215 @@ function redactPhone(phone: string | null): string {
   return '***' + phone.slice(-4);
 }
 
+// Field-name patterns that indicate the value is sensitive identity data and
+// should be redacted whole rather than scrubbed in place. Phones, names, DOBs
+// etc. inside arbitrary string fields are still caught by `redactPHI` below.
+const SENSITIVE_FIELD_RE =
+  /(^|_)(ssn|tax_id|email|phone|mobile|cell|first_?name|last_?name|full_?name|dob|date_?of_?birth|birth_?date|address|street|zip|postal|password|token|secret|api_?key|authorization|auth)($|_)/i;
+
+/**
+ * Walk an outbox payload (or any JSON value) and redact PII so the admin
+ * console never displays raw caller PHI even when an operator is debugging
+ * a wedged event. Strings are scrubbed via the platform `redactPHI` regex;
+ * obviously-sensitive object fields are replaced with a tagged placeholder
+ * rather than half-redacted.
+ */
+export function redactOutboxValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return redactPHI(value);
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((v) => redactOutboxValue(v));
+  const obj = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    // Sensitive key → collapse the whole value (any type, including nested
+    // objects like `address: { line1, zip }`) to the redacted sentinel.
+    if (SENSITIVE_FIELD_RE.test(k)) {
+      out[k] = v === null || v === undefined ? v : '[REDACTED]';
+    } else {
+      out[k] = redactOutboxValue(v);
+    }
+  }
+  return out;
+}
+
+const OUTBOX_RETRYABLE_STATUSES = ['failed', 'dead_letter'] as const;
+type OutboxRetryableStatus = (typeof OUTBOX_RETRYABLE_STATUSES)[number];
+function isOutboxRetryableStatus(s: string): s is OutboxRetryableStatus {
+  return (OUTBOX_RETRYABLE_STATUSES as readonly string[]).includes(s);
+}
+
+const OUTBOX_LISTABLE_STATUSES = [
+  'pending',
+  'processing',
+  'failed',
+  'dead_letter',
+  'delivered',
+] as const;
+function isOutboxListableStatus(s: string): boolean {
+  return (OUTBOX_LISTABLE_STATUSES as readonly string[]).includes(s);
+}
+
 router.get('/operations/integration-diagnostics', requireAuth, requireOpsRole, async (req, res) => {
   const { tenantId } = req.user!;
   const statusFilter = req.query.status as string | undefined;
+  // The "outboxProvider" param scopes the outbox panel (counters, breakdown,
+  // and listing) to a single integration provider. We keep the existing
+  // "provider" param dedicated to the connector-dispatches panel so the two
+  // filters can be controlled independently from the UI.
+  // Whitespace-only or "all" → treat as no filter (avoids `i.provider = ''`).
+  const outboxProviderRaw = req.query.outboxProvider as string | undefined;
+  const outboxProviderTrimmed =
+    outboxProviderRaw && outboxProviderRaw !== 'all' ? outboxProviderRaw.trim() : '';
+  const outboxProvider = outboxProviderTrimmed.length > 0 ? outboxProviderTrimmed : null;
   const pool = getPlatformPool();
 
   try {
-    let webhookQuery = `
+    const webhookParams: (string | undefined)[] = [tenantId];
+    let webhookFilters = '';
+    if (statusFilter && statusFilter !== 'all' && isOutboxListableStatus(statusFilter)) {
+      webhookParams.push(statusFilter);
+      webhookFilters += ` AND oe.status = $${webhookParams.length}`;
+    }
+    if (outboxProvider) {
+      webhookParams.push(outboxProvider);
+      webhookFilters += ` AND i.provider = $${webhookParams.length}`;
+    }
+
+    const webhookQuery = `
       SELECT oe.id, oe.event_type, oe.status, oe.attempts, oe.max_attempts,
              oe.last_error, oe.payload, oe.created_at, oe.updated_at,
              oe.delivered_at, oe.next_attempt_at,
-             i.name AS integration_name
+             i.name AS integration_name,
+             i.provider AS integration_provider
       FROM outbox_events oe
       LEFT JOIN integrations i ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
       WHERE oe.tenant_id = $1
+        AND oe.archived_at IS NULL
+        ${webhookFilters}
+      ORDER BY oe.created_at DESC LIMIT 100
     `;
-    const params: (string | undefined)[] = [tenantId];
 
-    if (statusFilter && statusFilter !== 'all') {
-      webhookQuery += ` AND oe.status = $2`;
-      params.push(statusFilter);
+    const { rows: rawWebhooks } = await pool.query(webhookQuery, webhookParams);
+    const webhooks = rawWebhooks.map((w: Record<string, unknown>) => ({
+      ...w,
+      payload: redactOutboxValue(w.payload ?? {}),
+      last_error: typeof w.last_error === 'string' ? redactPHI(w.last_error) : w.last_error,
+    }));
+
+    // Aggregate counters across the active (non-archived) outbox so ops can
+    // see at a glance whether the queue is wedged. `delivered` is scoped to
+    // the last 24h because the lifetime delivered count grows unbounded and
+    // isn't actionable.
+    const summaryParams: (string | undefined)[] = [tenantId];
+    let summaryProviderSql = '';
+    if (outboxProvider) {
+      summaryParams.push(outboxProvider);
+      summaryProviderSql = ` AND i.provider = $2`;
+    }
+    const { rows: summaryRows } = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE oe.status = 'pending')::int AS pending,
+         COUNT(*) FILTER (WHERE oe.status = 'processing')::int AS processing,
+         COUNT(*) FILTER (WHERE oe.status = 'failed')::int AS failed,
+         COUNT(*) FILTER (WHERE oe.status = 'dead_letter')::int AS dead_letter,
+         COUNT(*) FILTER (
+           WHERE oe.status = 'delivered'
+             AND oe.delivered_at IS NOT NULL
+             AND oe.delivered_at > NOW() - INTERVAL '24 hours'
+         )::int AS delivered_24h,
+         MIN(oe.created_at) FILTER (WHERE oe.status IN ('pending','failed','processing'))
+           AS oldest_unresolved_at
+       FROM outbox_events oe
+       LEFT JOIN integrations i ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
+       WHERE oe.tenant_id = $1 AND oe.archived_at IS NULL
+       ${summaryProviderSql}`,
+      summaryParams,
+    );
+    const summary = summaryRows[0] ?? {
+      pending: 0,
+      processing: 0,
+      failed: 0,
+      dead_letter: 0,
+      delivered_24h: 0,
+      oldest_unresolved_at: null,
+    };
+
+    // 24h hourly buckets for sparklines. We bucket on COALESCE(delivered_at,
+    // created_at) so a 'delivered' bar lines up with when delivery actually
+    // succeeded while pending/failed bars line up with when the row was
+    // created. Empty hours are filled in client-side.
+    const sparkParams: (string | undefined)[] = [tenantId];
+    let sparkProviderSql = '';
+    if (outboxProvider) {
+      sparkParams.push(outboxProvider);
+      sparkProviderSql = ` AND i.provider = $2`;
+    }
+    const { rows: sparkRows } = await pool.query(
+      `SELECT
+         DATE_TRUNC('hour', COALESCE(oe.delivered_at, oe.created_at)) AS bucket,
+         oe.status::text AS status,
+         COUNT(*)::int AS count
+       FROM outbox_events oe
+       LEFT JOIN integrations i ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
+       WHERE oe.tenant_id = $1
+         AND oe.archived_at IS NULL
+         AND COALESCE(oe.delivered_at, oe.created_at) > NOW() - INTERVAL '24 hours'
+         ${sparkProviderSql}
+       GROUP BY bucket, oe.status
+       ORDER BY bucket ASC`,
+      sparkParams,
+    );
+    const sparklines: Record<string, Array<{ bucket: string; count: number }>> = {
+      pending: [],
+      processing: [],
+      failed: [],
+      dead_letter: [],
+      delivered: [],
+    };
+    for (const r of sparkRows as Array<{ bucket: string; status: string; count: number }>) {
+      if (sparklines[r.status]) {
+        sparklines[r.status].push({ bucket: r.bucket, count: r.count });
+      }
     }
 
-    webhookQuery += ` ORDER BY oe.created_at DESC LIMIT 100`;
+    // Per-provider breakdown of currently-stuck rows. We surface failed and
+    // dead_letter side-by-side so an operator can spot "all failures are
+    // HubSpot" without scanning the listing.
+    const { rows: providerBreakdown } = await pool.query(
+      `SELECT
+         COALESCE(i.provider, 'unknown') AS provider,
+         COALESCE(i.name, '(no integration)') AS integration_name,
+         COUNT(*) FILTER (WHERE oe.status = 'failed')::int AS failed,
+         COUNT(*) FILTER (WHERE oe.status = 'dead_letter')::int AS dead_letter,
+         COUNT(*) FILTER (WHERE oe.status = 'pending')::int AS pending,
+         MAX(oe.updated_at) FILTER (WHERE oe.status IN ('failed','dead_letter')) AS last_failure_at
+       FROM outbox_events oe
+       LEFT JOIN integrations i ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
+       WHERE oe.tenant_id = $1
+         AND oe.archived_at IS NULL
+         AND oe.status IN ('failed','dead_letter','pending')
+       GROUP BY i.provider, i.name
+       HAVING COUNT(*) FILTER (WHERE oe.status IN ('failed','dead_letter','pending')) > 0
+       ORDER BY dead_letter DESC, failed DESC, pending DESC`,
+      [tenantId],
+    );
 
-    const { rows: webhooks } = await pool.query(webhookQuery, params);
+    // Distinct providers represented in the active outbox so the UI can
+    // populate the outbox provider filter dropdown.
+    const { rows: outboxProviderRows } = await pool.query(
+      `SELECT DISTINCT i.provider
+         FROM outbox_events oe
+         JOIN integrations i ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
+        WHERE oe.tenant_id = $1
+          AND oe.archived_at IS NULL
+          AND i.provider IS NOT NULL
+        ORDER BY i.provider ASC`,
+      [tenantId],
+    );
+    const outboxProviders = outboxProviderRows
+      .map((r: Record<string, unknown>) => String(r.provider ?? ''))
+      .filter((p) => p.length > 0);
 
     const { rows: health } = await pool.query(`
       SELECT
@@ -652,6 +837,24 @@ router.get('/operations/integration-diagnostics', requireAuth, requireOpsRole, a
       connectorDispatches,
       dispatchProviders,
       salesforceDispatches,
+      outboxSummary: {
+        pending: Number(summary.pending) || 0,
+        processing: Number(summary.processing) || 0,
+        failed: Number(summary.failed) || 0,
+        dead_letter: Number(summary.dead_letter) || 0,
+        delivered_24h: Number(summary.delivered_24h) || 0,
+        oldest_unresolved_at: summary.oldest_unresolved_at ?? null,
+      },
+      outboxSparklines: sparklines,
+      outboxProviderBreakdown: providerBreakdown.map((r: Record<string, unknown>) => ({
+        provider: String(r.provider ?? 'unknown'),
+        integration_name: String(r.integration_name ?? '(no integration)'),
+        failed: Number(r.failed) || 0,
+        dead_letter: Number(r.dead_letter) || 0,
+        pending: Number(r.pending) || 0,
+        last_failure_at: r.last_failure_at ?? null,
+      })),
+      outboxProviders,
     });
   } catch (err) {
     logger.error('Failed to fetch integration diagnostics', { tenantId, error: String(err) });
@@ -667,8 +870,15 @@ router.post('/operations/integration-diagnostics/:outboxId/retry', requireAuth, 
   try {
     const result = await pool.query(
       `UPDATE outbox_events
-       SET status = 'pending', next_attempt_at = NOW(), updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND status IN ('failed', 'dead_letter')
+          SET status = 'pending',
+              attempts = 0,
+              last_error = NULL,
+              next_attempt_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1
+          AND tenant_id = $2
+          AND status IN ('failed', 'dead_letter')
+          AND archived_at IS NULL
        RETURNING id`,
       [outboxId, tenantId],
     );
@@ -684,5 +894,90 @@ router.post('/operations/integration-diagnostics/:outboxId/retry', requireAuth, 
     return res.status(500).json({ error: 'Failed to retry outbox event' });
   }
 });
+
+/**
+ * Bulk-requeue every retryable outbox row that matches the supplied filters.
+ * Status defaults to 'failed' (the safe everyday case); the caller can pass
+ * 'dead_letter' to recover poison-pill rows that have hit max_attempts, or
+ * 'all' to retry both. A provider filter scopes the action to a single
+ * integration so an operator can say "retry every failed Salesforce row"
+ * without touching unrelated integrations.
+ *
+ * The retry resets `attempts` so dead_letter rows (whose attempts already
+ * equal max_attempts) become eligible for the drain claim again, mirroring
+ * the per-row retry semantics in
+ * `platformConnectorHealth.ts#/platform/connector-health/outbox/.../retry`.
+ */
+router.post(
+  '/operations/integration-diagnostics/bulk-retry',
+  requireAuth,
+  requireOpsRole,
+  async (req, res) => {
+    const { tenantId, userId } = req.user!;
+    const body = (req.body ?? {}) as { status?: unknown; provider?: unknown };
+
+    const rawStatus = typeof body.status === 'string' ? body.status.trim() : 'failed';
+    let statusValues: OutboxRetryableStatus[];
+    if (rawStatus === 'all') {
+      statusValues = [...OUTBOX_RETRYABLE_STATUSES];
+    } else if (isOutboxRetryableStatus(rawStatus)) {
+      statusValues = [rawStatus];
+    } else {
+      return res.status(400).json({
+        error: `Invalid status filter "${rawStatus}". Use one of: failed, dead_letter, all.`,
+      });
+    }
+
+    const provider =
+      typeof body.provider === 'string' && body.provider.trim().length > 0
+        ? body.provider.trim()
+        : null;
+
+    const pool = getPlatformPool();
+    try {
+      const params: Array<string | string[]> = [tenantId, statusValues];
+      let providerSql = '';
+      if (provider) {
+        params.push(provider);
+        providerSql = ` AND oe.integration_id IN (
+          SELECT id FROM integrations WHERE tenant_id = $1 AND provider = $3
+        )`;
+      }
+
+      const result = await pool.query(
+        `UPDATE outbox_events oe
+            SET status = 'pending',
+                attempts = 0,
+                last_error = NULL,
+                next_attempt_at = NOW(),
+                updated_at = NOW()
+          WHERE oe.tenant_id = $1
+            AND oe.status = ANY($2::outbox_event_status[])
+            AND oe.archived_at IS NULL
+            ${providerSql}
+          RETURNING oe.id`,
+        params,
+      );
+
+      const requeued = result.rowCount ?? 0;
+      logger.info('Bulk outbox retry queued', {
+        tenantId,
+        userId,
+        requeued,
+        statusFilter: statusValues,
+        provider,
+      });
+      return res.json({ success: true, requeued });
+    } catch (err) {
+      logger.error('Failed bulk outbox retry', {
+        tenantId,
+        error: String(err),
+        statusFilter: statusValues,
+        provider,
+      });
+      return res.status(500).json({ error: 'Failed to bulk-retry outbox events' });
+    }
+  },
+);
 
 export default router;
