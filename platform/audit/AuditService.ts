@@ -5,7 +5,14 @@ const logger = createLogger('AUDIT');
 
 export interface AuditEvent {
   tenantId: string;
-  actorUserId: string;
+  /**
+   * The user who performed the action. Pass `null` for system-initiated
+   * actions (e.g. scheduled jobs) so the row clears the foreign key to
+   * `users(id)` instead of pointing at a synthetic / non-existent
+   * "system" user. Use `actorRole = 'system'` alongside to make the
+   * automation visible in the audit feed.
+   */
+  actorUserId: string | null;
   actorRole?: string;
   action: string;
   resourceType: string;
@@ -29,7 +36,7 @@ export async function writeAuditLog(event: AuditEvent): Promise<void> {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::inet, $12)`,
         [
           event.tenantId,
-          event.actorUserId,
+          event.actorUserId ?? null,
           event.actorRole ?? null,
           event.action,
           event.resourceType,

@@ -37,6 +37,7 @@ import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler }
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler, startCrmCallerIdentityRevalidationScheduler, stopCrmCallerIdentityRevalidationScheduler } from '../../platform/integrations/connectors';
 import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler } from '../../platform/billing/CallEventsRetentionScheduler';
 import { startTenantIsolationScheduler, stopTenantIsolationScheduler } from '../../platform/security/TenantIsolationScheduler';
+import { startEncryptionReminderScheduler, stopEncryptionReminderScheduler } from '../../platform/security/EncryptionReminderScheduler';
 import { startRouteExportArchiveCleanupScheduler, stopRouteExportArchiveCleanupScheduler } from '../../platform/dispatch/RouteExportArchiveCleanupScheduler';
 
 const logger = createLogger('ADMIN_API');
@@ -116,6 +117,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startCrmCallerIdentityRevalidationScheduler();
   startCallEventsRetentionScheduler();
   startTenantIsolationScheduler();
+  startEncryptionReminderScheduler();
   startRouteExportArchiveCleanupScheduler();
   startFederalDncSyncScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
@@ -153,6 +155,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopCrmCallerIdentityRevalidationScheduler();
   stopCallEventsRetentionScheduler();
   stopTenantIsolationScheduler();
+  stopEncryptionReminderScheduler();
   stopRouteExportArchiveCleanupScheduler();
   stopFederalDncSyncScheduler();
   stopMetricsRollup();

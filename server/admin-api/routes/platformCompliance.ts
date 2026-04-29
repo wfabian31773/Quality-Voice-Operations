@@ -273,7 +273,11 @@ router.get('/platform/compliance/encryption', requireAuth, requirePlatformAdmin,
           o.owner_first_name,
           o.owner_last_name,
           r.last_reminded_at,
-          r.last_reminded_by_email
+          r.last_reminded_by_email,
+          COALESCE(t.encryption_reminder_paused, FALSE) AS encryption_reminder_paused,
+          t.encryption_reminder_paused_at,
+          t.encryption_reminder_paused_reason,
+          pu.email AS encryption_reminder_paused_by_email
         FROM tenants t
         LEFT JOIN (
           SELECT tenant_id,
@@ -311,6 +315,7 @@ router.get('/platform/compliance/encryption', requireAuth, requirePlatformAdmin,
           LEFT JOIN users au ON au.id = a.actor_user_id
           WHERE a.tenant_id = t.id AND a.action = $1
         ) r ON TRUE
+        LEFT JOIN users pu ON pu.id = t.encryption_reminder_paused_by_user_id
         ORDER BY
           (COALESCE(k.active_keys, 0) = 0) DESC,
           t.created_at DESC
@@ -473,6 +478,113 @@ router.post(
         error: String(err),
       });
       return res.status(500).json({ error: 'Failed to send encryption reminder' });
+    }
+  },
+);
+
+// ---------- Pause / resume the automated encryption reminder cadence ----------
+//
+// The recurring nudge (see `platform/security/EncryptionReminderScheduler.ts`)
+// re-emails the tenant owner every N days while their tenant still has zero
+// active encryption keys. Some tenants legitimately can't enable encryption
+// yet (regulated migration, paused integration, etc.) so platform admins can
+// park the automated cadence per-tenant from the Encryption tab. The manual
+// "Send reminder" button above is intentionally NOT gated by this flag —
+// pausing only suppresses the scheduler.
+router.patch(
+  '/platform/compliance/encryption/pause/:tenantId',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const targetTenantId = String(req.params.tenantId ?? '').trim();
+    if (!targetTenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const body = (req.body ?? {}) as { paused?: unknown; reason?: unknown };
+    if (typeof body.paused !== 'boolean') {
+      return res.status(400).json({ error: '`paused` (boolean) is required' });
+    }
+    const paused = body.paused;
+    const reason =
+      typeof body.reason === 'string' && body.reason.trim().length > 0
+        ? body.reason.trim().slice(0, 500)
+        : null;
+
+    try {
+      const result = await withPrivilegedClient(async (client) => {
+        const { rows: tenantRows } = await client.query(
+          `SELECT id, name, COALESCE(encryption_reminder_paused, FALSE) AS was_paused
+           FROM tenants WHERE id = $1`,
+          [targetTenantId],
+        );
+        if (tenantRows.length === 0) return null;
+
+        const wasPaused = tenantRows[0].was_paused as boolean;
+
+        const { rows: updated } = await client.query(
+          `UPDATE tenants
+              SET encryption_reminder_paused = $2,
+                  encryption_reminder_paused_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+                  encryption_reminder_paused_by_user_id = CASE WHEN $2 THEN $3 ELSE NULL END,
+                  encryption_reminder_paused_reason = CASE WHEN $2 THEN $4 ELSE NULL END
+            WHERE id = $1
+            RETURNING encryption_reminder_paused,
+                      encryption_reminder_paused_at,
+                      encryption_reminder_paused_reason`,
+          [targetTenantId, paused, req.user!.userId, reason],
+        );
+
+        return {
+          tenantName: tenantRows[0].name as string,
+          wasPaused,
+          row: updated[0],
+        };
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+
+      // Only audit when the value actually changed so re-clicking the same
+      // toggle from the UI doesn't spam the audit feed.
+      if (result.wasPaused !== paused) {
+        await writeAuditLog({
+          tenantId: targetTenantId,
+          actorUserId: req.user!.userId,
+          actorRole: req.user!.role,
+          action: paused
+            ? 'platform.encryption.reminder_paused'
+            : 'platform.encryption.reminder_resumed',
+          resourceType: 'tenant',
+          resourceId: targetTenantId,
+          severity: 'info',
+          ipAddress: extractIp(req),
+          userAgent: req.headers['user-agent'],
+          changes: {
+            tenantName: result.tenantName,
+            paused,
+            reason,
+            toggledBy: req.user?.email ?? null,
+          },
+        });
+      }
+
+      return res.json({
+        tenantId: targetTenantId,
+        paused: result.row.encryption_reminder_paused as boolean,
+        pausedAt: result.row.encryption_reminder_paused_at ?? null,
+        reason: result.row.encryption_reminder_paused_reason ?? null,
+      });
+    } catch (err) {
+      logger.error('Failed to toggle encryption reminder pause', {
+        targetTenantId,
+        paused,
+        error: String(err),
+      });
+      return res
+        .status(500)
+        .json({ error: 'Failed to update encryption reminder pause flag' });
     }
   },
 );

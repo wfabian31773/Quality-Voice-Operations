@@ -6,7 +6,7 @@ import {
   Shield, Download, Lock, FileText, Building2, Users, Trash2,
   CheckCircle2, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight,
   Plus, Server, Activity, KeyRound, Globe, Mail, Zap, ArrowUpRight,
-  PhoneOff,
+  PhoneOff, BellOff, Bell,
 } from 'lucide-react';
 import { EmptyState, Skeleton } from '../../components/state';
 import { StatCard } from '../../components/ui';
@@ -97,6 +97,10 @@ interface EncryptionRow {
   owner_last_name: string | null;
   last_reminded_at: string | null;
   last_reminded_by_email: string | null;
+  encryption_reminder_paused: boolean;
+  encryption_reminder_paused_at: string | null;
+  encryption_reminder_paused_reason: string | null;
+  encryption_reminder_paused_by_email: string | null;
 }
 
 interface EncryptionResponse {
@@ -505,7 +509,7 @@ function EncryptionTab() {
     text: string;
   } | null>(null);
   const [pendingTenant, setPendingTenant] = useState<{
-    action: 'remind' | 'initialize';
+    action: 'remind' | 'initialize' | 'pause';
     tenantId: string;
   } | null>(null);
 
@@ -533,6 +537,38 @@ function EncryptionTab() {
     onError: (err: unknown) => {
       const message =
         err instanceof Error ? err.message : 'Failed to send reminder.';
+      setActionMessage({ kind: 'error', text: message });
+    },
+    onSettled: () => setPendingTenant(null),
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: (vars: { tenantId: string; paused: boolean; reason?: string | null }) =>
+      api.patch<{
+        tenantId: string;
+        paused: boolean;
+        pausedAt: string | null;
+        reason: string | null;
+      }>(`/platform/compliance/encryption/pause/${vars.tenantId}`, {
+        paused: vars.paused,
+        reason: vars.reason ?? null,
+      }),
+    onMutate: (vars) => {
+      setActionMessage(null);
+      setPendingTenant({ action: 'pause', tenantId: vars.tenantId });
+    },
+    onSuccess: (result) => {
+      setActionMessage({
+        kind: 'success',
+        text: result.paused
+          ? 'Automated encryption reminders paused for this tenant. The manual "Send reminder" button still works.'
+          : 'Automated encryption reminders resumed for this tenant.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['platform-compliance-encryption'] });
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : 'Failed to update reminder pause flag.';
       setActionMessage({ kind: 'error', text: message });
     },
     onSettled: () => setPendingTenant(null),
@@ -699,6 +735,9 @@ function EncryptionTab() {
                     pendingTenant?.action === 'remind' && pendingTenant.tenantId === t.tenant_id;
                   const isInitializingThis =
                     pendingTenant?.action === 'initialize' && pendingTenant.tenantId === t.tenant_id;
+                  const isPausingThis =
+                    pendingTenant?.action === 'pause' && pendingTenant.tenantId === t.tenant_id;
+                  const reminderPaused = !!t.encryption_reminder_paused;
 
                   return (
                     <tr
@@ -758,12 +797,27 @@ function EncryptionTab() {
                         {t.last_reminded_at ? (
                           <div>
                             <div className="text-muted">{formatDate(t.last_reminded_at)}</div>
-                            {t.last_reminded_by_email && (
-                              <div className="text-[10px] text-muted">by {t.last_reminded_by_email}</div>
-                            )}
+                            <div className="text-[10px] text-muted">
+                              {t.last_reminded_by_email
+                                ? `by ${t.last_reminded_by_email}`
+                                : 'by automated scheduler'}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-muted">—</span>
+                        )}
+                        {reminderPaused && (
+                          <div
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-hover text-[10px] text-muted"
+                            title={
+                              t.encryption_reminder_paused_reason
+                                ? `Paused: ${t.encryption_reminder_paused_reason}`
+                                : 'Automated nudge paused for this tenant'
+                            }
+                          >
+                            <BellOff className="h-3 w-3" />
+                            Auto-nudge paused
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -796,11 +850,51 @@ function EncryptionTab() {
                                   initializeMutation.mutate(t.tenant_id);
                                 }
                               }}
-                              disabled={isRemindingThis || isInitializingThis}
+                              disabled={isRemindingThis || isInitializingThis || isPausingThis}
                               className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <Zap className="h-3.5 w-3.5" />
                               {isInitializingThis ? 'Initializing…' : 'Initialize now'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (reminderPaused) {
+                                  pauseMutation.mutate({
+                                    tenantId: t.tenant_id,
+                                    paused: false,
+                                  });
+                                  return;
+                                }
+                                const reason =
+                                  prompt(
+                                    `Pause the automated encryption reminder for ${t.tenant_name}?\n\nThe daily scheduler will skip this tenant. The manual "Send reminder" button above will still work.\n\nOptional reason (visible to other platform admins):`,
+                                    '',
+                                  );
+                                if (reason === null) return;
+                                pauseMutation.mutate({
+                                  tenantId: t.tenant_id,
+                                  paused: true,
+                                  reason: reason.trim() || null,
+                                });
+                              }}
+                              disabled={isRemindingThis || isInitializingThis || isPausingThis}
+                              title={
+                                reminderPaused
+                                  ? 'Resume the automated reminder cadence for this tenant'
+                                  : 'Pause the automated reminder cadence (manual sends still work)'
+                              }
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {reminderPaused ? (
+                                <Bell className="h-3.5 w-3.5" />
+                              ) : (
+                                <BellOff className="h-3.5 w-3.5" />
+                              )}
+                              {isPausingThis
+                                ? 'Updating…'
+                                : reminderPaused
+                                  ? 'Resume auto-nudge'
+                                  : 'Pause auto-nudge'}
                             </button>
                           </div>
                         ) : (
