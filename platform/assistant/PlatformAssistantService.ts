@@ -121,7 +121,7 @@ const ASSISTANT_TOOLS = [
           name: { type: 'string', description: 'Name for the agent' },
           type: {
             type: 'string',
-            enum: ['general', 'answering-service', 'medical-after-hours', 'outbound-scheduling', 'appointment-confirmation', 'dental', 'property-management', 'home-services', 'legal', 'customer-support', 'outbound-sales', 'technical-support'],
+            enum: ['general', 'answering-service', 'medical-after-hours', 'outbound-scheduling', 'appointment-confirmation', 'dental', 'property-management', 'home-services', 'legal', 'customer-support', 'outbound-sales', 'technical-support', 'real-estate', 'restaurant', 'salon'],
             description: 'Agent template type',
           },
           system_prompt: { type: 'string', description: 'Custom system prompt for the agent' },
@@ -272,6 +272,36 @@ const ASSISTANT_TOOLS = [
 
 const PRIVILEGED_TOOLS = new Set(['create_agent', 'deploy_agent', 'enable_widget', 'connect_integration']);
 
+/**
+ * English industry-template starter copy used when the assistant creates an
+ * agent and the caller didn't provide a custom prompt. These mirror the
+ * defaults applied by the Agents page quick-create flow (see
+ * `client-app/src/pages/Agents.tsx` AGENT_TYPE_TO_TEMPLATE and
+ * `client-app/src/lib/agentBuilderI18n.ts` industry template copy) so that
+ * agents created via the assistant land in the Agent Builder pre-loaded with
+ * the matching template content.
+ */
+const ASSISTANT_AGENT_TEMPLATE_COPY: Record<string, { systemPrompt: string; welcomeGreeting: string }> = {
+  'real-estate': {
+    welcomeGreeting:
+      "Thanks for calling. Are you looking to buy, sell, or rent — or just touring a listing?",
+    systemPrompt:
+      'You are a real estate front desk assistant.\n- Capture every caller as a lead, even if they only want a brochure.\n- Confirm name, phone, email, and budget or property of interest before ending the call.\n- Never quote a final price; always offer to book a showing or a call with the listing agent.',
+  },
+  restaurant: {
+    welcomeGreeting:
+      "Thanks for calling. Would you like to make a reservation, change one, or check tonight's availability?",
+    systemPrompt:
+      'You are a restaurant reservations host.\n- Always confirm party size, date, and time before checking the book.\n- If the requested time is not available, offer the closest open slot or the waitlist.\n- Note any allergies or special occasions on the booking.',
+  },
+  salon: {
+    welcomeGreeting:
+      "Thanks for calling. Are you booking a service, changing an appointment, or asking about a stylist's availability?",
+    systemPrompt:
+      'You are a salon and spa booking assistant.\n- Confirm the requested service, preferred stylist or therapist, and time window.\n- Honour stylist preferences when possible; offer a comparable provider if not.\n- Read the appointment back before saving, and remind the guest of the cancellation policy.',
+  },
+};
+
 async function executeToolCall(
   toolName: string,
   args: Record<string, unknown>,
@@ -302,7 +332,7 @@ async function executeToolCall(
       case 'create_agent': {
         const name = args.name as string;
         const type = args.type as string || 'general';
-        const systemPrompt = args.system_prompt as string || null;
+        const customSystemPrompt = args.system_prompt as string | undefined;
 
         const { checkTrialAgentLimit } = await import('../billing/guardrails/TrialGuard');
         const limitCheck = await checkTrialAgentLimit(tenantId);
@@ -310,11 +340,18 @@ async function executeToolCall(
           return { action: 'create_agent', status: 'error', message: limitCheck.reason || 'Agent limit reached for your plan' };
         }
 
+        // When the caller didn't supply a custom prompt, seed the agent with
+        // the matching industry-template copy so it lands in the Agent Builder
+        // pre-loaded just like the Agents page quick-create flow does.
+        const templateCopy = ASSISTANT_AGENT_TEMPLATE_COPY[type];
+        const systemPrompt = customSystemPrompt ?? templateCopy?.systemPrompt ?? null;
+        const welcomeGreeting = customSystemPrompt ? null : templateCopy?.welcomeGreeting ?? null;
+
         const { rows } = await pool.query(
-          `INSERT INTO agents (tenant_id, name, type, system_prompt, voice, model, temperature, tools, escalation_config, metadata)
-           VALUES ($1, $2, $3, $4, 'alloy', 'gpt-4o-realtime-preview', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
+          `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata)
+           VALUES ($1, $2, $3, $4, $5, 'alloy', 'gpt-4o-realtime-preview', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
            RETURNING id, name, type, status`,
-          [tenantId, name, type, systemPrompt],
+          [tenantId, name, type, systemPrompt, welcomeGreeting],
         );
 
         try {
@@ -403,6 +440,9 @@ async function executeToolCall(
           'customer-support': `You are a customer support agent for ${businessDesc}. Help customers with their questions, troubleshoot common issues, escalate complex problems, and ensure customer satisfaction.`,
           'outbound-sales': `You are an outbound sales representative for ${businessDesc}. Engage prospects professionally, present value propositions, handle objections, qualify leads, and schedule follow-ups.`,
           'technical-support': `You are a technical support specialist for ${businessDesc}. Diagnose technical issues, walk users through solutions, escalate complex problems, and document interactions.`,
+          'real-estate': `You are a real estate front desk assistant for ${businessDesc}. Capture every caller as a lead, confirm name, phone, email, and budget or property of interest, and offer to book a showing or a call with the listing agent. Never quote a final price.`,
+          'restaurant': `You are a restaurant reservations host for ${businessDesc}. Confirm party size, date, and time before checking the book, offer the closest open slot or the waitlist when full, and note any allergies or special occasions on the booking.`,
+          'salon': `You are a salon and spa booking assistant for ${businessDesc}. Confirm the requested service, preferred stylist or therapist, and time window, honour stylist preferences when possible, and read the appointment back before saving while reminding the guest of the cancellation policy.`,
         };
 
         let generatedPrompt: string;
