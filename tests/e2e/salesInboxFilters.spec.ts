@@ -274,12 +274,13 @@ async function run(): Promise<void> {
     );
 
     // 4. Clear actedOnBy, set inactiveDays=7, re-verify URL + row.
-    const clearedResponded = waitForLeadsRequest(page, {
-      mustInclude: [`q=${encodeURIComponent(company)}`],
-      mustExclude: ['actedOnBy='],
-    });
+    //    NOTE: clearing actedOnBy returns the query string to a value that
+    //    was already fetched on initial render (`?q=<company>`), so React
+    //    Query will serve the cached response and no new network request
+    //    will fire. Wait on the DOM (row count rebounds to 3) instead of a
+    //    network round-trip to avoid a deterministic timeout here.
     await page.fill('#lead-acted-on-by', '');
-    await clearedResponded;
+    await waitForRowCount(page, 3);
     const inactiveResponded = waitForLeadsRequest(page, {
       mustInclude: ['inactiveDays=7', `q=${encodeURIComponent(company)}`],
       mustExclude: [`actedOnBy=${encodeURIComponent(author)}`],

@@ -1,0 +1,122 @@
+name: Sales Inbox e2e
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: sales-inbox-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sales-inbox-e2e:
+    name: Sales Inbox filters e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: voiceaihub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      APP_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/voiceaihub_test
+      ADMIN_EMAIL: admin@voiceaihub.dev
+      ADMIN_PASSWORD: test-password-123
+      E2E_ADMIN_EMAIL: admin@voiceaihub.dev
+      E2E_ADMIN_PASSWORD: test-password-123
+      E2E_BASE_URL: http://localhost:5000
+      ADMIN_API_PORT: "3002"
+      VOICE_GATEWAY_PORT: "3001"
+      DISABLE_PHI_LOGGING: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install client-app dependencies
+        working-directory: client-app
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install Playwright Chromium browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run database migrations
+        run: npx tsx scripts/run-migrations.ts
+
+      - name: Seed admin user
+        run: npx tsx scripts/seed-admin.ts
+
+      - name: Boot Platform Dev stack
+        run: |
+          mkdir -p .ci-logs
+          nohup bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
+          echo $! > .ci-logs/platform.pid
+
+      - name: Wait for vite (5000) and admin API (3002) to be healthy
+        run: |
+          set +e
+          for i in $(seq 1 90); do
+            curl -sSfo /dev/null http://localhost:5000/ \
+              && curl -sSfo /dev/null http://localhost:3002/health \
+              && echo "Both services up after ${i}s" \
+              && exit 0
+            sleep 2
+          done
+          echo "::error::Platform Dev did not come up within 180s"
+          echo "----- platform-dev.log (last 200 lines) -----"
+          tail -n 200 .ci-logs/platform-dev.log || true
+          exit 1
+
+      - name: Run Sales Inbox filters e2e
+        run: npm run test:e2e:sales-inbox-filters
+
+      - name: Capture Platform Dev logs
+        if: always()
+        run: |
+          if [ -f .ci-logs/platform-dev.log ]; then
+            echo "----- platform-dev.log (last 500 lines) -----"
+            tail -n 500 .ci-logs/platform-dev.log || true
+          fi
+
+      - name: Upload Platform Dev logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-dev-logs
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Tear down Platform Dev
+        if: always()
+        run: |
+          if [ -f .ci-logs/platform.pid ]; then
+            kill "$(cat .ci-logs/platform.pid)" 2>/dev/null || true
+          fi
+          pkill -f "tsx server/admin-api" 2>/dev/null || true
+          pkill -f "tsx server/voice-gateway" 2>/dev/null || true
+          pkill -f "vite --config client-app" 2>/dev/null || true
+          exit 0
