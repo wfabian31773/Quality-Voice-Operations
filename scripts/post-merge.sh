@@ -12,6 +12,9 @@ npx tsx scripts/run-migrations.ts 2>&1
 echo "Running client-app typecheck (tsc --noEmit)..."
 npm run --silent typecheck:client
 
+echo "Running i18n key sync check..."
+npm run --silent check:i18n-keys
+
 echo "Running design-system regression checks..."
 bash scripts/ci-design-checks.sh
 

@@ -1,0 +1,5 @@
+{
+  "_comment": "Allowlist for intentional locale drift. The keys under `missing` are present in en/<ns>.json but intentionally absent from the listed locale (e.g. brand names that should fall through to English). The keys under `extra` are present in the listed locale but intentionally absent from en/<ns>.json. Anything not listed here is treated as drift by scripts/check-i18n-keys.mjs and fails CI. Schema: { missing: { <locale>: { <namespace>: [\"dotted.key.path\", ...] } }, extra: { <locale>: { <namespace>: [...] } } }. Today no overrides are needed — every key in en/* exists in de/es/fr/pt-BR/* and vice versa.",
+  "missing": {},
+  "extra": {}
+}

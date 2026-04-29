@@ -35,3 +35,6 @@ jobs:
 
       - name: Run client-app typecheck
         run: npm run typecheck:client
+
+      - name: Run i18n key sync check
+        run: npm run check:i18n-keys
