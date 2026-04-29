@@ -195,6 +195,9 @@ export type AgentBuilderTKey =
   | 'templatesPickerHint'
   | 'customTemplatesHeader'
   | 'customTemplatesEmpty'
+  | 'customTemplatesYoursHeader'
+  | 'customTemplatesSharedHeader'
+  | 'startBuildingCuratedHeader'
   | 'saveAsTemplate'
   | 'saveTemplateTitle'
   | 'saveTemplateNameLabel'
@@ -410,6 +413,9 @@ const EN: Record<AgentBuilderTKey, string> = {
   templatesPickerHint: 'Hover a template to see a larger preview before loading.',
   customTemplatesHeader: 'Your saved templates',
   customTemplatesEmpty: "You haven't saved any templates yet.",
+  customTemplatesYoursHeader: 'Your templates',
+  customTemplatesSharedHeader: 'Shared with your team',
+  startBuildingCuratedHeader: 'Curated templates',
   saveAsTemplate: 'Save as template',
   saveTemplateTitle: 'Save canvas as template',
   saveTemplateNameLabel: 'Template name',

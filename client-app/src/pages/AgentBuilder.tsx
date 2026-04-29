@@ -1931,6 +1931,20 @@ function AgentBuilderInner() {
   });
   const customTemplates: CustomTemplate[] = customTemplatesData?.templates ?? [];
 
+  // Split into the two buckets surfaced by the picker. Templates the operator
+  // created themselves go under "Your templates"; everything else returned by
+  // the API is a teammate's shared template, so it lives under "Shared with
+  // your team". The server already filters out other tenants and unshared
+  // templates from other users, so a non-owned row implies it's a shared one.
+  const ownedCustomTemplates = useMemo(
+    () => customTemplates.filter((t) => t.is_owner),
+    [customTemplates],
+  );
+  const sharedCustomTemplates = useMemo(
+    () => customTemplates.filter((t) => !t.is_owner),
+    [customTemplates],
+  );
+
   useEffect(() => {
     if (agentData?.agent) {
       const a = agentData.agent;
@@ -2969,11 +2983,16 @@ function AgentBuilderInner() {
             />
             {nodes.length === 0 && (
               <Panel position="top-center">
-                <div className="bg-surface border border-border rounded-xl shadow-sm px-6 py-4 text-center mt-20 max-w-2xl">
+                <div className="bg-surface border border-border rounded-xl shadow-sm px-6 py-4 text-center mt-20 max-w-2xl max-h-[calc(100vh-160px)] overflow-y-auto">
                   <p className="text-sm text-text-primary font-medium mb-1">{t('startBuilding')}</p>
                   <p className="text-xs text-text-secondary mb-3">
                     {t('startBuildingHelper')}
                   </p>
+                  {(ownedCustomTemplates.length > 0 || sharedCustomTemplates.length > 0) && (
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted text-left mb-2">
+                      {t('startBuildingCuratedHeader')}
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                     {industryTemplates.map((tpl) => (
                       <button
@@ -2998,6 +3017,73 @@ function AgentBuilderInner() {
                       </button>
                     ))}
                   </div>
+                  {ownedCustomTemplates.length > 0 && (
+                    <>
+                      <p className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted text-left">
+                        {t('customTemplatesYoursHeader')}
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {ownedCustomTemplates.map((tpl) => {
+                          const tplNodes = (tpl.workflow_definition?.nodes as WorkflowNode[]) || [];
+                          const tplEdges = (tpl.workflow_definition?.edges as WorkflowEdge[]) || [];
+                          return (
+                            <button
+                              key={tpl.id}
+                              onClick={() => loadCustomTemplate(tpl)}
+                              className="group flex flex-col items-stretch gap-1 p-2 text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary text-left"
+                              title={tpl.name}
+                            >
+                              <div className="w-full h-16 rounded border border-border bg-surface-secondary overflow-hidden group-hover:border-primary/30 transition">
+                                <TemplatePreview
+                                  nodes={tplNodes}
+                                  edges={tplEdges}
+                                  width={140}
+                                  height={64}
+                                  ariaLabel={t('templatePreviewAria', { label: tpl.name })}
+                                />
+                              </div>
+                              <span className="truncate">{tpl.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  {sharedCustomTemplates.length > 0 && (
+                    <>
+                      <p className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted text-left">
+                        {t('customTemplatesSharedHeader')}
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {sharedCustomTemplates.map((tpl) => {
+                          const tplNodes = (tpl.workflow_definition?.nodes as WorkflowNode[]) || [];
+                          const tplEdges = (tpl.workflow_definition?.edges as WorkflowEdge[]) || [];
+                          return (
+                            <button
+                              key={tpl.id}
+                              onClick={() => loadCustomTemplate(tpl)}
+                              className="group flex flex-col items-stretch gap-1 p-2 text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary text-left"
+                              title={tpl.name}
+                            >
+                              <div className="w-full h-16 rounded border border-border bg-surface-secondary overflow-hidden group-hover:border-primary/30 transition">
+                                <TemplatePreview
+                                  nodes={tplNodes}
+                                  edges={tplEdges}
+                                  width={140}
+                                  height={64}
+                                  ariaLabel={t('templatePreviewAria', { label: tpl.name })}
+                                />
+                              </div>
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span className="truncate flex-1">{tpl.name}</span>
+                                <Users className="h-2.5 w-2.5 text-primary flex-shrink-0" aria-label={t('sharedBadge')} />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               </Panel>
             )}
