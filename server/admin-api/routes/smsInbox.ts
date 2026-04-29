@@ -959,7 +959,7 @@ router.get('/sms-inbox/analytics', requireAuth, requireRole('manager'), analytic
 router.post('/sms-inbox/ai-draft', requireAuth, aiDraftHandler);
 
 const SMS_SCHEDULER_INTERVAL = 30_000;
-async function processScheduledMessages(): Promise<void> {
+export async function processScheduledMessages(): Promise<void> {
   try {
     const dueMessages = await SmsService.claimDueScheduledMessages();
     if (dueMessages.length === 0) return;
@@ -1046,7 +1046,12 @@ async function processScheduledMessages(): Promise<void> {
   }
 }
 
-setInterval(processScheduledMessages, SMS_SCHEDULER_INTERVAL);
-logger.info('SMS scheduled message dispatcher started', { intervalMs: SMS_SCHEDULER_INTERVAL });
+// Skip the recurring dispatcher under vitest so tests can drive
+// `processScheduledMessages` directly without a stray timer firing during
+// the run. Vitest sets `NODE_ENV='test'` by default.
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(processScheduledMessages, SMS_SCHEDULER_INTERVAL);
+  logger.info('SMS scheduled message dispatcher started', { intervalMs: SMS_SCHEDULER_INTERVAL });
+}
 
 export default router;
