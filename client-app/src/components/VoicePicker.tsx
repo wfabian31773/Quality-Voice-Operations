@@ -64,6 +64,9 @@ export default function VoicePicker({
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
   const [errorVoice, setErrorVoice] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<'generic' | 'rate-limited'>(
+    'generic',
+  );
 
   const greetingTrimmed = welcomeGreeting.trim();
   const usingDefaultSample = greetingTrimmed.length === 0;
@@ -98,6 +101,7 @@ export default function VoicePicker({
       }
       stopPlayback();
       setErrorVoice(null);
+      setErrorKind('generic');
       setLoadingVoice(v);
 
       try {
@@ -125,6 +129,7 @@ export default function VoicePicker({
         });
 
         if (!res.ok) {
+          setErrorKind(res.status === 429 ? 'rate-limited' : 'generic');
           setErrorVoice(v);
           setLoadingVoice(null);
           return;
@@ -166,6 +171,7 @@ export default function VoicePicker({
   useEffect(() => {
     stopPlayback();
     setErrorVoice(null);
+    setErrorKind('generic');
   }, [language, greetingTrimmed, stopPlayback]);
 
   const renderRow = (v: string, isInRecommendedGroup: boolean) => {
@@ -239,7 +245,9 @@ export default function VoicePicker({
             className="mt-1 text-[10px] text-red-500 dark:text-red-400"
             role="alert"
           >
-            {t('voicePreviewError')}
+            {errorKind === 'rate-limited'
+              ? t('voicePreviewRateLimited')
+              : t('voicePreviewError')}
           </p>
         )}
       </li>

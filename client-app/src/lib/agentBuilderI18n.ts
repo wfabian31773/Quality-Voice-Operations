@@ -75,6 +75,7 @@ export type AgentBuilderTKey =
   | 'voicePreviewStop'
   | 'voicePreviewLoading'
   | 'voicePreviewError'
+  | 'voicePreviewRateLimited'
   | 'voicePreviewDefaultSample'
   | 'voicePreviewRecommendedBadge'
   | 'modelField'
@@ -300,6 +301,7 @@ const EN: Record<AgentBuilderTKey, string> = {
   voicePreviewStop: 'Stop preview',
   voicePreviewLoading: 'Generating preview…',
   voicePreviewError: "Couldn't load preview",
+  voicePreviewRateLimited: 'Too many previews — wait a minute and try again',
   voicePreviewDefaultSample: 'Previewing default sample',
   voicePreviewRecommendedBadge: 'Recommended',
   modelField: 'Model',
@@ -515,6 +517,7 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'Detener vista previa',
   voicePreviewLoading: 'Generando vista previa…',
   voicePreviewError: 'No se pudo cargar la vista previa',
+  voicePreviewRateLimited: 'Demasiadas vistas previas — espera un minuto e intenta de nuevo',
   voicePreviewDefaultSample: 'Reproduciendo muestra predeterminada',
   voicePreviewRecommendedBadge: 'Recomendada',
   voiceRecommendedHint: 'Las voces marcadas con ★ suenan más naturales en {language}.',
@@ -729,6 +732,7 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'Arrêter l\'aperçu',
   voicePreviewLoading: 'Génération de l\'aperçu…',
   voicePreviewError: "Impossible de charger l'aperçu",
+  voicePreviewRateLimited: 'Trop d\'aperçus — attendez une minute et réessayez',
   voicePreviewDefaultSample: 'Lecture de l\'exemple par défaut',
   voicePreviewRecommendedBadge: 'Recommandée',
   voiceRecommendedHint: 'Les voix marquées ★ sonnent plus naturelles en {language}.',
@@ -915,6 +919,7 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'Vorschau stoppen',
   voicePreviewLoading: 'Vorschau wird erstellt…',
   voicePreviewError: 'Vorschau konnte nicht geladen werden',
+  voicePreviewRateLimited: 'Zu viele Vorschauen — warte eine Minute und versuche es erneut',
   voicePreviewDefaultSample: 'Standardbeispiel wird abgespielt',
   voicePreviewRecommendedBadge: 'Empfohlen',
   voiceRecommendedHint: 'Mit ★ markierte Stimmen klingen am natürlichsten in {language}.',
@@ -1101,6 +1106,7 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'Parar prévia',
   voicePreviewLoading: 'Gerando prévia…',
   voicePreviewError: 'Não foi possível carregar a prévia',
+  voicePreviewRateLimited: 'Muitas prévias — aguarde um minuto e tente novamente',
   voicePreviewDefaultSample: 'Reproduzindo amostra padrão',
   voicePreviewRecommendedBadge: 'Recomendada',
   voiceRecommendedHint: 'Vozes marcadas com ★ soam mais naturais em {language}.',
@@ -1287,6 +1293,7 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'Ferma anteprima',
   voicePreviewLoading: 'Generazione anteprima…',
   voicePreviewError: "Impossibile caricare l'anteprima",
+  voicePreviewRateLimited: 'Troppe anteprime — attendi un minuto e riprova',
   voicePreviewDefaultSample: 'Riproduzione esempio predefinito',
   voicePreviewRecommendedBadge: 'Consigliata',
   voiceRecommendedHint: 'Le voci contrassegnate con ★ suonano più naturali in {language}.',
@@ -1473,6 +1480,7 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'Voorbeeld stoppen',
   voicePreviewLoading: 'Voorbeeld genereren…',
   voicePreviewError: 'Kan voorbeeld niet laden',
+  voicePreviewRateLimited: 'Te veel voorbeelden — wacht een minuut en probeer opnieuw',
   voicePreviewDefaultSample: 'Standaardvoorbeeld wordt afgespeeld',
   voicePreviewRecommendedBadge: 'Aanbevolen',
   voiceRecommendedHint: 'Stemmen met ★ klinken het natuurlijkst in {language}.',
@@ -1659,6 +1667,7 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: '停止试听',
   voicePreviewLoading: '正在生成试听…',
   voicePreviewError: '无法加载试听',
+  voicePreviewRateLimited: '试听次数过多 — 请稍后一分钟再试',
   voicePreviewDefaultSample: '正在试听默认示例',
   voicePreviewRecommendedBadge: '推荐',
   voiceRecommendedHint: '标有 ★ 的语音在{language}中听起来最自然。',
@@ -1845,6 +1854,7 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: '試聴を停止',
   voicePreviewLoading: 'プレビューを生成中…',
   voicePreviewError: 'プレビューを読み込めませんでした',
+  voicePreviewRateLimited: 'プレビュー回数が多すぎます — 1分待ってから再試行してください',
   voicePreviewDefaultSample: 'デフォルトのサンプルを試聴中',
   voicePreviewRecommendedBadge: 'おすすめ',
   voiceRecommendedHint: '★ が付いた音声は{language}で最も自然に聞こえます。',
@@ -2031,6 +2041,7 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: '미리듣기 중지',
   voicePreviewLoading: '미리듣기 생성 중…',
   voicePreviewError: '미리듣기를 불러올 수 없습니다',
+  voicePreviewRateLimited: '미리듣기 요청이 너무 많습니다 — 1분 후에 다시 시도하세요',
   voicePreviewDefaultSample: '기본 샘플 미리듣기 중',
   voicePreviewRecommendedBadge: '추천',
   voiceRecommendedHint: '★ 표시가 있는 음성이 {language}에서 가장 자연스럽게 들립니다.',
@@ -2217,6 +2228,7 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'إيقاف المعاينة',
   voicePreviewLoading: 'جاري إنشاء المعاينة…',
   voicePreviewError: 'تعذر تحميل المعاينة',
+  voicePreviewRateLimited: 'طلبات معاينة كثيرة جدًا — انتظر دقيقة ثم أعد المحاولة',
   voicePreviewDefaultSample: 'تشغيل العينة الافتراضية',
   voicePreviewRecommendedBadge: 'موصى به',
   voiceRecommendedHint: 'الأصوات المميزة بـ ★ تبدو أكثر طبيعية بـ {language}.',
@@ -2403,6 +2415,7 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   voicePreviewStop: 'पूर्वावलोकन रोकें',
   voicePreviewLoading: 'पूर्वावलोकन तैयार हो रहा है…',
   voicePreviewError: 'पूर्वावलोकन लोड नहीं हो सका',
+  voicePreviewRateLimited: 'बहुत अधिक पूर्वावलोकन — एक मिनट प्रतीक्षा करें और पुनः प्रयास करें',
   voicePreviewDefaultSample: 'डिफ़ॉल्ट नमूना चलाया जा रहा है',
   voicePreviewRecommendedBadge: 'अनुशंसित',
   voiceRecommendedHint: '★ चिह्नित आवाज़ें {language} में सबसे स्वाभाविक लगती हैं।',
