@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 const ensureFreshOAuthTokenMock = vi.fn<(config: unknown, opts?: { force?: boolean }) => Promise<void>>();
 const isRefreshableProviderMock = vi.fn<(provider: string) => boolean>();
 const getConnectorConfigMock = vi.fn<(tenantId: string, type: string, provider: string) => Promise<unknown>>();
+const listConnectorConfigsMock = vi.fn<(tenantId: string) => Promise<Array<Record<string, unknown>>>>();
 const listConnectorTokenHealthMock = vi.fn<(providers: string[]) => Promise<Array<Record<string, unknown>>>>();
 const getRefreshableProvidersMock = vi.fn<() => string[]>();
 const dispatchConnectorAuthAlertMock = vi.fn<(params: Record<string, unknown>) => Promise<{
@@ -38,6 +39,7 @@ vi.mock('../../platform/integrations/connectors', () => ({
   isRefreshableProvider: (provider: string) => isRefreshableProviderMock(provider),
   getConnectorConfig: (tenantId: string, type: string, provider: string) =>
     getConnectorConfigMock(tenantId, type, provider),
+  listConnectorConfigs: (tenantId: string) => listConnectorConfigsMock(tenantId),
   listConnectorTokenHealth: (providers: string[]) => listConnectorTokenHealthMock(providers),
 }));
 
@@ -86,6 +88,8 @@ beforeEach(() => {
   isRefreshableProviderMock.mockReturnValue(true);
   getConnectorConfigMock.mockReset();
   getConnectorConfigMock.mockResolvedValue({ tenantId: TENANT_ID, provider: 'hubspot' });
+  listConnectorConfigsMock.mockReset();
+  listConnectorConfigsMock.mockResolvedValue([]);
   listConnectorTokenHealthMock.mockReset();
   listConnectorTokenHealthMock.mockResolvedValue([]);
   getRefreshableProvidersMock.mockReset();
@@ -111,6 +115,104 @@ beforeEach(() => {
       query: async () => ({ rows: integrationRow ? [integrationRow] : [], rowCount: integrationRow ? 1 : 0 }),
     }),
   );
+});
+
+describe('GET /platform/tenants/:tenantId/connectors', () => {
+  function mockTenantLookup(
+    tenantRow: Record<string, unknown> | null = {
+      id: TENANT_ID,
+      name: 'Acme Plumbing',
+      slug: 'acme-plumbing',
+      status: 'active',
+      plan: 'pro',
+    },
+  ) {
+    withPrivilegedClientMock.mockImplementationOnce(async (fn) =>
+      fn({
+        query: async () => ({
+          rows: tenantRow ? [tenantRow] : [],
+          rowCount: tenantRow ? 1 : 0,
+        }),
+      }),
+    );
+  }
+
+  it('rejects malformed tenant UUIDs without touching the connector layer', async () => {
+    const app = await buildApp();
+    const res = await request(app).get('/api/platform/tenants/not-a-uuid/connectors');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid/);
+    expect(listConnectorConfigsMock).not.toHaveBeenCalled();
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the tenant does not exist', async () => {
+    mockTenantLookup(null);
+    const app = await buildApp();
+    const res = await request(app).get(`/api/platform/tenants/${TENANT_ID}/connectors`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/Tenant not found/);
+    expect(listConnectorConfigsMock).not.toHaveBeenCalled();
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the tenant + connectors and writes an audit log entry on success', async () => {
+    mockTenantLookup();
+    listConnectorConfigsMock.mockResolvedValueOnce([
+      {
+        integrationId: INTEGRATION_ID,
+        connectorType: 'crm',
+        provider: 'hubspot',
+        name: 'HubSpot',
+        isEnabled: true,
+        configKeys: ['access_token'],
+        lastSyncAt: '2026-04-28T10:00:00.000Z',
+        lastSyncStatus: 'needs_reconnect',
+        lastSyncError: 'invalid_grant',
+        lastSyncErrorAt: '2026-04-28T11:00:00.000Z',
+        autoDisabledAt: null,
+      },
+    ]);
+
+    const app = await buildApp();
+    const res = await request(app).get(
+      `/api/platform/tenants/${TENANT_ID}/connectors?integration=${INTEGRATION_ID}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.tenant).toEqual({
+      id: TENANT_ID,
+      name: 'Acme Plumbing',
+      slug: 'acme-plumbing',
+      status: 'active',
+      plan: 'pro',
+    });
+    expect(res.body.connectors).toHaveLength(1);
+    expect(res.body.connectors[0].integrationId).toBe(INTEGRATION_ID);
+
+    expect(listConnectorConfigsMock).toHaveBeenCalledWith(TENANT_ID);
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    const audit = writeAuditLogMock.mock.calls[0][0];
+    expect(audit.action).toBe('platform_admin.tenant_connectors_viewed');
+    expect(audit.tenantId).toBe(TENANT_ID);
+    expect(audit.resourceId).toBe(TENANT_ID);
+    expect(audit.actorRole).toBe('platform_admin');
+    const changes = audit.changes as Record<string, unknown>;
+    expect(changes.connectorCount).toBe(1);
+    expect(changes.integrationFocus).toBe(INTEGRATION_ID);
+  });
+
+  it('still returns connectors when the audit write fails (audit is best-effort)', async () => {
+    mockTenantLookup();
+    listConnectorConfigsMock.mockResolvedValueOnce([]);
+    writeAuditLogMock.mockRejectedValueOnce(new Error('audit table down'));
+
+    const app = await buildApp();
+    const res = await request(app).get(`/api/platform/tenants/${TENANT_ID}/connectors`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.connectors).toEqual([]);
+  });
 });
 
 describe('POST /platform/connector-health/integrations/:tenantId/:integrationId/refresh', () => {

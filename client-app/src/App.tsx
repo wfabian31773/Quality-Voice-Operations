@@ -26,6 +26,7 @@ const AdminAnalytics = lazy(() => import('./pages/AdminAnalytics'));
 const AdminTenantAnalytics = lazy(() => import('./pages/AdminTenantAnalytics'));
 const AdminTenantCalls = lazy(() => import('./pages/AdminTenantCalls'));
 const AdminTenantCampaign = lazy(() => import('./pages/AdminTenantCampaign'));
+const AdminTenantConnectors = lazy(() => import('./pages/AdminTenantConnectors'));
 const AdminMarketplace = lazy(() => import('./pages/AdminMarketplace'));
 const AdminSalesInbox = lazy(() => import('./pages/AdminSalesInbox'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
@@ -232,6 +233,7 @@ export default function App() {
         <Route path="/admin/analytics/tenants/:tenantId" element={<AdminTenantAnalytics />} />
         <Route path="/admin/analytics/tenants/:tenantId/calls" element={<AdminTenantCalls />} />
         <Route path="/admin/analytics/tenants/:tenantId/campaigns/:campaignId" element={<AdminTenantCampaign />} />
+        <Route path="/admin/analytics/tenants/:tenantId/connectors" element={<AdminTenantConnectors />} />
         <Route path="/admin/marketplace" element={<AdminMarketplace />} />
         <Route path="/admin/sales-inbox" element={<AdminSalesInbox />} />
         <Route path="/admin/billing" element={<Billing />} />

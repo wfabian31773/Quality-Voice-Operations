@@ -958,9 +958,18 @@ function buildTenantConnectorHref(
   integrationId: string,
   tenantSlug: string | null,
 ): string {
+  // Tenant-scoped, read-only connector view for platform admins. The link
+  // lands on `/admin/analytics/tenants/:tenantId/connectors`, which is
+  // backed by the platform-admin endpoint
+  // `GET /platform/tenants/:tenantId/connectors` — no impersonation token
+  // swap required, and every load is recorded in `audit_logs`. The
+  // `integration` query param tells the landing page which row to scroll
+  // to and highlight; `slug` is carried along as a breadcrumb hint for
+  // support links/previews. Shared between the Connector Health and
+  // Expiring soon tables so URL formatting only lives in one place.
   return (
-    `/admin/analytics/tenants/${encodeURIComponent(tenantId)}` +
-    `?focus=connectors&integration=${encodeURIComponent(integrationId)}` +
+    `/admin/analytics/tenants/${encodeURIComponent(tenantId)}/connectors` +
+    `?integration=${encodeURIComponent(integrationId)}` +
     (tenantSlug ? `&slug=${encodeURIComponent(tenantSlug)}` : '')
   );
 }
@@ -1182,10 +1191,9 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
   const refreshable = c.refreshable ?? true;
   const refreshing = refreshMutation.isPending;
   const alerting = alertMutation.isPending;
-  // Tenant-scoped admin deep link: drop the platform admin straight into the
-  // affected tenant's admin view (carrying the integration id as a focus
-  // hint). Shared with the Expiring soon table via `buildTenantConnectorHref`
-  // so URL formatting only lives in one place.
+  // Tenant-scoped, read-only connector view for platform admins. URL
+  // formatting is centralized in `buildTenantConnectorHref` so this and the
+  // Expiring soon table both land on the same audit-logged page.
   const openTenantConnectorsHref = buildTenantConnectorHref(c.tenantId, c.integrationId, c.tenantSlug);
 
   return (

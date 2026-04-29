@@ -7,6 +7,7 @@ import {
   ensureFreshOAuthToken,
   isRefreshableProvider,
   getConnectorConfig,
+  listConnectorConfigs,
   listConnectorTokenHealth,
 } from '../../../platform/integrations/connectors';
 import { getRefreshableProviders } from '../../../platform/integrations/connectors/tokenRefresh';
@@ -390,6 +391,109 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface TenantLookupRow {
+  id: string;
+  name: string | null;
+  slug: string | null;
+  status: string | null;
+  plan: string | null;
+}
+
+/**
+ * Read-only, platform-admin–scoped view of a single tenant's connectors.
+ * Backs the "Open tenant connectors" deep link in the Connector Health
+ * actions column so a platform admin signed into the platform tenant can
+ * inspect the affected tenant's connector list without an impersonation
+ * token swap. Every load is logged in `audit_logs` so we keep a trail of
+ * who looked at which tenant's integrations.
+ *
+ * Non-platform-admins fall through `requirePlatformAdmin` and receive a
+ * 403 from that middleware before this handler ever runs.
+ */
+router.get(
+  '/platform/tenants/:tenantId/connectors',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId } = req.params;
+    if (!UUID_RE.test(tenantId)) {
+      return res.status(400).json({ error: 'Invalid tenantId' });
+    }
+
+    try {
+      const tenant = await withPrivilegedClient(async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, name, slug, status, plan
+             FROM tenants
+            WHERE id = $1
+            LIMIT 1`,
+          [tenantId],
+        );
+        return (rows[0] as unknown as TenantLookupRow | undefined) ?? null;
+      });
+
+      if (!tenant) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+
+      const connectors = await listConnectorConfigs(tenantId);
+
+      // Audit the cross-tenant peek. Best-effort — a write failure should
+      // not prevent the admin from seeing the data they need to triage.
+      try {
+        await writeAuditLog({
+          tenantId,
+          actorUserId: req.user!.userId,
+          actorRole: 'platform_admin',
+          action: 'platform_admin.tenant_connectors_viewed',
+          resourceType: 'tenant',
+          resourceId: tenantId,
+          severity: 'info',
+          changes: {
+            connectorCount: connectors.length,
+            integrationFocus:
+              typeof req.query.integration === 'string'
+                ? req.query.integration
+                : null,
+          },
+          ipAddress: extractIp(req),
+          userAgent: req.headers['user-agent'],
+        });
+      } catch (auditErr) {
+        logger.warn('Failed to audit platform tenant connectors view', {
+          tenantId,
+          adminUserId: req.user!.userId,
+          error: String(auditErr),
+        });
+      }
+
+      logger.info('Platform admin viewed tenant connectors', {
+        tenantId,
+        adminUserId: req.user!.userId,
+        connectorCount: connectors.length,
+      });
+
+      return res.json({
+        tenant: {
+          id: tenant.id,
+          name: tenant.name,
+          slug: tenant.slug,
+          status: tenant.status,
+          plan: tenant.plan,
+        },
+        connectors,
+      });
+    } catch (err) {
+      logger.error('Failed to load tenant connectors for platform admin', {
+        tenantId,
+        adminUserId: req.user?.userId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to load tenant connectors' });
+    }
+  },
+);
 
 interface IntegrationLookupRow {
   id: string;
