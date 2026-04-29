@@ -727,6 +727,111 @@ describe('booking endpoints honour schedule overrides', () => {
     expect(queryQueue).toHaveLength(0);
   });
 
+  it('POST /scheduling/recurring → skips occurrences that overlap a partial blackout but lets non-overlapping dates through', async () => {
+    // Each weekly occurrence runs at 14:00 UTC for 30 minutes. Three Fridays:
+    //   2026-05-01 → partial blackout 13:30:00-14:30:00 OVERLAPS → skip
+    //   2026-05-08 → partial blackout 09:00:00-10:00:00 does NOT overlap → book
+    //   2026-05-15 → no overrides → book
+    queryQueue.push(
+      // INSERT INTO scheduling_recurring_series
+      {
+        match: /INSERT INTO scheduling_recurring_series/i,
+        rows: [
+          {
+            id: 'series-partial',
+            tenant_id: TENANT,
+            title: 'Weekly cleaning',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+            resource_id: null,
+            recurrence_pattern: 'weekly',
+            recurrence_day_of_week: 5,
+            recurrence_time: '14:00:00',
+            duration_minutes: 30,
+            series_start: '2026-05-01',
+            series_end: '2026-05-15',
+            contact_name: '',
+            contact_phone: '',
+            contact_email: '',
+          },
+        ],
+      },
+      // findBlockingOverride for 2026-05-01 → partial blackout that
+      // overlaps the 14:00-14:30 slot.
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-overlap',
+            provider_id: null,
+            override_date: '2026-05-01',
+            start_time: '13:30:00',
+            end_time: '14:30:00',
+            is_available: false,
+            reason: 'All-hands meeting',
+          },
+        ],
+      },
+      // findBlockingOverride for 2026-05-08 → partial blackout that does
+      // NOT overlap the 14:00-14:30 slot, so the booking should still go in.
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-morning',
+            provider_id: null,
+            override_date: '2026-05-08',
+            start_time: '09:00:00',
+            end_time: '10:00:00',
+            is_available: false,
+            reason: 'Morning standup',
+          },
+        ],
+      },
+      // INSERT INTO bookings — 2026-05-08 occurrence
+      {
+        match: /INSERT INTO bookings[\s\S]+recurring_series_id/i,
+        rows: [{ id: 'bk-2026-05-08' }],
+      },
+      // findBlockingOverride for 2026-05-15 → no overrides
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      // INSERT INTO bookings — 2026-05-15 occurrence
+      {
+        match: /INSERT INTO bookings[\s\S]+recurring_series_id/i,
+        rows: [{ id: 'bk-2026-05-15' }],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/recurring').send({
+      title: 'Weekly cleaning',
+      provider_id: PROVIDER_A,
+      recurrence_pattern: 'weekly',
+      recurrence_day_of_week: 5,
+      recurrence_time: '14:00:00',
+      duration_minutes: 30,
+      series_start: '2026-05-01',
+      series_end: '2026-05-15',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.series.id).toBe('series-partial');
+    // The 2026-05-01 occurrence MUST be skipped because the partial
+    // blackout overlaps the 14:00 slot. The 2026-05-08 occurrence must
+    // still be booked because the morning blackout doesn't touch 14:00.
+    expect(res.body.occurrences.created).toEqual([
+      'bk-2026-05-08',
+      'bk-2026-05-15',
+    ]);
+    expect(res.body.occurrences.skipped).toEqual([
+      {
+        date: '2026-05-01',
+        reason: 'All-hands meeting',
+        override_id: 'ovr-overlap',
+      },
+    ]);
+    expect(queryQueue).toHaveLength(0);
+  });
+
   it('POST /scheduling/recurring → returns occurrences.error when materialization fails after the series row is saved', async () => {
     queryQueue.push(
       // INSERT INTO scheduling_recurring_series — series persisted successfully
