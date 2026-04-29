@@ -15,6 +15,9 @@ npm run --silent typecheck:client
 echo "Running i18n key sync check..."
 npm run --silent check:i18n-keys
 
+echo "Running client-app unit tests (vitest)..."
+pnpm --filter client-app test
+
 echo "Running design-system regression checks..."
 bash scripts/ci-design-checks.sh
 
