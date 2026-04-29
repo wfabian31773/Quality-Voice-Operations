@@ -138,6 +138,118 @@ function normalizeTime(value: string | null | undefined): string | null {
   return `${m[1]}:${m[2]}:${m[3] || '00'}`;
 }
 
+// ─── TENANT TIMEZONE HELPERS ───
+//
+// Recurring series and override windows are stored as bare wall-clock TIME
+// values; the booking-create endpoint defaults each booking's `timezone`
+// column to 'America/New_York'. The override comparison code historically
+// parsed those windows in process-local time (see BL-038 follow-up), which
+// quietly broke for tenants outside UTC: a "14:00 every Friday" series for
+// an Eastern-time tenant ended up compared against overrides as if it were
+// 14:00 UTC.
+//
+// `tenants.timezone` (added in migration 097) is the single source of truth
+// the materialization helper and override-collision check thread through
+// when comparing wall-clock windows to UTC instants.
+
+const DEFAULT_TENANT_TIMEZONE = 'America/New_York';
+
+export async function getTenantTimezone(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+): Promise<string> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT timezone FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    const tz = rows[0]?.timezone;
+    if (typeof tz === 'string' && tz.trim()) return tz;
+  } catch (err) {
+    // Tolerate the column being missing on legacy schemas; the materialization
+    // helper and override comparison both fall back to the historical
+    // 'America/New_York' default in that case so behaviour does not regress.
+    logger.warn('Failed to load tenant timezone; falling back to default', {
+      tenantId,
+      error: String(err),
+    });
+  }
+  return DEFAULT_TENANT_TIMEZONE;
+}
+
+/**
+ * Returns the offset in minutes such that
+ *   wall-clock-in-tz === UTC + offset.
+ * For TZ ahead of UTC (e.g. Asia/Kolkata +05:30) the offset is positive
+ * (+330); for TZ behind UTC (e.g. America/New_York EST -05:00) the offset
+ * is negative (-300).
+ */
+function getTimezoneOffsetMinutes(instantMs: number, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(new Date(instantMs));
+  const lookup: Record<string, string> = {};
+  for (const p of parts) lookup[p.type] = p.value;
+  // `Intl` reports midnight as "24" in the en-US calendar; treat it as 00.
+  const hour = lookup.hour === '24' ? '00' : lookup.hour;
+  const wallUtc = Date.UTC(
+    Number(lookup.year),
+    Number(lookup.month) - 1,
+    Number(lookup.day),
+    Number(hour),
+    Number(lookup.minute),
+    Number(lookup.second),
+  );
+  return Math.round((wallUtc - instantMs) / 60000);
+}
+
+/**
+ * Convert a wall-clock date/time in `timeZone` to the corresponding UTC
+ * instant. Two-pass to handle DST boundaries (the offset at the guess
+ * instant and the corrected instant can differ by an hour around spring
+ * forward / fall back).
+ */
+export function wallClockInTimezoneToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string,
+): Date {
+  const guess = Date.UTC(year, month - 1, day, hour, minute, second);
+  let offset = getTimezoneOffsetMinutes(guess, timeZone);
+  let result = guess - offset * 60000;
+  offset = getTimezoneOffsetMinutes(result, timeZone);
+  result = guess - offset * 60000;
+  return new Date(result);
+}
+
+/**
+ * Returns the calendar date of `instant` in `timeZone` formatted as
+ * 'YYYY-MM-DD'. Used to bucket UTC instants into the dates that
+ * `scheduling_overrides.override_date` rows are keyed by.
+ */
+export function getDateInTimeZone(instant: Date, timeZone: string): string {
+  // 'en-CA' formats as YYYY-MM-DD so we don't need to reorder parts.
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return dtf.format(instant);
+}
+
 function timeToMinutes(value: string): number {
   const [h, m] = value.split(':').map(Number);
   return h * 60 + (m || 0);
@@ -246,23 +358,39 @@ export async function findBlockingOverride(
   startISO: string,
   endISO: string,
   providerId: string | null,
+  // Tenant timezone the override `override_date` and wall-clock TIME values
+  // are interpreted in. When omitted, falls back to UTC for backwards
+  // compatibility with callers that have not been threaded through yet.
+  timezone: string = 'UTC',
 ): Promise<ScheduleOverride | null> {
   const start = new Date(startISO);
   const end = new Date(endISO);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
 
   // The booking might span multiple calendar dates (rare but possible). Pull
-  // overrides for every date it touches.
+  // overrides for every date it touches IN THE TENANT TIMEZONE so the
+  // override row keyed to "May 1 in PT" still matches a 2026-05-01T22:00Z
+  // booking (which lands on May 1 in PT but May 2 in UTC).
   const dates = new Set<string>();
-  const cursor = new Date(start);
-  cursor.setUTCHours(0, 0, 0, 0);
-  const lastDay = new Date(end.getTime() - 1);
-  lastDay.setUTCHours(0, 0, 0, 0);
-  while (cursor.getTime() <= lastDay.getTime()) {
-    dates.add(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  const startDate = getDateInTimeZone(start, timezone);
+  const lastDate = getDateInTimeZone(new Date(end.getTime() - 1), timezone);
+  let cursorStr = startDate;
+  // Hard cap to keep a malformed input from looping forever; bookings span
+  // a handful of days at most.
+  let safety = 0;
+  while (safety < 366) {
+    dates.add(cursorStr);
+    if (cursorStr === lastDate) break;
+    const [yy, mm, dd] = cursorStr.split('-').map(Number);
+    // Step one calendar day forward in tenant time. Anchoring at noon
+    // dodges DST-transition edge cases entirely; we only care about the
+    // resulting Y-M-D in the tenant timezone.
+    const noonInTenantTz = wallClockInTimezoneToUtc(yy, mm, dd, 12, 0, 0, timezone);
+    const nextNoon = new Date(noonInTenantTz.getTime() + 24 * 60 * 60 * 1000);
+    cursorStr = getDateInTimeZone(nextNoon, timezone);
+    safety += 1;
   }
-  if (dates.size === 0) dates.add(start.toISOString().slice(0, 10));
+  if (dates.size === 0) dates.add(startDate);
 
   const { rows } = await pool.query(
     `SELECT id, provider_id, override_date, start_time, end_time, is_available, reason
@@ -295,12 +423,16 @@ export async function findBlockingOverride(
       const oEnd = normalizeTime(o.end_time);
       if (!oStart || !oEnd) continue;
 
-      // Compute the blackout window in real time on this date and compare
-      // against the booking interval. Treating the override's TIME values as
-      // local-to-the-date keeps behaviour consistent with the availability
-      // handler.
-      const blackoutStart = new Date(`${date}T${oStart}`);
-      const blackoutEnd = new Date(`${date}T${oEnd}`);
+      // Compute the blackout window's UTC instants from the wall-clock TIME
+      // values interpreted in the tenant's timezone, then compare against the
+      // booking interval. This is the fix for BL-038: previously the window
+      // was parsed in process-local time, which silently broke any tenant
+      // outside UTC.
+      const [oys, oms, ods] = date.split('-').map(Number);
+      const [shr, smin, ssec] = oStart.split(':').map(Number);
+      const [ehr, emin, esec] = oEnd.split(':').map(Number);
+      const blackoutStart = wallClockInTimezoneToUtc(oys, oms, ods, shr, smin, ssec || 0, timezone);
+      const blackoutEnd = wallClockInTimezoneToUtc(oys, oms, ods, ehr, emin, esec || 0, timezone);
       if (start < blackoutEnd && end > blackoutStart) return o;
     }
   }
@@ -508,8 +640,12 @@ export async function buildOverrideConflictResponse(
   startISO: string,
   endISO: string,
   providerId: string | null,
+  // Tenant timezone passed through to `findBlockingOverride` so the override
+  // wall-clock window comparison happens in the tenant's local time rather
+  // than the server's process-local time.
+  timezone: string = 'UTC',
 ): Promise<{ status: number; body: Record<string, unknown> } | null> {
-  const blocker = await findBlockingOverride(pool, tenantId, startISO, endISO, providerId);
+  const blocker = await findBlockingOverride(pool, tenantId, startISO, endISO, providerId, timezone);
   if (!blocker) return null;
   return {
     status: 409,
@@ -643,7 +779,7 @@ export async function materializeRecurringSeries(
   pool: ReturnType<typeof getPlatformPool>,
   series: RecurringSeriesRow,
   createdBy: string | null,
-  timezone: string = 'America/New_York',
+  timezone: string = DEFAULT_TENANT_TIMEZONE,
 ): Promise<{ created: string[]; skipped: SkippedOccurrence[] }> {
   const dates = expandRecurringSeriesDates(
     series.series_start,
@@ -652,17 +788,20 @@ export async function materializeRecurringSeries(
     series.recurrence_day_of_week,
   );
   const time = normalizeTime(series.recurrence_time) || series.recurrence_time;
+  const [hh, mm, ss] = time.split(':').map(Number);
   const created: string[] = [];
   const skipped: SkippedOccurrence[] = [];
 
   for (const date of dates) {
-    // Pin the occurrence to UTC so override-date bucketing in
-    // `findBlockingOverride` lands on `date` deterministically across
-    // server timezones. The booking row carries the original `timezone`
-    // alongside so calendar UIs can render it locally.
-    const startISO = `${date}T${time}.000Z`;
-    const startMs = new Date(startISO).getTime();
-    const endISO = new Date(startMs + series.duration_minutes * 60_000).toISOString();
+    // Resolve the wall-clock recurrence_time on `date` to a real UTC
+    // instant in the tenant's timezone. Treating the time as UTC (the old
+    // behaviour) silently shifted appointments by the tenant's UTC offset
+    // and broke override-collision checks for tenants outside UTC; see
+    // BL-038 follow-up.
+    const [yy, mo, dd] = date.split('-').map(Number);
+    const startInstant = wallClockInTimezoneToUtc(yy, mo, dd, hh, mm || 0, ss || 0, timezone);
+    const startISO = startInstant.toISOString();
+    const endISO = new Date(startInstant.getTime() + series.duration_minutes * 60_000).toISOString();
 
     const blocker = await findBlockingOverride(
       pool,
@@ -670,6 +809,7 @@ export async function materializeRecurringSeries(
       startISO,
       endISO,
       series.provider_id,
+      timezone,
     );
     if (blocker) {
       skipped.push({
@@ -880,8 +1020,14 @@ const createBookingHandler: RequestHandler = async (req, res) => {
         }
       }
 
+      // Override windows are stored as bare wall-clock TIME values; we have
+      // to interpret them in the tenant's timezone or a non-UTC tenant
+      // could be silently booked into a blocked window. The tenant TZ is
+      // also reused as the booking row's `timezone` default below so the
+      // two paths agree on a single source of truth.
+      const tenantTz = await getTenantTimezone(pool, tenantId);
       const overrideConflict = await buildOverrideConflictResponse(
-        pool, tenantId, start_time, end_time, provider_id || null,
+        pool, tenantId, start_time, end_time, provider_id || null, tenantTz,
       );
       if (overrideConflict) {
         return res.status(overrideConflict.status).json(overrideConflict.body);
@@ -899,7 +1045,7 @@ const createBookingHandler: RequestHandler = async (req, res) => {
         contact_name || '', contact_phone || '', contact_email || '',
         agent_id || null, req.user!.userId, notes || '',
         provider_id || null, appointment_type_id || null, resource_id || null, recurring_series_id || null,
-        JSON.stringify(intake_data || {}), timezone || 'America/New_York', location || '', booking_source || 'manual'],
+        JSON.stringify(intake_data || {}), timezone || DEFAULT_TENANT_TIMEZONE, location || '', booking_source || 'manual'],
     );
 
     await auditLog(pool, tenantId, rows[0].id, 'created', null, rows[0].status, req.user!.userId, { title, provider_id, appointment_type_id }, override_reason || '');
@@ -944,8 +1090,9 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
       }
 
       if (!override_reason) {
+        const tenantTz = await getTenantTimezone(pool, tenantId);
         const overrideConflict = await buildOverrideConflictResponse(
-          pool, tenantId, newStart, newEnd, newProviderId || null,
+          pool, tenantId, newStart, newEnd, newProviderId || null, tenantTz,
         );
         if (overrideConflict) {
           return res.status(overrideConflict.status).json(overrideConflict.body);
@@ -1100,8 +1247,9 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
         return res.status(409).json({ error: 'New time slot has conflicts', conflicts });
       }
       if (!override_reason) {
+        const tenantTz = await getTenantTimezone(pool, tenantId);
         const overrideConflict = await buildOverrideConflictResponse(
-          pool, tenantId, new_start_time, new_end_time, booking.provider_id || null,
+          pool, tenantId, new_start_time, new_end_time, booking.provider_id || null, tenantTz,
         );
         if (overrideConflict) {
           return res.status(overrideConflict.status).json(overrideConflict.body);
@@ -1116,6 +1264,7 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
     // re-check it now so the booking is not silently activated into a
     // window that is no longer bookable.
     if ((action === 'reopen' || action === 'confirm') && !override_reason) {
+      const tenantTz = await getTenantTimezone(pool, tenantId);
       const overrideConflict = await buildOverrideConflictResponse(
         pool,
         tenantId,
@@ -1126,6 +1275,7 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
           ? booking.end_time.toISOString()
           : String(booking.end_time),
         booking.provider_id || null,
+        tenantTz,
       );
       if (overrideConflict) {
         return res.status(overrideConflict.status).json(overrideConflict.body);
@@ -1919,11 +2069,19 @@ const createRecurringSeriesHandler: RequestHandler = async (req, res) => {
       skipped: [],
     };
     try {
+      // Caller-provided timezone wins so admins can pin a one-off series
+      // to a different zone (e.g. a satellite office). Otherwise fall back
+      // to the tenant's configured timezone — that is the single source of
+      // truth `findBlockingOverride` and the materialization helper agree
+      // on, replacing the historical hardcoded 'America/New_York'.
+      const expansionTz = typeof timezone === 'string' && timezone
+        ? timezone
+        : await getTenantTimezone(pool, tenantId);
       occurrences = await materializeRecurringSeries(
         pool,
         series,
         req.user!.userId ?? null,
-        typeof timezone === 'string' && timezone ? timezone : 'America/New_York',
+        expansionTz,
       );
     } catch (matErr) {
       // The series row is already persisted; surface a partial-success

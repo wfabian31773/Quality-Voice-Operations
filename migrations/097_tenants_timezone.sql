@@ -1,0 +1,16 @@
+-- Tenant-level scheduling timezone.
+--
+-- The scheduler stores `recurrence_time` and override `start_time`/`end_time`
+-- as bare SQL TIME values (no timezone). The materialization helper and the
+-- override-collision checker used to interpret those wall-clock times as
+-- UTC, which silently broke for tenants outside UTC: a "14:00 every Friday"
+-- series for an Eastern-time tenant would be checked against overrides as
+-- if it were 14:00 UTC.
+--
+-- This migration introduces a single source of truth for the tenant's
+-- timezone so `materializeRecurringSeries` and `findBlockingOverride` can
+-- thread the same value through both the recurring-series expansion and
+-- the override comparison. Defaulting to 'America/New_York' matches the
+-- existing booking-create endpoint default so existing tenants are not
+-- silently shifted by the column add.
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'America/New_York';

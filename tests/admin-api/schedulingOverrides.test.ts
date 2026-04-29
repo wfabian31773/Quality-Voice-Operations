@@ -384,6 +384,9 @@ describe('booking endpoints honour schedule overrides', () => {
       { match: /FROM scheduling_booking_rules/i, rows: [] },
       // checkConflicts — no other bookings overlap
       { match: /FROM bookings WHERE/i, rows: [] },
+      // getTenantTimezone — UTC keeps the override window aligned with the
+      // booking instants the test sends.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride — return a partial blackout that overlaps
       {
         match: /FROM scheduling_overrides/i,
@@ -467,6 +470,9 @@ describe('booking endpoints honour schedule overrides', () => {
           },
         ],
       },
+      // getTenantTimezone — UTC keeps the override window aligned with the
+      // booking instants the test sends.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride — admin created a partial blackout in the meantime
       {
         match: /FROM scheduling_overrides/i,
@@ -512,6 +518,9 @@ describe('booking endpoints honour schedule overrides', () => {
           },
         ],
       },
+      // getTenantTimezone — UTC so the override window aligns with the
+      // booking's UTC instants in this test.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride — full-day blackout
       {
         match: /FROM scheduling_overrides/i,
@@ -602,6 +611,9 @@ describe('booking endpoints honour schedule overrides', () => {
       },
       // checkConflicts — no other bookings overlap
       { match: /FROM bookings WHERE/i, rows: [] },
+      // getTenantTimezone — UTC so the test's UTC instants align with the
+      // override comparison.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride — full-day blackout
       {
         match: /FROM scheduling_overrides/i,
@@ -666,6 +678,10 @@ describe('booking endpoints honour schedule overrides', () => {
           },
         ],
       },
+      // getTenantTimezone — handler falls back to tenant tz when body has
+      // no `timezone` field. UTC keeps the wall-clock 14:00 recurrence
+      // landing on 14:00 UTC so override-date bucketing matches.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride for 2026-05-01 → full-day blackout (Holiday)
       {
         match: /FROM scheduling_overrides/i,
@@ -756,6 +772,8 @@ describe('booking endpoints honour schedule overrides', () => {
           },
         ],
       },
+      // getTenantTimezone — UTC fallback when body omits `timezone`.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride for 2026-05-01 → partial blackout that
       // overlaps the 14:00-14:30 slot.
       {
@@ -857,6 +875,10 @@ describe('booking endpoints honour schedule overrides', () => {
           },
         ],
       },
+      // getTenantTimezone — UTC fallback when body omits `timezone`. The
+      // failure we want to simulate is mid-materialization, not while
+      // resolving the tenant tz, so let this succeed.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       // findBlockingOverride hits scheduling_overrides first — make that
       // throw to simulate a transient DB error mid-materialization. The
       // handler must NOT 500: the series row is already persisted, so the
@@ -955,6 +977,99 @@ describe('booking endpoints honour schedule overrides', () => {
     expect(queryQueue).toHaveLength(0);
   });
 
+  it('POST /scheduling/recurring → honours the tenant timezone for an override that only collides in local time, not UTC', async () => {
+    // Regression for the BL-038 follow-up: `materializeRecurringSeries` and
+    // `findBlockingOverride` used to interpret recurrence_time and override
+    // start/end as UTC clock values. For a tenant in America/New_York that
+    // produced a silent half-day shift, and an override that genuinely
+    // collided in local time would slip through because in UTC the windows
+    // no longer overlapped.
+    //
+    // Scenario:
+    //   Tenant timezone:   America/New_York (EDT = UTC-04 in May)
+    //   Recurrence:        14:00 Fri 2026-05-01, 30min   → 18:00-18:30 UTC
+    //   Override window:   13:00-15:00 local on 2026-05-01 → 17:00-19:00 UTC
+    //
+    // Local-time comparison: [14:00, 14:30) ⊂ [13:00, 15:00) → COLLIDES.
+    // UTC-only comparison:   [18:00, 18:30) vs [13:00, 15:00) → NO overlap.
+    //
+    // The new code must collide; the body deliberately omits `timezone` so
+    // the handler is forced through `getTenantTimezone` (the fix's source
+    // of truth) instead of relying on a caller hint.
+    queryQueue.push(
+      {
+        match: /INSERT INTO scheduling_recurring_series/i,
+        rows: [
+          {
+            id: 'series-ny',
+            tenant_id: TENANT,
+            title: 'NY weekly cleaning',
+            provider_id: PROVIDER_A,
+            appointment_type_id: null,
+            resource_id: null,
+            recurrence_pattern: 'weekly',
+            recurrence_day_of_week: 5,
+            recurrence_time: '14:00:00',
+            duration_minutes: 30,
+            series_start: '2026-05-01',
+            series_end: '2026-05-01',
+            contact_name: '',
+            contact_phone: '',
+            contact_email: '',
+          },
+        ],
+      },
+      // getTenantTimezone — tenant is in NY. This is what the fix added:
+      // expansion now consults the tenants table when the body has no tz.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'America/New_York' }] },
+      // findBlockingOverride lookup for 2026-05-01 (the date in NY local
+      // time, not UTC — also the date in UTC here, so they agree). The
+      // override row's wall-clock window is 13:00-15:00 NY local.
+      {
+        match: /FROM scheduling_overrides/i,
+        rows: [
+          {
+            id: 'ovr-ny-afternoon',
+            provider_id: PROVIDER_A,
+            override_date: '2026-05-01',
+            start_time: '13:00:00',
+            end_time: '15:00:00',
+            is_available: false,
+            reason: 'NY afternoon offsite',
+          },
+        ],
+      },
+    );
+
+    const res = await request(app).post('/scheduling/recurring').send({
+      title: 'NY weekly cleaning',
+      provider_id: PROVIDER_A,
+      recurrence_pattern: 'weekly',
+      recurrence_day_of_week: 5,
+      recurrence_time: '14:00:00',
+      duration_minutes: 30,
+      series_start: '2026-05-01',
+      series_end: '2026-05-01',
+      // NOTE: no `timezone` here on purpose — the whole point is that the
+      // handler resolves it from the tenant row.
+    });
+
+    expect(res.status).toBe(201);
+    // The single occurrence MUST be skipped because, in NY local time, the
+    // 14:00 cleaning overlaps the 13:00-15:00 override. If the tenant TZ
+    // were ignored (the old bug), this would have been booked instead.
+    expect(res.body.occurrences.created).toEqual([]);
+    expect(res.body.occurrences.skipped).toEqual([
+      {
+        date: '2026-05-01',
+        reason: 'NY afternoon offsite',
+        override_id: 'ovr-ny-afternoon',
+      },
+    ]);
+    // No INSERT INTO bookings should have been issued.
+    expect(queryQueue).toHaveLength(0);
+  });
+
   it('POST /scheduling/recurring → materializes every occurrence when no overrides apply', async () => {
     queryQueue.push(
       {
@@ -979,6 +1094,8 @@ describe('booking endpoints honour schedule overrides', () => {
           },
         ],
       },
+      // getTenantTimezone — UTC fallback when body omits `timezone`.
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'UTC' }] },
       { match: /FROM scheduling_overrides/i, rows: [] },
       { match: /INSERT INTO bookings/i, rows: [{ id: 'bk-d1' }] },
       { match: /FROM scheduling_overrides/i, rows: [] },
