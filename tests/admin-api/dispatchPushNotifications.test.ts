@@ -692,3 +692,128 @@ describe('Booking push: transitionBookingHandler reschedule', () => {
     expect(fireDispatchPushMock).not.toHaveBeenCalled();
   });
 });
+
+describe('Booking push: transitionBookingHandler cancel', () => {
+  it('fires booking_cancelled to the assigned resource when a booking is cancelled', async () => {
+    queueQueries(
+      // SELECT existing booking
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-1',
+            tenant_id: TENANT,
+            title: 'Annual checkup',
+            status: 'confirmed',
+            start_time: '2026-05-01T15:00:00.000Z',
+            end_time: '2026-05-01T15:30:00.000Z',
+            contact_name: 'Acme HQ',
+            contact_phone: '+15551234567',
+            agent_id: 'agent-1',
+            provider_id: 'prov-a',
+            appointment_type_id: null,
+            resource_id: 'res-1',
+            timezone: 'America/Los_Angeles',
+          },
+        ],
+      },
+      // UPDATE bookings (set status = cancelled)
+      { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
+      // SELECT FROM scheduling_waitlist — no waiters, so the offer-update
+      // step is skipped and no extra UPDATE runs.
+      { match: /FROM scheduling_waitlist/i, rows: [] },
+      // INSERT INTO scheduling_audit_log
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      // Final SELECT * FROM bookings to return updated row
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-1',
+            tenant_id: TENANT,
+            title: 'Annual checkup',
+            status: 'cancelled',
+            start_time: '2026-05-01T15:00:00.000Z',
+            end_time: '2026-05-01T15:30:00.000Z',
+            resource_id: 'res-1',
+          },
+        ],
+      },
+    );
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/scheduling/bookings/bk-1/transition')
+      .send({ action: 'cancel' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe('cancelled');
+    await flushMicrotasks();
+
+    expect(fireDispatchPushMock).toHaveBeenCalledTimes(1);
+    expect(fireDispatchPushMock.mock.calls[0][0]).toMatchObject({
+      event: 'booking_cancelled',
+      tenantId: TENANT,
+      resourceIds: ['res-1'],
+      booking: {
+        id: 'bk-1',
+        title: 'Annual checkup',
+        start_time: '2026-05-01T15:00:00.000Z',
+      },
+    });
+  });
+
+  it('does NOT fire push on cancel when the booking has no assigned resource', async () => {
+    queueQueries(
+      // SELECT existing booking — resource_id is null, so the push path
+      // must short-circuit even though the cancel itself succeeds.
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-1',
+            tenant_id: TENANT,
+            title: 'Annual checkup',
+            status: 'confirmed',
+            start_time: '2026-05-01T15:00:00.000Z',
+            end_time: '2026-05-01T15:30:00.000Z',
+            contact_name: 'Acme HQ',
+            contact_phone: '+15551234567',
+            agent_id: 'agent-1',
+            provider_id: 'prov-a',
+            appointment_type_id: null,
+            resource_id: null,
+            timezone: 'America/Los_Angeles',
+          },
+        ],
+      },
+      { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
+      { match: /FROM scheduling_waitlist/i, rows: [] },
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: 'bk-1',
+            tenant_id: TENANT,
+            title: 'Annual checkup',
+            status: 'cancelled',
+            start_time: '2026-05-01T15:00:00.000Z',
+            end_time: '2026-05-01T15:30:00.000Z',
+            resource_id: null,
+          },
+        ],
+      },
+    );
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/scheduling/bookings/bk-1/transition')
+      .send({ action: 'cancel' });
+
+    expect(res.status).toBe(200);
+    await flushMicrotasks();
+
+    expect(fireDispatchPushMock).not.toHaveBeenCalled();
+  });
+});
