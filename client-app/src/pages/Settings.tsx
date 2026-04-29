@@ -1,4 +1,12 @@
-import { useState, useEffect, useMemo, type ComponentType } from 'react';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useContext,
+  createContext,
+  type ComponentType,
+} from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -70,6 +78,31 @@ const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
 interface AgentType {
   value: string;
   label: string;
+}
+
+// ---- Per-tab "unsaved changes" dirty registry ----
+//
+// Each panel that has a save flow reports its dirty state via `useReportDirty`.
+// The Settings parent renders a small dot on the tab button whenever any
+// registration for that tab is currently dirty. Registration ids are namespaced
+// as `<tab>` or `<tab>:<sub-panel>` so multiple sub-panels (e.g. the
+// notification matrix and connector alert preferences) can both contribute to
+// the same tab badge.
+
+interface SettingsDirtyContextValue {
+  setDirty: (id: string, dirty: boolean) => void;
+}
+
+const SettingsDirtyContext = createContext<SettingsDirtyContextValue>({
+  setDirty: () => {},
+});
+
+function useReportDirty(id: string, dirty: boolean) {
+  const { setDirty } = useContext(SettingsDirtyContext);
+  useEffect(() => {
+    setDirty(id, dirty);
+    return () => setDirty(id, false);
+  }, [id, dirty, setDirty]);
 }
 
 function GeneralSettings() {
@@ -152,12 +185,55 @@ function GeneralSettings() {
         },
       }),
     onSuccess: () => {
+      // Update the cached tenant immediately so the dirty comparison
+      // (form vs. baseline) flips to false right away — otherwise the
+      // unsaved-changes dot can linger until the refetch resolves.
+      const previous = queryClient.getQueryData<{ tenant: Tenant }>(['tenant-settings']);
+      if (previous?.tenant) {
+        queryClient.setQueryData(['tenant-settings'], {
+          tenant: {
+            ...previous.tenant,
+            name: form.name,
+            settings: {
+              ...((previous.tenant.settings ?? {}) as Record<string, unknown>),
+              timezone: form.timezone,
+              primaryLanguage: form.primaryLanguage,
+              defaultVoiceModel: form.defaultVoiceModel,
+              defaultVoice: form.defaultVoice,
+              defaultAgentType: form.defaultAgentType,
+            },
+          },
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-primary-language'] });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     },
   });
+
+  const dirty = useMemo(() => {
+    if (!data?.tenant) return false;
+    const t = data.tenant;
+    const s = (t.settings ?? {}) as Record<string, string>;
+    const original = {
+      name: t.name ?? '',
+      timezone: s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+      primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
+      defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
+      defaultVoice: s.defaultVoice ?? 'sage',
+      defaultAgentType: s.defaultAgentType ?? 'general',
+    };
+    return (
+      original.name !== form.name ||
+      original.timezone !== form.timezone ||
+      original.primaryLanguage !== form.primaryLanguage ||
+      original.defaultVoiceModel !== form.defaultVoiceModel ||
+      original.defaultVoice !== form.defaultVoice ||
+      original.defaultAgentType !== form.defaultAgentType
+    );
+  }, [data, form]);
+  useReportDirty('general', dirty);
 
   if (isLoading) {
     return (
@@ -942,6 +1018,7 @@ function ConnectorAlertSettings() {
     for (const i of mutedIntegrations) if (!origInts.has(i)) return true;
     return false;
   }, [data, digestMode, mutedProviders, mutedIntegrations]);
+  useReportDirty('notifications:connector-alerts', dirty);
 
   const showSaved = savedAt > 0 && Date.now() - savedAt < 3000;
 
@@ -1215,11 +1292,23 @@ function NotificationSettings() {
     mutationFn: (preferences: PreferenceMatrix) =>
       api.put<PreferencesResponse>('/platform/notifications/preferences', { preferences }),
     onSuccess: (resp) => {
-      if (resp.preferences) setDraft(resp.preferences);
+      if (resp.preferences) {
+        // Push the just-saved preferences into both the local draft and
+        // the query cache so the dirty comparison clears the tab badge
+        // immediately, without waiting for the background refetch.
+        setDraft(resp.preferences);
+        queryClient.setQueryData(['notification-preferences'], resp);
+      }
       setSavedAt(Date.now());
       queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
     },
   });
+
+  const dirty =
+    !!draft &&
+    !!data?.preferences &&
+    JSON.stringify(draft) !== JSON.stringify(data.preferences);
+  useReportDirty('notifications:matrix', dirty);
 
   if (error) {
     return (
@@ -1241,9 +1330,6 @@ function NotificationSettings() {
   const categories = (data?.categories ?? (Object.keys(draft) as NotificationCategory[]));
   const channels = (data?.channels ?? (['in_app', 'email'] as NotificationChannel[]));
 
-  const dirty =
-    !!data?.preferences &&
-    JSON.stringify(draft) !== JSON.stringify(data.preferences);
   const showSaved = savedAt > 0 && Date.now() - savedAt < 3000;
 
   const toggle = (category: NotificationCategory, channel: NotificationChannel) => {
@@ -1428,6 +1514,34 @@ export default function Settings() {
     });
   }, [tab]);
 
+  // Each panel may register an "unsaved changes" flag via SettingsDirtyContext.
+  // Registration ids are namespaced as "<tab>" or "<tab>:<sub-panel>" so a
+  // tab's badge lights up if any of its sub-panels has pending edits.
+  const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({});
+  const setDirty = useCallback((id: string, value: boolean) => {
+    setDirtyMap((prev) => {
+      const cur = !!prev[id];
+      if (cur === value) return prev;
+      if (!value) {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: true };
+    });
+  }, []);
+  const dirtyContextValue = useMemo(() => ({ setDirty }), [setDirty]);
+  const dirtyTabs = useMemo(() => {
+    const set = new Set<Tab>();
+    for (const [id, value] of Object.entries(dirtyMap)) {
+      if (!value) continue;
+      const tabKey = id.split(':', 1)[0] as Tab;
+      if (TABS.some((t) => t.key === tabKey)) set.add(tabKey);
+    }
+    return set;
+  }, [dirtyMap]);
+
   if (!isValidTab) {
     return <Navigate to="/settings/general" replace />;
   }
@@ -1437,51 +1551,64 @@ export default function Settings() {
   };
 
   return (
-    <div>
-      <PageHeader
-        title={tenantT('settings.page_title')}
-        description={tenantT('settings.page_subtitle')}
-        icon={<Settings2 className="h-5 w-5" />}
-      />
+    <SettingsDirtyContext.Provider value={dirtyContextValue}>
+      <div>
+        <PageHeader
+          title={tenantT('settings.page_title')}
+          description={tenantT('settings.page_subtitle')}
+          icon={<Settings2 className="h-5 w-5" />}
+        />
 
-      <div
-        role="tablist"
-        aria-label="Settings sections"
-        className="flex flex-wrap gap-1 mb-6 border-b border-border"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              tab === t.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-muted hover:text-text-primary'
-            }`}
-          >
-            <t.icon className="h-4 w-4" />
-            {t.label}
-          </button>
-        ))}
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          className="flex flex-wrap gap-1 mb-6 border-b border-border"
+        >
+          {TABS.map((t) => {
+            const isDirty = dirtyTabs.has(t.key);
+            return (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                title={isDirty ? `${t.label} (unsaved changes)` : t.label}
+                className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                  tab === t.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <t.icon className="h-4 w-4" />
+                {t.label}
+                {isDirty && (
+                  <span
+                    aria-label="unsaved changes"
+                    title="Unsaved changes"
+                    className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-primary"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {TABS.map(({ key }) => {
+          if (!visited.has(key)) return null;
+          const Panel = TAB_COMPONENTS[key];
+          const isActive = tab === key;
+          return (
+            <div
+              key={key}
+              role="tabpanel"
+              aria-hidden={!isActive}
+              hidden={!isActive}
+            >
+              <Panel />
+            </div>
+          );
+        })}
       </div>
-
-      {TABS.map(({ key }) => {
-        if (!visited.has(key)) return null;
-        const Panel = TAB_COMPONENTS[key];
-        const isActive = tab === key;
-        return (
-          <div
-            key={key}
-            role="tabpanel"
-            aria-hidden={!isActive}
-            hidden={!isActive}
-          >
-            <Panel />
-          </div>
-        );
-      })}
-    </div>
+    </SettingsDirtyContext.Provider>
   );
 }
