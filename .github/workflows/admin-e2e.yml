@@ -122,6 +122,13 @@ jobs:
           set -o pipefail
           npm run test:e2e:admin-pages-smoke 2>&1 | tee .ci-logs/admin-pages-smoke.log
 
+      - name: Run Onboarding dismiss/restart e2e
+        id: spec-onboarding-dismiss-restart
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e:onboarding-dismiss-restart 2>&1 | tee .ci-logs/onboarding-dismiss-restart.log
+
       - name: Capture Platform Dev logs
         if: always()
         run: |
@@ -131,7 +138,7 @@ jobs:
           fi
 
       - name: Upload Platform Dev + spec logs and screenshots on failure
-        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure'
+        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: admin-e2e-artifacts
@@ -154,9 +161,10 @@ jobs:
       # spec failed. Without it, `continue-on-error: true` above would make
       # the whole job pass even though specs broke.
       - name: Fail job if any spec failed
-        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure'
+        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure'
         run: |
           echo "::error::One or more admin e2e specs failed:"
-          echo "  sales-inbox-filters: ${{ steps.spec-sales-inbox-filters.outcome }}"
-          echo "  admin-pages-smoke:   ${{ steps.spec-admin-pages-smoke.outcome }}"
+          echo "  sales-inbox-filters:        ${{ steps.spec-sales-inbox-filters.outcome }}"
+          echo "  admin-pages-smoke:          ${{ steps.spec-admin-pages-smoke.outcome }}"
+          echo "  onboarding-dismiss-restart: ${{ steps.spec-onboarding-dismiss-restart.outcome }}"
           exit 1
