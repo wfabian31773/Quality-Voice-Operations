@@ -21,6 +21,21 @@ dashboards.
 | `analytics_metrics`   | `idx_analytics_metrics_tenant_recorded_name`               | `recorded_at`   | `metric_name`   |
 | `call_events`         | `idx_call_events_tenant_occurred_type` (partitioned parent)| `occurred_at`   | `event_type`    |
 
+## Indexes added (migration 098)
+
+| Table             | Index                                          | Time column  | Kind tail |
+| ----------------- | ---------------------------------------------- | ------------ | --------- |
+| `workflow_steps`  | `idx_workflow_steps_tenant_started_status`     | `started_at` | `status`  |
+
+Migration `098_workflow_steps_composite_index.sql` extends the same
+`(tenant_id, <time> DESC, <kind>)` triple to the per-step
+`workflow_steps` table. Reliability and tool-execution drilldowns join
+into this table to answer questions like "show me failed steps in the
+last 24h for tenant X". Before this migration `workflow_steps` only
+carried `(workflow_execution_id)` and `(tenant_id)` singletons, which
+forced the planner into the same sequential-scan trap that migration
+`081` removed from the parent `workflow_executions` table.
+
 `error_logs` already carries the equivalent
 `(tenant_id, severity, occurred_at DESC)` index from migration 012 and is
 intentionally skipped.
@@ -108,6 +123,44 @@ Append  (cost=0.00..6.58 rows=3 width=178)
 The composite index propagates to every monthly partition, and the
 planner combines partition pruning with the per-partition index scan.
 
+### `workflow_steps` — failed steps in the last 24h per tenant
+
+Captured against a freshly seeded local table (50,000 step rows across
+two tenants spanning ~83 hours, then `ANALYZE workflow_steps`).
+
+```text
+EXPLAIN SELECT id, step_name, status, started_at
+  FROM workflow_steps
+ WHERE tenant_id='t_idxbench_steps_a'
+   AND started_at >= NOW() - INTERVAL '24 hours'
+ ORDER BY started_at DESC LIMIT 50;
+
+Limit  (cost=0.42..5.49 rows=50 width=40)
+  ->  Index Scan using idx_workflow_steps_tenant_started_status on workflow_steps
+        Index Cond: (((tenant_id)::text = 't_idxbench_steps_a'::text)
+                 AND (started_at >= (now() - '24:00:00'::interval)))
+```
+
+```text
+EXPLAIN SELECT id, step_name, status, started_at
+  FROM workflow_steps
+ WHERE tenant_id='t_idxbench_steps_a'
+   AND started_at >= NOW() - INTERVAL '24 hours'
+   AND status='failed'
+ ORDER BY started_at DESC LIMIT 50;
+
+Limit  (cost=0.42..49.94 rows=50 width=40)
+  ->  Index Scan using idx_workflow_steps_tenant_started_status on workflow_steps
+        Index Cond: (((tenant_id)::text = 't_idxbench_steps_a'::text)
+                 AND (started_at >= (now() - '24:00:00'::interval))
+                 AND (status = 'failed'::workflow_execution_status))
+```
+
+The status-filtered drilldown is the headline win: the planner uses the
+trailing `status` column of the composite as an index predicate instead
+of re-checking each row, so a "failed steps in the last 24h" reliability
+listing reads only the candidate rows.
+
 ### `call_sessions` — re-captured with seeded data
 
 The local table was empty at first capture, which made the planner pick
@@ -148,14 +201,16 @@ never has to touch the heap.
 
 ## Rollout / locking notes
 
-- All six statements use `CREATE INDEX IF NOT EXISTS`; reruns are no-ops.
-- The migration deliberately does **not** use `CREATE INDEX
-  CONCURRENTLY` because (a) the migration runner wraps each file in a
-  transaction (CONCURRENTLY is illegal there) and (b) `call_events` is a
-  partitioned parent which only accepts non-concurrent
-  `CREATE INDEX`. For the production rollout, schedule the migration in
-  a low-traffic window — the new indexes take a brief `SHARE` lock on
-  each table while they build.
+- All statements (migrations 081 and 098) use `CREATE INDEX IF NOT
+  EXISTS`; reruns are no-ops.
+- Neither migration uses `CREATE INDEX CONCURRENTLY` because (a) the
+  migration runner wraps each file in a transaction (CONCURRENTLY is
+  illegal there) and (b) `call_events` is a partitioned parent which
+  only accepts non-concurrent `CREATE INDEX`. For the production
+  rollout, schedule each migration in a low-traffic window — the new
+  indexes take a brief `SHARE` lock on each table while they build.
 - Future per-tenant time-series tables should follow the same
-  `(tenant_id, <time> DESC, <kind>)` triple. This is now codified in
-  `replit.md` under **Database**.
+  `(tenant_id, <time> DESC, <kind>)` triple — including child/detail
+  tables (e.g. `workflow_steps`) that dashboards drill into, not just
+  the parent listing tables. This is now codified in `replit.md` under
+  **Database**.
