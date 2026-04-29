@@ -1342,5 +1342,736 @@
       ],
       "escalation_behavior": "Vorab genehmigte Käufer, die zum Angebot bereit sind, werden sofort mit dem zuständigen Makler verbunden. Anfragen von Verkäufern, die ihr Objekt inserieren möchten, werden an die Teamleitung weitergeleitet."
     }
+  },
+  "vertical_data": {
+    "healthcare": {
+      "name": "Gesundheitswesen",
+      "headline": "KI-Sprachagenten für das Gesundheitswesen",
+      "subheadline": "Bearbeiten Sie Patientenanrufe rund um die Uhr — Terminvergabe, Anamnese, Rezeptverlängerungen und Triage — mit HIPAA-konformer Sprach-KI, die Patienten nie in die Warteschleife stellt.",
+      "painPoints": [
+        {
+          "title": "Verpasste Patientenanrufe",
+          "description": "Bis zu 30 % der Patientenanrufe bleiben in Stoßzeiten unbeantwortet, was zu Nichterscheinen und Umsatzverlust führt."
+        },
+        {
+          "title": "Burnout des Personals",
+          "description": "Empfangsmitarbeiter verbringen 60 % ihres Tages mit wiederkehrenden Telefonaufgaben — Termine, Bestätigungen und Versicherungsprüfungen."
+        },
+        {
+          "title": "Lücken außerhalb der Sprechzeiten",
+          "description": "Patienten, die außerhalb der Sprechzeiten dringend triagiert werden müssen, landen auf der Mailbox. Wettbewerber mit 24/7-Annahme gewinnen diese Patienten."
+        },
+        {
+          "title": "Kosten durch Nichterscheinen",
+          "description": "Jedes Nichterscheinen kostet die Praxis 150–300 $. Ohne automatische Erinnerungen und einfache Umbuchung bleiben die Quoten hoch."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Patiententerminagent",
+          "description": "Bucht, verschiebt und bestätigt Termine in Echtzeit mit Kalenderintegration.",
+          "capabilities": [
+            "Echtzeit-Verfügbarkeitsprüfung",
+            "SMS-Bestätigungen",
+            "Wartelistenverwaltung",
+            "Behandlerzuordnung"
+          ]
+        },
+        {
+          "name": "Medizinischer Anamnese-Agent",
+          "description": "Führt strukturierte Anamnese-Gespräche, erfasst Symptome, Versicherungsdaten und Krankengeschichte.",
+          "capabilities": [
+            "Strukturierte Datenerfassung",
+            "Versicherungsprüfung",
+            "EPA-Integration",
+            "Vorbereitung auf den Besuch"
+          ]
+        },
+        {
+          "name": "Triage-Agent außerhalb der Sprechzeiten",
+          "description": "Nimmt Anrufe rund um die Uhr entgegen, bewertet die Dringlichkeit und leitet Notfälle an den Bereitschaftsarzt weiter.",
+          "capabilities": [
+            "Dringlichkeitsklassifizierung",
+            "Eskalation an Bereitschaftsdienst",
+            "Rückrufplanung",
+            "Notfall-Routing"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "95 %",
+          "label": "Anrufannahmequote"
+        },
+        {
+          "value": "40 %",
+          "label": "Eingesparte Personalzeit"
+        },
+        {
+          "value": "28 %",
+          "label": "Reduktion von Nichterscheinen"
+        },
+        {
+          "value": "<30 s",
+          "label": "Durchschnittliche Antwortzeit"
+        }
+      ],
+      "testimonial": {
+        "quote": "Wir sind von 1 von 3 verpassten Anrufen auf das Annehmen jedes einzelnen umgestiegen. Unsere Patientenzufriedenheit stieg im ersten Monat um 22 Punkte.",
+        "author": "Dr. Sarah Mitchell",
+        "role": "Praxisadministratorin",
+        "company": "Lakewood Family Medicine"
+      },
+      "metaTitle": "KI-Sprachagenten für das Gesundheitswesen | QVO",
+      "metaDescription": "Automatisieren Sie Terminvergabe, Anamnese und Triage außerhalb der Sprechzeiten mit HIPAA-konformen KI-Sprachagenten. Beantworten Sie jeden Anruf rund um die Uhr und reduzieren Sie Nichterscheinen um 28 %."
+    },
+    "real-estate": {
+      "name": "Immobilien",
+      "headline": "KI-Sprachagenten für die Immobilienbranche",
+      "subheadline": "Erfassen Sie jeden Lead, qualifizieren Sie Käufer sofort und planen Sie Besichtigungen rund um die Uhr — damit Sie nie wieder ein Geschäft wegen eines verpassten Anrufs verlieren.",
+      "painPoints": [
+        {
+          "title": "Langsame Lead-Antwort",
+          "description": "Leads, die nach 5 Minuten kontaktiert werden, konvertieren 10-mal seltener. Die meisten Makler antworten in Stunden, nicht Minuten."
+        },
+        {
+          "title": "Anfragen außerhalb der Bürozeiten",
+          "description": "42 % der Immobilienanfragen kommen außerhalb der Bürozeiten. Diese Leads gehen an den nächsten Makler, der antwortet."
+        },
+        {
+          "title": "Unqualifizierte Besichtigungen",
+          "description": "Makler verschwenden Stunden mit Besichtigungen mit nicht qualifizierten Käufern, die nicht abschließen können. Vorqualifizierung spart Zeit."
+        },
+        {
+          "title": "Chaotisches Lead-Routing",
+          "description": "Leads aus mehreren Quellen (Zillow, Realtor.com, Schildanrufe) gehen ohne zentrale Erfassung verloren."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Lead-Qualifizierungsagent",
+          "description": "Qualifiziert eingehende Leads sofort nach Budget, Zeitplan, Vorabgenehmigungsstatus und Präferenzen.",
+          "capabilities": [
+            "Budgetqualifizierung",
+            "Vorabgenehmigungsprüfung",
+            "Präferenzabgleich",
+            "CRM-Integration"
+          ]
+        },
+        {
+          "name": "Besichtigungsplanungsagent",
+          "description": "Bucht Immobilienbesichtigungen, indem er die Verfügbarkeit von Makler und Objekt in Echtzeit prüft.",
+          "capabilities": [
+            "Kalendersynchronisation",
+            "Buchung mehrerer Objekte",
+            "Wegbeschreibungen",
+            "SMS-Bestätigung"
+          ]
+        },
+        {
+          "name": "Objektinformations-Agent",
+          "description": "Beantwortet Fragen zu Inseraten — Preis, Wohnfläche, Ausstattung, Hausgeld — auf Basis Ihrer MLS-Daten.",
+          "capabilities": [
+            "MLS-Datenabfrage",
+            "Stadtteilinformationen",
+            "Vergleichsobjekte",
+            "Open-House-Details"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "< 30 s",
+          "label": "Lead-Antwortzeit"
+        },
+        {
+          "value": "3,2x",
+          "label": "Mehr erfasste Leads"
+        },
+        {
+          "value": "45 %",
+          "label": "Quote Besichtigung zu Angebot"
+        },
+        {
+          "value": "24/7",
+          "label": "Lead-Erfassung"
+        }
+      ],
+      "testimonial": {
+        "quote": "QVO antwortet auf unsere Zillow-Leads in Sekunden. Unsere Konversionsrate hat sich verdoppelt, weil wir immer als Erste reagieren.",
+        "author": "Marcus Chen",
+        "role": "Makler/Inhaber",
+        "company": "Pinnacle Realty Group"
+      },
+      "metaTitle": "KI-Sprachagenten für die Immobilienbranche | QVO",
+      "metaDescription": "Antworten Sie in Sekunden auf Immobilien-Leads, qualifizieren Sie Käufer automatisch und planen Sie Besichtigungen rund um die Uhr mit KI-Sprachagenten."
+    },
+    "legal": {
+      "name": "Recht",
+      "headline": "KI-Sprachagenten für Anwaltskanzleien",
+      "subheadline": "Verpassen Sie keinen potenziellen Mandanten mehr. Führen Sie vertrauliche Erstgespräche, qualifizieren Sie Fälle und planen Sie Beratungen — professionell und rund um die Uhr.",
+      "painPoints": [
+        {
+          "title": "Verpasste Mandantenanrufe",
+          "description": "Die durchschnittliche Kanzlei verpasst 35 % der eingehenden Anrufe. Jeder verpasste Anruf könnte ein Fall im Wert von 5.000 bis 50.000 $ sein."
+        },
+        {
+          "title": "Teures Aufnahmepersonal",
+          "description": "Vollzeit-Aufnahmekoordinatoren kosten 45.000–65.000 $/Jahr und können jeweils nur einen Anruf bearbeiten."
+        },
+        {
+          "title": "Leads außerhalb der Bürozeiten",
+          "description": "Menschen suchen abends und am Wochenende nach Anwälten. Wenn Sie nicht antworten, tut es die nächste Kanzlei."
+        },
+        {
+          "title": "Inkonsistente Vorprüfung",
+          "description": "Ohne strukturierte Aufnahme übersehen Mitarbeiter wichtige Falldetails und nehmen Fälle außerhalb Ihrer Praxisbereiche an."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Rechtlicher Aufnahme-Agent",
+          "description": "Führt eine professionelle Fallaufnahme durch — erfasst Vorfallsdetails, Verletzungen, Fristen und Gegenparteien.",
+          "capabilities": [
+            "Strukturierte Fallaufnahme",
+            "Konfliktprüfung",
+            "Routing nach Praxisbereich",
+            "Dokumentenanforderung"
+          ]
+        },
+        {
+          "name": "Beratungsplaner",
+          "description": "Bucht Erstberatungen basierend auf Verfügbarkeit des Anwalts, Praxisbereich und Falldringlichkeit.",
+          "capabilities": [
+            "Synchronisation Anwaltskalender",
+            "Routing nach Praxisbereich",
+            "Honorarinformationen",
+            "Bestätigungs-E-Mails"
+          ]
+        },
+        {
+          "name": "Fallstatus-Agent",
+          "description": "Versorgt bestehende Mandanten mit Statusupdates, nächsten Schritten und Anwaltsrückrufen.",
+          "capabilities": [
+            "Fallabfrage",
+            "Statusupdates",
+            "Rückrufplanung",
+            "Dokumenten-Erinnerungen"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "100 %",
+          "label": "Anrufe beantwortet"
+        },
+        {
+          "value": "180 K$",
+          "label": "Durchschn. Umsatzgewinn/Jahr"
+        },
+        {
+          "value": "65 %",
+          "label": "Reduktion der Aufnahmekosten"
+        },
+        {
+          "value": "4,8/5",
+          "label": "Mandantenzufriedenheit"
+        }
+      ],
+      "testimonial": {
+        "quote": "Wir verloren 8–10 potenzielle Mandanten pro Woche durch verpasste Anrufe. QVO erfasst jetzt jeden, und die Aufnahmequalität ist besser als bei unserem früheren Personal.",
+        "author": "Jennifer Park",
+        "role": "Geschäftsführende Partnerin",
+        "company": "Park & Associates Law"
+      },
+      "metaTitle": "KI-Sprachagenten für Anwaltskanzleien | QVO",
+      "metaDescription": "Erfassen Sie jeden Mandantenanruf mit KI-gestützten rechtlichen Aufnahme-Agenten. Qualifizieren Sie Fälle, planen Sie Beratungen und reduzieren Sie Aufnahmekosten um 65 %."
+    },
+    "home-services": {
+      "name": "Haushaltsservices",
+      "headline": "KI-Sprachagenten für Haushaltsservices",
+      "subheadline": "Beantworten Sie jeden Service-Anruf, entsenden Sie Techniker sofort und halten Sie Kunden auf dem Laufenden — auch um 2 Uhr morgens, wenn die Heizung ausfällt.",
+      "painPoints": [
+        {
+          "title": "Verlorene Notrufe",
+          "description": "Notrufe außerhalb der Bürozeiten landen auf der Mailbox. Eigentümer rufen das nächste Unternehmen aus den Google-Ergebnissen an."
+        },
+        {
+          "title": "Überlastung der Disposition",
+          "description": "Disponenten jonglieren mit Telefonen, Terminplanung und Technikerkoordination. Anrufe gehen in Stoßzeiten verloren."
+        },
+        {
+          "title": "Keine Kundenupdates",
+          "description": "Kunden, die auf Techniker warten, werden ohne ETA unruhig. Sie rufen wiederholt an und blockieren Ihre Leitungen."
+        },
+        {
+          "title": "Saisonale Anrufspitzen",
+          "description": "Der erste Kälte- oder Hitzewelle verdoppelt das Anrufvolumen über Nacht. Sie können nicht so schnell einstellen."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Notfall-Dispositionsagent",
+          "description": "Triagiert Notfälle, entsendet den nächsten verfügbaren Techniker und sendet Kunden-ETAs per SMS.",
+          "capabilities": [
+            "Notfall-Triage",
+            "Technikerzuordnung",
+            "GPS-basierte Disposition",
+            "ETAs per SMS"
+          ]
+        },
+        {
+          "name": "Service-Buchungsagent",
+          "description": "Bucht Wartungstermine, Kostenvoranschläge und Inspektionen mit Echtzeit-Terminverfügbarkeit.",
+          "capabilities": [
+            "Routing nach Service-Typ",
+            "Buchung von Zeitfenstern",
+            "Terminierung von Kostenvoranschlägen",
+            "Bestätigungsanrufe"
+          ]
+        },
+        {
+          "name": "Kunden-Folgeagent",
+          "description": "Ruft Kunden nach dem Service für Zufriedenheitsumfragen, Bewertungen und Anmeldung in Wartungsplänen an.",
+          "capabilities": [
+            "Zufriedenheitsumfragen",
+            "Bewertungsanfragen",
+            "Wartungspläne",
+            "Empfehlungserfassung"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "100 %",
+          "label": "Anrufe erfasst"
+        },
+        {
+          "value": "5 Min.",
+          "label": "Durchschn. Dispositionszeit"
+        },
+        {
+          "value": "35 %",
+          "label": "Umsatzsteigerung"
+        },
+        {
+          "value": "4,9/5",
+          "label": "Google-Bewertung"
+        }
+      ],
+      "testimonial": {
+        "quote": "Während der Kältewelle im letzten Winter haben wir das Dreifache unseres normalen Anrufvolumens bewältigt, ohne eine einzige Person einzustellen. QVO entsandte Techniker schneller als unser bester Disponent.",
+        "author": "Mike Rodriguez",
+        "role": "Inhaber",
+        "company": "Comfort First HVAC"
+      },
+      "metaTitle": "KI-Sprachagenten für Haushaltsservices | QVO",
+      "metaDescription": "Verpassen Sie keinen Notdienstanruf mehr. KI-Sprachagenten für HLK-, Sanitär- und Elektrobetriebe, die rund um die Uhr Techniker entsenden und Kunden informieren."
+    },
+    "dental": {
+      "name": "Zahnmedizin",
+      "headline": "KI-Sprachagenten für Zahnarztpraxen",
+      "subheadline": "Füllen Sie Ihren Kalender, reduzieren Sie Nichterscheinen und bieten Sie jedem Patienten ein warmes, professionelles Erlebnis — ohne zusätzliches Empfangspersonal.",
+      "painPoints": [
+        {
+          "title": "Leere Behandlungsstühle",
+          "description": "Die durchschnittliche Zahnarztpraxis verliert 150.000 $/Jahr durch unbesetzte Termine und kurzfristige Absagen."
+        },
+        {
+          "title": "Telefonwartezeiten",
+          "description": "Patienten, die mehr als 60 Sekunden warten, legen auf. 34 % rufen nicht zurück und buchen woanders."
+        },
+        {
+          "title": "Recall-Quote",
+          "description": "Nur 40 % der Patienten kommen zum 6-Monats-Recall zurück. Manuelle Erinnerungsanrufe sind zeitaufwendig und inkonsistent."
+        },
+        {
+          "title": "Konversion neuer Patienten",
+          "description": "Anrufe neuer Patienten erfordern sofortige, herzliche Bearbeitung. Hektische oder verzögerte Antworten kosten diese hochwertigen Patienten."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Zahn-Terminagent",
+          "description": "Bucht Hygiene-, restaurative und Notfalltermine mit Echtzeit-Verfügbarkeit der Behandlungsräume.",
+          "capabilities": [
+            "Behandlerzuordnung",
+            "Behandlungsraumplanung",
+            "Versicherungs-Voraprüfung",
+            "Onboarding neuer Patienten"
+          ]
+        },
+        {
+          "name": "Recall-Kampagnen-Agent",
+          "description": "Ruft proaktiv Patienten an, die für Reinigungen, Untersuchungen und ausstehende Behandlungen fällig sind.",
+          "capabilities": [
+            "Verwaltung der Recall-Liste",
+            "Outbound-Anrufe",
+            "Neue Buchung",
+            "Behandlungs-Erinnerungen"
+          ]
+        },
+        {
+          "name": "Notfall-Triage-Agent",
+          "description": "Bewertet zahnärztliche Notfälle außerhalb der Sprechzeiten und plant Termine am selben Tag oder gibt Pflegehinweise.",
+          "capabilities": [
+            "Schmerzbewertung",
+            "Notfallterminierung",
+            "Pflegehinweise",
+            "Behandler-Alarmierung"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "94 %",
+          "label": "Buchungsquote"
+        },
+        {
+          "value": "35 %",
+          "label": "Reduktion von Nichterscheinen"
+        },
+        {
+          "value": "12 K$",
+          "label": "Monatlich zurückgewonnener Umsatz"
+        },
+        {
+          "value": "60 %",
+          "label": "Verbesserung der Recall-Quote"
+        }
+      ],
+      "testimonial": {
+        "quote": "Unsere Nichterscheinen-Quote sank im ersten Quartal von 18 % auf 7 %. Allein der Recall-Kampagnen-Agent brachte 140 überfällige Patienten zurück.",
+        "author": "Dr. Lisa Nguyen",
+        "role": "Praxisinhaberin",
+        "company": "Bright Smile Dental"
+      },
+      "metaTitle": "KI-Sprachagenten für Zahnarztpraxen | QVO",
+      "metaDescription": "Füllen Sie Ihren Zahnarztkalender und reduzieren Sie Nichterscheinen mit KI-Sprachagenten. Automatisieren Sie Patiententerminierung, Recall-Kampagnen und Notfall-Triage rund um die Uhr."
+    },
+    "veterinary": {
+      "name": "Tiermedizin",
+      "headline": "KI-Sprachagenten für Tierkliniken",
+      "subheadline": "Buchen Sie Termine, triagieren Sie dringende Tierversorgung und bearbeiten Sie Rezeptverlängerungen rund um die Uhr — damit sich Ihr Team auf die Tiere vor sich konzentrieren kann.",
+      "painPoints": [
+        {
+          "title": "Überlasteter Empfang",
+          "description": "Ihr Team kann nicht gleichzeitig Patienten anmelden, Anrufe annehmen und das Wartezimmer betreuen. Anrufe gehen verloren, Halter werden frustriert."
+        },
+        {
+          "title": "Notfälle außerhalb der Sprechzeiten",
+          "description": "Tiernotfälle halten sich nicht an Geschäftszeiten. Ohne 24/7-Triage bringen Halter ihre Tiere — und ihre Loyalität — in die Notklinik."
+        },
+        {
+          "title": "Stau bei Rezeptverlängerungen",
+          "description": "Rezeptverlängerungsanrufe verschlingen jede Woche Stunden an TFA- und Tierarztzeit. Die meisten könnten mit einfacher strukturierter Aufnahme erledigt werden."
+        },
+        {
+          "title": "Verpasste Termine",
+          "description": "Vergessene Besuche kosten der durchschnittlichen Klinik über 80.000 $/Jahr. Manuelle Erinnerungsanrufe finden selten konsequent statt."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Tier-Termin-Agent",
+          "description": "Bucht Vorsorgeuntersuchungen, Impfungen und Operationen mit Echtzeit-Verfügbarkeit von Tierarzt und Behandlungsraum.",
+          "capabilities": [
+            "Tierarztzuordnung",
+            "Mehr-Tier-Haushalte",
+            "SMS-Erinnerung",
+            "Hinweise vor dem Besuch"
+          ]
+        },
+        {
+          "name": "Triage-Agent außerhalb der Sprechzeiten",
+          "description": "Bewertet Symptome, klassifiziert die Dringlichkeit und leitet echte Notfälle an den Bereitschaftsarzt oder die Partner-Notklinik weiter.",
+          "capabilities": [
+            "Symptom-Triage",
+            "Notklinik-Überweisung",
+            "Beruhigung des Halters",
+            "Termin am selben Tag"
+          ]
+        },
+        {
+          "name": "Rezept- & Akten-Agent",
+          "description": "Erfasst strukturierte Rezeptanfragen und leitet sie an die richtige TFA zur Tierarzt-Freigabe weiter.",
+          "capabilities": [
+            "Apotheken-Abfrage",
+            "Rezeptvalidierung",
+            "Tierarzt-Warteschlange",
+            "PIMS-Integration"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "93 %",
+          "label": "Anrufe beantwortet"
+        },
+        {
+          "value": "40 %",
+          "label": "Freigegebene TFA-Stunden"
+        },
+        {
+          "value": "32 %",
+          "label": "Reduktion von Nichterscheinen"
+        },
+        {
+          "value": "24/7",
+          "label": "Triage-Abdeckung"
+        }
+      ],
+      "testimonial": {
+        "quote": "Unsere TFAs haben ihre Nachmittage zurück. Rezeptanrufe und Terminbuchungen erledigen sich jetzt einfach … von selbst, und unsere Kunden sagen uns immer wieder, dass das Telefonerlebnis persönlicher wirkt, nicht weniger.",
+        "author": "Dr. Amelia Park",
+        "role": "Medizinische Leiterin",
+        "company": "Riverside Animal Hospital"
+      },
+      "metaTitle": "KI-Sprachagenten für Tierkliniken | QVO",
+      "metaDescription": "Buchen Sie Tiertermine, triagieren Sie Notfälle und bearbeiten Sie Rezeptverlängerungen rund um die Uhr mit KI-Sprachagenten für Tierkliniken."
+    },
+    "automotive": {
+      "name": "Automotive",
+      "headline": "KI-Sprachagenten für Werkstätten und Autohäuser",
+      "subheadline": "Buchen Sie Service-Termine, leiten Sie Vertriebs-Leads weiter und verfolgen Sie RO-Updates — ohne dass Ihre Serviceberater unter Anrufen begraben werden.",
+      "painPoints": [
+        {
+          "title": "Serviceberater in der Warteschleife",
+          "description": "Berater jonglieren mit Kunden am Tresen, Lieferantenanrufen und eingehenden Buchungen. Telefonkunden warten — oder legen auf."
+        },
+        {
+          "title": "Verlorene Vertriebs-Leads",
+          "description": "Eingehende Vertriebsanrufe außerhalb der Showroom-Zeiten landen auf der Mailbox. Käufer wechseln in 10 Minuten zum nächsten Händler."
+        },
+        {
+          "title": "Reparatur-Auftrag im Limbo",
+          "description": "Kunden rufen wiederholt nach RO-Statusupdates an, weil niemand zurückruft, was den Service-Bereich blockiert."
+        },
+        {
+          "title": "Manuelle Erinnerungsanrufe",
+          "description": "Rückrufkampagnen, staatliche Inspektionserinnerungen und CSI-Nachverfolgungen passieren ohne Automatisierung nie in großem Maßstab."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Service-Buchungsagent",
+          "description": "Bucht Ölwechsel, Diagnosen und größere Servicearbeiten mit Echtzeit-Verfügbarkeit von Hebebühnen und Beratern.",
+          "capabilities": [
+            "Routing nach Service-Typ",
+            "Koordination des Leihwagens",
+            "VIN-/Rückruf-Abfrage",
+            "DMS-Integration"
+          ]
+        },
+        {
+          "name": "Vertriebs-Lead-Agent",
+          "description": "Qualifiziert eingehende Käufer — Fahrzeuginteresse, Inzahlungnahme, Finanzierung — und bucht Probefahrten rund um die Uhr.",
+          "capabilities": [
+            "Erfassung der Inzahlungnahme",
+            "Finanzierungs-Vorprüfung",
+            "Probefahrt-Buchung",
+            "Übergabe an CRM"
+          ]
+        },
+        {
+          "name": "RO-Status- & CSI-Agent",
+          "description": "Ruft Kunden proaktiv mit Reparatur-Updates an und macht Nachfassanrufe für Bewertungen.",
+          "capabilities": [
+            "RO-Statusupdates",
+            "Abholkoordination",
+            "Bewertungsanfragen",
+            "Rückruf-Kommunikation"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "4x",
+          "label": "Erfasste Leads außerhalb der Bürozeiten"
+        },
+        {
+          "value": "85 %",
+          "label": "Anrufe ohne Berater bearbeitet"
+        },
+        {
+          "value": "+22 Pkt.",
+          "label": "CSI-Score-Steigerung"
+        },
+        {
+          "value": "< 1 Min.",
+          "label": "Service-Buchungszeit"
+        }
+      ],
+      "testimonial": {
+        "quote": "Wir haben früher zwei oder drei Geschäfte pro Woche durch verpasste Anrufe nach 19 Uhr verloren. QVO erfasst diese Leads, qualifiziert sie und der Verkäufer sieht das gesamte Gespräch am Morgen in unserem CRM.",
+        "author": "Tony Alvarez",
+        "role": "Geschäftsführer",
+        "company": "Hillcrest Auto Group"
+      },
+      "metaTitle": "KI-Sprachagenten für Autohäuser und Servicezentren | QVO",
+      "metaDescription": "Buchen Sie Service-Termine, erfassen Sie Vertriebs-Leads rund um die Uhr und automatisieren Sie RO-Statusupdates mit KI-Sprachagenten für die Automobilbranche."
+    },
+    "finance": {
+      "name": "Finanzdienstleistungen",
+      "headline": "KI-Sprachagenten für Finanzdienstleistungen",
+      "subheadline": "Qualifizieren Sie Leads, buchen Sie Beratergespräche und bearbeiten Sie Routine-Kundenanfragen — mit der Diskretion und Professionalität, die Ihre Branche erwartet.",
+      "painPoints": [
+        {
+          "title": "Langsame Lead-Nachverfolgung",
+          "description": "Web-Formular-Leads kühlen innerhalb von Minuten ab. Die meisten Berater rufen nicht am selben Tag zurück und verlieren wertvolle Beziehungen."
+        },
+        {
+          "title": "Chaotischer Beraterkalender",
+          "description": "Berater und Assistenten verbringen Stunden pro Woche damit, Kennenlerngespräche und Reviews zu planen und umzuplanen."
+        },
+        {
+          "title": "Inkonsistente Hinweispflichten",
+          "description": "Wenn Mitarbeiter in Eile sind, werden vorgeschriebene Hinweise übersprungen oder jedes Mal anders formuliert, was Compliance-Reviews erschwert."
+        },
+        {
+          "title": "Routine-Kundenfragen",
+          "description": "Fragen zu Kontoauszügen, Saldenabfragen und Formularanforderungen blockieren die Leitung und ziehen Personal von ertragsbringender Arbeit ab."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Interessenten-Qualifizierungsagent",
+          "description": "Qualifiziert eingehende Interessenten nach investierbarem Vermögen, Zielen und Zeitrahmen anhand des firmenfreigegebenen Skripts und der Hinweise.",
+          "capabilities": [
+            "Geeignetheitsfragen",
+            "Firmenfreigegebene Hinweise",
+            "Kalenderbuchung",
+            "CRM-Anreicherung"
+          ]
+        },
+        {
+          "name": "Kundenservice-Agent",
+          "description": "Bearbeitet Routine-Kundenanfragen — Auszugskopien, Adressänderungen, Begünstigtenformulare — und eskaliert alles Sensible.",
+          "capabilities": [
+            "Identitätsprüfung",
+            "Formularerstellung",
+            "Sichere Eskalation",
+            "Audit-Logging"
+          ]
+        },
+        {
+          "name": "Review-Planer",
+          "description": "Bucht proaktiv quartalsweise und jährliche Reviews mit dem Mandantenstamm jedes Beraters.",
+          "capabilities": [
+            "Mandantenstamm-Segmentierung",
+            "Beraterverfügbarkeit",
+            "Bestätigungsfluss",
+            "Neubuchung bei Absage"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "< 60 s",
+          "label": "Lead-Antwortzeit"
+        },
+        {
+          "value": "Jeder Anruf",
+          "label": "Hinweise erfasst"
+        },
+        {
+          "value": "12 Std./Wo.",
+          "label": "Eingesparte Zeit pro Berater"
+        },
+        {
+          "value": "2,4x",
+          "label": "Gebuchte Review-Termine"
+        }
+      ],
+      "testimonial": {
+        "quote": "Jeder Interessent erhält jetzt innerhalb von 60 Sekunden eine geschliffene, skriptkonforme Aufnahme — auch um 21 Uhr. Unsere Berater gehen in Discovery-Calls und wissen schon, dass die Beziehung qualifiziert ist und die Hinweispflichten erfüllt sind.",
+        "author": "David Whitman, CFP®",
+        "role": "Geschäftsführender Partner",
+        "company": "Whitman Wealth Advisors"
+      },
+      "metaTitle": "KI-Sprachagenten für Finanzberater und RIAs | QVO",
+      "metaDescription": "Qualifizieren Sie Interessenten in unter einer Minute, buchen Sie Beratergespräche und bearbeiten Sie Routine-Kundenservice-Anrufe mit strukturierten, prüfbaren KI-Sprachagenten für Finanzdienstleistungen."
+    },
+    "hospitality": {
+      "name": "Gastgewerbe",
+      "headline": "KI-Sprachagenten für Hotels und Restaurants",
+      "subheadline": "Nehmen Sie Reservierungen entgegen, beantworten Sie Gästefragen und bearbeiten Sie Anfragen in jeder Sprache — rund um die Uhr, mit der Wärme, für die Ihre Marke bekannt ist.",
+      "painPoints": [
+        {
+          "title": "Ablenkungen am Empfang",
+          "description": "Telefonate ziehen das Personal von den Gästen vor Ort ab und beeinträchtigen das Check-in-Erlebnis und die Zufriedenheitswerte."
+        },
+        {
+          "title": "Verlorene Reservierungen",
+          "description": "Gäste, die zu Stoßzeiten anrufen, hören Wartemusik und buchen woanders. OTA-Gebühren fressen den Rest Ihrer Marge."
+        },
+        {
+          "title": "Sprachbarrieren",
+          "description": "Internationale Gäste werden umgeleitet oder am Telefon abgewiesen. Ihre Bewertungen erwähnen das — und die Ihrer Konkurrenz auch."
+        },
+        {
+          "title": "Wiederkehrende Anfragen",
+          "description": "WLAN-Passwörter, Parkplätze, später Checkout — dieselben 20 Fragen machen täglich 70 % des Anrufvolumens aus."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Reservierungsagent",
+          "description": "Bucht und ändert Reservierungen direkt in Ihrem PMS oder Restaurant-Buchungssystem in über 30 Sprachen.",
+          "capabilities": [
+            "PMS-/OpenTable-Integration",
+            "Mehrsprachig",
+            "Upsell-Vorschläge",
+            "SMS-Bestätigung"
+          ]
+        },
+        {
+          "name": "Gäste-Concierge-Agent",
+          "description": "Beantwortet FAQs, bearbeitet Housekeeping-Anfragen und leitet alles Sensible an die richtige Abteilung.",
+          "capabilities": [
+            "Wissensdatenbank der Unterkunft",
+            "Anfrage-Tickets",
+            "Abteilungs-Routing",
+            "Loyalty-Abfrage"
+          ]
+        },
+        {
+          "name": "Post-Stay-Folgeagent",
+          "description": "Ruft Gäste nach dem Aufenthalt für Feedback und Bewertungsanfragen an und erfasst Probleme, bevor sie auf öffentlichen Bewertungsseiten landen.",
+          "capabilities": [
+            "NPS-Umfragen",
+            "Bewertungsaufforderungen",
+            "Eskalation zur Wiedergutmachung",
+            "Direktbuchungsangebote"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "30+",
+          "label": "Unterstützte Sprachen"
+        },
+        {
+          "value": "38 %",
+          "label": "Anstieg der Direktbuchungen"
+        },
+        {
+          "value": "70 %",
+          "label": "FAQ-Anrufe abgefangen"
+        },
+        {
+          "value": "4,8/5",
+          "label": "Bewertung der Gästeanrufe"
+        }
+      ],
+      "testimonial": {
+        "quote": "Unser Concierge-Team hat endlich Zeit für die Gäste in der Lobby. Telefonische Reservierungen sind um fast 40 % gestiegen, und unsere französisch- und mandarinsprachigen Gäste erhalten jetzt das gleiche herzliche Erlebnis wie alle anderen.",
+        "author": "Isabelle Moreau",
+        "role": "Generaldirektorin",
+        "company": "The Marlow Boutique Hotel"
+      },
+      "metaTitle": "KI-Sprachagenten für Hotels und Restaurants | QVO",
+      "metaDescription": "Nehmen Sie Reservierungen entgegen, beantworten Sie Gästefragen und bearbeiten Sie Anfragen in über 30 Sprachen mit KI-Sprachagenten für das Gastgewerbe."
+    }
   }
 }

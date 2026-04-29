@@ -1342,5 +1342,736 @@
       ],
       "escalation_behavior": "Les acheteurs préapprouvés prêts à faire une offre sont immédiatement mis en relation avec l'agent du bien. Les demandes de vendeurs souhaitant mettre leur bien en vente sont orientées vers le chef d'équipe."
     }
+  },
+  "vertical_data": {
+    "healthcare": {
+      "name": "Santé",
+      "headline": "Agents vocaux IA conçus pour la santé",
+      "subheadline": "Gérez les appels patients 24/7 — prises de rendez-vous, accueil, renouvellements d'ordonnances et triage — avec une IA vocale conforme HIPAA qui ne met jamais les patients en attente.",
+      "painPoints": [
+        {
+          "title": "Appels patients manqués",
+          "description": "Jusqu'à 30 % des appels patients restent sans réponse aux heures de pointe, entraînant des absences et des pertes de revenus."
+        },
+        {
+          "title": "Épuisement du personnel",
+          "description": "Le personnel d'accueil consacre 60 % de sa journée à des tâches téléphoniques répétitives — rendez-vous, confirmations et vérifications d'assurance."
+        },
+        {
+          "title": "Lacunes hors horaires",
+          "description": "Les patients nécessitant un triage urgent en dehors des heures tombent sur la messagerie. Les concurrents avec une réponse 24/7 captent ces patients."
+        },
+        {
+          "title": "Coût des absences",
+          "description": "Chaque absence coûte de 150 à 300 $ au cabinet. Sans rappels automatiques et reprogrammation simple, les taux restent élevés."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de prise de rendez-vous patients",
+          "description": "Réserve, replanifie et confirme les rendez-vous en temps réel grâce à l'intégration au calendrier.",
+          "capabilities": [
+            "Vérification de disponibilité en temps réel",
+            "Confirmations par SMS",
+            "Gestion de liste d'attente",
+            "Affectation au praticien"
+          ]
+        },
+        {
+          "name": "Agent d'accueil médical",
+          "description": "Mène des entretiens d'accueil structurés, capture symptômes, infos d'assurance et antécédents médicaux.",
+          "capabilities": [
+            "Capture structurée des données",
+            "Vérification d'assurance",
+            "Intégration au DMP",
+            "Préparation de la visite"
+          ]
+        },
+        {
+          "name": "Agent de triage hors horaires",
+          "description": "Répond aux appels 24/7, évalue l'urgence et oriente les urgences vers le praticien de garde.",
+          "capabilities": [
+            "Classification d'urgence",
+            "Escalade au praticien de garde",
+            "Planification de rappel",
+            "Routage des urgences"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "95 %",
+          "label": "Taux de réponse aux appels"
+        },
+        {
+          "value": "40 %",
+          "label": "Temps de personnel économisé"
+        },
+        {
+          "value": "28 %",
+          "label": "Réduction des absences"
+        },
+        {
+          "value": "<30 s",
+          "label": "Délai moyen de réponse"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nous sommes passés de 1 appel manqué sur 3 à une réponse à chacun. La satisfaction des patients a bondi de 22 points dès le premier mois.",
+        "author": "Dre Sarah Mitchell",
+        "role": "Administratrice du cabinet",
+        "company": "Lakewood Family Medicine"
+      },
+      "metaTitle": "Agents vocaux IA pour la santé | QVO",
+      "metaDescription": "Automatisez la prise de rendez-vous, l'accueil et le triage hors horaires avec des agents vocaux IA conformes HIPAA. Répondez à chaque appel 24/7 et réduisez les absences de 28 %."
+    },
+    "real-estate": {
+      "name": "Immobilier",
+      "headline": "Agents vocaux IA pour l'immobilier",
+      "subheadline": "Capturez chaque lead, qualifiez les acheteurs instantanément et planifiez des visites 24/7 — pour ne plus jamais perdre une affaire à cause d'un appel manqué.",
+      "painPoints": [
+        {
+          "title": "Réponse lente aux leads",
+          "description": "Les leads contactés après 5 minutes ont 10 fois moins de chances de convertir. La plupart des agents répondent en heures, pas en minutes."
+        },
+        {
+          "title": "Demandes hors horaires",
+          "description": "42 % des demandes immobilières arrivent en dehors des horaires de bureau. Ces leads vont au prochain agent qui répond."
+        },
+        {
+          "title": "Visites non qualifiées",
+          "description": "Les agents perdent des heures sur des visites avec des acheteurs non qualifiés qui ne peuvent pas conclure. La pré-qualification fait gagner du temps."
+        },
+        {
+          "title": "Chaos dans le routage des leads",
+          "description": "Les leads de multiples sources (Zillow, Realtor.com, appels sur panneaux) se perdent sans capture centralisée."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de qualification de leads",
+          "description": "Qualifie instantanément les leads entrants par budget, échéance, statut de pré-approbation et préférences.",
+          "capabilities": [
+            "Qualification du budget",
+            "Vérification de pré-approbation",
+            "Correspondance des préférences",
+            "Intégration CRM"
+          ]
+        },
+        {
+          "name": "Agent de planification de visites",
+          "description": "Réserve les visites de biens en vérifiant la disponibilité de l'agent et du bien en temps réel.",
+          "capabilities": [
+            "Synchronisation calendrier",
+            "Réservation multi-biens",
+            "Itinéraire",
+            "SMS de confirmation"
+          ]
+        },
+        {
+          "name": "Agent d'information sur les biens",
+          "description": "Répond aux questions sur les annonces — prix, surface, caractéristiques, charges — à partir de vos données MLS.",
+          "capabilities": [
+            "Recherche MLS",
+            "Infos quartier",
+            "Biens comparables",
+            "Détails des journées portes ouvertes"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "< 30 s",
+          "label": "Délai de réponse aux leads"
+        },
+        {
+          "value": "3,2x",
+          "label": "Plus de leads captés"
+        },
+        {
+          "value": "45 %",
+          "label": "Taux visite-vers-offre"
+        },
+        {
+          "value": "24/7",
+          "label": "Captation de leads"
+        }
+      ],
+      "testimonial": {
+        "quote": "QVO répond à nos leads Zillow en quelques secondes. Notre taux de conversion a doublé parce que nous sommes toujours les premiers à répondre.",
+        "author": "Marcus Chen",
+        "role": "Courtier/Propriétaire",
+        "company": "Pinnacle Realty Group"
+      },
+      "metaTitle": "Agents vocaux IA pour l'immobilier | QVO",
+      "metaDescription": "Répondez aux leads immobiliers en quelques secondes, qualifiez automatiquement les acheteurs et planifiez des visites 24/7 avec des agents vocaux IA."
+    },
+    "legal": {
+      "name": "Juridique",
+      "headline": "Agents vocaux IA pour cabinets d'avocats",
+      "subheadline": "Ne ratez plus aucun client potentiel. Menez des accueils confidentiels, qualifiez les dossiers et planifiez des consultations — de manière professionnelle et 24h/24.",
+      "painPoints": [
+        {
+          "title": "Appels clients manqués",
+          "description": "Le cabinet d'avocats moyen rate 35 % des appels entrants. Chaque appel manqué peut représenter un dossier de 5 000 à 50 000 $."
+        },
+        {
+          "title": "Personnel d'accueil coûteux",
+          "description": "Un coordinateur d'accueil à temps plein coûte de 45 000 à 65 000 $/an et ne peut traiter qu'un appel à la fois."
+        },
+        {
+          "title": "Leads hors horaires",
+          "description": "Les gens cherchent des avocats le soir et le week-end. Si vous ne répondez pas, le cabinet suivant le fera."
+        },
+        {
+          "title": "Filtrage incohérent",
+          "description": "Sans accueil structuré, le personnel manque des détails critiques et accepte des dossiers hors de vos domaines de pratique."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent d'accueil juridique",
+          "description": "Mène un accueil professionnel — capture les détails de l'incident, blessures, délais et parties adverses.",
+          "capabilities": [
+            "Accueil structuré du dossier",
+            "Vérification des conflits",
+            "Routage par domaine de pratique",
+            "Demande de documents"
+          ]
+        },
+        {
+          "name": "Planificateur de consultations",
+          "description": "Réserve les premières consultations selon la disponibilité de l'avocat, le domaine de pratique et l'urgence du dossier.",
+          "capabilities": [
+            "Synchronisation calendrier avocat",
+            "Routage par domaine de pratique",
+            "Infos sur les honoraires",
+            "Emails de confirmation"
+          ]
+        },
+        {
+          "name": "Agent de statut de dossier",
+          "description": "Fournit aux clients existants les mises à jour du statut, les prochaines étapes et les rappels d'avocat.",
+          "capabilities": [
+            "Recherche de dossier",
+            "Mises à jour de statut",
+            "Planification de rappel",
+            "Rappels de documents"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "100 %",
+          "label": "Appels pris"
+        },
+        {
+          "value": "180 K$",
+          "label": "Revenus moyens récupérés/an"
+        },
+        {
+          "value": "65 %",
+          "label": "Réduction du coût d'accueil"
+        },
+        {
+          "value": "4,8/5",
+          "label": "Satisfaction client"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nous perdions 8 à 10 clients potentiels par semaine à cause d'appels manqués. QVO les capte tous maintenant, et la qualité de l'accueil est meilleure qu'avec notre ancien personnel.",
+        "author": "Jennifer Park",
+        "role": "Associée gérante",
+        "company": "Park & Associates Law"
+      },
+      "metaTitle": "Agents vocaux IA pour cabinets d'avocats | QVO",
+      "metaDescription": "Capturez chaque appel de client potentiel avec des agents d'accueil juridique IA. Qualifiez les dossiers, planifiez des consultations et réduisez les coûts d'accueil de 65 %."
+    },
+    "home-services": {
+      "name": "Services à domicile",
+      "headline": "Agents vocaux IA pour les services à domicile",
+      "subheadline": "Répondez à chaque appel de service, dépêchez les techniciens instantanément et tenez les clients informés — même à 2 h du matin quand la chaudière lâche.",
+      "painPoints": [
+        {
+          "title": "Urgences perdues",
+          "description": "Les urgences hors horaires tombent sur la messagerie. Les propriétaires appellent la prochaine entreprise dans les résultats Google."
+        },
+        {
+          "title": "Surcharge des dispatcheurs",
+          "description": "Les dispatcheurs jonglent entre téléphones, planification et coordination des techniciens. Les appels sont coupés en heures de pointe."
+        },
+        {
+          "title": "Pas de mises à jour pour les clients",
+          "description": "Les clients qui attendent un technicien s'inquiètent sans ETA. Ils rappellent sans cesse et saturent vos lignes."
+        },
+        {
+          "title": "Pics saisonniers d'appels",
+          "description": "La première vague de froid ou de chaleur double le volume d'appels du jour au lendemain. Impossible de recruter assez vite."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de répartition d'urgences",
+          "description": "Trie les urgences, dépêche le technicien disponible le plus proche et envoie les ETA au client par SMS.",
+          "capabilities": [
+            "Triage des urgences",
+            "Affectation de technicien",
+            "Répartition basée sur GPS",
+            "ETA par SMS"
+          ]
+        },
+        {
+          "name": "Agent de réservation de service",
+          "description": "Réserve les rendez-vous d'entretien, devis et inspections avec une disponibilité d'horaires en temps réel.",
+          "capabilities": [
+            "Routage par type de service",
+            "Réservation de créneaux",
+            "Planification de devis",
+            "Appels de confirmation"
+          ]
+        },
+        {
+          "name": "Agent de suivi client",
+          "description": "Appelle les clients après le service pour des enquêtes de satisfaction, avis et inscription aux plans d'entretien.",
+          "capabilities": [
+            "Enquêtes de satisfaction",
+            "Demandes d'avis",
+            "Plans d'entretien",
+            "Captation de recommandations"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "100 %",
+          "label": "Appels captés"
+        },
+        {
+          "value": "5 min",
+          "label": "Temps moyen de répartition"
+        },
+        {
+          "value": "35 %",
+          "label": "Hausse des revenus"
+        },
+        {
+          "value": "4,9/5",
+          "label": "Note Google"
+        }
+      ],
+      "testimonial": {
+        "quote": "Lors de la vague de froid de l'hiver dernier, nous avons traité 3 fois notre volume d'appels habituel sans embaucher une seule personne. QVO a dépêché les techniciens plus vite que notre meilleur dispatcheur.",
+        "author": "Mike Rodriguez",
+        "role": "Propriétaire",
+        "company": "Comfort First HVAC"
+      },
+      "metaTitle": "Agents vocaux IA pour les services à domicile | QVO",
+      "metaDescription": "Ne ratez plus jamais un appel de service d'urgence. Agents vocaux IA pour entreprises de CVC, plomberie et électricité qui dépêchent les techniciens et tiennent les clients informés 24/7."
+    },
+    "dental": {
+      "name": "Dentaire",
+      "headline": "Agents vocaux IA pour cabinets dentaires",
+      "subheadline": "Remplissez votre planning, réduisez les absences et offrez à chaque patient une expérience chaleureuse et professionnelle — sans agrandir l'équipe d'accueil.",
+      "painPoints": [
+        {
+          "title": "Fauteuils vides",
+          "description": "Le cabinet dentaire moyen perd 150 000 $/an à cause de rendez-vous non pourvus et d'annulations de dernière minute."
+        },
+        {
+          "title": "Temps d'attente au téléphone",
+          "description": "Les patients qui attendent plus de 60 secondes raccrochent. 34 % ne rappellent pas et prennent rendez-vous ailleurs."
+        },
+        {
+          "title": "Suivi des rappels",
+          "description": "Seuls 40 % des patients reviennent pour leur rappel à 6 mois. Les appels manuels sont chronophages et inconsistants."
+        },
+        {
+          "title": "Conversion des nouveaux patients",
+          "description": "Les appels de nouveaux patients exigent un traitement immédiat et chaleureux. Des réponses pressées ou tardives font perdre ces patients à forte valeur."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de prise de rendez-vous dentaire",
+          "description": "Réserve les rendez-vous d'hygiène, restaurateurs et d'urgence avec une disponibilité de salles en temps réel.",
+          "capabilities": [
+            "Affectation au praticien",
+            "Planification des salles",
+            "Pré-vérification d'assurance",
+            "Onboarding nouveau patient"
+          ]
+        },
+        {
+          "name": "Agent de campagne de rappel",
+          "description": "Appelle proactivement les patients dus pour des nettoyages, examens et traitements en attente.",
+          "capabilities": [
+            "Gestion de la liste de rappel",
+            "Appels sortants",
+            "Reprise de rendez-vous",
+            "Rappels de traitement"
+          ]
+        },
+        {
+          "name": "Agent de triage d'urgences",
+          "description": "Évalue les urgences dentaires hors horaires et planifie des rendez-vous le jour même ou fournit des consignes de soin.",
+          "capabilities": [
+            "Évaluation de la douleur",
+            "Planification d'urgence",
+            "Consignes de soin",
+            "Alertes au praticien"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "94 %",
+          "label": "Taux de prise de rendez-vous"
+        },
+        {
+          "value": "35 %",
+          "label": "Réduction des absences"
+        },
+        {
+          "value": "12 K$",
+          "label": "Revenus mensuels récupérés"
+        },
+        {
+          "value": "60 %",
+          "label": "Amélioration des rappels"
+        }
+      ],
+      "testimonial": {
+        "quote": "Notre taux d'absences est passé de 18 % à 7 % au premier trimestre. L'agent de campagne de rappel à lui seul a fait revenir 140 patients en retard.",
+        "author": "Dre Lisa Nguyen",
+        "role": "Propriétaire du cabinet",
+        "company": "Bright Smile Dental"
+      },
+      "metaTitle": "Agents vocaux IA pour cabinets dentaires | QVO",
+      "metaDescription": "Remplissez votre planning dentaire et réduisez les absences avec des agents vocaux IA. Automatisez la prise de rendez-vous, les campagnes de rappel et le triage des urgences 24/7."
+    },
+    "veterinary": {
+      "name": "Vétérinaire",
+      "headline": "Agents vocaux IA pour cliniques vétérinaires",
+      "subheadline": "Prenez les rendez-vous, triez les soins urgents et gérez les renouvellements d'ordonnances 24/7 — pour que votre équipe se concentre sur les animaux devant elle.",
+      "painPoints": [
+        {
+          "title": "Accueil saturé",
+          "description": "Votre équipe ne peut pas enregistrer les patients, prendre les appels et gérer le hall en même temps. Les appels tombent, les propriétaires se frustrent."
+        },
+        {
+          "title": "Urgences hors horaires",
+          "description": "Les urgences animales ne respectent pas les horaires. Sans triage 24/7, les propriétaires emmènent leurs animaux — et leur fidélité — à la clinique d'urgence."
+        },
+        {
+          "title": "File d'attente des renouvellements",
+          "description": "Les appels de renouvellement d'ordonnance prennent des heures à l'équipe technique et vétérinaire chaque semaine. La plupart pourraient être traités avec un accueil structuré simple."
+        },
+        {
+          "title": "Rendez-vous non honorés",
+          "description": "Les visites oubliées coûtent à la clinique moyenne plus de 80 000 $/an. Les rappels manuels n'ont presque jamais lieu de manière constante."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de rendez-vous animaux",
+          "description": "Réserve bilans de santé, vaccins et chirurgies avec disponibilité du praticien et de la salle d'examen en temps réel.",
+          "capabilities": [
+            "Affectation au praticien",
+            "Foyers multi-animaux",
+            "SMS de rappel",
+            "Consignes pré-visite"
+          ]
+        },
+        {
+          "name": "Agent de triage hors horaires",
+          "description": "Évalue les symptômes de l'animal, classe l'urgence et oriente les vraies urgences vers le vétérinaire de garde ou le centre d'urgence partenaire.",
+          "capabilities": [
+            "Triage des symptômes",
+            "Orientation aux urgences",
+            "Réassurance du propriétaire",
+            "Prise de rendez-vous le jour même"
+          ]
+        },
+        {
+          "name": "Agent renouvellements et dossiers",
+          "description": "Capture les demandes de renouvellement structurées et les achemine au bon technicien pour validation vétérinaire.",
+          "capabilities": [
+            "Recherche pharmacie",
+            "Validation du renouvellement",
+            "File du vétérinaire",
+            "Intégration PIMS"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "93 %",
+          "label": "Appels pris"
+        },
+        {
+          "value": "40 %",
+          "label": "Heures techniciens libérées"
+        },
+        {
+          "value": "32 %",
+          "label": "Réduction des absences"
+        },
+        {
+          "value": "24/7",
+          "label": "Couverture du triage"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nos techniciens ont retrouvé leurs après-midi. Les appels de renouvellement et la prise de rendez-vous… se font tout seuls maintenant, et nos clients continuent de nous dire que l'expérience téléphonique semble plus personnelle, pas moins.",
+        "author": "Dre Amelia Park",
+        "role": "Directrice médicale",
+        "company": "Riverside Animal Hospital"
+      },
+      "metaTitle": "Agents vocaux IA pour cliniques vétérinaires | QVO",
+      "metaDescription": "Prenez les rendez-vous animaux, triez les urgences et gérez les renouvellements d'ordonnance 24/7 avec des agents vocaux IA conçus pour les cliniques vétérinaires."
+    },
+    "automotive": {
+      "name": "Automobile",
+      "headline": "Agents vocaux IA pour ateliers et concessionnaires",
+      "subheadline": "Réservez les rendez-vous d'atelier, routez les leads commerciaux et faites le suivi des OR — sans noyer vos conseillers service sous les appels.",
+      "painPoints": [
+        {
+          "title": "Conseillers service en attente",
+          "description": "Les conseillers jonglent entre clients au comptoir, appels fournisseurs et réservations entrantes. Les clients au téléphone attendent — ou raccrochent."
+        },
+        {
+          "title": "Leads commerciaux perdus",
+          "description": "Les appels commerciaux hors horaires de showroom tombent sur la messagerie. Les acheteurs passent au concessionnaire suivant en 10 minutes."
+        },
+        {
+          "title": "Limbes des ordres de réparation",
+          "description": "Les clients rappellent sans cesse pour le statut de leur OR car personne ne les rappelle, saturant la zone service."
+        },
+        {
+          "title": "Rappels manuels",
+          "description": "Campagnes de rappel constructeur, contrôles techniques et suivis CSI ne se font jamais à grande échelle sans automatisation."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de réservation de service",
+          "description": "Réserve vidanges, diagnostics et grandes interventions avec disponibilité des baies et conseillers en temps réel.",
+          "capabilities": [
+            "Routage par type de service",
+            "Coordination du véhicule de prêt",
+            "Recherche par VIN/rappel",
+            "Intégration DMS"
+          ]
+        },
+        {
+          "name": "Agent leads commerciaux",
+          "description": "Qualifie les acheteurs entrants — intérêt véhicule, reprise, financement — et planifie des essais routiers 24/7.",
+          "capabilities": [
+            "Capture de la reprise",
+            "Pré-analyse de financement",
+            "Réservation d'essai routier",
+            "Transfert au CRM"
+          ]
+        },
+        {
+          "name": "Agent statut OR et CSI",
+          "description": "Appelle proactivement les clients avec les mises à jour de réparation et fait le suivi post-service pour les avis.",
+          "capabilities": [
+            "Mises à jour du statut OR",
+            "Coordination de la reprise du véhicule",
+            "Demandes d'avis",
+            "Communication des rappels constructeur"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "4x",
+          "label": "Leads hors horaires captés"
+        },
+        {
+          "value": "85 %",
+          "label": "Appels traités sans conseiller"
+        },
+        {
+          "value": "+22 pts",
+          "label": "Hausse du score CSI"
+        },
+        {
+          "value": "< 1 min",
+          "label": "Temps de réservation service"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nous perdions deux ou trois affaires par semaine à cause d'appels manqués après 19 h. QVO capte ces leads, les qualifie, et le commercial voit toute la conversation dans notre CRM dès le matin.",
+        "author": "Tony Alvarez",
+        "role": "Directeur général",
+        "company": "Hillcrest Auto Group"
+      },
+      "metaTitle": "Agents vocaux IA pour concessionnaires et centres de service | QVO",
+      "metaDescription": "Réservez les rendez-vous d'atelier, captez les leads commerciaux 24/7 et automatisez les mises à jour de statut d'OR avec des agents vocaux IA conçus pour l'industrie automobile."
+    },
+    "finance": {
+      "name": "Services financiers",
+      "headline": "Agents vocaux IA pour les services financiers",
+      "subheadline": "Qualifiez les leads, planifiez les consultations conseiller et traitez les demandes courantes des clients — avec la discrétion et le professionnalisme attendus dans votre secteur.",
+      "painPoints": [
+        {
+          "title": "Suivi lent des leads",
+          "description": "Les leads issus de formulaires se refroidissent en quelques minutes. La plupart des conseillers ne rappellent pas le jour même, ratant des relations à forte valeur."
+        },
+        {
+          "title": "Chaos dans l'agenda du conseiller",
+          "description": "Les conseillers et assistants passent des heures chaque semaine à planifier et replanifier appels d'introduction et revues."
+        },
+        {
+          "title": "Avertissements incohérents",
+          "description": "Quand le personnel est pressé, les avertissements obligatoires sont oubliés ou formulés différemment à chaque fois, créant des soucis de conformité."
+        },
+        {
+          "title": "Questions clients courantes",
+          "description": "Questions sur les relevés, vérifications de soldes et demandes de formulaires saturent la ligne et détournent le personnel du travail à valeur ajoutée."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de qualification de prospects",
+          "description": "Qualifie les prospects entrants par actifs investissables, objectifs et horizon en utilisant le script et les avertissements approuvés par votre cabinet.",
+          "capabilities": [
+            "Questions d'adéquation",
+            "Avertissements approuvés par le cabinet",
+            "Réservation au calendrier",
+            "Enrichissement CRM"
+          ]
+        },
+        {
+          "name": "Agent service client",
+          "description": "Traite les demandes courantes — copies de relevés, changements d'adresse, formulaires de bénéficiaires — et escalade tout sujet sensible.",
+          "capabilities": [
+            "Vérification d'identité",
+            "Génération de formulaires",
+            "Escalade sécurisée",
+            "Journal d'audit"
+          ]
+        },
+        {
+          "name": "Planificateur de revues",
+          "description": "Réserve proactivement les revues trimestrielles et annuelles avec le portefeuille de chaque conseiller.",
+          "capabilities": [
+            "Segmentation du portefeuille",
+            "Disponibilité du conseiller",
+            "Flux de confirmation",
+            "Reprogrammation en cas d'annulation"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "< 60 s",
+          "label": "Délai de réponse aux leads"
+        },
+        {
+          "value": "Chaque appel",
+          "label": "Avertissements consignés"
+        },
+        {
+          "value": "12 h/sem",
+          "label": "Temps économisé par conseiller"
+        },
+        {
+          "value": "2,4x",
+          "label": "Réunions de revue planifiées"
+        }
+      ],
+      "testimonial": {
+        "quote": "Chaque prospect reçoit désormais un accueil soigné, conforme au script, en moins de 60 secondes — même à 21 h. Nos conseillers entrent en réunion de découverte en sachant déjà que la relation est qualifiée et que les avertissements sont consignés.",
+        "author": "David Whitman, CFP®",
+        "role": "Associé directeur",
+        "company": "Whitman Wealth Advisors"
+      },
+      "metaTitle": "Agents vocaux IA pour conseillers financiers et RIA | QVO",
+      "metaDescription": "Qualifiez les prospects en moins d'une minute, planifiez les consultations conseiller et traitez les appels de service client courants avec des agents vocaux IA structurés et auditables pour les services financiers."
+    },
+    "hospitality": {
+      "name": "Hôtellerie",
+      "headline": "Agents vocaux IA pour hôtels et restaurants",
+      "subheadline": "Prenez les réservations, répondez aux questions des clients et traitez les demandes dans toutes les langues — 24/7, avec la chaleur qui fait la réputation de votre marque.",
+      "painPoints": [
+        {
+          "title": "Distractions à la réception",
+          "description": "Les appels éloignent le personnel des clients en personne, nuisant à l'expérience d'arrivée et aux scores de satisfaction."
+        },
+        {
+          "title": "Réservations perdues",
+          "description": "Les clients qui appellent en heures de pointe tombent sur la musique d'attente et réservent ailleurs. Les frais OTA mangent le reste de votre marge."
+        },
+        {
+          "title": "Barrières linguistiques",
+          "description": "Les clients internationaux sont redirigés ou raccrochés au nez. Vos avis le mentionnent — et ceux de la concurrence aussi."
+        },
+        {
+          "title": "Demandes répétitives",
+          "description": "Mots de passe Wi-Fi, parking, late checkout — les mêmes 20 questions remplissent 70 % du volume d'appels chaque jour."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agent de réservation",
+          "description": "Réserve et modifie les réservations directement dans votre PMS ou système de réservation restaurant, dans plus de 30 langues.",
+          "capabilities": [
+            "Intégration PMS / OpenTable",
+            "Multilingue",
+            "Suggestions d'upsell",
+            "SMS de confirmation"
+          ]
+        },
+        {
+          "name": "Agent concierge des clients",
+          "description": "Répond aux FAQ, gère les demandes housekeeping et oriente tout sujet sensible vers le bon service.",
+          "capabilities": [
+            "Base de connaissances de l'établissement",
+            "Tickets de demande",
+            "Routage par service",
+            "Recherche de fidélité"
+          ]
+        },
+        {
+          "name": "Agent de suivi post-séjour",
+          "description": "Appelle les clients après le séjour pour des retours et demandes d'avis, captant les problèmes avant qu'ils n'apparaissent sur les sites publics.",
+          "capabilities": [
+            "Enquêtes NPS",
+            "Demandes d'avis",
+            "Escalade de récupération",
+            "Offres de réservation directe"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "30+",
+          "label": "Langues prises en charge"
+        },
+        {
+          "value": "38 %",
+          "label": "Hausse des réservations directes"
+        },
+        {
+          "value": "70 %",
+          "label": "Appels FAQ déviés"
+        },
+        {
+          "value": "4,8/5",
+          "label": "Note des appels clients"
+        }
+      ],
+      "testimonial": {
+        "quote": "Notre équipe concierge a enfin du temps pour les clients dans le hall. Les réservations téléphoniques ont augmenté de près de 40 % et nos clients francophones et sinophones ont désormais la même expérience chaleureuse que tous les autres.",
+        "author": "Isabelle Moreau",
+        "role": "Directrice générale",
+        "company": "The Marlow Boutique Hotel"
+      },
+      "metaTitle": "Agents vocaux IA pour hôtels et restaurants | QVO",
+      "metaDescription": "Prenez les réservations, répondez aux questions des clients et traitez les demandes dans plus de 30 langues avec des agents vocaux IA conçus pour l'hôtellerie."
+    }
   }
 }

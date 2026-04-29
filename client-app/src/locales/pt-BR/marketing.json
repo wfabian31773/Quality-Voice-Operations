@@ -1342,5 +1342,736 @@
       ],
       "escalation_behavior": "Compradores pré-aprovados prontos para fazer ofertas são imediatamente conectados ao corretor responsável pelo anúncio. Consultas de proprietários interessados em anunciar seu imóvel são roteadas ao líder da equipe."
     }
+  },
+  "vertical_data": {
+    "healthcare": {
+      "name": "Saúde",
+      "headline": "Agentes de voz IA criados para a área da saúde",
+      "subheadline": "Atenda chamadas de pacientes 24/7 — agendamento, triagem, renovações de receita e classificação de urgência — com IA de voz consciente da HIPAA que nunca deixa o paciente esperando.",
+      "painPoints": [
+        {
+          "title": "Chamadas de pacientes perdidas",
+          "description": "Até 30% das chamadas de pacientes ficam sem resposta nos horários de pico, gerando faltas e perda de receita."
+        },
+        {
+          "title": "Esgotamento da equipe",
+          "description": "A recepção dedica 60% do dia a tarefas telefônicas repetitivas — agendamentos, confirmações e checagens de convênio."
+        },
+        {
+          "title": "Lacunas fora do horário",
+          "description": "Pacientes com necessidade de triagem urgente fora do horário caem na caixa postal. Concorrentes com atendimento 24/7 capturam esses pacientes."
+        },
+        {
+          "title": "Custos de não comparecimento",
+          "description": "Cada falta custa de US$ 150 a US$ 300. Sem lembretes automáticos e reagendamento fácil, as taxas continuam altas."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de agendamento de pacientes",
+          "description": "Marca, reagenda e confirma consultas em tempo real com integração ao calendário.",
+          "capabilities": [
+            "Verificação de disponibilidade em tempo real",
+            "Confirmações por SMS",
+            "Gestão de lista de espera",
+            "Vinculação ao profissional"
+          ]
+        },
+        {
+          "name": "Agente de triagem médica",
+          "description": "Conduz entrevistas de triagem estruturadas, captura sintomas, dados do convênio e histórico médico.",
+          "capabilities": [
+            "Captura estruturada de dados",
+            "Verificação de convênio",
+            "Integração com prontuário eletrônico",
+            "Preparação para a consulta"
+          ]
+        },
+        {
+          "name": "Agente de triagem fora do horário",
+          "description": "Atende chamadas 24/7, avalia a urgência e direciona emergências ao plantonista.",
+          "capabilities": [
+            "Classificação de urgência",
+            "Encaminhamento ao plantão",
+            "Agendamento de retorno",
+            "Direcionamento de emergências"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "95%",
+          "label": "Taxa de atendimento de chamadas"
+        },
+        {
+          "value": "40%",
+          "label": "Tempo da equipe economizado"
+        },
+        {
+          "value": "28%",
+          "label": "Redução de faltas"
+        },
+        {
+          "value": "<30s",
+          "label": "Tempo médio de atendimento"
+        }
+      ],
+      "testimonial": {
+        "quote": "Saímos de perder 1 em cada 3 chamadas para atender todas elas. A satisfação dos pacientes subiu 22 pontos no primeiro mês.",
+        "author": "Dra. Sarah Mitchell",
+        "role": "Administradora da clínica",
+        "company": "Lakewood Family Medicine"
+      },
+      "metaTitle": "Agentes de voz IA para a área da saúde | QVO",
+      "metaDescription": "Automatize agendamento, triagem e atendimento fora do horário com agentes de voz IA conscientes da HIPAA. Atenda cada chamada 24/7 e reduza faltas em 28%."
+    },
+    "real-estate": {
+      "name": "Imobiliário",
+      "headline": "Agentes de voz IA para o mercado imobiliário",
+      "subheadline": "Capture cada lead, qualifique compradores instantaneamente e agende visitas 24/7 — para nunca perder um negócio por uma chamada não atendida.",
+      "painPoints": [
+        {
+          "title": "Resposta lenta a leads",
+          "description": "Leads contatados após 5 minutos têm 10 vezes menos chance de converter. A maioria dos corretores responde em horas, não em minutos."
+        },
+        {
+          "title": "Consultas fora do horário",
+          "description": "42% das consultas imobiliárias chegam fora do horário comercial. Esses leads vão para o próximo corretor que atender."
+        },
+        {
+          "title": "Visitas não qualificadas",
+          "description": "Os corretores perdem horas em visitas com compradores que não podem fechar. A pré-qualificação economiza tempo."
+        },
+        {
+          "title": "Caos no roteamento de leads",
+          "description": "Leads de múltiplas fontes (Zillow, Realtor.com, ligações de placa) se perdem sem captura centralizada."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de qualificação de leads",
+          "description": "Qualifica leads recebidos instantaneamente por orçamento, prazo, status de pré-aprovação e preferências.",
+          "capabilities": [
+            "Qualificação de orçamento",
+            "Verificação de pré-aprovação",
+            "Combinação de preferências",
+            "Integração com CRM"
+          ]
+        },
+        {
+          "name": "Agente de agendamento de visitas",
+          "description": "Marca visitas a imóveis verificando a disponibilidade do corretor e do imóvel em tempo real.",
+          "capabilities": [
+            "Sincronização de calendário",
+            "Reservas multi-imóvel",
+            "Indicações de rota",
+            "SMS de confirmação"
+          ]
+        },
+        {
+          "name": "Agente de informações do imóvel",
+          "description": "Responde perguntas sobre anúncios — preço, metragem, características, condomínio — a partir dos dados do MLS.",
+          "capabilities": [
+            "Consulta de dados do MLS",
+            "Informações do bairro",
+            "Imóveis comparáveis",
+            "Detalhes de open house"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "< 30s",
+          "label": "Tempo de resposta a leads"
+        },
+        {
+          "value": "3,2x",
+          "label": "Mais leads capturados"
+        },
+        {
+          "value": "45%",
+          "label": "Taxa de visita para proposta"
+        },
+        {
+          "value": "24/7",
+          "label": "Captação de leads"
+        }
+      ],
+      "testimonial": {
+        "quote": "A QVO responde aos nossos leads do Zillow em segundos. Nossa taxa de conversão dobrou porque somos sempre os primeiros a responder.",
+        "author": "Marcus Chen",
+        "role": "Corretor/Proprietário",
+        "company": "Pinnacle Realty Group"
+      },
+      "metaTitle": "Agentes de voz IA para o mercado imobiliário | QVO",
+      "metaDescription": "Responda a leads imobiliários em segundos, qualifique compradores automaticamente e agende visitas 24/7 com agentes de voz IA."
+    },
+    "legal": {
+      "name": "Jurídico",
+      "headline": "Agentes de voz IA para escritórios de advocacia",
+      "subheadline": "Nunca perca um cliente em potencial. Conduza triagens confidenciais, qualifique casos e agende consultas — de forma profissional e a qualquer hora.",
+      "painPoints": [
+        {
+          "title": "Chamadas de clientes perdidas",
+          "description": "O escritório de advocacia médio perde 35% das chamadas recebidas. Cada chamada perdida pode ser um caso de US$ 5.000 a US$ 50.000."
+        },
+        {
+          "title": "Equipe de triagem cara",
+          "description": "Um coordenador de triagem em tempo integral custa de US$ 45.000 a US$ 65.000 por ano e só consegue atender uma chamada por vez."
+        },
+        {
+          "title": "Leads fora do horário",
+          "description": "As pessoas procuram advogados à noite e nos fins de semana. Se você não atender, o próximo escritório atenderá."
+        },
+        {
+          "title": "Triagem inconsistente",
+          "description": "Sem uma triagem estruturada, a equipe perde detalhes críticos do caso e aceita casos fora das suas áreas de atuação."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de triagem jurídica",
+          "description": "Conduz uma triagem profissional do caso — captura detalhes do incidente, lesões, prazos e partes contrárias.",
+          "capabilities": [
+            "Triagem estruturada do caso",
+            "Verificação de conflito",
+            "Roteamento por área de atuação",
+            "Solicitação de documentos"
+          ]
+        },
+        {
+          "name": "Agendador de consultas",
+          "description": "Marca consultas iniciais com base na disponibilidade do advogado, área de atuação e urgência do caso.",
+          "capabilities": [
+            "Sincronização da agenda do advogado",
+            "Roteamento por área de atuação",
+            "Informação sobre honorários",
+            "E-mails de confirmação"
+          ]
+        },
+        {
+          "name": "Agente de status do caso",
+          "description": "Fornece a clientes atuais atualizações sobre o status do caso, próximos passos e retornos do advogado.",
+          "capabilities": [
+            "Consulta de caso",
+            "Atualizações de status",
+            "Agendamento de retorno",
+            "Lembretes de documentos"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "100%",
+          "label": "Chamadas atendidas"
+        },
+        {
+          "value": "US$ 180K",
+          "label": "Receita média recuperada/ano"
+        },
+        {
+          "value": "65%",
+          "label": "Redução do custo de triagem"
+        },
+        {
+          "value": "4,8/5",
+          "label": "Satisfação do cliente"
+        }
+      ],
+      "testimonial": {
+        "quote": "Estávamos perdendo de 8 a 10 clientes em potencial por semana com chamadas não atendidas. A QVO captura todos eles agora, e a qualidade da triagem é melhor do que com nossa equipe anterior.",
+        "author": "Jennifer Park",
+        "role": "Sócia administradora",
+        "company": "Park & Associates Law"
+      },
+      "metaTitle": "Agentes de voz IA para escritórios de advocacia | QVO",
+      "metaDescription": "Capture cada chamada de cliente em potencial com agentes de triagem jurídica com IA. Qualifique casos, agende consultas e reduza os custos de triagem em 65%."
+    },
+    "home-services": {
+      "name": "Serviços para casa",
+      "headline": "Agentes de voz IA para serviços para casa",
+      "subheadline": "Atenda toda chamada de serviço, despache técnicos instantaneamente e mantenha os clientes informados — mesmo às 2h da manhã quando o aquecedor para de funcionar.",
+      "painPoints": [
+        {
+          "title": "Chamadas de emergência perdidas",
+          "description": "Emergências fora do horário caem na caixa postal. Os moradores ligam para a próxima empresa nos resultados do Google."
+        },
+        {
+          "title": "Sobrecarga do despachante",
+          "description": "Os despachantes equilibram telefones, agendamento e coordenação de técnicos. As chamadas caem nos horários de pico."
+        },
+        {
+          "title": "Sem atualizações para clientes",
+          "description": "Clientes esperando técnicos ficam ansiosos sem ETA. Eles ligam repetidamente, ocupando suas linhas."
+        },
+        {
+          "title": "Picos sazonais de chamadas",
+          "description": "A primeira onda de frio ou calor dobra o volume de chamadas da noite para o dia. Não dá para contratar tão rápido."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de despacho de emergências",
+          "description": "Faz a triagem de emergências, despacha o técnico mais próximo disponível e envia ETAs ao cliente por SMS.",
+          "capabilities": [
+            "Triagem de emergências",
+            "Combinação de técnico",
+            "Despacho baseado em GPS",
+            "ETAs por SMS"
+          ]
+        },
+        {
+          "name": "Agente de reserva de serviços",
+          "description": "Marca consultas de manutenção, orçamentos e inspeções com disponibilidade de horários em tempo real.",
+          "capabilities": [
+            "Roteamento por tipo de serviço",
+            "Reserva de horários",
+            "Agendamento de orçamento",
+            "Ligações de confirmação"
+          ]
+        },
+        {
+          "name": "Agente de pós-atendimento",
+          "description": "Liga para clientes após o serviço para pesquisas de satisfação, avaliações e adesão a planos de manutenção.",
+          "capabilities": [
+            "Pesquisas de satisfação",
+            "Pedidos de avaliação",
+            "Planos de manutenção",
+            "Captura de indicações"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "100%",
+          "label": "Chamadas capturadas"
+        },
+        {
+          "value": "5 min",
+          "label": "Tempo médio de despacho"
+        },
+        {
+          "value": "35%",
+          "label": "Aumento de receita"
+        },
+        {
+          "value": "4,9/5",
+          "label": "Avaliação no Google"
+        }
+      ],
+      "testimonial": {
+        "quote": "Durante a onda de frio do inverno passado, atendemos 3 vezes nosso volume normal de chamadas sem contratar uma pessoa sequer. A QVO despachou técnicos mais rápido que nosso melhor despachante.",
+        "author": "Mike Rodriguez",
+        "role": "Proprietário",
+        "company": "Comfort First HVAC"
+      },
+      "metaTitle": "Agentes de voz IA para serviços para casa | QVO",
+      "metaDescription": "Nunca perca uma chamada de emergência. Agentes de voz IA para empresas de HVAC, encanamento e elétrica que despacham técnicos e atualizam clientes 24/7."
+    },
+    "dental": {
+      "name": "Odontologia",
+      "headline": "Agentes de voz IA para clínicas odontológicas",
+      "subheadline": "Lote sua agenda, reduza faltas e ofereça a cada paciente uma experiência calorosa e profissional — sem aumentar a equipe da recepção.",
+      "painPoints": [
+        {
+          "title": "Cadeiras vazias",
+          "description": "A clínica odontológica média perde US$ 150.000 por ano com horários não preenchidos e cancelamentos de última hora."
+        },
+        {
+          "title": "Tempo de espera no telefone",
+          "description": "Pacientes que esperam mais de 60 segundos desligam. 34% não ligam de volta e marcam em outro lugar."
+        },
+        {
+          "title": "Adesão à recall",
+          "description": "Apenas 40% dos pacientes voltam para o recall de 6 meses. Ligações manuais de lembrete são demoradas e inconsistentes."
+        },
+        {
+          "title": "Conversão de novos pacientes",
+          "description": "Chamadas de novos pacientes precisam de atendimento imediato e caloroso. Respostas apressadas ou demoradas perdem esses pacientes de alto valor."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de agendamento odontológico",
+          "description": "Marca consultas de higiene, restauradoras e de emergência com disponibilidade de salas em tempo real.",
+          "capabilities": [
+            "Combinação de profissional",
+            "Agendamento de salas",
+            "Pré-verificação de convênio",
+            "Onboarding de novos pacientes"
+          ]
+        },
+        {
+          "name": "Agente de campanha de recall",
+          "description": "Liga proativamente para pacientes com limpezas, exames e tratamentos pendentes.",
+          "capabilities": [
+            "Gestão da lista de recall",
+            "Ligações ativas",
+            "Reagendamento",
+            "Lembretes de tratamento"
+          ]
+        },
+        {
+          "name": "Agente de triagem de emergências",
+          "description": "Avalia emergências odontológicas fora do horário e marca consultas no mesmo dia ou fornece instruções de cuidado.",
+          "capabilities": [
+            "Avaliação de dor",
+            "Agendamento de emergência",
+            "Instruções de cuidado",
+            "Alertas ao profissional"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "94%",
+          "label": "Taxa de agendamento"
+        },
+        {
+          "value": "35%",
+          "label": "Redução de faltas"
+        },
+        {
+          "value": "US$ 12K",
+          "label": "Receita mensal recuperada"
+        },
+        {
+          "value": "60%",
+          "label": "Melhoria de recall"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nossa taxa de faltas caiu de 18% para 7% no primeiro trimestre. Só o agente de campanha de recall trouxe de volta 140 pacientes atrasados.",
+        "author": "Dra. Lisa Nguyen",
+        "role": "Proprietária da clínica",
+        "company": "Bright Smile Dental"
+      },
+      "metaTitle": "Agentes de voz IA para clínicas odontológicas | QVO",
+      "metaDescription": "Lote sua agenda odontológica e reduza faltas com agentes de voz IA. Automatize o agendamento de pacientes, campanhas de recall e triagem de emergências 24/7."
+    },
+    "veterinary": {
+      "name": "Veterinária",
+      "headline": "Agentes de voz IA para clínicas veterinárias",
+      "subheadline": "Marque consultas, faça triagem de cuidados urgentes para pets e cuide das renovações de receitas 24/7 — para que sua equipe foque nos animais à frente dela.",
+      "painPoints": [
+        {
+          "title": "Recepção sobrecarregada",
+          "description": "Sua equipe não consegue receber pacientes, atender ligações e cuidar do lobby ao mesmo tempo. Chamadas caem, donos ficam frustrados."
+        },
+        {
+          "title": "Emergências fora do horário",
+          "description": "Emergências com pets não respeitam horário comercial. Sem triagem 24/7, os tutores levam seus pets — e a fidelidade — para o pronto-socorro."
+        },
+        {
+          "title": "Fila de pedidos de renovação",
+          "description": "Ligações de renovação de receita consomem horas da equipe técnica e veterinária toda semana. A maioria poderia ser tratada com triagem estruturada simples."
+        },
+        {
+          "title": "Consultas com falta",
+          "description": "Visitas esquecidas custam à clínica média mais de US$ 80.000/ano. Ligações manuais de lembrete raramente acontecem de forma consistente."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de consulta para pets",
+          "description": "Marca check-ups, vacinas e cirurgias com disponibilidade de profissional e sala de exame em tempo real.",
+          "capabilities": [
+            "Combinação de profissional",
+            "Lares com vários pets",
+            "SMS de lembrete",
+            "Instruções pré-consulta"
+          ]
+        },
+        {
+          "name": "Agente de triagem fora do horário",
+          "description": "Avalia sintomas do pet, classifica a urgência e direciona verdadeiras emergências ao veterinário plantonista ou ao PS parceiro.",
+          "capabilities": [
+            "Triagem de sintomas",
+            "Encaminhamento ao PS",
+            "Acolhimento ao tutor",
+            "Reserva no mesmo dia"
+          ]
+        },
+        {
+          "name": "Agente de renovações e prontuários",
+          "description": "Captura pedidos de renovação estruturados e os encaminha ao técnico certo para aprovação do veterinário.",
+          "capabilities": [
+            "Consulta à farmácia",
+            "Validação da renovação",
+            "Fila do veterinário",
+            "Integração com PIMS"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "93%",
+          "label": "Chamadas atendidas"
+        },
+        {
+          "value": "40%",
+          "label": "Horas técnicas liberadas"
+        },
+        {
+          "value": "32%",
+          "label": "Redução de faltas"
+        },
+        {
+          "value": "24/7",
+          "label": "Cobertura de triagem"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nossos técnicos recuperaram suas tardes. Ligações de renovação e marcação de consultas simplesmente… se resolvem sozinhas agora, e os clientes seguem dizendo que a experiência ao telefone parece mais pessoal, não menos.",
+        "author": "Dra. Amelia Park",
+        "role": "Diretora médica",
+        "company": "Riverside Animal Hospital"
+      },
+      "metaTitle": "Agentes de voz IA para clínicas veterinárias | QVO",
+      "metaDescription": "Marque consultas de pets, faça triagem de emergências e cuide de renovações de receitas 24/7 com agentes de voz IA criados para clínicas veterinárias."
+    },
+    "automotive": {
+      "name": "Automotivo",
+      "headline": "Agentes de voz IA para oficinas e concessionárias",
+      "subheadline": "Marque consultas de serviço, direcione leads de vendas e acompanhe atualizações de OS — sem que seus consultores fiquem soterrados de ligações.",
+      "painPoints": [
+        {
+          "title": "Consultores em espera",
+          "description": "Os consultores equilibram clientes no balcão, ligações de fornecedores e reservas recebidas. Clientes ao telefone esperam — ou desligam."
+        },
+        {
+          "title": "Leads de vendas perdidos",
+          "description": "Chamadas de vendas fora do horário do showroom caem na caixa postal. Os compradores migram para a próxima concessionária em 10 minutos."
+        },
+        {
+          "title": "Limbo de ordens de serviço",
+          "description": "Os clientes ligam repetidamente para saber o status da OS porque ninguém retorna, ocupando o setor de serviços."
+        },
+        {
+          "title": "Lembretes manuais",
+          "description": "Campanhas de recall, lembretes de inspeção e follow-ups de CSI nunca acontecem em escala sem automação."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de reserva de serviços",
+          "description": "Marca trocas de óleo, diagnósticos e serviços maiores com disponibilidade de boxes e consultores em tempo real.",
+          "capabilities": [
+            "Roteamento por tipo de serviço",
+            "Coordenação de carro reserva",
+            "Consulta por VIN/recall",
+            "Integração com DMS"
+          ]
+        },
+        {
+          "name": "Agente de leads de vendas",
+          "description": "Qualifica compradores recebidos — interesse no veículo, troca, financiamento — e marca test drives 24/7.",
+          "capabilities": [
+            "Captura de troca",
+            "Pré-análise de financiamento",
+            "Reserva de test drive",
+            "Repasse para o CRM"
+          ]
+        },
+        {
+          "name": "Agente de status de OS e CSI",
+          "description": "Liga proativamente para clientes com atualizações de reparo e faz follow-up pós-serviço para avaliações.",
+          "capabilities": [
+            "Atualizações de status da OS",
+            "Coordenação de retirada",
+            "Pedidos de avaliação",
+            "Comunicação de recall"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "4x",
+          "label": "Leads fora do horário capturados"
+        },
+        {
+          "value": "85%",
+          "label": "Chamadas atendidas sem o consultor"
+        },
+        {
+          "value": "+22 pts",
+          "label": "Aumento da pontuação CSI"
+        },
+        {
+          "value": "< 1 min",
+          "label": "Tempo para reservar serviço"
+        }
+      ],
+      "testimonial": {
+        "quote": "Antes perdíamos dois ou três negócios por semana com chamadas não atendidas após as 19h. A QVO captura esses leads, qualifica e o vendedor vê a conversa completa no nosso CRM pela manhã.",
+        "author": "Tony Alvarez",
+        "role": "Gerente geral",
+        "company": "Hillcrest Auto Group"
+      },
+      "metaTitle": "Agentes de voz IA para concessionárias e centros de serviço | QVO",
+      "metaDescription": "Marque consultas de serviço, capture leads de vendas 24/7 e automatize as atualizações de status de OS com agentes de voz IA criados para o setor automotivo."
+    },
+    "finance": {
+      "name": "Serviços financeiros",
+      "headline": "Agentes de voz IA para serviços financeiros",
+      "subheadline": "Qualifique leads, marque consultas com assessores e atenda solicitações rotineiras de clientes — com a discrição e o profissionalismo que seu setor exige.",
+      "painPoints": [
+        {
+          "title": "Follow-up lento de leads",
+          "description": "Leads de formulário esfriam em minutos. A maioria dos assessores não retorna no mesmo dia, perdendo relacionamentos de alto valor."
+        },
+        {
+          "title": "Caos na agenda do assessor",
+          "description": "Assessores e assistentes gastam horas por semana marcando e remarcando reuniões iniciais e revisões."
+        },
+        {
+          "title": "Disclosures inconsistentes",
+          "description": "Quando a equipe está apressada, as divulgações obrigatórias são puladas ou redigidas de forma diferente todas as vezes, criando dor de cabeça em compliance."
+        },
+        {
+          "title": "Perguntas rotineiras de clientes",
+          "description": "Dúvidas sobre extratos, conferência de saldos e pedidos de formulários ocupam a linha e tiram a equipe do trabalho de receita."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de qualificação de prospects",
+          "description": "Qualifica prospects recebidos por ativos, objetivos e prazo usando o roteiro e as divulgações aprovadas pela sua firma.",
+          "capabilities": [
+            "Perguntas de adequação",
+            "Divulgações aprovadas pela firma",
+            "Reserva no calendário",
+            "Enriquecimento de CRM"
+          ]
+        },
+        {
+          "name": "Agente de atendimento ao cliente",
+          "description": "Atende solicitações rotineiras — cópias de extratos, mudanças de endereço, formulários de beneficiário — e escala tudo o que for sensível.",
+          "capabilities": [
+            "Verificação de identidade",
+            "Geração de formulários",
+            "Escalada segura",
+            "Registro de auditoria"
+          ]
+        },
+        {
+          "name": "Agendador de revisões",
+          "description": "Marca proativamente revisões trimestrais e anuais com a carteira de cada assessor.",
+          "capabilities": [
+            "Segmentação da carteira",
+            "Disponibilidade do assessor",
+            "Fluxo de confirmação",
+            "Reagendamento ao cancelar"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "< 60s",
+          "label": "Tempo de resposta a leads"
+        },
+        {
+          "value": "Toda chamada",
+          "label": "Disclosures registrados"
+        },
+        {
+          "value": "12 h/sem",
+          "label": "Tempo economizado por assessor"
+        },
+        {
+          "value": "2,4x",
+          "label": "Reuniões de revisão marcadas"
+        }
+      ],
+      "testimonial": {
+        "quote": "Cada prospect agora recebe uma triagem polida, no roteiro, em menos de 60 segundos — mesmo às 21h. Nossos assessores entram nas reuniões de descoberta já sabendo que a relação está qualificada e que as divulgações estão registradas.",
+        "author": "David Whitman, CFP®",
+        "role": "Sócio principal",
+        "company": "Whitman Wealth Advisors"
+      },
+      "metaTitle": "Agentes de voz IA para assessores financeiros e RIAs | QVO",
+      "metaDescription": "Qualifique prospects em menos de um minuto, marque consultas com assessores e atenda chamadas rotineiras com agentes de voz IA estruturados e auditáveis para serviços financeiros."
+    },
+    "hospitality": {
+      "name": "Hospitalidade",
+      "headline": "Agentes de voz IA para hotéis e restaurantes",
+      "subheadline": "Receba reservas, responda perguntas de hóspedes e atenda solicitações em qualquer idioma — 24/7, com o calor pelo qual sua marca é conhecida.",
+      "painPoints": [
+        {
+          "title": "Distrações na recepção",
+          "description": "As ligações tiram a equipe da atenção aos hóspedes presenciais, prejudicando a experiência de check-in e as notas de satisfação."
+        },
+        {
+          "title": "Reservas perdidas",
+          "description": "Hóspedes que ligam em horários de pico ouvem música de espera e reservam em outro lugar. As taxas de OTA consomem o resto da margem."
+        },
+        {
+          "title": "Barreiras de idioma",
+          "description": "Hóspedes internacionais são redirecionados ou têm a chamada encerrada. Suas avaliações falam disso — e as dos concorrentes também."
+        },
+        {
+          "title": "Solicitações repetitivas",
+          "description": "Senhas de Wi-Fi, estacionamento, late checkout — as mesmas 20 perguntas representam 70% do volume diário de ligações."
+        }
+      ],
+      "agentExamples": [
+        {
+          "name": "Agente de reservas",
+          "description": "Faz e altera reservas diretamente no seu PMS ou sistema de reservas do restaurante, em mais de 30 idiomas.",
+          "capabilities": [
+            "Integração com PMS / OpenTable",
+            "Multilíngue",
+            "Sugestões de upsell",
+            "SMS de confirmação"
+          ]
+        },
+        {
+          "name": "Agente concierge do hóspede",
+          "description": "Responde FAQs, gerencia pedidos de housekeeping e direciona qualquer assunto sensível ao departamento certo.",
+          "capabilities": [
+            "Base de conhecimento da propriedade",
+            "Tickets de solicitação",
+            "Roteamento por departamento",
+            "Consulta de fidelidade"
+          ]
+        },
+        {
+          "name": "Agente de follow-up pós-estadia",
+          "description": "Liga para hóspedes após a estadia para feedback e pedidos de avaliação, capturando problemas antes que cheguem aos sites públicos.",
+          "capabilities": [
+            "Pesquisas NPS",
+            "Pedidos de avaliação",
+            "Escalada de recuperação",
+            "Ofertas de reserva direta"
+          ]
+        }
+      ],
+      "stats": [
+        {
+          "value": "30+",
+          "label": "Idiomas suportados"
+        },
+        {
+          "value": "38%",
+          "label": "Aumento de reservas diretas"
+        },
+        {
+          "value": "70%",
+          "label": "Chamadas de FAQ desviadas"
+        },
+        {
+          "value": "4,8/5",
+          "label": "Avaliação das ligações de hóspedes"
+        }
+      ],
+      "testimonial": {
+        "quote": "Nossa equipe de concierge finalmente tem tempo para os hóspedes no lobby. As reservas por telefone subiram quase 40% e nossos hóspedes que falam francês e mandarim agora têm a mesma experiência calorosa que todos os outros.",
+        "author": "Isabelle Moreau",
+        "role": "Gerente geral",
+        "company": "The Marlow Boutique Hotel"
+      },
+      "metaTitle": "Agentes de voz IA para hotéis e restaurantes | QVO",
+      "metaDescription": "Receba reservas, responda perguntas de hóspedes e atenda solicitações em mais de 30 idiomas com agentes de voz IA criados para hospitalidade."
+    }
   }
 }
