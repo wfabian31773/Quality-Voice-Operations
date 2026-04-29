@@ -11,10 +11,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
 import {
+  ensureGeocodeCacheHydrated,
   estimateDriveMinutes,
   formatDistance,
   formatEta,
   geocodeAddress,
+  getCachedGeocode,
   haversineKm,
   openDirections,
 } from '@/lib/maps';
@@ -49,24 +51,46 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
     status: locationStatus,
     request: requestLocation,
   } = useTechnicianLocation(false);
-  const [destination, setDestination] = useState<Coords | null>(null);
+  const initialCached = isNative ? getCachedGeocode(address) : null;
+  const [destination, setDestination] = useState<Coords | null>(initialCached);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
-  const [isResolving, setIsResolving] = useState(true);
+  const [isResolving, setIsResolving] = useState(
+    isNative && !initialCached,
+  );
 
   useEffect(() => {
     let cancelled = false;
-    setIsResolving(true);
     setGeocodeError(null);
-    setDestination(null);
 
     if (!isNative) {
+      setDestination(null);
       setIsResolving(false);
       return () => {
         cancelled = true;
       };
     }
 
+    const sync = getCachedGeocode(address);
+    if (sync) {
+      setDestination(sync);
+      setIsResolving(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setDestination(null);
+    setIsResolving(true);
+
     (async () => {
+      await ensureGeocodeCacheHydrated();
+      if (cancelled) return;
+      const afterHydrate = getCachedGeocode(address);
+      if (afterHydrate) {
+        setDestination(afterHydrate);
+        setIsResolving(false);
+        return;
+      }
       const coords = await geocodeAddress(address);
       if (cancelled) return;
       if (!coords) {

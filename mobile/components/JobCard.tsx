@@ -7,10 +7,12 @@ import { StatusPill } from './StatusPill';
 import type { DispatchJob } from '@/lib/api';
 import { formatDateTime } from '@/lib/formatters';
 import {
+  ensureGeocodeCacheHydrated,
   estimateDriveMinutes,
   formatDistance,
   formatEta,
   geocodeAddress,
+  getCachedGeocode,
   haversineKm,
   type Coords,
 } from '@/lib/maps';
@@ -30,7 +32,9 @@ const PRIORITY_LABELS: Record<DispatchJob['priority'], string> = {
 export function JobCard({ job, onPress }: JobCardProps) {
   const colors = useColors();
   const { origin, status: locationStatus } = useTechnicianLocation();
-  const [destination, setDestination] = useState<Coords | null>(null);
+  const [destination, setDestination] = useState<Coords | null>(() =>
+    job.address ? getCachedGeocode(job.address) : null,
+  );
   const [geocoding, setGeocoding] = useState(false);
 
   const priorityFg =
@@ -40,17 +44,36 @@ export function JobCard({ job, onPress }: JobCardProps) {
 
   useEffect(() => {
     let cancelled = false;
-    if (!job.address) {
+    const address = job.address;
+    if (!address) {
       setDestination(null);
       setGeocoding(false);
       return;
     }
+    const sync = getCachedGeocode(address);
+    if (sync) {
+      setDestination(sync);
+      setGeocoding(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setDestination(null);
     setGeocoding(true);
-    void geocodeAddress(job.address).then((coords) => {
+    void (async () => {
+      await ensureGeocodeCacheHydrated();
+      if (cancelled) return;
+      const afterHydrate = getCachedGeocode(address);
+      if (afterHydrate) {
+        setDestination(afterHydrate);
+        setGeocoding(false);
+        return;
+      }
+      const coords = await geocodeAddress(address);
       if (cancelled) return;
       setDestination(coords);
       setGeocoding(false);
-    });
+    })();
     return () => {
       cancelled = true;
     };
