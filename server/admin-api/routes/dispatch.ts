@@ -2093,6 +2093,13 @@ export const listResourceLocationsHandler: RequestHandler = async (req, res) => 
     // INNER JOIN to dispatch_jobs + the active_job_id filter + the explicit
     // terminal-status exclusion together enforce that contract.
     const terminalArr = Array.from(TERMINAL_JOB_STATUSES);
+    // `ca.closest_approach_m` is the same haversine-vs-cached-geocode
+    // calculation the dispatch board / queue surface on each job card —
+    // we recompute it here so the live map popup can flag "tech is
+    // standing 400 m from the address" without forcing a click into the
+    // route replay tab. The LATERAL only does work when the job has a
+    // cached geocode AND at least one breadcrumb ping; otherwise it
+    // returns NULL and the UI hides the badge.
     const { rows } = await pool.query(
       `SELECT l.resource_id,
               l.latitude,
@@ -2114,12 +2121,29 @@ export const listResourceLocationsHandler: RequestHandler = async (req, res) => 
               j.address_lat AS job_address_lat,
               j.address_lon AS job_address_lon,
               j.address_geocoded_for AS job_address_geocoded_for,
+              ca.closest_approach_m,
               EXTRACT(EPOCH FROM (NOW() - l.received_at))::int AS age_seconds
          FROM dispatch_resource_locations l
          JOIN dispatch_resources r
            ON r.id = l.resource_id AND r.tenant_id = l.tenant_id
          JOIN dispatch_jobs j
            ON j.id = l.active_job_id AND j.tenant_id = l.tenant_id
+         LEFT JOIN LATERAL (
+           SELECT MIN(
+             6371000 * 2 * ASIN(
+               SQRT(LEAST(1.0,
+                 POWER(SIN(RADIANS((h.latitude - j.address_lat::float8) / 2)), 2)
+                 + COS(RADIANS(j.address_lat::float8)) * COS(RADIANS(h.latitude))
+                   * POWER(SIN(RADIANS((h.longitude - j.address_lon::float8) / 2)), 2)
+               ))
+             )
+           ) AS closest_approach_m
+           FROM dispatch_resource_location_history h
+           WHERE h.tenant_id = j.tenant_id
+             AND h.active_job_id = j.id
+             AND j.address_lat IS NOT NULL
+             AND j.address_lon IS NOT NULL
+         ) ca ON TRUE
         WHERE l.tenant_id = $1
           AND l.active_job_id IS NOT NULL
           AND NOT (j.status = ANY($3::text[]))
@@ -2127,6 +2151,15 @@ export const listResourceLocationsHandler: RequestHandler = async (req, res) => 
         ORDER BY l.received_at DESC`,
       [tenantId, staleness, terminalArr],
     );
+
+    // Pg returns DOUBLE PRECISION as a JS number already, but the outer
+    // aggregate of an empty group comes back as NULL. Normalize so the
+    // client can treat it as `number | null` without coercion.
+    for (const r of rows) {
+      const ca = (r as Record<string, unknown>).closest_approach_m;
+      (r as Record<string, unknown>).closest_approach_m =
+        ca == null ? null : Number(ca);
+    }
 
     const enriched = await enrichLocationsWithEta(pool, tenantId, rows);
     return res.json({ locations: enriched, staleness_seconds: staleness });

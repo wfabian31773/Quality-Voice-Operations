@@ -1258,6 +1258,13 @@ interface ResourceLocationRow {
   eta_provider: 'haversine' | 'osrm' | 'mapbox' | 'google' | null;
   eta_computed_at: string | null;
   eta_is_estimate: boolean | null;
+  // Smallest haversine distance (meters) between any breadcrumb ping
+  // recorded against this active job and the cached customer-address
+  // geocode. Same number the dispatch board / queue surface; rendered
+  // in the marker popup so supervisors can spot off-target visits
+  // without opening the route replay tab. Null when the job has no
+  // cached geocode or no breadcrumbs yet.
+  closest_approach_m: number | null;
 }
 
 const STATUS_HEX: Record<string, string> = {
@@ -1386,6 +1393,59 @@ function renderEtaLine(loc: ResourceLocationRow): string {
           </div>`;
 }
 
+/**
+ * Render the "X m from address" line for a marker popup. Mirrors the
+ * red >250 m / amber >100 m / muted thresholds used by the dispatch
+ * board card and the queue table so the same number reads the same
+ * everywhere. Returns an empty string when the value isn't meaningful
+ * (status doesn't qualify, or no breadcrumbs / no geocode yet) so
+ * callers can drop it into the popup template unconditionally without
+ * leaving stray markup.
+ */
+function renderClosestApproachLine(loc: ResourceLocationRow): string {
+  const status = (loc.active_status || loc.job_status || '').toLowerCase();
+  if (!SHOW_CLOSEST_APPROACH_STATUSES.has(status)) return '';
+  const meters = loc.closest_approach_m;
+  if (meters == null || !Number.isFinite(meters)) return '';
+  // Inline colors instead of Tailwind classes — Leaflet popups live
+  // outside React's DOM tree so utility classes don't apply.
+  const palette =
+    meters > CLOSEST_APPROACH_BAD_M
+      ? { bg: '#fee2e2', fg: '#b91c1c' }
+      : meters > CLOSEST_APPROACH_WARN_M
+      ? { bg: '#fef3c7', fg: '#b45309' }
+      : { bg: '#f1f5f9', fg: '#475569' };
+  const tooltip =
+    meters > CLOSEST_APPROACH_BAD_M
+      ? `Closest GPS ping was ${formatDistance(meters)} from the address — likely never reached the right location`
+      : `Closest GPS ping was ${formatDistance(meters)} from the address`;
+  return `<div title="${escapeHtml(tooltip)}" style="display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;background:${palette.bg};color:${palette.fg};margin-bottom:4px">
+            ${escapeHtml(formatDistance(meters))} from address
+          </div>`;
+}
+
+/**
+ * Pick the marker icon HTML for a tech on the live map. Normally we
+ * tint the dot with the job-status color; when the closest-approach
+ * value crosses the "bad" threshold (>250 m) we add a red ring and a
+ * red outer glow so dispatchers can spot off-target visits without
+ * having to open every popup.
+ */
+function buildLiveMapMarkerHtml(loc: ResourceLocationRow, color: string, initials: string): string {
+  const status = (loc.active_status || loc.job_status || '').toLowerCase();
+  const meters = loc.closest_approach_m;
+  const isBad =
+    SHOW_CLOSEST_APPROACH_STATUSES.has(status)
+    && meters != null
+    && Number.isFinite(meters)
+    && meters > CLOSEST_APPROACH_BAD_M;
+  const border = isBad ? '3px solid #dc2626' : '2px solid #0b1220';
+  const shadow = isBad
+    ? '0 0 0 2px rgba(220,38,38,0.35), 0 1px 4px rgba(0,0,0,0.4)'
+    : '0 1px 4px rgba(0,0,0,0.4)';
+  return `<div title="${isBad ? `Closest GPS ping was ${escapeHtml(formatDistance(meters as number))} from the address` : ''}" style="background:${color};color:#0b1220;border:${border};border-radius:9999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;box-shadow:${shadow}">${initials || '•'}</div>`;
+}
+
 function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void }) {
   const [locations, setLocations] = useState<ResourceLocationRow[]>([]);
   const [staleness, setStaleness] = useState(600);
@@ -1465,9 +1525,10 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
         .slice(0, 2)
         .join('')
         .toUpperCase();
-      const html = `<div style="background:${color};color:#0b1220;border:2px solid #0b1220;border-radius:9999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,0.4)">${initials || '•'}</div>`;
+      const html = buildLiveMapMarkerHtml(loc, color, initials);
       const icon = L.divIcon({ html, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
       const etaLine = renderEtaLine(loc);
+      const closestLine = renderClosestApproachLine(loc);
       const popup = `
         <div style="font-family:inherit;min-width:180px">
           <div style="font-weight:600;margin-bottom:4px">${escapeHtml(loc.resource_name || 'Unknown tech')}</div>
@@ -1475,6 +1536,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           ${loc.job_contact_name ? `<div style="font-size:11px;color:#666;margin-bottom:2px">${escapeHtml(loc.job_contact_name)}</div>` : ''}
           ${loc.job_address ? `<div style="font-size:11px;color:#666;margin-bottom:4px">${escapeHtml(loc.job_address)}</div>` : ''}
           ${etaLine}
+          ${closestLine}
           <div style="font-size:11px;color:#666">
             ${loc.active_status ? `Status: <strong style="color:${color}">${escapeHtml(loc.active_status)}</strong> · ` : ''}Updated ${escapeHtml(formatAge(loc.age_seconds))}
           </div>
