@@ -4220,11 +4220,14 @@ const TRACKER_PUBLIC_STATUSES = new Set([
 
 // Terminal statuses for the *public* tracker. Once a job lands in one
 // of these and stays there past the grace period below, the tracking
-// link stops resolving and we serve the same friendly 404 page used
-// for unknown tokens. This keeps the SMS link useful for a day after
-// the visit (so the customer can revisit "what time were they here?")
-// without leaving the tech's first name + appointment window
-// indefinitely accessible to anyone who keeps the URL.
+// link stops resolving and we serve the same 404 used for unknown
+// tokens — which the public UI then displays as a warm "this visit
+// has wrapped up" page that reads gracefully whether the visitor is
+// a real customer revisiting a stale link or a bot probing random
+// tokens. This keeps the SMS link useful for a day after the visit
+// (so the customer can revisit "what time were they here?") without
+// leaving the tech's first name + appointment window indefinitely
+// accessible to anyone who keeps the URL.
 const TRACKER_TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'no_show']);
 
 // Grace period after a job enters a terminal status during which the
@@ -4290,9 +4293,10 @@ export const getPublicJobTrackerHandler: RequestHandler = async (req, res) => {
     // no_show transitions where `completed_at` is never written; that
     // timestamp is updated on every status change so it's a safe proxy
     // for "when did this job leave the active queue?". We return the
-    // same 404 shape used for unknown tokens so the public UI shows
-    // its existing "Tracking link not found" page rather than leaking
-    // that the job ever existed.
+    // same 404 shape used for unknown tokens — the public UI maps
+    // that single 404 to a warm "this visit has wrapped up" page
+    // that reads well for both real-customer and unknown-token cases
+    // without confirming the job ever existed.
     if (TRACKER_TERMINAL_STATUSES.has(status)) {
       const refRaw =
         (row.completed_at as string | Date | null | undefined) ??

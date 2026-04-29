@@ -170,15 +170,24 @@ export default function BookingTracker() {
   }, [token]);
 
   if (notFound) {
+    // The server intentionally returns the same 404 for "we've never
+    // heard of this token" and "this token is for a job that wrapped
+    // up more than a day ago" — confirming which one would tell a
+    // scraper whether a guessed token ever pointed at a real visit.
+    // So this single page has to read warmly for both cases. The copy
+    // assumes the most likely visitor: a real customer who clicked
+    // their SMS link a few days after the visit and is wondering why
+    // they're seeing an "error" page. A bot probing random tokens
+    // sees the same gentle wording and learns nothing.
     return (
       <TrackerShell>
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-            Tracking link not found
+            This visit has wrapped up
           </h1>
           <p className="text-gray-600 dark:text-gray-300">
-            This link may have expired. Please check the latest text message from your service
-            provider.
+            Thanks for choosing us! If you're looking for an upcoming appointment, please check
+            your most recent text message from your service provider for the latest link.
           </p>
         </div>
       </TrackerShell>
