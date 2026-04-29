@@ -34,6 +34,14 @@ vi.mock('../../platform/notifications/NotificationPreferences', () => ({
 const getTenantAlertEmailRecipientsMock = vi.fn(async () => ({
   emails: ['admin@example.com'],
   userIds: ['user-1'],
+  recipients: [
+    {
+      id: 'user-1',
+      email: 'admin@example.com',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+    },
+  ],
 }));
 vi.mock('../../platform/integrations/connectors/ConnectorAlertRecipients', () => ({
   getTenantAlertEmailRecipients: (...args: unknown[]) =>
@@ -99,6 +107,14 @@ beforeEach(() => {
   getTenantAlertEmailRecipientsMock.mockImplementation(async () => ({
     emails: ['admin@example.com'],
     userIds: ['user-1'],
+    recipients: [
+      {
+        id: 'user-1',
+        email: 'admin@example.com',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      },
+    ],
   }));
   claimExpiryAlertSlotMock.mockImplementation(async () => true);
   recordCallerHealthMock.mockImplementation(async () => undefined);
@@ -259,6 +275,7 @@ describe('runVerifiedCallerHealthCycle', () => {
     getTenantAlertEmailRecipientsMock.mockResolvedValueOnce({
       emails: [],
       userIds: [],
+      recipients: [],
     });
     listCallersDueForHealthCheckMock.mockResolvedValueOnce([makeCaller()]);
     checkCallerHealthMock.mockResolvedValueOnce({

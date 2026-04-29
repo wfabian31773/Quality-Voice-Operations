@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { createLogger } from '../core/logger';
 import {
   sendEmail,
@@ -5,6 +6,7 @@ import {
   verifiedCallerRevokedEmail,
   verifiedCallerTrustHubRejectedEmail,
 } from '../email';
+import type { EmailResult } from '../email/EmailService';
 import {
   fanoutInAppNotification,
   filterEmailRecipientsByPreference,
@@ -133,6 +135,102 @@ interface DispatchInput {
    * even if the scheduler already alerted this week.
    */
   force?: boolean;
+  /**
+   * Provenance label persisted onto every per-recipient audit row in
+   * `verified_caller_alert_recipients`. Defaults to `'scheduler'` for the
+   * weekly health-check sweep; the Platform Admin "Re-issue alert" route
+   * passes `'admin_reissue'` so the history view can distinguish a manual
+   * nudge from an automated one.
+   */
+  source?: 'scheduler' | 'admin_reissue';
+  /**
+   * User id of the platform admin who triggered the dispatch (only set
+   * by the manual re-issue path). Stored on every recipient row so the
+   * history view can show "re-issued by Alice on Mar 4".
+   */
+  triggeredByUserId?: string | null;
+}
+
+/**
+ * One row written into `verified_caller_alert_recipients` for every
+ * recipient touched by a dispatch — including the ones we skipped before
+ * the network call (opted out / no admins on file). Persisting skipped
+ * rows is what lets the history view explain *why* a tenant didn't
+ * receive an alert email instead of just showing a smaller recipient
+ * list.
+ */
+interface RecipientAuditRow {
+  tenantId: string;
+  callerId: string;
+  dispatchId: string;
+  healthStatus: string;
+  userId: string | null;
+  recipientName: string | null;
+  recipientEmail: string;
+  deliveryStatus: 'sent' | 'failed' | 'bounced' | 'skipped';
+  deliveryError: string | null;
+  permanentFailure: boolean;
+  source: 'scheduler' | 'admin_reissue';
+  triggeredByUserId: string | null;
+}
+
+/**
+ * Persist a single recipient's delivery outcome to
+ * `verified_caller_alert_recipients`. Errors are logged and swallowed —
+ * an audit-write failure must never prevent the alert email itself from
+ * being sent (or block the rest of the recipients in this dispatch).
+ */
+async function recordVerifiedCallerAlertRecipient(
+  row: RecipientAuditRow,
+): Promise<void> {
+  try {
+    const pool = getPlatformPool();
+    await pool.query(
+      `INSERT INTO verified_caller_alert_recipients (
+         tenant_id, caller_id, dispatch_id, health_status,
+         user_id, recipient_name, recipient_email,
+         delivery_status, delivery_error, permanent_failure,
+         source, triggered_by_user_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [
+        row.tenantId,
+        row.callerId,
+        row.dispatchId,
+        row.healthStatus,
+        row.userId,
+        row.recipientName,
+        row.recipientEmail,
+        row.deliveryStatus,
+        row.deliveryError,
+        row.permanentFailure,
+        row.source,
+        row.triggeredByUserId,
+      ],
+    );
+  } catch (err) {
+    logger.warn('Failed to persist verified-caller alert recipient audit row', {
+      tenantId: row.tenantId,
+      callerId: row.callerId,
+      dispatchId: row.dispatchId,
+      recipientEmail: row.recipientEmail,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Classify a sendEmail outcome into the audit table's delivery_status
+ * vocabulary. Permanent SMTP failures (5xx, mailbox unknown, …) are the
+ * "bounced" rows the UI surfaces with the all-bounced badge; transient
+ * failures (4xx, network error) get 'failed' so a future bounce webhook
+ * can promote them later if the carrier eventually NDRs the message.
+ */
+function classifyDeliveryStatus(
+  result: EmailResult,
+): { status: 'sent' | 'failed' | 'bounced'; permanent: boolean } {
+  if (result.success) return { status: 'sent', permanent: false };
+  if (result.permanent === true) return { status: 'bounced', permanent: true };
+  return { status: 'failed', permanent: false };
 }
 
 function emptyCycleResult(): VerifiedCallerHealthCycleResult {
@@ -159,8 +257,20 @@ function emptyCycleResult(): VerifiedCallerHealthCycleResult {
  */
 export async function dispatchVerifiedCallerAlert(
   input: DispatchInput,
-): Promise<{ status: 'sent' | 'throttled' | 'no_recipients'; emailedRecipients: number }> {
-  const { caller, result, force } = input;
+): Promise<{
+  status: 'sent' | 'throttled' | 'no_recipients';
+  emailedRecipients: number;
+  /**
+   * UUID stamped on every per-recipient audit row written for this
+   * dispatch (including the skipped rows). Returned so the admin
+   * "Re-issue alert" route can include it in the response and log it
+   * in audit_logs for cross-referencing. `null` when the call returned
+   * before any audit rows were written (e.g. a throttled dispatch).
+   */
+  dispatchId: string | null;
+}> {
+  const { caller, result, force, source = 'scheduler', triggeredByUserId = null } = input;
+  const dispatchId = randomUUID();
 
   if (force) {
     // Operator-triggered re-issue: skip the conditional claim and
@@ -181,15 +291,33 @@ export async function dispatchVerifiedCallerAlert(
         phoneNumber: caller.phoneNumber,
         status: result.status,
       });
-      return { status: 'throttled', emailedRecipients: 0 };
+      return { status: 'throttled', emailedRecipients: 0, dispatchId: null };
     }
   }
 
+  const healthStatus = result.status;
   const tenantName = await getTenantName(caller.tenantId);
   const recipientsResult = await getTenantAlertEmailRecipients(
     caller.tenantId,
     MAX_RECIPIENTS_PER_TENANT,
   );
+
+  // Build a name-by-email lookup so the audit rows carry the recipient's
+  // human-readable name without a second users-table query per row.
+  // Defensive `?? []` because some test mocks of
+  // `getTenantAlertEmailRecipients` predate the `recipients` field —
+  // production paths always populate it.
+  const nameByEmail = new Map<string, { userId: string; name: string | null }>();
+  for (const r of recipientsResult.recipients ?? []) {
+    const display = [r.firstName, r.lastName]
+      .map((p) => (p ?? '').trim())
+      .filter((p) => p.length > 0)
+      .join(' ');
+    nameByEmail.set(r.email.toLowerCase(), {
+      userId: r.id,
+      name: display.length > 0 ? display : null,
+    });
+  }
 
   const trustedCallersUrl = `${appBaseUrl().replace(/\/$/, '')}/trusted-callers`;
   const isRevoked = result.status === 'revoked';
@@ -256,7 +384,7 @@ export async function dispatchVerifiedCallerAlert(
       tenantId: caller.tenantId,
       callerId: caller.id,
     });
-    return { status: 'no_recipients', emailedRecipients: 0 };
+    return { status: 'no_recipients', emailedRecipients: 0, dispatchId: null };
   }
 
   const recipients = await filterEmailRecipientsByPreference(
@@ -264,13 +392,39 @@ export async function dispatchVerifiedCallerAlert(
     recipientsResult.emails,
     'integration',
   );
+  // Persist a 'skipped' audit row for every admin who was filtered out
+  // so the history view can explain "we tried to email Bob but he opted
+  // out of integration emails" instead of silently shrinking the
+  // recipient list.
+  const recipientLowerSet = new Set(recipients.map((e) => e.toLowerCase()));
+  const skippedEmails = recipientsResult.emails.filter(
+    (e) => !recipientLowerSet.has(e.toLowerCase()),
+  );
+  for (const email of skippedEmails) {
+    const ctx = nameByEmail.get(email.toLowerCase());
+    await recordVerifiedCallerAlertRecipient({
+      tenantId: caller.tenantId,
+      callerId: caller.id,
+      dispatchId,
+      healthStatus,
+      userId: ctx?.userId ?? null,
+      recipientName: ctx?.name ?? null,
+      recipientEmail: email,
+      deliveryStatus: 'skipped',
+      deliveryError: 'Recipient opted out of integration emails',
+      permanentFailure: false,
+      source,
+      triggeredByUserId,
+    });
+  }
+
   if (recipients.length === 0) {
     logger.info('Verified-caller alert: all recipients opted out of integration emails', {
       tenantId: caller.tenantId,
       callerId: caller.id,
       removed: recipientsResult.emails.length,
     });
-    return { status: 'no_recipients', emailedRecipients: 0 };
+    return { status: 'no_recipients', emailedRecipients: 0, dispatchId };
   }
 
   let subject: string;
@@ -311,26 +465,51 @@ export async function dispatchVerifiedCallerAlert(
 
   let delivered = 0;
   for (const to of recipients) {
+    const ctx = nameByEmail.get(to.toLowerCase());
+    let deliveryStatus: 'sent' | 'failed' | 'bounced' = 'failed';
+    let deliveryError: string | null = null;
+    let permanent = false;
     try {
       const sendResult = await sendEmail({ to, subject, html, text });
+      const classified = classifyDeliveryStatus(sendResult);
+      deliveryStatus = classified.status;
+      permanent = classified.permanent;
       if (sendResult.success) {
         delivered += 1;
       } else {
+        deliveryError = sendResult.error ?? 'sendEmail returned failure';
         logger.warn('Verified-caller alert email send failed', {
           tenantId: caller.tenantId,
           callerId: caller.id,
           to,
           error: sendResult.error,
+          permanent,
         });
       }
     } catch (err) {
+      deliveryStatus = 'failed';
+      deliveryError = err instanceof Error ? err.message : String(err);
       logger.warn('Verified-caller alert email threw', {
         tenantId: caller.tenantId,
         callerId: caller.id,
         to,
-        error: String(err),
+        error: deliveryError,
       });
     }
+    await recordVerifiedCallerAlertRecipient({
+      tenantId: caller.tenantId,
+      callerId: caller.id,
+      dispatchId,
+      healthStatus,
+      userId: ctx?.userId ?? null,
+      recipientName: ctx?.name ?? null,
+      recipientEmail: to,
+      deliveryStatus,
+      deliveryError,
+      permanentFailure: permanent,
+      source,
+      triggeredByUserId,
+    });
   }
 
   if (delivered === 0 && recipients.length > 0) {
@@ -349,9 +528,11 @@ export async function dispatchVerifiedCallerAlert(
     status: result.status,
     recipients: recipients.length,
     delivered,
+    dispatchId,
+    source,
   });
 
-  return { status: 'sent', emailedRecipients: delivered };
+  return { status: 'sent', emailedRecipients: delivered, dispatchId };
 }
 
 /**

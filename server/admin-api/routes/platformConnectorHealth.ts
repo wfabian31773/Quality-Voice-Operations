@@ -33,6 +33,11 @@ import {
   type VerifiedCallerId,
 } from '../../../platform/telephony/TrustedCallerService';
 import { dispatchVerifiedCallerAlert } from '../../../platform/telephony/VerifiedCallerHealthScheduler';
+import {
+  getLatestAlertSummariesByCaller,
+  listVerifiedCallerAlertHistory,
+  type VerifiedCallerAlertSummary,
+} from '../../../platform/telephony/VerifiedCallerAlertHistory';
 
 const router = Router();
 const logger = createLogger('PLATFORM_CONNECTOR_HEALTH');
@@ -1133,6 +1138,14 @@ interface UnhealthyVerifiedCallerResponseRow {
   lastHealthCheckAt: string | null;
   lastHealthMessage: string | null;
   expiryAlertSentAt: string | null;
+  /**
+   * Most recent alert dispatch summary, sourced from
+   * `verified_caller_alert_recipients`. `null` when no alert audit rows
+   * exist for the caller (i.e. nothing has been dispatched since the
+   * audit table was introduced). The panel renders the bounce badge
+   * when `lastAlert.allBounced` is true.
+   */
+  lastAlert: VerifiedCallerAlertSummary | null;
 }
 
 const VERIFIED_CALLER_DEFAULT_LIMIT = 200;
@@ -1149,6 +1162,7 @@ function daysUntil(expiresAt: Date | null): number | null {
 
 function toUnhealthyVerifiedCallerResponseRow(
   row: UnhealthyVerifiedCallerRow,
+  lastAlert: VerifiedCallerAlertSummary | null,
 ): UnhealthyVerifiedCallerResponseRow | null {
   const c = row.caller;
   // The list query is filtered to exactly the three unhealthy statuses,
@@ -1174,6 +1188,7 @@ function toUnhealthyVerifiedCallerResponseRow(
     lastHealthCheckAt: c.lastHealthCheckAt ? c.lastHealthCheckAt.toISOString() : null,
     lastHealthMessage: c.lastHealthMessage,
     expiryAlertSentAt: c.expiryAlertSentAt ? c.expiryAlertSentAt.toISOString() : null,
+    lastAlert,
   };
 }
 
@@ -1191,8 +1206,19 @@ router.get(
 
     try {
       const rows = await listUnhealthyVerifiedCallers(limit);
+      // Bulk-fetch the most recent dispatch summary for every caller in
+      // the listing in a single round-trip. Empty input list short-
+      // circuits inside the helper, so the no-rows path stays free.
+      const summariesByCaller = await getLatestAlertSummariesByCaller(
+        rows.map((r) => ({ tenantId: r.caller.tenantId, callerId: r.caller.id })),
+      );
       const callers = rows
-        .map(toUnhealthyVerifiedCallerResponseRow)
+        .map((r) =>
+          toUnhealthyVerifiedCallerResponseRow(
+            r,
+            summariesByCaller.get(r.caller.id) ?? null,
+          ),
+        )
         .filter((r): r is UnhealthyVerifiedCallerResponseRow => r !== null);
 
       const summary = callers.reduce(
@@ -1248,6 +1274,48 @@ function callerHealthResultFromRow(caller: VerifiedCallerId): CallerHealthResult
   };
 }
 
+/**
+ * Cap the per-caller history payload. A tenant rarely has more than a
+ * handful of admins, and the panel renders the rows newest-first, so a
+ * 200-row cap covers ~25 dispatches at 8 admins each — far more than
+ * support ever scrolls through. Keeps the JSON payload bounded for the
+ * pathological "tenant added 50 admins" case.
+ */
+const VERIFIED_CALLER_ALERT_HISTORY_LIMIT = 200;
+
+router.get(
+  '/platform/verified-caller-health/:tenantId/:callerId/alert-history',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId, callerId } = req.params;
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(callerId)) {
+      return res.status(400).json({ error: 'Invalid tenantId or callerId' });
+    }
+
+    try {
+      const recipients = await listVerifiedCallerAlertHistory(
+        tenantId,
+        callerId,
+        VERIFIED_CALLER_ALERT_HISTORY_LIMIT,
+      );
+      return res.json({
+        recipients,
+        limit: VERIFIED_CALLER_ALERT_HISTORY_LIMIT,
+        truncated: recipients.length === VERIFIED_CALLER_ALERT_HISTORY_LIMIT,
+      });
+    } catch (err) {
+      logger.error('Failed to load verified-caller alert history', {
+        tenantId,
+        callerId,
+        adminUserId: req.user?.userId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to load alert history' });
+    }
+  },
+);
+
 router.post(
   '/platform/verified-caller-health/:tenantId/:callerId/alert',
   requireAuth,
@@ -1294,6 +1362,8 @@ router.post(
         caller,
         result: callerHealthResultFromRow(caller),
         force: true,
+        source: 'admin_reissue',
+        triggeredByUserId: req.user?.userId ?? null,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

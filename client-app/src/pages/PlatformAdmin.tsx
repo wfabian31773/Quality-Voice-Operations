@@ -1260,6 +1260,24 @@ function ConnectorHealthPanel() {
 
 type VerifiedCallerHealthStatus = 'expiring_soon' | 'expired' | 'revoked';
 
+type VerifiedCallerAlertSource = 'scheduler' | 'admin_reissue';
+
+type VerifiedCallerAlertDeliveryStatus = 'sent' | 'bounced' | 'failed' | 'skipped';
+
+interface VerifiedCallerAlertSummary {
+  dispatchId: string;
+  dispatchedAt: string;
+  healthStatus: string;
+  source: VerifiedCallerAlertSource;
+  sentCount: number;
+  bouncedCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalCount: number;
+  /** True when at least one delivery attempt was made and every one bounced. */
+  allBounced: boolean;
+}
+
 interface VerifiedCallerHealthRow {
   id: string;
   tenantId: string;
@@ -1273,6 +1291,7 @@ interface VerifiedCallerHealthRow {
   lastHealthCheckAt: string | null;
   lastHealthMessage: string | null;
   expiryAlertSentAt: string | null;
+  lastAlert: VerifiedCallerAlertSummary | null;
 }
 
 interface VerifiedCallerHealthResponse {
@@ -1285,6 +1304,29 @@ interface VerifiedCallerHealthResponse {
     affectedTenants: number;
   };
   limit: number;
+}
+
+interface VerifiedCallerAlertRecipient {
+  id: number;
+  dispatchId: string;
+  healthStatus: string;
+  recipientEmail: string;
+  recipientName: string | null;
+  userId: string | null;
+  deliveryStatus: VerifiedCallerAlertDeliveryStatus;
+  deliveryError: string | null;
+  permanentFailure: boolean;
+  source: VerifiedCallerAlertSource;
+  triggeredByUserId: string | null;
+  triggeredByEmail: string | null;
+  triggeredByName: string | null;
+  dispatchedAt: string;
+}
+
+interface VerifiedCallerAlertHistoryResponse {
+  recipients: VerifiedCallerAlertRecipient[];
+  limit: number;
+  truncated: boolean;
 }
 
 function verifiedCallerStatusBadge(status: VerifiedCallerHealthStatus): {
@@ -1357,6 +1399,227 @@ function VerifiedCallerDaysCell({
   return <span className={tone}>{daysRemaining}d</span>;
 }
 
+/**
+ * Render the per-recipient color-coded badge inside the expanded history
+ * table. Mirrors the connector-alert-recipients styling so the two
+ * panels read consistently when an admin is bouncing between them.
+ */
+function VerifiedCallerDeliveryBadge({
+  status,
+  permanentFailure,
+}: {
+  status: VerifiedCallerAlertDeliveryStatus;
+  permanentFailure: boolean;
+}) {
+  let label: string;
+  let classes: string;
+  switch (status) {
+    case 'sent':
+      label = 'Delivered';
+      classes =
+        'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800';
+      break;
+    case 'bounced':
+      label = 'Bounced';
+      classes =
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800';
+      break;
+    case 'failed':
+      label = permanentFailure ? 'Failed (permanent)' : 'Failed';
+      classes =
+        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800';
+      break;
+    case 'skipped':
+      label = 'Skipped';
+      classes =
+        'bg-surface-secondary text-text-muted border border-border';
+      break;
+  }
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${classes}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+interface AlertHistoryDispatchGroup {
+  dispatchId: string;
+  dispatchedAt: string;
+  source: VerifiedCallerAlertSource;
+  healthStatus: string;
+  triggeredByLabel: string | null;
+  recipients: VerifiedCallerAlertRecipient[];
+}
+
+/**
+ * Group the flat recipient list into one entry per dispatch so the UI
+ * can render "March 4 — sent to 3 admins" headers with the per-recipient
+ * rows underneath. Preserves the server's newest-first ordering.
+ */
+function groupAlertRecipientsByDispatch(
+  rows: VerifiedCallerAlertRecipient[],
+): AlertHistoryDispatchGroup[] {
+  const groups: AlertHistoryDispatchGroup[] = [];
+  const indexById = new Map<string, number>();
+  for (const row of rows) {
+    let idx = indexById.get(row.dispatchId);
+    if (idx === undefined) {
+      idx = groups.length;
+      indexById.set(row.dispatchId, idx);
+      const triggered = row.triggeredByName || row.triggeredByEmail;
+      groups.push({
+        dispatchId: row.dispatchId,
+        dispatchedAt: row.dispatchedAt,
+        source: row.source,
+        healthStatus: row.healthStatus,
+        triggeredByLabel: triggered ?? null,
+        recipients: [],
+      });
+    }
+    groups[idx].recipients.push(row);
+  }
+  return groups;
+}
+
+/**
+ * Lazy-loaded recipient history for one verified caller. Mounted by the
+ * panel only when an admin expands a row, so the listing endpoint stays
+ * cheap for tenants with hundreds of unhealthy callers.
+ */
+function VerifiedCallerAlertHistory({
+  tenantId,
+  callerId,
+}: {
+  tenantId: string;
+  callerId: string;
+}) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['platform-verified-caller-alert-history', tenantId, callerId],
+    queryFn: () =>
+      api.get<VerifiedCallerAlertHistoryResponse>(
+        `/platform/verified-caller-health/${tenantId}/${callerId}/alert-history`,
+      ),
+    // History rarely changes after a dispatch; a 30s stale window is
+    // plenty for the support workflow (expand → re-issue → re-expand).
+    staleTime: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="px-4 py-3 text-xs text-text-muted">Loading alert history…</div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="px-4 py-3 text-xs text-red-600 dark:text-red-400">
+        Failed to load alert history: {(error as Error).message}
+      </div>
+    );
+  }
+  const recipients = data?.recipients ?? [];
+  if (recipients.length === 0) {
+    return (
+      <div className="px-4 py-3 text-xs text-text-muted">
+        No alert emails have been recorded for this caller yet. Alert audit logging began
+        when this feature shipped — older dispatches won't appear here.
+      </div>
+    );
+  }
+
+  const groups = groupAlertRecipientsByDispatch(recipients);
+
+  return (
+    <div className="px-4 py-3 space-y-3">
+      {data?.truncated && (
+        <div className="text-[11px] text-amber-700 dark:text-amber-300">
+          Showing the most recent {data.limit} recipient rows. Older history was
+          truncated.
+        </div>
+      )}
+      {groups.map((group) => {
+        const sentCount = group.recipients.filter((r) => r.deliveryStatus === 'sent').length;
+        const bouncedCount = group.recipients.filter((r) => r.deliveryStatus === 'bounced').length;
+        const failedCount = group.recipients.filter((r) => r.deliveryStatus === 'failed').length;
+        const skippedCount = group.recipients.filter((r) => r.deliveryStatus === 'skipped').length;
+        return (
+          <div
+            key={group.dispatchId}
+            className="border border-border rounded-md overflow-hidden bg-surface"
+          >
+            <div className="px-3 py-2 bg-surface-secondary text-xs flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-medium text-text-primary">
+                {new Date(group.dispatchedAt).toLocaleString()}
+              </span>
+              <span className="text-text-muted">
+                {group.source === 'admin_reissue' ? 'Manual re-issue' : 'Scheduler'}
+                {group.triggeredByLabel ? ` · by ${group.triggeredByLabel}` : ''}
+              </span>
+              <span className="text-text-muted">
+                Status at send: <span className="font-mono">{group.healthStatus}</span>
+              </span>
+              <span className="ml-auto flex items-center gap-2 text-[11px]">
+                {sentCount > 0 && (
+                  <span className="text-emerald-700 dark:text-emerald-300">
+                    {sentCount} delivered
+                  </span>
+                )}
+                {bouncedCount > 0 && (
+                  <span className="text-red-600 dark:text-red-400">
+                    {bouncedCount} bounced
+                  </span>
+                )}
+                {failedCount > 0 && (
+                  <span className="text-amber-700 dark:text-amber-300">
+                    {failedCount} failed
+                  </span>
+                )}
+                {skippedCount > 0 && (
+                  <span className="text-text-muted">{skippedCount} skipped</span>
+                )}
+              </span>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-text-muted">
+                  <th className="text-left px-3 py-1.5 font-medium">Recipient</th>
+                  <th className="text-left px-3 py-1.5 font-medium">Status</th>
+                  <th className="text-left px-3 py-1.5 font-medium">Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.recipients.map((r) => (
+                  <tr key={r.id} className="border-b border-border last:border-0 align-top">
+                    <td className="px-3 py-1.5">
+                      <div className="font-mono">{r.recipientEmail}</div>
+                      {r.recipientName && (
+                        <div className="text-text-muted">{r.recipientName}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <VerifiedCallerDeliveryBadge
+                        status={r.deliveryStatus}
+                        permanentFailure={r.permanentFailure}
+                      />
+                    </td>
+                    <td
+                      className="px-3 py-1.5 text-text-muted max-w-[420px]"
+                      title={r.deliveryError ?? undefined}
+                    >
+                      {r.deliveryError ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function VerifiedCallerHealthPanel() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch, isFetching } = useQuery({
@@ -1364,6 +1627,19 @@ function VerifiedCallerHealthPanel() {
     queryFn: () => api.get<VerifiedCallerHealthResponse>('/platform/verified-caller-health'),
     refetchInterval: 60_000,
   });
+
+  // Tracks which caller rows are currently expanded to show alert
+  // history. Plain Set instead of a single id so an admin can keep
+  // multiple tenants open while comparing recipients.
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Client-side sort toggle on the days-remaining column. Default is
   // ascending (most urgent first), matching the server's default order.
@@ -1468,6 +1744,7 @@ function VerifiedCallerHealthPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
+                <th className="px-2 py-2 w-8" aria-label="Expand row" />
                 <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
                 <th className="text-left px-4 py-2 font-medium text-text-muted">Phone number</th>
                 <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
@@ -1491,79 +1768,139 @@ function VerifiedCallerHealthPanel() {
                 const badge = verifiedCallerStatusBadge(row.status);
                 const isPending =
                   reissueAlert.isPending && reissueAlert.variables?.id === row.id;
+                const isExpanded = expandedRows.has(row.id);
+                const lastAlert = row.lastAlert;
                 return (
-                  <tr key={row.id} className="border-b border-border last:border-0 align-top">
-                    <td className="px-4 py-2 text-xs">
-                      <div className="font-medium">{row.tenantName ?? '—'}</div>
-                      {row.tenantSlug && (
-                        <div className="text-text-muted font-mono">{row.tenantSlug}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <div className="font-mono">{row.phoneNumber}</div>
-                      {row.friendlyName && (
-                        <div className="text-text-muted">{row.friendlyName}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.classes}`}
-                      >
-                        {badge.label}
-                      </span>
-                      {row.lastHealthMessage && (
-                        <div
-                          className="text-text-muted mt-1 max-w-[260px] truncate"
-                          title={row.lastHealthMessage}
-                        >
-                          {row.lastHealthMessage}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs whitespace-nowrap">
-                      <VerifiedCallerDaysCell
-                        status={row.status}
-                        daysRemaining={row.daysRemaining}
-                      />
-                      {row.expiresAt && (
-                        <div className="text-text-muted">
-                          {new Date(row.expiresAt).toLocaleDateString()}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
-                      <span title={row.lastHealthCheckAt ?? undefined}>
-                        {formatRelativeTime(row.lastHealthCheckAt)}
-                      </span>
-                      {row.expiryAlertSentAt && (
-                        <div
-                          className="text-text-muted mt-0.5"
-                          title={`Last alert sent ${new Date(row.expiryAlertSentAt).toLocaleString()}`}
-                        >
-                          Alerted {formatRelativeTime(row.expiryAlertSentAt)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <button
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Re-issue alert email + in-app notification for ${row.phoneNumber} to ${row.tenantName ?? 'this tenant'}?`,
-                            )
-                          ) {
-                            reissueAlert.mutate(row);
+                  <Fragment key={row.id}>
+                    <tr className="border-b border-border align-top">
+                      <td className="px-2 py-2 align-top">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(row.id)}
+                          aria-expanded={isExpanded}
+                          aria-label={
+                            isExpanded ? 'Hide alert history' : 'Show alert history'
                           }
-                        }}
-                        disabled={isPending}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary text-text-primary text-xs disabled:opacity-50"
-                        title="Send the verified-caller alert email to the tenant's admins again, even if one was already sent this week"
-                      >
-                        <Send className="h-3 w-3" />
-                        {isPending ? 'Sending…' : 'Re-issue alert'}
-                      </button>
-                    </td>
-                  </tr>
+                          className="p-1 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-border"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <div className="font-medium">{row.tenantName ?? '—'}</div>
+                        {row.tenantSlug && (
+                          <div className="text-text-muted font-mono">{row.tenantSlug}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <div className="font-mono">{row.phoneNumber}</div>
+                        {row.friendlyName && (
+                          <div className="text-text-muted">{row.friendlyName}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.classes}`}
+                        >
+                          {badge.label}
+                        </span>
+                        {lastAlert?.allBounced && (
+                          <span
+                            className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800"
+                            title={`Most recent alert (${new Date(lastAlert.dispatchedAt).toLocaleString()}) bounced for every recipient — no admin actually received it.`}
+                          >
+                            <MailX className="h-3 w-3" />
+                            All bounced
+                          </span>
+                        )}
+                        {row.lastHealthMessage && (
+                          <div
+                            className="text-text-muted mt-1 max-w-[260px] truncate"
+                            title={row.lastHealthMessage}
+                          >
+                            {row.lastHealthMessage}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs whitespace-nowrap">
+                        <VerifiedCallerDaysCell
+                          status={row.status}
+                          daysRemaining={row.daysRemaining}
+                        />
+                        {row.expiresAt && (
+                          <div className="text-text-muted">
+                            {new Date(row.expiresAt).toLocaleDateString()}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
+                        <span title={row.lastHealthCheckAt ?? undefined}>
+                          {formatRelativeTime(row.lastHealthCheckAt)}
+                        </span>
+                        {row.expiryAlertSentAt && (
+                          <div
+                            className="text-text-muted mt-0.5"
+                            title={`Last alert sent ${new Date(row.expiryAlertSentAt).toLocaleString()}`}
+                          >
+                            Alerted {formatRelativeTime(row.expiryAlertSentAt)}
+                          </div>
+                        )}
+                        {lastAlert && (
+                          <div
+                            className="mt-0.5 text-[11px]"
+                            title={`Most recent dispatch (${lastAlert.source === 'admin_reissue' ? 'manual re-issue' : 'scheduler'}): ${lastAlert.sentCount} delivered, ${lastAlert.bouncedCount} bounced, ${lastAlert.failedCount} failed, ${lastAlert.skippedCount} skipped.`}
+                          >
+                            <span className="text-emerald-700 dark:text-emerald-300">
+                              {lastAlert.sentCount}↑
+                            </span>
+                            {lastAlert.bouncedCount > 0 && (
+                              <span className="ml-1 text-red-600 dark:text-red-400">
+                                {lastAlert.bouncedCount}✗
+                              </span>
+                            )}
+                            {lastAlert.failedCount > 0 && (
+                              <span className="ml-1 text-amber-700 dark:text-amber-300">
+                                {lastAlert.failedCount}!
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Re-issue alert email + in-app notification for ${row.phoneNumber} to ${row.tenantName ?? 'this tenant'}?`,
+                              )
+                            ) {
+                              reissueAlert.mutate(row);
+                            }
+                          }}
+                          disabled={isPending}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary text-text-primary text-xs disabled:opacity-50"
+                          title="Send the verified-caller alert email to the tenant's admins again, even if one was already sent this week"
+                        >
+                          <Send className="h-3 w-3" />
+                          {isPending ? 'Sending…' : 'Re-issue alert'}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-b border-border bg-surface-secondary/40">
+                        <td colSpan={7} className="p-0">
+                          <VerifiedCallerAlertHistory
+                            tenantId={row.tenantId}
+                            callerId={row.id}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
