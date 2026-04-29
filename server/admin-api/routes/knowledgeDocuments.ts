@@ -6,6 +6,7 @@ import { requireRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { processDocument } from '../../../platform/knowledge/ingestionPipeline';
 import { scanPdfBuffer, buildRejectionMessage } from '../../../platform/knowledge/pdfSecurityScanner';
+import { isPrivateOrInternalHost } from '../../../platform/security/privateHostBlocklist';
 
 const router = Router();
 const logger = createLogger('ADMIN_KNOWLEDGE_DOCUMENTS');
@@ -184,7 +185,7 @@ router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), 
     });
   }
 
-  const scan = await scanPdfBuffer(file.buffer);
+  const scan = await scanPdfBuffer(file.buffer, { tenantId, filename: file.originalname });
   if (scan.verdict !== 'clean') {
     logger.warn('Rejected PDF upload that failed malware scan', {
       tenantId,
@@ -193,6 +194,7 @@ router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), 
       verdict: scan.verdict,
       reason: scan.reason,
       findings: scan.findings,
+      links: scan.links,
     });
     return res.status(422).json({ error: buildRejectionMessage(scan) });
   }
@@ -211,11 +213,21 @@ router.post('/knowledge-documents/upload', requireAuth, requireRole('manager'), 
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
+    const scanMetadata = {
+      pdfScan: {
+        detector: scan.detector,
+        verdict: scan.verdict,
+        links: scan.links ?? [],
+        reputation: scan.reputation ?? null,
+        scannedAt: new Date().toISOString(),
+      },
+    };
+
     const { rows } = await client.query(
-      `INSERT INTO knowledge_documents (tenant_id, title, source_type, category, status, file_name, file_size, raw_file)
-       VALUES ($1, $2, 'pdf', $3, 'processing', $4, $5, $6)
-       RETURNING id, tenant_id, title, source_type, category, status, file_name, file_size, created_at, updated_at`,
-      [tenantId, title, category ?? null, file.originalname, file.size, file.buffer],
+      `INSERT INTO knowledge_documents (tenant_id, title, source_type, category, status, file_name, file_size, raw_file, metadata)
+       VALUES ($1, $2, 'pdf', $3, 'processing', $4, $5, $6, $7)
+       RETURNING id, tenant_id, title, source_type, category, status, file_name, file_size, metadata, created_at, updated_at`,
+      [tenantId, title, category ?? null, file.originalname, file.size, file.buffer, JSON.stringify(scanMetadata)],
     );
     await client.query('COMMIT');
 
@@ -258,13 +270,7 @@ router.post('/knowledge-documents/url', requireAuth, requireRole('manager'), asy
     return res.status(400).json({ error: 'Only HTTP and HTTPS URLs are supported' });
   }
 
-  const blockedHosts = ['localhost', '127.0.0.1', '::1', '0.0.0.0', 'metadata.google.internal', 'instance-data'];
-  if (
-    blockedHosts.includes(parsedUrl.hostname) ||
-    parsedUrl.hostname.endsWith('.local') ||
-    parsedUrl.hostname.endsWith('.internal') ||
-    /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|127\.)/.test(parsedUrl.hostname)
-  ) {
+  if (isPrivateOrInternalHost(parsedUrl.hostname)) {
     return res.status(400).json({ error: 'URLs pointing to private or internal networks are not allowed' });
   }
 
@@ -410,7 +416,11 @@ router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('manage
       }
 
       const pdfBuffer = Buffer.from(doc.raw_file);
-      const scan = await scanPdfBuffer(pdfBuffer);
+      const scan = await scanPdfBuffer(pdfBuffer, {
+        tenantId,
+        documentId: doc.id,
+        filename: doc.file_name ?? undefined,
+      });
       if (scan.verdict !== 'clean') {
         const message = buildRejectionMessage(scan);
         logger.warn('Rejected PDF reindex that failed malware scan', {
@@ -421,6 +431,7 @@ router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('manage
           verdict: scan.verdict,
           reason: scan.reason,
           findings: scan.findings,
+          links: scan.links,
         });
         const errClient = await pool.connect();
         try {
@@ -433,6 +444,38 @@ router.post('/knowledge-documents/:id/reindex', requireAuth, requireRole('manage
           await errClient.query('COMMIT');
         } catch { await errClient.query('ROLLBACK').catch(() => {}); } finally { errClient.release(); }
         return res.status(422).json({ error: message });
+      }
+
+      const scanMetadata = {
+        pdfScan: {
+          detector: scan.detector,
+          verdict: scan.verdict,
+          links: scan.links ?? [],
+          reputation: scan.reputation ?? null,
+          scannedAt: new Date().toISOString(),
+        },
+      };
+      const metaClient = await pool.connect();
+      try {
+        await metaClient.query('BEGIN');
+        await withTenantContext(metaClient, tenantId, async () => {});
+        await metaClient.query(
+          `UPDATE knowledge_documents
+             SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb,
+                 updated_at = NOW()
+             WHERE id = $2 AND tenant_id = $3`,
+          [JSON.stringify(scanMetadata), id, tenantId],
+        );
+        await metaClient.query('COMMIT');
+      } catch (err) {
+        await metaClient.query('ROLLBACK').catch(() => {});
+        logger.warn('Failed to record PDF scan metadata on reindex', {
+          tenantId,
+          documentId: doc.id,
+          error: String(err),
+        });
+      } finally {
+        metaClient.release();
       }
 
       processDocument({

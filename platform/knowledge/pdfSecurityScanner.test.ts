@@ -35,6 +35,8 @@ beforeEach(() => {
   delete process.env.CLAMAV_HOST;
   delete process.env.CLAMAV_PORT;
   delete process.env.CLAMAV_TIMEOUT_MS;
+  delete process.env.GOOGLE_SAFE_BROWSING_API_KEY;
+  delete process.env.GOOGLE_SAFE_BROWSING_TIMEOUT_MS;
 });
 
 afterEach(() => {
@@ -165,5 +167,183 @@ describe('pdfSecurityScanner — ClamAV integration', () => {
     expect(result.verdict).toBe('infected');
     expect(buildRejectionMessage(result)).toMatch(/flagged as malicious/);
     await fake.close();
+  });
+});
+
+describe('pdfSecurityScanner — URL extraction', () => {
+  it('extracts /URI literal links and ignores benign ones', async () => {
+    const { extractPdfUrls, scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /Type /Action /S /URI /URI (https://example.com/landing) >> endobj\n%%EOF\n',
+    );
+    expect(extractPdfUrls(buf)).toContain('https://example.com/landing');
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('clean');
+    expect(result.links).toEqual([{ url: 'https://example.com/landing', verdict: 'clean' }]);
+  });
+
+  it('extracts /URI hex-encoded links', async () => {
+    const { extractPdfUrls } = await loadScanner();
+    // "https://hex.test" hex-encoded
+    const hex = Buffer.from('https://hex.test', 'utf8').toString('hex');
+    const buf = Buffer.from(`%PDF-1.4\n4 0 obj << /S /URI /URI <${hex}> >> endobj\n%%EOF\n`);
+    expect(extractPdfUrls(buf)).toContain('https://hex.test');
+  });
+
+  it('rejects PDFs whose links target private/internal addresses', async () => {
+    const { scanPdfBuffer, buildRejectionMessage } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (http://169.254.169.254/latest/meta-data/) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('suspicious');
+    expect(result.detector).toBe('pdf-link-scanner');
+    expect(result.findings.some((f) => f.includes('169.254.169.254'))).toBe(true);
+    expect(buildRejectionMessage(result)).toMatch(/active or unsafe content/);
+    expect(result.links?.find((l) => l.url.includes('169.254'))?.verdict).toBe('private-network');
+  });
+
+  it('blocks GoToR remote actions that point at internal hosts', async () => {
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n5 0 obj << /S /GoToR /F (http://localhost:8080/secret) /D [0 /Fit] >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    // /GoToR itself triggers the static analyzer, but the link should also be flagged.
+    expect(result.verdict).toBe('suspicious');
+    expect(result.links?.some((l) => l.url.includes('localhost') && l.verdict === 'private-network')).toBe(true);
+  });
+
+  it('blocks non-http(s) URI schemes such as file://', async () => {
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (file:///etc/passwd) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('suspicious');
+    expect(result.links?.[0]?.verdict).toBe('private-network');
+  });
+
+  it('marks unparseable URI strings as suspicious', async () => {
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (not a url at all) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('suspicious');
+    expect(result.links?.[0]?.verdict).toBe('unparseable');
+  });
+});
+
+describe('pdfSecurityScanner — Safe Browsing reputation', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('flags PDFs whose links match a Safe Browsing threat as infected', async () => {
+    process.env.GOOGLE_SAFE_BROWSING_API_KEY = 'fake-key';
+    let receivedBody: unknown = null;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      receivedBody = JSON.parse(String(init?.body ?? '{}'));
+      return new Response(
+        JSON.stringify({
+          matches: [
+            {
+              threatType: 'SOCIAL_ENGINEERING',
+              threat: { url: 'https://phish.example.com/fakelogin' },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof fetch;
+
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (https://phish.example.com/fakelogin) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('infected');
+    expect(result.detector).toBe('google-safe-browsing');
+    expect(result.reputation?.bad).toBe(1);
+    expect(result.links?.[0]?.threatType).toBe('SOCIAL_ENGINEERING');
+    expect(receivedBody).toBeTruthy();
+  });
+
+  it('does not mark a clean PDF as infected when Safe Browsing returns no matches', async () => {
+    process.env.GOOGLE_SAFE_BROWSING_API_KEY = 'fake-key';
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (https://example.com) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('clean');
+    expect(result.reputation?.checked).toBe(true);
+    expect(result.reputation?.bad).toBe(0);
+  });
+
+  it('does not block uploads when Safe Browsing is unreachable', async () => {
+    process.env.GOOGLE_SAFE_BROWSING_API_KEY = 'fake-key';
+    globalThis.fetch = (async () => {
+      throw new Error('connect ECONNREFUSED');
+    }) as typeof fetch;
+
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (https://example.com) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('clean');
+    expect(result.reputation?.checked).toBe(false);
+    expect(result.reputation?.error).toMatch(/ECONNREFUSED/);
+  });
+
+  it('matches Safe Browsing responses even when the provider canonicalizes the URL differently', async () => {
+    process.env.GOOGLE_SAFE_BROWSING_API_KEY = 'fake-key';
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          matches: [
+            {
+              threatType: 'MALWARE',
+              // Provider returns trailing-slash + lowercased host that differ from what we sent.
+              threat: { url: 'https://phish.example.com:443/path/' },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+
+    const { scanPdfBuffer } = await loadScanner();
+    // PDF contains the link in a slightly different form (uppercased host, no trailing slash).
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (https://Phish.Example.com/path/) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(result.verdict).toBe('infected');
+    expect(result.detector).toBe('google-safe-browsing');
+    expect(result.links?.[0]?.threatType).toBe('MALWARE');
+    expect(result.links?.[0]?.url).toBe('https://Phish.Example.com/path/');
+  });
+
+  it('skips Safe Browsing when no API key is configured', async () => {
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      return new Response('{}');
+    }) as typeof fetch;
+
+    const { scanPdfBuffer } = await loadScanner();
+    const buf = Buffer.from(
+      '%PDF-1.4\n3 0 obj << /S /URI /URI (https://example.com) >> endobj\n%%EOF\n',
+    );
+    const result = await scanPdfBuffer(buf);
+    expect(called).toBe(false);
+    expect(result.verdict).toBe('clean');
+    expect(result.reputation).toBeUndefined();
   });
 });
