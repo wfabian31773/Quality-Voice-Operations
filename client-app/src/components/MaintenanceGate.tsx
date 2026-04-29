@@ -63,6 +63,21 @@ function MaintenanceStatusBanner({ state }: { state: MaintenanceState }) {
   );
 }
 
+/**
+ * Poll cadences for `/platform/maintenance`.
+ *
+ *   - OFF (or first-paint unknown): 60s — the safety poll.
+ *   - ON: 5s — once tenants are blocked, we want them back in the app within
+ *     a few seconds of an operator flipping maintenance back off, not up to
+ *     a minute later.
+ *
+ * The fast cadence is only active while the gate is actively blocking users,
+ * so the extra request volume is bounded to the (rare, short) maintenance
+ * window itself.
+ */
+const POLL_INTERVAL_OFF_MS = 60_000;
+const POLL_INTERVAL_ON_MS = 5_000;
+
 export default function MaintenanceGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<MaintenanceState | null>(null);
   const { user } = useAuth();
@@ -70,21 +85,64 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    // Track the latest known enabled state inside the effect so the scheduler
+    // can pick the right cadence without re-running the whole effect (which
+    // would tear down and rebuild the listeners on every state change).
+    let currentEnabled = false;
+
+    const schedule = () => {
+      if (cancelled) return;
+      if (timer !== null) clearTimeout(timer);
+      const delay = currentEnabled ? POLL_INTERVAL_ON_MS : POLL_INTERVAL_OFF_MS;
+      timer = setTimeout(check, delay);
+    };
+
     const check = () => {
+      if (cancelled || inFlight) {
+        // If a request is already in flight, just re-arm the timer so we
+        // don't pile up overlapping requests on slow networks.
+        if (!cancelled) schedule();
+        return;
+      }
+      inFlight = true;
       api
         .get<MaintenanceState>('/platform/maintenance')
         .then((data) => {
-          if (!cancelled) setState(data);
+          if (cancelled) return;
+          currentEnabled = !!data.enabled;
+          setState(data);
         })
         .catch(() => {
-          if (!cancelled) setState({ enabled: false, message: null, scheduled_for: null });
+          if (cancelled) return;
+          // Treat errors as "unknown / probably off" — but keep the existing
+          // poll cadence so a transient outage during a maintenance window
+          // doesn't strand tenants on the maintenance screen forever.
+          setState((prev) => prev ?? { enabled: false, message: null, scheduled_for: null });
+        })
+        .finally(() => {
+          inFlight = false;
+          schedule();
         });
     };
+
+    // Re-check immediately when the tab becomes visible again. Browsers
+    // throttle background timers heavily, so a tab that was hidden during
+    // the maintenance window may otherwise sit on a stale "enabled" view
+    // until its next throttled tick. Firing on visibilitychange catches it
+    // up the moment the user looks at the tab again.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     check();
-    const id = setInterval(check, 60_000);
+
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

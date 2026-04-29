@@ -267,6 +267,76 @@ describe('MaintenanceGate (BL-013)', () => {
       expect(screen.queryByText(/QVO is briefly offline/i)).toBeNull();
     });
 
+    it('polls faster while maintenance is ON so tenants come back within seconds when it flips OFF', async () => {
+      // Faster poll cadence (5s) while enabled is the whole point of this
+      // change: tenants should not wait up to 60s for the safety poll to
+      // notice the maintenance window ended.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      try {
+        const calls: string[] = [];
+        maintenanceResponse = {
+          enabled: true,
+          message: 'Upgrading database — back in 10 minutes.',
+          scheduled_for: null,
+        };
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async (input: RequestInfo | URL) => {
+            const url = typeof input === 'string' ? input : input.toString();
+            const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/api/, '');
+            if (path.startsWith('/platform/maintenance')) {
+              calls.push(path);
+              return new Response(JSON.stringify(maintenanceResponse), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              });
+            }
+            return new Response(JSON.stringify({}), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }) as unknown as typeof fetch,
+        );
+
+        loginAs({ isPlatformAdmin: false });
+
+        const Gate = await loadGate();
+        render(
+          <MemoryRouter initialEntries={['/dashboard']}>
+            <Gate>
+              <Children />
+            </Gate>
+          </MemoryRouter>,
+        );
+
+        // Initial check fires; gate flips to maintenance page.
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        await waitFor(() =>
+          expect(screen.getByText(/QVO is briefly offline/i)).toBeTruthy(),
+        );
+        const initialCalls = calls.length;
+        expect(initialCalls).toBeGreaterThanOrEqual(1);
+
+        // Operator flips maintenance OFF on the backend. Advance the clock
+        // by ~6s — within the new fast cadence (5s) but well under the old
+        // 60s safety poll. The gate must re-poll and let children render.
+        maintenanceResponse = { enabled: false, message: null, scheduled_for: null };
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(6_000);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('protected')).toBeTruthy());
+        expect(calls.length).toBeGreaterThan(initialCalls);
+        expect(screen.queryByText(/QVO is briefly offline/i)).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('does NOT match /admin-substring paths that are not actually under /admin/', async () => {
       // Defensive: a path like "/administrate" must NOT be whitelisted by
       // accident — only "/admin" exact and "/admin/*".
