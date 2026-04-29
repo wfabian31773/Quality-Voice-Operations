@@ -63,6 +63,14 @@ interface RecipientAuditRow {
   deliveryStatus: 'sent' | 'failed' | 'skipped';
   deliveryError: string | null;
   twilioStatusCode: number | null;
+  /**
+   * Twilio Message SID returned by /Messages.json. Used by the
+   * `/twilio/sms-status` webhook to find this row when Twilio reports
+   * delivery progress. Null for email rows, Twilio-not-configured rows, and
+   * the rare case where Twilio accepted the request but didn't return a
+   * SID we could parse.
+   */
+  twilioMessageSid: string | null;
 }
 
 /**
@@ -79,8 +87,9 @@ async function recordRecipientAudit(row: RecipientAuditRow): Promise<void> {
       `INSERT INTO connector_alert_recipients (
          tenant_id, integration_id, dispatch_id, notification_type, channel,
          user_id, recipient_name, recipient_email, recipient_phone,
-         delivery_status, delivery_error, twilio_status_code
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         delivery_status, delivery_error, twilio_status_code,
+         twilio_message_sid
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         row.tenantId,
         row.integrationId,
@@ -94,6 +103,7 @@ async function recordRecipientAudit(row: RecipientAuditRow): Promise<void> {
         row.deliveryStatus,
         row.deliveryError,
         row.twilioStatusCode,
+        row.twilioMessageSid,
       ],
     );
   } catch (err) {
@@ -365,6 +375,7 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
       deliveryStatus,
       deliveryError,
       twilioStatusCode: null,
+      twilioMessageSid: null,
     });
   }
 
@@ -428,18 +439,37 @@ export function normalizeE164(raw: string | null | undefined): string | null {
   return cleaned;
 }
 
+/**
+ * Public URL Twilio should POST delivery status updates to. Mirrors the
+ * pattern used by `server/admin-api/routes/phoneNumbers.ts` — explicit
+ * `VOICE_GATEWAY_BASE_URL`, falling back to the Replit dev domain. Returns
+ * null when neither is set, in which case we send the SMS without a
+ * statusCallback so we still get HTTP-level acceptance feedback.
+ */
+export function getOutageSmsStatusCallbackUrl(): string | null {
+  const base = process.env.VOICE_GATEWAY_BASE_URL
+    ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null);
+  if (!base) return null;
+  return `${base.replace(/\/$/, '')}/twilio/sms-status`;
+}
+
 async function sendTwilioSms(
   config: TwilioConfig,
   to: string,
   body: string,
-): Promise<{ ok: boolean; status?: number; error?: string }> {
+  statusCallback: string | null,
+): Promise<{ ok: boolean; status?: number; error?: string; messageSid?: string | null }> {
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`;
-    const formBody = new URLSearchParams({
+    const formParams: Record<string, string> = {
       To: to,
       From: config.fromNumber,
       Body: body,
-    });
+    };
+    if (statusCallback) {
+      formParams.StatusCallback = statusCallback;
+    }
+    const formBody = new URLSearchParams(formParams);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -452,7 +482,24 @@ async function sendTwilioSms(
     if (!response.ok) {
       return { ok: false, status: response.status };
     }
-    return { ok: true, status: response.status };
+    // Best-effort SID extraction. Twilio returns JSON like { sid: "SMxxxx", ... }.
+    // We swallow parse errors and treat them as "no SID known" so the send is
+    // still considered successful (the in-flight 24h throttle, in-app fan-out,
+    // and audit row all proceed) — we just won't be able to correlate the
+    // statusCallback webhook back to this row for that one recipient.
+    let messageSid: string | null = null;
+    try {
+      const text = await response.text();
+      if (text) {
+        const parsed = JSON.parse(text) as { sid?: string };
+        if (typeof parsed.sid === 'string' && parsed.sid.length > 0) {
+          messageSid = parsed.sid;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return { ok: true, status: response.status, messageSid };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -633,12 +680,23 @@ export async function notifySustainedConnectorFailure(
     deliveryStatus: 'sent' | 'failed' | 'skipped';
     deliveryError: string | null;
     twilioStatusCode: number | null;
+    twilioMessageSid: string | null;
   }
   const outcomes: SmsOutcome[] = [];
+  // Resolve the statusCallback URL once. If we don't have a public base
+  // URL configured we still send (Twilio acceptance + HTTP status are
+  // captured), we just won't get the live `delivered`/`failed` follow-ups
+  // — the panel falls back to showing the dispatch-time status only.
+  const statusCallbackUrl = getOutageSmsStatusCallbackUrl();
   if (twilio) {
     for (const recipient of optedIn) {
       attempted += 1;
-      const result = await sendTwilioSms(twilio, recipient.phone, smsBody);
+      const result = await sendTwilioSms(
+        twilio,
+        recipient.phone,
+        smsBody,
+        statusCallbackUrl,
+      );
       if (result.ok) {
         succeeded += 1;
         outcomes.push({
@@ -646,6 +704,7 @@ export async function notifySustainedConnectorFailure(
           deliveryStatus: 'sent',
           deliveryError: null,
           twilioStatusCode: result.status ?? null,
+          twilioMessageSid: result.messageSid ?? null,
         });
       } else {
         logger.warn('Sustained SMS alert send failed', {
@@ -660,6 +719,7 @@ export async function notifySustainedConnectorFailure(
           deliveryStatus: 'failed',
           deliveryError: result.error ?? `Twilio HTTP ${result.status ?? 'error'}`,
           twilioStatusCode: result.status ?? null,
+          twilioMessageSid: null,
         });
       }
     }
@@ -676,6 +736,7 @@ export async function notifySustainedConnectorFailure(
         deliveryStatus: 'skipped',
         deliveryError: 'Twilio not configured in this environment',
         twilioStatusCode: null,
+        twilioMessageSid: null,
       });
     }
   }
@@ -703,6 +764,7 @@ export async function notifySustainedConnectorFailure(
         deliveryStatus: outcome.deliveryStatus,
         deliveryError: outcome.deliveryError,
         twilioStatusCode: outcome.twilioStatusCode,
+        twilioMessageSid: outcome.twilioMessageSid,
       });
     }
 

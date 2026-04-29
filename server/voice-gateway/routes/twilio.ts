@@ -137,6 +137,7 @@ router.use('/twilio/voice', twilioSignatureMiddleware);
 router.use('/twilio/status', twilioSignatureMiddleware);
 router.use('/twilio/outbound', twilioSignatureMiddleware);
 router.use('/twilio/sms', twilioSignatureMiddleware);
+router.use('/twilio/sms-status', twilioSignatureMiddleware);
 
 router.post('/twilio/voice', async (req: Request, res: Response) => {
   const callSid = req.body.CallSid as string;
@@ -415,6 +416,114 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
   }
 
   res.sendStatus(204);
+});
+
+/**
+ * Twilio status callback for the SMS escalations the connector outage
+ * alerter (`platform/integrations/connectors/SyncErrorAlerter.ts`) sends
+ * when a revenue-critical integration is sustained-failing. Twilio POSTs
+ * here as the message moves through queued -> sent -> delivered (or
+ * undelivered/failed) so the admin "outage timeline" detail panel can
+ * keep updating after the initial dispatch.
+ *
+ * Requests are signature-validated by `twilioSignatureMiddleware`. We
+ * locate the matching `connector_alert_recipients` row by the unique
+ * `twilio_message_sid` column populated at dispatch time. Webhooks for
+ * SIDs we don't recognise (e.g. SMS sent by another product surface) are
+ * silently acknowledged with 204 — Twilio retries on non-2xx and we don't
+ * want to amplify their queue.
+ *
+ * We always overwrite `twilio_message_status` and
+ * `delivery_status_updated_at`, but only promote `delivery_status` to
+ * 'delivered' / 'failed' so a late 'queued' / 'sending' callback can never
+ * downgrade an already-terminal row. Carrier-side error info (ErrorCode +
+ * ErrorMessage) is captured separately so the panel can show the carrier
+ * rejection reason without clobbering the original Twilio HTTP status
+ * captured at send time.
+ */
+router.post('/twilio/sms-status', async (req: Request, res: Response) => {
+  const messageSid = (req.body.MessageSid ?? req.body.SmsSid ?? '') as string;
+  const messageStatus = (req.body.MessageStatus ?? req.body.SmsStatus ?? '') as string;
+  const errorCodeRaw = (req.body.ErrorCode ?? '') as string;
+  const errorMessage = (req.body.ErrorMessage ?? '') as string;
+
+  if (!messageSid || !messageStatus) {
+    // Malformed callback (Twilio always sends both, so this shouldn't
+    // happen in practice). Return 400 so we surface the issue in our own
+    // error monitoring rather than silently absorbing it.
+    return res.status(400).send('MessageSid and MessageStatus are required');
+  }
+
+  const errorCode = errorCodeRaw && /^\d+$/.test(errorCodeRaw)
+    ? parseInt(errorCodeRaw, 10)
+    : null;
+
+  // Whitelist the statuses we actually want to record. Anything else falls
+  // through to the verbatim store so we don't lose forward-compat data.
+  const isTerminalSuccess = messageStatus === 'delivered';
+  const isTerminalFailure = messageStatus === 'undelivered' || messageStatus === 'failed';
+
+  try {
+    const pool = getPlatformPool();
+    // We refuse to downgrade `delivery_status`. The SMS path writes 'sent'
+    // when Twilio accepts the request; only the terminal `delivered` /
+    // `undelivered` / `failed` callbacks promote it further. Intermediate
+    // 'queued' / 'sending' callbacks just refresh the live indicator
+    // timestamp and the verbatim Twilio status.
+    const result = await pool.query(
+      `UPDATE connector_alert_recipients
+          SET twilio_message_status = $2,
+              twilio_error_code = COALESCE($3, twilio_error_code),
+              delivery_status = CASE
+                WHEN $4::boolean THEN 'delivered'
+                WHEN $5::boolean THEN 'failed'
+                ELSE delivery_status
+              END,
+              delivery_error = CASE
+                WHEN $5::boolean AND $6 <> '' THEN $6
+                WHEN $5::boolean AND $3 IS NOT NULL THEN 'Twilio error ' || $3::text
+                ELSE delivery_error
+              END,
+              delivery_status_updated_at = NOW()
+        WHERE twilio_message_sid = $1
+        RETURNING tenant_id, integration_id, dispatch_id`,
+      [
+        messageSid,
+        messageStatus,
+        errorCode,
+        isTerminalSuccess,
+        isTerminalFailure,
+        errorMessage,
+      ],
+    );
+
+    if ((result.rowCount ?? 0) === 0) {
+      logger.debug('Twilio SMS status callback for unknown SID', {
+        messageSid,
+        messageStatus,
+      });
+    } else {
+      logger.info('Connector outage SMS status updated', {
+        messageSid,
+        messageStatus,
+        errorCode,
+        tenantId: (result.rows[0] as { tenant_id?: string } | undefined)?.tenant_id,
+        integrationId: (result.rows[0] as { integration_id?: string } | undefined)?.integration_id,
+        dispatchId: (result.rows[0] as { dispatch_id?: string } | undefined)?.dispatch_id,
+      });
+    }
+
+    return res.sendStatus(204);
+  } catch (err) {
+    logger.error('Failed to apply Twilio SMS status callback', {
+      messageSid,
+      messageStatus,
+      error: String(err),
+    });
+    // 500 so Twilio retries with backoff — a transient DB blip shouldn't
+    // permanently lose a delivered/failed transition.
+    return res.status(500).send('Failed to update delivery status');
+  }
 });
 
 router.post('/twilio/outbound', async (req: Request, res: Response) => {

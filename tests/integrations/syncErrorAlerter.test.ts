@@ -253,6 +253,69 @@ describe('notifySustainedConnectorFailure', () => {
     }
   });
 
+  it('passes Twilio statusCallback URL and records the returned message SID for live tracking', async () => {
+    // This is the wiring the new /twilio/sms-status webhook depends on:
+    //   1. We must include a StatusCallback in the form body so Twilio
+    //      posts back delivery progress (queued -> sent -> delivered/failed).
+    //   2. We must persist the returned Message SID into
+    //      connector_alert_recipients.twilio_message_sid so the webhook can
+    //      find this row when those callbacks land.
+    // Regressing either side silently kills the live-tracking UI: the
+    // panel would still render, but the badge would never update past
+    // 'sent'.
+    process.env.VOICE_GATEWAY_BASE_URL = 'https://voice.example.test';
+
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // throttle empty
+      .mockResolvedValueOnce({
+        rows: [{ id: 'user-a', phone_number: '+15551234567' }],
+      })
+      // filterUserIdsByPreference for SMS phones — nobody opted out.
+      .mockResolvedValueOnce({ rows: [] })
+      // fanoutInAppNotification: tenant users
+      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
+      // fanoutInAppNotification: filterUserIdsByPreference for in_app
+      .mockResolvedValueOnce({ rows: [] })
+      // INSERT tenant_notifications
+      .mockResolvedValueOnce({ rows: [] })
+      // INSERT connector_alert_recipients (recordRecipientAudit)
+      .mockResolvedValueOnce({ rows: [] });
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () => JSON.stringify({ sid: 'SM_live_tracking_sid_123' }),
+    } as unknown as Response);
+
+    const { notifySustainedConnectorFailure } = await import(
+      '../../platform/integrations/connectors/SyncErrorAlerter'
+    );
+    await notifySustainedConnectorFailure({
+      ...baseParams,
+      firstFailedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+    });
+
+    // 1. StatusCallback URL must be included in the Twilio request body.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain(
+      'StatusCallback=https%3A%2F%2Fvoice.example.test%2Ftwilio%2Fsms-status',
+    );
+
+    // 2. The returned SID must land in the recipient audit row, in the
+    //    13th positional slot (matches the INSERT column order in
+    //    `recordRecipientAudit`).
+    const auditCall = queryMock.mock.calls.find((c) =>
+      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
+    );
+    expect(auditCall).toBeDefined();
+    const auditArgs = auditCall![1] as unknown[];
+    expect(auditArgs[12]).toBe('SM_live_tracking_sid_123');
+  });
+
   it('skips SMS sends to admins who opted out of the sms category', async () => {
     queryMock
       .mockResolvedValueOnce({

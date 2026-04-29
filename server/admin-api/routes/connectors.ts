@@ -317,6 +317,10 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
       deliveryStatus: string;
       deliveryError: string | null;
       twilioStatusCode: number | null;
+      twilioMessageStatus: string | null;
+      twilioErrorCode: number | null;
+      twilioMessageSid: string | null;
+      deliveryStatusUpdatedAt: string | null;
       dispatchedAt: string;
     }> = [];
     let recipientsAvailable = false;
@@ -330,10 +334,16 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
         delivery_status: string;
         delivery_error: string | null;
         twilio_status_code: number | null;
+        twilio_message_status: string | null;
+        twilio_error_code: number | null;
+        twilio_message_sid: string | null;
+        delivery_status_updated_at: string | null;
         dispatched_at: string;
       }>(
         `SELECT user_id, recipient_name, recipient_email, recipient_phone,
-                delivery_status, delivery_error, twilio_status_code, dispatched_at
+                delivery_status, delivery_error, twilio_status_code,
+                twilio_message_status, twilio_error_code, twilio_message_sid,
+                delivery_status_updated_at, dispatched_at
            FROM connector_alert_recipients
           WHERE tenant_id = $1
             AND dispatch_id = $2
@@ -348,9 +358,31 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
         deliveryStatus: r.delivery_status,
         deliveryError: r.delivery_error,
         twilioStatusCode: r.twilio_status_code,
+        twilioMessageStatus: r.twilio_message_status,
+        twilioErrorCode: r.twilio_error_code,
+        twilioMessageSid: r.twilio_message_sid,
+        deliveryStatusUpdatedAt: r.delivery_status_updated_at
+          ? new Date(r.delivery_status_updated_at).toISOString()
+          : null,
         dispatchedAt: new Date(r.dispatched_at).toISOString(),
       }));
     }
+
+    // The detail panel polls while at least one recipient hasn't reached a
+    // terminal Twilio status. We compute that summary server-side so the
+    // client can flip its "Live" indicator on/off without having to know
+    // about every Twilio status string.
+    const TERMINAL_TWILIO_STATUSES = new Set(['delivered', 'undelivered', 'failed']);
+    const isSmsAlert = type === 'integration_sms';
+    const liveTrackingAvailable =
+      isSmsAlert &&
+      recipientsAvailable &&
+      recipients.some(
+        (r) =>
+          r.twilioMessageSid !== null &&
+          (r.twilioMessageStatus === null ||
+            !TERMINAL_TWILIO_STATUSES.has(r.twilioMessageStatus)),
+      );
 
     // 3. Current connector context. We pull lastSyncError + lastSyncErrorAt
     //    so admins can correlate the alert with the connector's most
@@ -437,6 +469,7 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
       reconnectLink: (meta.link as string | undefined) ?? null,
       dispatchId,
       recipientsAvailable,
+      liveTrackingAvailable,
       recipients,
       integration,
     });

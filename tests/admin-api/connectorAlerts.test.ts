@@ -605,6 +605,11 @@ describe('GET /connectors/alerts/:alertId', () => {
           delivery_status: 'sent',
           delivery_error: null,
           twilio_status_code: 201,
+          // Twilio statusCallback already promoted user-1 to delivered.
+          twilio_message_status: 'delivered',
+          twilio_error_code: null,
+          twilio_message_sid: 'SMaaaa1111',
+          delivery_status_updated_at: new Date('2026-04-26T18:30:05.000Z'),
           dispatched_at: new Date('2026-04-26T18:30:01.000Z'),
         },
         {
@@ -615,6 +620,11 @@ describe('GET /connectors/alerts/:alertId', () => {
           delivery_status: 'failed',
           delivery_error: 'Invalid number',
           twilio_status_code: 400,
+          // Carrier reported "invalid number" — terminal failure.
+          twilio_message_status: 'undelivered',
+          twilio_error_code: 21211,
+          twilio_message_sid: 'SMbbbb2222',
+          delivery_status_updated_at: new Date('2026-04-26T18:30:06.000Z'),
           dispatched_at: new Date('2026-04-26T18:30:02.000Z'),
         },
       ],
@@ -649,11 +659,23 @@ describe('GET /connectors/alerts/:alertId', () => {
       phone: '+15555550101',
       deliveryStatus: 'sent',
       twilioStatusCode: 201,
+      twilioMessageStatus: 'delivered',
+      twilioErrorCode: null,
+      twilioMessageSid: 'SMaaaa1111',
+      deliveryStatusUpdatedAt: '2026-04-26T18:30:05.000Z',
     });
     expect(res.body.recipients[1]).toMatchObject({
       deliveryStatus: 'failed',
       deliveryError: 'Invalid number',
+      twilioMessageStatus: 'undelivered',
+      twilioErrorCode: 21211,
+      twilioMessageSid: 'SMbbbb2222',
+      deliveryStatusUpdatedAt: '2026-04-26T18:30:06.000Z',
     });
+    // Both recipients are at terminal Twilio statuses (delivered /
+    // undelivered) so the panel must NOT keep polling. liveTrackingAvailable
+    // is the single source of truth the client uses to decide.
+    expect(res.body.liveTrackingAvailable).toBe(false);
     expect(res.body.integration).toMatchObject({
       id: 'int-1',
       name: 'Salesforce - Production',
@@ -725,6 +747,126 @@ describe('GET /connectors/alerts/:alertId', () => {
     expect(recipientCall).toBeUndefined();
   });
 
+  it('reports liveTrackingAvailable=true while at least one SMS recipient is mid-flight', async () => {
+    // The detail panel's auto-refresh / "Live" badge is driven entirely
+    // by this flag. If it ever regresses to `false` while Twilio still
+    // has callbacks in flight (queued / sent / sending) the panel will
+    // stop polling and admins will see stale "Sent" badges instead of
+    // the eventual "Delivered" / "Failed" outcome.
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 2,
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'salesforce',
+          dispatchId: 'disp-live',
+          smsAttempted: 2,
+          smsSucceeded: 2,
+          twilioConfigured: true,
+        },
+        title: 'SMS dispatched',
+        message: 'msg',
+      },
+      recipientRows: [
+        {
+          user_id: 'user-1',
+          recipient_name: 'Ada',
+          recipient_email: null,
+          recipient_phone: '+15555550101',
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: 201,
+          twilio_message_status: 'queued', // non-terminal — still tracking.
+          twilio_error_code: null,
+          twilio_message_sid: 'SMlive1',
+          delivery_status_updated_at: new Date('2026-04-26T18:30:01.000Z'),
+          dispatched_at: new Date('2026-04-26T18:30:01.000Z'),
+        },
+        {
+          user_id: 'user-2',
+          recipient_name: 'Grace',
+          recipient_email: null,
+          recipient_phone: '+15555550102',
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: 201,
+          twilio_message_status: 'delivered', // already terminal.
+          twilio_error_code: null,
+          twilio_message_sid: 'SMlive2',
+          delivery_status_updated_at: new Date('2026-04-26T18:30:05.000Z'),
+          dispatched_at: new Date('2026-04-26T18:30:01.000Z'),
+        },
+      ],
+      integrationRow: {
+        id: 'int-1',
+        name: 'Salesforce',
+        provider: 'salesforce',
+        connector_type: 'crm',
+        last_sync_at: null,
+        last_sync_status: null,
+        last_sync_error: null,
+        last_sync_error_at: null,
+      },
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration_sms:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.liveTrackingAvailable).toBe(true);
+  });
+
+  it('reports liveTrackingAvailable=false for email alerts even when recipients are mid-status', async () => {
+    // Live tracking only applies to SMS — Twilio doesn't send email
+    // delivery callbacks here, so polling would just spin forever.
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 1,
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'salesforce',
+          dispatchId: 'disp-email',
+        },
+        title: 'Email dispatched',
+        message: 'msg',
+      },
+      recipientRows: [
+        {
+          user_id: 'user-1',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: null,
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: null,
+          twilio_message_status: null,
+          twilio_error_code: null,
+          twilio_message_sid: null,
+          delivery_status_updated_at: null,
+          dispatched_at: createdAt,
+        },
+      ],
+      integrationRow: null,
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.channel).toBe('email');
+    expect(res.body.liveTrackingAvailable).toBe(false);
+  });
+
   it('returns 404 when the alert has no matching tenant_notifications row (cross-tenant safety)', async () => {
     installDetailDispatcher({ alertRow: null });
     const app = await buildApp();
@@ -776,6 +918,10 @@ describe('GET /connectors/alerts/:alertId', () => {
           delivery_status: 'sent',
           delivery_error: null,
           twilio_status_code: null,
+          twilio_message_status: null,
+          twilio_error_code: null,
+          twilio_message_sid: null,
+          delivery_status_updated_at: null,
           dispatched_at: createdAt,
         },
       ],
