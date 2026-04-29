@@ -87,6 +87,71 @@ router.get('/platform/tenants/:id', requireAuth, requirePlatformAdmin, async (re
   }
 });
 
+// Per-tenant onboarding progress for every owner user (Task #612).
+//
+// Surfaces `users.preferences.onboarding_step` + `onboarding_completed`
+// (persisted by the wizard in `client-app/src/pages/Onboarding.tsx`) for
+// each `tenant_owner` row in `user_roles`, joined to the active tenant.
+// Used by the Platform Admin "Tenant Details" expander so support /
+// product can see which owner stalled at which step. We deliberately
+// scope to the `tenant_owner` role rather than every user — the rest of
+// the org gets seated *after* onboarding finishes, so their preferences
+// blob isn't a meaningful signal.
+router.get('/platform/tenants/:id/onboarding', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const owners = await withPrivilegedClient(async (client) => {
+      const tenantRow = await client.query(
+        `SELECT id FROM tenants WHERE id = $1`,
+        [id],
+      );
+      if (!tenantRow.rows[0]) return null;
+      const { rows } = await client.query(
+        `SELECT
+           u.id AS user_id,
+           u.email,
+           u.first_name,
+           u.last_name,
+           u.created_at,
+           u.last_login_at,
+           ur.granted_at AS role_granted_at,
+           -- Whitelist 'true' (case-insensitive) only. Any other JSONB
+           -- value (NULL, 'maybe', '1', '{}', etc.) degrades to FALSE so
+           -- a corrupt legacy row can't 500 the endpoint by failing the
+           -- ::boolean cast.
+           (LOWER(u.preferences->>'onboarding_completed') = 'true') AS onboarding_completed,
+           -- Defensive integer parse for the step. We only attempt the
+           -- ::int cast when the value is a bare positive integer; any
+           -- non-numeric / NULL / out-of-range value falls back to 1.
+           -- The wizard already clamps to [1..3] on write, but we
+           -- re-clamp here so a stale row written by an older client
+           -- can't slip through.
+           GREATEST(1, LEAST(3,
+             CASE
+               WHEN u.preferences->>'onboarding_step' ~ '^[0-9]+$'
+                 THEN (u.preferences->>'onboarding_step')::int
+               ELSE 1
+             END
+           )) AS onboarding_step
+         FROM user_roles ur
+         JOIN users u ON u.id = ur.user_id
+         WHERE ur.tenant_id = $1
+           AND ur.role = 'tenant_owner'
+           AND ur.revoked_at IS NULL
+         ORDER BY ur.granted_at ASC NULLS LAST, u.created_at ASC`,
+        [id],
+      );
+      return rows;
+    });
+
+    if (owners === null) return res.status(404).json({ error: 'Tenant not found' });
+    return res.json({ owners });
+  } catch (err) {
+    logger.error('Failed to get tenant onboarding state', { tenantId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get tenant onboarding state' });
+  }
+});
+
 router.get('/platform/tenants/:id/analytics', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   const range = String(req.query.range ?? '30d');
@@ -757,6 +822,67 @@ router.get('/platform/activation-metrics', requireAuth, requirePlatformAdmin, as
   } catch (err) {
     logger.error('Failed to get activation metrics', { error: String(err) });
     return res.status(500).json({ error: 'Failed to get activation metrics' });
+  }
+});
+
+// Onboarding wizard funnel for the past N days (Task #612).
+//
+// Bucketises every `tenant_owner` user that signed up in the window into
+// either the step they last persisted (1 / 2 / 3) or "completed", reading
+// from `users.preferences` populated by the wizard. Drives the funnel
+// cards on the Activation tab so product / support can see where new
+// signups stall most often.
+//
+// `days` is clamped to a sensible range so a hostile / accidental query
+// string (e.g. `?days=99999`) can't cause a multi-year table scan.
+router.get('/platform/onboarding-funnel', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const rawDays = parseInt(String(req.query.days ?? '30'), 10);
+  const days = Number.isFinite(rawDays)
+    ? Math.min(Math.max(rawDays, 1), 365)
+    : 30;
+  try {
+    const funnel = await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `WITH owners AS (
+           SELECT
+             u.id,
+             -- Whitelist 'true' (case-insensitive) only. Any other JSONB
+             -- value (NULL, 'maybe', '{}', etc.) degrades to FALSE so a
+             -- corrupt legacy row can't 500 the endpoint via a failed
+             -- ::boolean cast.
+             (LOWER(u.preferences->>'onboarding_completed') = 'true') AS completed,
+             -- Defensive integer parse: only cast bare positive integers,
+             -- otherwise default to 1. The wizard already clamps on
+             -- write, but we re-clamp on read so a stale row from an
+             -- older client can't slip through.
+             GREATEST(1, LEAST(3,
+               CASE
+                 WHEN u.preferences->>'onboarding_step' ~ '^[0-9]+$'
+                   THEN (u.preferences->>'onboarding_step')::int
+                 ELSE 1
+               END
+             )) AS step
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id
+           WHERE ur.role = 'tenant_owner'
+             AND ur.revoked_at IS NULL
+             AND u.created_at >= NOW() - make_interval(days => $1::int)
+         )
+         SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE completed)::int AS completed,
+           COUNT(*) FILTER (WHERE NOT completed AND step = 1)::int AS step_1,
+           COUNT(*) FILTER (WHERE NOT completed AND step = 2)::int AS step_2,
+           COUNT(*) FILTER (WHERE NOT completed AND step = 3)::int AS step_3
+         FROM owners`,
+        [days],
+      );
+      return rows[0] ?? { total: 0, completed: 0, step_1: 0, step_2: 0, step_3: 0 };
+    });
+    return res.json({ days, funnel });
+  } catch (err) {
+    logger.error('Failed to get onboarding funnel', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to get onboarding funnel' });
   }
 });
 

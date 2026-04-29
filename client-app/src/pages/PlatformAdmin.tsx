@@ -467,33 +467,154 @@ function VersionStatusBadge({ status }: { status: string }) {
   );
 }
 
+// Owner-user onboarding row returned by `/platform/tenants/:id/onboarding`.
+// Mirrors the SQL projection in `server/admin-api/routes/platformAdmin.ts`,
+// where `onboarding_step` is already clamped to [1..3] and
+// `onboarding_completed` is forced to a boolean.
+interface TenantOwnerOnboarding {
+  user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string;
+  last_login_at: string | null;
+  role_granted_at: string | null;
+  onboarding_step: number;
+  onboarding_completed: boolean;
+}
+
+// Total step count for the wizard, kept in lock-step with
+// `TOTAL_ONBOARDING_STEPS` in `client-app/src/pages/Onboarding.tsx`. Update
+// both together if the wizard grows / shrinks a step.
+const ONBOARDING_TOTAL_STEPS = 3;
+
+const ONBOARDING_STEP_LABELS: Record<number, string> = {
+  1: 'Provisioning',
+  2: 'Template selection',
+  3: 'Phone number',
+};
+
+function OwnerOnboardingBadge({
+  step,
+  completed,
+}: {
+  step: number;
+  completed: boolean;
+}) {
+  if (completed) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <CheckCircle className="h-3 w-3" />
+        Completed
+      </span>
+    );
+  }
+  const label = ONBOARDING_STEP_LABELS[step] ?? `Step ${step}`;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+      <AlertCircle className="h-3 w-3" />
+      Step {step}/{ONBOARDING_TOTAL_STEPS} · {label}
+    </span>
+  );
+}
+
 function TenantDetailPanel({ tenantId }: { tenantId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ['platform-tenant-detail', tenantId],
     queryFn: () => api.get<{ tenant: TenantDetail }>(`/platform/tenants/${tenantId}`),
   });
 
+  // Per-owner onboarding state — separate query so a slow / failing
+  // onboarding fetch doesn't block the rest of the detail panel from
+  // rendering. The endpoint scopes to `tenant_owner` rows so the list is
+  // small (typically 1).
+  const { data: onboardingData, isLoading: onboardingLoading } = useQuery({
+    queryKey: ['platform-tenant-onboarding', tenantId],
+    queryFn: () =>
+      api.get<{ owners: TenantOwnerOnboarding[] }>(
+        `/platform/tenants/${tenantId}/onboarding`,
+      ),
+  });
+
   if (isLoading) return <div className="px-4 py-3 text-sm text-text-muted">Loading details...</div>;
   if (!data) return null;
 
   const t = data.tenant;
+  const owners = onboardingData?.owners ?? [];
   return (
-    <div className="px-6 py-4 bg-surface-secondary/50 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-      <div>
-        <span className="text-text-muted">Agents</span>
-        <div className="font-medium">{t.agent_count}</div>
+    <div className="bg-surface-secondary/50">
+      <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+        <div>
+          <span className="text-text-muted">Agents</span>
+          <div className="font-medium">{t.agent_count}</div>
+        </div>
+        <div>
+          <span className="text-text-muted">Phone Numbers</span>
+          <div className="font-medium">{t.phone_number_count}</div>
+        </div>
+        <div>
+          <span className="text-text-muted">Total Calls</span>
+          <div className="font-medium">{t.total_calls}</div>
+        </div>
+        <div>
+          <span className="text-text-muted">Total Spend</span>
+          <div className="font-medium">{formatCents(t.total_cost_cents)}</div>
+        </div>
       </div>
-      <div>
-        <span className="text-text-muted">Phone Numbers</span>
-        <div className="font-medium">{t.phone_number_count}</div>
-      </div>
-      <div>
-        <span className="text-text-muted">Total Calls</span>
-        <div className="font-medium">{t.total_calls}</div>
-      </div>
-      <div>
-        <span className="text-text-muted">Total Spend</span>
-        <div className="font-medium">{formatCents(t.total_cost_cents)}</div>
+      <div className="px-6 pb-4">
+        <div className="text-xs uppercase tracking-wide text-text-muted mb-2">
+          Owner onboarding
+        </div>
+        {onboardingLoading ? (
+          <div className="text-sm text-text-muted">Loading owner progress...</div>
+        ) : owners.length === 0 ? (
+          <div className="text-sm text-text-muted">No tenant owners on record.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-3 py-2 font-medium text-text-muted">Owner</th>
+                  <th className="text-left px-3 py-2 font-medium text-text-muted">Onboarding</th>
+                  <th className="text-left px-3 py-2 font-medium text-text-muted">Signed up</th>
+                  <th className="text-left px-3 py-2 font-medium text-text-muted">Last login</th>
+                </tr>
+              </thead>
+              <tbody>
+                {owners.map((owner) => {
+                  const fullName = [owner.first_name, owner.last_name]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim();
+                  return (
+                    <tr key={owner.user_id} className="border-b border-border last:border-0">
+                      <td className="px-3 py-2">
+                        <div className="font-medium">{fullName || owner.email}</div>
+                        {fullName && (
+                          <div className="text-xs text-text-muted">{owner.email}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <OwnerOnboardingBadge
+                          step={owner.onboarding_step}
+                          completed={owner.onboarding_completed}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-text-muted whitespace-nowrap">
+                        {new Date(owner.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-3 py-2 text-text-muted whitespace-nowrap">
+                        {owner.last_login_at
+                          ? new Date(owner.last_login_at).toLocaleDateString()
+                          : '\u2014'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5622,9 +5743,129 @@ function formatHours(hours: number | null): string {
   return `${(hours / 24).toFixed(1)}d`;
 }
 
+// Shape returned by `/platform/onboarding-funnel` (Task #612). All counts
+// are bucketised server-side with FILTER (...) over the canonicalised
+// step + completed flags so the UI just renders the numbers.
+interface OnboardingFunnel {
+  total: number;
+  completed: number;
+  step_1: number;
+  step_2: number;
+  step_3: number;
+}
+
+function OnboardingFunnelCards() {
+  const [days, setDays] = useState(30);
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-onboarding-funnel', days],
+    queryFn: () =>
+      api.get<{ days: number; funnel: OnboardingFunnel }>(
+        `/platform/onboarding-funnel?days=${days}`,
+      ),
+    refetchInterval: 60_000,
+  });
+  const funnel = data?.funnel;
+  // Percent-of-total helper. Returns "—" when the total is 0 so the card
+  // doesn't render a bogus "0%" the moment the platform is freshly
+  // bootstrapped.
+  const pct = (n: number | undefined): string => {
+    if (!funnel || !funnel.total) return '—';
+    const v = n ?? 0;
+    return `${Math.round((v / funnel.total) * 100)}%`;
+  };
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-semibold">Onboarding wizard funnel</h2>
+          <p className="text-xs text-text-muted">
+            Where new tenant owners stand in the 3-step setup wizard, scoped to
+            users that signed up in the selected window.
+          </p>
+        </div>
+        <select
+          aria-label="Funnel window"
+          value={days}
+          onChange={(e) => setDays(parseInt(e.target.value, 10))}
+          className="text-sm border border-border rounded-lg px-2 py-1 bg-surface focus:outline-none focus:ring-2 focus:ring-primary/50"
+        >
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+      </div>
+      {isLoading ? (
+        <div className="text-sm text-text-muted">Loading funnel...</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="border border-border rounded-lg p-3">
+            <div className="text-xs text-text-muted">New owners</div>
+            <div className="text-2xl font-bold">{funnel?.total ?? 0}</div>
+            <div className="text-xs text-text-muted mt-1">in window</div>
+          </div>
+          <div className="border border-border rounded-lg p-3">
+            <div className="text-xs text-text-muted">Step 1 · Provisioning</div>
+            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              {funnel?.step_1 ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1">
+              {pct(funnel?.step_1)} of new
+            </div>
+          </div>
+          <div className="border border-border rounded-lg p-3">
+            <div className="text-xs text-text-muted">Step 2 · Template</div>
+            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              {funnel?.step_2 ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1">
+              {pct(funnel?.step_2)} of new
+            </div>
+          </div>
+          <div className="border border-border rounded-lg p-3">
+            <div className="text-xs text-text-muted">Step 3 · Phone number</div>
+            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              {funnel?.step_3 ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1">
+              {pct(funnel?.step_3)} of new
+            </div>
+          </div>
+          <div className="border border-border rounded-lg p-3">
+            <div className="text-xs text-text-muted">Completed</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {funnel?.completed ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1">
+              {pct(funnel?.completed)} of new
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMetricRow[] } | undefined; loading: boolean }) {
-  if (loading) return <div className="text-center py-12 text-text-muted">Loading activation metrics...</div>;
-  if (!data) return <div className="text-center py-12 text-text-muted">No data available</div>;
+  // Render the wizard funnel even if the per-tenant activation table is
+  // still loading or empty — the two are independent queries and product
+  // cares about the funnel even on a fresh platform with no completed
+  // activations yet.
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <OnboardingFunnelCards />
+        <div className="text-center py-12 text-text-muted">Loading activation metrics...</div>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        <OnboardingFunnelCards />
+        <div className="text-center py-12 text-text-muted">No data available</div>
+      </div>
+    );
+  }
 
   const metrics = data.metrics;
   const totalTenants = metrics.length;
@@ -5646,6 +5887,7 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
 
   return (
     <div className="space-y-6">
+      <OnboardingFunnelCards />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="text-sm text-text-muted mb-1">Agent Created</div>
