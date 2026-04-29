@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/hooks/useAuth';
+import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
 import { api, type DispatchJob } from '@/lib/api';
 import { JobCard } from '@/components/JobCard';
 import { EmptyState } from '@/components/EmptyState';
@@ -40,6 +41,7 @@ export default function DispatchScreen() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(
     undefined,
   );
+  useTechnicianLocation();
 
   const query = useQuery({
     queryKey: ['jobs', resourceId, statusFilter],

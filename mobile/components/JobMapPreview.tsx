@@ -9,10 +9,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
+import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
 import {
   estimateDriveMinutes,
   formatDistance,
   formatEta,
+  geocodeAddress,
   haversineKm,
   openDirections,
 } from '@/lib/maps';
@@ -29,10 +31,8 @@ interface Coords {
 const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
 
 type MapsModule = typeof import('react-native-maps');
-type LocationModuleType = typeof import('expo-location');
 
 let MapsModuleRef: MapsModule | null = null;
-let LocationModule: LocationModuleType | null = null;
 
 if (isNative) {
   try {
@@ -40,21 +40,18 @@ if (isNative) {
   } catch {
     MapsModuleRef = null;
   }
-  try {
-    LocationModule = require('expo-location') as LocationModuleType;
-  } catch {
-    LocationModule = null;
-  }
 }
 
 export function JobMapPreview({ address }: JobMapPreviewProps) {
   const colors = useColors();
+  const {
+    origin,
+    status: locationStatus,
+    request: requestLocation,
+  } = useTechnicianLocation(false);
   const [destination, setDestination] = useState<Coords | null>(null);
-  const [origin, setOrigin] = useState<Coords | null>(null);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [isResolving, setIsResolving] = useState(true);
-  const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +59,7 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
     setGeocodeError(null);
     setDestination(null);
 
-    if (!isNative || !LocationModule) {
+    if (!isNative) {
       setIsResolving(false);
       return () => {
         cancelled = true;
@@ -70,25 +67,14 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
     }
 
     (async () => {
-      try {
-        const results = await LocationModule!.geocodeAsync(address);
-        if (cancelled) return;
-        const first = results[0];
-        if (!first) {
-          setGeocodeError("We couldn't locate this address on the map.");
-        } else {
-          setDestination({
-            latitude: first.latitude,
-            longitude: first.longitude,
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setGeocodeError("We couldn't locate this address on the map.");
-        }
-      } finally {
-        if (!cancelled) setIsResolving(false);
+      const coords = await geocodeAddress(address);
+      if (cancelled) return;
+      if (!coords) {
+        setGeocodeError("We couldn't locate this address on the map.");
+      } else {
+        setDestination(coords);
       }
+      setIsResolving(false);
     })();
 
     return () => {
@@ -97,46 +83,18 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
   }, [address]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!destination || !isNative || !LocationModule) return;
+    if (destination && isNative) {
+      void requestLocation();
+    }
+  }, [destination, requestLocation]);
 
-    setIsLocating(true);
-    setLocationError(null);
-
-    (async () => {
-      try {
-        const { status } =
-          await LocationModule!.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-        if (status !== 'granted') {
-          setLocationError(
-            'Enable location access to see your distance and ETA to the job.',
-          );
-          return;
-        }
-        const position = await LocationModule!.getCurrentPositionAsync({
-          accuracy: LocationModule!.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        setOrigin({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      } catch {
-        if (!cancelled) {
-          setLocationError(
-            "We couldn't read your current location. Check your device settings and try again.",
-          );
-        }
-      } finally {
-        if (!cancelled) setIsLocating(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [destination]);
+  const isLocating = locationStatus === 'requesting';
+  const locationError =
+    locationStatus === 'denied'
+      ? 'Enable location access to see your distance and ETA to the job.'
+      : locationStatus === 'error'
+        ? "We couldn't read your current location. Check your device settings and try again."
+        : null;
 
   const handleOpenDirections = () => {
     void openDirections(address);

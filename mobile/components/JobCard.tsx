@@ -1,9 +1,19 @@
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
+import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
 import { StatusPill } from './StatusPill';
 import type { DispatchJob } from '@/lib/api';
 import { formatDateTime } from '@/lib/formatters';
+import {
+  estimateDriveMinutes,
+  formatDistance,
+  formatEta,
+  geocodeAddress,
+  haversineKm,
+  type Coords,
+} from '@/lib/maps';
 
 interface JobCardProps {
   job: DispatchJob;
@@ -19,10 +29,46 @@ const PRIORITY_LABELS: Record<DispatchJob['priority'], string> = {
 
 export function JobCard({ job, onPress }: JobCardProps) {
   const colors = useColors();
+  const { origin, status: locationStatus } = useTechnicianLocation();
+  const [destination, setDestination] = useState<Coords | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
+
   const priorityFg =
     job.priority === 'urgent' || job.priority === 'high'
       ? colors.danger
       : colors.textMuted;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!job.address) {
+      setDestination(null);
+      setGeocoding(false);
+      return;
+    }
+    setGeocoding(true);
+    void geocodeAddress(job.address).then((coords) => {
+      if (cancelled) return;
+      setDestination(coords);
+      setGeocoding(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [job.address]);
+
+  let proximityLabel: string | null = null;
+  if (job.address && origin && destination) {
+    const km = haversineKm(origin, destination);
+    proximityLabel = `${formatEta(estimateDriveMinutes(km))} away · ${formatDistance(km)}`;
+  } else if (
+    job.address &&
+    locationStatus === 'requesting' &&
+    !origin
+  ) {
+    proximityLabel = 'Locating you…';
+  } else if (job.address && geocoding && origin) {
+    proximityLabel = 'Calculating distance…';
+  }
 
   return (
     <Pressable
@@ -77,6 +123,22 @@ export function JobCard({ job, onPress }: JobCardProps) {
         </View>
       ) : null}
 
+      {proximityLabel ? (
+        <View style={styles.row}>
+          <Ionicons
+            name="navigate-outline"
+            size={14}
+            color={colors.primary}
+          />
+          <Text
+            style={[styles.proximityText, { color: colors.primary }]}
+            numberOfLines={1}
+          >
+            {proximityLabel}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.row}>
         <Ionicons name="time-outline" size={14} color={colors.textMuted} />
         <Text style={[styles.rowText, { color: colors.textMuted }]}>
@@ -117,6 +179,11 @@ const styles = StyleSheet.create({
   },
   rowText: {
     fontSize: 13,
+    flexShrink: 1,
+  },
+  proximityText: {
+    fontSize: 13,
+    fontWeight: '600',
     flexShrink: 1,
   },
 });

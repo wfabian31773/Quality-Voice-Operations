@@ -60,3 +60,93 @@ export function formatEta(minutes: number): string {
   const m = minutes % 60;
   return m === 0 ? `~${h} h` : `~${h} h ${m} min`;
 }
+
+const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
+
+type LocationModuleType = typeof import('expo-location');
+
+let LocationModule: LocationModuleType | null = null;
+
+if (isNative) {
+  try {
+    LocationModule = require('expo-location') as LocationModuleType;
+  } catch {
+    LocationModule = null;
+  }
+}
+
+export interface Coords {
+  latitude: number;
+  longitude: number;
+}
+
+interface GeocodeCacheEntry {
+  coords: Coords | null;
+  expiresAt: number;
+}
+
+const GEOCODE_FAILURE_TTL_MS = 60_000;
+const geocodeCache = new Map<string, GeocodeCacheEntry>();
+const inFlightGeocodes = new Map<string, Promise<Coords | null>>();
+
+function normalizeAddressKey(address: string): string {
+  return address.trim().toLowerCase();
+}
+
+function readCachedGeocode(key: string): GeocodeCacheEntry | null {
+  const entry = geocodeCache.get(key);
+  if (!entry) return null;
+  if (entry.coords === null && entry.expiresAt <= Date.now()) {
+    geocodeCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+export async function geocodeAddress(
+  address: string,
+): Promise<Coords | null> {
+  const key = normalizeAddressKey(address);
+  if (!key) return null;
+  const cached = readCachedGeocode(key);
+  if (cached) return cached.coords;
+  const existing = inFlightGeocodes.get(key);
+  if (existing) return existing;
+
+  if (!isNative || !LocationModule) {
+    geocodeCache.set(key, {
+      coords: null,
+      expiresAt: Number.POSITIVE_INFINITY,
+    });
+    return null;
+  }
+
+  const promise = (async () => {
+    try {
+      const results = await LocationModule!.geocodeAsync(address);
+      const first = results[0];
+      const coords: Coords | null = first
+        ? { latitude: first.latitude, longitude: first.longitude }
+        : null;
+      geocodeCache.set(key, {
+        coords,
+        expiresAt:
+          coords === null
+            ? Date.now() + GEOCODE_FAILURE_TTL_MS
+            : Number.POSITIVE_INFINITY,
+      });
+      return coords;
+    } catch {
+      geocodeCache.set(key, {
+        coords: null,
+        expiresAt: Date.now() + GEOCODE_FAILURE_TTL_MS,
+      });
+      return null;
+    } finally {
+      inFlightGeocodes.delete(key);
+    }
+  })();
+
+  inFlightGeocodes.set(key, promise);
+  return promise;
+}
