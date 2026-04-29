@@ -106,4 +106,80 @@ describe('spaFallback', () => {
       fs.rmSync(tmpDist, { recursive: true, force: true });
     }
   });
+
+  describe('two-bundle marketing routing', () => {
+    function makeDist(): string {
+      const tmpDist = fs.mkdtempSync(path.join(os.tmpdir(), 'qvo-spa-fallback-'));
+      fs.writeFileSync(path.join(tmpDist, 'index.html'), '<html>IN-APP</html>');
+      fs.mkdirSync(path.join(tmpDist, 'assets'));
+      fs.writeFileSync(path.join(tmpDist, 'assets', 'app.js'), 'console.log("in-app");');
+
+      const publicDir = path.join(tmpDist, 'public');
+      fs.mkdirSync(publicDir);
+      fs.writeFileSync(path.join(publicDir, 'index.public.html'), '<html>MARKETING</html>');
+      fs.mkdirSync(path.join(publicDir, 'assets'));
+      fs.writeFileSync(
+        path.join(publicDir, 'assets', 'preact-vendor.js'),
+        'console.log("preact");',
+      );
+      return tmpDist;
+    }
+
+    it('serves the marketing bundle for marketing URLs and the in-app bundle elsewhere', async () => {
+      const tmpDist = makeDist();
+      try {
+        const app = express();
+        attachSpaFallback(app, tmpDist);
+
+        const marketing = ['/', '/pricing', '/blog/some-post', '/docs/intro', '/case-studies', '/es/pricing'];
+        for (const url of marketing) {
+          const r = await request(app).get(url).set('Accept', 'text/html');
+          expect(r.status).toBe(200);
+          expect(r.text).toBe('<html>MARKETING</html>');
+        }
+
+        const inApp = ['/dashboard', '/admin/users', '/auth/login', '/onboarding', '/agent-builder', '/settings/account'];
+        for (const url of inApp) {
+          const r = await request(app).get(url).set('Accept', 'text/html');
+          expect(r.status).toBe(200);
+          expect(r.text).toBe('<html>IN-APP</html>');
+        }
+      } finally {
+        fs.rmSync(tmpDist, { recursive: true, force: true });
+      }
+    });
+
+    it('serves marketing assets at /public/assets/* and in-app assets at /assets/*', async () => {
+      const tmpDist = makeDist();
+      try {
+        const app = express();
+        attachSpaFallback(app, tmpDist);
+
+        const inApp = await request(app).get('/assets/app.js');
+        expect(inApp.status).toBe(200);
+        expect(inApp.text).toContain('in-app');
+
+        const marketing = await request(app).get('/public/assets/preact-vendor.js');
+        expect(marketing.status).toBe(200);
+        expect(marketing.text).toContain('preact');
+      } finally {
+        fs.rmSync(tmpDist, { recursive: true, force: true });
+      }
+    });
+
+    it('falls back to the in-app bundle when the marketing build is absent', async () => {
+      const tmpDist = fs.mkdtempSync(path.join(os.tmpdir(), 'qvo-spa-fallback-'));
+      try {
+        fs.writeFileSync(path.join(tmpDist, 'index.html'), '<html>IN-APP</html>');
+        const app = express();
+        attachSpaFallback(app, tmpDist);
+
+        const r = await request(app).get('/pricing').set('Accept', 'text/html');
+        expect(r.status).toBe(200);
+        expect(r.text).toBe('<html>IN-APP</html>');
+      } finally {
+        fs.rmSync(tmpDist, { recursive: true, force: true });
+      }
+    });
+  });
 });

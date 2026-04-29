@@ -9,13 +9,16 @@ This document records the current bundle measurements for the `client-app` front
 From the repository root:
 
 ```bash
-npm run analyze        # builds client-app and writes client-app/dist/stats.html (treemap)
-npm run analyze:json   # same build, but writes client-app/dist/stats.json (raw data)
+npm run analyze         # builds the in-app bundle, writes client-app/dist/stats.html
+npm run analyze:json    # same in-app build, writes client-app/dist/stats.json (raw data)
+npm run analyze:public  # builds the marketing bundle, writes client-app/dist/public/stats.html
 ```
 
-Both scripts are thin wrappers around `vite-bundle-visualizer` running against `client-app/vite.config.ts`. They run a fresh production build and emit the stats artifact under `client-app/dist/`.
+The first two scripts run `vite-bundle-visualizer` against `client-app/vite.config.ts` (the React-based in-app build). `analyze:public` runs against `client-app/vite.public.config.ts` (the Preact-based marketing build — see "Two front-end bundles" below) and writes its stats artifact under `client-app/dist/public/`.
 
-Open `client-app/dist/stats.html` in a browser to interactively explore the chunk graph (treemap, sunburst, network views available via the visualizer UI). The JSON variant is useful for diffing module sizes in CI scripts later.
+To produce both production bundles in one go without the visualizer, run `npm --prefix client-app run build` — it shells out to `build:app` (in-app) and `build:public` (marketing) sequentially.
+
+Open the relevant `stats.html` in a browser to interactively explore the chunk graph (treemap, sunburst, network views available via the visualizer UI). The JSON variant is useful for diffing module sizes in CI scripts later.
 
 ## Toolchain at the time of measurement
 
@@ -89,29 +92,61 @@ The single eager `index.css` was split into surface-scoped sheets so public mark
 
 `index.css` (the eager shell sheet) only contains design-token CSS, html/body/focus/print styles, and Tailwind output scoped to the always-loaded shell components. The two large Tailwind sheets are loaded on demand alongside the layout that needs them.
 
-## Initial-load budget
+## Two front-end bundles
 
-`client-app/index.html` references the entry chunk plus a small set of vendor chunks that are statically imported by `main.tsx` / `App.tsx` and therefore preloaded via `<link rel="modulepreload">`. The eager initial payload after this round of splitting is:
+The build emits two SPA entry points so marketing visitors and signed-in users can have very different eager preload graphs without affecting each other:
+
+| Bundle                    | Entry HTML                            | Vite config              | Runtime    | Output dir              | Routes served                                                   |
+| ------------------------- | ------------------------------------- | ------------------------ | ---------- | ----------------------- | --------------------------------------------------------------- |
+| In-app (full React)       | `client-app/dist/index.html`          | `vite.config.ts`         | React 19   | `client-app/dist/`      | Tenant / Admin / Ops / Auth / Onboarding / Agent Studio (everything else) |
+| Marketing (Preact compat) | `client-app/dist/public/index.public.html` | `vite.public.config.ts` | Preact 10  | `client-app/dist/public/` | `<PublicLayout>` pages only (`/`, `/pricing`, `/blog/*`, `/docs/*`, …) |
+
+The marketing build aliases `react`, `react-dom`, `react-dom/client`, and the JSX runtime to `preact/compat`, so source files keep importing from `react` unchanged but the runtime weight collapses from ≈69 KiB gzip (`react-vendor`) to ≈13 KiB gzip (`preact-vendor`). Marketing pages don't use any React-19-only feature, and the in-app bundle is still full React, so signed-in surfaces are unaffected.
+
+The production server (`server/admin-api/spaFallback.ts`) classifies HTML navigations with `shared/spa/marketingRoutes.ts#isMarketingPathname()` and serves `index.public.html` for marketing URLs and `index.html` for everything else. Marketing assets live under `/public/assets/...` (set via `base: '/public/'` in the marketing config) so their hashed URLs never collide with the in-app bundle's `/assets/...`. In dev, `npm --prefix client-app run dev` keeps using the React build because the marketing routes are also declared in `App.tsx` — the production split is purely a build-time optimization.
+
+## Initial-load budget — in-app bundle (`index.html`)
+
+The React-based bundle's eager preload graph is **unchanged** from the previous baseline. `client-app/index.html` references the entry chunk plus a small set of vendor chunks that are statically imported by `main.tsx` / `App.tsx` and therefore preloaded via `<link rel="modulepreload">`:
 
 | Asset                   | Gzip KiB |
 | ----------------------- | -------- |
-| `index.html`            | 0.60     |
-| `index.js`              | 24.86    |
+| `index.html`            | 0.89     |
+| `index.js`              | 25.32    |
 | `index.css` (shell)     | 4.92     |
-| `react-vendor.js`       | 68.88    |
+| `react-vendor.js`       | 68.95    |
 | `i18n-vendor.js`        | 21.20    |
 | `router-vendor.js`      | 13.27    |
 | `query-vendor.js`       | 11.84    |
-| **`index.js` + `index.css` (entry payload)** | **29.78** |
-| **Total eager (with vendor preloads)**       | **145.57** |
+| **`index.js` + `index.css` (entry payload)** | **30.24** |
+| **Total eager (with vendor preloads)**       | **146.39** |
 
-`index.js` + `index.css` — the per-deploy churn that ships on every release — is now **29.8 KiB gzip** (down from 107.5 KiB at the previous baseline). The vendor chunks are content-hashed and rarely change between deploys, so they stay warm in the browser cache across releases.
-
-The total eager preload graph is now **145.57 KiB gzip** — comfortably under the 170 KiB perf budget for this surface and a ≈59% reduction versus the immediately-preceding measurement (358 KiB gzip total preloads — see "Previous baseline" below). Note: `react-vendor.js` is slightly larger than the raw `react` + `react-dom` bytes would suggest because we explicitly pin Rollup-generated virtual modules (e.g. `\0commonjsHelpers.js`) into it. Without that pin, the same module would land in `i18n-vendor` and create a `react-vendor ↔ i18n-vendor` chunk cycle that Rollup warns about and that produces fragile preload ordering.
+This 146 KiB gzip is what signed-in users (tenant / admin / ops / agent studio) download on a cold visit. It stays well under the 170 KiB perf budget for this surface. Note: `react-vendor.js` is slightly larger than the raw `react` + `react-dom` bytes would suggest because we explicitly pin Rollup-generated virtual modules (e.g. `\0commonjsHelpers.js`) into it. Without that pin, the same module would land in `i18n-vendor` and create a `react-vendor ↔ i18n-vendor` chunk cycle that Rollup warns about and that produces fragile preload ordering.
 
 `recharts` (`BarChart.js`, ≈97 KiB gzip) is **not** in the eager graph — it loads on demand the first time a chart route (Analytics, AdminAnalytics, AdminTenantAnalytics, CostOptimization, RevenueAnalytics) is visited. `@xyflow/react` ships only inside `AgentBuilder.js`, which is loaded on demand when the Agent Studio route is opened.
 
 Route-level chunks (everything else above) load on demand via `React.lazy` / dynamic imports.
+
+## Initial-load budget — marketing bundle (`index.public.html`)
+
+The Preact-based bundle is what visitors landing on `/`, `/pricing`, `/blog/*`, `/docs/*`, `/industries/*`, etc. download. `main.public.tsx` statically imports i18next, the router, and the design tokens, and `PublicApp.tsx` lazy-imports every public page (so `Landing.js`, `PublicLayout.js`, marketing locale chunks, etc. are not in the eager graph):
+
+| Asset                       | Gzip KiB |
+| --------------------------- | -------- |
+| `index.public.html`         | 0.89     |
+| `index.public.js` (entry)   | 18.08    |
+| `index.css` (shell)         | 4.92     |
+| `preact-vendor.js`          | 13.44    |
+| `i18n-vendor.js`            | 17.77    |
+| `router-vendor.js`          | 13.21    |
+| **`index.public.js` + `index.css` (entry payload)** | **23.00** |
+| **Total eager (with vendor preloads)**              | **68.32** |
+
+The total eager preload graph for the public marketing surface is now **68.32 KiB gzip** — well under the 80 KiB target set in BL-043 and a **53% reduction** versus the previous unified-bundle baseline (145.57 KiB gzip). The win comes almost entirely from swapping the React 19 runtime (≈69 KiB gzip) for `preact/compat` (≈13 KiB gzip) plus dropping `query-vendor` (TanStack Query is in-app only).
+
+There's still a `Landing.js` route chunk (≈12 KiB gzip) that fires immediately after the entry runs — it's loaded via `React.lazy` so it doesn't appear in the modulepreload list, but it is needed for first paint on `/`. End-to-end first-paint payload for `/` therefore lands around ≈80 KiB gzip including `Landing.js`, still a ≈45% reduction from the prior 145.57 KiB eager total.
+
+Public route-level chunks (`Pricing.js`, `Docs.js`, `Blog.js`, `BlogArticle.js`, `Product.js`, `VerticalLanding.js`, etc.) all load on demand via `React.lazy` / dynamic imports, exactly the same shape they had in the unified bundle.
 
 ## How the splitting is configured
 
