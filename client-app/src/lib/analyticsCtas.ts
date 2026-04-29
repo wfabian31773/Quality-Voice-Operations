@@ -40,10 +40,11 @@ export const CTA = {
   // BookDemo sidebar's secondary trial CTA — distinct from
   // START_FREE_TRIAL so sidebar conversions stay separable.
   START_FREE_TRIAL_FROM_BOOK_DEMO: 'start_free_trial_from_book_demo',
-  // Signup form lifecycle: form submit and plan-selector clicks. Kept as
-  // canonical names so funnel reports for /signup don't drift back to
-  // ad-hoc string literals.
+  // /signup form's submit action (separate from START_FREE_TRIAL so we
+  // can split intent from completion in funnel reports).
   SIGNUP_SUBMIT: 'signup_submit',
+  // /signup plan-tile selection — fired each time a visitor picks a plan
+  // tile on the signup form.
   PLAN_SELECTED: 'plan_selected',
 } as const;
 
