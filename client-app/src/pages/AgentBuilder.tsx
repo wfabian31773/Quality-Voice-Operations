@@ -2816,8 +2816,11 @@ function AgentBuilderInner() {
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="truncate">{tpl.label}</div>
-                      <div className="text-[10px] text-text-muted">
+                      <div className="truncate font-medium">{tpl.label}</div>
+                      <div className="text-[10px] text-text-secondary leading-snug line-clamp-2">
+                        {tpl.description}
+                      </div>
+                      <div className="text-[10px] text-text-muted mt-0.5">
                         {t('templateStepsLabel', {
                           nodes: tpl.nodes.length,
                           edges: tpl.edges.length,
@@ -2976,8 +2979,8 @@ function AgentBuilderInner() {
                       <button
                         key={tpl.key}
                         onClick={() => loadTemplate(tpl)}
-                        className="group flex flex-col items-stretch gap-1 p-2 text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary"
-                        title={tpl.label}
+                        className="group flex flex-col items-stretch gap-1 p-2 text-left text-xs font-medium border border-border rounded-lg hover:bg-surface-hover hover:border-primary/50 transition text-text-primary"
+                        title={`${tpl.label} — ${tpl.description}`}
                       >
                         <div className="w-full h-16 rounded border border-border bg-surface-secondary overflow-hidden group-hover:border-primary/30 transition">
                           <TemplatePreview
@@ -2989,6 +2992,9 @@ function AgentBuilderInner() {
                           />
                         </div>
                         <span className="truncate">{tpl.label}</span>
+                        <span className="text-[10px] font-normal text-text-secondary leading-snug line-clamp-2">
+                          {tpl.description}
+                        </span>
                       </button>
                     ))}
                   </div>
