@@ -1,4 +1,8 @@
 import { AGENT_LANGUAGES, DEFAULT_AGENT_LANGUAGE } from './agentLanguages';
+import {
+  buildLocalizedGreeting,
+  type GreetingTemplateKey,
+} from '../../../platform/agent-templates/greetingTranslations';
 
 export type AgentBuilderTKey =
   | 'back'
@@ -90,6 +94,9 @@ export type AgentBuilderTKey =
   | 'faster'
   | 'welcomeGreeting'
   | 'welcomeGreetingPlaceholder'
+  | 'welcomeGreetingSuggestionLabel'
+  | 'welcomeGreetingSuggestionApply'
+  | 'welcomeGreetingSuggestionApplied'
   | 'systemPrompt'
   | 'systemPromptPlaceholder'
   | 'systemPromptHelper'
@@ -323,6 +330,9 @@ const EN: Record<AgentBuilderTKey, string> = {
   faster: 'Faster',
   welcomeGreeting: 'Welcome Greeting',
   welcomeGreetingPlaceholder: 'First thing the agent says...',
+  welcomeGreetingSuggestionLabel: 'Suggested for {template}',
+  welcomeGreetingSuggestionApply: 'Use suggestion',
+  welcomeGreetingSuggestionApplied: 'Using {template} suggestion',
   systemPrompt: 'System Prompt',
   systemPromptPlaceholder: 'Agent personality, instructions, and rules...',
   systemPromptHelper: 'On publish, the workflow steps will be appended to this prompt automatically.',
@@ -4191,6 +4201,139 @@ export function isTemplateOrDefaultSystemPrompt(value: string | undefined | null
         if (candidate === trimmed) return true;
       }
     }
+  }
+  return false;
+}
+
+// ===== Per-template (industry/agent-type) suggested greetings =====
+
+/**
+ * Maps the persisted `agents.type` column (and a few legacy variants) onto a
+ * `GreetingTemplateKey` shared with the server-side template registry. Mirrors
+ * the mapping used by `server/voice-gateway/services/agentLoader.ts` so the
+ * builder UI surfaces the same suggestion the runtime would actually use.
+ */
+const AGENT_TYPE_TO_GREETING_KEY: Record<string, GreetingTemplateKey> = {
+  'answering_service': 'answering-service',
+  'answering-service': 'answering-service',
+  'medical_after_hours': 'medical-after-hours',
+  'medical-after-hours': 'medical-after-hours',
+  'dental': 'dental',
+  'property_management': 'property-management',
+  'property-management': 'property-management',
+  'home_services': 'home-services',
+  'home-services': 'home-services',
+  'legal': 'legal',
+  'customer_support': 'customer-support',
+  'customer-support': 'customer-support',
+  'outbound_sales': 'outbound-sales',
+  'outbound-sales': 'outbound-sales',
+  'technical_support': 'technical-support',
+  'technical-support': 'technical-support',
+  'collections': 'collections',
+};
+
+/** Translation key used to show a user-friendly label for the template. */
+const GREETING_KEY_TO_LABEL_TKEY: Record<GreetingTemplateKey, AgentBuilderTKey> = {
+  'dental': 'agentTypeDental',
+  'property-management': 'agentTypePropertyManagement',
+  'home-services': 'agentTypeHomeServices',
+  'legal': 'agentTypeLegal',
+  'customer-support': 'agentTypeCustomerSupport',
+  'outbound-sales': 'agentTypeOutboundSales',
+  'technical-support': 'agentTypeTechnicalSupport',
+  'collections': 'agentTypeCollections',
+  'medical-after-hours': 'agentTypeMedicalAfterHours',
+  'answering-service': 'agentTypeAnsweringService',
+};
+
+/**
+ * Placeholder substituted into the `{name}` slot when the operator has not yet
+ * given the agent a name. Localised lightly so the suggestion still reads
+ * naturally in the major builder languages.
+ */
+const FALLBACK_NAME_BY_LANGUAGE: Record<string, string> = {
+  en: 'your business',
+  es: 'su negocio',
+  fr: 'votre entreprise',
+  de: 'Ihr Unternehmen',
+  pt: 'seu negócio',
+  it: 'la sua attività',
+  nl: 'uw bedrijf',
+  zh: '您的企业',
+  ja: '貴社',
+  ko: '귀사',
+  ar: 'شركتك',
+  hi: 'आपका व्यवसाय',
+};
+
+function fallbackNameForLanguage(language: string | undefined): string {
+  const lang = language && SUPPORTED_CODES.has(language) ? language : DEFAULT_AGENT_LANGUAGE;
+  return FALLBACK_NAME_BY_LANGUAGE[lang] ?? FALLBACK_NAME_BY_LANGUAGE[DEFAULT_AGENT_LANGUAGE];
+}
+
+/**
+ * Resolve the `GreetingTemplateKey` for an `agents.type` value, or `null` when
+ * the agent has no per-template greeting (e.g. a generic / custom agent).
+ */
+export function getGreetingTemplateKeyForAgentType(
+  agentType: string | undefined | null,
+): GreetingTemplateKey | null {
+  if (!agentType) return null;
+  return AGENT_TYPE_TO_GREETING_KEY[agentType.trim()] ?? null;
+}
+
+/**
+ * Returns the i18n key used to label the per-template suggestion in the UI
+ * (e.g. "Dental", "Home Services"), or `null` when the agent has no template.
+ */
+export function getAgentTypeLabelTKey(
+  agentType: string | undefined | null,
+): AgentBuilderTKey | null {
+  const key = getGreetingTemplateKeyForAgentType(agentType);
+  return key ? GREETING_KEY_TO_LABEL_TKEY[key] : null;
+}
+
+/**
+ * Build the suggested per-template welcome greeting for the given agent type
+ * + language + name. Returns `null` when no template applies.
+ *
+ * The agent's display name is interpolated into the `{name}` slot. When the
+ * operator has not yet supplied a name we substitute a localised placeholder
+ * such as "your business" / "su negocio" so the preview still reads naturally.
+ */
+export function getTemplatedWelcomeGreeting(
+  agentType: string | undefined | null,
+  language: string | undefined,
+  name: string | undefined | null,
+): string | null {
+  const key = getGreetingTemplateKeyForAgentType(agentType);
+  if (!key) return null;
+  const trimmed = (name ?? '').trim();
+  const interpolatedName = trimmed.length > 0 ? trimmed : fallbackNameForLanguage(language);
+  return buildLocalizedGreeting(key, interpolatedName, language);
+}
+
+/**
+ * True when `value` matches the per-template greeting that would be produced
+ * for `agentType` + `name` in any supported language. Used to detect that the
+ * operator has not customised the greeting since it was suggested, so it is
+ * safe to re-localise it when they switch languages.
+ */
+export function isTemplatedWelcomeGreeting(
+  value: string | undefined | null,
+  agentType: string | undefined | null,
+  name: string | undefined | null,
+): boolean {
+  const key = getGreetingTemplateKeyForAgentType(agentType);
+  if (!key || !value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const rawName = (name ?? '').trim();
+  for (const lang of AGENT_LANGUAGES) {
+    const interpolatedName = rawName.length > 0 ? rawName : fallbackNameForLanguage(lang.code);
+    const candidate = buildLocalizedGreeting(key, interpolatedName, lang.code).trim();
+    if (candidate === trimmed) return true;
   }
   return false;
 }

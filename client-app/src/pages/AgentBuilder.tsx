@@ -42,6 +42,9 @@ import {
   isTemplateOrDefaultGreeting,
   isTemplateOrDefaultSystemPrompt,
   getIndustryTemplateCopy,
+  getTemplatedWelcomeGreeting,
+  isTemplatedWelcomeGreeting,
+  getAgentTypeLabelTKey,
 } from '../lib/agentBuilderI18n';
 import {
   ArrowLeft, Save, Play, Rocket, History, GripVertical,
@@ -1212,6 +1215,8 @@ function VoiceConfigPanel({
   speakingRate,
   workflowId,
   workflows,
+  agentType,
+  agentName,
   onChange,
   onClose,
   t,
@@ -1232,6 +1237,8 @@ function VoiceConfigPanel({
   speakingRate: number;
   workflowId: string;
   workflows: { id: string; name: string; description: string | null }[];
+  agentType: string;
+  agentName: string;
   onChange: (key: string, value: string | number) => void;
   onClose: () => void;
   t: BuilderT;
@@ -1242,6 +1249,12 @@ function VoiceConfigPanel({
   onAcceptTranslation: (field: 'welcome_greeting' | 'system_prompt') => void;
   onDismissTranslation: (field: 'welcome_greeting' | 'system_prompt') => void;
 }) {
+  const templateSuggestion = getTemplatedWelcomeGreeting(agentType, language, agentName);
+  const templateLabelTKey = getAgentTypeLabelTKey(agentType);
+  const templateLabel = templateLabelTKey ? t(templateLabelTKey) : '';
+  const isUsingTemplateSuggestion =
+    templateSuggestion !== null && welcomeGreeting.trim() === templateSuggestion.trim();
+  const showApplyButton = templateSuggestion !== null && !isUsingTemplateSuggestion;
   return (
     <div className="w-80 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
@@ -1338,6 +1351,29 @@ function VoiceConfigPanel({
               onDismiss={() => onDismissTranslation('welcome_greeting')}
               t={t}
             />
+          )}
+          {templateSuggestion && (
+            <div className="mt-1.5 rounded-md border border-border bg-surface-hover/50 p-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                  {isUsingTemplateSuggestion
+                    ? t('welcomeGreetingSuggestionApplied', { template: templateLabel })
+                    : t('welcomeGreetingSuggestionLabel', { template: templateLabel })}
+                </span>
+                {showApplyButton && (
+                  <button
+                    type="button"
+                    onClick={() => onChange('welcome_greeting', templateSuggestion)}
+                    className="text-[10px] font-medium text-primary hover:underline whitespace-nowrap"
+                  >
+                    {t('welcomeGreetingSuggestionApply')}
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-text-secondary leading-snug line-clamp-3">
+                {templateSuggestion}
+              </p>
+            </div>
           )}
         </div>
         <div>
@@ -2065,6 +2101,7 @@ function AgentBuilderInner() {
     tone: 'Professional',
     speakingRate: 1.0,
     workflow_id: '' as string,
+    agent_type: '' as string,
   });
 
   const { data: workflowsData } = useQuery({
@@ -2118,17 +2155,24 @@ function AgentBuilderInner() {
       const tone = (wdSettings?.tone as string) || 'Professional';
       const rawGreeting = (wdSettings?.welcome_greeting as string) ?? a.welcome_greeting ?? '';
       const rawPrompt = (wdSettings?.system_prompt as string) ?? a.system_prompt ?? '';
+      const agentType = (a.type as string) || '';
+      // Prefer the per-template localized greeting when the agent has a known
+      // industry/template type and no greeting has been customised yet. The
+      // generic "Hello! Thank you for calling" default still kicks in for
+      // generic / custom agents that don't map to a template.
+      const templatedGreeting = getTemplatedWelcomeGreeting(agentType, lang, name);
       setAgentSettings({
         voice: (wdSettings?.voice as string) || a.voice || 'alloy',
         model: (wdSettings?.model as string) || a.model || 'gpt-4o-realtime-preview',
         temperature: (wdSettings?.temperature as number) ?? a.temperature ?? 0.7,
         system_prompt: rawPrompt || getDefaultSystemPrompt(lang),
-        welcome_greeting: rawGreeting || getDefaultWelcomeGreeting(lang),
+        welcome_greeting: rawGreeting || templatedGreeting || getDefaultWelcomeGreeting(lang),
         name,
         language: lang,
         tone,
         speakingRate: (wdSettings?.speakingRate as number) || 1.0,
         workflow_id: ((a as unknown as Record<string, unknown>).workflow_id as string) || '',
+        agent_type: agentType,
       });
       if (a.workflow_definition) {
         const wd = a.workflow_definition as unknown as Record<string, unknown>;
@@ -2363,12 +2407,22 @@ function AgentBuilderInner() {
       if (key === 'language' && typeof value === 'string') {
         const newLang = value;
         const prevLang = prev.language;
+        // Re-localise the greeting when the operator hasn't customised it.
+        // We treat three states as "still untouched": empty, the generic
+        // localised default, or a previously-suggested per-template greeting
+        // for this agent's type (in any language, with either the current
+        // name or a prior name). Truly custom greetings fall through to the
+        // translation-suggestion path below.
         const greetingIsDefault =
-          !prev.welcome_greeting || isDefaultGreeting(prev.welcome_greeting);
+          !prev.welcome_greeting ||
+          isDefaultGreeting(prev.welcome_greeting) ||
+          isTemplatedWelcomeGreeting(prev.welcome_greeting, prev.agent_type, prev.name);
         const promptIsDefault =
           !prev.system_prompt || isDefaultSystemPrompt(prev.system_prompt);
         if (greetingIsDefault) {
-          next.welcome_greeting = getDefaultWelcomeGreeting(newLang);
+          next.welcome_greeting =
+            getTemplatedWelcomeGreeting(prev.agent_type, newLang, prev.name) ??
+            getDefaultWelcomeGreeting(newLang);
         }
         if (promptIsDefault) {
           next.system_prompt = getDefaultSystemPrompt(newLang);
@@ -2425,6 +2479,26 @@ function AgentBuilderInner() {
         // the operator has chosen to keep editing instead of translating.
         setTranslationSuggestions((s) => ({ ...s, [key]: null }));
         setTranslationError((err) => (err && err.field === key ? null : err));
+      }
+      if (key === 'name' && typeof value === 'string') {
+        // When the operator names (or renames) the agent, re-interpolate the
+        // templated greeting so the name update is reflected. We only touch
+        // the greeting when it is still recognised as the templated suggestion
+        // for the *previous* name — never when the operator has customised it.
+        const newName = value;
+        if (
+          prev.agent_type &&
+          isTemplatedWelcomeGreeting(prev.welcome_greeting, prev.agent_type, prev.name)
+        ) {
+          const reinterpolated = getTemplatedWelcomeGreeting(
+            prev.agent_type,
+            prev.language,
+            newName,
+          );
+          if (reinterpolated) {
+            next.welcome_greeting = reinterpolated;
+          }
+        }
       }
       return next;
     });
@@ -3500,6 +3574,8 @@ function AgentBuilderInner() {
             speakingRate={agentSettings.speakingRate}
             workflowId={agentSettings.workflow_id}
             workflows={workflowsData?.workflows ?? []}
+            agentType={agentSettings.agent_type}
+            agentName={agentSettings.name}
             onChange={handleSettingChange}
             onClose={() => setRightPanel('none')}
             t={t}
