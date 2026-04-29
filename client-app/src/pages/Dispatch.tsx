@@ -251,6 +251,16 @@ const SHOW_CLOSEST_APPROACH_STATUSES = new Set([
 // drifting away from it.
 const CLOSEST_APPROACH_BAD_M_DEFAULT = 250;
 
+// Fixed thresholds used by the live-map renderers (marker ring +
+// popup pill) and the off-target filter chips. Kept distinct from
+// the per-tenant `bad_arrival_threshold_m` (which drives the queue
+// table / board card badges) so the live map always speaks the same
+// "off-target = >250 m, amber = 100–250 m" vocabulary across
+// tenants — dispatchers comparing maps shouldn't have to relearn the
+// thresholds when they jump between accounts.
+const CLOSEST_APPROACH_BAD_M = 250;
+const CLOSEST_APPROACH_WARN_M = 100;
+
 function getClosestApproachWarnM(badM: number): number {
   return Math.max(20, Math.round(badM * 0.4));
 }
@@ -1793,9 +1803,33 @@ function buildLiveMapMarkerHtml(loc: ResourceLocationRow, color: string, initial
   return `<div title="${isBad ? `Closest GPS ping was ${escapeHtml(formatDistance(meters as number))} from the address` : ''}" style="background:${color};color:#0b1220;border:${border};border-radius:9999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;box-shadow:${shadow}">${initials || '•'}</div>`;
 }
 
+// Off-target filter modes for the live map. `all` shows every tech,
+// `amber` narrows to closest-approach > 100 m (the amber + red bucket
+// that supervisors typically scan first), and `bad` restricts to the
+// red >250 m bucket — the rows that almost certainly need a phone
+// call. Lives in component state so the filter (and the legend
+// counts it drives) survives the 15s polling refresh without
+// resetting on every fetch.
+type OffTargetFilter = 'all' | 'amber' | 'bad';
+
+// True when a row should be considered "amber+" — i.e. the tech is in
+// a status where closest-approach is meaningful, the value is
+// numeric, and it sits above the warn threshold. The `bad` bucket is
+// the strict subset above the bad threshold.
+function locationApproachBucket(loc: ResourceLocationRow): 'bad' | 'amber' | 'ok' | 'na' {
+  const status = (loc.active_status || loc.job_status || '').toLowerCase();
+  if (!SHOW_CLOSEST_APPROACH_STATUSES.has(status)) return 'na';
+  const m = loc.closest_approach_m;
+  if (m == null || !Number.isFinite(m)) return 'na';
+  if (m > CLOSEST_APPROACH_BAD_M) return 'bad';
+  if (m > CLOSEST_APPROACH_WARN_M) return 'amber';
+  return 'ok';
+}
+
 function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void }) {
   const [locations, setLocations] = useState<ResourceLocationRow[]>([]);
   const [staleness, setStaleness] = useState(600);
+  const [offTargetFilter, setOffTargetFilter] = useState<OffTargetFilter>('all');
   const [error, setError] = useState<string | null>(null);
   const [loadingMap, setLoadingMap] = useState(true);
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
@@ -1856,13 +1890,53 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
     };
   }, []);
 
-  // Sync markers whenever the locations list changes.
+  // Apply the off-target filter to the raw locations stream. We
+  // memoize so the marker-sync effect (which depends on identity)
+  // doesn't re-run on every render. `na` rows (idle techs, statuses
+  // where closest-approach isn't meaningful, missing breadcrumbs) are
+  // hidden whenever a filter is active — they would just be noise.
+  const filteredLocations = useMemo(() => {
+    if (offTargetFilter === 'all') return locations;
+    return locations.filter((loc) => {
+      const bucket = locationApproachBucket(loc);
+      if (offTargetFilter === 'bad') return bucket === 'bad';
+      // amber = bad + amber buckets
+      return bucket === 'bad' || bucket === 'amber';
+    });
+  }, [locations, offTargetFilter]);
+
+  // Counts driving the legend pills + the filter chip labels. Always
+  // computed against the unfiltered set so the chips show "how many
+  // could you focus on" even when one is already active.
+  const offTargetCounts = useMemo(() => {
+    let bad = 0;
+    let amberPlus = 0;
+    for (const loc of locations) {
+      const bucket = locationApproachBucket(loc);
+      if (bucket === 'bad') {
+        bad += 1;
+        amberPlus += 1;
+      } else if (bucket === 'amber') {
+        amberPlus += 1;
+      }
+    }
+    return { bad, amberPlus };
+  }, [locations]);
+
+  // Re-fit the map when the filter changes the visible marker set so
+  // the remaining points fill the viewport instead of getting lost in
+  // the wider zoom. Same trick the staleness selector uses.
+  useEffect(() => {
+    fittedRef.current = false;
+  }, [offTargetFilter]);
+
+  // Sync markers whenever the (filtered) locations list changes.
   useEffect(() => {
     if (!mapRef.current || !window.L) return;
     const L = window.L;
     const seen = new Set<string>();
     const bounds: [number, number][] = [];
-    for (const loc of locations) {
+    for (const loc of filteredLocations) {
       seen.add(loc.resource_id);
       const color = STATUS_HEX[(loc.active_status || loc.job_status || 'pending').toLowerCase()] || '#9ca3af';
       const initials = (loc.resource_name || '?')
@@ -1918,7 +1992,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
         fittedRef.current = true;
       } catch { /* noop */ }
     }
-  }, [locations]);
+  }, [filteredLocations]);
 
   // Delegate clicks on "Open job" anchors inside popups.
   useEffect(() => {
@@ -1937,15 +2011,27 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
     return () => document.removeEventListener('click', onClick);
   }, [openJobDetail]);
 
-  const activeCount = locations.filter((l) => l.active_job_id).length;
-  const idleCount = locations.length - activeCount;
+  // Header counts reflect what's actually painted on the map. When
+  // the off-target filter is active, the "X techs reporting · Y on a
+  // job · Z idle" line follows the filtered set so it doesn't lie
+  // about what the dispatcher is seeing; the unfiltered total is
+  // surfaced inline so they don't lose context.
+  const visibleCount = filteredLocations.length;
+  const activeCount = filteredLocations.filter((l) => l.active_job_id).length;
+  const idleCount = visibleCount - activeCount;
+  const filterActive = offTargetFilter !== 'all';
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-heading font-medium">{locations.length} tech{locations.length === 1 ? '' : 's'} reporting</span>
+          <span className="text-heading font-medium">
+            {visibleCount} tech{visibleCount === 1 ? '' : 's'} {filterActive ? 'shown' : 'reporting'}
+          </span>
           <span className="text-muted">· {activeCount} on a job · {idleCount} idle</span>
+          {filterActive && (
+            <span className="text-xs text-muted">of {locations.length} total</span>
+          )}
           {refreshedAt && <span className="text-xs text-muted">Updated {refreshedAt.toLocaleTimeString()}</span>}
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -1959,6 +2045,71 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           </select>
           <button onClick={fetchLocations} className="px-2 py-1 rounded border border-border bg-surface text-heading hover:bg-surface-secondary">Refresh</button>
         </div>
+      </div>
+
+      {/*
+        Off-target filter chips. Three exclusive states (All / Amber+ /
+        Off-target) doubling as live counters so dispatchers see how
+        many calls might need their attention before they even click.
+        Chip labels include the count so a single glance answers "is
+        anything wrong right now?" — important on a busy day where
+        the map is otherwise covered in green dots.
+      */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted font-medium uppercase tracking-wide">Focus</span>
+        <button
+          type="button"
+          onClick={() => setOffTargetFilter('all')}
+          aria-pressed={offTargetFilter === 'all'}
+          className={`px-2.5 py-1 rounded-full font-medium transition-colors ${
+            offTargetFilter === 'all'
+              ? 'bg-primary text-white'
+              : 'bg-surface-secondary text-muted hover:text-heading'
+          }`}
+        >
+          All ({locations.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setOffTargetFilter(offTargetFilter === 'amber' ? 'all' : 'amber')}
+          aria-pressed={offTargetFilter === 'amber'}
+          title={`Show techs whose closest GPS ping was more than ${CLOSEST_APPROACH_WARN_M} m from the address (amber + off-target)`}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-colors ${
+            offTargetFilter === 'amber'
+              ? 'bg-amber-500 text-white'
+              : offTargetCounts.amberPlus > 0
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50'
+                : 'bg-surface-secondary text-muted hover:text-heading'
+          }`}
+        >
+          <span className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'amber' ? 'bg-white' : 'bg-amber-500'}`} />
+          Amber+ ({offTargetCounts.amberPlus})
+        </button>
+        <button
+          type="button"
+          onClick={() => setOffTargetFilter(offTargetFilter === 'bad' ? 'all' : 'bad')}
+          aria-pressed={offTargetFilter === 'bad'}
+          title={`Show only techs whose closest GPS ping was more than ${CLOSEST_APPROACH_BAD_M} m from the address`}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-colors ${
+            offTargetFilter === 'bad'
+              ? 'bg-red-600 text-white'
+              : offTargetCounts.bad > 0
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900/50'
+                : 'bg-surface-secondary text-muted hover:text-heading'
+          }`}
+        >
+          <span className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'bad' ? 'bg-white' : 'bg-red-600'}`} />
+          Off-target ({offTargetCounts.bad})
+        </button>
+        {filterActive && (
+          <button
+            type="button"
+            onClick={() => setOffTargetFilter('all')}
+            className="text-muted hover:text-heading underline-offset-2 hover:underline"
+          >
+            Clear filter
+          </button>
+        )}
       </div>
 
       <div className="rounded-xl border border-border overflow-hidden bg-surface">
@@ -1994,6 +2145,33 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
       {locations.length === 0 && !loadingMap && (
         <div className="bg-surface border border-border rounded-xl p-6 text-center text-sm text-muted">
           No live technician locations yet. Markers appear here as soon as a tech accepts a job and marks it en route.
+        </div>
+      )}
+
+      {/*
+        Filter-specific empty state. Replaces "blank map, why?" with a
+        clear "good news / bad news" message: nothing matches the
+        chosen severity in the current staleness window, and here's
+        the obvious escape hatch (clear the filter) so the dispatcher
+        isn't stuck staring at an empty viewport.
+      */}
+      {locations.length > 0 && filteredLocations.length === 0 && filterActive && !loadingMap && (
+        <div className="bg-surface border border-border rounded-xl p-6 text-center text-sm">
+          <div className="text-heading font-medium mb-1">
+            {offTargetFilter === 'bad'
+              ? 'No off-target visits in the current window'
+              : 'No amber or off-target visits in the current window'}
+          </div>
+          <p className="text-muted">
+            Every tech reporting in the last {Math.round(staleness / 60)} minute{staleness === 60 ? '' : 's'} is within {offTargetFilter === 'bad' ? `${CLOSEST_APPROACH_BAD_M} m` : `${CLOSEST_APPROACH_WARN_M} m`} of their job address.
+          </p>
+          <button
+            type="button"
+            onClick={() => setOffTargetFilter('all')}
+            className="mt-3 px-3 py-1.5 rounded border border-border bg-surface text-heading hover:bg-surface-secondary text-xs font-medium"
+          >
+            Clear filter to see all {locations.length} tech{locations.length === 1 ? '' : 's'}
+          </button>
         </div>
       )}
     </div>
