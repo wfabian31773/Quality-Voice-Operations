@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageSquare, X, Send, Mic, MicOff, ArrowRight, Phone } from 'lucide-react';
+import { formatCents, formatDollars } from '../lib/formatCurrency';
 
 interface SpeechRecognitionAlternative {
   transcript: string;
@@ -345,17 +346,73 @@ export default function WebsiteSalesWidget() {
                 >
                   {msg.content}
                   {msg.actions && msg.actions.some(a => a.type === 'recommend_plan') && (
-                    <div className="mt-2 pt-2 border-t border-white/20">
-                      {msg.actions.filter(a => a.type === 'recommend_plan').map((a, j) => (
-                        <button
-                          key={j}
-                          onClick={() => navigate(`/signup?plan=${a.data.plan}`)}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-white/90 hover:text-white mt-1"
-                        >
-                          Start {String(a.data.plan).charAt(0).toUpperCase() + String(a.data.plan).slice(1)} Trial
-                          <ArrowRight className="h-3 w-3" />
-                        </button>
-                      ))}
+                    <div
+                      className={`mt-2 pt-2 border-t ${
+                        msg.role === 'user' ? 'border-white/20' : 'border-border-strong/20'
+                      }`}
+                    >
+                      {msg.actions.filter(a => a.type === 'recommend_plan').map((a, j) => {
+                        const plan = String(a.data.plan ?? '');
+                        const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+                        const monthlyPriceCents =
+                          typeof a.data.monthlyPriceCents === 'number'
+                            ? a.data.monthlyPriceCents
+                            : null;
+                        const includedMinutes =
+                          typeof a.data.includedMinutes === 'number'
+                            ? a.data.includedMinutes
+                            : null;
+                        const overageRate =
+                          typeof a.data.overageRatePerMinute === 'number'
+                            ? a.data.overageRatePerMinute
+                            : null;
+                        const priceLabel =
+                          monthlyPriceCents !== null
+                            ? `${formatCents(monthlyPriceCents, {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              })}/month`
+                            : null;
+                        return (
+                          <div key={j} className="flex flex-col gap-1 mt-1">
+                            <div
+                              className={`text-xs font-semibold ${
+                                msg.role === 'user' ? 'text-white' : 'text-text-primary'
+                              }`}
+                              data-testid={`recommend-plan-price-${plan}`}
+                            >
+                              {planLabel}
+                              {priceLabel ? ` — ${priceLabel}` : ''}
+                            </div>
+                            {(includedMinutes !== null || overageRate !== null) && (
+                              <div
+                                className={`text-[11px] ${
+                                  msg.role === 'user' ? 'text-white/70' : 'text-text-primary/60'
+                                }`}
+                              >
+                                {includedMinutes !== null
+                                  ? `${includedMinutes.toLocaleString()} AI minutes`
+                                  : ''}
+                                {includedMinutes !== null && overageRate !== null ? ' · ' : ''}
+                                {overageRate !== null
+                                  ? `${formatDollars(overageRate)}/min overage`
+                                  : ''}
+                              </div>
+                            )}
+                            <button
+                              onClick={() => navigate(`/signup?plan=${plan}`)}
+                              className={`flex items-center gap-1.5 text-xs font-semibold mt-1 ${
+                                msg.role === 'user'
+                                  ? 'text-white/90 hover:text-white'
+                                  : 'text-primary hover:text-primary-hover'
+                              }`}
+                            >
+                              Start {planLabel} Trial
+                              <ArrowRight className="h-3 w-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

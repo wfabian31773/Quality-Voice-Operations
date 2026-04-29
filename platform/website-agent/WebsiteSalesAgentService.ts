@@ -1,6 +1,39 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
-import { PLAN_CATALOG, getPlanMonthlyPriceWholeDollars } from '../../shared/billing/planCatalog';
+import {
+  PLAN_CATALOG,
+  PLAN_TIERS,
+  getPlan,
+  getPlanMonthlyPriceWholeDollars,
+  type PlanTier,
+} from '../../shared/billing/planCatalog';
+
+export interface RecommendPlanActionData {
+  plan: PlanTier;
+  reason: string;
+  monthlyPriceCents: number;
+  includedMinutes: number;
+  overageRatePerMinute: number;
+}
+
+function isPlanTier(value: unknown): value is PlanTier {
+  return typeof value === 'string' && (PLAN_TIERS as string[]).includes(value);
+}
+
+export function buildRecommendPlanActionData(
+  plan: unknown,
+  reason: unknown,
+): RecommendPlanActionData {
+  const tier: PlanTier = isPlanTier(plan) ? plan : 'starter';
+  const entry = getPlan(tier);
+  return {
+    plan: tier,
+    reason: typeof reason === 'string' ? reason : '',
+    monthlyPriceCents: entry.monthlyPriceCents,
+    includedMinutes: entry.includedMinutes,
+    overageRatePerMinute: entry.overageRatePerMinute,
+  };
+}
 
 const logger = createLogger('WEBSITE_SALES_AGENT');
 
@@ -221,10 +254,12 @@ export interface WebsiteAgentResponse {
   conversationId: string;
 }
 
-export interface WebsiteAgentAction {
-  type: 'launch_demo' | 'navigate' | 'recommend_plan' | 'capture_lead' | 'schedule_consultation';
-  data: Record<string, unknown>;
-}
+export type WebsiteAgentAction =
+  | { type: 'recommend_plan'; data: RecommendPlanActionData }
+  | {
+      type: 'launch_demo' | 'navigate' | 'capture_lead' | 'schedule_consultation';
+      data: Record<string, unknown>;
+    };
 
 interface ConversationState {
   messages: ChatMessage[];
@@ -324,9 +359,10 @@ export async function chat(
             break;
           }
           case 'recommend_plan': {
-            actions.push({ type: 'recommend_plan', data: { plan: args.plan, reason: args.reason } });
-            result = `Plan "${args.plan}" recommended. Reason: ${args.reason}`;
-            trackAnalytics('plan_recommended', conversationId, sourcePage, { plan: args.plan }).catch(() => {});
+            const recommendData = buildRecommendPlanActionData(args.plan, args.reason);
+            actions.push({ type: 'recommend_plan', data: recommendData });
+            result = `Plan "${recommendData.plan}" recommended. Reason: ${recommendData.reason}`;
+            trackAnalytics('plan_recommended', conversationId, sourcePage, { plan: recommendData.plan }).catch(() => {});
             break;
           }
           case 'capture_lead': {
