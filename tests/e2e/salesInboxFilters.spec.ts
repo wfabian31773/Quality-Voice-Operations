@@ -34,11 +34,15 @@
 import { chromium, type Browser, type Page, type Request } from 'playwright';
 import pg from 'pg';
 import { randomUUID } from 'crypto';
+import { mkdir } from 'fs/promises';
+import path from 'path';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5000';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@voiceaihub.dev';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'test-password-123';
 const DB_URL = process.env.PLATFORM_DB_POOL_URL ?? process.env.DATABASE_URL ?? '';
+const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR ?? '.ci-logs/screenshots';
+const SPEC_NAME = 'sales-inbox-filters';
 
 if (!DB_URL) {
   console.error('PLATFORM_DB_POOL_URL or DATABASE_URL must be set to seed test data');
@@ -205,9 +209,22 @@ function waitForLeadsRequest(
   );
 }
 
+async function captureFailureScreenshot(page: Page | undefined): Promise<void> {
+  if (!page) return;
+  const shotPath = path.join(ARTIFACT_DIR, `${SPEC_NAME}-failure.png`);
+  try {
+    await mkdir(path.dirname(shotPath), { recursive: true });
+    await page.screenshot({ path: shotPath, fullPage: true });
+    console.error(`[e2e]   screenshot: ${shotPath}`);
+  } catch (err) {
+    console.warn(`[e2e] failed to write screenshot to ${shotPath}: ${(err as Error).message}`);
+  }
+}
+
 async function run(): Promise<void> {
   const pool = new pg.Pool({ connectionString: DB_URL, max: 2 });
   let browser: Browser | undefined;
+  let page: Page | undefined;
   let seedData: SeedResult | undefined;
   try {
     seedData = await seed(pool);
@@ -216,7 +233,7 @@ async function run(): Promise<void> {
 
     browser = await chromium.launch({ headless: true });
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    const page = await ctx.newPage();
+    page = await ctx.newPage();
     const requests = captureLeadsRequests(page);
 
     await login(page);
@@ -343,6 +360,9 @@ async function run(): Promise<void> {
     console.log('[e2e] CSV download URL forwards both new params correctly');
 
     console.log('[e2e] PASS');
+  } catch (err) {
+    await captureFailureScreenshot(page);
+    throw err;
   } finally {
     if (browser) await browser.close().catch(() => undefined);
     if (seedData) {

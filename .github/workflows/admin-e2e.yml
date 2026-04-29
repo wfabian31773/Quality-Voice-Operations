@@ -1,4 +1,10 @@
-name: Sales Inbox e2e
+name: Admin pages e2e
+
+# Boots the Platform Dev stack once per CI run and walks the highest-traffic
+# admin-side regression specs back-to-back against the same server. The
+# original Sales Inbox-only job (`sales-inbox-e2e.yml`) was renamed to this
+# file in task #917 so additional admin-page regressions can be added
+# without per-spec server restart cost.
 
 on:
   pull_request:
@@ -7,12 +13,12 @@ on:
     branches: [main, master]
 
 concurrency:
-  group: sales-inbox-e2e-${{ github.workflow }}-${{ github.ref }}
+  group: admin-e2e-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  sales-inbox-e2e:
-    name: Sales Inbox filters e2e
+  admin-e2e:
+    name: Admin pages e2e
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -39,6 +45,9 @@ jobs:
       E2E_ADMIN_EMAIL: admin@voiceaihub.dev
       E2E_ADMIN_PASSWORD: test-password-123
       E2E_BASE_URL: http://localhost:5000
+      # Both specs honour E2E_ARTIFACT_DIR for failure screenshots; pinning
+      # it inside .ci-logs/ means the per-job upload step picks them up.
+      E2E_ARTIFACT_DIR: .ci-logs/screenshots
       ADMIN_API_PORT: "3002"
       VOICE_GATEWAY_PORT: "3001"
       DISABLE_PHI_LOGGING: "true"
@@ -71,7 +80,7 @@ jobs:
 
       - name: Boot Platform Dev stack
         run: |
-          mkdir -p .ci-logs
+          mkdir -p .ci-logs/screenshots
           nohup bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
           echo $! > .ci-logs/platform.pid
 
@@ -90,8 +99,28 @@ jobs:
           tail -n 200 .ci-logs/platform-dev.log || true
           exit 1
 
+      # ─── Specs ───────────────────────────────────────────────────────────
+      # Each spec runs against the already-booted server (no per-spec restart
+      # cost). Each step pipes stdout/stderr to its own log file under
+      # .ci-logs/ so triagers can pull just the failing spec's transcript
+      # from the uploaded artifact. `set -o pipefail` ensures the step still
+      # fails if the spec exits non-zero even though we're piping to tee.
+      # `continue-on-error: true` lets later specs run regardless, and the
+      # final step asserts that all specs passed before the job succeeds.
+
       - name: Run Sales Inbox filters e2e
-        run: npm run test:e2e:sales-inbox-filters
+        id: spec-sales-inbox-filters
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e:sales-inbox-filters 2>&1 | tee .ci-logs/sales-inbox-filters.log
+
+      - name: Run Admin pages smoke e2e
+        id: spec-admin-pages-smoke
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e:admin-pages-smoke 2>&1 | tee .ci-logs/admin-pages-smoke.log
 
       - name: Capture Platform Dev logs
         if: always()
@@ -101,11 +130,11 @@ jobs:
             tail -n 500 .ci-logs/platform-dev.log || true
           fi
 
-      - name: Upload Platform Dev logs on failure
-        if: failure()
+      - name: Upload Platform Dev + spec logs and screenshots on failure
+        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: platform-dev-logs
+          name: admin-e2e-artifacts
           path: .ci-logs/
           if-no-files-found: ignore
           retention-days: 7
@@ -120,3 +149,14 @@ jobs:
           pkill -f "tsx server/voice-gateway" 2>/dev/null || true
           pkill -f "vite --config client-app" 2>/dev/null || true
           exit 0
+
+      # Aggregate gate: this is the step that actually fails the job when any
+      # spec failed. Without it, `continue-on-error: true` above would make
+      # the whole job pass even though specs broke.
+      - name: Fail job if any spec failed
+        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure'
+        run: |
+          echo "::error::One or more admin e2e specs failed:"
+          echo "  sales-inbox-filters: ${{ steps.spec-sales-inbox-filters.outcome }}"
+          echo "  admin-pages-smoke:   ${{ steps.spec-admin-pages-smoke.outcome }}"
+          exit 1
