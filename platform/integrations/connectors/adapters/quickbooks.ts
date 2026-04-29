@@ -231,9 +231,21 @@ export class QuickBooksConnectorAdapter implements ConnectorAdapter {
       method: 'POST',
       body: customerBody,
     });
-    if (!create.ok || !create.data?.Customer?.Id) {
-      logger.warn('QuickBooks customer create failed', { error: create.error });
-      return undefined;
+    if (!create.ok) {
+      // BL-014 (Task #1112): surface persistent HTTP failures (5xx after
+      // the retry helper exhausts its budget, persistent 4xx, network
+      // errors) as a clean error rather than silently returning undefined.
+      // The dispatch / outbox / alerter layers depend on `result.success`
+      // to retry transient outages and notify the customer when QuickBooks
+      // is genuinely unreachable, so swallowing the failure here masks
+      // real revenue-impacting incidents.
+      throw new Error(
+        create.error
+          ?? `QuickBooks customer create failed (status ${create.status})`,
+      );
+    }
+    if (!create.data?.Customer?.Id) {
+      throw new Error('QuickBooks customer create returned no customer ID');
     }
     return create.data.Customer.Id;
   }
@@ -258,9 +270,18 @@ export class QuickBooksConnectorAdapter implements ConnectorAdapter {
       ],
     };
     const res = await qboFetch<QboInvoiceCreate>(auth, '/invoice', { method: 'POST', body });
-    if (!res.ok || !res.data?.Invoice?.Id) {
-      logger.warn('QuickBooks invoice create failed', { error: res.error });
-      return undefined;
+    if (!res.ok) {
+      // BL-014 (Task #1112): same rationale as `findOrCreateCustomer` — a
+      // persistent HTTP failure here means we did NOT bill the customer for
+      // a service we delivered. Surfacing `success: false` lets the
+      // outbox drain re-attempt the dispatch and the alerter notify the
+      // tenant instead of silently dropping the invoice on the floor.
+      throw new Error(
+        res.error ?? `QuickBooks invoice create failed (status ${res.status})`,
+      );
+    }
+    if (!res.data?.Invoice?.Id) {
+      throw new Error('QuickBooks invoice create returned no invoice ID');
     }
     return { id: res.data.Invoice.Id, docNumber: res.data.Invoice.DocNumber };
   }

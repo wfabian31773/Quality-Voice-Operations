@@ -128,22 +128,17 @@ describe('QuickBooksConnectorAdapter retry-with-backoff (BL-014 Task #505)', () 
     },
   );
 
-  // Partial-success semantics, NOT clean-error semantics: the QuickBooks
-  // adapter intentionally degrades gracefully on transient HTTP failures
-  // from `findOrCreateCustomer` / `createInvoice` (logs a warning and
-  // returns `undefined` to the handler), so a persistent 5xx surfaces
-  // as `{ success: true, meta: { invoiced: false, invoiceId: undefined } }`
-  // rather than `{ success: false }`. The retry helper still bounds
-  // attempts at 3 per qboFetch invocation, which is the budget guarantee
-  // this test exercises. The other three providers in this batch
-  // (Zoho / Google Calendar / Outlook Calendar) DO surface
-  // `{ success: false }` on exhaustion — see their respective test files.
-  // Promoting QuickBooks to the same surface is tracked separately so the
-  // dispatch / alerter / outbox layers can be reviewed alongside the
-  // change. See follow-up: "Surface failed QuickBooks customer/invoice
-  // writes instead of silently marking them as 'not invoiced'".
+  // BL-014 (Task #1112): the QuickBooks adapter now surfaces persistent
+  // HTTP failures from `findOrCreateCustomer` / `createInvoice` as
+  // `{ success: false, error }` rather than degrading silently to
+  // `{ success: true, invoiced: false }`. The retry helper still bounds
+  // attempts at 3 per qboFetch invocation (still verified below); the
+  // change is purely about how the *adapter* translates an exhausted
+  // retry budget into a `ConnectorResult`. Without this, the dispatch /
+  // outbox / alerter layers can't tell "QuickBooks was down and we
+  // dropped the invoice" apart from "no invoicing was configured".
   test(
-    'caps the Invoice POST at exactly 3 attempts on persistent 5xx, degrades gracefully within the 60s budget',
+    'caps the Invoice POST at exactly 3 attempts on persistent 5xx, then surfaces success: false within the 60s budget',
     { timeout: 15_000 },
     async () => {
       // Configure the invoice path so we can isolate the retry budget on a
@@ -194,23 +189,12 @@ describe('QuickBooksConnectorAdapter retry-with-backoff (BL-014 Task #505)', () 
       const result = await adapter.execute(TENANT, cfg, payload);
       const elapsedMs = Date.now() - startedAt;
 
-      // Graceful degradation: the customer was located, the invoice could
-      // not be created after retry exhaustion, so no invoice ID is reported
-      // and the meta flag flips to invoiced: false. The dispatch never
-      // throws and never hangs — the retry helper returned the final 503
-      // Response to the adapter, which translated it into a stable,
-      // non-throwing result. (Whether the dispatch layer SHOULD see this
-      // as success: false is the open product question tracked by the
-      // follow-up referenced above; for now the test pins the actual
-      // behavior so a regression in either direction is caught.)
-      expect(result.success).toBe(true);
-      expect(result.externalId).toBe('cust-existing');
-      expect(result.meta).toMatchObject({
-        customerId: 'cust-existing',
-        invoiceId: undefined,
-        invoiced: false,
-        provider: 'quickbooks',
-      });
+      // Clean-error semantics: invoicing was configured but persistently
+      // failed, so the adapter surfaces `success: false` with a 503-derived
+      // error. The dispatch / outbox / alerter layers rely on this to
+      // re-attempt the dispatch and notify the customer.
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/503/);
       // Exactly three /invoice POSTs: the helper does NOT make a 4th
       // attempt, which is what bounds the dispatch inside the 60s budget
       // (3 attempts × 15s per-attempt + 1s + 4s sleeps = 50s worst case).
@@ -226,6 +210,58 @@ describe('QuickBooksConnectorAdapter retry-with-backoff (BL-014 Task #505)', () 
       // Total wall-clock comfortably inside the 60s budget — proving the
       // helper did not stretch past it on a hostile upstream.
       expect(elapsedMs).toBeLessThan(60_000);
+    },
+  );
+
+  // BL-014 (Task #1112): the customer-create path is the other half of
+  // the silent-failure footprint. A persistent 5xx on POST /customer
+  // (after the Customer query also fails or returns no match) used to
+  // resolve as `{ success: true, meta: { customerId: undefined } }`,
+  // which made it impossible for `appointment.booked` dispatches to alert
+  // the tenant when QuickBooks dropped the customer write. Now the
+  // adapter throws, the handler converts it into `success: false`, and
+  // the outbox/alerter logic in ConnectorService can react.
+  test(
+    'surfaces success: false when Customer create persistently 5xxs (no silent customerId: undefined)',
+    { timeout: 15_000 },
+    async () => {
+      const calls: Array<{ url: string; method: string }> = [];
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push({ url, method });
+        // Customer query: return no matches so the adapter falls through
+        // to POST /customer. (This first leg is allowed to succeed so we
+        // isolate the customer-create retry budget end-to-end.)
+        if (url.includes('/query?query=') && method === 'GET') {
+          return new Response(
+            JSON.stringify({ QueryResponse: {} }),
+            { status: 200 },
+          );
+        }
+        // Persistent 503 on the customer create itself.
+        if (url.includes('/customer') && method === 'POST') {
+          return new Response(JSON.stringify({ message: 'service unavailable' }), {
+            status: 503,
+          });
+        }
+        throw new Error(`Unexpected fetch: ${method} ${url}`);
+      }));
+
+      const adapter = new QuickBooksConnectorAdapter();
+      const payload: ConnectorPayload = {
+        type: 'appointment.booked',
+        callerPhone: '+15551234567',
+      };
+      const result = await adapter.execute(TENANT, CONFIG, payload);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/503/);
+      // Exactly three POST /customer attempts — the retry helper bounds
+      // the customer create the same way it bounds the invoice create.
+      const customerPosts = calls.filter(
+        (c) => c.url.includes('/customer') && c.method === 'POST',
+      );
+      expect(customerPosts).toHaveLength(3);
     },
   );
 });
