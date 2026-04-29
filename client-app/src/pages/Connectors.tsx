@@ -2356,7 +2356,7 @@ function providerLabelFromAlert(alert: OutageAlert): string {
   return 'Integration';
 }
 
-function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
+export function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
   const [integrationFilter, setIntegrationFilter] = useState<string>('');
