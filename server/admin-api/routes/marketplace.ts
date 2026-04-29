@@ -1677,8 +1677,18 @@ router.post('/marketplace/templates/:id/usage', requireAuth, async (req, res) =>
     return res.status(400).json({ error: 'quantity must be a positive integer' });
   }
 
+  // Callers that need exactly-once meter event semantics for a given business
+  // event (e.g. a tool execution, a call session) can pass an `Idempotency-Key`
+  // header derived from that event's stable id. It is forwarded to Stripe so
+  // retries within Stripe's 24h dedupe window do not double-bill.
+  const headerKey = req.header('idempotency-key');
+  const idempotencyKey =
+    typeof headerKey === 'string' && headerKey.trim().length > 0 && headerKey.length <= 200
+      ? headerKey.trim()
+      : undefined;
+
   try {
-    const result = await reportUsage(tenantId, templateId, quantity);
+    const result = await reportUsage(tenantId, templateId, quantity, { idempotencyKey });
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }

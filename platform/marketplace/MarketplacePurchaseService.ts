@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import type { TenantId } from '../core/types';
@@ -284,19 +285,49 @@ export async function checkPurchaseAccess(
   return { hasAccess: true, purchase: purchaseRecord };
 }
 
+/**
+ * Report marketplace add-on usage to Stripe via the Billing Meter Events API
+ * (https://docs.stripe.com/billing/subscriptions/usage-based/recording-usage).
+ *
+ * The legacy `subscriptionItems.createUsageRecord` endpoint has been removed
+ * from the Stripe TypeScript types and is on Stripe's deprecation track, so we
+ * publish a meter event instead. The `event_name` is resolved from the
+ * template's `stripe_meter_event_name` column (set by the marketplace developer
+ * when the template is published) with a `STRIPE_MARKETPLACE_METER_EVENT` env
+ * fallback for templates provisioned before the column existed. The customer
+ * is identified by `stripe_customer_id` from the tenant's primary subscription.
+ *
+ * Idempotency: callers that need exactly-once semantics for a given business
+ * event should pass `idempotencyKey` derived from that event's stable id (e.g.
+ * the tool-execution id, the call-session id, etc.). Stripe deduplicates meter
+ * events by `idempotencyKey` for at least 24h. When no key is supplied we
+ * generate a per-call UUID — this still protects against the Stripe SDK's own
+ * automatic transport retries, but two distinct `reportUsage()` calls from the
+ * route layer WILL produce two billable events (the route is just a thin
+ * passthrough today; metering is the caller's responsibility).
+ */
 export async function reportUsage(
   tenantId: TenantId,
   templateId: string,
   quantity: number,
+  options: { idempotencyKey?: string } = {},
 ): Promise<{ success: boolean; error?: string }> {
+  if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {
+    return { success: false, error: 'quantity must be a positive integer' };
+  }
+
   const pool = getPlatformPool();
 
   const { rows } = await pool.query(
-    `SELECT stripe_subscription_id, subscription_status
-     FROM marketplace_purchases
-     WHERE tenant_id = $1 AND template_id = $2 AND status = 'completed'
-       AND stripe_subscription_id IS NOT NULL
-     ORDER BY completed_at DESC LIMIT 1`,
+    `SELECT mp.id AS purchase_id,
+            mp.stripe_subscription_id,
+            mp.subscription_status,
+            tr.stripe_meter_event_name
+     FROM marketplace_purchases mp
+     LEFT JOIN template_registry tr ON tr.id = mp.template_id
+     WHERE mp.tenant_id = $1 AND mp.template_id = $2 AND mp.status = 'completed'
+       AND mp.stripe_subscription_id IS NOT NULL
+     ORDER BY mp.completed_at DESC LIMIT 1`,
     [tenantId, templateId],
   );
 
@@ -304,32 +335,60 @@ export async function reportUsage(
     return { success: false, error: 'No active usage-based subscription found' };
   }
 
-  const subStatus = rows[0].subscription_status as string;
+  const subStatus = rows[0].subscription_status as string | null;
   if (subStatus !== 'active' && subStatus !== 'past_due') {
     return { success: false, error: 'Subscription is not active' };
   }
 
+  const purchaseId = rows[0].purchase_id as string;
+  const eventName =
+    (rows[0].stripe_meter_event_name as string | null) ??
+    process.env.STRIPE_MARKETPLACE_METER_EVENT ??
+    null;
+
+  if (!eventName) {
+    logger.error('Marketplace template missing stripe_meter_event_name and no env fallback', {
+      tenantId, templateId,
+    });
+    return {
+      success: false,
+      error: 'Marketplace template is not configured for usage reporting (missing meter event name)',
+    };
+  }
+
+  const { rows: customerRows } = await pool.query(
+    `SELECT stripe_customer_id FROM subscriptions
+     WHERE tenant_id = $1 AND stripe_customer_id IS NOT NULL
+     LIMIT 1`,
+    [tenantId],
+  );
+  const customerId = customerRows[0]?.stripe_customer_id as string | undefined;
+  if (!customerId) {
+    return { success: false, error: 'Tenant has no Stripe customer for usage reporting' };
+  }
+
   try {
     const stripe = (await import('../billing/stripe/client')).getStripeClient();
-    const subscription = await stripe.subscriptions.retrieve(rows[0].stripe_subscription_id as string);
-    const subItem = subscription.items?.data?.[0];
+    const timestamp = Math.floor(Date.now() / 1000);
+    const idempotencyKey = options.idempotencyKey
+      ? `mkt_${purchaseId}_${options.idempotencyKey}`
+      : `mkt_${purchaseId}_${randomUUID()}`;
 
-    if (!subItem) {
-      return { success: false, error: 'No subscription item found for usage reporting' };
-    }
+    await stripe.billing.meterEvents.create(
+      {
+        event_name: eventName,
+        payload: {
+          stripe_customer_id: customerId,
+          value: String(quantity),
+        },
+        timestamp,
+      },
+      { idempotencyKey },
+    );
 
-    await (stripe.subscriptionItems as unknown as {
-      createUsageRecord: (
-        id: string,
-        params: { quantity: number; timestamp: number; action: 'increment' | 'set' },
-      ) => Promise<unknown>;
-    }).createUsageRecord(subItem.id, {
-      quantity,
-      timestamp: Math.floor(Date.now() / 1000),
-      action: 'increment',
+    logger.info('Usage reported for marketplace subscription', {
+      tenantId, templateId, quantity, eventName, purchaseId,
     });
-
-    logger.info('Usage reported for marketplace subscription', { tenantId, templateId, quantity });
     return { success: true };
   } catch (err) {
     logger.error('Failed to report usage', { tenantId, templateId, error: String(err) });
