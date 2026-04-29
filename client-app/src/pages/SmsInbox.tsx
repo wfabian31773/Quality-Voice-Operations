@@ -1198,6 +1198,13 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [autoForm, setAutoForm] = useState({ name: '', ruleType: 'keyword', keyword: '', matchType: 'exact', replyBody: '', isBusinessHours: '', businessHoursStart: '09:00', businessHoursEnd: '17:00' });
   const [assignForm, setAssignForm] = useState({ name: '', ruleType: 'auto', matchField: 'keyword', matchValue: '', assignToTeam: '' });
+  const [autoFormError, setAutoFormError] = useState<string | null>(null);
+
+  const unknownReplyTokens = useMemo(
+    () => findUnknownSmsCannedResponseTokens(autoForm.replyBody),
+    [autoForm.replyBody],
+  );
+  const hasUnknownReplyTokens = unknownReplyTokens.length > 0;
 
   useEffect(() => {
     Promise.all([
@@ -1210,6 +1217,10 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
   }, []);
 
   const createAutoRule = async () => {
+    if (hasUnknownReplyTokens) {
+      setAutoFormError(`Unknown merge token${unknownReplyTokens.length === 1 ? '' : 's'}: ${unknownReplyTokens.map(t => `{{${t}}}`).join(', ')}. Fix or remove them before saving.`);
+      return;
+    }
     try {
       await api.post('/sms-inbox/auto-reply-rules', {
         name: autoForm.name,
@@ -1222,9 +1233,12 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
         businessHoursEnd: autoForm.businessHoursEnd,
       });
       setShowAutoForm(false);
+      setAutoFormError(null);
       const data = await api.get<{ rules: typeof autoRules }>('/sms-inbox/auto-reply-rules');
       setAutoRules(data.rules);
-    } catch {}
+    } catch (err) {
+      setAutoFormError(err instanceof Error ? err.message : 'Failed to save auto-reply rule');
+    }
   };
 
   const createAssignRule = async () => {
@@ -1266,6 +1280,11 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
 
         {showAutoForm && (
           <div className="bg-surface-secondary rounded-lg p-4 mb-4 space-y-3">
+            {autoFormError && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+                {autoFormError} <button onClick={() => setAutoFormError(null)} className="ml-2 underline">Dismiss</button>
+              </div>
+            )}
             <input type="text" value={autoForm.name} onChange={e => setAutoForm(f => ({ ...f, name: e.target.value }))} placeholder="Rule name" className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm" />
             <div className="grid grid-cols-3 gap-3">
               <select value={autoForm.ruleType} onChange={e => setAutoForm(f => ({ ...f, ruleType: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm">
@@ -1296,10 +1315,54 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
                 </>
               )}
             </div>
-            <textarea value={autoForm.replyBody} onChange={e => setAutoForm(f => ({ ...f, replyBody: e.target.value }))} placeholder="Auto-reply message" rows={2} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm resize-none" />
+            <div>
+              <textarea
+                value={autoForm.replyBody}
+                onChange={e => setAutoForm(f => ({ ...f, replyBody: e.target.value }))}
+                placeholder={`Auto-reply message — supported tokens: ${SMS_CANNED_RESPONSE_TOKENS.map(t => `{{${t}}}`).join(', ')}.`}
+                rows={2}
+                aria-invalid={hasUnknownReplyTokens || undefined}
+                className={`w-full px-3 py-2 rounded-lg border bg-surface text-heading text-sm resize-none ${
+                  hasUnknownReplyTokens ? 'border-amber-500' : 'border-border'
+                }`}
+              />
+              {hasUnknownReplyTokens && (
+                <p
+                  role="alert"
+                  data-testid="sms-auto-reply-unknown-token-warning"
+                  className="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
+                >
+                  Unknown merge token{unknownReplyTokens.length === 1 ? '' : 's'}{' '}
+                  {unknownReplyTokens.map((t, i) => (
+                    <span key={t}>
+                      {i > 0 && ', '}
+                      <code>{`{{${t}}}`}</code>
+                    </span>
+                  ))}
+                  {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
+                </p>
+              )}
+              <p className="mt-1 text-[11px] text-muted">
+                Supported tokens:{' '}
+                {SMS_CANNED_RESPONSE_TOKENS.map((t, i) => (
+                  <span key={t}>
+                    {i > 0 && ', '}
+                    <code>{`{{${t}}}`}</code>
+                  </span>
+                ))}
+                .
+              </p>
+            </div>
             <div className="flex gap-2">
-              <button onClick={createAutoRule} className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90">Save</button>
-              <button onClick={() => setShowAutoForm(false)} className="px-4 py-2 text-muted text-sm hover:text-heading">Cancel</button>
+              <button
+                onClick={createAutoRule}
+                disabled={hasUnknownReplyTokens}
+                title={hasUnknownReplyTokens ? 'Fix the unknown merge tokens before saving.' : undefined}
+                className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
+              >
+                Save
+              </button>
+              <button onClick={() => { setShowAutoForm(false); setAutoFormError(null); }} className="px-4 py-2 text-muted text-sm hover:text-heading">Cancel</button>
             </div>
           </div>
         )}

@@ -472,6 +472,18 @@ const createAutoReplyRuleHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const data = req.body;
   if (!data.name || !data.replyBody) return res.status(400).json({ error: 'name and replyBody are required' });
+  const unknownTokens = findUnknownSmsCannedResponseTokens(data.replyBody);
+  if (unknownTokens.length > 0) {
+    return res.status(400).json({
+      error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+        .map((t) => `{{${t}}}`)
+        .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
+        .map((t) => `{{${t}}}`)
+        .join(', ')}.`,
+      unknownTokens,
+      knownTokens: SMS_CANNED_RESPONSE_TOKENS,
+    });
+  }
   try {
     const rule = await SmsService.createAutoReplyRule(tenantId, data);
     return res.status(201).json({ rule });
@@ -483,6 +495,21 @@ const createAutoReplyRuleHandler: RequestHandler = async (req, res) => {
 const updateAutoReplyRuleHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
+  const { replyBody } = req.body as { replyBody?: string };
+  if (replyBody !== undefined) {
+    const unknownTokens = findUnknownSmsCannedResponseTokens(replyBody);
+    if (unknownTokens.length > 0) {
+      return res.status(400).json({
+        error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+          .map((t) => `{{${t}}}`)
+          .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
+          .map((t) => `{{${t}}}`)
+          .join(', ')}.`,
+        unknownTokens,
+        knownTokens: SMS_CANNED_RESPONSE_TOKENS,
+      });
+    }
+  }
   try {
     const rule = await SmsService.updateAutoReplyRule(tenantId, id, req.body);
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
