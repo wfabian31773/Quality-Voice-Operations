@@ -224,7 +224,14 @@ export type AgentBuilderTKey =
   | 'customTemplateUpdatedMinutes'
   | 'customTemplateUpdatedHours'
   | 'customTemplateUpdatedDays'
-  | 'customTemplateUnknownAuthor';
+  | 'customTemplateUnknownAuthor'
+  | 'translateGreetingPrompt'
+  | 'translateSystemPromptPrompt'
+  | 'translateAction'
+  | 'translateRunning'
+  | 'translateDismiss'
+  | 'translateError'
+  | 'translateSuccess';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -451,6 +458,13 @@ const EN: Record<AgentBuilderTKey, string> = {
   customTemplateUpdatedHours: '{hours}h ago',
   customTemplateUpdatedDays: '{days}d ago',
   customTemplateUnknownAuthor: 'Unknown author',
+  translateGreetingPrompt: "This greeting is still in {sourceLanguage}. Translate it to {targetLanguage} so the agent opens the call in the right language?",
+  translateSystemPromptPrompt: "This system prompt is still in {sourceLanguage}. Translate it to {targetLanguage} to keep the agent's instructions consistent?",
+  translateAction: 'Translate to {language}',
+  translateRunning: 'Translating…',
+  translateDismiss: 'Keep original',
+  translateError: "Couldn't translate: {message}",
+  translateSuccess: 'Translated to {language}',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {

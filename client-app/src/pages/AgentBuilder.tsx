@@ -50,7 +50,7 @@ import {
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
   RotateCcw, Eye, Trash2, Lightbulb, Check, XCircle, TrendingUp,
   Keyboard, Search, MoreHorizontal, BookmarkPlus, Users,
-  AlertTriangle,
+  AlertTriangle, Languages, Loader2,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import VoicePicker from '../components/VoicePicker';
@@ -1127,6 +1127,80 @@ const TONE_OPTIONS: { value: string; labelKey: AgentBuilderTKey }[] = [
   { value: 'Warm', labelKey: 'toneWarm' },
   { value: 'Direct', labelKey: 'toneDirect' },
 ];
+type TranslationSuggestion = {
+  field: 'welcome_greeting' | 'system_prompt';
+  fromLanguage: string;
+  toLanguage: string;
+  originalText: string;
+};
+
+function TranslationSuggestionBanner({
+  suggestion,
+  isTranslating,
+  error,
+  onAccept,
+  onDismiss,
+  t,
+}: {
+  suggestion: TranslationSuggestion;
+  isTranslating: boolean;
+  error: string | null;
+  onAccept: () => void;
+  onDismiss: () => void;
+  t: BuilderT;
+}) {
+  const sourceLabel = getAgentLanguageLabel(suggestion.fromLanguage);
+  const targetLabel = getAgentLanguageLabel(suggestion.toLanguage);
+  const promptKey: AgentBuilderTKey =
+    suggestion.field === 'system_prompt' ? 'translateSystemPromptPrompt' : 'translateGreetingPrompt';
+  return (
+    <div
+      className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-text-primary"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-2">
+        <Languages className="h-3.5 w-3.5 mt-0.5 text-primary flex-shrink-0" aria-hidden="true" />
+        <div className="flex-1 min-w-0">
+          <p className="leading-snug">
+            {t(promptKey, { sourceLanguage: sourceLabel, targetLanguage: targetLabel })}
+          </p>
+          {error && (
+            <p className="mt-1 text-red-600 dark:text-red-400">
+              {t('translateError', { message: error })}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onAccept}
+              disabled={isTranslating}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary text-white text-[11px] font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isTranslating ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  {t('translateRunning')}
+                </>
+              ) : (
+                t('translateAction', { language: targetLabel })
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={isTranslating}
+              className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {t('translateDismiss')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VoiceConfigPanel({
   voice,
   model,
@@ -1141,6 +1215,12 @@ function VoiceConfigPanel({
   onChange,
   onClose,
   t,
+  greetingTranslationSuggestion,
+  systemPromptTranslationSuggestion,
+  translatingField,
+  translationError,
+  onAcceptTranslation,
+  onDismissTranslation,
 }: {
   voice: string;
   model: string;
@@ -1155,6 +1235,12 @@ function VoiceConfigPanel({
   onChange: (key: string, value: string | number) => void;
   onClose: () => void;
   t: BuilderT;
+  greetingTranslationSuggestion: TranslationSuggestion | null;
+  systemPromptTranslationSuggestion: TranslationSuggestion | null;
+  translatingField: 'welcome_greeting' | 'system_prompt' | null;
+  translationError: { field: 'welcome_greeting' | 'system_prompt'; message: string } | null;
+  onAcceptTranslation: (field: 'welcome_greeting' | 'system_prompt') => void;
+  onDismissTranslation: (field: 'welcome_greeting' | 'system_prompt') => void;
 }) {
   return (
     <div className="w-80 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
@@ -1243,6 +1329,16 @@ function VoiceConfigPanel({
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
             placeholder={t('welcomeGreetingPlaceholder')}
           />
+          {greetingTranslationSuggestion && (
+            <TranslationSuggestionBanner
+              suggestion={greetingTranslationSuggestion}
+              isTranslating={translatingField === 'welcome_greeting'}
+              error={translationError?.field === 'welcome_greeting' ? translationError.message : null}
+              onAccept={() => onAcceptTranslation('welcome_greeting')}
+              onDismiss={() => onDismissTranslation('welcome_greeting')}
+              t={t}
+            />
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">{t('systemPrompt')}</label>
@@ -1256,6 +1352,16 @@ function VoiceConfigPanel({
           <p className="text-[10px] text-text-muted mt-1">
             {t('systemPromptHelper')}
           </p>
+          {systemPromptTranslationSuggestion && (
+            <TranslationSuggestionBanner
+              suggestion={systemPromptTranslationSuggestion}
+              isTranslating={translatingField === 'system_prompt'}
+              error={translationError?.field === 'system_prompt' ? translationError.message : null}
+              onAccept={() => onAcceptTranslation('system_prompt')}
+              onDismiss={() => onDismissTranslation('system_prompt')}
+              t={t}
+            />
+          )}
         </div>
         <div className="pt-2 border-t border-border">
           <label className="block text-xs font-medium text-text-secondary mb-1">{t('assignedWorkflow')}</label>
@@ -1889,6 +1995,20 @@ function AgentBuilderInner() {
     description: '',
     is_shared: false,
   });
+  // Tracks pending in-place translation offers when the operator switches the
+  // agent language while the welcome greeting / system prompt are custom (not
+  // one of the defaults we already ship in every supported language).
+  const [translationSuggestions, setTranslationSuggestions] = useState<{
+    welcome_greeting: TranslationSuggestion | null;
+    system_prompt: TranslationSuggestion | null;
+  }>({ welcome_greeting: null, system_prompt: null });
+  const [translatingField, setTranslatingField] = useState<
+    'welcome_greeting' | 'system_prompt' | null
+  >(null);
+  const [translationError, setTranslationError] = useState<{
+    field: 'welcome_greeting' | 'system_prompt';
+    message: string;
+  } | null>(null);
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
 
@@ -2242,17 +2362,131 @@ function AgentBuilderInner() {
       const next = { ...prev, [key]: value };
       if (key === 'language' && typeof value === 'string') {
         const newLang = value;
-        if (!prev.welcome_greeting || isDefaultGreeting(prev.welcome_greeting)) {
+        const prevLang = prev.language;
+        const greetingIsDefault =
+          !prev.welcome_greeting || isDefaultGreeting(prev.welcome_greeting);
+        const promptIsDefault =
+          !prev.system_prompt || isDefaultSystemPrompt(prev.system_prompt);
+        if (greetingIsDefault) {
           next.welcome_greeting = getDefaultWelcomeGreeting(newLang);
         }
-        if (!prev.system_prompt || isDefaultSystemPrompt(prev.system_prompt)) {
+        if (promptIsDefault) {
           next.system_prompt = getDefaultSystemPrompt(newLang);
         }
+        // Stage in-place translation offers for any custom (non-default) copy
+        // so the operator can opt-in to translating their own brand-specific
+        // greeting / prompt to the new language.
+        //
+        // Importantly, if a suggestion is already pending for a field (the
+        // operator switched languages without accepting), preserve the
+        // *original* source language and text rather than blindly using
+        // `prev.language`. Otherwise, repeated switches like en→es→fr would
+        // mislabel the still-untranslated English copy as Spanish and degrade
+        // the next translation. Manual edits clear the suggestion (see below),
+        // so an existing suggestion is always still aligned with the unedited
+        // source text.
+        const prevLangFallback = prevLang || DEFAULT_AGENT_LANGUAGE;
+        setTranslationSuggestions((existing) => {
+          const buildSuggestion = (
+            field: 'welcome_greeting' | 'system_prompt',
+            isDefault: boolean,
+            currentText: string,
+          ): TranslationSuggestion | null => {
+            if (isDefault) return null;
+            const prior = existing[field];
+            const fromLanguage = prior ? prior.fromLanguage : prevLangFallback;
+            const originalText = prior ? prior.originalText : currentText;
+            // If the new language matches the original source language, the
+            // operator has cycled back — no translation needed.
+            if (fromLanguage === newLang) return null;
+            return {
+              field,
+              fromLanguage,
+              toLanguage: newLang,
+              originalText,
+            };
+          };
+          return {
+            welcome_greeting: buildSuggestion(
+              'welcome_greeting',
+              greetingIsDefault,
+              prev.welcome_greeting,
+            ),
+            system_prompt: buildSuggestion(
+              'system_prompt',
+              promptIsDefault,
+              prev.system_prompt,
+            ),
+          };
+        });
+        setTranslationError(null);
+      } else if (key === 'welcome_greeting' || key === 'system_prompt') {
+        // Manual edits invalidate any pending suggestion for the same field —
+        // the operator has chosen to keep editing instead of translating.
+        setTranslationSuggestions((s) => ({ ...s, [key]: null }));
+        setTranslationError((err) => (err && err.field === key ? null : err));
       }
       return next;
     });
     setHasChanges(true);
   }, []);
+
+  const handleAcceptTranslation = useCallback(
+    async (field: 'welcome_greeting' | 'system_prompt') => {
+      const suggestion =
+        field === 'welcome_greeting'
+          ? translationSuggestions.welcome_greeting
+          : translationSuggestions.system_prompt;
+      if (!suggestion) return;
+      setTranslatingField(field);
+      setTranslationError(null);
+      try {
+        const result = await api.post<{ text: string }>('/agents/translate-text', {
+          text: suggestion.originalText,
+          sourceLanguage: suggestion.fromLanguage,
+          targetLanguage: suggestion.toLanguage,
+          kind: field === 'system_prompt' ? 'system_prompt' : 'greeting',
+        });
+        const translated = (result.text || '').trim();
+        if (!translated) {
+          throw new Error('empty translation');
+        }
+        // Guard against stale translations: if the user edited the field
+        // while the request was in flight (or accepted a different
+        // suggestion), skip applying the result so we don't clobber newer
+        // input.
+        let applied = false;
+        setAgentSettings((prev) => {
+          if (prev[field] !== suggestion.originalText) return prev;
+          applied = true;
+          return { ...prev, [field]: translated };
+        });
+        if (!applied) return;
+        setTranslationSuggestions((s) => ({ ...s, [field]: null }));
+        setHasChanges(true);
+        setSaveMessage({
+          text: makeBuilderT(suggestion.toLanguage)('translateSuccess', {
+            language: getAgentLanguageLabel(suggestion.toLanguage),
+          }),
+          tone: 'success',
+        });
+        setTimeout(() => setSaveMessage(null), 2500);
+      } catch (err) {
+        setTranslationError({ field, message: (err as Error).message || 'unknown error' });
+      } finally {
+        setTranslatingField((current) => (current === field ? null : current));
+      }
+    },
+    [translationSuggestions],
+  );
+
+  const handleDismissTranslation = useCallback(
+    (field: 'welcome_greeting' | 'system_prompt') => {
+      setTranslationSuggestions((s) => ({ ...s, [field]: null }));
+      setTranslationError((err) => (err && err.field === field ? null : err));
+    },
+    [],
+  );
 
   const t = useMemo(() => makeBuilderT(agentSettings.language), [agentSettings.language]);
 
@@ -3269,6 +3503,12 @@ function AgentBuilderInner() {
             onChange={handleSettingChange}
             onClose={() => setRightPanel('none')}
             t={t}
+            greetingTranslationSuggestion={translationSuggestions.welcome_greeting}
+            systemPromptTranslationSuggestion={translationSuggestions.system_prompt}
+            translatingField={translatingField}
+            translationError={translationError}
+            onAcceptTranslation={handleAcceptTranslation}
+            onDismissTranslation={handleDismissTranslation}
           />
         )}
         {rightPanel === 'test' && (

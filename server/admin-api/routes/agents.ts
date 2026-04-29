@@ -159,6 +159,120 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
   }
 });
 
+// Translate a custom welcome greeting or system prompt between supported agent
+// languages. Used by the builder when an admin switches the agent's language
+// and the existing copy is custom (not a default we already ship in every
+// supported language). Wrapping the OpenAI call here keeps the API key on the
+// server and lets us validate inputs / clamp size.
+const MAX_TRANSLATION_INPUT_CHARS = 6_000;
+const TRANSLATABLE_KINDS = new Set(['greeting', 'system_prompt']);
+
+router.post('/agents/translate-text', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const text = typeof body.text === 'string' ? body.text : '';
+  const targetLanguageRaw = typeof body.targetLanguage === 'string' ? body.targetLanguage : '';
+  const sourceLanguageRaw = typeof body.sourceLanguage === 'string' ? body.sourceLanguage : '';
+  const kind = typeof body.kind === 'string' ? body.kind : 'greeting';
+
+  if (!text.trim()) {
+    return res.status(400).json({ error: 'text is required' });
+  }
+  if (text.length > MAX_TRANSLATION_INPUT_CHARS) {
+    return res.status(400).json({
+      error: `text exceeds maximum length of ${MAX_TRANSLATION_INPUT_CHARS} characters`,
+    });
+  }
+  if (!isSupportedAgentLanguage(targetLanguageRaw)) {
+    const codes = AGENT_LANGUAGES.map((l) => l.code).join(', ');
+    return res.status(400).json({ error: `targetLanguage must be one of: ${codes}` });
+  }
+  if (!TRANSLATABLE_KINDS.has(kind)) {
+    return res.status(400).json({ error: 'kind must be "greeting" or "system_prompt"' });
+  }
+
+  const targetLanguage = targetLanguageRaw;
+  const sourceLanguage = isSupportedAgentLanguage(sourceLanguageRaw) ? sourceLanguageRaw : null;
+  const targetLabel = getAgentLanguageLabel(targetLanguage);
+  const sourceLabel = sourceLanguage ? getAgentLanguageLabel(sourceLanguage) : null;
+
+  // Same-language requests are a no-op — return the input unchanged so the
+  // client doesn't need to special-case it.
+  if (sourceLanguage && sourceLanguage === targetLanguage) {
+    return res.json({ text, sourceLanguage, targetLanguage });
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_ADMIN_API_KEY;
+  if (!apiKey) {
+    logger.error('OPENAI_API_KEY not set — cannot translate agent copy', { tenantId, kind });
+    return res.status(503).json({ error: 'Translation is unavailable right now.' });
+  }
+
+  const kindLabel = kind === 'system_prompt'
+    ? "voice agent's system prompt"
+    : "voice agent's spoken welcome greeting";
+  const systemMessage = [
+    `You translate ${kindLabel} for a voice AI platform.`,
+    `Translate the user-supplied text into ${targetLabel}${sourceLabel ? ` from ${sourceLabel}` : ''}.`,
+    'Preserve meaning, tone, formatting, line breaks, bullet points, placeholders such as {name} or {{variable}}, and any URLs or proper nouns.',
+    'Do not add commentary, quotation marks, or labels — return only the translated text.',
+    kind === 'greeting'
+      ? 'Keep the result short and conversational, suitable for a voice agent to speak aloud.'
+      : 'Maintain the instructional voice of a system prompt; keep any existing markdown formatting.',
+  ].join(' ');
+
+  try {
+    const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: text },
+        ],
+        temperature: 0.2,
+        max_tokens: 1500,
+      }),
+    });
+
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => '');
+      logger.error('OpenAI translation request failed', {
+        tenantId,
+        kind,
+        targetLanguage,
+        status: upstream.status,
+        body: errText.slice(0, 500),
+      });
+      const status = upstream.status === 401 || upstream.status === 403 ? 503 : 502;
+      return res.status(status).json({ error: 'Could not translate text right now.' });
+    }
+
+    const data = (await upstream.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const translated = data.choices?.[0]?.message?.content?.trim() ?? '';
+    if (!translated) {
+      logger.error('OpenAI translation returned empty content', { tenantId, kind, targetLanguage });
+      return res.status(502).json({ error: 'Could not translate text right now.' });
+    }
+
+    return res.json({ text: translated, sourceLanguage, targetLanguage });
+  } catch (err) {
+    logger.error('Agent translation error', {
+      tenantId,
+      kind,
+      targetLanguage,
+      error: String(err),
+    });
+    return res.status(502).json({ error: 'Could not translate text right now.' });
+  }
+});
+
 router.get('/agents/:id', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
