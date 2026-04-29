@@ -44,8 +44,19 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 3;
 const DOUBLE_TAP_SCALE = 2;
 const DOUBLE_TAP_MS = 300;
+const SWIPE_THRESHOLD_PX = 50;
 
-function ZoomableImage({ src, alt }: { src: string; alt: string }) {
+function ZoomableImage({
+  src,
+  alt,
+  onSwipeNext,
+  onSwipePrev,
+}: {
+  src: string;
+  alt: string;
+  onSwipeNext?: () => void;
+  onSwipePrev?: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -55,8 +66,13 @@ function ZoomableImage({ src, alt }: { src: string; alt: string }) {
   const stateRef = useRef({ scale: 1, tx: 0, ty: 0 });
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0, animate: false });
 
+  // Latest swipe callbacks, kept in a ref so the native touch listeners (bound
+  // once on mount) always invoke the current handlers without re-subscribing.
+  const swipeHandlersRef = useRef({ onSwipeNext, onSwipePrev });
+  swipeHandlersRef.current = { onSwipeNext, onSwipePrev };
+
   const gestureRef = useRef({
-    mode: 'idle' as 'idle' | 'pan' | 'pinch',
+    mode: 'idle' as 'idle' | 'pan' | 'pinch' | 'swipe-pending',
     startDist: 0,
     startScale: 1,
     startTx: 0,
@@ -68,6 +84,8 @@ function ZoomableImage({ src, alt }: { src: string; alt: string }) {
     lastTapTime: 0,
     lastTapX: 0,
     lastTapY: 0,
+    swipeDx: 0,
+    swipeDy: 0,
   });
 
   const clampPan = (scale: number, x: number, y: number) => {
@@ -143,6 +161,18 @@ function ZoomableImage({ src, alt }: { src: string; alt: string }) {
           gestureRef.current.startTy = stateRef.current.ty;
           gestureRef.current.startX = t[0].clientX;
           gestureRef.current.startY = t[0].clientY;
+        } else if (
+          swipeHandlersRef.current.onSwipeNext ||
+          swipeHandlersRef.current.onSwipePrev
+        ) {
+          // Not zoomed in: track a potential horizontal swipe for prev/next
+          // navigation. We don't preventDefault here so vertical/diagonal
+          // gestures stay available for the browser/modal.
+          gestureRef.current.mode = 'swipe-pending';
+          gestureRef.current.startX = t[0].clientX;
+          gestureRef.current.startY = t[0].clientY;
+          gestureRef.current.swipeDx = 0;
+          gestureRef.current.swipeDy = 0;
         } else {
           gestureRef.current.mode = 'idle';
         }
@@ -170,12 +200,40 @@ function ZoomableImage({ src, alt }: { src: string; alt: string }) {
         const newTy = gestureRef.current.startTy + (t[0].clientY - gestureRef.current.startY);
         const clamped = clampPan(stateRef.current.scale, newTx, newTy);
         apply(stateRef.current.scale, clamped.x, clamped.y, false);
+      } else if (gestureRef.current.mode === 'swipe-pending' && t.length === 1) {
+        const dx = t[0].clientX - gestureRef.current.startX;
+        const dy = t[0].clientY - gestureRef.current.startY;
+        gestureRef.current.swipeDx = dx;
+        gestureRef.current.swipeDy = dy;
+        // Once horizontal motion clearly dominates vertical motion, claim
+        // the gesture so the browser doesn't try to scroll/zoom along with us.
+        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+          e.preventDefault();
+        }
       }
     };
 
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length === 0) {
+        const wasSwipePending = gestureRef.current.mode === 'swipe-pending';
+        const dx = gestureRef.current.swipeDx;
+        const dy = gestureRef.current.swipeDy;
         gestureRef.current.mode = 'idle';
+        gestureRef.current.swipeDx = 0;
+        gestureRef.current.swipeDy = 0;
+        if (
+          wasSwipePending &&
+          Math.abs(dx) >= SWIPE_THRESHOLD_PX &&
+          Math.abs(dx) > Math.abs(dy)
+        ) {
+          // A finished horizontal swipe with the dominant axis horizontal:
+          // left swipe → next image, right swipe → previous image.
+          if (dx < 0) {
+            swipeHandlersRef.current.onSwipeNext?.();
+          } else {
+            swipeHandlersRef.current.onSwipePrev?.();
+          }
+        }
         if (stateRef.current.scale <= 1.01) {
           apply(1, 0, 0, true);
         }
@@ -538,7 +596,25 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
           onClick={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
-          <ZoomableImage key={zoomed.src} src={zoomed.src} alt={zoomed.alt} />
+          <ZoomableImage
+            key={zoomed.src}
+            src={zoomed.src}
+            alt={zoomed.alt}
+            onSwipeNext={
+              hasMultiple
+                ? () =>
+                    setZoomedIndex((i) => (i === null ? null : (i + 1) % images.length))
+                : undefined
+            }
+            onSwipePrev={
+              hasMultiple
+                ? () =>
+                    setZoomedIndex((i) =>
+                      i === null ? null : (i - 1 + images.length) % images.length
+                    )
+                : undefined
+            }
+          />
           {zoomed.caption && (
             <figcaption className="text-xs sm:text-sm text-white/70 font-body text-center max-w-2xl">
               {zoomed.caption}
