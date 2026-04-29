@@ -3,10 +3,10 @@ import { api, getToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
   Truck, Plus, X, User, Clock, AlertTriangle, Filter, Search, RefreshCw,
-  ChevronDown, ChevronRight, MapPin, Wrench, BarChart3, Settings, Users,
-  CheckCircle2, XCircle, ArrowRight, FileText, MessageSquare, Calendar,
-  Activity, TrendingUp, Clipboard, Bell, Shield, Layers, ArrowLeftRight,
-  Download,
+  ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, MapPin, Wrench,
+  BarChart3, Settings, Users, CheckCircle2, XCircle, ArrowRight, FileText,
+  MessageSquare, Calendar, Activity, TrendingUp, Clipboard, Bell, Shield,
+  Layers, ArrowLeftRight, Download,
 } from 'lucide-react';
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 import { PageHeader, StatCard } from '../components/ui';
@@ -223,7 +223,7 @@ const SHOW_CLOSEST_APPROACH_STATUSES = new Set([
 const CLOSEST_APPROACH_BAD_M = 250;
 const CLOSEST_APPROACH_WARN_M = 100;
 
-function ClosestApproachBadge({ meters }: { meters: number }) {
+function ClosestApproachBadge({ meters, compact = false }: { meters: number; compact?: boolean }) {
   const tone =
     meters > CLOSEST_APPROACH_BAD_M
       ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
@@ -234,13 +234,16 @@ function ClosestApproachBadge({ meters }: { meters: number }) {
     meters > CLOSEST_APPROACH_BAD_M
       ? `Closest GPS ping was ${formatDistance(meters)} from the address — likely never reached the right location`
       : `Closest GPS ping was ${formatDistance(meters)} from the address`;
+  // The board-card variant sits below other badges and reads as a full
+  // sentence ("X m from address"); the table-cell variant lives in its
+  // own column header so we drop the trailing label and the top margin.
   return (
     <div
-      className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] ${tone}`}
+      className={`inline-flex items-center gap-1 ${compact ? '' : 'mt-1'} px-1.5 py-0.5 rounded text-[10px] ${tone}`}
       title={title}
     >
       <MapPin className="h-2.5 w-2.5" />
-      <span>{formatDistance(meters)} from address</span>
+      <span>{formatDistance(meters)}{compact ? '' : ' from address'}</span>
     </div>
   );
 }
@@ -1355,12 +1358,32 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
   batchUpdate: (u: Record<string, unknown>) => void;
 }) {
   const [queueFilter, setQueueFilter] = useState('');
+  // Sort state for the closest-approach column. Cycles desc → asc → off
+  // so dispatchers can pull worst arrivals to the top with a single
+  // click and clear it with a third. Rows where the value is missing
+  // (status doesn't qualify, or no breadcrumbs) sort to the bottom in
+  // both directions so they don't drown out the actionable rows.
+  const [approachSort, setApproachSort] = useState<'desc' | 'asc' | null>(null);
 
   const filteredJobs = useMemo(() => {
     let result = jobs;
     if (queueFilter) result = result.filter(j => j.status === queueFilter);
+    if (approachSort) {
+      const valueOf = (j: DispatchJob) =>
+        SHOW_CLOSEST_APPROACH_STATUSES.has(j.status) && j.closest_approach_m != null
+          ? j.closest_approach_m
+          : null;
+      result = [...result].sort((a, b) => {
+        const av = valueOf(a);
+        const bv = valueOf(b);
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return approachSort === 'desc' ? bv - av : av - bv;
+      });
+    }
     return result;
-  }, [jobs, queueFilter]);
+  }, [jobs, queueFilter, approachSort]);
 
   return (
     <div className="space-y-4">
@@ -1411,6 +1434,24 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
               <th className="p-2 text-left text-muted font-medium">Resource</th>
               <th className="p-2 text-left text-muted font-medium">Territory</th>
               <th className="p-2 text-left text-muted font-medium">Scheduled</th>
+              <th className="p-2 text-left text-muted font-medium">
+                <button
+                  type="button"
+                  onClick={() => setApproachSort(s => s === 'desc' ? 'asc' : s === 'asc' ? null : 'desc')}
+                  className="inline-flex items-center gap-1 hover:text-heading transition-colors"
+                  title="Closest distance any technician GPS ping was from the job address. Click to surface the worst arrivals."
+                  aria-label={`Sort by closest approach (${approachSort === 'desc' ? 'descending' : approachSort === 'asc' ? 'ascending' : 'unsorted'})`}
+                >
+                  Approach
+                  {approachSort === 'desc' ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : approachSort === 'asc' ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronsUpDown className="h-3 w-3 opacity-40" />
+                  )}
+                </button>
+              </th>
               <th className="p-2 text-left text-muted font-medium">Actions</th>
             </tr>
           </thead>
@@ -1433,6 +1474,11 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
                 <td className="p-2 text-muted">{job.resource_name || '-'}</td>
                 <td className="p-2 text-muted">{job.territory_name || '-'}</td>
                 <td className="p-2 text-muted">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleDateString() : '-'}</td>
+                <td className="p-2">
+                  {SHOW_CLOSEST_APPROACH_STATUSES.has(job.status) && job.closest_approach_m != null
+                    ? <ClosestApproachBadge meters={job.closest_approach_m} compact />
+                    : null}
+                </td>
                 <td className="p-2" onClick={e => e.stopPropagation()}>
                   {!isReadOnly && (VALID_TRANSITIONS[job.status] || []).length > 0 && (
                     <select onChange={e => { if (e.target.value) transitionJob(job.id, e.target.value); e.target.value = ''; }}
@@ -1445,7 +1491,7 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
               </tr>
             ))}
             {filteredJobs.length === 0 && (
-              <tr><td colSpan={isReadOnly ? 7 : 8} className="p-0">
+              <tr><td colSpan={isReadOnly ? 8 : 9} className="p-0">
                 <EmptyState
                   icon={Truck}
                   title={queueFilter || filters.search || filters.priority || filters.territory_id || filters.resource_id ? 'No jobs match your filters' : 'No jobs in the queue'}
