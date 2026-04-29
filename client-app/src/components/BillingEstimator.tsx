@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Calculator, ArrowUpRight, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Calculator, ArrowUpRight, Sparkles, TrendingUp } from 'lucide-react';
 import {
   PLAN_CATALOG,
   PLAN_TIERS,
@@ -38,6 +38,11 @@ interface BillingEstimatorProps {
    * the API responds.
    */
   rateOverride?: BillingEstimatorRateOverride;
+  /**
+   * Multiplier used to project end-of-month minutes from MTD usage.
+   * Computed by the parent as `daysInMonth / dayOfMonth`.
+   */
+  projectionMultiplier?: number;
 }
 
 interface TierSpec {
@@ -219,6 +224,7 @@ export default function BillingEstimator({
   currentPlan,
   monthToDateAiMinutes,
   rateOverride,
+  projectionMultiplier,
 }: BillingEstimatorProps) {
   const currentTierKey = normalizePlan(currentPlan);
   // Only the current tier gets the Stripe override — the next-tier card has
@@ -234,14 +240,44 @@ export default function BillingEstimator({
     [nextTierKey],
   );
 
-  const initialMinutes = useMemo(
+  const mtdMinutes = useMemo(
     () => clampMinutes(monthToDateAiMinutes),
     [monthToDateAiMinutes],
   );
-  const [minutes, setMinutes] = useState<number>(initialMinutes);
+  const safeMultiplier =
+    typeof projectionMultiplier === 'number' &&
+    Number.isFinite(projectionMultiplier) &&
+    projectionMultiplier >= 1
+      ? projectionMultiplier
+      : 1;
+  const projectedMinutes = useMemo(
+    () => clampMinutes(monthToDateAiMinutes * safeMultiplier),
+    [monthToDateAiMinutes, safeMultiplier],
+  );
+  const hasProjection = projectedMinutes > mtdMinutes;
+
+  const [minutes, setMinutes] = useState<number>(
+    hasProjection ? projectedMinutes : mtdMinutes,
+  );
+  const userDirtyRef = useRef(false);
+
+  const handleUserChange = (value: number) => {
+    userDirtyRef.current = true;
+    setMinutes(value);
+  };
+
+  // If MTD/projection data arrives async (e.g. the usage query resolves
+  // after mount), sync the slider to the smart default — but only while the
+  // user hasn't manually adjusted it yet.
+  useEffect(() => {
+    if (userDirtyRef.current) return;
+    setMinutes(hasProjection ? projectedMinutes : mtdMinutes);
+  }, [hasProjection, projectedMinutes, mtdMinutes]);
 
   const safeMinutes = clampMinutes(minutes);
-  const isPrefill = safeMinutes === clampMinutes(monthToDateAiMinutes);
+  const isAtMtd = safeMinutes === mtdMinutes;
+  const isAtProjected = safeMinutes === projectedMinutes;
+  const isShowingProjectedDefault = hasProjection && isAtProjected;
 
   return (
     <div className="bg-surface border border-border rounded-xl p-6">
@@ -255,21 +291,37 @@ export default function BillingEstimator({
               Project End-of-Month Bill
             </h2>
             <p className="text-sm text-text-muted mt-0.5">
-              Drag the slider to model a different AI minute volume and see what your invoice
-              would look like on your current plan and the next tier up.
+              {isShowingProjectedDefault
+                ? 'Pre-filled with a smart end-of-month projection based on your usage so far. Drag the slider or use a preset to model a different AI minute volume.'
+                : 'Drag the slider to model a different AI minute volume and see what your invoice would look like on your current plan and the next tier up.'}
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setMinutes(clampMinutes(monthToDateAiMinutes))}
-          disabled={isPrefill}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-muted border border-border rounded-md hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-          data-testid="billing-estimator-reset"
-        >
-          <Sparkles className="h-3 w-3" />
-          Reset to MTD
-        </button>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {hasProjection && (
+            <button
+              type="button"
+              onClick={() => handleUserChange(projectedMinutes)}
+              disabled={isAtProjected}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-primary border border-primary/40 bg-primary/[0.04] rounded-md hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              data-testid="billing-estimator-use-projected"
+              title={`Project full month from ${mtdMinutes.toLocaleString()} MTD min × ${safeMultiplier.toFixed(2)}`}
+            >
+              <TrendingUp className="h-3 w-3" />
+              Use projected end-of-month
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => handleUserChange(mtdMinutes)}
+            disabled={isAtMtd}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-muted border border-border rounded-md hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="billing-estimator-reset"
+          >
+            <Sparkles className="h-3 w-3" />
+            Reset to MTD
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3 mb-5">
@@ -288,7 +340,7 @@ export default function BillingEstimator({
               max={MAX_MINUTES}
               step={STEP_MINUTES}
               value={safeMinutes}
-              onChange={(e) => setMinutes(clampMinutes(Number(e.target.value)))}
+              onChange={(e) => handleUserChange(clampMinutes(Number(e.target.value)))}
               className="w-28 px-3 py-1.5 rounded-lg border border-border bg-surface text-sm font-semibold text-text-primary text-right focus:outline-none focus:ring-2 focus:ring-primary/40"
               aria-label="Projected AI minutes for the month"
               data-testid="billing-estimator-input"
@@ -303,7 +355,7 @@ export default function BillingEstimator({
           max={MAX_MINUTES}
           step={STEP_MINUTES}
           value={safeMinutes}
-          onChange={(e) => setMinutes(clampMinutes(Number(e.target.value)))}
+          onChange={(e) => handleUserChange(clampMinutes(Number(e.target.value)))}
           className="w-full h-2 bg-surface-hover rounded-lg appearance-none cursor-pointer accent-primary"
           aria-label="Adjust projected AI minutes for the month"
           data-testid="billing-estimator-slider"
@@ -311,7 +363,15 @@ export default function BillingEstimator({
         <div className="flex justify-between text-[11px] text-text-muted">
           <span>{MIN_MINUTES.toLocaleString()} min</span>
           <span>
-            Month-to-date: {clampMinutes(monthToDateAiMinutes).toLocaleString()} min
+            MTD: {mtdMinutes.toLocaleString()} min
+            {hasProjection && (
+              <>
+                {' · '}
+                <span className="text-primary">
+                  Projected: {projectedMinutes.toLocaleString()} min
+                </span>
+              </>
+            )}
           </span>
           <span>{MAX_MINUTES.toLocaleString()} min</span>
         </div>
