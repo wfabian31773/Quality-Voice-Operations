@@ -110,8 +110,9 @@ export default function Login() {
 
             {mode === 'signup' && (
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.company_name')}</label>
+                <label htmlFor="login-company-name" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.company_name')}</label>
                 <input
+                  id="login-company-name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -123,8 +124,9 @@ export default function Login() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.email')}</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.email')}</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -135,8 +137,9 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -149,8 +152,9 @@ export default function Login() {
 
             {mode === 'signup' && (
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.plan')}</label>
+                <label htmlFor="login-plan" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.plan')}</label>
                 <select
+                  id="login-plan"
                   value={plan}
                   onChange={(e) => setPlan(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
