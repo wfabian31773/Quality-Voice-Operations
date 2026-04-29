@@ -9,6 +9,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackVerticalEngagement, trackCTAClick } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 type ScenarioKey = 'hvac' | 'scheduling' | 'after_hours' | 'intake' | 'qualification';
 
@@ -56,7 +57,7 @@ export default function UseCases() {
               <Link
                 to="/demo"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Try Live Demo', '/use-cases', 'hero')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/use-cases', 'hero')}
               >
                 {t('common.try_live_demo')}
                 <ArrowRight className="h-4 w-4" />
@@ -64,7 +65,7 @@ export default function UseCases() {
               <Link
                 to="/ai-agents"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Explore Agents', '/use-cases', 'hero')}
+                onClick={() => trackCTAClick(CTA.EXPLORE_AGENTS, '/use-cases', 'hero')}
               >
                 {t('common.explore_agents')}
               </Link>
@@ -188,7 +189,7 @@ export default function UseCases() {
               <Link
                 to="/demo"
                 className="btn-primary-glow inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors duration-[var(--motion-base)] min-h-[44px]"
-                onClick={() => trackCTAClick('Try the Demo', '/use-cases', 'mid-cta')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/use-cases', 'mid-cta')}
               >
                 {t('use_cases.mid_cta.try_demo')}
                 <ArrowRight className="h-4 w-4" />
@@ -196,7 +197,7 @@ export default function UseCases() {
               <Link
                 to="/features"
                 className="inline-flex items-center gap-2 bg-white border border-border/50 hover:border-primary/30 text-text-primary font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"
-                onClick={() => trackCTAClick('Explore Features', '/use-cases', 'mid-cta')}
+                onClick={() => trackCTAClick(CTA.EXPLORE_PLATFORM, '/use-cases', 'mid-cta')}
               >
                 {t('use_cases.mid_cta.explore_features')}
               </Link>
@@ -217,7 +218,7 @@ export default function UseCases() {
             <Link
               to="/contact"
               className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
-              onClick={() => trackCTAClick('Talk to Us', '/use-cases', 'bottom-cta')}
+              onClick={() => trackCTAClick(CTA.CONTACT_SALES, '/use-cases', 'bottom-cta')}
             >
               {t('common.talk_to_us')}
               <ArrowRight className="h-4 w-4" />
@@ -225,7 +226,7 @@ export default function UseCases() {
             <Link
               to="/signup"
               className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
-              onClick={() => trackCTAClick('Start Free Trial', '/use-cases', 'bottom-cta')}
+              onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/use-cases', 'bottom-cta')}
             >
               {t('common.start_free_trial')}
             </Link>

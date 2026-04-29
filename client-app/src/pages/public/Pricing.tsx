@@ -8,6 +8,7 @@ import ROICalculator from '../../components/ROICalculator';
 import MinutesPricingCalculator from '../../components/MinutesPricingCalculator';
 import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 import { PLAN_CATALOG, getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 
 function formatOverageRate(ratePerMinute: number): string {
@@ -247,7 +248,7 @@ export default function Pricing() {
                       ? 'btn-primary-glow bg-primary hover:bg-primary-hover text-on-primary'
                       : 'bg-surface-hover hover:bg-primary text-text-primary hover:text-on-primary'
                   }`}
-                  onClick={() => trackCTAClick('start_free_trial', 'pricing_card', tier.key)}
+                  onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_card', tier.key)}
                 >
                   {t('pricing.tier_card.start_trial')}
                   <ArrowRight className="h-4 w-4 inline-block ml-2" />
@@ -392,7 +393,7 @@ export default function Pricing() {
             <Link
               to="/book-demo"
               className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] min-h-[44px]"
-              onClick={() => trackCTAClick('book_demo', 'pricing_bottom')}
+              onClick={() => trackCTAClick(CTA.BOOK_DEMO, 'pricing_bottom')}
             >
               {t('common.book_a_demo')}
               <ArrowRight className="h-4 w-4" />
@@ -400,14 +401,14 @@ export default function Pricing() {
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] border border-white/15 hover:border-white/25 min-h-[44px]"
-              onClick={() => trackCTAClick('start_free_trial', 'pricing_bottom')}
+              onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_bottom')}
             >
               {t('common.start_free_trial')}
             </Link>
             <Link
               to="/contact"
               className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
-              onClick={() => trackCTAClick('contact_sales', 'pricing_bottom')}
+              onClick={() => trackCTAClick(CTA.CONTACT_SALES, 'pricing_bottom')}
             >
               {t('common.contact_sales')}
             </Link>

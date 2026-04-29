@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, Calculator, DollarSign, TrendingUp, Clock, Mail, CheckCircle2, Loader2 } from 'lucide-react';
 import { trackCTAClick, trackConversionEvent } from '../lib/analytics';
+import { CTA } from '../lib/analyticsCtas';
 import { formatDollars } from '../lib/formatCurrency';
 
 interface ROICalculatorProps {
@@ -350,14 +351,14 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
                 to="/signup"
-                onClick={() => { trackCTAClick('Start Free Trial', 'roi-calculator', 'results'); trackConversionEvent('cta_click', '/roi-calculator', { cta: 'signup_roi' }); }}
+                onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, 'roi-calculator', 'results'); trackConversionEvent('cta_click', '/roi-calculator', { cta: 'signup_roi' }); }}
                 className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
               >
                 Start Free Trial <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 to="/book-demo"
-                onClick={() => { trackCTAClick('Book a Demo', 'roi-calculator', 'results'); }}
+                onClick={() => { trackCTAClick(CTA.BOOK_DEMO, 'roi-calculator', 'results'); }}
                 className="flex-1 flex items-center justify-center gap-2 bg-surface-secondary hover:bg-border-strong/30 text-sidebar-bg px-6 py-3 rounded-xl font-medium transition-colors border border-border-strong/40"
               >
                 Book a Demo

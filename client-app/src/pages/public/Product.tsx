@@ -12,6 +12,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 import WorkflowDiagram, {
   genericWorkflowSteps,
   healthcareWorkflow,
@@ -603,14 +604,14 @@ export default function Product() {
             <Link
               to="/demo"
               className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
-              onClick={() => trackCTAClick('try_demo', 'product_bottom')}
+              onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, 'product_bottom')}
             >
               {t('product.bottom_cta.try_demo')}
             </Link>
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
-              onClick={() => trackCTAClick('start_free_trial', 'product_bottom')}
+              onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'product_bottom')}
             >
               {t('product.bottom_cta.start_trial')}
               <ArrowRight className="h-4 w-4" />

@@ -10,6 +10,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { useEffect } from 'react';
 import { trackPageView, trackVerticalEngagement, trackCTAClick } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 type Category = 'All' | 'Healthcare' | 'Legal' | 'Sales & Marketing' | 'Operations' | 'Support';
 
@@ -345,7 +346,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
           <Link
             to={`/signup?agent=${agent.id}`}
             className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-            onClick={() => { trackCTAClick('deploy_agent', 'agents', agent.id); trackVerticalEngagement(agent.id, 'deploy_click'); }}
+            onClick={() => { trackCTAClick(CTA.DEPLOY_AGENT, 'agents', agent.id); trackVerticalEngagement(agent.id, 'deploy_click'); }}
           >
             Deploy This Agent
             <ArrowRight className="h-3.5 w-3.5" />
@@ -467,7 +468,7 @@ export default function AgentsShowcase() {
               <Link
                 to="/signup"
                 className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
-                onClick={() => trackCTAClick('start_free_trial', 'agents_hero')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'agents_hero')}
               >
                 Start Free Trial
                 <ArrowRight className="h-4 w-4" />
@@ -475,7 +476,7 @@ export default function AgentsShowcase() {
               <Link
                 to="/demo"
                 className="inline-flex items-center justify-center gap-2 border border-white/25 hover:bg-white/10 text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
-                onClick={() => trackCTAClick('try_live_demo', 'agents_hero')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, 'agents_hero')}
               >
                 Try Live Demo
               </Link>
@@ -535,7 +536,7 @@ export default function AgentsShowcase() {
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
-              onClick={() => trackCTAClick('start_free_trial', 'agents_bottom')}
+              onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'agents_bottom')}
             >
               Start Free Trial
               <ArrowRight className="h-4 w-4" />
@@ -543,7 +544,7 @@ export default function AgentsShowcase() {
             <Link
               to="/pricing"
               className="inline-flex items-center justify-center gap-2 border border-white/25 hover:bg-white/10 text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
-              onClick={() => trackCTAClick('view_pricing', 'agents_bottom')}
+              onClick={() => trackCTAClick(CTA.VIEW_PRICING, 'agents_bottom')}
             >
               View Pricing
             </Link>

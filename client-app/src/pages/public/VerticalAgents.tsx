@@ -9,6 +9,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackVerticalEngagement } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 const agentMeta = [
   {
@@ -109,7 +110,7 @@ export default function VerticalAgents() {
               <Link
                 to="/demo"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Try a vertical agent', '/industries/vertical-agents', 'hero')}
+                onClick={() => trackCTAClick(CTA.TRY_VERTICAL_AGENT, '/industries/vertical-agents', 'hero')}
               >
                 {t('vertical_agents_page.hero.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
@@ -117,7 +118,7 @@ export default function VerticalAgents() {
               <Link
                 to="/book-demo"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Book a demo', '/industries/vertical-agents', 'hero')}
+                onClick={() => trackCTAClick(CTA.BOOK_DEMO, '/industries/vertical-agents', 'hero')}
               >
                 {t('vertical_agents_page.hero.cta_secondary')}
               </Link>
@@ -301,7 +302,7 @@ export default function VerticalAgents() {
                     <Link
                       to="/contact"
                       className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-5 py-2.5 rounded-lg text-sm"
-                      onClick={() => trackCTAClick('Partner with QVO', '/industries/vertical-agents', 'spotlight')}
+                      onClick={() => trackCTAClick(CTA.PARTNER_WITH_QVO, '/industries/vertical-agents', 'spotlight')}
                     >
                       {t('vertical_agents_page.spotlight.partner_cta')}
                       <ArrowRight className="h-3.5 w-3.5" />
@@ -338,7 +339,7 @@ export default function VerticalAgents() {
               <Link
                 to="/signup"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Start free trial', '/industries/vertical-agents', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/industries/vertical-agents', 'bottom-cta')}
               >
                 {t('vertical_agents_page.bottom_cta.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
@@ -346,7 +347,7 @@ export default function VerticalAgents() {
               <Link
                 to="/use-cases"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('See use cases', '/industries/vertical-agents', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.SEE_USE_CASES, '/industries/vertical-agents', 'bottom-cta')}
               >
                 {t('vertical_agents_page.bottom_cta.cta_secondary')}
               </Link>

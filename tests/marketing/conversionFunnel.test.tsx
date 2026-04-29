@@ -101,6 +101,9 @@ import Landing from '../../client-app/src/pages/public/Landing';
 import Pricing from '../../client-app/src/pages/public/Pricing';
 import BookDemo from '../../client-app/src/pages/public/BookDemo';
 import CaseStudies from '../../client-app/src/pages/public/CaseStudies';
+// Canonical CTA names — assertions reference these so the test stays in sync
+// with the single source of truth used by the marketing pages.
+import { CTA } from '../../client-app/src/lib/analyticsCtas';
 
 // ---------------------------------------------------------------------------
 // fetch capture
@@ -297,8 +300,7 @@ describe('Marketing conversion funnel: Landing CTAs', () => {
 
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) =>
-          c.ctaText.toLowerCase().includes('book a demo') && c.page === '/',
+        (c) => c.ctaText === CTA.BOOK_DEMO && c.page === '/',
       ),
     ).toBe(true);
   });
@@ -321,8 +323,7 @@ describe('Marketing conversion funnel: Landing CTAs', () => {
 
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) =>
-          c.ctaText.toLowerCase().includes('start free trial') && c.page === '/',
+        (c) => c.ctaText === CTA.START_FREE_TRIAL && c.page === '/',
       ),
     ).toBe(true);
   });
@@ -349,7 +350,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
 
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) => c.ctaText === 'book_demo' && c.page === 'pricing_bottom',
+        (c) => c.ctaText === CTA.BOOK_DEMO && c.page === 'pricing_bottom',
       ),
     ).toBe(true);
   });
@@ -483,7 +484,7 @@ describe('Marketing conversion funnel: Book a Demo form', () => {
     // Conversion analytics should fire on success.
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) => c.ctaText === 'book_demo_submit' && c.page === '/book-demo',
+        (c) => c.ctaText === CTA.BOOK_DEMO_SUBMIT && c.page === '/book-demo',
       ),
     ).toBe(true);
     expect(

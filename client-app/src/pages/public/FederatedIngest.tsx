@@ -9,6 +9,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackFeatureView } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 const useCaseIcons = [Server, Layers, Workflow];
 const ingestStepIcons = [KeyRound, Webhook, Database, BarChart3];
@@ -77,7 +78,7 @@ export default function FederatedIngest() {
               <Link
                 to="/docs/api-overview"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Read the API docs', '/product/federated-ingest', 'hero')}
+                onClick={() => trackCTAClick(CTA.READ_API_DOCS, '/product/federated-ingest', 'hero')}
               >
                 {t('federated_ingest_page.hero.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
@@ -85,7 +86,7 @@ export default function FederatedIngest() {
               <Link
                 to="/contact"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Talk to a platform engineer', '/product/federated-ingest', 'hero')}
+                onClick={() => trackCTAClick(CTA.TALK_TO_ENGINEERING, '/product/federated-ingest', 'hero')}
               >
                 {t('federated_ingest_page.hero.cta_secondary')}
               </Link>
@@ -311,7 +312,7 @@ export default function FederatedIngest() {
               <Link
                 to="/docs/api-overview"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Read the API docs', '/product/federated-ingest', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.READ_API_DOCS, '/product/federated-ingest', 'bottom-cta')}
               >
                 {t('federated_ingest_page.bottom_cta.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
@@ -319,7 +320,7 @@ export default function FederatedIngest() {
               <Link
                 to="/book-demo"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Book a platform demo', '/product/federated-ingest', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.BOOK_PLATFORM_DEMO, '/product/federated-ingest', 'bottom-cta')}
               >
                 {t('federated_ingest_page.bottom_cta.cta_secondary')}
               </Link>

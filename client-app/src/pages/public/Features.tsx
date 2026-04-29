@@ -9,6 +9,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { useEffect } from 'react';
 import { trackPageView, trackFeatureView, trackCTAClick } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 export default function Features() {
   const { t } = useTranslation('marketing');
@@ -133,7 +134,7 @@ export default function Features() {
               <Link
                 to="/demo"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Try Live Demo', '/features', 'hero')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/features', 'hero')}
               >
                 {t('common.try_live_demo')}
                 <ArrowRight className="h-4 w-4" />
@@ -141,7 +142,7 @@ export default function Features() {
               <Link
                 to="/use-cases"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('See Use Cases', '/features', 'hero')}
+                onClick={() => trackCTAClick(CTA.SEE_USE_CASES, '/features', 'hero')}
               >
                 {t('common.see_use_cases')}
               </Link>
@@ -273,7 +274,7 @@ export default function Features() {
               <Link
                 to="/signup"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Start Free Trial', '/features', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/features', 'bottom-cta')}
               >
                 {t('common.start_free_trial')}
                 <ArrowRight className="h-4 w-4" />
@@ -281,7 +282,7 @@ export default function Features() {
               <Link
                 to="/demo"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Try Live Demo', '/features', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/features', 'bottom-cta')}
               >
                 {t('common.try_live_demo')}
               </Link>

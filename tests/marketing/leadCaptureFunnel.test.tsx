@@ -75,6 +75,9 @@ vi.mock('../../client-app/src/components/LiveTranscriptMock', () => ({
 import Contact from '../../client-app/src/pages/public/Contact';
 import ROICalculator from '../../client-app/src/components/ROICalculator';
 import Landing from '../../client-app/src/pages/public/Landing';
+// Canonical CTA names — assertions reference these so the test stays in sync
+// with the single source of truth used by the marketing pages.
+import { CTA } from '../../client-app/src/lib/analyticsCtas';
 
 // ---------------------------------------------------------------------------
 // fetch capture
@@ -516,11 +519,11 @@ describe('Marketing conversion funnel: Live Demo entry CTA', () => {
       expect(screen.getByText(STUB_MARKERS.demo)).toBeTruthy();
     });
 
-    // Analytics must record the click so the marketing team can attribute
-    // demo traffic back to the hero CTA.
+    // Analytics must record the click against the canonical CTA name so the
+    // marketing team can attribute demo traffic back to the hero CTA.
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) => c.ctaText === 'Try Live Demo' && c.page === '/' && c.position === 'hero',
+        (c) => c.ctaText === CTA.TRY_LIVE_DEMO && c.page === '/' && c.position === 'hero',
       ),
     ).toBe(true);
   });
@@ -534,7 +537,9 @@ describe('Marketing conversion funnel: Live Demo entry CTA', () => {
       />,
     );
 
-    // Anchor text and analytics ctaText both read "Try the Live Demo".
+    // The bottom CTA's user-visible button text is "Try the Live Demo" — a
+    // copy variant of the hero's "Try Live Demo" — but both fire the same
+    // canonical CTA constant so funnel reports group them together.
     const links = screen.getAllByRole('link', {
       name: /try the live demo/i,
     }) as HTMLAnchorElement[];
@@ -553,7 +558,7 @@ describe('Marketing conversion funnel: Live Demo entry CTA', () => {
     expect(
       analyticsCalls.ctaClicks.some(
         (c) =>
-          c.ctaText === 'Try the Live Demo' &&
+          c.ctaText === CTA.TRY_LIVE_DEMO &&
           c.page === '/' &&
           c.position === 'bottom-cta',
       ),

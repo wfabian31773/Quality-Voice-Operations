@@ -155,6 +155,9 @@ vi.mock('../../client-app/src/components/SEO', () => ({
 }));
 
 import Demo from '../../client-app/src/pages/Demo';
+// Canonical CTA names — assertions reference these so the test stays in sync
+// with the single source of truth used by the marketing pages.
+import { CTA } from '../../client-app/src/lib/analyticsCtas';
 
 // ---------------------------------------------------------------------------
 // Fetch capture — same shape as the lead-capture suite so future readers
@@ -503,7 +506,7 @@ describe('Demo page: post-call conversion CTA + analytics', () => {
     // Analytics CTA click should fire alongside the API ping.
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) => c.ctaText === 'start_free_trial' && c.page === 'demo',
+        (c) => c.ctaText === CTA.START_FREE_TRIAL && c.page === 'demo',
       ),
     ).toBe(true);
 
@@ -546,7 +549,7 @@ describe('Demo page: post-call conversion CTA + analytics', () => {
 
     expect(
       analyticsCalls.ctaClicks.some(
-        (c) => c.ctaText === 'book_demo' && c.page === 'demo',
+        (c) => c.ctaText === CTA.BOOK_DEMO && c.page === 'demo',
       ),
     ).toBe(true);
 

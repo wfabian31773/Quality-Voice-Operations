@@ -25,6 +25,7 @@ import LogosStrip from '../../components/LogosStrip';
 import LiveTranscriptMock from '../../components/LiveTranscriptMock';
 import IndustryShowcase from '../../components/IndustryShowcase';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(reducedMotion ? end : 0);
@@ -298,7 +299,7 @@ export default function Landing() {
                 <Link
                   to="/demo"
                   className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                  onClick={() => trackCTAClick('Try Live Demo', '/', 'hero')}
+                  onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/', 'hero')}
                 >
                   {t('common.try_live_demo')}
                   <ArrowRight className="h-4 w-4" />
@@ -306,7 +307,7 @@ export default function Landing() {
                 <Link
                   to="/product"
                   className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
-                  onClick={() => trackCTAClick('See How It Works', '/', 'hero')}
+                  onClick={() => trackCTAClick(CTA.SEE_HOW_IT_WORKS, '/', 'hero')}
                 >
                   {t('common.see_how_it_works')}
                 </Link>
@@ -661,7 +662,7 @@ export default function Landing() {
               <Link
                 to="/signup"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Start Free Trial', '/', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/', 'bottom-cta')}
               >
                 {t('common.start_free_trial')}
                 <ArrowRight className="h-4 w-4" />
@@ -669,14 +670,14 @@ export default function Landing() {
               <Link
                 to="/book-demo"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
-                onClick={() => trackCTAClick('Book a Demo', '/', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.BOOK_DEMO, '/', 'bottom-cta')}
               >
                 {t('common.book_a_demo')}
               </Link>
               <Link
                 to="/demo"
                 className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3.5 rounded-xl transition-colors duration-[var(--motion-fast)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Try the Live Demo', '/', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/', 'bottom-cta')}
               >
                 {t('landing.bottom_cta.try_live')}
               </Link>

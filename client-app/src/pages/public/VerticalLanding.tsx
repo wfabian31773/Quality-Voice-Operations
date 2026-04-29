@@ -10,6 +10,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
 import { trackPageView, trackVerticalEngagement, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 interface VerticalData {
   slug: string;
@@ -411,14 +412,14 @@ export default function VerticalLanding() {
               <div className="flex flex-wrap gap-4">
                 <Link
                   to="/signup"
-                  onClick={() => { trackCTAClick('Start Free Trial', `industry-${data.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup' }); }}
+                  onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${data.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup' }); }}
                   className="btn-primary-glow inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-on-primary px-6 py-3 rounded-xl font-medium transition-colors duration-[var(--motion-base)] min-h-[44px]"
                 >
                   Start Free Trial <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
                   to={`/demo?agent=${data.demoAgent}`}
-                  onClick={() => { trackCTAClick('Try Live Demo', `industry-${data.slug}`, 'hero'); trackConversionEvent('demo_started', `/industries/${data.slug}`); }}
+                  onClick={() => { trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${data.slug}`, 'hero'); trackConversionEvent('demo_started', `/industries/${data.slug}`); }}
                   className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20"
                 >
                   Try Live Demo <Phone className="h-4 w-4" />
@@ -619,14 +620,14 @@ export default function VerticalLanding() {
           <div className="flex flex-wrap justify-center gap-4">
             <Link
               to="/signup"
-              onClick={() => { trackCTAClick('Start Free Trial', `industry-${data.slug}`, 'bottom-cta'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup_bottom' }); }}
+              onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${data.slug}`, 'bottom-cta'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup_bottom' }); }}
               className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors"
             >
               Start Your Free Trial <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to={`/demo?agent=${data.demoAgent}`}
-              onClick={() => trackCTAClick('See Live Demo', `industry-${data.slug}`, 'bottom-cta')}
+              onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${data.slug}`, 'bottom-cta')}
               className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-8 py-3.5 rounded-xl font-semibold transition-colors backdrop-blur-sm"
             >
               See Live Demo <Phone className="h-4 w-4" />

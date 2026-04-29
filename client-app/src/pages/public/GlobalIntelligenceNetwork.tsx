@@ -9,6 +9,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackFeatureView } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 import {
   ginBenchmarkFallback,
   type GinBenchmarkSnapshot,
@@ -124,7 +125,7 @@ export default function GlobalIntelligenceNetwork() {
               <Link
                 to="/book-demo"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('See GIN in a demo', '/product/global-intelligence-network', 'hero')}
+                onClick={() => trackCTAClick(CTA.SEE_GIN_DEMO, '/product/global-intelligence-network', 'hero')}
               >
                 {t('gin_page.hero.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
@@ -132,7 +133,7 @@ export default function GlobalIntelligenceNetwork() {
               <Link
                 to="/security"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Read the privacy model', '/product/global-intelligence-network', 'hero')}
+                onClick={() => trackCTAClick(CTA.READ_PRIVACY_MODEL, '/product/global-intelligence-network', 'hero')}
               >
                 {t('gin_page.hero.cta_secondary')}
               </Link>
@@ -363,7 +364,7 @@ export default function GlobalIntelligenceNetwork() {
               <Link
                 to="/features"
                 className="inline-flex items-center gap-2 text-primary hover:text-primary-hover font-semibold text-sm"
-                onClick={() => trackCTAClick('Explore the platform', '/product/global-intelligence-network', 'mid-cta')}
+                onClick={() => trackCTAClick(CTA.EXPLORE_PLATFORM, '/product/global-intelligence-network', 'mid-cta')}
               >
                 {t('gin_page.evolution_card.cta')}
                 <ArrowRight className="h-4 w-4" />
@@ -391,7 +392,7 @@ export default function GlobalIntelligenceNetwork() {
               <Link
                 to="/book-demo"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Book a demo', '/product/global-intelligence-network', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.BOOK_DEMO, '/product/global-intelligence-network', 'bottom-cta')}
               >
                 {t('gin_page.bottom_cta.cta_primary')}
                 <ArrowRight className="h-4 w-4" />
@@ -399,7 +400,7 @@ export default function GlobalIntelligenceNetwork() {
               <Link
                 to="/signup"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('Start free trial', '/product/global-intelligence-network', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/product/global-intelligence-network', 'bottom-cta')}
               >
                 {t('gin_page.bottom_cta.cta_secondary')}
               </Link>

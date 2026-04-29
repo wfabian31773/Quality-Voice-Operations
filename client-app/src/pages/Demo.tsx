@@ -28,6 +28,7 @@ import CalendarToolVisual from '../components/demo/CalendarToolVisual';
 import SystemActivityFeed from '../components/demo/SystemActivityFeed';
 import { useDemoSSE } from '../hooks/useDemoSSE';
 import { trackPageView, trackDemoInteraction, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../lib/analytics';
+import { CTA } from '../lib/analyticsCtas';
 
 const API_BASE = '/api';
 
@@ -294,7 +295,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
           <Link
             to="/signup"
             className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 text-base"
-            onClick={() => trackDemoCTA('start_free_trial', activeAgentRef)}
+            onClick={() => trackDemoCTA(CTA.START_FREE_TRIAL, activeAgentRef)}
           >
             {t('common.start_free_trial')}
             <ArrowRight className="h-4 w-4" />
@@ -302,7 +303,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
           <Link
             to="/contact"
             className="inline-flex items-center gap-2 bg-white border border-border-strong/50 hover:border-primary/30 text-sidebar-bg font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
-            onClick={() => trackDemoCTA('book_demo', activeAgentRef)}
+            onClick={() => trackDemoCTA(CTA.BOOK_DEMO, activeAgentRef)}
           >
             {t('common.book_demo')}
           </Link>

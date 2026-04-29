@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Calendar, CheckCircle2, Clock, Users, Shield, ArrowRight, Loader2 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 const benefits = [
   { icon: Clock, title: '30-minute walkthrough', desc: 'Live tour of the platform tailored to your industry and call volume.' },
@@ -93,7 +94,7 @@ export default function BookDemo() {
       if (typeof data?.leadId === 'number') {
         setLeadId(data.leadId);
       }
-      trackCTAClick('book_demo_submit', '/book-demo', 'form');
+      trackCTAClick(CTA.BOOK_DEMO_SUBMIT, '/book-demo', 'form');
       trackConversionEvent('demo_requested', '/book-demo', { teamSize: form.teamSize });
       setSubmitted(true);
     } catch (err) {
@@ -147,7 +148,7 @@ export default function BookDemo() {
               <Link
                 to="/signup"
                 className="inline-flex items-center gap-2 text-primary hover:text-primary-hover text-sm font-semibold"
-                onClick={() => trackCTAClick('start_trial_from_book_demo', '/book-demo', 'sidebar')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL_FROM_BOOK_DEMO, '/book-demo', 'sidebar')}
               >
                 Start free trial <ArrowRight className="h-3.5 w-3.5" />
               </Link>

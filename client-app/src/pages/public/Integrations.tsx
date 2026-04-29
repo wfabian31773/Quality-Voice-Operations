@@ -7,6 +7,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import BrandLogo from '../../components/BrandLogo';
 import { trackPageView, trackCTAClick } from '../../lib/analytics';
+import { CTA } from '../../lib/analyticsCtas';
 
 const primaryIntegrations = [
   {
@@ -136,7 +137,7 @@ export default function Integrations() {
               <Link
                 to="/demo"
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
-                onClick={() => trackCTAClick('Try Live Demo', '/integrations', 'hero')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/integrations', 'hero')}
               >
                 Try Live Demo
                 <ArrowRight className="h-4 w-4" />
@@ -144,7 +145,7 @@ export default function Integrations() {
               <Link
                 to="/features"
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
-                onClick={() => trackCTAClick('See All Features', '/integrations', 'hero')}
+                onClick={() => trackCTAClick(CTA.SEE_FEATURES, '/integrations', 'hero')}
               >
                 See All Features
               </Link>
@@ -226,7 +227,7 @@ export default function Integrations() {
               <Link
                 to="/signup"
                 className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
-                onClick={() => trackCTAClick('Start Free Trial', '/integrations', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/integrations', 'bottom-cta')}
               >
                 Start Free Trial
                 <ArrowRight className="h-4 w-4" />
@@ -234,7 +235,7 @@ export default function Integrations() {
               <Link
                 to="/contact"
                 className="inline-flex items-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
-                onClick={() => trackCTAClick('Talk to Engineering', '/integrations', 'bottom-cta')}
+                onClick={() => trackCTAClick(CTA.TALK_TO_ENGINEERING, '/integrations', 'bottom-cta')}
               >
                 Talk to Engineering
               </Link>
