@@ -34,7 +34,7 @@ import { startVerifiedCallerHealthScheduler, stopVerifiedCallerHealthScheduler, 
 import { startVerifiedCallerSyncScheduler, stopVerifiedCallerSyncScheduler } from '../../platform/telephony/VerifiedCallerSyncScheduler';
 import { startConnectorOutboxDrainScheduler, stopConnectorOutboxDrainScheduler } from '../../platform/integrations/connectors/ConnectorOutboxDrainScheduler';
 import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler } from '../../platform/integrations/connectors/SchedulingDriftAlertScheduler';
-import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler, startCrmCallerIdentityRevalidationScheduler, stopCrmCallerIdentityRevalidationScheduler } from '../../platform/integrations/connectors';
+import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler, startCrmCallerIdentityRevalidationScheduler, stopCrmCallerIdentityRevalidationScheduler, startCrmStaleCacheRetentionScheduler, stopCrmStaleCacheRetentionScheduler } from '../../platform/integrations/connectors';
 import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler } from '../../platform/billing/CallEventsRetentionScheduler';
 import { startTenantIsolationScheduler, stopTenantIsolationScheduler } from '../../platform/security/TenantIsolationScheduler';
 import { startEncryptionReminderScheduler, stopEncryptionReminderScheduler } from '../../platform/security/EncryptionReminderScheduler';
@@ -115,6 +115,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startSchedulingDriftAlertScheduler();
   startOAuthTokenRefreshScheduler();
   startCrmCallerIdentityRevalidationScheduler();
+  startCrmStaleCacheRetentionScheduler();
   startCallEventsRetentionScheduler();
   startTenantIsolationScheduler();
   startEncryptionReminderScheduler();
@@ -153,6 +154,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopSchedulingDriftAlertScheduler();
   stopOAuthTokenRefreshScheduler();
   stopCrmCallerIdentityRevalidationScheduler();
+  stopCrmStaleCacheRetentionScheduler();
   stopCallEventsRetentionScheduler();
   stopTenantIsolationScheduler();
   stopEncryptionReminderScheduler();

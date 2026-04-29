@@ -18,6 +18,14 @@ export type {
   CrmCallerIdentityRevalidationCycleOptions,
 } from './CrmCallerIdentityRevalidationScheduler';
 export {
+  startCrmStaleCacheRetentionScheduler,
+  stopCrmStaleCacheRetentionScheduler,
+  runCrmStaleCacheRetentionCycle,
+  getCrmStaleCacheRetentionDays,
+  CRM_STALE_CACHE_RETENTION_DEFAULTS,
+} from './CrmStaleCacheRetentionScheduler';
+export type { CrmStaleCacheRetentionResult } from './CrmStaleCacheRetentionScheduler';
+export {
   startConnectorStaleAlertScheduler,
   stopConnectorStaleAlertScheduler,
   runConnectorStaleAlertCycle,
