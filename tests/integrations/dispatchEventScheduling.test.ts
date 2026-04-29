@@ -40,7 +40,9 @@ vi.mock('../../platform/core/observability/traceLogger', () => ({
 }));
 
 vi.mock('../../platform/db', () => ({
-  withPrivilegedClient: vi.fn(async (fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
+  withPrivilegedClient: vi.fn(async (fn: (c: unknown) => unknown) =>
+    fn({ query: vi.fn(async () => ({ rows: [] })) }),
+  ),
 }));
 
 import { connectorService } from '../../platform/integrations/connectors/ConnectorService';

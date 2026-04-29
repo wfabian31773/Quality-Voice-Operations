@@ -36,6 +36,12 @@ import {
   type StaleCrmIds,
 } from './crmCallerIdentity';
 import { recordStaleCacheScrub } from './CrmStaleCacheTracker';
+import {
+  bufferOutboxEvent,
+  deriveOutboxIdempotencyKey,
+  markOutboxRowDelivered,
+  markOutboxRowPendingAfterInlineFailure,
+} from './outboxBuffer';
 import type { ConnectorAdapter, ConnectorPayload, ConnectorResult, ConnectorType, StandardEventType } from './types';
 import type { TenantId } from '../../core/types';
 
@@ -452,7 +458,18 @@ export class ConnectorService {
     tenantId: TenantId,
     eventType: StandardEventType,
     payload: ConnectorPayload,
-    options?: { schedulingProvider?: string | null },
+    options?: {
+      schedulingProvider?: string | null;
+      /**
+       * When false, skip writing/finalising an `outbox_events` row for this
+       * dispatch. Used by the drain worker so re-running a previously
+       * buffered event does not insert a fresh duplicate row.
+       *
+       * Defaults to true so every customer-originating dispatch (voice
+       * gateway, scheduling pipeline, admin retries) gets durable buffering.
+       */
+      bufferToOutbox?: boolean;
+    },
   ): Promise<{ dispatched: number; results: Array<{ connectorType: string; provider: string; success: boolean; error?: string }> }> {
     const eventPayload = { ...payload, type: eventType };
     const results: Array<{ connectorType: string; provider: string; success: boolean; error?: string }> = [];
@@ -460,6 +477,35 @@ export class ConnectorService {
     const targetTypes = EVENT_TO_CONNECTOR_TYPES[eventType] ?? [];
     if (targetTypes.length === 0) {
       return { dispatched: 0, results };
+    }
+
+    // Transactional outbox: stage the event durably *before* the inline fan-out
+    // so a transient adapter outage (or a process crash mid-dispatch) leaves
+    // the row in `pending` for the drain worker to recover. Skipped when the
+    // drain itself is the caller — it owns the row's lifecycle and should not
+    // re-buffer it.
+    const shouldBufferToOutbox = options?.bufferToOutbox !== false;
+    let outboxRowId: string | null = null;
+    if (shouldBufferToOutbox) {
+      const idempotencyKey = deriveOutboxIdempotencyKey(eventType, eventPayload);
+      const buffered = await bufferOutboxEvent(
+        tenantId,
+        eventType,
+        idempotencyKey,
+        eventPayload,
+      );
+      // Dedupe: if a previous fire already drove this event to `delivered`
+      // we skip the inline dispatch entirely to avoid double-side-effects in
+      // downstream CRMs/calendars/SMS providers.
+      if (buffered.alreadyDelivered) {
+        logger.info('Outbox event already delivered; skipping duplicate inline dispatch', {
+          tenantId,
+          eventType,
+          idempotencyKey,
+        });
+        return { dispatched: 0, results };
+      }
+      outboxRowId = buffered.rowId;
     }
 
     const isLifecycleEvent = APPOINTMENT_LIFECYCLE_EVENTS.has(eventType);
@@ -638,6 +684,22 @@ export class ConnectorService {
         } catch {
           // best-effort; writeAuditLog already logs
         }
+      }
+    }
+
+    // Finalise the buffered outbox row based on inline dispatch outcome.
+    // - All adapters succeeded (or none were configured) → mark `delivered`,
+    //   which prevents the drain worker from re-running the same event.
+    // - At least one adapter failed → leave the row `pending` with
+    //   `next_attempt_at = NOW()` so the drain picks it up next cycle.
+    if (outboxRowId) {
+      const inlineFullySucceeded = results.length === 0 || results.every((r) => r.success);
+      if (inlineFullySucceeded) {
+        await markOutboxRowDelivered(outboxRowId);
+      } else {
+        const firstError = results.find((r) => !r.success)?.error
+          ?? 'Inline connector dispatch reported failure';
+        await markOutboxRowPendingAfterInlineFailure(outboxRowId, firstError);
       }
     }
 

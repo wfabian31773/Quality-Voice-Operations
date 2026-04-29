@@ -98,6 +98,7 @@ describe('ConnectorOutboxDrainScheduler', () => {
       'tenant-a',
       'appointment.booked',
       expect.objectContaining({ callerPhone: '+15551234567' }),
+      expect.objectContaining({ bufferToOutbox: false }),
     );
     const updateCalls = queryMock.mock.calls.filter((c) =>
       typeof c[0] === 'string' && (c[0] as string).includes("status = 'delivered'"),

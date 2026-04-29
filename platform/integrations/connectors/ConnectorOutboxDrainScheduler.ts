@@ -216,7 +216,12 @@ export async function runConnectorOutboxDrainCycle(
     const eventType = row.event_type as StandardEventType;
     const payload = (row.payload ?? {}) as ConnectorPayload;
     try {
-      const dispatch = await connectorService.dispatchEvent(tenantId, eventType, payload);
+      // bufferToOutbox: false — the row already exists (this drain owns it),
+      // so we must not insert a fresh outbox row for the same event. The row
+      // is updated in-place by markDelivered / markFailure below.
+      const dispatch = await connectorService.dispatchEvent(tenantId, eventType, payload, {
+        bufferToOutbox: false,
+      });
       const allOk = dispatch.results.every((r) => r.success);
       if (dispatch.dispatched === 0 || allOk) {
         await markDelivered(row.id);
