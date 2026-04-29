@@ -288,7 +288,7 @@ export default function Onboarding() {
           <p className="text-sm text-text-secondary mt-1">Let's get your environment set up</p>
         </div>
 
-        <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="flex items-start justify-center gap-6 mb-8">
           {[1, 2, 3].map((s) => {
             const isActive = s === step;
             // A dot counts as "completed" once the user has reached it,
@@ -301,12 +301,20 @@ export default function Onboarding() {
             const furthestUnlocked = Math.max(step, maxVisitedStep);
             const isCompleted = !isActive && s <= furthestUnlocked;
             const isClickable = s <= furthestUnlocked;
-            const colorClass = isActive
+            const stepLabels = ['Setup', 'Template', 'Phone number'];
+            const label = stepLabels[s - 1];
+            const dotColorClass = isActive
               ? 'bg-primary'
               : isCompleted
                 ? 'bg-green-500'
                 : 'bg-border';
-            const baseClass = `h-2 w-8 rounded-full transition-all ${colorClass}`;
+            const labelColorClass = isActive
+              ? 'text-text-primary font-medium'
+              : isCompleted
+                ? 'text-text-primary'
+                : 'text-text-secondary';
+            const dotClass = `h-2 w-8 rounded-full transition-all ${dotColorClass}`;
+            const labelClass = `text-xs leading-tight ${labelColorClass}`;
             if (isClickable) {
               return (
                 <button
@@ -314,17 +322,25 @@ export default function Onboarding() {
                   type="button"
                   onClick={() => goToStep(s)}
                   disabled={isActive}
-                  aria-label={`Go to step ${s}`}
+                  aria-label={`Go to step ${s}: ${label}`}
                   aria-current={isActive ? 'step' : undefined}
-                  className={`${baseClass} ${
+                  className={`flex flex-col items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                     isActive
                       ? 'cursor-default'
-                      : 'cursor-pointer hover:ring-2 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60'
+                      : 'cursor-pointer hover:opacity-80'
                   }`}
-                />
+                >
+                  <span className={dotClass} />
+                  <span className={labelClass}>{label}</span>
+                </button>
               );
             }
-            return <div key={s} aria-hidden="true" className={baseClass} />;
+            return (
+              <div key={s} className="flex flex-col items-center gap-2">
+                <div aria-hidden="true" className={dotClass} />
+                <span className={labelClass}>{label}</span>
+              </div>
+            );
           })}
         </div>
 
