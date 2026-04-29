@@ -135,7 +135,7 @@ export default function Landing() {
       ],
       example: t('landing.marketplace.legal.example'),
       color: 'from-sidebar-bg/10 to-info-light/20',
-      iconBg: 'bg-sidebar-bg/15 text-text-primary',
+      iconBg: 'bg-surface-muted text-text-primary',
       avatar: '/assets/avatars/legal.png',
     },
     {
@@ -418,7 +418,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">{t('landing.marketplace.badge')}</span>
+              <span className="inline-block text-sm font-semibold text-text-primary bg-surface-muted px-4 py-1.5 rounded-full mb-4">{t('landing.marketplace.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.marketplace.title')}
               </h2>
@@ -598,7 +598,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">{t('landing.comparison.badge')}</span>
+              <span className="inline-block text-sm font-semibold text-text-primary bg-surface-muted px-4 py-1.5 rounded-full mb-4">{t('landing.comparison.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.comparison.title')}
               </h2>
@@ -617,7 +617,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
-              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">{t('landing.security.badge')}</span>
+              <span className="inline-block text-sm font-semibold text-text-primary bg-surface-muted px-4 py-1.5 rounded-full mb-4">{t('landing.security.badge')}</span>
               <h2 className="font-display text-2xl lg:text-3xl font-bold text-text-primary mb-3">
                 {t('landing.security.title')}
               </h2>

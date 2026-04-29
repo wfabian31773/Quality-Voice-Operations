@@ -71,7 +71,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Healthcare',
     channels: ['phone', 'sms'],
     icon: Headphones,
-    color: 'bg-sidebar-bg/10 text-text-primary border-sidebar-bg/20',
+    color: 'bg-surface-muted text-text-primary border-border-strong/40',
     avatar: '/assets/avatars/dental.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -271,7 +271,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
                       className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
                         role === 'agent'
                           ? 'bg-primary/10 text-text-primary border border-primary/20'
-                          : 'bg-sidebar-bg/10 text-text-primary border border-sidebar-bg/20'
+                          : 'bg-surface-muted text-text-primary border border-border-strong/40'
                       }`}
                     >
                       <span className="block text-[10px] font-semibold uppercase tracking-wider mb-0.5 opacity-60">

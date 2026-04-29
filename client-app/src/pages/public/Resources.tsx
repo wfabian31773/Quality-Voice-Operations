@@ -86,7 +86,7 @@ export default function Resources() {
           {marketingMatches.length > 0 && (
             <RevealSection className="mb-12">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-sidebar-bg/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-surface-muted flex items-center justify-center">
                   <Compass className="h-5 w-5 text-text-primary" />
                 </div>
                 <div>
@@ -111,10 +111,10 @@ export default function Resources() {
                       className="group bg-white rounded-2xl border border-border/50 p-5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 transition-all"
                     >
                       <div className="flex items-start justify-between mb-3">
-                        <div className="w-9 h-9 rounded-lg bg-sidebar-bg/10 flex items-center justify-center">
+                        <div className="w-9 h-9 rounded-lg bg-surface-muted flex items-center justify-center">
                           <Icon className="h-4 w-4 text-text-primary" />
                         </div>
-                        <span className="text-[11px] text-text-primary bg-sidebar-bg/10 px-2 py-0.5 rounded-full font-medium uppercase tracking-wider">
+                        <span className="text-[11px] text-text-primary bg-surface-muted px-2 py-0.5 rounded-full font-medium uppercase tracking-wider">
                           {page.category}
                         </span>
                       </div>
@@ -191,7 +191,7 @@ export default function Resources() {
           {activeCategory === 'All' && !search && (
             <RevealSection className="mt-16">
               <div className="bg-white rounded-2xl border border-border/50 p-8 flex flex-col md:flex-row items-center gap-6">
-                <div className="w-14 h-14 rounded-2xl bg-sidebar-bg/10 flex items-center justify-center shrink-0">
+                <div className="w-14 h-14 rounded-2xl bg-surface-muted flex items-center justify-center shrink-0">
                   <BookOpen className="h-7 w-7 text-text-primary" />
                 </div>
                 <div className="flex-1 text-center md:text-left">

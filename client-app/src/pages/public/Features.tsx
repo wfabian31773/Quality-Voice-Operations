@@ -103,7 +103,7 @@ export default function Features() {
 
   const architectureBlocks = [
     { icon: Cpu, label: t('features.architecture.voice_runtime'), color: 'bg-primary/15 text-primary' },
-    { icon: Bot, label: t('features.architecture.agent_builder'), color: 'bg-sidebar-bg/15 text-text-primary' },
+    { icon: Bot, label: t('features.architecture.agent_builder'), color: 'bg-surface-muted text-text-primary' },
     { icon: Zap, label: t('features.architecture.tool_engine'), color: 'bg-accent/15 text-accent' },
     { icon: Database, label: t('features.architecture.knowledge_rag'), color: 'bg-success/15 text-success' },
     { icon: Plug, label: t('features.architecture.integrations'), color: 'bg-primary/15 text-primary' },

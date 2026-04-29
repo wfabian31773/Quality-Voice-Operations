@@ -268,7 +268,7 @@ export default function GlobalIntelligenceNetwork() {
               return (
                 <RevealSection key={step.title} delay={`scroll-delay-${(i % 3) + 1}`}>
                   <div className="bg-white rounded-2xl border border-border/30 p-6 flex gap-4 h-full">
-                    <div className="w-10 h-10 rounded-lg bg-sidebar-bg/10 flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-surface-muted flex items-center justify-center shrink-0">
                       <Icon className="h-5 w-5 text-text-primary" />
                     </div>
                     <div>

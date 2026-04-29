@@ -254,7 +254,7 @@ export default function VerticalAgents() {
               return (
                 <RevealSection key={step.title}>
                   <div className="bg-white rounded-2xl border border-border/30 p-6 h-full">
-                    <div className="w-10 h-10 rounded-lg bg-sidebar-bg/10 flex items-center justify-center mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-surface-muted flex items-center justify-center mb-4">
                       <Icon className="h-5 w-5 text-text-primary" />
                     </div>
                     <h3 className="font-display text-base font-semibold text-text-primary mb-1.5">{step.title}</h3>

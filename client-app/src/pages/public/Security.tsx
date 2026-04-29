@@ -111,7 +111,7 @@ export default function Security() {
             </a>
             <Link
               to="/subprocessors"
-              className="inline-flex items-center justify-center gap-2 bg-sidebar-bg/5 hover:bg-sidebar-bg/10 text-text-primary font-semibold px-5 py-2.5 rounded-lg text-sm"
+              className="inline-flex items-center justify-center gap-2 bg-surface-muted hover:bg-surface-hover text-text-primary font-semibold px-5 py-2.5 rounded-lg text-sm"
             >
               View sub-processors
             </Link>
