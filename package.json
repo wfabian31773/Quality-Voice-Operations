@@ -10,6 +10,7 @@
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\"",
     "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs",
+    "typecheck:client": "npm --prefix client-app run typecheck",
     "check:design-tokens": "node scripts/check-design-tokens-sync.mjs",
     "check:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "check:design": "bash scripts/ci-design-checks.sh",

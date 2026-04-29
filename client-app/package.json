@@ -7,6 +7,7 @@
     "dev": "vite --config vite.config.ts",
     "build": "vite build --config vite.config.ts",
     "preview": "vite preview --config vite.config.ts",
+    "typecheck": "tsc --noEmit",
     "analyze": "vite-bundle-visualizer --config vite.config.ts -o dist/stats.html --open false",
     "analyze:json": "vite-bundle-visualizer --config vite.config.ts -o dist/stats.json --template raw-data --open false"
   },
