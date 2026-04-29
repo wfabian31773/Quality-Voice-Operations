@@ -790,5 +790,186 @@
       "customer_label": "¿Ya eres cliente?",
       "customer_value": "Inicia sesión para soporte de tu cuenta o escribe directamente a nuestro equipo de soporte por correo."
     }
+  },
+  "integrations_page": {
+    "seo_title": "Integraciones — Google Calendar, Outlook, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks y más",
+    "seo_description": "QVO se integra con Google Calendar, Outlook Calendar, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks, Slack, Zapier y más. Conecta tus agentes de voz IA con las herramientas que ya usas.",
+    "hero": {
+      "eyebrow": "Integraciones",
+      "title": "Se conecta con las herramientas que ya usas.",
+      "description": "QVO se integra con tu calendario, CRM, mesa de ayuda, sistema de pagos y canales de comunicación. Los datos de las llamadas fluyen donde corresponden, automáticamente.",
+      "try_demo": "Probar demo en vivo",
+      "see_features": "Ver todas las funciones"
+    },
+    "core": {
+      "title": "Integraciones principales",
+      "subtitle": "Integraciones esenciales en calendario, telefonía, pagos, CRM, contabilidad y notificaciones — conectadas en cada despliegue de QVO."
+    },
+    "additional": {
+      "title": "Capacidades adicionales"
+    },
+    "categories": {
+      "scheduling": "Agendamiento",
+      "telephony": "Telefonía",
+      "payments": "Pagos",
+      "crm": "CRM",
+      "accounting": "Contabilidad",
+      "notifications": "Notificaciones",
+      "automation": "Automatización",
+      "sms": "SMS",
+      "email": "Correo",
+      "compliance": "Cumplimiento",
+      "security": "Seguridad"
+    },
+    "items": {
+      "google_calendar_desc": "Reserva, reagenda y confirma citas dentro del flujo de la llamada. La verificación de disponibilidad en tiempo real evita reservas duplicadas.",
+      "google_calendar_f1": "Disponibilidad en tiempo real",
+      "google_calendar_f2": "Reserva automática",
+      "google_calendar_f3": "Detección de conflictos",
+      "google_calendar_f4": "Sincronización de recordatorios",
+      "outlook_calendar_desc": "Sincroniza citas con calendarios de Microsoft 365 mediante Microsoft Graph. Inicio de sesión OAuth, reserva consciente de zona horaria y disponibilidad en tiempo real.",
+      "outlook_calendar_f1": "Inicio de sesión Microsoft 365",
+      "outlook_calendar_f2": "Eventos con zona horaria",
+      "outlook_calendar_f3": "Detección de conflictos",
+      "outlook_calendar_f4": "Permiso Calendars.ReadWrite",
+      "twilio_desc": "Infraestructura de telefonía de nivel empresarial. Provisiona números locales y gratuitos, gestiona llamadas entrantes y salientes y envía SMS — todo a través de QVO.",
+      "twilio_f1": "Provisión de números",
+      "twilio_f2": "Llamadas entrantes/salientes",
+      "twilio_f3": "Mensajería SMS",
+      "twilio_f4": "Grabación de llamadas",
+      "stripe_desc": "Acepta pagos y procesa transacciones durante las llamadas. Envía enlaces de pago por SMS, cobra depósitos y gestiona la facturación de suscripciones.",
+      "stripe_f1": "Enlaces de pago",
+      "stripe_f2": "Generación de facturas",
+      "stripe_f3": "Gestión de suscripciones",
+      "stripe_f4": "Procesamiento de reembolsos",
+      "hubspot_desc": "Sincroniza los datos de quien llama con HubSpot. Contactos, registros de llamadas y tareas de seguimiento fluyen automáticamente a tu CRM.",
+      "hubspot_f1": "Sincronización de contactos",
+      "hubspot_f2": "Automatización del registro de llamadas",
+      "hubspot_f3": "Calificación de leads",
+      "hubspot_f4": "Creación de tareas",
+      "salesforce_desc": "Sincroniza Contactos, Oportunidades y Tareas con Salesforce. Las llamadas y reuniones se asocian a la oportunidad abierta correcta para que los reps siempre tengan el contexto más reciente.",
+      "salesforce_f1": "Sincronización de contactos",
+      "salesforce_f2": "Asociación de oportunidades",
+      "salesforce_f3": "Registro de llamadas y tareas",
+      "salesforce_f4": "Sandbox o producción",
+      "pipedrive_desc": "Sincroniza contactos y negocios con Pipedrive. Las llamadas y reuniones se asocian al negocio abierto correcto para que los reps siempre tengan el contexto más reciente.",
+      "pipedrive_f1": "Sincronización de contactos",
+      "pipedrive_f2": "Asociación de negocios",
+      "pipedrive_f3": "Registro de actividades",
+      "pipedrive_f4": "Inicio de sesión OAuth",
+      "quickbooks_desc": "Envía clientes a QuickBooks y crea facturas cuando terminan las llamadas. Combínalo con tu artículo de servicio para facturar automáticamente los trabajos reservados por el agente.",
+      "quickbooks_f1": "Sincronización de clientes",
+      "quickbooks_f2": "Automatización de facturas",
+      "quickbooks_f3": "Sandbox o producción",
+      "quickbooks_f4": "Inicio de sesión OAuth",
+      "slack_desc": "Publica resúmenes de llamadas, alertas de llamadas perdidas y avisos de escalamiento en los canales correctos de Slack en tiempo real.",
+      "slack_f1": "Enrutamiento de canales",
+      "slack_f2": "Alertas de llamadas perdidas",
+      "slack_f3": "Resúmenes diarios",
+      "slack_f4": "Escalamientos con menciones",
+      "zapier_desc": "Envía eventos de llamadas, transcripciones y resultados a miles de apps mediante Zapier. Construye flujos sin escribir código.",
+      "zapier_f1": "Disparadores de eventos",
+      "zapier_f2": "Flujos sin código",
+      "zapier_f3": "Cargas personalizadas",
+      "zapier_f4": "Lógica de reintentos",
+      "sms_messaging_title": "SMS y mensajería",
+      "sms_messaging_desc": "Envía mensajes de confirmación, recordatorios de citas y mensajes de seguimiento. Mensajería bidireccional para coordinar devoluciones de llamada.",
+      "email_notifications_title": "Notificaciones por correo",
+      "email_notifications_desc": "Envía resúmenes de llamadas, alertas de escalamiento y resúmenes diarios por correo. Configurable por agente y nivel de urgencia.",
+      "compliance_records_title": "Cumplimiento y registros",
+      "compliance_records_desc": "Grabaciones completas de llamadas, transcripciones y registros de auditoría para cumplimiento normativo. Redacción de PHI integrada para salud.",
+      "auth_access_title": "Autenticación y acceso",
+      "auth_access_desc": "Control de acceso por roles, autenticación JWT, alcance de claves API y aislamiento por tenant para seguridad empresarial."
+    },
+    "custom_cta": {
+      "title": "¿Necesitas una integración a medida?",
+      "subtitle": "La API REST y el sistema de webhooks de QVO te permiten conectarte con cualquier servicio externo. Nuestra documentación cubre autenticación, tipos de eventos y formatos de payload.",
+      "start_trial": "Iniciar prueba gratuita",
+      "talk_engineering": "Hablar con ingeniería"
+    }
+  },
+  "agents_page": {
+    "seo_title": "Agentes de voz IA — HVAC, médicos, dental, legal, gestión de propiedades, restaurantes, inmobiliaria",
+    "seo_description": "Explora las plantillas de agentes de voz IA de QVO para HVAC, consultorios médicos, dental, intake legal, gestión de propiedades, restaurantes e inmobiliaria. Despliega recepcionistas IA en minutos.",
+    "hero": {
+      "eyebrow": "Marketplace de agentes",
+      "title": "Agentes de voz IA listos para tu industria, en minutos.",
+      "description": "Explora nuestra biblioteca de agentes de voz prediseñados para industrias específicas. Cada plantilla está lista para responder llamadas, agendar citas, calificar leads y escalar cuando sea necesario."
+    },
+    "categories": {
+      "all": "Todos",
+      "healthcare": "Salud",
+      "legal": "Legal",
+      "sales": "Ventas y marketing",
+      "operations": "Operaciones",
+      "support": "Soporte"
+    },
+    "channels": {
+      "phone": "Teléfono",
+      "web": "Chat web",
+      "sms": "SMS"
+    },
+    "card": {
+      "more_detail": "Más detalle",
+      "less_detail": "Menos detalle",
+      "deploy": "Desplegar este agente",
+      "more_capabilities": "+{{count}} más",
+      "example_conversation": "Conversación de ejemplo",
+      "workflow_steps": "Pasos del flujo",
+      "tools_used": "Herramientas usadas",
+      "escalation_behavior": "Comportamiento de escalamiento",
+      "ai_agent_label": "Agente IA",
+      "caller_label": "Persona que llama"
+    },
+    "empty": "No se encontraron agentes en esta categoría.",
+    "bottom_cta": {
+      "title": "¿Listo para desplegar tu primer agente?",
+      "subtitle": "Comienza con una prueba gratuita de 14 días. Elige una plantilla, personalízala para tu negocio y entra en producción en minutos.",
+      "view_pricing": "Ver precios"
+    }
+  },
+  "vertical_page": {
+    "hero": {
+      "start_trial": "Comienza tu prueba gratis",
+      "try_demo": "Prueba la demo en vivo"
+    },
+    "card": {
+      "live_performance": "Rendimiento en vivo",
+      "from_customers_in": "De clientes de QVO en {{vertical}}",
+      "pre_built_for": "Listo para {{vertical}}",
+      "deploy_minutes": "Implementa en minutos, sin código"
+    },
+    "problems": {
+      "title": "Los problemas que enfrentas todos los días",
+      "subtitle": "Las empresas de {{vertical}} pierden ingresos y clientes por estos desafíos telefónicos comunes."
+    },
+    "agents": {
+      "title": "Agentes de IA creados para {{vertical}}",
+      "subtitle": "Plantillas de agentes diseñadas específicamente para flujos de trabajo de {{vertical_lower}}. Implementa en minutos, no en meses."
+    },
+    "roi": {
+      "title": "Calcula tu ROI",
+      "subtitle": "Descubre cuánto podría ahorrar tu negocio de {{vertical_lower}} con los agentes de voz de QVO."
+    },
+    "why": {
+      "title": "Por qué los negocios de {{vertical}} eligen QVO",
+      "industry_expertise_title": "Experiencia en la industria",
+      "industry_expertise_desc": "Creado específicamente para {{vertical_lower}}. Nuestros agentes entienden tu terminología, flujos de trabajo y necesidades de cumplimiento.",
+      "deploy_title": "Implementa en minutos",
+      "deploy_desc": "Las plantillas preconfiguradas te permiten estar en producción el mismo día. Sin código, sin configuración compleja.",
+      "roi_title": "ROI medible",
+      "roi_desc": "Mide cada llamada, cada reserva y cada dólar ahorrado. Comprueba exactamente lo que tus agentes de IA generan."
+    },
+    "bottom_cta": {
+      "title": "¿Listo para transformar tu negocio de {{vertical}}?",
+      "subtitle": "Únete a cientos de empresas de {{vertical_lower}} que usan QVO para responder a cada llamada, agendar más citas y aumentar ingresos.",
+      "start_trial": "Comienza tu prueba gratis",
+      "see_demo": "Ver demo en vivo"
+    },
+    "not_found": {
+      "title": "Industria no encontrada",
+      "subtitle": "Todavía no tenemos una página para esa industria.",
+      "view_all": "Ver todos los casos de uso"
+    }
   }
 }

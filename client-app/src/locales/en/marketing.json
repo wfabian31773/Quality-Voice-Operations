@@ -790,5 +790,186 @@
       "customer_label": "Already a customer?",
       "customer_value": "Sign in to your dashboard for account support, or email our support team directly."
     }
+  },
+  "integrations_page": {
+    "seo_title": "Integrations — Google Calendar, Outlook, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks, and More",
+    "seo_description": "QVO integrates with Google Calendar, Outlook Calendar, Twilio, Stripe, Salesforce, HubSpot, Pipedrive, QuickBooks, Slack, Zapier, and more. Connect your AI voice agents to the tools you already use.",
+    "hero": {
+      "eyebrow": "Integrations",
+      "title": "Connects to the tools you already use.",
+      "description": "QVO integrates with your calendar, CRM, helpdesk, payment system, and communication channels. Call data flows where it belongs, automatically.",
+      "try_demo": "Try Live Demo",
+      "see_features": "See All Features"
+    },
+    "core": {
+      "title": "Core Integrations",
+      "subtitle": "Essential integrations across calendar, telephony, payments, CRM, accounting, and notifications — wired into every QVO deployment."
+    },
+    "additional": {
+      "title": "Additional Capabilities"
+    },
+    "categories": {
+      "scheduling": "Scheduling",
+      "telephony": "Telephony",
+      "payments": "Payments",
+      "crm": "CRM",
+      "accounting": "Accounting",
+      "notifications": "Notifications",
+      "automation": "Automation",
+      "sms": "SMS",
+      "email": "Email",
+      "compliance": "Compliance",
+      "security": "Security"
+    },
+    "items": {
+      "google_calendar_desc": "Book, reschedule, and confirm appointments directly within the call flow. Real-time availability checks ensure no double bookings.",
+      "google_calendar_f1": "Real-time availability",
+      "google_calendar_f2": "Automatic booking",
+      "google_calendar_f3": "Conflict detection",
+      "google_calendar_f4": "Reminder sync",
+      "outlook_calendar_desc": "Sync appointments to Microsoft 365 calendars via Microsoft Graph. OAuth sign-in, timezone-aware booking, and real-time availability checks.",
+      "outlook_calendar_f1": "Microsoft 365 sign-in",
+      "outlook_calendar_f2": "Timezone-aware events",
+      "outlook_calendar_f3": "Conflict detection",
+      "outlook_calendar_f4": "Calendars.ReadWrite scope",
+      "twilio_desc": "Enterprise-grade telephony infrastructure. Provision local and toll-free numbers, handle inbound and outbound calls, and send SMS — all through QVO.",
+      "twilio_f1": "Number provisioning",
+      "twilio_f2": "Inbound/outbound calls",
+      "twilio_f3": "SMS messaging",
+      "twilio_f4": "Call recording",
+      "stripe_desc": "Accept payments and process transactions during calls. Send payment links via SMS, collect deposits, and manage subscription billing.",
+      "stripe_f1": "Payment links",
+      "stripe_f2": "Invoice generation",
+      "stripe_f3": "Subscription management",
+      "stripe_f4": "Refund processing",
+      "hubspot_desc": "Sync caller data with HubSpot. Contact records, call logs, and follow-up tasks flow automatically into your CRM.",
+      "hubspot_f1": "Contact sync",
+      "hubspot_f2": "Call log automation",
+      "hubspot_f3": "Lead scoring",
+      "hubspot_f4": "Task creation",
+      "salesforce_desc": "Sync Contacts, Opportunities, and Tasks to Salesforce. Calls and meetings attach to the right open opportunity so reps always have the latest context.",
+      "salesforce_f1": "Contact sync",
+      "salesforce_f2": "Opportunity attachment",
+      "salesforce_f3": "Call & task logging",
+      "salesforce_f4": "Sandbox or production",
+      "pipedrive_desc": "Sync contacts and deals to Pipedrive. Calls and meetings attach to the right open deal so reps always have the latest context.",
+      "pipedrive_f1": "Contact sync",
+      "pipedrive_f2": "Deal attachment",
+      "pipedrive_f3": "Activity logging",
+      "pipedrive_f4": "OAuth sign-in",
+      "quickbooks_desc": "Push customers to QuickBooks and create invoices when calls complete. Pair with your service item to auto-bill jobs booked by the agent.",
+      "quickbooks_f1": "Customer sync",
+      "quickbooks_f2": "Invoice automation",
+      "quickbooks_f3": "Sandbox or production",
+      "quickbooks_f4": "OAuth sign-in",
+      "slack_desc": "Post call summaries, missed-call alerts, and escalation notices to the right Slack channels in real time.",
+      "slack_f1": "Channel routing",
+      "slack_f2": "Missed-call alerts",
+      "slack_f3": "Daily digests",
+      "slack_f4": "Mention escalations",
+      "zapier_desc": "Push call events, transcripts, and outcomes to thousands of apps via Zapier. Build workflows without writing code.",
+      "zapier_f1": "Event triggers",
+      "zapier_f2": "No-code workflows",
+      "zapier_f3": "Custom payloads",
+      "zapier_f4": "Retry logic",
+      "sms_messaging_title": "SMS & Messaging",
+      "sms_messaging_desc": "Send confirmation texts, appointment reminders, and follow-up messages. Two-way messaging for callback coordination.",
+      "email_notifications_title": "Email Notifications",
+      "email_notifications_desc": "Send call summaries, escalation alerts, and daily digests via email. Configurable per agent and urgency level.",
+      "compliance_records_title": "Compliance & Records",
+      "compliance_records_desc": "Full call recordings, transcripts, and audit logs for regulatory compliance. PHI redaction built in for healthcare.",
+      "auth_access_title": "Authentication & Access",
+      "auth_access_desc": "Role-based access control, JWT authentication, API key scoping, and tenant isolation for enterprise security."
+    },
+    "custom_cta": {
+      "title": "Need a custom integration?",
+      "subtitle": "QVO's REST API and webhook system lets you connect to any external service. Our developer documentation covers authentication, event types, and payload formats.",
+      "start_trial": "Start Free Trial",
+      "talk_engineering": "Talk to Engineering"
+    }
+  },
+  "agents_page": {
+    "seo_title": "AI Voice Agents — HVAC, Medical, Dental, Legal, Property Management, Restaurants, Real Estate",
+    "seo_description": "Browse QVO's AI voice agent templates for HVAC, medical offices, dental, legal intake, property management, restaurants, and real estate. Deploy AI receptionists in minutes.",
+    "hero": {
+      "eyebrow": "Agent Marketplace",
+      "title": "Industry-ready AI voice agents, deploy in minutes.",
+      "description": "Browse our library of pre-built voice agents designed for specific industries. Each template is ready to handle calls, schedule appointments, qualify leads, and escalate when needed."
+    },
+    "categories": {
+      "all": "All",
+      "healthcare": "Healthcare",
+      "legal": "Legal",
+      "sales": "Sales & Marketing",
+      "operations": "Operations",
+      "support": "Support"
+    },
+    "channels": {
+      "phone": "Phone",
+      "web": "Web Chat",
+      "sms": "SMS"
+    },
+    "card": {
+      "more_detail": "More detail",
+      "less_detail": "Less detail",
+      "deploy": "Deploy This Agent",
+      "more_capabilities": "+{{count}} more",
+      "example_conversation": "Example Conversation",
+      "workflow_steps": "Workflow Steps",
+      "tools_used": "Tools Used",
+      "escalation_behavior": "Escalation Behavior",
+      "ai_agent_label": "AI Agent",
+      "caller_label": "Caller"
+    },
+    "empty": "No agents found in this category.",
+    "bottom_cta": {
+      "title": "Ready to deploy your first agent?",
+      "subtitle": "Start with a 14-day free trial. Pick a template, customize it for your business, and go live in minutes.",
+      "view_pricing": "View Pricing"
+    }
+  },
+  "vertical_page": {
+    "hero": {
+      "start_trial": "Start Free Trial",
+      "try_demo": "Try Live Demo"
+    },
+    "card": {
+      "live_performance": "Live performance",
+      "from_customers_in": "From QVO customers in {{vertical}}",
+      "pre_built_for": "Pre-built for {{vertical}}",
+      "deploy_minutes": "Deploy in minutes, no code"
+    },
+    "problems": {
+      "title": "The Problems You Face Every Day",
+      "subtitle": "{{vertical}} businesses lose revenue and patients to these common phone-related challenges."
+    },
+    "agents": {
+      "title": "AI Agents Built for {{vertical}}",
+      "subtitle": "Pre-built agent templates designed specifically for {{vertical_lower}} workflows. Deploy in minutes, not months."
+    },
+    "roi": {
+      "title": "Calculate Your ROI",
+      "subtitle": "See how much your {{vertical_lower}} practice could save with QVO voice agents."
+    },
+    "why": {
+      "title": "Why {{vertical}} Businesses Choose QVO",
+      "industry_expertise_title": "Industry Expertise",
+      "industry_expertise_desc": "Purpose-built for {{vertical_lower}}. Our agents understand your terminology, workflows, and compliance needs.",
+      "deploy_title": "Deploy in Minutes",
+      "deploy_desc": "Pre-configured agent templates mean you can go live the same day. No coding, no complex setup required.",
+      "roi_title": "Measurable ROI",
+      "roi_desc": "Track every call, every booking, and every dollar saved. See exactly what your AI agents deliver."
+    },
+    "bottom_cta": {
+      "title": "Ready to Transform Your {{vertical}} Practice?",
+      "subtitle": "Join hundreds of {{vertical_lower}} businesses using QVO to answer every call, book more appointments, and grow revenue.",
+      "start_trial": "Start Your Free Trial",
+      "see_demo": "See Live Demo"
+    },
+    "not_found": {
+      "title": "Industry Not Found",
+      "subtitle": "We don't have a page for that industry yet.",
+      "view_all": "View all use cases"
+    }
   }
 }

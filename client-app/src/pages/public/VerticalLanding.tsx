@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Phone, Clock, DollarSign, Users, CheckCircle2, ArrowRight,
   Stethoscope, Home, Scale, Wrench, Smile, BarChart3, Shield,
@@ -333,6 +334,7 @@ const verticals: Record<string, VerticalData> = {
 };
 
 export default function VerticalLanding() {
+  const { t } = useTranslation('marketing');
   const { vertical } = useParams<{ vertical: string }>();
   const data = vertical ? verticals[vertical] : null;
 
@@ -349,15 +351,17 @@ export default function VerticalLanding() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-display font-bold text-text-primary mb-4">Industry Not Found</h1>
-          <p className="text-slate-600 mb-6">We don't have a page for that industry yet.</p>
-          <Link to="/use-cases" className="text-primary hover:underline">View all use cases &rarr;</Link>
+          <h1 className="text-2xl font-display font-bold text-text-primary mb-4">{t('vertical_page.not_found.title')}</h1>
+          <p className="text-slate-600 mb-6">{t('vertical_page.not_found.subtitle')}</p>
+          <Link to="/use-cases" className="text-primary hover:underline">{t('vertical_page.not_found.view_all')} &rarr;</Link>
         </div>
       </div>
     );
   }
 
   const Icon = data.icon;
+  const verticalName = data.name;
+  const verticalLower = data.name.toLowerCase();
 
   return (
     <>
@@ -415,14 +419,14 @@ export default function VerticalLanding() {
                   onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${data.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup' }); }}
                   className="btn-primary-glow inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-on-primary px-6 py-3 rounded-xl font-medium transition-colors duration-[var(--motion-base)] min-h-[44px]"
                 >
-                  Start Free Trial <ArrowRight className="h-4 w-4" />
+                  {t('vertical_page.hero.start_trial')} <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
                   to={`/demo?agent=${data.demoAgent}`}
                   onClick={() => { trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${data.slug}`, 'hero'); trackConversionEvent('demo_started', `/industries/${data.slug}`); }}
                   className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20"
                 >
-                  Try Live Demo <Phone className="h-4 w-4" />
+                  {t('vertical_page.hero.try_demo')} <Phone className="h-4 w-4" />
                 </Link>
               </div>
             </div>
@@ -433,7 +437,7 @@ export default function VerticalLanding() {
                 <div className="rounded-2xl bg-sidebar-bg/70 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-success">Live performance</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-success">{t('vertical_page.card.live_performance')}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     {data.stats.slice(0, 4).map((stat) => (
@@ -445,7 +449,7 @@ export default function VerticalLanding() {
                   </div>
                   <div className="mt-5 pt-4 border-t border-white/10 flex items-center gap-2 text-[11px] text-white/70">
                     <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                    From QVO customers in {data.name.toLowerCase()}
+                    {t('vertical_page.card.from_customers_in', { vertical: verticalLower })}
                   </div>
                 </div>
                 <div className="absolute -bottom-3 -left-3 rounded-xl bg-white shadow-xl border border-slate-100 p-3 flex items-center gap-2.5 max-w-[220px]">
@@ -453,8 +457,8 @@ export default function VerticalLanding() {
                     <Icon className="h-4 w-4 text-white" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-text-primary leading-tight">Pre-built for {data.name}</p>
-                    <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Deploy in minutes, no code</p>
+                    <p className="text-[11px] font-semibold text-text-primary leading-tight">{t('vertical_page.card.pre_built_for', { vertical: verticalName })}</p>
+                    <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{t('vertical_page.card.deploy_minutes')}</p>
                   </div>
                 </div>
               </div>
@@ -481,10 +485,10 @@ export default function VerticalLanding() {
           <RevealSection>
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
-                The Problems You Face Every Day
+                {t('vertical_page.problems.title')}
               </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                {data.name} businesses lose revenue and patients to these common phone-related challenges.
+                {t('vertical_page.problems.subtitle', { vertical: verticalName })}
               </p>
             </div>
           </RevealSection>
@@ -513,10 +517,10 @@ export default function VerticalLanding() {
           <RevealSection>
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
-                AI Agents Built for {data.name}
+                {t('vertical_page.agents.title', { vertical: verticalName })}
               </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                Pre-built agent templates designed specifically for {data.name.toLowerCase()} workflows. Deploy in minutes, not months.
+                {t('vertical_page.agents.subtitle', { vertical_lower: verticalLower })}
               </p>
             </div>
           </RevealSection>
@@ -549,10 +553,10 @@ export default function VerticalLanding() {
           <RevealSection>
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
-                Calculate Your ROI
+                {t('vertical_page.roi.title')}
               </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                See how much your {data.name.toLowerCase()} practice could save with QVO voice agents.
+                {t('vertical_page.roi.subtitle', { vertical_lower: verticalLower })}
               </p>
             </div>
           </RevealSection>
@@ -585,15 +589,15 @@ export default function VerticalLanding() {
           <RevealSection>
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
-                Why {data.name} Businesses Choose QVO
+                {t('vertical_page.why.title', { vertical: verticalName })}
               </h2>
             </div>
           </RevealSection>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { icon: Shield, title: 'Industry Expertise', desc: `Purpose-built for ${data.name.toLowerCase()}. Our agents understand your terminology, workflows, and compliance needs.` },
-              { icon: Clock, title: 'Deploy in Minutes', desc: 'Pre-configured agent templates mean you can go live the same day. No coding, no complex setup required.' },
-              { icon: BarChart3, title: 'Measurable ROI', desc: 'Track every call, every booking, and every dollar saved. See exactly what your AI agents deliver.' },
+              { icon: Shield, title: t('vertical_page.why.industry_expertise_title'), desc: t('vertical_page.why.industry_expertise_desc', { vertical_lower: verticalLower }) },
+              { icon: Clock, title: t('vertical_page.why.deploy_title'), desc: t('vertical_page.why.deploy_desc') },
+              { icon: BarChart3, title: t('vertical_page.why.roi_title'), desc: t('vertical_page.why.roi_desc') },
             ].map((item, idx) => (
               <RevealSection key={item.title} delay={`delay-${idx * 150}`}>
                 <div className="text-center">
@@ -612,10 +616,10 @@ export default function VerticalLanding() {
       <section className="py-20 bg-gradient-to-br from-primary to-primary-hover">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-4">
-            Ready to Transform Your {data.name} Practice?
+            {t('vertical_page.bottom_cta.title', { vertical: verticalName })}
           </h2>
           <p className="text-lg text-white/80 mb-8 max-w-2xl mx-auto">
-            Join hundreds of {data.name.toLowerCase()} businesses using QVO to answer every call, book more appointments, and grow revenue.
+            {t('vertical_page.bottom_cta.subtitle', { vertical_lower: verticalLower })}
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link
@@ -623,14 +627,14 @@ export default function VerticalLanding() {
               onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${data.slug}`, 'bottom-cta'); trackConversionEvent('cta_click', `/industries/${data.slug}`, { cta: 'signup_bottom' }); }}
               className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors"
             >
-              Start Your Free Trial <ArrowRight className="h-4 w-4" />
+              {t('vertical_page.bottom_cta.start_trial')} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to={`/demo?agent=${data.demoAgent}`}
               onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${data.slug}`, 'bottom-cta')}
               className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-8 py-3.5 rounded-xl font-semibold transition-colors backdrop-blur-sm"
             >
-              See Live Demo <Phone className="h-4 w-4" />
+              {t('vertical_page.bottom_cta.see_demo')} <Phone className="h-4 w-4" />
             </Link>
           </div>
         </div>
