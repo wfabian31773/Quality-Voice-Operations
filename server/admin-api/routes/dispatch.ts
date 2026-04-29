@@ -566,8 +566,26 @@ export const getJobHandler: RequestHandler = async (req, res) => {
       `SELECT * FROM dispatch_job_events WHERE job_id = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 50`,
       [id, tenantId],
     );
+    // Surface the `auto_flagged` tag that `flagBadArrivalIfNeeded` writes
+    // onto the matching `exception_reported` event so dispatchers can tell
+    // at a glance which exceptions came from the system vs. a human report.
+    // The metadata lives on the event row (which carries `exception_id` →
+    // this row); a correlated subquery is fine here — there is at most one
+    // event per exception and the lookup is bounded by the per-job index.
     const { rows: exceptions } = await pool.query(
-      `SELECT * FROM dispatch_job_exceptions WHERE job_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`,
+      `SELECT ex.*,
+              (
+                SELECT ev.metadata->>'auto_flagged'
+                  FROM dispatch_job_events ev
+                 WHERE ev.tenant_id = ex.tenant_id
+                   AND ev.job_id = ex.job_id
+                   AND ev.event_type = 'exception_reported'
+                   AND ev.metadata->>'exception_id' = ex.id
+                 LIMIT 1
+              ) AS auto_flagged
+         FROM dispatch_job_exceptions ex
+        WHERE ex.job_id = $1 AND ex.tenant_id = $2
+        ORDER BY ex.created_at DESC`,
       [id, tenantId],
     );
     const { rows: attachments } = await pool.query(

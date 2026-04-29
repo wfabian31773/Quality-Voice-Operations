@@ -156,6 +156,11 @@ interface JobException {
   resolution: string;
   resolved_at: string | null;
   created_at: string;
+  // When the row was inserted by an automated rule (e.g. the bad-arrival
+  // detector in `flagBadArrivalIfNeeded`), the matching `exception_reported`
+  // event carries `auto_flagged: '<rule>'` in its metadata, which the
+  // `getJobHandler` query surfaces here. `null` for human-reported rows.
+  auto_flagged?: string | null;
 }
 
 interface JobAttachment {
@@ -2737,8 +2742,18 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
   const [exceptionData, setExceptionData] = useState({ exception_type: 'delay', reason: '' });
   const [attachmentData, setAttachmentData] = useState({ attachment_type: 'note', title: '', content: '' });
   const [followUpData, setFollowUpData] = useState({ title: '', description: '', notes: '' });
+  // Source filter for the exceptions tab so supervisors can triage system
+  // signals (e.g. bad-arrival auto-flags) separately from human reports.
+  const [exceptionSource, setExceptionSource] = useState<'all' | 'auto' | 'human'>('all');
 
   const { job, events, exceptions, attachments, live_eta: liveEta } = detail;
+
+  // Reset the source filter when the dispatcher opens a different job so
+  // a leftover "Auto-flagged" filter from one job doesn't silently hide
+  // the human-reported exceptions on the next one.
+  useEffect(() => {
+    setExceptionSource('all');
+  }, [job.id]);
   const nextStates = VALID_TRANSITIONS[job.status] || [];
 
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -2950,14 +2965,52 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             <RouteTakenTab jobId={job.id} />
           )}
 
-          {detailTab === 'exceptions' && (
+          {detailTab === 'exceptions' && (() => {
+            // Auto-flagged rows carry a non-null `auto_flagged` tag from the
+            // matching `exception_reported` event (see `flagBadArrivalIfNeeded`
+            // server-side). The filter lets supervisors triage system signals
+            // separately from human reports.
+            const autoCount = exceptions.filter(e => e.auto_flagged).length;
+            const humanCount = exceptions.length - autoCount;
+            const visibleExceptions = exceptions.filter(e =>
+              exceptionSource === 'all'
+              || (exceptionSource === 'auto' && e.auto_flagged)
+              || (exceptionSource === 'human' && !e.auto_flagged),
+            );
+            return (
             <div className="space-y-3">
-              {!isReadOnly && (
-                <button onClick={() => setShowExceptionForm(true)}
-                  className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Report Exception
-                </button>
-              )}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                {!isReadOnly && (
+                  <button onClick={() => setShowExceptionForm(true)}
+                    className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Report Exception
+                  </button>
+                )}
+                {exceptions.length > 0 && (
+                  <div className="flex items-center gap-1 text-[11px]" role="group" aria-label="Filter exceptions by source">
+                    <button
+                      onClick={() => setExceptionSource('all')}
+                      className={`px-2 py-1 rounded border ${exceptionSource === 'all' ? 'bg-primary text-white border-primary' : 'bg-surface-secondary text-muted border-border hover:text-heading'}`}
+                    >
+                      All ({exceptions.length})
+                    </button>
+                    <button
+                      onClick={() => setExceptionSource('auto')}
+                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'auto' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface-secondary text-muted border-border hover:text-heading'}`}
+                      title="Inserted automatically by system rules (e.g. bad-arrival detection)"
+                    >
+                      <Shield className="h-3 w-3" /> Auto-flagged ({autoCount})
+                    </button>
+                    <button
+                      onClick={() => setExceptionSource('human')}
+                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'human' ? 'bg-primary text-white border-primary' : 'bg-surface-secondary text-muted border-border hover:text-heading'}`}
+                      title="Reported by a dispatcher or technician"
+                    >
+                      <User className="h-3 w-3" /> Human ({humanCount})
+                    </button>
+                  </div>
+                )}
+              </div>
               {showExceptionForm && (
                 <div className="bg-surface-secondary border border-border rounded-lg p-3 space-y-2">
                   <select value={exceptionData.exception_type} onChange={e => setExceptionData(p => ({...p, exception_type: e.target.value}))} className={inputCls}>
@@ -2970,23 +3023,57 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   </div>
                 </div>
               )}
-              {exceptions.length === 0 ? <p className="text-sm text-muted text-center py-4">No exceptions</p> : (
-                exceptions.map(e => (
-                  <div key={e.id} className="bg-surface-secondary border border-border rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-heading capitalize">{e.exception_type.replace(/_/g, ' ')}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {e.resolved_at ? 'Resolved' : 'Open'}
-                      </span>
+              {visibleExceptions.length === 0 ? (
+                <p className="text-sm text-muted text-center py-4">
+                  {exceptions.length === 0
+                    ? 'No exceptions'
+                    : exceptionSource === 'auto'
+                      ? 'No auto-flagged exceptions'
+                      : 'No human-reported exceptions'}
+                </p>
+              ) : (
+                visibleExceptions.map(e => {
+                  // Render a distinct amber "Auto" pill (with a tooltip naming
+                  // the rule, e.g. "bad_arrival") next to the exception type so
+                  // dispatchers can tell at a glance which rows came from the
+                  // system. Auto rows also get an amber left border so they
+                  // stand out from human-reported rows in the scanned list.
+                  const isAuto = !!e.auto_flagged;
+                  const ruleLabel = isAuto ? String(e.auto_flagged).replace(/_/g, ' ') : '';
+                  return (
+                    <div
+                      key={e.id}
+                      className={`bg-surface-secondary border border-border rounded-lg p-3 ${isAuto ? 'border-l-4 border-l-amber-500' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-xs font-medium text-heading capitalize">{e.exception_type.replace(/_/g, ' ')}</span>
+                          {isAuto && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-medium flex items-center gap-1"
+                              title={`Auto-flagged by system rule: ${ruleLabel}`}
+                            >
+                              <Shield className="h-2.5 w-2.5" /> Auto
+                            </span>
+                          )}
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {e.resolved_at ? 'Resolved' : 'Open'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted mt-1">{e.reason}</p>
+                      {e.resolution && <p className="text-xs text-green-700 mt-1">Resolution: {e.resolution}</p>}
+                      <p className="text-[10px] text-muted mt-1">
+                        {new Date(e.created_at).toLocaleString()}
+                        {isAuto && <span className="ml-1">· system-flagged</span>}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted mt-1">{e.reason}</p>
-                    {e.resolution && <p className="text-xs text-green-700 mt-1">Resolution: {e.resolution}</p>}
-                    <p className="text-[10px] text-muted mt-1">{new Date(e.created_at).toLocaleString()}</p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
-          )}
+            );
+          })()}
 
           {detailTab === 'attachments' && (
             <div className="space-y-3">
