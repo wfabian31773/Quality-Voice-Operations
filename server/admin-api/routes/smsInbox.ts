@@ -7,6 +7,10 @@ import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import * as SmsService from '../../../platform/sms/SmsConversationService';
+import {
+  SMS_CANNED_RESPONSE_TOKENS,
+  findUnknownSmsCannedResponseTokens,
+} from '../../../shared/sms/cannedResponseTokens';
 
 const router = Router();
 const logger = createLogger('ADMIN_SMS_INBOX');
@@ -385,6 +389,21 @@ const createCannedResponseHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const data = req.body as { title?: string; body?: string; category?: string; variables?: string[]; shortcut?: string; isGlobal?: boolean };
   if (!data.title || !data.body) return res.status(400).json({ error: 'title and body are required' });
+  // Reject typos like {{custmer_name}} server-side too so the inline
+  // editor warning can't be bypassed via direct API calls — see task
+  // #806 and shared/sms/cannedResponseTokens.ts.
+  const unknownTokens = findUnknownSmsCannedResponseTokens(data.body);
+  if (unknownTokens.length > 0) {
+    return res.status(400).json({
+      error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+        .map((t) => `{{${t}}}`)
+        .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
+        .map((t) => `{{${t}}}`)
+        .join(', ')}.`,
+      unknownTokens,
+      knownTokens: SMS_CANNED_RESPONSE_TOKENS,
+    });
+  }
   try {
     const response = await SmsService.createCannedResponse(tenantId, { ...data, title: data.title, body: data.body, createdBy: userId });
     return res.status(201).json({ response });
@@ -396,6 +415,21 @@ const createCannedResponseHandler: RequestHandler = async (req, res) => {
 const updateCannedResponseHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
+  const { body } = req.body as { body?: string };
+  if (body !== undefined) {
+    const unknownTokens = findUnknownSmsCannedResponseTokens(body);
+    if (unknownTokens.length > 0) {
+      return res.status(400).json({
+        error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+          .map((t) => `{{${t}}}`)
+          .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
+          .map((t) => `{{${t}}}`)
+          .join(', ')}.`,
+        unknownTokens,
+        knownTokens: SMS_CANNED_RESPONSE_TOKENS,
+      });
+    }
+  }
   try {
     const response = await SmsService.updateCannedResponse(tenantId, id, req.body);
     if (!response) return res.status(404).json({ error: 'Template not found' });

@@ -5,6 +5,10 @@ import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { sendEmail } from '../../../platform/email';
+import {
+  TICKET_TEMPLATE_TOKENS,
+  findUnknownTicketTemplateTokens,
+} from '../../../shared/tickets/templateTokens';
 
 const router = Router();
 const logger = createLogger('ADMIN_TICKETS');
@@ -1430,6 +1434,21 @@ const createTemplateHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { name, subject, body, category_id, variables } = req.body;
   if (!name || !body) return res.status(400).json({ error: 'name and body are required' });
+  // Reject typos like {{custmer_name}} server-side too so the inline
+  // editor warning can't be bypassed via direct API calls — see task
+  // #806 and shared/tickets/templateTokens.ts.
+  const unknownTokens = findUnknownTicketTemplateTokens(body);
+  if (unknownTokens.length > 0) {
+    return res.status(400).json({
+      error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+        .map((t) => `{{${t}}}`)
+        .join(', ')}. Supported tokens: ${TICKET_TEMPLATE_TOKENS
+        .map((t) => `{{${t}}}`)
+        .join(', ')}.`,
+      unknownTokens,
+      knownTokens: TICKET_TEMPLATE_TOKENS,
+    });
+  }
   const pool = getPlatformPool();
   try {
     const { rows } = await pool.query(
@@ -1448,6 +1467,20 @@ const updateTemplateHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
   const { name, subject, body, category_id, variables, is_active } = req.body;
+  if (body !== undefined) {
+    const unknownTokens = findUnknownTicketTemplateTokens(body);
+    if (unknownTokens.length > 0) {
+      return res.status(400).json({
+        error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+          .map((t) => `{{${t}}}`)
+          .join(', ')}. Supported tokens: ${TICKET_TEMPLATE_TOKENS
+          .map((t) => `{{${t}}}`)
+          .join(', ')}.`,
+        unknownTokens,
+        knownTokens: TICKET_TEMPLATE_TOKENS,
+      });
+    }
+  }
   const pool = getPlatformPool();
   try {
     const { rows } = await pool.query(

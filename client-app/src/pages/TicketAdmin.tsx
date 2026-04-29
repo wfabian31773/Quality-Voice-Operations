@@ -1,8 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Modal from '../components/Modal';
+import {
+  TICKET_TEMPLATE_TOKENS,
+  findUnknownTicketTemplateTokens,
+} from '../../../shared/tickets/templateTokens';
 import {
   ArrowLeft, Settings2, Plus, X, Trash2, Edit, Tag, Shield,
   Zap, FileText, Columns, GitBranch, Save, ToggleLeft, ToggleRight,
@@ -151,8 +155,25 @@ export default function TicketAdmin() {
     }
   };
 
+  // Surface typos like {{custmer_name}} before they ship in a
+  // customer-facing reply — see task #806 and
+  // shared/tickets/templateTokens.ts. The renderer (insertTemplate in
+  // TicketDetail) only substitutes tokens in the same allowlist, so
+  // anything else would leak through as raw braces.
+  const unknownTemplateBodyTokens = useMemo(
+    () => (tab === 'templates' && editItem
+      ? findUnknownTicketTemplateTokens(editItem.body as string | undefined)
+      : []),
+    [tab, editItem],
+  );
+  const hasUnknownTemplateTokens = unknownTemplateBodyTokens.length > 0;
+
   const saveItem = async () => {
     if (!editItem) return;
+    if (tab === 'templates' && hasUnknownTemplateTokens) {
+      setError(`Unknown merge token${unknownTemplateBodyTokens.length === 1 ? '' : 's'}: ${unknownTemplateBodyTokens.map(t => `{{${t}}}`).join(', ')}. Fix or remove them before saving.`);
+      return;
+    }
     try {
       const { _endpoint, _isNew, id, ...data } = editItem as Record<string, unknown>;
       if (_isNew) {
@@ -163,8 +184,8 @@ export default function TicketAdmin() {
       setShowModal(false);
       setEditItem(null);
       fetchAll();
-    } catch {
-      setError('Failed to save');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
 
@@ -562,7 +583,44 @@ export default function TicketAdmin() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1">Body *</label>
-                    <textarea value={(editItem.body as string) || ''} onChange={e => setEditItem(p => ({ ...p!, body: e.target.value }))} rows={5} placeholder="Use {{variable}} for dynamic content" className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    <textarea
+                      value={(editItem.body as string) || ''}
+                      onChange={e => setEditItem(p => ({ ...p!, body: e.target.value }))}
+                      rows={5}
+                      placeholder={`Use ${TICKET_TEMPLATE_TOKENS.map(t => `{{${t}}}`).join(', ')} for dynamic content.`}
+                      aria-invalid={hasUnknownTemplateTokens || undefined}
+                      className={`w-full px-3 py-2 rounded-lg border bg-surface text-heading text-sm focus:outline-none focus:ring-2 ${
+                        hasUnknownTemplateTokens
+                          ? 'border-amber-500 focus:ring-amber-500/30'
+                          : 'border-border focus:ring-primary/30'
+                      }`}
+                    />
+                    {hasUnknownTemplateTokens && (
+                      <p
+                        role="alert"
+                        data-testid="ticket-template-unknown-token-warning"
+                        className="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
+                      >
+                        Unknown merge token{unknownTemplateBodyTokens.length === 1 ? '' : 's'}{' '}
+                        {unknownTemplateBodyTokens.map((t, i) => (
+                          <span key={t}>
+                            {i > 0 && ', '}
+                            <code>{`{{${t}}}`}</code>
+                          </span>
+                        ))}
+                        {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
+                      </p>
+                    )}
+                    <p className="mt-1 text-[11px] text-muted">
+                      Supported tokens:{' '}
+                      {TICKET_TEMPLATE_TOKENS.map((t, i) => (
+                        <span key={t}>
+                          {i > 0 && ', '}
+                          <code>{`{{${t}}}`}</code>
+                        </span>
+                      ))}
+                      .
+                    </p>
                   </div>
                 </>
               )}
@@ -650,7 +708,12 @@ export default function TicketAdmin() {
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
               <button onClick={() => { setShowModal(false); setEditItem(null); }} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
-              <button onClick={saveItem} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 flex items-center gap-1.5">
+              <button
+                onClick={saveItem}
+                disabled={tab === 'templates' && hasUnknownTemplateTokens}
+                title={tab === 'templates' && hasUnknownTemplateTokens ? 'Fix the unknown merge tokens before saving.' : undefined}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
+              >
                 <Save className="h-4 w-4" /> Save
               </button>
             </div>

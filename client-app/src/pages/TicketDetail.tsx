@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { TICKET_TEMPLATE_TOKENS } from '../../../shared/tickets/templateTokens';
 import {
   ArrowLeft, Clock, AlertCircle, CheckCircle2, User, Send, Eye, EyeOff,
   Link2, Paperclip, Tag, Calendar, ChevronDown, Zap, MessageSquare,
@@ -356,17 +357,27 @@ export default function TicketDetail() {
   const insertTemplate = (template: Template) => {
     let body = template.body;
     if (ticket) {
-      body = body
-        .replace(/\{\{ticket_number\}\}/g, `#${ticket.ticket_number}`)
-        .replace(/\{\{subject\}\}/g, ticket.subject)
-        .replace(/\{\{status\}\}/g, ticket.status)
-        .replace(/\{\{priority\}\}/g, ticket.priority)
-        .replace(/\{\{contact_name\}\}/g, ticket.contact_name || '')
-        .replace(/\{\{contact_email\}\}/g, ticket.contact_email || '')
-        .replace(/\{\{contact_phone\}\}/g, ticket.contact_phone || '')
-        .replace(/\{\{department\}\}/g, ticket.department || '')
-        .replace(/\{\{assignee\}\}/g, ticket.assignee_email || 'Unassigned')
-        .replace(/\{\{created_at\}\}/g, new Date(ticket.created_at).toLocaleDateString());
+      // The substitution map is keyed off TICKET_TEMPLATE_TOKENS so
+      // this loop and the editor's "supported tokens" list can never
+      // drift. Adding a token requires touching
+      // `shared/tickets/templateTokens.ts`, which automatically
+      // updates the editor warnings, the help text, and the
+      // server-side reject — see task #806.
+      const tokenValues: Record<typeof TICKET_TEMPLATE_TOKENS[number], string> = {
+        ticket_number: `#${ticket.ticket_number}`,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        contact_name: ticket.contact_name || '',
+        contact_email: ticket.contact_email || '',
+        contact_phone: ticket.contact_phone || '',
+        department: ticket.department || '',
+        assignee: ticket.assignee_email || 'Unassigned',
+        created_at: new Date(ticket.created_at).toLocaleDateString(),
+      };
+      for (const token of TICKET_TEMPLATE_TOKENS) {
+        body = body.replace(new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, 'g'), tokenValues[token]);
+      }
     }
     setNoteContent(body);
     setShowTemplateMenu(false);

@@ -1,6 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import {
+  SMS_CANNED_RESPONSE_TOKENS,
+  findUnknownSmsCannedResponseTokens,
+} from '../../../shared/sms/cannedResponseTokens';
 import {
   MessageSquare, Send, Sparkles, Phone, ArrowLeft, Inbox, Search,
   Pin, Flag, Clock, User, Users, Tag, X, Check, AlertTriangle,
@@ -299,7 +303,13 @@ export default function SmsInbox() {
   const useTemplate = (template: CannedResponse) => {
     let text = template.body;
     if (selectedConv) {
-      const vars: Record<string, string> = {
+      // The substitution map is keyed off SMS_CANNED_RESPONSE_TOKENS so
+      // this loop and the editor's "supported tokens" list can never
+      // drift. Adding a token requires touching
+      // `shared/sms/cannedResponseTokens.ts`, which automatically
+      // updates the editor warnings, the help text, and the
+      // server-side reject — see task #806.
+      const tokenValues: Record<typeof SMS_CANNED_RESPONSE_TOKENS[number], string> = {
         name: selectedConv.contactName || selectedConv.remoteNumber,
         phone: selectedConv.remoteNumber,
         contact_name: selectedConv.contactName || '',
@@ -307,8 +317,8 @@ export default function SmsInbox() {
         contact_location: selectedConv.contactLocation || '',
         agent_name: user?.email || '',
       };
-      for (const [key, val] of Object.entries(vars)) {
-        text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), val);
+      for (const token of SMS_CANNED_RESPONSE_TOKENS) {
+        text = text.replace(new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, 'gi'), tokenValues[token]);
       }
     }
     setReplyText(text);
@@ -963,8 +973,23 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
 
   useEffect(() => { loadTemplates(); }, []);
 
+  // Surface typos like {{custmer_name}} before they ship in a
+  // customer-facing reply — see task #806 and
+  // shared/sms/cannedResponseTokens.ts. The renderer (useTemplate)
+  // only substitutes tokens in the same allowlist, so anything else
+  // would leak through as raw braces.
+  const unknownBodyTokens = useMemo(
+    () => findUnknownSmsCannedResponseTokens(form.body),
+    [form.body],
+  );
+  const hasUnknownTokens = unknownBodyTokens.length > 0;
+
   const save = async () => {
     if (!form.title || !form.body) { setError('Title and body are required'); return; }
+    if (hasUnknownTokens) {
+      setError(`Unknown merge token${unknownBodyTokens.length === 1 ? '' : 's'}: ${unknownBodyTokens.map(t => `{{${t}}}`).join(', ')}. Fix or remove them before saving.`);
+      return;
+    }
     try {
       const data = {
         title: form.title,
@@ -1021,14 +1046,58 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
         <div className="bg-surface-secondary rounded-lg p-4 mb-4 space-y-3">
           <h3 className="text-sm font-medium text-heading">{editId ? 'Edit' : 'New'} Template</h3>
           <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none" />
-          <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} placeholder="Template body (use {{variable}} for substitution)" rows={3} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none resize-none" />
+          <div>
+            <textarea
+              value={form.body}
+              onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+              placeholder={`Template body — use ${SMS_CANNED_RESPONSE_TOKENS.map(t => `{{${t}}}`).join(', ')}.`}
+              rows={3}
+              aria-invalid={hasUnknownTokens || undefined}
+              className={`w-full px-3 py-2 rounded-lg border bg-surface text-heading text-sm focus:outline-none resize-none ${
+                hasUnknownTokens ? 'border-amber-500' : 'border-border'
+              }`}
+            />
+            {hasUnknownTokens && (
+              <p
+                role="alert"
+                data-testid="sms-template-unknown-token-warning"
+                className="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
+              >
+                Unknown merge token{unknownBodyTokens.length === 1 ? '' : 's'}{' '}
+                {unknownBodyTokens.map((t, i) => (
+                  <span key={t}>
+                    {i > 0 && ', '}
+                    <code>{`{{${t}}}`}</code>
+                  </span>
+                ))}
+                {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
+              </p>
+            )}
+            <p className="mt-1 text-[11px] text-muted">
+              Supported tokens:{' '}
+              {SMS_CANNED_RESPONSE_TOKENS.map((t, i) => (
+                <span key={t}>
+                  {i > 0 && ', '}
+                  <code>{`{{${t}}}`}</code>
+                </span>
+              ))}
+              .
+            </p>
+          </div>
           <div className="grid grid-cols-3 gap-3">
             <input type="text" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="Category" className="px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none" />
             <input type="text" value={form.shortcut} onChange={e => setForm(f => ({ ...f, shortcut: e.target.value }))} placeholder="Shortcut (e.g. /greet)" className="px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none" />
             <input type="text" value={form.variables} onChange={e => setForm(f => ({ ...f, variables: e.target.value }))} placeholder="Variables (comma-separated)" className="px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none" />
           </div>
           <div className="flex gap-2">
-            <button onClick={save} className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90">Save</button>
+            <button
+              onClick={save}
+              disabled={hasUnknownTokens}
+              title={hasUnknownTokens ? 'Fix the unknown merge tokens before saving.' : undefined}
+              className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
+            >
+              Save
+            </button>
             <button onClick={() => { setShowForm(false); setEditId(null); }} className="px-4 py-2 text-muted text-sm hover:text-heading">Cancel</button>
           </div>
         </div>
