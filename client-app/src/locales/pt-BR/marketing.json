@@ -720,7 +720,8 @@
     "status": {
       "active": "Chamada ativa",
       "idle": "Inativo",
-      "listening": "Ouvindo..."
+      "listening": "Ouvindo...",
+      "reconnecting": "Reconectando..."
     },
     "stats_card": {
       "title": "Estatísticas da demo",

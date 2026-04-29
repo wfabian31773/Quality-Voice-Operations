@@ -344,6 +344,7 @@ export default function Demo() {
     tools,
     activityEvents,
     connected: sseConnected,
+    reconnecting: sseReconnecting,
   } = useDemoSSE();
 
   const isActive = callStatus === 'ringing' || callStatus === 'connected';
@@ -516,12 +517,21 @@ export default function Demo() {
                   isActive ? 'demo-call-status-active' : 'demo-call-status-idle'
                 }`}>
                   {isActive ? (
-                    <>
-                      <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                      <Phone className="h-4 w-4 text-success" />
-                      <span className="text-sm font-medium text-success">{t('demo.status.active')}</span>
-                      {callStartTime && <CallTimer startTime={callStartTime} />}
-                    </>
+                    sseReconnecting || !sseConnected ? (
+                      <>
+                        <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                        <Phone className="h-4 w-4 text-accent" />
+                        <span className="text-sm font-medium text-accent">{t('demo.status.reconnecting')}</span>
+                        {callStartTime && <CallTimer startTime={callStartTime} />}
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                        <Phone className="h-4 w-4 text-success" />
+                        <span className="text-sm font-medium text-success">{t('demo.status.active')}</span>
+                        {callStartTime && <CallTimer startTime={callStartTime} />}
+                      </>
+                    )
                   ) : (
                     <>
                       <div className="w-2 h-2 rounded-full bg-border-strong/40" />

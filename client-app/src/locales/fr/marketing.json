@@ -720,7 +720,8 @@
     "status": {
       "active": "Appel en cours",
       "idle": "Inactif",
-      "listening": "À l'écoute..."
+      "listening": "À l'écoute...",
+      "reconnecting": "Reconnexion..."
     },
     "stats_card": {
       "title": "Statistiques de la démo",

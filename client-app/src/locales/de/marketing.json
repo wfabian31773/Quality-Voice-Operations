@@ -720,7 +720,8 @@
     "status": {
       "active": "Anruf aktiv",
       "idle": "Inaktiv",
-      "listening": "Hört zu..."
+      "listening": "Hört zu...",
+      "reconnecting": "Verbindung wird wiederhergestellt..."
     },
     "stats_card": {
       "title": "Demo-Statistiken",

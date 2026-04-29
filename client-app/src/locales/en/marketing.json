@@ -720,7 +720,8 @@
     "status": {
       "active": "Call Active",
       "idle": "Idle",
-      "listening": "Listening..."
+      "listening": "Listening...",
+      "reconnecting": "Reconnecting..."
     },
     "stats_card": {
       "title": "Demo Stats",

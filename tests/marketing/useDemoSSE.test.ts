@@ -12,6 +12,7 @@ import { renderHook, act, waitFor, cleanup } from '@testing-library/react';
 import {
   useDemoSSE,
   lifecycleToCallStatus,
+  RECONNECT_BACKOFF_MS,
 } from '../../client-app/src/hooks/useDemoSSE';
 
 // ---------------------------------------------------------------------------
@@ -453,5 +454,258 @@ describe('useDemoSSE — activity dedup', () => {
       expect(result.current.activityEvents).toHaveLength(2);
     });
     expect(result.current.activityEvents[1].id).toBe('act-second');
+  });
+});
+
+// ===========================================================================
+// 4. Auto-reconnect on dropped EventSource
+// ---------------------------------------------------------------------------
+// The demo SSE is the prospect's window into a live call. If the browser's
+// connection blips mid-call the page used to silently freeze: connected went
+// false but no new EventSource was opened. These tests pin the reconnect
+// behaviour so a brief outage recovers without a refresh.
+// ===========================================================================
+describe('useDemoSSE — reconnect on dropped stream', () => {
+  it('opens a fresh EventSource with backoff after onerror, preserving buffered transcript', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    activeCallPayload = {
+      activeCalls: [
+        {
+          callId: 'call-flap',
+          state: 'ACTIVE_CONVERSATION',
+          agentName: 'Medical Front Desk',
+          startTime: '2026-04-29T12:00:00Z',
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useDemoSSE());
+
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(1);
+    });
+    const first = MockEventSource.last!;
+
+    // Bring the stream up cleanly and buffer a transcript line so we can
+    // assert the reconnect doesn't wipe what the prospect already saw.
+    act(() => {
+      first.triggerOpen();
+      first.emit('call_state', {
+        state: 'ACTIVE_CONVERSATION',
+        agentName: 'Medical Front Desk',
+        durationSeconds: 5,
+      });
+      first.emit('transcript', {
+        speaker: 'caller',
+        text: 'Hi, I need to schedule something.',
+        timestamp: '2026-04-29T12:00:05Z',
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.connected).toBe(true);
+      expect(result.current.transcript).toHaveLength(1);
+    });
+    expect(result.current.reconnecting).toBe(false);
+
+    // Simulate the network blip. The hook should immediately surface a
+    // reconnecting state and tear down the dead socket so it isn't leaked.
+    act(() => {
+      first.triggerError();
+    });
+    await waitFor(() => {
+      expect(result.current.connected).toBe(false);
+      expect(result.current.reconnecting).toBe(true);
+    });
+    expect(first.closed).toBe(true);
+
+    // After the backoff completes a brand-new EventSource opens against the
+    // same call id.
+    act(() => {
+      vi.advanceTimersByTime(RECONNECT_BACKOFF_MS[0]);
+    });
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(2);
+    });
+    const second = MockEventSource.last!;
+    expect(second.url).toBe('/api/demo/live/call-flap');
+    // Buffered transcript must survive the reconnect — wiping it mid-call
+    // would be a worse UX than the freeze the bug originally caused.
+    expect(result.current.transcript).toHaveLength(1);
+
+    // When the new stream opens, the badge flips back to connected and the
+    // backoff counter resets.
+    act(() => {
+      second.triggerOpen();
+    });
+    await waitFor(() => {
+      expect(result.current.connected).toBe(true);
+      expect(result.current.reconnecting).toBe(false);
+    });
+  });
+
+  it('grows the backoff window on consecutive failures and resets it after a successful reopen', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    activeCallPayload = {
+      activeCalls: [
+        {
+          callId: 'call-backoff',
+          state: 'ACTIVE_CONVERSATION',
+          agentName: 'HVAC Dispatcher',
+          startTime: '2026-04-29T12:00:00Z',
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useDemoSSE());
+
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(1);
+    });
+
+    // First failure → first backoff slot.
+    act(() => {
+      MockEventSource.last!.triggerOpen();
+      MockEventSource.last!.triggerError();
+    });
+    await waitFor(() => {
+      expect(result.current.reconnecting).toBe(true);
+    });
+
+    // Stacking another error before the timer fires must NOT schedule a
+    // second reconnect — otherwise a flapping connection would create an
+    // EventSource storm.
+    act(() => {
+      MockEventSource.last!.triggerError();
+    });
+    expect(MockEventSource.instances.length).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(RECONNECT_BACKOFF_MS[0]);
+    });
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(2);
+    });
+
+    // Second failure (without an intervening successful open) → second
+    // backoff slot. Verify the timer doesn't fire early at the previous
+    // shorter window.
+    act(() => {
+      MockEventSource.last!.triggerError();
+    });
+    act(() => {
+      vi.advanceTimersByTime(RECONNECT_BACKOFF_MS[0]);
+    });
+    expect(MockEventSource.instances.length).toBe(2);
+    act(() => {
+      vi.advanceTimersByTime(
+        RECONNECT_BACKOFF_MS[1] - RECONNECT_BACKOFF_MS[0],
+      );
+    });
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(3);
+    });
+
+    // A successful reopen resets the backoff so the next failure goes back
+    // to the smallest delay.
+    act(() => {
+      MockEventSource.last!.triggerOpen();
+    });
+    await waitFor(() => {
+      expect(result.current.connected).toBe(true);
+      expect(result.current.reconnecting).toBe(false);
+    });
+
+    act(() => {
+      MockEventSource.last!.triggerError();
+    });
+    act(() => {
+      vi.advanceTimersByTime(RECONNECT_BACKOFF_MS[0]);
+    });
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(4);
+    });
+  });
+
+  it('stops reconnecting once the call ends, even if the stream errors during the drain window', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    activeCallPayload = {
+      activeCalls: [
+        {
+          callId: 'call-end',
+          state: 'AGENT_CONNECTED',
+          agentName: 'Medical Front Desk',
+          startTime: '2026-04-29T12:00:00Z',
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useDemoSSE());
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(1);
+    });
+    const es = MockEventSource.last!;
+    act(() => {
+      es.triggerOpen();
+      es.emit('call_state', {
+        state: 'CALL_COMPLETED',
+        agentName: 'Medical Front Desk',
+        durationSeconds: 42,
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.callStatus).toBe('ended');
+    });
+
+    // The server commonly closes the stream right after sending
+    // CALL_COMPLETED. We must NOT chase that with a retry loop.
+    act(() => {
+      es.triggerError();
+    });
+    expect(result.current.reconnecting).toBe(false);
+    act(() => {
+      vi.advanceTimersByTime(RECONNECT_BACKOFF_MS[RECONNECT_BACKOFF_MS.length - 1] + 1000);
+    });
+    expect(MockEventSource.instances.length).toBe(1);
+  });
+
+  it('clears any pending reconnect timer on unmount', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    activeCallPayload = {
+      activeCalls: [
+        {
+          callId: 'call-unmount-retry',
+          state: 'ACTIVE_CONVERSATION',
+          agentName: 'Medical Front Desk',
+          startTime: '2026-04-29T12:00:00Z',
+        },
+      ],
+    };
+
+    const { unmount } = renderHook(() => useDemoSSE());
+    await waitFor(() => {
+      expect(MockEventSource.instances.length).toBe(1);
+    });
+    const es = MockEventSource.last!;
+    act(() => {
+      es.triggerOpen();
+      es.triggerError();
+    });
+    expect(MockEventSource.instances.length).toBe(1);
+
+    unmount();
+
+    // After unmount, advancing past every backoff window must not spawn a
+    // new EventSource — that would be a leaked subscription.
+    act(() => {
+      vi.advanceTimersByTime(
+        RECONNECT_BACKOFF_MS[RECONNECT_BACKOFF_MS.length - 1] + 1000,
+      );
+    });
+    expect(MockEventSource.instances.length).toBe(1);
+    expect(es.closed).toBe(true);
   });
 });
