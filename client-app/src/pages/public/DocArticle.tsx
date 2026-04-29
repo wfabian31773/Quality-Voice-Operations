@@ -5,11 +5,19 @@ import SEO from '../../components/SEO';
 import { DocBlocks, slugify } from '../../components/DocBlocks';
 import { DocsSidebar } from '../../components/DocsSidebar';
 import { docCategories, getDocBySlug, getAdjacentDocs } from '../../data/docs';
+import {
+  useTranslatedArticle,
+  useArticleMetaTranslator,
+  useDocCategoryTranslator,
+} from '../../lib/translateDoc';
 import { api } from '../../lib/api';
 
 export default function DocArticle() {
   const { slug } = useParams<{ slug: string }>();
-  const article = slug ? getDocBySlug(slug) : undefined;
+  const rawArticle = slug ? getDocBySlug(slug) : undefined;
+  const article = useTranslatedArticle(rawArticle);
+  const translateMeta = useArticleMetaTranslator();
+  const translateCategory = useDocCategoryTranslator();
   const adjacent = slug ? getAdjacentDocs(slug) : { prev: undefined, next: undefined };
   const [feedback, setFeedback] = useState<'helpful' | 'not_helpful' | null>(null);
   const [comment, setComment] = useState('');
@@ -29,7 +37,10 @@ export default function DocArticle() {
 
   if (!article) return <Navigate to="/docs" replace />;
 
-  const category = docCategories.find((c) => c.slug === article.category);
+  const rawCategory = docCategories.find((c) => c.slug === article.category);
+  const category = rawCategory
+    ? { ...rawCategory, ...translateCategory(rawCategory) }
+    : undefined;
   const editUrl = `https://github.com/qvo-ai/docs/edit/main/${article.category}/${article.slug}.md`;
 
   const submitFeedback = async (vote: 'helpful' | 'not_helpful') => {
@@ -140,7 +151,7 @@ export default function DocArticle() {
                 </div>
               </header>
 
-              <DocBlocks blocks={article.body} />
+              <DocBlocks blocks={rawArticle!.body} articleSlug={article.slug} />
 
               <div className="mt-12 border-t border-border/50 pt-8">
                 {!feedback || (feedback === 'not_helpful' && !submitted) ? (
@@ -223,7 +234,7 @@ export default function DocArticle() {
                     className="group bg-white border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all"
                   >
                     <p className="text-xs text-text-primary/50 font-body mb-1">← Previous</p>
-                    <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{adjacent.prev.title}</p>
+                    <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{translateMeta(adjacent.prev).title}</p>
                   </Link>
                 ) : <div />}
                 {adjacent.next ? (
@@ -232,7 +243,7 @@ export default function DocArticle() {
                     className="group bg-white border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all sm:text-right"
                   >
                     <p className="text-xs text-text-primary/50 font-body mb-1">Next →</p>
-                    <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{adjacent.next.title}</p>
+                    <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{translateMeta(adjacent.next).title}</p>
                   </Link>
                 ) : <div />}
               </div>

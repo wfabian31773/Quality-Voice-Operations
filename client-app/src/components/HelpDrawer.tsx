@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { HelpCircle, X, ExternalLink, Mail, Send, Check, Loader2 } from 'lucide-react';
 import { DocBlocks } from './DocBlocks';
 import { findHelpForPath, getDocBySlug } from '../data/docs';
+import { useArticleMetaTranslator } from '../lib/translateDoc';
 import { api } from '../lib/api';
 import Modal from './Modal';
 
@@ -18,6 +19,8 @@ export function HelpDrawer() {
   const location = useLocation();
   const slug = findHelpForPath(location.pathname);
   const article = getDocBySlug(slug);
+  const translateMeta = useArticleMetaTranslator();
+  const meta = article ? translateMeta(article) : null;
 
   // Support form state
   const [topic, setTopic] = useState('question');
@@ -118,17 +121,17 @@ export function HelpDrawer() {
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {tab === 'article' && article && (
+              {tab === 'article' && article && meta && (
                 <div className="p-5">
                   <p className="text-[10px] uppercase tracking-wider text-primary font-semibold mb-1">
                     {article.category.replace('-', ' ')}
                   </p>
                   <h3 className="font-display text-lg font-bold text-text-primary mb-1">
-                    {article.title}
+                    {meta.title}
                   </h3>
-                  <p className="text-sm text-text-primary/60 font-body mb-4">{article.description}</p>
+                  <p className="text-sm text-text-primary/60 font-body mb-4">{meta.description}</p>
                   <div className="text-sm">
-                    <DocBlocks blocks={article.body} dense />
+                    <DocBlocks blocks={article.body} dense articleSlug={article.slug} />
                   </div>
                   <div className="mt-6 pt-4 border-t border-border-strong/40 flex flex-col gap-2">
                     <Link

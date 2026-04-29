@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { Info, Lightbulb, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DocBlock } from '../data/docs';
+import { translateBlocks } from '../lib/translateDoc';
 import Modal from './Modal';
 
 const INTEGRATION_IMAGE_PREFIXES = [
@@ -342,10 +343,24 @@ const calloutStyles = {
   warn: { wrap: 'bg-amber-50 border-amber-200', icon: AlertTriangle, iconClass: 'text-amber-600' },
 };
 
-export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense?: boolean }) {
+export function DocBlocks({
+  blocks: rawBlocks,
+  dense = false,
+  articleSlug,
+}: {
+  blocks: DocBlock[];
+  dense?: boolean;
+  articleSlug?: string;
+}) {
   const [zoomedIndex, setZoomedIndex] = useState<number | null>(null);
   const [showZoomHint, setShowZoomHint] = useState(false);
   const { t, i18n } = useTranslation('docs');
+
+  const blocks = useMemo(
+    () => translateBlocks(rawBlocks, articleSlug, i18n, t),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawBlocks, articleSlug, i18n.language, t]
+  );
 
   const images = useMemo(
     () =>

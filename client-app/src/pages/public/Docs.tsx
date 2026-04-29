@@ -4,10 +4,16 @@ import { Search, ArrowRight, Sparkles } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { DocsSidebar } from '../../components/DocsSidebar';
 import { docCategories, docArticles, searchDocs } from '../../data/docs';
+import {
+  useArticleMetaTranslator,
+  useDocCategoryTranslator,
+} from '../../lib/translateDoc';
 
 export default function Docs() {
   const [query, setQuery] = useState('');
   const results = useMemo(() => (query ? searchDocs(query).slice(0, 12) : []), [query]);
+  const translateMeta = useArticleMetaTranslator();
+  const translateCategory = useDocCategoryTranslator();
 
   return (
     <div>
@@ -57,19 +63,22 @@ export default function Docs() {
                   <p className="px-4 py-6 text-sm text-text-primary/50 font-body">No matches for "{query}".</p>
                 ) : (
                   <ul>
-                    {results.map((r) => (
-                      <li key={r.slug}>
-                        <Link
-                          to={`/docs/${r.slug}`}
-                          onClick={() => setQuery('')}
-                          className="block px-4 py-3 hover:bg-primary/5 transition-colors border-b border-border/30 last:border-b-0"
-                        >
-                          <p className="text-sm font-semibold text-text-primary">{r.title}</p>
-                          <p className="text-xs text-text-primary/60 font-body line-clamp-1 mt-0.5">{r.description}</p>
-                          <p className="text-[10px] text-primary uppercase tracking-wider mt-1 font-semibold">{r.category.replace('-', ' ')}</p>
-                        </Link>
-                      </li>
-                    ))}
+                    {results.map((r) => {
+                      const meta = translateMeta(r);
+                      return (
+                        <li key={r.slug}>
+                          <Link
+                            to={`/docs/${r.slug}`}
+                            onClick={() => setQuery('')}
+                            className="block px-4 py-3 hover:bg-primary/5 transition-colors border-b border-border/30 last:border-b-0"
+                          >
+                            <p className="text-sm font-semibold text-text-primary">{meta.title}</p>
+                            <p className="text-xs text-text-primary/60 font-body line-clamp-1 mt-0.5">{meta.description}</p>
+                            <p className="text-[10px] text-primary uppercase tracking-wider mt-1 font-semibold">{r.category.replace('-', ' ')}</p>
+                          </Link>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -112,31 +121,35 @@ export default function Docs() {
                   const articles = docArticles.filter((a) => a.category === cat.slug);
                   if (articles.length === 0) return null;
                   const Icon = cat.icon;
+                  const catText = translateCategory(cat);
                   return (
                     <section key={cat.slug} id={cat.slug} className="scroll-mt-24">
                       <div className="flex items-center gap-3 mb-2">
                         <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
                           <Icon className="h-4.5 w-4.5 text-primary" />
                         </div>
-                        <h2 className="font-display text-xl font-bold text-text-primary">{cat.title}</h2>
+                        <h2 className="font-display text-xl font-bold text-text-primary">{catText.title}</h2>
                       </div>
-                      <p className="text-sm text-text-primary/60 font-body mb-4 ml-12">{cat.description}</p>
+                      <p className="text-sm text-text-primary/60 font-body mb-4 ml-12">{catText.description}</p>
                       <div className="grid sm:grid-cols-2 gap-3">
-                        {articles.map((a) => (
-                          <Link
-                            key={a.slug}
-                            to={`/docs/${a.slug}`}
-                            className="group bg-white rounded-xl border border-border/50 p-4 hover:border-primary/40 hover:shadow-sm transition-all"
-                          >
-                            <p className="font-display text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">
-                              {a.title}
-                            </p>
-                            <p className="text-xs text-text-primary/60 font-body mt-1 leading-relaxed line-clamp-2">
-                              {a.description}
-                            </p>
-                            <p className="text-[10px] text-text-primary/40 mt-2 uppercase tracking-wider">{a.readTime}</p>
-                          </Link>
-                        ))}
+                        {articles.map((a) => {
+                          const meta = translateMeta(a);
+                          return (
+                            <Link
+                              key={a.slug}
+                              to={`/docs/${a.slug}`}
+                              className="group bg-white rounded-xl border border-border/50 p-4 hover:border-primary/40 hover:shadow-sm transition-all"
+                            >
+                              <p className="font-display text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">
+                                {meta.title}
+                              </p>
+                              <p className="text-xs text-text-primary/60 font-body mt-1 leading-relaxed line-clamp-2">
+                                {meta.description}
+                              </p>
+                              <p className="text-[10px] text-text-primary/40 mt-2 uppercase tracking-wider">{a.readTime}</p>
+                            </Link>
+                          );
+                        })}
                       </div>
                     </section>
                   );

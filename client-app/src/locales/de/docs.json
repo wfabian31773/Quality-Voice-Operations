@@ -24,7 +24,6 @@
       "alt": "Salesforce Contact-Datensatz mit einer im Activity timeline protokollierten QVO Voice Agent Call-Aktivität samt Transkriptausschnitt und Link",
       "caption": "Eine Task mit der KI-Zusammenfassung erscheint im Activity timeline des passenden Contact oder Lead."
     },
-
     "outlook-app-registration": {
       "alt": "Microsoft Entra Seite Register an application mit dem Feld Name auf QVO Voice Agent, ausgewähltem Single tenant und einer Web Redirect URI mit dem QVO-Callback",
       "caption": "Wählen Sie Single tenant (oder Multi-tenant) und fügen Sie den QVO-Callback als Web Redirect URI ein."
@@ -45,7 +44,6 @@
       "alt": "QVO Outlook Calendar Connector-Karte im Status Connected mit einem Dropdown zur Auswahl des Kalenders, in den QVO buchen darf",
       "caption": "Wählen Sie nach dem OAuth-Rückweg den Kalender, in den QVO Termine schreiben soll."
     },
-
     "hubspot-create-app": {
       "alt": "HubSpot Developers Seite Manage apps mit einem hervorgehobenen Button Create app in der oberen rechten Ecke",
       "caption": "Developer hub → Manage apps → Create app."
@@ -66,7 +64,6 @@
       "alt": "HubSpot Private-App-Tab Auth mit dem mit pat- beginnenden Access Token, hervorgehoben neben einem Copy-Button",
       "caption": "Access Tokens privater Apps beginnen mit pat- und laufen nie ab — manuell rotieren."
     },
-
     "google-enable-api": {
       "alt": "Google Cloud Console API library Seite für die Google Calendar API mit hervorgehobenem ENABLE-Button",
       "caption": "Library → Google Calendar API → Enable."
@@ -87,7 +84,6 @@
       "alt": "QVO Google Calendar Connector-Karte mit verbundenem Konto, Kalenderauswahl, Zeitzone und Buffer-Time-Einstellungen",
       "caption": "Wählen Sie Kalender, Zeitzone und Pufferzeiten in der QVO Connector-Karte."
     },
-
     "slack-create-app": {
       "alt": "Slack Dialog Create an app mit ausgewählter Option From scratch und einem App-Namen-Feld mit dem Wert QVO",
       "caption": "Wählen Sie „From scratch“ und nennen Sie die App QVO."
@@ -108,7 +104,6 @@
       "alt": "Slack Channel-About-Panel mit der Channel ID C091ABCD234 und einem Copy-Button daneben",
       "caption": "Die Channel ID steht unten im Channel About Panel — auf Copy klicken."
     },
-
     "pipedrive-create-app": {
       "alt": "Pipedrive Developer Hub Dialog Create a new app mit ausgewähltem Public app und einem App-Namen-Feld mit dem Wert QVO Voice Agent",
       "caption": "Wählen Sie Public app für Multi-Tenant oder Private app für ein einzelnes Unternehmen."
@@ -129,7 +124,6 @@
       "alt": "Pipedrive Settings Seite Personal preferences API mit hervorgehobenem Personal API Token neben einem Copy-Button und einem Feld für die Unternehmensdomain",
       "caption": "Kopieren Sie den Personal API Token sowie Ihre Unternehmensdomain (ihrunternehmen)."
     },
-
     "quickbooks-create-app": {
       "alt": "Intuit Developer Dialog Create an app mit ausgewähltem QuickBooks Online + Payments und einem App-Namen-Feld mit dem Wert QVO Voice Agent",
       "caption": "My Apps → Create an app → QuickBooks Online + Payments."
@@ -149,6 +143,1042 @@
     "quickbooks-qvo-invoice-config": {
       "alt": "QVO QuickBooks Connector-Karte mit verbundenem Realm, Invoice Item ID, Item-Beschreibung, Standard-Rechnungsbetrag und einem Sync-now-Button",
       "caption": "Setzen Sie Invoice Item ID und Standardbetrag und klicken Sie dann auf Sync now."
+    }
+  },
+  "categories": {
+    "getting-started": {
+      "title": "Erste Schritte",
+      "description": "Registrieren Sie sich, konfigurieren Sie Ihren Mandanten und beantworten Sie Ihren ersten Anruf."
+    },
+    "agent-builder": {
+      "title": "Agent Builder",
+      "description": "Gestalten Sie Systemaufforderungen, Stimmen, Werkzeuge und Routing-Regeln."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "description": "Erstellen Sie mehrstufige Anrufabläufe, Eskalationen und Automatisierungen nach dem Anruf."
+    },
+    "integrations": {
+      "title": "Integrationen",
+      "description": "Verbinden Sie QVO mit HubSpot, Kalender, Slack, Helpdesks und Webhooks."
+    },
+    "mini-systems": {
+      "title": "Mini Systeme",
+      "description": "SMS-Posteingang, Planung, Tickets und Dispatch – die Backoffice-Tools."
+    },
+    "api-reference": {
+      "title": "API-Referenz",
+      "description": "Authentifizieren, Endpunkte ansteuern und Webhooks abonnieren."
+    },
+    "troubleshooting": {
+      "title": "Fehlerbehebung",
+      "description": "Diagnostizieren Sie Anrufqualität, Integrationssynchronisierung und Bereitstellungsprobleme."
+    },
+    "billing": {
+      "title": "Abrechnung & Pläne",
+      "description": "Planstufen, Nutzung, Rechnungen und Budgetkontrollen."
+    }
+  },
+  "articles": {
+    "quickstart": {
+      "title": "Schnellstart: von der Anmeldung bis zum ersten Anruf",
+      "description": "Erstellen Sie Ihr Konto, stellen Sie eine Telefonnummer bereit und beantworten Sie Ihren ersten eingehenden Anruf in weniger als 10 Minuten.",
+      "body": {
+        "0": "Dieser Schnellstart führt Sie durch alles, was Sie benötigen, um Ihren ersten Live-Anruf auf QVO zu tätigen. Am Ende haben Sie einen Mandanten, einen Agenten, eine Telefonnummer und ein aufgezeichnetes Testgespräch.",
+        "1": {
+          "caption": "Eine kurze Anleitung zu den folgenden Schritten – Anmeldung, Vorlagen, Demo und Live-Anruf-Panels."
+        },
+        "2": "1. Erstellen Sie Ihr Konto",
+        "3": {
+          "0": "Besuchen Sie die Anmeldeseite und geben Sie Ihre geschäftliche E-Mail-Adresse, den Firmennamen und ein Passwort ein.",
+          "1": "Bestätigen Sie Ihre E-Mail, indem Sie auf den Link klicken, den wir Ihnen senden.",
+          "2": "Wählen Sie Ihren Plan (Die kostenlose Testversion funktioniert für alles in diesem Leitfaden)."
+        },
+        "5": "Ihre Mandantenumgebung wird automatisch bereitgestellt – keine Wartezeit auf Vertriebs- oder Onboarding-Anrufe.",
+        "6": "2. Wählen Sie eine Branchenvorlage",
+        "7": "Beim ersten Login bietet der Onboarding-Assistent vorab abgestimmte Agentenvorlagen an. Wählen Sie die Vorlage, die Ihrem Unternehmen am nächsten kommt; Sie können sie später ändern.",
+        "8": {
+          "0": "Medizin / Zahnmedizin — Patientenaufnahme, Terminbuchung, dringende Triage",
+          "1": "Recht — neue Mandatsaufnahme, Konfliktprüfungen, Rückrufplanung",
+          "2": "Haushaltsdienste — Einsatz, Angebotsanfragen, Notfälle außerhalb der Geschäftszeiten",
+          "3": "Allgemeines Geschäft — Empfang, Anrufweiterleitung, Voicemail-Erfassung"
+        },
+        "10": "3. Eine Telefonnummer bereitstellen",
+        "11": {
+          "0": "Gehen Sie zu Telefonnummern → Nummer hinzufügen.",
+          "1": "Wählen Sie eine lokale oder gebührenfreie Nummer.",
+          "2": "Weisen Sie sie dem gerade erstellten Agenten zu."
+        },
+        "13": "Die Bereitstellung der Nummer erfolgt in der Regel in weniger als 30 Sekunden. Ihre Nummer ist sofort erreichbar.",
+        "14": "4. Einen Testanruf tätigen",
+        "15": "Rufen Sie die Nummer von Ihrem Telefon aus an. Der Agent wird Sie mit dem Vorlage-Prompt begrüßen. Sprechen Sie natürlich — Unterbrechungen, Pausen und \"ähms\" werden berücksichtigt.",
+        "17": "5. Überprüfen Sie das Transkript",
+        "18": "Öffnen Sie die Seite Gespräche. Sie sehen Ihren Anruf mit einem vollständigen Transkript, der Aufnahme, den von dem Agenten verwendeten Tools und einer Qualitätsbewertung.",
+        "20": "Häufige Probleme",
+        "21": {
+          "0": {
+            "problem": "Nummer klingelt nicht.",
+            "fix": "Überprüfen Sie, ob der Agent veröffentlicht ist (nicht Entwurf). Entwürfe sind nicht zu aktiven Nummern zugewiesen."
+          },
+          "1": {
+            "problem": "Agent antwortet, ist aber still.",
+            "fix": "Überprüfen Sie, ob Ihr Konto über Sprachguthaben verfügt. Neue Testkonten erhalten 30 Minuten kostenlos."
+          },
+          "2": {
+            "problem": "Anruf schlägt mit \"kein Agent zugewiesen\" fehl.",
+            "fix": "Öffnen Sie die Nummer, scrollen Sie zu Routing und wählen Sie einen Agenten aus."
+          }
+        }
+      }
+    },
+    "core-concepts": {
+      "title": "Kernkonzepte",
+      "description": "Mandanten, Agenten, Nummern, Workflows und Tools — die Bausteine von QVO.",
+      "body": {
+        "0": "Mandant",
+        "1": "Ein Mandant ist Ihr isolierter Arbeitsbereich. Alle Anrufe, Agenten, Nummern, Kontakte und Integrationen gehören genau einem Mandanten. Die Zeilenebene-Sicherheit garantiert, dass keine Daten die Grenzen des Mandanten überschreiten.",
+        "2": "Agent",
+        "3": "Ein Agent ist die KI, die einen Anruf beantwortet (oder tätigt). Er hat einen Systemprompt, eine Stimme, eine Reihe von erlaubten Werkzeugen und Routing-Regeln. Agenten sind versioniert – jede veröffentlichte Änderung erstellt eine neue Version, zu der Sie zurückkehren können.",
+        "4": "Telefonnummer",
+        "5": "Eine SIP/PSTN-Nummer, die wir in Ihrem Namen bereitstellen. Nummern werden Agenten zugewiesen. Ein Agent kann viele Nummern halten; eine Nummer gehört genau zu einem Agenten zur gleichen Zeit.",
+        "6": "Workflow",
+        "7": "Ein Workflow ist eine deterministische, mehrstufige Zustandsmaschine, die um den Agenten herum läuft – zum Beispiel: Anrufer identifizieren → Kalender überprüfen → Termin buchen → SMS-Bestätigung senden.",
+        "8": "Werkzeug",
+        "9": "Werkzeuge sind die typisierten Funktionsaufrufe, die ein Agent während eines Gesprächs machen kann. Beispiele: lookup_contact, create_ticket, schedule_appointment, transfer_to_human.",
+        "10": "Wissensdatenbank",
+        "11": "Dokumentenablage pro Mandant, die der Agent zur Laufzeit durchsuchen kann. Laden Sie PDFs, URLs hoch oder fügen Sie Text ein. Dokumente werden in Abschnitte unterteilt, eingebettet und angezeigt, wenn der Agent sie benötigt."
+      }
+    },
+    "glossary": {
+      "title": "Glossar",
+      "description": "Definitionen für Begriffe, die Sie im Produkt und in diesen Dokumenten sehen werden.",
+      "body": {
+        "0": {
+          "0": "AMD — Anrufbeantworterkennung. Wird in ausgehenden Kampagnen verwendet, um Voicemail zu überspringen oder zu hinterlassen.",
+          "1": "BYOC — Bring Your Own Carrier. Verwenden Sie Ihren eigenen SIP-Trunk anstelle von QVO-bereitgestellten Nummern.",
+          "2": "DNC — Do Not Call. Unterdrückungen, die vor jedem ausgehenden Anruf durchgesetzt werden.",
+          "3": "DTMF — Tastenwahlziffern. Während eines Anrufs als Werkzeugeingabe erfasst.",
+          "4": "PHI — Geschützte Gesundheitsinformationen. Automatisch aus Transkripten entfernt, wenn das HIPAA-Add-On aktiviert ist.",
+          "5": "RBAC — Rollenbasierte Zugriffskontrolle. Eigentümer, Manager, Mitglied, Betrachter.",
+          "6": "RLS — Zeilenebene-Sicherheit. Datenbankgestützte Mandantenisolierung.",
+          "7": "TTFB — Zeit bis zum ersten Byte. Die Latenz von dem Moment, in dem der Anrufer aufhört zu sprechen, bis der Agent zu sprechen beginnt."
+        }
+      }
+    },
+    "building-your-first-agent": {
+      "title": "Ihren ersten Agenten erstellen",
+      "description": "Schreiben Sie einen Systemprompt, wählen Sie eine Stimme und konfigurieren Sie Werkzeuge und Eskalationen.",
+      "body": {
+        "0": "Öffnen Sie den Builder",
+        "1": "Klicken Sie auf der Seite \"Agenten\" auf einen Agenten (oder \"Neuer Agent\"). Der Builder teilt sich in die Bereiche Identität, Verhalten, Werkzeuge, Routing und Test auf.",
+        "4": "Schreibe den System-Prompt",
+        "5": "Der Prompt ist einfaches Englisch. Sei spezifisch bezüglich des Tons, was gesammelt werden soll, was abgelehnt werden soll und wann eskaliert werden soll.",
+        "7": "Halte die Prompts unter ~600 Wörtern. Längere Prompts erhöhen die Latenz und verringern die Befolgung von Anweisungen.",
+        "8": "Wähle eine Stimme",
+        "9": "Vorschau von Stimmen mit einem Beispielsatz. Passe die Stimme an das Publikum an — ruhig/gemessen für das Gesundheitswesen, warm für die Gastfreundschaft, energetisch für den Vertrieb.",
+        "11": "Aktiviere Werkzeuge",
+        "12": "Schalte die Werkzeuge um, die dein Agent verwenden darf. Jedes Werkzeug hat ein JSON-Schema; der Agent sieht nur die Werkzeuge, die du aktivierst.",
+        "14": "Routing-Regeln",
+        "15": {
+          "0": "Eskalation — Schlüsselwörter oder Absichten, die den Anruf an einen Menschen übertragen.",
+          "1": "Voicemail — was zu tun ist, wenn kein Mensch verfügbar ist.",
+          "2": "Nach dem Anruf — Webhooks, SMS-Bestätigungen, Ticketerstellung."
+        },
+        "16": "Test",
+        "17": "Verwende die Schaltfläche \"Testanruf\" im Builder, um dich selbst anzurufen. Iteriere am Prompt, bis Randfälle korrekt behandelt werden. Die meisten Teams veröffentlichen nach 3–5 Iterationen.",
+        "18": "Häufige Probleme",
+        "19": {
+          "0": {
+            "problem": "Agent ignoriert Teile des Prompts.",
+            "fix": "Nummeriere deine Anweisungen und stelle die kritischen zuerst. Lange unstrukturierte Prosa wird weniger zuverlässig befolgt."
+          },
+          "1": {
+            "problem": "Agent erfindet Informationen.",
+            "fix": "Füge eine Klausel \"Wenn du es nicht weißt, sag es und biete einen Rückruf an\" hinzu."
+          },
+          "2": {
+            "problem": "Agent spricht den Anrufer über.",
+            "fix": "Senke die Unterbrechungsempfindlichkeit in den Verhaltenseinstellungen."
+          }
+        }
+      }
+    },
+    "voice-and-personality": {
+      "title": "Stimme und Persönlichkeit",
+      "description": "Stimme, Tempo, Füllwörter, Unterbrechungsverhalten anpassen und die richtige Stimme für jede Sprache auswählen.",
+      "body": {
+        "0": "Stimmkatalog",
+        "1": "Stimmen variieren nach Geschlecht, Akzent, Alter und Energie. Jede Stimme hat ein Latenzprofil — schnellere Stimmen wirken am Telefon natürlicher.",
+        "2": "Stimmen- und Sprachkompatibilität",
+        "3": "Alle elf OpenAI-Stimmen können jede Sprache sprechen, die QVO unterstützt, aber einige klingen je nach Sprache merklich natürlicher als andere. Das Voice & Agent Config-Panel filtert das Dropdown in zwei Gruppen basierend auf der von Ihnen ausgewählten Sprache:",
+        "4": {
+          "0": "★ Empfohlen — Stimmen, die für die aktive Sprache abgestimmt sind. Sie erscheinen unter einer Gruppe \"Empfohlen für <Sprache>\" und sind mit einem Stern markiert, sodass sie leicht zu erkennen sind.",
+          "1": "Andere Stimmen — weiterhin auswählbar, aber unter \"Andere Stimmen (könnten weniger natürlich klingen)\" gruppiert, damit Administratoren wissen, dass die Qualität leiden kann."
+        },
+        "5": "Wenn Sie eine Stimme auswählen, die nicht in der empfohlenen Gruppe ist, wird das Dropdown in Amber hervorgehoben und zeigt eine Inline-Warnung an, die bessere Alternativen vorschlägt — das Speichern wird nicht blockiert, aber Sie erhalten eine explizite Warnung vor der Veröffentlichung.",
+        "6": "Wenn Sie die Sprache ändern, bleibt die vorhandene Stimme erhalten, wenn sie weiterhin im empfohlenen Set ist. Andernfalls erscheint die Warnung, damit Sie eine besser passende Stimme vor der Veröffentlichung auswählen können.",
+        "7": "Empfohlene Stimmen nach Sprache",
+        "8": {
+          "0": "Englisch (en) — alloy, ash, ballad, coral, echo, fable, onyx, nova, sage, shimmer, verse (alle Stimmen funktionieren gut).",
+          "1": "Spanisch (es) — coral, nova, shimmer, sage, alloy, verse.",
+          "2": "Französisch (fr) — nova, shimmer, sage, alloy, coral, verse.",
+          "3": "Deutsch (de) — alloy, nova, sage, shimmer, verse.",
+          "4": "Portugiesisch (pt) — nova, shimmer, alloy, coral, sage.",
+          "5": "Italienisch (it) — nova, shimmer, sage, alloy, coral, verse.",
+          "6": "Niederländisch (nl) — alloy, nova, shimmer, sage.",
+          "7": "Chinesisch (zh) — alloy, nova, shimmer.",
+          "8": "Japanisch (ja) — alloy, nova, shimmer.",
+          "9": "Koreanisch (ko) — alloy, nova, shimmer.",
+          "10": "Arabisch (ar) — alloy, nova, shimmer.",
+          "11": "Hindi (hi) — alloy, nova, shimmer."
+        },
+        "9": "Asiatische und arabische Stimmen sind auf alloy, nova und shimmer beschränkt, da die anderen Stimmen in diesen Sprachen merklich englische Akzente haben. Wir aktualisieren die Empfehlungen, wenn OpenAI Sprachupdates bereitstellt.",
+        "10": "Tempo",
+        "11": {
+          "0": "Die Geschwindigkeit (0.85–1.15) steuert die Wörter pro Minute.",
+          "1": "Die Pausenlänge steuert die Stille zwischen den Sätzen.",
+          "2": "Füllwörter (\"äh\", \"lass mich nachsehen\") machen Übergänge menschlicher."
+        },
+        "12": "Unterbrechungsverhalten",
+        "13": "Eine Sensitivität von 0 bedeutet, dass der Agent niemals nachgibt; 1 bedeutet, dass jedes Geräusch ihn unterbricht. 0.5 ist der Standardwert und funktioniert für die meisten Einstellungen."
+      }
+    },
+    "tools-and-functions": {
+      "title": "Werkzeuge und Funktionen",
+      "description": "Geben Sie Ihrem Agenten typisierte Aktionen: Abfragen, Buchungen, Eskalationen und benutzerdefiniertes HTTP.",
+      "body": {
+        "0": "Integrierte Werkzeuge",
+        "1": {
+          "0": "lookup_contact — im CRM nach Telefonnummer oder E-Mail suchen.",
+          "1": "schedule_appointment — einen Termin in einem verbundenen Kalender buchen.",
+          "2": "create_ticket — ein Helpdesk-Ticket mit Priorität eröffnen.",
+          "3": "send_sms — den Anrufer während oder nach dem Anruf texten.",
+          "4": "transfer_to_human — warmen oder kalten Transfer zu einem konfigurierten Ziel."
+        },
+        "2": "Benutzerdefinierte Werkzeuge",
+        "3": "Definieren Sie ein Werkzeug mit einem Namen, einer Beschreibung, einem JSON-Schema und einem HTTPS-Endpunkt. Anrufe werden signiert und bei 5xx erneut versucht."
+      }
+    },
+    "workflows-overview": {
+      "title": "Übersicht über Workflows",
+      "description": "Wie deterministische Flüsse das LLM ergänzen und Mehrdeutigkeiten aus kritischen Schritten entfernen.",
+      "body": {
+        "0": "Workflows sind deterministische Zustandsmaschinen, die einen Agenten umschließen. Verwenden Sie sie, wenn eine Sequenz in einer festen Reihenfolge erfolgen muss oder wenn Sie explizite Verzweigungen benötigen, die das LLM nicht improvisieren sollte.",
+        "1": "Wann man einen Workflow verwenden sollte",
+        "2": {
+          "0": "Identitätsverifizierung vor der Offenlegung von PHI.",
+          "1": "Mehrstufige Aufnahme mit erforderlichen Feldern.",
+          "2": "Automatisierungen nach dem Anruf (CRM-Update, SMS-Bestätigung, Ticket)."
+        },
+        "3": "Komponenten",
+        "4": {
+          "0": "Trigger — call.started, intent.matched, tool.failed.",
+          "1": "Schritte — agent_say, tool_call, condition, http_request, wait.",
+          "2": "Übergänge — durch Bedingungen auf gesammelten Daten geschützt."
+        }
+      }
+    },
+    "configuring-workflows": {
+      "title": "Workflows konfigurieren",
+      "description": "Erstellen, versionieren und veröffentlichen Sie einen Workflow, der an einen Agenten angehängt ist.",
+      "body": {
+        "0": "Einen Workflow erstellen",
+        "1": {
+          "0": "Workflows → Neuer Workflow.",
+          "1": "Wählen Sie einen Startauslöser (am häufigsten: call.started).",
+          "2": "Ziehen Sie Schritte auf die Leinwand und verbinden Sie sie.",
+          "3": "Verwenden Sie das Seitenpanel, um jeden Schritt zu konfigurieren."
+        },
+        "4": "Version und veröffentlichen",
+        "5": "Speichern erstellt einen Entwurf. Veröffentlichen hebt einen Entwurf auf die Produktionsstufe. Vorherige Versionen bleiben verfügbar – Sie können jederzeit zurückrollen.",
+        "6": "Testen",
+        "7": "Verwenden Sie den Workflow-Simulator, um mit synthetischen Eingaben vor der Veröffentlichung durchzugehen.",
+        "9": "Häufige Probleme",
+        "10": {
+          "0": {
+            "problem": "Workflow wird nie ausgelöst.",
+            "fix": "Bestätigen Sie, dass der Workflow veröffentlicht und dem richtigen Agenten zugeordnet ist."
+          },
+          "1": {
+            "problem": "Schritt läuft ab.",
+            "fix": "Erhöhen Sie das Timeout des Schrittes oder teilen Sie ein lang laufendes Tool in einen Fire-and-Forget-Schritt auf."
+          }
+        }
+      }
+    },
+    "integrations-overview": {
+      "title": "Integrationsübersicht",
+      "description": "Wie QVO sich mit Ihrem bestehenden CRM, Kalender, Helpdesk und Messaging-Tools verbindet.",
+      "body": {
+        "0": "Integrationen ermöglichen es Ihrem Agenten, während eines Anrufs Daten in Ihren bestehenden Systemen zu lesen und zu schreiben. Öffnen Sie Integrationen in der Seitenleiste, um den Katalog zu durchsuchen.",
+        "1": "Authentifizierung",
+        "2": "Die meisten Integrationen verwenden OAuth – klicken Sie auf Verbinden, melden Sie sich beim Anbieter an und gewähren Sie die angeforderten Berechtigungen. API-Schlüsselbasierte Integrationen fordern Sie inline nach dem Schlüssel.",
+        "3": "Datenfluss",
+        "4": {
+          "0": "Lesen – Agent sucht den Anrufer in Ihrem CRM.",
+          "1": "Schreiben – Agent erstellt einen Datensatz (Kontakt, Ticket, Termin).",
+          "2": "Synchronisieren – periodische Hintergrundsynchronisierung von veränderbaren Daten."
+        },
+        "5": "Sicherheit",
+        "6": "Alle Verbindungsanmeldeinformationen sind im Ruhezustand verschlüsselt. Tokens sind pro Mandant beschränkt und werden niemals dem Agentenprompt ausgesetzt."
+      }
+    },
+    "connecting-salesforce": {
+      "title": "Salesforce verbinden",
+      "description": "Erstellen Sie eine Salesforce-Connected-App und autorisieren Sie QVO, Anrufe gegen Kontakte, Leads und Chancen zu protokollieren.",
+      "body": {
+        "0": "QVO verwendet Salesforce OAuth 2.0 mit einem Refresh-Token, damit Anrufe im Hintergrund weiterhin synchronisiert werden können. Bevor Sie auf Verbinden klicken, muss Ihr Salesforce-Administrator eine verbundene App in Ihrer Organisation erstellen, damit QVO eine Client-ID und ein Client-Geheimnis zur Autorisierung hat.",
+        "1": "Sie müssen dies nur einmal pro Salesforce-Organisation tun. Nachdem die verbundene App erstellt wurde, kann jeder QVO-Mandantenadministrator in Ihrer Organisation sich anmelden und die Verbindung herstellen.",
+        "2": "1. Erstellen Sie eine verbundene App in Salesforce",
+        "3": {
+          "0": "Öffnen Sie in Salesforce die Einstellungen und suchen Sie nach \"App-Manager\", klicken Sie dann auf Neue verbundene App.",
+          "1": "Wählen Sie \"Eine verbundene App erstellen\" und geben Sie ihr einen Namen wie \"QVO Voice Agent\" mit Ihrer Administratorkontakt-E-Mail.",
+          "2": "Aktivieren Sie unter API (OAuth-Einstellungen aktivieren) die Option \"OAuth-Einstellungen aktivieren\".",
+          "3": "Setzen Sie die Callback-URL auf https://app.qvo.ai/api/connectors/oauth/salesforce/callback (verwenden Sie die App-Domain Ihres Mandanten, wenn Sie selbst hosten).",
+          "4": "Fügen Sie die OAuth-Berechtigungen hinzu: api (Benutzerdaten über APIs verwalten), refresh_token, offline_access — alle drei sind erforderlich.",
+          "5": "Lassen Sie \"Geheimnis für Webserver-Flow erforderlich\" und \"Geheimnis für Refresh-Token-Flow erforderlich\" aktiviert.",
+          "6": "Speichern Sie die App. Salesforce warnt, dass es bis zu 10 Minuten dauern kann, bis die Änderungen wirksam werden."
+        },
+        "7": "Nach dem Speichern klicken Sie auf Verbraucherdetails verwalten, um den Verbraucherschlüssel (Client-ID) und das Verbrauchergeheimnis (Client-Geheimnis) zu kopieren. Diese fügen Sie in QVO ein.",
+        "8": "2. Wählen Sie Produktion oder Sandbox",
+        "9": "QVO verweist standardmäßig auf die Standard-Login-URL von Salesforce (https://login.salesforce.com). Für Sandbox-Organisationen müssen Sie uns mitteilen, dass wir stattdessen den Test-Login-Host verwenden, indem Sie die Umgebungsvariable SALESFORCE_LOGIN_URL auf dem Server setzen.",
+        "10": {
+          "0": "Produktionsorganisation → lassen Sie SALESFORCE_LOGIN_URL unset (standardmäßig auf https://login.salesforce.com).",
+          "1": "Sandbox-Organisation (z.B. mycompany--dev.sandbox.my.salesforce.com) → setzen Sie SALESFORCE_LOGIN_URL=https://test.salesforce.com, damit QVO gegen den Sandbox-Login-Host autorisiert."
+        },
+        "11": "Wenn Sie QVO selbst hosten, setzen Sie SALESFORCE_LOGIN_URL in Ihrer Serverumgebung. Bei Replit-Deployments fügen Sie es unter Geheimnisse hinzu. Cloud-QVO-Mandanten können einen Sandbox-Umschalter anfordern, indem sie den Support kontaktieren – geben Sie Ihre Salesforce-Org-ID an.",
+        "12": "Ein häufiger Fehler ist die Verbindung einer Sandbox-Organisation mit unset SALESFORCE_LOGIN_URL. Der OAuth-Flow scheint erfolgreich zu sein, dann schlagen die Refresh-Token stillschweigend mit invalid_grant fehl. Überprüfen Sie immer, ob der Login-Host mit dem Organisationstyp übereinstimmt.",
+        "13": "3. QVO autorisieren",
+        "14": {
+          "0": "Gehen Sie in QVO zu Integrationen → Salesforce → Verbinden.",
+          "1": "Melden Sie sich mit dem Salesforce-Konto an, das die protokollierten Anrufe besitzen soll (ein Dienstbenutzer wird empfohlen).",
+          "2": "Genehmigen Sie die Berechtigungen api, refresh_token und offline_access, wenn Sie dazu aufgefordert werden.",
+          "3": "Sie werden zurück zu QVO umgeleitet, wobei die Integration als Verbunden markiert ist."
+        },
+        "16": "4. Überprüfen Sie, ob es funktioniert",
+        "17": "Lösen Sie einen Testanruf aus oder klicken Sie auf \"Jetzt synchronisieren\" auf der Salesforce-Integrationskarte. Sie sollten eine Aufgabe auf dem entsprechenden Kontakt oder Lead mit der Zusammenfassung des KI-Anrufs in der Beschreibung sehen.",
+        "19": "Häufige Probleme",
+        "20": {
+          "0": {
+            "problem": "invalid_client_id bei der Autorisierung.",
+            "fix": "Überprüfen Sie, ob der Consumer Key ohne nachfolgende Leerzeichen kopiert wurde und dass seit dem Speichern der Connected App 10 Minuten vergangen sind."
+          },
+          "1": {
+            "problem": "invalid_grant beim Aktualisieren.",
+            "fix": "Bestätigen Sie, dass SALESFORCE_LOGIN_URL mit dem Organisationstyp übereinstimmt (login.salesforce.com vs test.salesforce.com) und dass offline_access in der Scope-Liste enthalten ist."
+          },
+          "2": {
+            "problem": "Anrufe erscheinen nicht im Kontaktzeitstrahl.",
+            "fix": "Überprüfen Sie, ob der Dienstbenutzer Bearbeitungszugriff auf Aufgaben und auf die relevanten Kontakt-/Lead-Datentypen hat."
+          },
+          "3": {
+            "problem": "Tokens wurden nach IP-Änderung widerrufen.",
+            "fix": "Gehen Sie in Salesforce Setup → Manage Connected Apps → QVO und setzen Sie die IP-Entspannung auf \"IP-Beschränkungen entspannen\", damit Aktualisierungstokens Infrastrukturänderungen überstehen."
+          }
+        },
+        "21": "Für detailliertere Informationen zu Connected Apps siehe die offizielle Salesforce-Hilfe: https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm."
+      }
+    },
+    "connecting-outlook": {
+      "title": "Outlook-Kalender verbinden",
+      "description": "Registrieren Sie eine Microsoft Entra-App und autorisieren Sie QVO, um Verfügbarkeiten zu lesen und Termine in Ihrem Microsoft 365-Kalender zu buchen.",
+      "body": {
+        "0": "Der Outlook-Kalender-Connector kommuniziert mit Microsoft Graph über OAuth 2.0 mit einem Aktualisierungstoken. Um zu beginnen, muss ein Entra (ehemals Azure AD) Administrator eine App in Ihrem Mandanten registrieren, damit QVO eine Client-ID, ein Client-Geheimnis und eine Mandanten-ID zur Autorisierung hat.",
+        "1": "Die App-Registrierung ist eine einmalige Aufgabe pro Microsoft 365-Mandanten. Sobald sie eingerichtet ist, kann jeder QVO-Benutzer in Ihrer Organisation seinen eigenen Kalender verbinden, indem er sich anmeldet.",
+        "2": "1. Registrieren Sie eine App in Microsoft Entra",
+        "3": {
+          "0": "Gehen Sie zu https://entra.microsoft.com → Anwendungen → App-Registrierungen → Neue Registrierung.",
+          "1": "Nennen Sie sie beispielsweise \"QVO Voice Agent\".",
+          "2": "Wählen Sie unter Unterstützte Kontotypen \"Konten in diesem organisatorischen Verzeichnis nur\" für Single-Tenant oder \"Konten in jedem organisatorischen Verzeichnis\" für Multi-Tenant.",
+          "3": "Setzen Sie die Umleitungs-URI auf Web → https://app.qvo.ai/api/connectors/oauth/outlook/callback (verwenden Sie Ihre eigene Anwendungsdomain, wenn Sie selbst hosten).",
+          "4": "Klicken Sie auf Registrieren. Kopieren Sie die Anwendungs- (Client-) ID und die Verzeichnis- (Mandanten-) ID von der Übersichtsseite."
+        },
+        "6": "2. Fügen Sie ein Client-Geheimnis hinzu",
+        "7": {
+          "0": "Öffnen Sie die App-Registrierung → Zertifikate & Geheimnisse → Neues Client-Geheimnis.",
+          "1": "Geben Sie eine Beschreibung und ein Ablaufdatum an (12 oder 24 Monate empfohlen; planen Sie eine Erneuerungsaufgabe).",
+          "2": "Kopieren Sie den Geheimwert sofort — er ist verborgen, nachdem Sie die Seite verlassen. Dies ist Ihr Client-Geheimnis."
+        },
+        "9": "Wenn das Client-Geheimnis abläuft, stoppt die Integration stillschweigend die Aktualisierung der Tokens. Verfolgen Sie das Ablaufdatum und wechseln Sie, bevor es null erreicht.",
+        "10": "3. Konfigurieren Sie die API-Berechtigungen",
+        "11": {
+          "0": "In der App-Registrierung → API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Delegierte Berechtigungen.",
+          "1": "Hinzufügen: Calendars.ReadWrite, offline_access, openid, profile, User.Read.",
+          "2": "Klicken Sie auf \"Admin-Zustimmung für <Ihr Mandant> erteilen\", damit Benutzer nicht jede Berechtigung einzeln genehmigen müssen."
+        },
+        "13": {
+          "0": "Calendars.ReadWrite — erforderlich, um die Verfügbarkeit zu lesen und Ereignisse zu erstellen/aktualisieren.",
+          "1": "offline_access — erforderlich, damit QVO Token ohne erneute Aufforderung aktualisieren kann.",
+          "2": "openid, profile, User.Read — erforderlich für den Anmeldefluss und zur Identifizierung des verbindenden Benutzers."
+        },
+        "14": "4. Setzen Sie die Microsoft-Umgebungsvariablen auf dem QVO-Server",
+        "15": "QVO liest drei Umgebungsvariablen, um mit Microsoft Graph zu kommunizieren:",
+        "16": {
+          "0": "MICROSOFT_CLIENT_ID — die Anwendungs- (Client-) ID aus Schritt 1.",
+          "1": "MICROSOFT_CLIENT_SECRET — der geheime Wert aus Schritt 2.",
+          "2": "MICROSOFT_TENANT_ID — welcher Entra-Mandant autorisiert werden soll (siehe Optionen unten)."
+        },
+        "17": "Fügen Sie die Verzeichnis- (Mandanten-) ID aus Schritt 1 in MICROSOFT_TENANT_ID ein:",
+        "18": {
+          "0": "Single-Tenant-App → setzen Sie MICROSOFT_TENANT_ID auf Ihre spezifische Mandanten-GUID. Die Autorisierungsendpunkte werden https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/... ",
+          "1": "Multi-Tenant-App (Sie lassen Benutzer aus jeder Organisation verbinden) → setzen Sie MICROSOFT_TENANT_ID=common.",
+          "2": "Persönliche Microsoft-Konten nur → setzen Sie MICROSOFT_TENANT_ID=consumers (selten für geschäftliche Nutzung)."
+        },
+        "19": "Wenn Sie QVO selbst hosten, setzen Sie MICROSOFT_TENANT_ID in Ihrer Serverumgebung. Bei Replit-Bereitstellungen fügen Sie es unter Secrets hinzu. Cloud-QVO-Mandanten können den Wert von der Unterstützung festlegen lassen.",
+        "20": "5. Autorisieren Sie QVO",
+        "21": {
+          "0": "Gehen Sie in QVO zu Integrationen → Outlook-Kalender → Verbinden.",
+          "1": "Melden Sie sich mit dem Microsoft 365-Konto an, dessen Kalender verwendet werden soll.",
+          "2": "Genehmigen Sie die angeforderten Berechtigungen.",
+          "3": "Sie kehren zu QVO zurück, wobei der Connector als Verbunden markiert ist; wählen Sie aus, auf welchem Kalender QVO buchen darf."
+        },
+        "23": "6. Überprüfen Sie, ob es funktioniert",
+        "24": "Klicken Sie auf \"Jetzt synchronisieren\" auf der Outlook-Integrationskarte oder führen Sie einen Testbuchungsfluss aus. Ein neues Ereignis sollte innerhalb weniger Sekunden im gewählten Kalender erscheinen.",
+        "25": "Häufige Probleme",
+        "26": {
+          "0": {
+            "problem": "AADSTS50011: URI der Umleitung stimmt nicht überein.",
+            "fix": "Die Redirect-URI in der Entra-App muss genau mit der QVO-Callback-URL übereinstimmen, einschließlich des abschließenden Schrägstrichs und des Protokolls."
+          },
+          "1": {
+            "problem": "AADSTS65001: Benutzer oder Administrator hat nicht zugestimmt.",
+            "fix": "Lassen Sie einen Entra-Administrator auf der Seite für API-Berechtigungen auf \"Administratorzustimmung gewähren\" klicken."
+          },
+          "2": {
+            "problem": "AADSTS700016: App im Mandanten nicht gefunden.",
+            "fix": "MICROSOFT_TENANT_ID ist auf den falschen Mandanten eingestellt. Verwenden Sie 'common' für Multi-Mandanten-Apps oder die richtige GUID für Single-Mandanten."
+          },
+          "3": {
+            "problem": "invalid_grant nach einigen Wochen.",
+            "fix": "Das Client-Geheimnis ist abgelaufen oder wurde rotiert. Generieren Sie ein neues in Zertifikate & Geheimnisse und aktualisieren Sie den QVO-Connector."
+          },
+          "4": {
+            "problem": "Ereignisse erstellt, aber nicht für andere sichtbar.",
+            "fix": "Bestätigen Sie, dass der verbindende Benutzer über Freigabeberechtigungen für den Zielkalender verfügt, oder verwenden Sie ein gemeinsames Postfach, das dem Dienstkonto gehört."
+          }
+        },
+        "27": "Für detailliertere Informationen zur Microsoft Graph-Authentifizierung siehe: https://learn.microsoft.com/en-us/graph/auth-v2-user."
+      }
+    },
+    "connecting-hubspot": {
+      "title": "HubSpot verbinden",
+      "description": "Erstellen Sie eine HubSpot OAuth-App (oder private App) und autorisieren Sie QVO, Anrufe zu protokollieren und Kontakte zu aktualisieren.",
+      "body": {
+        "0": "QVO verbindet sich auf zwei Arten mit HubSpot: über eine OAuth-App (empfohlen für Produktions-Multi-User-Setups) oder ein privates App-Zugriffstoken (schnellste Lösung für einen einzelnen Arbeitsbereich). Beide erfordern, dass ein HubSpot-Administrator zuerst die App erstellt, damit QVO über Anmeldeinformationen zur Autorisierung verfügt.",
+        "1": "OAuth bietet Ihnen benutzerspezifische Prüfpfade und Aktualisierungstoken, die automatisch rotiert werden. Private Apps sind einfacher, verwenden jedoch ein gemeinsames Token, das Sie manuell rotieren müssen.",
+        "2": "Option A — OAuth-App (empfohlen)",
+        "3": "1. Erstellen Sie eine HubSpot-Entwickler-App",
+        "4": {
+          "0": "Gehen Sie zu https://developers.hubspot.com → Apps verwalten → App erstellen (möglicherweise benötigen Sie ein kostenloses Entwicklerkonto, das von Ihrem Portal getrennt ist).",
+          "1": "Unter Auth kopieren Sie die Client-ID und das Client-Geheimnis.",
+          "2": "Fügen Sie die Redirect-URL hinzu: https://app.qvo.ai/api/connectors/oauth/hubspot/callback (verwenden Sie die App-Domain Ihres Mandanten, wenn Sie selbst hosten).",
+          "3": "Unter Scopes hinzufügen: crm.objects.contacts.read, crm.objects.contacts.write, crm.objects.deals.read, crm.objects.deals.write, timeline.",
+          "4": "Die App speichern."
+        },
+        "8": "2. Setzen Sie die HubSpot-Umgebungsvariablen auf dem QVO-Server",
+        "9": {
+          "0": "HUBSPOT_CLIENT_ID — Client-ID aus der Entwickler-App.",
+          "1": "HUBSPOT_CLIENT_SECRET — Client-Geheimnis aus der Entwickler-App."
+        },
+        "10": "Wenn Sie QVO selbst hosten, setzen Sie diese in Ihrer Serverumgebung. Bei Replit-Deployments fügen Sie sie unter Secrets hinzu. Cloud-QVO-Mieter können die Werte von der Unterstützung anfordern.",
+        "11": "3. QVO autorisieren",
+        "12": {
+          "0": "In QVO gehen Sie zu Integrationen → HubSpot → Verbinden.",
+          "1": "Melden Sie sich mit dem HubSpot-Konto an, das das Portal besitzt, in das QVO schreiben soll.",
+          "2": "Genehmigen Sie die angeforderten Scopes.",
+          "3": "Sie kehren zu QVO zurück, wobei der Connector als Verbunden markiert ist."
+        },
+        "14": "Option B — Zugriffstoken für private Apps",
+        "15": {
+          "0": "In HubSpot gehen Sie zu Einstellungen → Integrationen → Private Apps → Eine private App erstellen.",
+          "1": "Nennen Sie es \"QVO Voice Agent\".",
+          "2": "Unter Scopes (CRM-Registerkarte) aktivieren Sie die gleichen fünf Scopes, die oben aufgeführt sind.",
+          "3": "Erstellen Sie die App und kopieren Sie das Zugriffstoken (es beginnt mit pat-).",
+          "4": "In QVO gehen Sie zu Integrationen → HubSpot → Verbinden → Zugriffstoken verwenden und fügen Sie das Token ein."
+        },
+        "17": "Zugriffstoken für private Apps laufen nicht automatisch ab, aber sie werden auch nicht aktualisiert. Wenn Sie das Token in HubSpot regenerieren, fügen Sie den neuen Wert in QVO ein oder die Synchronisierung wird stillschweigend fehlschlagen.",
+        "18": "Was synchronisiert wird",
+        "19": {
+          "0": "Eingehende Anrufernummer → Kontaktabgleich (E.164-Abgleich).",
+          "1": "Anrufzusammenfassung → Kontakt-Timeline-Aktivität.",
+          "2": "Disposition (interessiert, nicht interessiert, Rückruf) → Deal-Phase oder Kontakt-Eigenschaft."
+        },
+        "20": "Häufige Probleme",
+        "21": {
+          "0": {
+            "problem": "OAUTH_REDIRECT_URI_MISMATCH bei Verbinden.",
+            "fix": "Die Weiterleitungs-URL in Ihrer HubSpot-Entwickler-App muss genau übereinstimmen, einschließlich https:// und dem abschließenden Schrägstrich."
+          },
+          "1": {
+            "problem": "Fehlende erforderliche Scope-Fehlermeldung nach der Verbindung.",
+            "fix": "Fügen Sie den fehlenden Scope in der Entwickler-App hinzu, speichern Sie, und klicken Sie dann erneut auf Verbinden, damit der Benutzer erneut zustimmt."
+          },
+          "2": {
+            "problem": "Kontakt für bekannten Anrufer nicht gefunden.",
+            "fix": "Überprüfen Sie, ob der Kontakt ein Telefonnummernfeld im E.164-Format hat. HubSpot-Suchvorgänge erfordern eine exakte Formatübereinstimmung."
+          },
+          "3": {
+            "problem": "Aktivität erscheint nicht auf der Kontaktzeitleiste.",
+            "fix": "Stellen Sie die Integration erneut her, um das Zugriffstoken zu aktualisieren, und lösen Sie dann Jetzt synchronisieren aus."
+          },
+          "4": {
+            "problem": "Privates App-Token funktioniert lokal, schlägt jedoch in der Produktion fehl.",
+            "fix": "Tokens sind auf ein einzelnes HubSpot-Konto beschränkt – stellen Sie sicher, dass das Token von dem Portal stammt, in das Sie schreiben möchten."
+          }
+        },
+        "22": "Für detailliertere Informationen siehe die OAuth-Dokumentation von HubSpot: https://developers.hubspot.com/docs/api/oauth-quickstart-guide."
+      }
+    },
+    "connecting-calendar": {
+      "title": "Google Kalender verbinden",
+      "description": "Erstellen Sie einen Google Cloud OAuth-Client und autorisieren Sie QVO, um Verfügbarkeiten zu lesen und Termine in Ihrem Google Kalender zu buchen.",
+      "body": {
+        "0": "QVO verwendet Googles OAuth 2.0 mit einem Aktualisierungstoken, damit der Agent die Verfügbarkeit überprüfen und Termine buchen kann, ohne den Benutzer erneut zu fragen. Bevor Sie auf Verbinden klicken, muss ein Google Workspace-Administrator einen OAuth-Client in Google Cloud erstellen, damit QVO eine Client-ID und ein Client-Geheimnis zur Autorisierung hat.",
+        "1": "Sie müssen dies nur einmal pro Google Cloud-Projekt tun. Nachdem der OAuth-Client erstellt wurde, kann sich jeder QVO-Benutzer anmelden, um seinen eigenen Kalender zu verbinden.",
+        "2": "1. Aktivieren Sie die Google Kalender API",
+        "3": {
+          "0": "Gehen Sie zu https://console.cloud.google.com → wählen oder erstellen Sie ein Projekt.",
+          "1": "Öffnen Sie im linken Menü APIs & Dienste → Bibliothek, suchen Sie nach \"Google Kalender API\", klicken Sie darauf und drücken Sie Aktivieren."
+        },
+        "5": "2. Konfigurieren Sie den OAuth-Zustimmungsbildschirm",
+        "6": {
+          "0": "APIs & Dienste → OAuth-Zustimmungsbildschirm.",
+          "1": "Wählen Sie Intern, wenn jeder Benutzer in Ihrem Google Workspace ist, andernfalls Extern.",
+          "2": "Füllen Sie den App-Namen (\"QVO Voice Agent\"), die Support-E-Mail und die Entwickler-Kontakt-E-Mail aus.",
+          "3": "Fügen Sie die Scopes hinzu: https://www.googleapis.com/auth/calendar und https://www.googleapis.com/auth/calendar.events.",
+          "4": "Wenn Sie Extern gewählt haben, fügen Sie die Google-Konten der QVO-Benutzer hinzu, die sich unter Testbenutzer verbinden müssen (bis Sie die App veröffentlichen)."
+        },
+        "8": "Externe Apps im Testmodus geben Aktualisierungstoken aus, die nach 7 Tagen ablaufen. Halten Sie die App entweder nur für frühe QA im Testmodus oder veröffentlichen Sie die App, sobald Sie die Einrichtung abgeschlossen haben, damit die Aktualisierungstoken langlebig werden.",
+        "9": "3. Erstellen Sie die OAuth-Client-Anmeldeinformationen",
+        "10": {
+          "0": "APIs & Dienste → Anmeldeinformationen → Anmeldeinformationen erstellen → OAuth-Client-ID.",
+          "1": "Anwendungstyp: Webanwendung.",
+          "2": "Name: \"QVO\".",
+          "3": "Autorisierte Umleitungs-URI: https://app.qvo.ai/api/connectors/oauth/google/callback (verwenden Sie die Anwendungsdomain Ihres Mandanten, wenn Sie selbst hosten).",
+          "4": "Klicken Sie auf Erstellen und kopieren Sie sofort die Client-ID und das Client-Geheimnis."
+        },
+        "13": "4. Setzen Sie die Google-Umgebungsvariablen auf dem QVO-Server",
+        "14": {
+          "0": "GOOGLE_CLIENT_ID — Client-ID aus Schritt 3.",
+          "1": "GOOGLE_CLIENT_SECRET — Client-Geheimnis aus Schritt 3."
+        },
+        "15": "Wenn Sie QVO selbst hosten, setzen Sie diese in Ihrer Serverumgebung. Fügen Sie sie bei Replit-Deployments unter Geheimnisse hinzu. Cloud-QVO-Mandanten können die Werte von der Unterstützung setzen lassen.",
+        "16": "5. Autorisieren Sie QVO",
+        "17": {
+          "0": "Gehen Sie in QVO zu Integrationen → Google Kalender → Verbinden.",
+          "1": "Melden Sie sich mit dem Google-Konto an, dessen Kalender verwendet werden soll.",
+          "2": "Genehmigen Sie die Berechtigungen zum Lesen des Kalenders und für Ereignisse.",
+          "3": "Sie kehren zu QVO zurück, wobei der Connector als Verbunden markiert ist; wählen Sie aus, auf welchem Kalender QVO buchen darf, und setzen Sie die Zeitzone, Pufferzeiten und Terminarten."
+        },
+        "19": "Halten Sie die Pufferzeiten realistisch — 5-10 Minuten verhindern aufeinanderfolgende Überschreitungen.",
+        "20": "6. Überprüfen Sie, ob es funktioniert",
+        "21": "Klicken Sie auf Jetzt synchronisieren auf der Google Kalender-Karte oder führen Sie eine Testbuchung durch. Ein neues Ereignis sollte innerhalb weniger Sekunden im gewählten Kalender erscheinen. Aktivieren Sie die SMS- oder E-Mail-Bestätigung unter den Termineinstellungen, um Erinnerungen N Stunden im Voraus zu senden.",
+        "22": "Häufige Probleme",
+        "23": {
+          "0": {
+            "problem": "redirect_uri_mismatch bei Verbindung.",
+            "fix": "Die autorisierte Umleitungs-URI in Google Cloud muss genau übereinstimmen, einschließlich https:// und des nachfolgenden Pfads. Kein nachfolgendes Slash."
+          },
+          "1": {
+            "problem": "access_denied — App nicht verifiziert.",
+            "fix": "Externe Apps im Testmodus erlauben nur aufgelistete Testbenutzer. Fügen Sie das verbindende Google-Konto unter OAuth-Zustimmungsbildschirm → Testbenutzer hinzu oder veröffentlichen Sie die App zur allgemeinen Nutzung."
+          },
+          "2": {
+            "problem": "invalid_grant nach etwa 7 Tagen.",
+            "fix": "Apps im Testmodus geben 7-tägige Aktualisierungstoken aus. Veröffentlichen Sie die App oder wechseln Sie zum internen Benutzertyp, um langlebige Aktualisierungstoken zu erhalten."
+          },
+          "3": {
+            "problem": "Kalender-API wurde im Projekt nicht verwendet.",
+            "fix": "Sie haben Schritt 1 verpasst. Gehen Sie zurück zu APIs & Dienste → Bibliothek und aktivieren Sie die Google Kalender-API."
+          },
+          "4": {
+            "problem": "Buchungen wurden im falschen Kalender erstellt.",
+            "fix": "Wählen Sie in der Connector-Karte eine spezifische Kalender-ID anstelle von \"primary\" und stellen Sie sicher, dass der verbindende Benutzer Schreibzugriff auf diesen Kalender hat."
+          }
+        },
+        "24": "Für detailliertere Informationen zu Google OAuth siehe: https://developers.google.com/identity/protocols/oauth2/web-server."
+      }
+    },
+    "connecting-slack": {
+      "title": "Slack verbinden",
+      "description": "Erstellen Sie eine Slack-App und autorisieren Sie QVO, um Anrufzusammenfassungen, verpasste Anrufbenachrichtigungen und Eskalationen in Kanäle zu posten.",
+      "body": {
+        "0": "QVO verwendet den OAuth v2-Flow von Slack, um einen Bot-Benutzer in Ihrem Workspace zu installieren. Bevor Sie auf Verbinden klicken, muss ein Slack-Workspace-Administrator eine App unter api.slack.com erstellen, damit QVO eine Client-ID und ein Client-Geheimnis zur Autorisierung hat.",
+        "1": "Sie müssen dies nur einmal pro Slack-Workspace tun. Nachdem die App installiert ist, kann jeder im Workspace QVO-Ereignisse an Kanäle weiterleiten, auf die er Zugriff hat.",
+        "2": "1. Erstellen Sie eine Slack-App",
+        "3": {
+          "0": "Gehen Sie zu https://api.slack.com/apps → Neue App erstellen → Von Grund auf.",
+          "1": "Nennen Sie sie \"QVO\" und wählen Sie den Workspace aus, in den sie installiert werden soll."
+        },
+        "5": "2. OAuth-Berechtigungen hinzufügen",
+        "6": {
+          "0": "Öffnen Sie die App → Funktionen → OAuth & Berechtigungen.",
+          "1": "Unter Berechtigungen → Bot-Token-Berechtigungen hinzufügen: chat:write, channels:read, groups:read.",
+          "2": "chat:write ermöglicht es QVO, Nachrichten zu posten, channels:read und groups:read ermöglichen es QVO, öffentliche und private Kanäle aufzulisten, an die Sie Ereignisse weiterleiten können."
+        },
+        "8": "3. Setzen Sie die Umleitungs-URL",
+        "9": {
+          "0": "Auf derselben Seite OAuth & Berechtigungen scrollen Sie zu Umleitungs-URLs → Neue Umleitungs-URL hinzufügen.",
+          "1": "Geben Sie ein: https://app.qvo.ai/api/connectors/oauth/slack/callback (verwenden Sie die App-Domain Ihres Mandanten, wenn Sie selbst hosten).",
+          "2": "Klicken Sie auf URLs speichern."
+        },
+        "11": "4. Holen Sie sich die Client-ID und das Client-Geheimnis",
+        "12": {
+          "0": "Öffnen Sie Einstellungen → Grundinformationen.",
+          "1": "Unter App-Anmeldeinformationen kopieren Sie die Client-ID und das Client-Geheimnis."
+        },
+        "14": "5. Setzen Sie die Slack-Umgebungsvariablen auf dem QVO-Server",
+        "15": {
+          "0": "SLACK_CLIENT_ID — Client-ID aus Schritt 4.",
+          "1": "SLACK_CLIENT_SECRET — Client-Geheimnis aus Schritt 4."
+        },
+        "16": "Wenn Sie QVO selbst hosten, setzen Sie diese in Ihrer Serverumgebung. Bei Replit-Deployments fügen Sie sie unter Geheimnisse hinzu. Cloud-QVO-Mandanten können die Werte von der Unterstützung setzen lassen.",
+        "17": "6. Autorisieren Sie QVO und wählen Sie Kanäle aus",
+        "18": {
+          "0": "Gehen Sie in QVO zu Integrationen → Slack → Verbinden.",
+          "1": "Sie werden zu Slack weitergeleitet, um die QVO-App in Ihrem Arbeitsbereich zu installieren.",
+          "2": "Genehmigen Sie die angeforderten Berechtigungen — Slack bringt Sie mit dem als Verbunden markierten Connector zurück zu QVO.",
+          "3": "Fügen Sie in den Connector-Einstellungen die Channel-ID für den Kanal ein, der Standardereignisse empfangen soll, oder ordnen Sie Ereignistypen verschiedenen Kanälen zu (call.escalated → #front-desk, call.missed → #ops)."
+        },
+        "20": "Um eine Channel-ID zu finden, öffnen Sie den Kanal in Slack, klicken Sie auf den Kanalnamen oben und kopieren Sie die ID am Ende des Über-Panels.",
+        "21": "Jede Slack-Nachricht enthält einen Link zur vollständigen Transkription und Aufnahme in QVO.",
+        "22": "7. Laden Sie den Bot in private Kanäle ein",
+        "23": "Für private Kanäle führen Sie einmal /invite @QVO aus, damit der Bot posten kann. Öffentliche Kanäle funktionieren ohne Einladung.",
+        "24": "Häufige Probleme",
+        "25": {
+          "0": {
+            "problem": "invalid_redirect_uri bei Connect.",
+            "fix": "Die Redirect-URL in Ihren Slack-App-Einstellungen muss genau übereinstimmen, einschließlich https://. Stellen Sie sicher, dass Sie nach dem Hinzufügen auf URLs speichern geklickt haben."
+          },
+          "1": {
+            "problem": "missing_scope, wenn QVO versucht zu posten.",
+            "fix": "Öffnen Sie die Slack-App erneut → OAuth & Berechtigungen, fügen Sie den fehlenden Scope hinzu, klicken Sie auf Neu installieren im Arbeitsbereich und verbinden Sie sich erneut in QVO."
+          },
+          "2": {
+            "problem": "channel_not_found beim Posten in einen privaten Kanal.",
+            "fix": "Führen Sie /invite @QVO im privaten Kanal aus, damit der Bot Zugriff hat."
+          },
+          "3": {
+            "problem": "not_in_channel beim Posten in einen öffentlichen Kanal.",
+            "fix": "Dasselbe Problem — laden Sie @QVO ein oder wählen Sie einen anderen Kanal aus, zu dem der Bot hinzugefügt wurde."
+          },
+          "4": {
+            "problem": "token_revoked, nachdem der Administrator die App entfernt hat.",
+            "fix": "Ein Workspace-Administrator muss die QVO-App aus dem App-Verzeichnis neu installieren und dann in QVO auf 'Wiederverbinden' klicken."
+          }
+        },
+        "26": "Für detailliertere Informationen zu Slack OAuth siehe: https://api.slack.com/authentication/oauth-v2."
+      }
+    },
+    "connecting-pipedrive": {
+      "title": "Pipedrive verbinden",
+      "description": "Richten Sie eine Pipedrive OAuth-App ein (oder verwenden Sie ein persönliches API-Token) und autorisieren Sie QVO, um Kontakte, Deals und Anrufaktivitäten zu synchronisieren.",
+      "body": {
+        "0": "QVO verbindet sich auf zwei Arten mit Pipedrive: über eine öffentliche OAuth-App (empfohlen für Produktions-Multi-User-Setups) oder ein persönliches API-Token (schnellster Weg für einen einzelnen Benutzer). Beide erfordern, dass ein Pipedrive-Administrator zuerst die Einrichtung vornimmt.",
+        "1": "OAuth aktualisiert Tokens automatisch und bietet eine Benutzerzuordnung. Persönliche API-Tokens sind auf einen Benutzer beschränkt und laufen nie ab, erben jedoch die Berechtigungen dieses Benutzers.",
+        "2": "Option A — OAuth-App (empfohlen)",
+        "3": "1. Erstellen Sie eine Pipedrive Marketplace-App",
+        "4": {
+          "0": "Gehen Sie zu https://marketplace.pipedrive.com/ → Developer Hub → App erstellen (Sie müssen zuerst die Entwickler-Sandbox in Ihrem Pipedrive-Konto aktivieren).",
+          "1": "Wählen Sie \"Öffentliche App\", wenn mehrere Pipedrive-Unternehmen sie installieren, oder \"Private App\" nur für Ihr eigenes Unternehmen.",
+          "2": "Setzen Sie die Callback-URL auf: https://app.qvo.ai/api/connectors/oauth/pipedrive/callback (verwenden Sie die App-Domain Ihres Mandanten, wenn Sie selbst hosten)."
+        },
+        "7": "2. Setzen Sie die Scopes",
+        "8": {
+          "0": "contacts:full — Personen und Organisationen lesen und schreiben.",
+          "1": "deals:full — Deals lesen und schreiben.",
+          "2": "activities:full — Anrufe und Meetings als Aktivitäten protokollieren.",
+          "3": "users:read — den verbindenden Benutzer identifizieren."
+        },
+        "10": "3. Holen Sie sich die Client-ID und das Client-Geheimnis",
+        "11": "Kopieren Sie die Client-ID und das Client-Geheimnis aus dem OAuth- & Zugriff-Tab der App.",
+        "12": "4. Setzen Sie die Pipedrive-Umgebungsvariablen auf dem QVO-Server",
+        "13": {
+          "0": "PIPEDRIVE_CLIENT_ID — Client-ID aus Schritt 3.",
+          "1": "PIPEDRIVE_CLIENT_SECRET — Client-Geheimnis aus Schritt 3."
+        },
+        "14": "Wenn Sie QVO selbst hosten, setzen Sie diese in Ihrer Serverumgebung. Bei Replit-Deployments fügen Sie sie unter Secrets hinzu. Cloud QVO-Mandanten können die Werte von der Unterstützung anfordern.",
+        "15": "5. Autorisieren Sie QVO",
+        "16": {
+          "0": "Gehen Sie in QVO zu Integrationen → Pipedrive → Verbinden.",
+          "1": "Melden Sie sich mit dem Pipedrive-Konto an, das die protokollierten Anrufe besitzen soll.",
+          "2": "Genehmigen Sie die angeforderten Berechtigungen.",
+          "3": "Sie kehren zu QVO zurück, mit dem Connector, der als Verbunden markiert ist."
+        },
+        "18": "Option B — Persönliches API-Token",
+        "19": {
+          "0": "Gehen Sie in Pipedrive zu Einstellungen → Persönliche Einstellungen → API.",
+          "1": "Kopieren Sie das angezeigte persönliche API-Token.",
+          "2": "Gehen Sie in QVO zu Integrationen → Pipedrive → Verbinden → API-Token verwenden und fügen Sie das Token zusammen mit Ihrer Unternehmensdomain (dem Subdomain-Teil von yourcompany.pipedrive.com) ein."
+        },
+        "21": "Persönliche API-Token erben die Berechtigungen des Benutzers, der sie erstellt hat. Wenn dieser Benutzer deaktiviert wird, funktioniert die Integration nicht mehr.",
+        "22": "Was synchronisiert wird",
+        "23": {
+          "0": "Eingehende Anrufernummer → Personenabgleich, wobei neue Personen erstellt werden, wenn kein Treffer vorhanden ist.",
+          "1": "Anrufzusammenfassung → Aktivität (Anruftyp), die der übereinstimmenden Person und jedem offenen Deal zugeordnet ist.",
+          "2": "Disposition → Deal-Phasenaktualisierungen (interessiert bewegt den Deal voran, Rückruf erstellt eine Folgeaktivität)."
+        },
+        "24": "Häufige Probleme",
+        "25": {
+          "0": {
+            "problem": "redirect_uri_mismatch bei Connect.",
+            "fix": "Die Callback-URL in Ihrer Pipedrive-App muss genau übereinstimmen, einschließlich https://."
+          },
+          "1": {
+            "problem": "invalid_scope-Fehler.",
+            "fix": "Öffnen Sie die Pipedrive-App erneut, fügen Sie den fehlenden Scope aus der obigen Liste hinzu, speichern Sie und verbinden Sie sich erneut in QVO."
+          },
+          "2": {
+            "problem": "Person nicht gefunden für einen bekannten Anrufer.",
+            "fix": "Pipedrive vergleicht im Personenfeld für Telefonnummern. Stellen Sie sicher, dass die Nummer des Anrufers in einem Personen-Datensatz im E.164-Format vorliegt."
+          },
+          "3": {
+            "problem": "Aktivität erstellt, aber nicht einem Deal zugeordnet.",
+            "fix": "QVO fügt nur offenen Deals hinzu. Wenn alle Deals für den Kontakt gewonnen/verloren sind, bleibt die Aktivität nur der Person zugeordnet."
+          },
+          "4": {
+            "problem": "Persönliches Token schlägt plötzlich nach einer Benutzeränderung fehl.",
+            "fix": "Persönliche API-Token sind an einen einzelnen Benutzer gebunden. Wechseln Sie zu OAuth oder generieren Sie ein neues Token unter einem Dienstkonto-Benutzer, der nicht deaktiviert wird."
+          }
+        },
+        "26": "Für detailliertere Informationen zu Pipedrive OAuth siehe: https://pipedrive.readme.io/docs/marketplace-oauth-authorization."
+      }
+    },
+    "connecting-quickbooks": {
+      "title": "QuickBooks verbinden",
+      "description": "Erstellen Sie eine Intuit-Entwickler-App und autorisieren Sie QVO, um Kunden zu synchronisieren und Rechnungen zu erstellen, wenn Anrufe abgeschlossen sind.",
+      "body": {
+        "0": "QVO verbindet sich über den OAuth 2.0-Flow von Intuit mit QuickBooks Online und verwendet ein Refresh-Token, damit Rechnungen im Hintergrund weiterhin erstellt werden. Bevor Sie auf Verbinden klicken, muss ein QuickBooks-Administrator eine App im Intuit-Entwicklerportal registrieren, damit QVO eine Client-ID und ein Client-Geheimnis zur Autorisierung hat.",
+        "1": "Sie müssen dies nur einmal pro QuickBooks-Unternehmen tun. Dieselbe App unterstützt sowohl Sandbox (zum Testen) als auch Produktionsumgebungen — sie verwenden unterschiedliche Tokens, die Sie separat verbinden.",
+        "2": "1. Erstellen Sie eine Intuit-Entwickler-App",
+        "3": {
+          "0": "Gehen Sie zu https://developer.intuit.com → Melden Sie sich an (oder erstellen Sie ein kostenloses Entwicklerkonto).",
+          "1": "Meine Apps → Eine App erstellen → Wählen Sie QuickBooks Online und Zahlungen.",
+          "2": "Nennen Sie es \"QVO Voice Agent\"."
+        },
+        "5": "2. Konfigurieren Sie die Umleitungs-URI und Berechtigungen",
+        "6": {
+          "0": "Öffnen Sie die App → Registerkarte Schlüssel & OAuth.",
+          "1": "Wählen Sie die Umgebung aus, die Sie zuerst einrichten (Entwicklung für Sandbox, Produktion für Live).",
+          "2": "Fügen Sie unter Umleitungs-URIs hinzu: https://app.qvo.ai/api/connectors/oauth/quickbooks/callback (verwenden Sie die App-Domain Ihres Mandanten, wenn Sie selbst hosten).",
+          "3": "Bestätigen Sie, dass der Bereich com.intuit.quickbooks.accounting aktiviert ist — dies ist der einzige Bereich, den QVO benötigt.",
+          "4": "Kopieren Sie die Client-ID und das Client-Geheimnis für diese Umgebung."
+        },
+        "9": "Sandbox und Produktion haben jeweils ihre eigene Client-ID und ihr eigenes Client-Geheimnis. Mischen Sie sie nicht — die Verwendung von Sandbox-Anmeldeinformationen gegen den Produktionsendpunkt ist die häufigste Ursache für stille Fehler.",
+        "10": "3. Setzen Sie die QuickBooks-Umgebungsvariablen auf dem QVO-Server",
+        "11": {
+          "0": "QUICKBOOKS_CLIENT_ID — Client-ID für die Umgebung, mit der Sie sich verbinden.",
+          "1": "QUICKBOOKS_CLIENT_SECRET — Client-Geheimnis für dieselbe Umgebung.",
+          "2": "QUICKBOOKS_ENV — auf Produktion (Standard) oder Sandbox setzen, um übereinzustimmen."
+        },
+        "12": "Wenn Sie QVO selbst hosten, setzen Sie diese in Ihrer Serverumgebung. Bei Replit-Deployments fügen Sie sie unter Secrets hinzu. Cloud-QVO-Mieter können die Werte von der Unterstützung setzen lassen.",
+        "13": "4. QVO autorisieren",
+        "14": {
+          "0": "Gehen Sie in QVO zu Integrationen → QuickBooks → Verbinden.",
+          "1": "Melden Sie sich mit dem Intuit-Konto an, das die QuickBooks-Unternehmensdatei besitzt, in die QVO schreiben soll.",
+          "2": "Wählen Sie das Unternehmen (Intuit nennt dies das Reich) und genehmigen Sie den Buchhaltungsbereich.",
+          "3": "Sie kehren zu QVO zurück, wobei der Connector als Verbunden markiert ist. Die Realm-ID wird automatisch aus dem Callback erfasst."
+        },
+        "16": "5. Automatische Rechnungsstellung konfigurieren (optional)",
+        "17": "Um Jobs, die vom Agenten gebucht wurden, abzurechnen, setzen Sie den Rechnungsartikel und den Standardbetrag auf der QuickBooks-Connector-Karte:",
+        "18": {
+          "0": "Rechnungsartikel-ID — die Item Ref in QuickBooks für den abzurechnenden Posten (z. B. \"Standard-Serviceanruf\").",
+          "1": "Standard-Rechnungsbetrag — der Dollarbetrag, der abgerechnet werden soll, wenn kein Preis pro Anruf im Workflow festgelegt ist."
+        },
+        "20": "Um eine Artikel-ID in QuickBooks zu finden: Verkäufe → Produkte und Dienstleistungen → klicken Sie auf den Artikel → die ID befindet sich in der URL.",
+        "21": "6. Überprüfen, ob es funktioniert",
+        "22": "Klicken Sie auf Jetzt synchronisieren auf der QuickBooks-Karte oder lösen Sie einen Testanruf aus, der so konfiguriert ist, dass eine Rechnung erstellt wird. Eine neue Entwurfsrechnung sollte innerhalb weniger Sekunden in QuickBooks erscheinen, angehängt an den entsprechenden Kunden (übereinstimmend nach Telefon oder E-Mail).",
+        "23": "Häufige Probleme",
+        "24": {
+          "0": {
+            "problem": "invalid_redirect_uri bei Connect.",
+            "fix": "Die Redirect-URI in der Intuit-Entwickler-App muss genau übereinstimmen. Überprüfen Sie, ob Sie sie im richtigen Umgebungs-Tab (Entwicklung vs. Produktion) gesetzt haben."
+          },
+          "1": {
+            "problem": "invalid_grant beim Aktualisieren von Tokens.",
+            "fix": "QuickBooks-Aktualisierungstokens halten 100 Tage, rotieren jedoch bei jeder Verwendung. Wenn das Token abläuft, klicken Sie auf Wiederverbinden auf der QVO-Connector-Karte. Bestätigen Sie auch, dass QUICKBOOKS_ENV mit den verwendeten Anmeldeinformationen übereinstimmt."
+          },
+          "2": {
+            "problem": "AuthenticationFailed beim Aufrufen der API.",
+            "fix": "Sie verwenden wahrscheinlich Produktionsanmeldeinformationen mit Sandbox-Credentials (oder umgekehrt). Setzen Sie QUICKBOOKS_ENV, um mit den Schlüsseln übereinzustimmen, und verbinden Sie sich dann erneut."
+          },
+          "3": {
+            "problem": "Kunde nicht gefunden für einen bekannten Anrufer.",
+            "fix": "QVO vergleicht Kunden anhand von Telefon oder E-Mail. Aktualisieren Sie den QuickBooks-Kundenstamm mit der Telefonnummer des Anrufers im E.164-Format."
+          },
+          "4": {
+            "problem": "Rechnung erstellt, aber leere Positionen.",
+            "fix": "Die Rechnungsartikel-ID ist nicht gesetzt oder ungültig. Wählen Sie eine echte Item Ref in den Connector-Einstellungen."
+          },
+          "5": {
+            "problem": "Token nach 100 Tagen Inaktivität widerrufen.",
+            "fix": "Intuit widerruft Refresh-Token nach 100 Tagen ohne API-Aufrufe. Triggern Sie die Synchronisierung jetzt mindestens einmal pro Quartal oder führen Sie einen wiederkehrenden Gesundheitscheck durch."
+          }
+        },
+        "25": "Für detailliertere Informationen zu Intuit OAuth siehe: https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-2.0."
+      }
+    },
+    "webhooks": {
+      "title": "Webhooks",
+      "description": "Abonnieren Sie Anrufereignisse und erhalten Sie signierte HTTP POSTs in Echtzeit.",
+      "body": {
+        "0": "Abonnieren",
+        "1": "Einstellungen → Webhooks → Endpoint hinzufügen. Wählen Sie die gewünschten Ereignisse aus und geben Sie Ihre URL an.",
+        "2": "Ereignisse",
+        "3": {
+          "0": "call.started",
+          "1": "call.completed",
+          "2": "call.escalated",
+          "3": "call.failed",
+          "4": "tool.executed",
+          "5": "workflow.completed"
+        },
+        "4": "Signatur",
+        "5": "Jede Lieferung enthält einen X-QVO-Signature-Header. Überprüfen Sie durch HMAC-SHA256 des Rohkörpers unter Verwendung Ihres Webhook-Geheimnisses.",
+        "7": "Wiederholungen",
+        "8": "Nicht-2xx-Antworten werden mit exponentiellem Backoff für 24 Stunden wiederholt."
+      }
+    },
+    "sms-inbox": {
+      "title": "Verwendung des SMS-Posteingangs",
+      "description": "Zwei-Wege-SMS-Threads, die mit Ihren QVO-Nummern verbunden sind, mit Unterstützung durch Agenten.",
+      "body": {
+        "0": "Das SMS-Postfach bietet eine einheitliche Ansicht von eingehenden und ausgehenden Textnachrichten auf Ihren QVO-Nummern. Threads werden nach Gegenparteien gruppiert.",
+        "1": "Senden",
+        "2": {
+          "0": "Öffnen Sie das SMS-Postfach.",
+          "1": "Wählen Sie einen Thread oder klicken Sie auf \"Neue Nachricht\".",
+          "2": "Verfassen; Vorlagen und KI-Vorschläge sind im Seitenpanel verfügbar."
+        },
+        "3": "Unterstützung durch Agenten",
+        "4": "Aktivieren Sie \"KI-Vorschlag\", um einen LLM Antworten basierend auf der Thread-Historie und Ihrer Wissensdatenbank zu entwerfen. Sie bestätigen immer vor dem Senden.",
+        "5": "SMS an US-Nummern erfordert eine 10DLC-Registrierung. Ohne diese können Anbieter Ihre Nachrichten filtern."
+      }
+    },
+    "managing-tickets": {
+      "title": "Tickets verwalten",
+      "description": "Erstellen, triagieren und lösen Sie Tickets, die aus Anrufen oder manuell geöffnet wurden.",
+      "body": {
+        "0": "Erstellen",
+        "1": "Tickets können automatisch aus einem Anruf (über das create_ticket-Tool), manuell von der Tickets-Seite oder über die öffentliche API erstellt werden.",
+        "2": "Triagieren",
+        "3": {
+          "0": "Priorität — Niedrig, Mittel, Hoch, Dringend.",
+          "1": "Status — Offen, In Bearbeitung, Wartend, Gelöst.",
+          "2": "Zugewiesen — jedes Teammitglied.",
+          "3": "Tags — Freitext zum Filtern."
+        },
+        "4": "Berichterstattung",
+        "5": "Tickets → Berichterstattung zeigt Volumen, Zeit bis zur Lösung, SLA-Verstöße und die Leistung pro Agent."
+      }
+    },
+    "scheduling-appointments": {
+      "title": "Termine planen",
+      "description": "Eigenständige Planung, die mit oder ohne externen Kalender funktioniert.",
+      "body": {
+        "0": "Die Planung bietet einen leichten Kalender innerhalb von QVO. Wenn Sie keinen externen Kalender verbunden haben, wird der Agent hier direkt buchen.",
+        "1": "Ressourcen",
+        "2": "Fügen Sie Ressourcen hinzu (Personen, Räume, Geräte). Jede Ressource hat ihre eigenen Arbeitszeiten und Termintypen.",
+        "3": "Buchung",
+        "4": {
+          "0": "Nächste verfügbare finden — Agent wählt den frühesten passenden Termin.",
+          "1": "Wahlmöglichkeiten anbieten — Agent liest drei Optionen vor und lässt den Anrufer wählen.",
+          "2": "Bestätigen — Anrufer erhält automatisch eine SMS- oder E-Mail-Bestätigung."
+        }
+      }
+    },
+    "dispatch": {
+      "title": "Einsatz",
+      "description": "Feldaufträge mit Priorität und Zonenbewusstsein an Techniker weiterleiten.",
+      "body": {
+        "0": "Einsatz ist für Dienstleistungsunternehmen, die Aufträge an eine Liste von Außendienstmitarbeitern weiterleiten. Aufträge kommen durch Anrufe, die API oder manuelle Eingabe.",
+        "1": "Konfiguration",
+        "2": {
+          "0": "Techniker mit Fähigkeiten und Zonen hinzufügen.",
+          "1": "Geschäftszeiten und Bereitschaftsrotationen festlegen.",
+          "2": "Routing-Regeln definieren (Priorität, Fähigkeit, Entfernung)."
+        },
+        "3": "Tagesansicht",
+        "4": "Das Einsatz-Board zeigt Aufträge in der Warteschlange, in Bearbeitung und abgeschlossen für den aktuellen Tag. Ziehen, um neu zuzuweisen."
+      }
+    },
+    "api-overview": {
+      "title": "API-Übersicht",
+      "description": "Basis-URL, Versionierung, Inhaltstypen und Ratenlimits.",
+      "body": {
+        "0": "Basis-URL",
+        "2": "Inhaltstyp",
+        "3": "Alle Anfragen und Antworten sind JSON (application/json). Zeitstempel sind ISO 8601 in UTC.",
+        "4": "Versionierung",
+        "5": "Die Version befindet sich in der URL (/v1). Wir werden 12 Monate im Voraus ankündigen, bevor wir einen v1-Endpunkt einstellen.",
+        "6": "Ratenlimits",
+        "7": {
+          "0": "Standard: 60 Anfragen/Min. pro API-Schlüssel.",
+          "1": "Spitzen von bis zu 120/Min. werden für kurze Zeiträume toleriert.",
+          "2": "429-Antworten enthalten einen Retry-After-Header (Sekunden)."
+        }
+      }
+    },
+    "api-authentication": {
+      "title": "Authentifizierung",
+      "description": "API-Schlüssel, Scopes und JWTs für das Dashboard.",
+      "body": {
+        "0": "API-Schlüssel",
+        "1": "Erstellen Sie Schlüssel in Einstellungen → API-Schlüssel. Jeder Schlüssel ist auf einen Mandanten und eine oder mehrere Berechtigungen (calls:read, agents:write usw.) beschränkt.",
+        "2": "Versenden des Schlüssels",
+        "4": "Rotation",
+        "5": "Rotieren, indem Sie einen neuen Schlüssel erstellen, die Clients aktualisieren und dann den alten widerrufen. Widerrufene Schlüssel hören sofort auf, sich zu authentifizieren.",
+        "6": "Betteln Sie niemals API-Schlüssel in mobilen oder Browser-Apps ein. Verwenden Sie stattdessen das öffentliche Widget-Token."
+      }
+    },
+    "api-agents": {
+      "title": "Agents API",
+      "description": "Agents erstellen, auflisten und aktualisieren.",
+      "body": {
+        "0": "Agents auflisten",
+        "2": "Agent erstellen",
+        "4": "Agent aktualisieren"
+      }
+    },
+    "api-calls": {
+      "title": "Calls API",
+      "description": "Abfragen von Anrufverlauf, Transkripten und Aufzeichnungen.",
+      "body": {
+        "0": "Anrufe auflisten",
+        "2": "Anruf abrufen",
+        "4": "Ausgehenden Anruf initiieren"
+      }
+    },
+    "api-webhooks": {
+      "title": "Webhooks API",
+      "description": "Webhook-Abonnements programmgesteuert registrieren und verwalten.",
+      "body": {
+        "0": "Registrieren",
+        "2": "Signatur überprüfen",
+        "3": "HMAC-SHA256 des Rohanfragekörpers unter Verwendung Ihres Webhook-Geheimnisses. Vergleichen Sie mit X-QVO-Signature."
+      }
+    },
+    "api-error-codes": {
+      "title": "Fehlercodes",
+      "description": "HTTP-Statuscodes und strukturierte Fehlerhüllen.",
+      "body": {
+        "0": {
+          "0": "400 invalid_request — fehlerhafter Körper, fehlende Felder.",
+          "1": "401 nicht autorisiert — fehlender oder ungültiger API-Schlüssel.",
+          "2": "403 verboten — Schlüssel hat nicht den erforderlichen Scope.",
+          "3": "404 nicht gefunden — Ressource existiert nicht oder ist nicht in Ihrem Mandanten.",
+          "4": "409 Konflikt — doppelter Idempotenzschlüssel.",
+          "5": "429 Rate limitiert — langsamer; überprüfen Sie Retry-After.",
+          "6": "500 Serverfehler — unser Fehler; erneut mit exponentiellem Backoff versuchen."
+        },
+        "1": "Umschlag"
+      }
+    },
+    "call-quality": {
+      "title": "Probleme mit der Anrufqualität",
+      "description": "Diagnose von Latenz, abgebrochenem Audio und ruckeliger Sprache.",
+      "body": {
+        "0": {
+          "0": {
+            "problem": "Lange Verzögerungen, bevor der Agent spricht.",
+            "fix": "Öffnen Sie den Anruf in Conversations → Diagnosen. Wenn TTFB > 1,5s, wechseln Sie zu einer schnelleren Stimme oder verkürzen Sie den Systemprompt."
+          },
+          "1": {
+            "problem": "Audio schneidet ein und aus.",
+            "fix": "Fast immer ein Problem des Anbieters auf der Anruferseite. Überprüfen Sie den Codec in den Diagnosen; G.711 ist am zuverlässigsten."
+          },
+          "2": {
+            "problem": "Agent spricht über den Anrufer.",
+            "fix": "Senken Sie die Unterbrechungsempfindlichkeit in den Einstellungen des Agentenverhaltens."
+          },
+          "3": {
+            "problem": "Echo oder Feedback.",
+            "fix": "In der Regel ein Problem mit der Hardware des Anrufers. Versuchen Sie es mit einem anderen Telefon, um dies zu bestätigen."
+          }
+        }
+      }
+    },
+    "integration-sync": {
+      "title": "Fehler bei der Integrationssynchronisierung",
+      "description": "Wenn Connectoren Fehler zurückgeben oder das Pushen von Daten stoppen.",
+      "body": {
+        "0": {
+          "0": {
+            "problem": "OAuth-Token abgelaufen.",
+            "fix": "Stellen Sie die Verbindung zur Integration wieder her. Wir aktualisieren Tokens automatisch, aber abgelaufene Refresh-Tokens erfordern eine erneute Authentifizierung."
+          },
+          "1": {
+            "problem": "Feldzuordnungsfehler in den Protokollen.",
+            "fix": "Öffnen Sie den Connector → Feldzuordnung. Erforderliche Felder am Ziel müssen zugeordnet werden."
+          },
+          "2": {
+            "problem": "Datensätze erscheinen verzögert.",
+            "fix": "Die meisten Synchronisierungen dauern unter 5s. Anhaltende Verzögerungen deuten auf Ratenlimits hin — überprüfen Sie die Statusseite des Connectors."
+          }
+        }
+      }
+    },
+    "provisioning": {
+      "title": "Nummernbereitstellung",
+      "description": "Anfragen zu blockierten Telefonnummern, Portierungen und 10DLC-Registrierungen.",
+      "body": {
+        "0": {
+          "0": {
+            "problem": "Nummer steckt in \"Bereitstellung\".",
+            "fix": "Die meisten Nummern werden in <30s abgeschlossen. Wenn sie länger als 5 Minuten stecken bleibt, kontaktieren Sie den Support – wahrscheinlich ein Verzögerung auf der Seite des Anbieters."
+          },
+          "1": {
+            "problem": "Portierung abgelehnt.",
+            "fix": "Überprüfen Sie, ob der CSR (Customer Service Record) genau mit den Aufzeichnungen Ihres abgebenden Anbieters übereinstimmt, einschließlich Suite-Nummern."
+          },
+          "2": {
+            "problem": "10DLC-Registrierung ausstehend.",
+            "fix": "Die Markenregistrierung dauert 1-3 Werktage; die Kampagnenprüfung weitere 1-2. Planen Sie entsprechend den Start."
+          }
+        }
+      }
+    },
+    "plans-and-pricing": {
+      "title": "Pläne und Preise",
+      "description": "Was in jeder Stufe enthalten ist und wie die Nutzung abgerechnet wird.",
+      "body": {
+        "0": "Planstufen",
+        "1": {
+          "0": "Testversion – 30 kostenlose Sprachminuten, 1 Agent, 1 Nummer.",
+          "1": "Starter – für Einzelbetreiber; enthaltene Minuten plus Überstunden pro Minute.",
+          "2": "Wachstum – für Mehrzeilen-Teams; höhere Basis, niedrigere Überstunden, Premium-Stimmen.",
+          "3": "Unternehmen – maßgeschneidert; SSO, BAA, dedizierter Support, vertragliche SLA."
+        },
+        "2": "Was abgerechnet wird",
+        "3": {
+          "0": "Sprachminuten (eingehend + ausgehend).",
+          "1": "SMS-Segmente.",
+          "2": "Wissensdatenbank-Speicher über das enthaltene Kontingent hinaus.",
+          "3": "Zusätzliche Gebühren für Premium-Stimmen."
+        }
+      }
+    },
+    "invoices-and-payment": {
+      "title": "Rechnungen und Zahlungen",
+      "description": "Wo Sie Rechnungen finden, Zahlungsmethoden aktualisieren und Quittungen herunterladen können.",
+      "body": {
+        "0": {
+          "0": "Abrechnung → Rechnungen.",
+          "1": "Klicken Sie auf eine Rechnung, um die Einzelposten zu sehen und ein PDF herunterzuladen.",
+          "2": "Klicken Sie auf \"Abrechnung verwalten\", um das Stripe-Portal für Karten, Adressen und Steuer-IDs zu öffnen."
+        }
+      }
+    },
+    "budget-controls": {
+      "title": "Budgetkontrollen",
+      "description": "Weiche und harte Obergrenzen zur Vermeidung unerwarteter Mehrkosten.",
+      "body": {
+        "0": "Weiche Obergrenze",
+        "1": "E-Mail-Benachrichtigung, wenn die monatliche Nutzung N% Ihres Budgets überschreitet. Keine Unterbrechung des Dienstes.",
+        "2": "Harte Obergrenze",
+        "3": "Der Dienst wird pausiert (eingehende Anrufe gehen auf die Voicemail; ausgehende Anrufe sind blockiert), wenn die Obergrenze erreicht ist. Setzt sich im nächsten Abrechnungszyklus oder bei Erhöhung fort.",
+        "4": "Beides festlegen. Weiche Obergrenzen erfassen Trends; harte Obergrenzen schützen vor unkontrollierten Schleifen."
+      }
     }
   }
 }

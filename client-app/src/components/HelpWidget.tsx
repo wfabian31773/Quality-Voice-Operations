@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { docArticles, searchDocs, type DocArticle, type DocBlock } from '../data/docs';
 import { searchMarketingPages, type MarketingPage } from '../data/marketingPages';
+import { useArticleMetaTranslator, useTranslatedArticles } from '../lib/translateDoc';
 
 function extractText(block: DocBlock): string {
   if (block.type === 'p' || block.type === 'h2' || block.type === 'h3') return block.text;
@@ -92,10 +93,12 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
     };
   }, [open, setOpen]);
 
-  const results = useMemo<DocArticle[]>(
+  const rawResults = useMemo<DocArticle[]>(
     () => (query.trim() ? searchDocs(query).slice(0, 8) : docArticles.slice(0, 8)),
     [query],
   );
+  const results = useTranslatedArticles(rawResults);
+  const translateMeta = useArticleMetaTranslator();
 
   const marketingResults = useMemo<MarketingPage[]>(
     () => (query.trim() ? searchMarketingPages(query).slice(0, 6) : []),

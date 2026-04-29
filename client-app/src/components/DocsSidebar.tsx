@@ -1,23 +1,27 @@
 import { Link } from 'react-router-dom';
 import { docCategories, docArticles } from '../data/docs';
+import { useArticleMetaTranslator, useDocCategoryTranslator } from '../lib/translateDoc';
 
 interface Props {
   activeSlug?: string;
 }
 
 export function DocsSidebar({ activeSlug }: Props) {
+  const translateMeta = useArticleMetaTranslator();
+  const translateCategory = useDocCategoryTranslator();
   return (
     <nav>
       {docCategories.map((cat) => {
         const articles = docArticles.filter((a) => a.category === cat.slug);
         if (articles.length === 0) return null;
         const Icon = cat.icon;
+        const catText = translateCategory(cat);
         return (
           <div key={cat.slug} className="mb-6">
             <div className="flex items-center gap-2 mb-2 px-2">
               <Icon className="h-3.5 w-3.5 text-primary" />
               <h3 className="font-display text-xs font-semibold text-text-primary/60 uppercase tracking-wider">
-                {cat.title}
+                {catText.title}
               </h3>
             </div>
             <ul className="space-y-0.5">
@@ -31,7 +35,7 @@ export function DocsSidebar({ activeSlug }: Props) {
                         : 'text-text-primary/70 hover:text-primary hover:bg-primary/5'
                     }`}
                   >
-                    {a.title}
+                    {translateMeta(a).title}
                   </Link>
                 </li>
               ))}
