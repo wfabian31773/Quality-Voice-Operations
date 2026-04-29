@@ -11,6 +11,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
 import { trackPageView, trackVerticalEngagement, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { VERTICAL_ACTION } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
 interface VerticalConfig {
@@ -139,7 +140,7 @@ export default function VerticalLanding() {
     captureUtmOnLoad();
     if (config) {
       trackPageView(`/industries/${config.slug}`);
-      trackVerticalEngagement(config.slug, 'page_view');
+      trackVerticalEngagement(config.slug, VERTICAL_ACTION.PAGE_VIEW);
       trackConversionEvent('page_view', `/industries/${config.slug}`);
     }
   }, [config]);

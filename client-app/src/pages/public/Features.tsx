@@ -10,6 +10,7 @@ import RevealSection from '../../components/RevealSection';
 import { useEffect } from 'react';
 import { trackPageView, trackFeatureView, trackCTAClick } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import { FEATURE } from '../../lib/analyticsLabels';
 
 export default function Features() {
   const { t } = useTranslation('marketing');
@@ -21,6 +22,7 @@ export default function Features() {
   const platformCapabilities = [
     {
       icon: Mic,
+      feature: FEATURE.CAPABILITY_VOICE_RUNTIME,
       title: t('features.capabilities.voice_runtime_title'),
       desc: t('features.capabilities.voice_runtime_desc'),
       details: [
@@ -33,6 +35,7 @@ export default function Features() {
     },
     {
       icon: Settings,
+      feature: FEATURE.CAPABILITY_AGENT_BUILDER,
       title: t('features.capabilities.agent_builder_title'),
       desc: t('features.capabilities.agent_builder_desc'),
       details: [
@@ -45,6 +48,7 @@ export default function Features() {
     },
     {
       icon: Zap,
+      feature: FEATURE.CAPABILITY_TOOL_ENGINE,
       title: t('features.capabilities.tool_engine_title'),
       desc: t('features.capabilities.tool_engine_desc'),
       details: [
@@ -57,6 +61,7 @@ export default function Features() {
     },
     {
       icon: LayoutDashboard,
+      feature: FEATURE.CAPABILITY_DASHBOARD,
       title: t('features.capabilities.dashboard_title'),
       desc: t('features.capabilities.dashboard_desc'),
       details: [
@@ -69,6 +74,7 @@ export default function Features() {
     },
     {
       icon: BookOpen,
+      feature: FEATURE.CAPABILITY_KNOWLEDGE,
       title: t('features.capabilities.knowledge_title'),
       desc: t('features.capabilities.knowledge_desc'),
       details: [
@@ -81,6 +87,7 @@ export default function Features() {
     },
     {
       icon: Plug,
+      feature: FEATURE.CAPABILITY_INTEGRATIONS,
       title: t('features.capabilities.integration_title'),
       desc: t('features.capabilities.integration_desc'),
       details: [
@@ -194,7 +201,7 @@ export default function Features() {
               <RevealSection key={cap.title} delay={i % 2 === 0 ? '' : 'scroll-delay-1'}>
                 <div
                   className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow"
-                  onMouseEnter={() => trackFeatureView(cap.title)}
+                  onMouseEnter={() => trackFeatureView(cap.feature)}
                 >
                   <div className="p-8 lg:p-10">
                     <div className="flex items-start gap-4 mb-6">

@@ -1,17 +1,20 @@
 // Flat ESLint config (ESLint v9+).
 //
 // Scope: this configuration enables a small set of custom rules —
-// `local/no-cents-divided-by-100`, `local/no-dollars-times-100`, and
-// `local/no-literal-cta-name`. The two off-by-100x money rules run
-// across `client-app/src/**`, `platform/**`, `mobile/**`, `widget/**`,
-// `server/**`, and `shared/**` so the same off-by-100x guard protects
-// every part of the workspace that handles money. The CTA literal rule
-// stays scoped to `client-app/src/**` and `platform/**` (mobile/widget
-// don't render marketing CTAs). The goal is to fail CI when
-// contributors reintroduce inline off-by-100x money math after the
-// BL-023 `formatCurrency` / `dollarsToCents` cleanup, or when new
-// marketing CTAs drift back to one-off string literals (Task #426 /
-// `client-app/src/lib/analyticsCtas.ts`).
+// `local/no-cents-divided-by-100`, `local/no-dollars-times-100`,
+// `local/no-literal-cta-name`, and `local/no-literal-analytics-label`.
+// The two off-by-100x money rules run across `client-app/src/**`,
+// `platform/**`, `mobile/**`, `widget/**`, `server/**`, and
+// `shared/**` so the same off-by-100x guard protects every part of
+// the workspace that handles money. The two marketing-analytics
+// literal rules stay scoped to `client-app/src/**` and `platform/**`
+// (mobile/widget don't render marketing CTAs or feature funnels).
+// The goal is to fail CI when contributors reintroduce inline
+// off-by-100x money math after the BL-023 `formatCurrency` /
+// `dollarsToCents` cleanup, or when new marketing analytics labels
+// drift back to one-off string literals (Task #426 /
+// `client-app/src/lib/analyticsCtas.ts` and Task #1082 /
+// `client-app/src/lib/analyticsLabels.ts`).
 //
 // To run locally:
 //     npm run lint
@@ -20,6 +23,7 @@
 //     // eslint-disable-next-line local/no-cents-divided-by-100 -- <reason>
 //     // eslint-disable-next-line local/no-dollars-times-100 -- <reason>
 //     // eslint-disable-next-line local/no-literal-cta-name -- <reason>
+//     // eslint-disable-next-line local/no-literal-analytics-label -- <reason>
 
 import { createRequire } from 'node:module';
 import tsParser from '@typescript-eslint/parser';
@@ -28,12 +32,14 @@ const require = createRequire(import.meta.url);
 const noCentsDividedBy100 = require('./tools/eslint-rules/no-cents-divided-by-100.js');
 const noDollarsTimes100 = require('./tools/eslint-rules/no-dollars-times-100.js');
 const noLiteralCtaName = require('./tools/eslint-rules/no-literal-cta-name.js');
+const noLiteralAnalyticsLabel = require('./tools/eslint-rules/no-literal-analytics-label.js');
 
 const localPlugin = {
   rules: {
     'no-cents-divided-by-100': noCentsDividedBy100,
     'no-dollars-times-100': noDollarsTimes100,
     'no-literal-cta-name': noLiteralCtaName,
+    'no-literal-analytics-label': noLiteralAnalyticsLabel,
   },
 };
 
@@ -136,6 +142,7 @@ export default [
     },
     rules: {
       'local/no-literal-cta-name': 'error',
+      'local/no-literal-analytics-label': 'error',
     },
   },
 ];

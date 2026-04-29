@@ -10,6 +10,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackFeatureView } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import { FEATURE, type FeatureName } from '../../lib/analyticsLabels';
 import {
   ginBenchmarkFallback,
   type GinBenchmarkSnapshot,
@@ -46,6 +47,14 @@ function formatSnapshotDate(snapshotAt: string | null, locale: string): string |
 }
 
 const valuePropIcons = [Globe, TrendingUp, Sparkles];
+// Positional mapping to `gin_page.value_props.items` in
+// `client-app/src/locales/*/common.json`. Keep this list in lock-step
+// with the i18n array so each card emits a stable funnel label.
+const valuePropFeatures: FeatureName[] = [
+  FEATURE.GIN_SEE_WHERE_YOU_STAND,
+  FEATURE.GIN_LEARN_FROM_TOP_QUARTILE,
+  FEATURE.GIN_POWER_EVOLUTION_ENGINE,
+];
 const howItWorksIcons = [ToggleRight, EyeOff, Lock, Activity];
 const benefitIcons = [BarChart3, Award, Target, GitBranch, Users, Database];
 
@@ -96,7 +105,16 @@ export default function GlobalIntelligenceNetwork() {
       ? t('gin_page.benchmark.refresh_cadence')
       : snapshot.refreshCadence;
 
-  const valueProps = t('gin_page.value_props.items', { returnObjects: true }) as TextItem[];
+  const valueProps = (t('gin_page.value_props.items', { returnObjects: true }) as TextItem[]).map(
+    (prop, i) => ({
+      ...prop,
+      // Pair each card with its canonical analytics label here so a
+      // mismatch between the i18n list and `valuePropFeatures` shows
+      // up as a missing funnel event for that specific card — never
+      // as a silent fallback to a different label.
+      feature: valuePropFeatures[i] ?? null,
+    }),
+  );
   const howItWorks = t('gin_page.how_it_works.items', { returnObjects: true }) as TextItem[];
   const benefits = t('gin_page.control_plane.benefits', { returnObjects: true }) as LabelItem[];
   const privacyControls = t('gin_page.control_plane.privacy_controls', { returnObjects: true }) as string[];
@@ -232,7 +250,7 @@ export default function GlobalIntelligenceNetwork() {
                 <RevealSection key={prop.title} delay={`scroll-delay-${(i % 3) + 1}`}>
                   <div
                     className="bg-surface-secondary rounded-2xl border border-border/30 p-7 h-full hover:shadow-lg transition-shadow"
-                    onMouseEnter={() => trackFeatureView(`gin:${prop.title}`)}
+                    onMouseEnter={prop.feature ? () => trackFeatureView(prop.feature!) : undefined}
                   >
                     <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                       <Icon className="h-5 w-5 text-primary" />

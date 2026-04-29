@@ -9,6 +9,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackVerticalEngagement } from '../../lib/analytics';
+import { VERTICAL_ACTION } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
 const agentMeta = [
@@ -154,7 +155,7 @@ export default function VerticalAgents() {
                 <RevealSection key={agent.slug} delay={i % 2 === 0 ? '' : 'scroll-delay-1'}>
                   <div
                     className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col"
-                    onMouseEnter={() => trackVerticalEngagement(agent.slug, 'card_hover')}
+                    onMouseEnter={() => trackVerticalEngagement(agent.slug, VERTICAL_ACTION.CARD_HOVER)}
                   >
                     <div className={`px-7 pt-7 pb-5 ${agent.accentSoft}`}>
                       <div className="flex items-center gap-3 mb-3">
@@ -182,7 +183,7 @@ export default function VerticalAgents() {
                         <Link
                           to={agent.verticalLink}
                           className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary-hover"
-                          onClick={() => trackVerticalEngagement(agent.slug, 'see_industry')}
+                          onClick={() => trackVerticalEngagement(agent.slug, VERTICAL_ACTION.SEE_INDUSTRY)}
                         >
                           {t('vertical_agents_page.catalog.industry_link')}
                           <ArrowRight className="h-3.5 w-3.5" />
@@ -190,7 +191,7 @@ export default function VerticalAgents() {
                         <Link
                           to="/demo"
                           className="inline-flex items-center gap-1.5 text-sm font-semibold text-text-primary hover:text-text-primary"
-                          onClick={() => trackVerticalEngagement(agent.slug, 'try_demo')}
+                          onClick={() => trackVerticalEngagement(agent.slug, VERTICAL_ACTION.TRY_DEMO)}
                         >
                           {t('vertical_agents_page.catalog.demo_link')}
                           <ArrowRight className="h-3.5 w-3.5" />

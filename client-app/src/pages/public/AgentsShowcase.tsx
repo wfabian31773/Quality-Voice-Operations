@@ -11,6 +11,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { useEffect } from 'react';
 import { trackPageView, trackVerticalEngagement, trackCTAClick } from '../../lib/analytics';
+import { VERTICAL_ACTION } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
 type Category = 'All' | 'Healthcare' | 'Legal' | 'Sales & Marketing' | 'Operations' | 'Support';
@@ -240,7 +241,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
           <Link
             to={`/signup?agent=${agent.id}`}
             className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-            onClick={() => { trackCTAClick(CTA.DEPLOY_AGENT, 'agents', agent.id); trackVerticalEngagement(agent.id, 'deploy_click'); }}
+            onClick={() => { trackCTAClick(CTA.DEPLOY_AGENT, 'agents', agent.id); trackVerticalEngagement(agent.id, VERTICAL_ACTION.DEPLOY_CLICK); }}
           >
             {t('agents_page.card.deploy')}
             <ArrowRight className="h-3.5 w-3.5" />

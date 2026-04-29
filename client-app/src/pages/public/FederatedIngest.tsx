@@ -10,8 +10,17 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick, trackFeatureView } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import { FEATURE, type FeatureName } from '../../lib/analyticsLabels';
 
 const useCaseIcons = [Server, Layers, Workflow];
+// Positional mapping to `federated_ingest_page.use_cases.items` in
+// `client-app/src/locales/*/common.json`. Keep this list in lock-step
+// with the i18n array so each card emits a stable funnel label.
+const useCaseFeatures: FeatureName[] = [
+  FEATURE.FEDERATED_INGEST_RUN_OWN_STACK,
+  FEATURE.FEDERATED_INGEST_BRING_PARTNER_AGENTS,
+  FEATURE.FEDERATED_INGEST_BRIDGE_LEGACY_IVR,
+];
 const ingestStepIcons = [KeyRound, Webhook, Database, BarChart3];
 const platformBenefitIcons = [BarChart3, Activity, GitBranch, Plug, Zap, ShieldCheck];
 const securityIcons = [KeyRound, RefreshCw, Lock, AlertTriangle];
@@ -56,7 +65,16 @@ Idempotency-Key: ext_call_8f02a7c1
     trackPageView('/product/federated-ingest');
   }, []);
 
-  const useCases = t('federated_ingest_page.use_cases.items', { returnObjects: true }) as TextItem[];
+  const useCases = (t('federated_ingest_page.use_cases.items', { returnObjects: true }) as TextItem[]).map(
+    (useCase, i) => ({
+      ...useCase,
+      // Pair each card with its canonical analytics label here so a
+      // mismatch between the i18n list and `useCaseFeatures` shows up
+      // as a missing funnel event for that specific card — never as
+      // a silent fallback to a different label.
+      feature: useCaseFeatures[i] ?? null,
+    }),
+  );
   const ingestSteps = t('federated_ingest_page.ingest_steps.items', { returnObjects: true }) as TextItem[];
   const platformBenefits = t('federated_ingest_page.platform_benefits.items', { returnObjects: true }) as TextItem[];
   const security = t('federated_ingest_page.security_section.items', { returnObjects: true }) as TextItem[];
@@ -126,7 +144,7 @@ Idempotency-Key: ext_call_8f02a7c1
                 <RevealSection key={useCase.title} delay={`scroll-delay-${(i % 3) + 1}`}>
                   <div
                     className="bg-white rounded-2xl border border-border/30 p-7 h-full hover:shadow-lg transition-shadow"
-                    onMouseEnter={() => trackFeatureView(`federated-ingest:${useCase.title}`)}
+                    onMouseEnter={useCase.feature ? () => trackFeatureView(useCase.feature!) : undefined}
                   >
                     <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                       <Icon className="h-5 w-5 text-primary" />

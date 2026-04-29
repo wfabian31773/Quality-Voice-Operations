@@ -9,6 +9,7 @@ import {
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackVerticalEngagement, trackCTAClick } from '../../lib/analytics';
+import { VERTICAL_ACTION } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
 type ScenarioKey = 'hvac' | 'scheduling' | 'after_hours' | 'intake' | 'qualification';
@@ -96,7 +97,7 @@ export default function UseCases() {
               <RevealSection key={s.key}>
                 <div
                   className="bg-white rounded-2xl border border-border/50 overflow-hidden"
-                  onMouseEnter={() => trackVerticalEngagement(title, 'view')}
+                  onMouseEnter={() => trackVerticalEngagement(title, VERTICAL_ACTION.VIEW)}
                 >
                   <div className="p-8 lg:p-10">
                     <div className="flex items-start gap-4 mb-8">
