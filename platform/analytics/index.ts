@@ -81,6 +81,13 @@ export type {
 export { startInsightsScheduler, stopInsightsScheduler } from './InsightsScheduler';
 export { startCallViewDigestScheduler, stopCallViewDigestScheduler, runCallViewDigestCycle } from './CallViewDigestScheduler';
 export {
+  startCsatExpirationScheduler,
+  stopCsatExpirationScheduler,
+  runCsatExpirationCycle,
+  CSAT_EXPIRATION_DEFAULTS,
+} from './CsatExpirationScheduler';
+export type { CsatExpirationCycleResult } from './CsatExpirationScheduler';
+export {
   getSuggestions,
   getSuggestionById,
   acceptSuggestion,
