@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PartyPopper, X } from 'lucide-react';
 
 interface CelebrationProps {
@@ -12,6 +12,13 @@ const COLORS = ['#2E8C83', '#4C9B6B', '#C98A2E', '#3b82f6', '#8b5cf6', '#ef4444'
 
 export default function Celebration({ show, title, message, onClose }: CelebrationProps) {
   const [exiting, setExiting] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  const dismiss = useCallback(() => {
+    setExiting(true);
+    setTimeout(onClose, 400);
+  }, [onClose]);
 
   useEffect(() => {
     if (!show) return;
@@ -22,6 +29,33 @@ export default function Celebration({ show, title, message, onClose }: Celebrati
     }, 6000);
     return () => clearTimeout(t);
   }, [show, onClose]);
+
+  // Keyboard accessibility: ESC dismisses the celebration. The popup is not
+  // modal (the rest of the app stays interactive and the confetti is purely
+  // decorative), so we don't trap focus or lock scroll — we just give
+  // keyboard users a way out and restore focus when it disappears.
+  useEffect(() => {
+    if (!show) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const focusId = window.setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismiss();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusId);
+      document.removeEventListener('keydown', onKey);
+      const prev = previouslyFocusedRef.current;
+      if (prev && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch { /* element may have unmounted */ }
+      }
+    };
+  }, [show, dismiss]);
 
   const pieces = useMemo(
     () =>
@@ -74,13 +108,17 @@ export default function Celebration({ show, title, message, onClose }: Celebrati
       ))}
 
       <div
+        role="dialog"
+        aria-label={title ?? 'Celebration'}
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
         style={{ animation: `${exiting ? 'qvo-pop-out' : 'qvo-pop-in'} 0.4s ease forwards` }}
       >
         <div className="bg-surface border border-border rounded-2xl shadow-2xl px-8 py-6 max-w-sm text-center relative">
           <button
-            onClick={() => { setExiting(true); setTimeout(onClose, 400); }}
-            className="absolute top-2 right-2 text-text-muted hover:text-text-primary"
+            ref={closeButtonRef}
+            onClick={dismiss}
+            aria-label="Dismiss celebration"
+            className="absolute top-2 right-2 text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
           >
             <X className="h-4 w-4" />
           </button>

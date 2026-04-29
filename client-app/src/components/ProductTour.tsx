@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, useRef, type CSSProperties } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 
@@ -34,6 +34,8 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const rafRef = useRef<number>(0);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   // Reset to first step whenever the tour is (re)opened so replays start clean.
   useEffect(() => {
@@ -69,13 +71,40 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
     };
   }, [active, step, current, location.pathname]);
 
-  if (!active || !current) return null;
-
-  const finish = () => {
+  const finish = useCallback(() => {
     try { localStorage.setItem(storageKeyFor(tourId), 'completed'); } catch {}
     setStep(0);
     onClose();
-  };
+  }, [tourId, onClose]);
+
+  // Keyboard accessibility: ESC closes the tour. The tour overlay deliberately
+  // leaves the highlighted UI clickable, so we don't trap focus or lock scroll
+  // — but we still move initial focus to the tooltip and restore the previous
+  // focus on close so keyboard users land somewhere sensible.
+  useEffect(() => {
+    if (!active) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const focusId = window.setTimeout(() => {
+      tooltipRef.current?.focus();
+    }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finish();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusId);
+      document.removeEventListener('keydown', onKey);
+      const prev = previouslyFocusedRef.current;
+      if (prev && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch { /* element may have unmounted */ }
+      }
+    };
+  }, [active, finish]);
+
+  if (!active || !current) return null;
 
   const PADDING = 8;
   const cutoutStyle = rect
@@ -118,7 +147,12 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
       )}
 
       <div
-        className="absolute pointer-events-auto bg-surface border border-border rounded-xl shadow-2xl p-4 w-[320px] max-w-[calc(100vw-2rem)]"
+        ref={tooltipRef}
+        role="dialog"
+        aria-modal="false"
+        aria-label={current.title}
+        tabIndex={-1}
+        className="absolute pointer-events-auto bg-surface border border-border rounded-xl shadow-2xl p-4 w-[320px] max-w-[calc(100vw-2rem)] focus:outline-none"
         style={tooltipPos}
         data-testid={`product-tour-${tourId}`}
       >

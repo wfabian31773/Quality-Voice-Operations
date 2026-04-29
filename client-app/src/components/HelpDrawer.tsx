@@ -4,6 +4,7 @@ import { HelpCircle, X, ExternalLink, Mail, Send, Check, Loader2 } from 'lucide-
 import { DocBlocks } from './DocBlocks';
 import { findHelpForPath, getDocBySlug } from '../data/docs';
 import { api } from '../lib/api';
+import Modal from './Modal';
 
 interface SupportTicketResponse {
   success?: boolean;
@@ -25,15 +26,6 @@ export function HelpDrawer() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SupportTicketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
 
   // When path changes while open, switch back to article tab and reset
   useEffect(() => {
@@ -78,13 +70,14 @@ export function HelpDrawer() {
         <HelpCircle className="h-5 w-5" />
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setOpen(false)}
-          />
-          <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        ariaLabel="Help"
+        containerClassName="fixed inset-0 z-50 flex justify-end"
+        panelClassName="relative w-full sm:w-[480px] h-full bg-white shadow-2xl flex flex-col focus:outline-none"
+      >
+        <aside className="flex flex-col h-full">
             <header className="px-5 py-4 border-b border-border-strong/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <HelpCircle className="h-5 w-5 text-primary" />
@@ -247,8 +240,7 @@ export function HelpDrawer() {
               )}
             </div>
           </aside>
-        </div>
-      )}
+      </Modal>
     </>
   );
 }

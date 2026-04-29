@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { Info, Lightbulb, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DocBlock } from '../data/docs';
+import Modal from './Modal';
 
 const INTEGRATION_IMAGE_PREFIXES = [
   'salesforce-',
@@ -304,23 +305,22 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         // sessionStorage may be unavailable (private mode); skip the hint.
       }
     }
+    // ESC, scroll lock, focus trap, and focus restoration are handled by the
+    // shared <Modal> primitive that wraps the lightbox. We only need to
+    // intercept arrow keys for prev/next navigation.
+    if (!hasMultiple) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setZoomedIndex(null);
-      } else if (e.key === 'ArrowRight' && hasMultiple) {
+      if (e.key === 'ArrowRight') {
         e.preventDefault();
         setZoomedIndex((i) => (i === null ? null : (i + 1) % images.length));
-      } else if (e.key === 'ArrowLeft' && hasMultiple) {
+      } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         setZoomedIndex((i) => (i === null ? null : (i - 1 + images.length) % images.length));
       }
     };
     document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
     };
   }, [zoomedIndex, hasMultiple, images.length]);
 
@@ -456,18 +456,23 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
       })}
     </div>
     {zoomed && zoomedIndex !== null && (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={zoomed.alt}
-        onClick={() => setZoomedIndex(null)}
-        className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 cursor-zoom-out"
+      <Modal
+        open
+        onClose={() => setZoomedIndex(null)}
+        ariaLabel={zoomed.alt}
+        containerClassName="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8 cursor-zoom-out"
+        panelClassName="relative w-full h-full bg-transparent flex items-center justify-center focus:outline-none"
       >
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          aria-hidden="true"
+          onClick={() => setZoomedIndex(null)}
+        />
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setZoomedIndex(null); }}
           aria-label="Close zoomed image"
-          className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
         >
           <X className="h-5 w-5" />
         </button>
@@ -480,7 +485,7 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
                 setZoomedIndex((i) => (i === null ? null : (i - 1 + images.length) % images.length));
               }}
               aria-label="Previous image"
-              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
             >
               <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
@@ -491,17 +496,17 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
                 setZoomedIndex((i) => (i === null ? null : (i + 1) % images.length));
               }}
               aria-label="Next image"
-              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
             >
               <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-xs sm:text-sm text-white/80 bg-white/10 rounded-full px-3 py-1 font-body tabular-nums">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-xs sm:text-sm text-white/80 bg-white/10 rounded-full px-3 py-1 font-body tabular-nums z-10">
               {zoomedIndex + 1} / {images.length}
             </div>
           </>
         )}
         <figure
-          className="max-w-full max-h-full flex flex-col items-center gap-3"
+          className="relative max-w-full max-h-full flex flex-col items-center gap-3"
           onClick={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
@@ -515,7 +520,7 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         {showZoomHint && (
           <LightboxHint onDismiss={() => setShowZoomHint(false)} />
         )}
-      </div>
+      </Modal>
     )}
     </>
   );

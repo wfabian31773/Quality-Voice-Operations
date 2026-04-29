@@ -5,7 +5,7 @@ import {
   Building2, BarChart3, Store, CreditCard, Shield,
   LogOut, Moon, Sun, Menu, X, Compass, Inbox, History,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import PlatformAssistant from './PlatformAssistant';
@@ -13,6 +13,7 @@ import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
 import NotificationsCenter from './NotificationsCenter';
 import LanguageSwitcher from './LanguageSwitcher';
+import Modal from './Modal';
 
 interface NavItem {
   to: string;
@@ -37,6 +38,15 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Auto-close the mobile menu when the viewport crosses the lg breakpoint so
+  // the underlying <Modal>'s scroll lock doesn't strand desktop users.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => { if (mq.matches) setMobileOpen(false); };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -102,14 +112,17 @@ export default function AdminLayout() {
         {sidebar}
       </aside>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden print:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-64 h-full bg-sidebar-bg">
-            {sidebar}
-          </aside>
-        </div>
-      )}
+      <Modal
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        ariaLabel={t('actions.open_menu')}
+        containerClassName="fixed inset-0 z-50 flex lg:hidden print:hidden"
+        panelClassName="relative w-64 h-full bg-sidebar-bg focus:outline-none"
+      >
+        <aside className="h-full w-full">
+          {sidebar}
+        </aside>
+      </Modal>
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border print:hidden">
