@@ -324,6 +324,34 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
     };
   }, [zoomedIndex, hasMultiple, images.length]);
 
+  // Preload the adjacent screenshots (prev + next, with wrap-around) so that
+  // navigating through the lightbox carousel feels instant. We instantiate
+  // Image() objects in-memory which triggers the browser to fetch and cache
+  // the bytes; assigning to `src` is enough — we don't need to attach them to
+  // the DOM. Skip entirely for single-image articles.
+  useEffect(() => {
+    if (zoomedIndex === null || !hasMultiple) return;
+    const len = images.length;
+    const nextSrc = images[(zoomedIndex + 1) % len]?.src;
+    const prevSrc = images[(zoomedIndex - 1 + len) % len]?.src;
+    const preloaders: HTMLImageElement[] = [];
+    for (const src of [nextSrc, prevSrc]) {
+      if (!src) continue;
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = src;
+      preloaders.push(img);
+    }
+    return () => {
+      // Drop references so an in-flight fetch can be GC'd if the lightbox
+      // closes before it finishes (the browser cache entry will still be
+      // populated if/when the request completes).
+      for (const img of preloaders) {
+        img.src = '';
+      }
+    };
+  }, [zoomedIndex, hasMultiple, images]);
+
   return (
     <>
     <div className={dense ? 'space-y-3' : 'space-y-4'}>
