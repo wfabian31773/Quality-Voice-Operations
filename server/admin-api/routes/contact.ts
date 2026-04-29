@@ -103,7 +103,47 @@ type SignatureResult =
   | { ok: true }
   | { ok: false; status: 500 | 401; error: string };
 
-function verifyCalcomSignature(rawBody: Buffer, signatureHeader: string | undefined): SignatureResult {
+// Maximum age (in seconds) for a signed webhook timestamp before we treat it
+// as a replay. Mirrors Stripe's default tolerance (5 minutes) and is applied
+// in both directions to absorb modest clock skew between Cal.com and us.
+export const CALCOM_WEBHOOK_REPLAY_WINDOW_SECONDS = 300;
+
+function parseSignatureEnvelope(header: string): {
+  isEnvelope: boolean;
+  timestamp: number | null;
+  signature: string | null;
+} {
+  // Stripe-style: "t=<unix>,v1=<hex>" (also accept v1=/sha256= naming).
+  // We only treat the header as an envelope when a `t=<unix>` field is
+  // present, so a bare "sha256=<hex>" header still falls through to the
+  // scalar-with-`x-cal-timestamp`-header path.
+  if (!/(^|,)\s*t\s*=/i.test(header)) {
+    return { isEnvelope: false, timestamp: null, signature: null };
+  }
+  const parts = header.split(',').map(s => s.trim()).filter(Boolean);
+  let timestamp: number | null = null;
+  let signature: string | null = null;
+  for (const part of parts) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const key = part.slice(0, eq).trim().toLowerCase();
+    const value = part.slice(eq + 1).trim();
+    if (key === 't') {
+      const parsed = parseInt(value, 10);
+      if (Number.isFinite(parsed)) timestamp = parsed;
+    } else if (key === 'v1' || key === 'sha256') {
+      signature = value;
+    }
+  }
+  return { isEnvelope: true, timestamp, signature };
+}
+
+export function verifyCalcomSignature(
+  rawBody: Buffer,
+  signatureHeader: string | undefined,
+  timestampHeader: string | undefined,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): SignatureResult {
   const secret = (process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
   if (!secret) {
     // Fail-closed: never accept unsigned webhooks. Allow only when explicit
@@ -122,14 +162,51 @@ function verifyCalcomSignature(rawBody: Buffer, signatureHeader: string | undefi
   if (!signatureHeader) {
     return { ok: false, status: 401, error: 'Missing signature' };
   }
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+  // The signed timestamp can arrive two ways:
+  //   1. Stripe-style envelope inside the signature header itself
+  //      (e.g. "t=1714345600,v1=<hex>"), OR
+  //   2. A scalar signature header alongside an `x-cal-timestamp` header.
+  // Either form must contribute a numeric timestamp; without one we cannot
+  // bound the replay window so we reject.
+  let timestamp: number | null = null;
+  let providedSignature: string | null = null;
+  const envelope = parseSignatureEnvelope(signatureHeader);
+  if (envelope.isEnvelope) {
+    timestamp = envelope.timestamp;
+    providedSignature = envelope.signature;
+  } else {
+    providedSignature = signatureHeader.trim().replace(/^sha256=/i, '');
+    if (timestampHeader !== undefined && timestampHeader !== null) {
+      const parsed = parseInt(String(timestampHeader).trim(), 10);
+      if (Number.isFinite(parsed)) timestamp = parsed;
+    }
+  }
+
+  if (timestamp === null) {
+    return { ok: false, status: 401, error: 'Missing timestamp' };
+  }
+  if (!providedSignature) {
+    return { ok: false, status: 401, error: 'Missing signature' };
+  }
+
+  const ageSeconds = Math.abs(nowSeconds - timestamp);
+  if (ageSeconds > CALCOM_WEBHOOK_REPLAY_WINDOW_SECONDS) {
+    return { ok: false, status: 401, error: 'Stale timestamp' };
+  }
+
+  // Sign over `${timestamp}.${body}` so a captured (timestamp, signature, body)
+  // tuple cannot be replayed with just a refreshed timestamp.
+  const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
+  const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
   try {
-    // Strip optional "sha256=" prefix and any whitespace.
-    const provided = signatureHeader.trim().replace(/^sha256=/i, '');
-    if (!/^[a-f0-9]+$/i.test(provided) || provided.length !== expected.length) {
+    if (!/^[a-f0-9]+$/i.test(providedSignature) || providedSignature.length !== expected.length) {
       return { ok: false, status: 401, error: 'Invalid signature format' };
     }
-    const equal = crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(provided.toLowerCase(), 'hex'));
+    const equal = crypto.timingSafeEqual(
+      Buffer.from(expected, 'hex'),
+      Buffer.from(providedSignature.toLowerCase(), 'hex'),
+    );
     return equal ? { ok: true } : { ok: false, status: 401, error: 'Invalid signature' };
   } catch {
     return { ok: false, status: 401, error: 'Invalid signature' };
@@ -304,8 +381,13 @@ function calendlyEventToBookingType(event: string): BookingDetails['eventType'] 
   return 'created';
 }
 
-async function handleCalcomWebhook(raw: Buffer, signature: string | undefined, res: Response): Promise<void> {
-  const sigResult = verifyCalcomSignature(raw, signature);
+async function handleCalcomWebhook(
+  raw: Buffer,
+  signature: string | undefined,
+  timestamp: string | undefined,
+  res: Response,
+): Promise<void> {
+  const sigResult = verifyCalcomSignature(raw, signature, timestamp);
   if (!sigResult.ok) {
     logger.warn('Cal.com webhook rejected', { reason: sigResult.error, status: sigResult.status });
     res.status(sigResult.status).json({ error: sigResult.error });
@@ -565,8 +647,9 @@ router.post('/book-demo/calendar-webhook', async (req: Request, res: Response) =
     req.header('X-Cal-Signature-256') ||
     req.header('x-cal-signature') ||
     undefined;
+  const calcomTimestamp = req.header('x-cal-timestamp') || undefined;
 
-  await handleCalcomWebhook(raw, calcomSig, res);
+  await handleCalcomWebhook(raw, calcomSig, calcomTimestamp, res);
 });
 
 export default router;

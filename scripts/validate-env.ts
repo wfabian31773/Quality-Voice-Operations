@@ -34,7 +34,7 @@ const ENV_VARS: EnvVar[] = [
   { name: 'SMTP_PASS', required: 'production', purpose: 'SMTP authentication password' },
   { name: 'EMAIL_FROM', required: 'production', purpose: 'Default sender address for outbound email' },
   { name: 'APP_URL', required: 'production', purpose: 'Public application URL (for invite links, redirects)' },
-  { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com /book-demo/calendar-webhook requests (production fails closed without it)' },
+  { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com /book-demo/calendar-webhook requests; signature is computed over `${timestamp}.${body}` and rejected when the signed timestamp falls outside a 5-minute window (production fails closed without it)' },
   { name: 'SALES_NOTIFICATION_EMAIL', required: 'production', purpose: 'Sales inbox that receives demo lead and Cal.com booking lifecycle emails' },
   { name: 'VITE_BOOK_DEMO_SCHEDULER_URL', required: 'production', purpose: 'Embedded scheduler URL inlined into the /book-demo client bundle at vite build time' },
   { name: 'TURNSTILE_SECRET_KEY', required: 'production', purpose: 'Cloudflare Turnstile secret key for verifying sign-up CAPTCHA (production fails closed without it)' },

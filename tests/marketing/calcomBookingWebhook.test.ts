@@ -6,8 +6,32 @@ import request from 'supertest';
 const WEBHOOK_PATH = '/book-demo/calendar-webhook';
 const TEST_SECRET = 'test_calcom_webhook_secret_value_123';
 
-function signBody(body: string, secret: string = TEST_SECRET): string {
-  return crypto.createHmac('sha256', secret).update(Buffer.from(body, 'utf8')).digest('hex');
+function nowSec(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+// Sign over `${timestamp}.${body}` so the timestamp is bound to the signature.
+function signBody(body: string, timestamp: number = nowSec(), secret: string = TEST_SECRET): string {
+  return crypto.createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
+}
+
+function sendWebhook(
+  app: express.Express,
+  body: string,
+  opts: { timestamp?: number | null; signature?: string; envelope?: boolean } = {},
+) {
+  const ts = opts.timestamp === null ? null : (opts.timestamp ?? nowSec());
+  const sig = opts.signature ?? (ts !== null ? signBody(body, ts) : signBody(body, nowSec()));
+  const req = request(app)
+    .post(WEBHOOK_PATH)
+    .set('Content-Type', 'application/json');
+  if (opts.envelope && ts !== null) {
+    req.set('x-cal-signature-256', `t=${ts},v1=${sig}`);
+  } else {
+    req.set('x-cal-signature-256', sig);
+    if (ts !== null) req.set('x-cal-timestamp', String(ts));
+  }
+  return req.send(body);
 }
 
 interface BuildAppOptions {
@@ -106,11 +130,7 @@ describe('POST /book-demo/calendar-webhook — signature verification', () => {
         metadata: { leadId: 42 },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 42, duplicate: false });
@@ -139,11 +159,39 @@ describe('POST /book-demo/calendar-webhook — signature verification', () => {
         metadata: { leadId: 7 },
       },
     });
+    const ts = nowSec();
     const r = await request(app)
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', `sha256=${signBody(body)}`)
+      .set('x-cal-signature-256', `sha256=${signBody(body, ts)}`)
+      .set('x-cal-timestamp', String(ts))
       .send(body);
+
+    expect(r.status).toBe(200);
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+  });
+
+  it('also accepts the Stripe-style envelope form (t=<unix>,v1=<hex>)', async () => {
+    const { app, mocks } = await buildApp({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'envelope@example.com',
+        payload: {},
+        name: null,
+        company: null,
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-env',
+        bookingId: 'bid-env',
+        attendees: [{ email: 'envelope@example.com' }],
+        metadata: { leadId: 9 },
+      },
+    });
+    const r = await sendWebhook(app, body, { envelope: true });
 
     expect(r.status).toBe(200);
     expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
@@ -178,6 +226,7 @@ describe('POST /book-demo/calendar-webhook — signature verification', () => {
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
       .set('x-cal-signature-256', 'not-a-hex-string')
+      .set('x-cal-timestamp', String(nowSec()))
       .send(body);
 
     expect(r.status).toBe(401);
@@ -191,11 +240,13 @@ describe('POST /book-demo/calendar-webhook — signature verification', () => {
       triggerEvent: 'BOOKING_CREATED',
       payload: { attendees: [{ email: 'a@example.com' }], metadata: { leadId: 1 } },
     });
-    const wrongSig = signBody(body, 'a-different-secret-entirely');
+    const ts = nowSec();
+    const wrongSig = signBody(body, ts, 'a-different-secret-entirely');
     const r = await request(app)
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
       .set('x-cal-signature-256', wrongSig)
+      .set('x-cal-timestamp', String(ts))
       .send(body);
 
     expect(r.status).toBe(401);
@@ -203,6 +254,181 @@ describe('POST /book-demo/calendar-webhook — signature verification', () => {
     expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
     expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
     expect(mocks.attachBookingToLead).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /book-demo/calendar-webhook — replay protection', () => {
+  const ORIGINAL = {
+    NODE_ENV: process.env.NODE_ENV,
+    APP_ENV: process.env.APP_ENV,
+    CALCOM_WEBHOOK_SECRET: process.env.CALCOM_WEBHOOK_SECRET,
+    CALCOM_WEBHOOK_ALLOW_UNSIGNED: process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED,
+  };
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.NODE_ENV = 'test';
+    process.env.APP_ENV = 'test';
+    process.env.CALCOM_WEBHOOK_SECRET = TEST_SECRET;
+    delete process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(ORIGINAL)) {
+      if (v === undefined) delete (process.env as Record<string, string | undefined>)[k];
+      else (process.env as Record<string, string>)[k] = v;
+    }
+    vi.restoreAllMocks();
+    vi.doUnmock('../../server/admin-api/services/marketing-leads');
+  });
+
+  it('accepts a signed request with a fresh timestamp', async () => {
+    const { app, mocks } = await buildApp({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'fresh@example.com',
+        payload: {},
+        name: null,
+        company: null,
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-fresh',
+        bookingId: 'bid-fresh',
+        attendees: [{ email: 'fresh@example.com' }],
+        metadata: { leadId: 31 },
+      },
+    });
+
+    const r = await sendWebhook(app, body, { timestamp: nowSec() });
+
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 31, duplicate: false });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyBookingConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a stale timestamp older than the 5-minute window (replay of a captured payload)', async () => {
+    const { app, mocks } = await buildApp({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'stale@example.com',
+        payload: {},
+        name: null,
+        company: null,
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-stale',
+        bookingId: 'bid-stale',
+        attendees: [{ email: 'stale@example.com' }],
+        metadata: { leadId: 32 },
+      },
+    });
+    // Sign with a timestamp from 10 minutes ago — outside the 5-minute window.
+    const staleTs = nowSec() - 10 * 60;
+
+    const r = await sendWebhook(app, body, { timestamp: staleTs });
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Stale timestamp' });
+    // Replay must not reach the lead store or notification path.
+    expect(mocks.findLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLead).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('also rejects a stale timestamp delivered via the Stripe-style envelope', async () => {
+    const { app, mocks } = await buildApp();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-stale-env',
+        bookingId: 'bid-stale-env',
+        attendees: [{ email: 'stale-env@example.com' }],
+        metadata: { leadId: 33 },
+      },
+    });
+    const staleTs = nowSec() - 10 * 60;
+
+    const r = await sendWebhook(app, body, { timestamp: staleTs, envelope: true });
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Stale timestamp' });
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('rejects when no timestamp is supplied (neither header nor envelope)', async () => {
+    const { app, mocks } = await buildApp();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-no-ts',
+        bookingId: 'bid-no-ts',
+        attendees: [{ email: 'no-ts@example.com' }],
+        metadata: { leadId: 34 },
+      },
+    });
+    // Sign just the body (legacy format, no timestamp). The signature is
+    // computationally valid against the body alone but we should still reject
+    // because the timestamp header is absent.
+    const legacySig = crypto
+      .createHmac('sha256', TEST_SECRET)
+      .update(Buffer.from(body, 'utf8'))
+      .digest('hex');
+    const r = await request(app)
+      .post(WEBHOOK_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', legacySig)
+      .send(body);
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Missing timestamp' });
+    expect(mocks.findLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLead).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('rejects when an attacker swaps in a fresh timestamp without recomputing the signature', async () => {
+    const { app, mocks } = await buildApp();
+    const body = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-replay',
+        bookingId: 'bid-replay-different',
+        attendees: [{ email: 'replay@example.com' }],
+        metadata: { leadId: 35 },
+      },
+    });
+    // Captured (old) signature is bound to the old timestamp it was signed
+    // with; pasting a fresh timestamp on the request without re-signing
+    // (which the attacker cannot do without the secret) must fail.
+    const capturedTs = nowSec() - 24 * 60 * 60;
+    const capturedSig = signBody(body, capturedTs);
+    const freshTs = nowSec();
+
+    const r = await request(app)
+      .post(WEBHOOK_PATH)
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', capturedSig)
+      .set('x-cal-timestamp', String(freshTs))
+      .send(body);
+
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Invalid signature' });
+    expect(mocks.findLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.attachBookingToLead).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
   });
 });
 
@@ -248,11 +474,7 @@ describe('POST /book-demo/calendar-webhook — lead resolution', () => {
         metadata: { leadId: '99' },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 99, duplicate: false });
@@ -288,11 +510,7 @@ describe('POST /book-demo/calendar-webhook — lead resolution', () => {
         attendees: [{ email: 'fallback@example.com', name: 'Fallback', timeZone: 'UTC' }],
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 17, duplicate: false });
@@ -326,11 +544,7 @@ describe('POST /book-demo/calendar-webhook — lead resolution', () => {
         metadata: { leadId: 999999 },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 23, duplicate: false });
@@ -353,11 +567,7 @@ describe('POST /book-demo/calendar-webhook — lead resolution', () => {
         attendees: [{ name: 'No Email' }],
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, ignored: true });
@@ -407,11 +617,7 @@ describe('POST /book-demo/calendar-webhook — eventType mapping', () => {
         metadata: { leadId: 5 },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(mocks.attachBookingToLeadById).toHaveBeenCalledWith(
@@ -443,11 +649,7 @@ describe('POST /book-demo/calendar-webhook — eventType mapping', () => {
         metadata: { leadId: 6 },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(mocks.attachBookingToLeadById).toHaveBeenCalledWith(
@@ -477,11 +679,7 @@ describe('POST /book-demo/calendar-webhook — eventType mapping', () => {
         metadata: { leadId: 8 },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(mocks.attachBookingToLeadById).toHaveBeenCalledWith(
@@ -533,11 +731,7 @@ describe('POST /book-demo/calendar-webhook — idempotency', () => {
         metadata: { leadId: 11 },
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 11, duplicate: true });
@@ -563,11 +757,7 @@ describe('POST /book-demo/calendar-webhook — idempotency', () => {
         attendees: [{ email: 'dup-email@example.com' }],
       },
     });
-    const r = await request(app)
-      .post(WEBHOOK_PATH)
-      .set('Content-Type', 'application/json')
-      .set('x-cal-signature-256', signBody(body))
-      .send(body);
+    const r = await sendWebhook(app, body);
 
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 21, duplicate: true });
