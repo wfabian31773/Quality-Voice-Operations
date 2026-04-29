@@ -15,24 +15,41 @@ describe('BillingEstimator', () => {
     expect(input.value).toBe('350');
   });
 
-  it('shows current plan and the next tier up side-by-side', () => {
+  it('shows current plan and the next tier up side-by-side for starter tenants', () => {
     render(<BillingEstimator currentPlan="starter" monthToDateAiMinutes={500} />);
     expect(screen.getByTestId('billing-estimator-tier-starter')).toBeTruthy();
     expect(screen.getByTestId('billing-estimator-tier-pro')).toBeTruthy();
     expect(screen.queryByTestId('billing-estimator-tier-enterprise')).toBeNull();
+    expect(screen.getAllByText(/Next tier/i).length).toBeGreaterThan(0);
   });
 
-  it('shows next-tier card for pro tenants and hides starter', () => {
+  it('shows the next tier DOWN for pro tenants with a downgrade label', () => {
     render(<BillingEstimator currentPlan="pro" monthToDateAiMinutes={1000} />);
     expect(screen.getByTestId('billing-estimator-tier-pro')).toBeTruthy();
-    expect(screen.getByTestId('billing-estimator-tier-enterprise')).toBeTruthy();
-    expect(screen.queryByTestId('billing-estimator-tier-starter')).toBeNull();
+    expect(screen.getByTestId('billing-estimator-tier-starter')).toBeTruthy();
+    expect(screen.queryByTestId('billing-estimator-tier-enterprise')).toBeNull();
+    expect(screen.getAllByText(/Potential downgrade/i).length).toBeGreaterThan(0);
   });
 
-  it('renders an "already on top tier" hint for enterprise tenants', () => {
+  it('shows the next tier DOWN for enterprise tenants instead of a top-tier placeholder', () => {
     render(<BillingEstimator currentPlan="enterprise" monthToDateAiMinutes={5000} />);
     expect(screen.getByTestId('billing-estimator-tier-enterprise')).toBeTruthy();
-    expect(screen.getByTestId('billing-estimator-top-tier')).toBeTruthy();
+    expect(screen.getByTestId('billing-estimator-tier-pro')).toBeTruthy();
+    expect(screen.queryByTestId('billing-estimator-tier-starter')).toBeNull();
+    expect(screen.queryByTestId('billing-estimator-top-tier')).toBeNull();
+    expect(screen.getAllByText(/Potential downgrade/i).length).toBeGreaterThan(0);
+  });
+
+  it('warns on the downgrade card when projected usage exceeds the lower tier included minutes', () => {
+    // Pro tenant projecting 1,800 min: starter only includes 500 min → warning expected
+    render(<BillingEstimator currentPlan="pro" monthToDateAiMinutes={1800} />);
+    expect(screen.getByTestId('billing-estimator-downgrade-warning-starter')).toBeTruthy();
+  });
+
+  it('hides the downgrade warning when projected usage fits within the lower tier', () => {
+    // Pro tenant projecting 400 min: starter includes 500 min → no warning
+    render(<BillingEstimator currentPlan="pro" monthToDateAiMinutes={400} />);
+    expect(screen.queryByTestId('billing-estimator-downgrade-warning-starter')).toBeNull();
   });
 
   it('matches the public pricing calculator math when the slider changes', () => {

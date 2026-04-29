@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calculator, ArrowUpRight, Sparkles, TrendingUp } from 'lucide-react';
+import {
+  Calculator,
+  ArrowUpRight,
+  ArrowDownRight,
+  Sparkles,
+  TrendingUp,
+  AlertTriangle,
+} from 'lucide-react';
 import {
   PLAN_CATALOG,
   PLAN_TIERS,
@@ -58,6 +65,8 @@ interface TierSpec {
   sourcedFromStripe?: boolean;
 }
 
+type ComparisonDirection = 'up' | 'down';
+
 const MIN_MINUTES = 0;
 const MAX_MINUTES = 25_000;
 const STEP_MINUTES = 50;
@@ -106,6 +115,12 @@ function nextTierUp(current: PlanTier): PlanTier | null {
   return PLAN_TIERS[idx + 1];
 }
 
+function nextTierDown(current: PlanTier): PlanTier | null {
+  const idx = PLAN_TIERS.indexOf(current);
+  if (idx <= 0) return null;
+  return PLAN_TIERS[idx - 1];
+}
+
 function formatMoney(value: number): string {
   return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
@@ -124,34 +139,54 @@ function TierEstimate({
   minutes,
   label,
   highlight,
+  direction,
 }: {
   tier: TierSpec;
   minutes: number;
   label: string;
   highlight?: boolean;
+  direction?: ComparisonDirection;
 }) {
   const monthlyCost = calculateMonthlyCost(tier, minutes);
   const overageMinutes = Math.max(0, minutes - tier.includedMinutes);
   const overageCost = overageMinutes * tier.overageRate;
   const effectiveRate = minutes > 0 ? calculateEffectiveRate(tier, minutes) : 0;
+  const showDowngradeWarning = direction === 'down' && overageMinutes > 0;
+
+  const badgeClass =
+    direction === 'down'
+      ? 'text-warning bg-warning/10'
+      : 'text-primary bg-primary/10';
+  const cardClass = highlight
+    ? direction === 'down'
+      ? 'border-warning/40 bg-warning/[0.04]'
+      : 'border-primary/40 bg-primary/[0.04]'
+    : 'border-border bg-surface-hover/40';
 
   return (
     <div
       data-testid={`billing-estimator-tier-${tier.key}`}
-      className={`flex-1 rounded-lg border p-4 transition-colors ${
-        highlight
-          ? 'border-primary/40 bg-primary/[0.04]'
-          : 'border-border bg-surface-hover/40'
-      }`}
+      className={`flex-1 rounded-lg border p-4 transition-colors ${cardClass}`}
     >
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
           {label}
         </span>
-        {highlight && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-            <ArrowUpRight className="h-3 w-3" />
-            Next tier
+        {highlight && direction && (
+          <span
+            className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${badgeClass}`}
+          >
+            {direction === 'down' ? (
+              <>
+                <ArrowDownRight className="h-3 w-3" />
+                Potential downgrade
+              </>
+            ) : (
+              <>
+                <ArrowUpRight className="h-3 w-3" />
+                Next tier
+              </>
+            )}
           </span>
         )}
       </div>
@@ -216,6 +251,20 @@ function TierEstimate({
           </dd>
         </div>
       </dl>
+
+      {showDowngradeWarning && (
+        <div
+          data-testid={`billing-estimator-downgrade-warning-${tier.key}`}
+          className="mt-3 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/[0.06] px-2.5 py-2 text-[11px] text-warning"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            Projected usage exceeds {tier.name}&rsquo;s {tier.includedMinutes.toLocaleString()}{' '}
+            included minutes. Downgrading would push {overageMinutes.toLocaleString()} min into
+            overage at {formatPerMinute(tier.overageRate)}/min.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -227,17 +276,28 @@ export default function BillingEstimator({
   projectionMultiplier,
 }: BillingEstimatorProps) {
   const currentTierKey = normalizePlan(currentPlan);
-  // Only the current tier gets the Stripe override — the next-tier card has
-  // to use catalog defaults because we have no way to know what Stripe
-  // would quote that tenant on a higher plan they aren't subscribed to.
+  // Only the current tier gets the Stripe override — the comparison-tier card
+  // has to use catalog defaults because we have no way to know what Stripe
+  // would quote that tenant on a plan they aren't subscribed to (whether
+  // that's a next-tier-up upgrade or a next-tier-down downgrade).
   const currentTier = useMemo(
     () => toTierSpec(currentTierKey, rateOverride),
     [currentTierKey, rateOverride],
   );
-  const nextTierKey = useMemo(() => nextTierUp(currentTierKey), [currentTierKey]);
-  const nextTier = useMemo(
-    () => (nextTierKey ? toTierSpec(nextTierKey) : null),
-    [nextTierKey],
+
+  const comparisonDirection: ComparisonDirection =
+    currentTierKey === 'starter' ? 'up' : 'down';
+
+  const comparisonTierKey = useMemo(
+    () =>
+      comparisonDirection === 'up'
+        ? nextTierUp(currentTierKey)
+        : nextTierDown(currentTierKey),
+    [currentTierKey, comparisonDirection],
+  );
+  const comparisonTier = useMemo(
+    () => (comparisonTierKey ? toTierSpec(comparisonTierKey) : null),
+    [comparisonTierKey],
   );
 
   const mtdMinutes = useMemo(
@@ -279,6 +339,13 @@ export default function BillingEstimator({
   const isAtProjected = safeMinutes === projectedMinutes;
   const isShowingProjectedDefault = hasProjection && isAtProjected;
 
+  const comparisonLabel =
+    comparisonDirection === 'down' ? 'Potential downgrade' : 'Next tier up';
+  const intro =
+    comparisonDirection === 'down'
+      ? 'Drag the slider to model a different AI minute volume and see what your invoice would look like on your current plan or if you downgraded one tier.'
+      : 'Drag the slider to model a different AI minute volume and see what your invoice would look like on your current plan and the next tier up.';
+
   return (
     <div className="bg-surface border border-border rounded-xl p-6">
       <div className="flex items-start justify-between gap-4 mb-4">
@@ -293,7 +360,7 @@ export default function BillingEstimator({
             <p className="text-sm text-text-muted mt-0.5">
               {isShowingProjectedDefault
                 ? 'Pre-filled with a smart end-of-month projection based on your usage so far. Drag the slider or use a preset to model a different AI minute volume.'
-                : 'Drag the slider to model a different AI minute volume and see what your invoice would look like on your current plan and the next tier up.'}
+                : intro}
             </p>
           </div>
         </div>
@@ -379,11 +446,12 @@ export default function BillingEstimator({
 
       <div className="flex flex-col md:flex-row gap-3">
         <TierEstimate tier={currentTier} minutes={safeMinutes} label="Current plan" />
-        {nextTier ? (
+        {comparisonTier ? (
           <TierEstimate
-            tier={nextTier}
+            tier={comparisonTier}
             minutes={safeMinutes}
-            label="Next tier up"
+            label={comparisonLabel}
+            direction={comparisonDirection}
             highlight
           />
         ) : (
