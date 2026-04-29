@@ -403,6 +403,15 @@ const TERMINAL_JOB_STATUSES = new Set([
   'incomplete',
 ]);
 
+// Maximum acceptable closest-approach distance (in meters) between the
+// technician's GPS breadcrumbs and the customer's geocoded address. If
+// the closest ping is farther than this, we treat it as a strong signal
+// the tech serviced the wrong house and auto-flag the job as a dispatch
+// exception when it completes. Mirror of `CLOSEST_APPROACH_BAD_M` in
+// `client-app/src/pages/Dispatch.tsx` — keep both in lockstep so the
+// passive board badge and the active exception fire on the same value.
+const CLOSEST_APPROACH_BAD_M = 250;
+
 // Cap how many history rows we keep per resource. The live map only needs
 // the most recent fix; the breadcrumb is a "last hour or so" replay tool.
 // 200 pings ≈ ~1.5 hours at the 30-second mobile cadence.
@@ -855,6 +864,107 @@ const updateJobHandler: RequestHandler = async (req, res) => {
   }
 };
 
+/**
+ * Compute the closest distance (in meters) the technician's GPS breadcrumbs
+ * came to the geocoded customer address for a single job, then — if it
+ * exceeds {@link CLOSEST_APPROACH_BAD_M} — auto-create a dispatch exception
+ * of type `other` and fire the existing 'exception' notification path so
+ * dispatchers see it on the exception feed before the customer disputes
+ * the visit.
+ *
+ * The haversine SQL mirrors the LATERAL used by `listJobsHandler`, so the
+ * passive "X m from address" badge on the board and this active flag fire
+ * on identical math. Returns NULL when the job has no cached geocode or no
+ * breadcrumbs (the LATERAL aggregate of an empty group is NULL), in which
+ * case we skip silently — there's no signal to act on.
+ *
+ * Idempotency is the caller's job: only invoke when transitioning into a
+ * completion status from a non-completion status, so a `completed → done`
+ * follow-up doesn't double-flag.
+ *
+ * Errors are logged and swallowed; this never blocks the underlying
+ * status-change response.
+ */
+async function flagBadArrivalIfNeeded(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  jobId: string,
+  performedBy: string | null,
+): Promise<void> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT (
+         SELECT MIN(
+           6371000 * 2 * ASIN(
+             SQRT(LEAST(1.0,
+               POWER(SIN(RADIANS((h.latitude - d.address_lat::float8) / 2)), 2)
+               + COS(RADIANS(d.address_lat::float8)) * COS(RADIANS(h.latitude))
+                 * POWER(SIN(RADIANS((h.longitude - d.address_lon::float8) / 2)), 2)
+             ))
+           )
+         )
+         FROM dispatch_resource_location_history h
+         WHERE h.tenant_id = d.tenant_id
+           AND h.active_job_id = d.id
+       ) AS closest_approach_m
+       FROM dispatch_jobs d
+       WHERE d.id = $1
+         AND d.tenant_id = $2
+         AND d.address_lat IS NOT NULL
+         AND d.address_lon IS NOT NULL`,
+      [jobId, tenantId],
+    );
+
+    const raw = rows[0]?.closest_approach_m;
+    // No row → no geocode (the WHERE filter dropped it). NULL → no
+    // breadcrumbs landed against this job. Either way: no signal, skip.
+    if (raw == null) return;
+
+    const meters = Number(raw);
+    if (!Number.isFinite(meters)) return;
+    if (meters <= CLOSEST_APPROACH_BAD_M) return;
+
+    const rounded = Math.round(meters);
+    const reason =
+      `Auto-flagged: closest GPS ping was ${rounded} m from the customer address `
+      + `(threshold ${CLOSEST_APPROACH_BAD_M} m). The technician may have serviced the wrong location.`;
+
+    const { rows: ex } = await pool.query(
+      `INSERT INTO dispatch_job_exceptions
+         (job_id, tenant_id, exception_type, reason, resolution, reported_by)
+       VALUES ($1, $2, 'other', $3, '', $4)
+       RETURNING id`,
+      [jobId, tenantId, reason, performedBy],
+    );
+
+    await pool.query(
+      `INSERT INTO dispatch_job_events
+         (job_id, tenant_id, event_type, performed_by, notes, metadata)
+       VALUES ($1, $2, 'exception_reported', $3, $4, $5)`,
+      [
+        jobId,
+        tenantId,
+        performedBy,
+        `Auto-flagged on completion: ${rounded} m from address`,
+        JSON.stringify({
+          exception_id: ex[0]?.id,
+          exception_type: 'other',
+          auto_flagged: 'bad_arrival',
+          closest_approach_m: meters,
+          threshold_m: CLOSEST_APPROACH_BAD_M,
+        }),
+      ],
+    );
+
+    fireNotifications(pool, tenantId, jobId, 'exception');
+  } catch (err) {
+    // Best-effort: a failure here must never break the status transition.
+    logger.warn('Failed to evaluate bad-arrival flag on completion', {
+      tenantId, jobId, error: String(err),
+    });
+  }
+}
+
 export const transitionJobHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
@@ -925,6 +1035,21 @@ export const transitionJobHandler: RequestHandler = async (req, res) => {
           tenantId, jobId: id, error: String(clearErr),
         });
       }
+    }
+
+    // When a job first reaches a completion status, promote the passive
+    // "X m from address" board badge into an active dispatch exception so
+    // a supervisor reviews bad-arrival jobs before the customer disputes
+    // them. Gated on `currentStatus` not already being a completion to
+    // avoid double-flagging on the `completed → done` follow-up. Runs as
+    // fire-and-forget so it never blocks the transition response — same
+    // pattern as `fireNotifications` / `pushAssigneeForJob` above.
+    if (
+      (status === 'completed' || status === 'done')
+      && currentStatus !== 'completed'
+      && currentStatus !== 'done'
+    ) {
+      void flagBadArrivalIfNeeded(pool, tenantId, id, userId);
     }
 
     return res.json({ job: rows[0] });
