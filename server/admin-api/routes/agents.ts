@@ -23,7 +23,7 @@ const VALID_AGENT_TYPES = new Set([
   'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
   'appointment-confirmation', 'custom', 'dental', 'property-management',
   'home-services', 'legal', 'customer-support', 'outbound-sales',
-  'technical-support', 'collections',
+  'technical-support', 'collections', 'real-estate', 'restaurant', 'salon',
 ]);
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {

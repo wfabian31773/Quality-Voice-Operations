@@ -44,6 +44,9 @@ const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
   'legal': 'legal',
   'customer-support': 'support',
   'technical-support': 'support',
+  'real-estate': 'realestate',
+  'restaurant': 'restaurant',
+  'salon': 'salon',
 };
 
 interface Agent {
@@ -93,7 +96,7 @@ const AGENT_TYPES = [
   'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
   'appointment-confirmation', 'custom', 'dental', 'property-management',
   'home-services', 'legal', 'customer-support', 'outbound-sales',
-  'technical-support', 'collections',
+  'technical-support', 'collections', 'real-estate', 'restaurant', 'salon',
 ];
 
 const TOOL_LABELS: Record<string, string> = {
