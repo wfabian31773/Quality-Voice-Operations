@@ -1167,6 +1167,21 @@ const batchUpdateHandler: RequestHandler = async (req, res) => {
         }
       }
 
+      // Mirror the bad-arrival auto-flag from `transitionJobHandler` for
+      // batch closeouts: every job that is *newly* entering a completion
+      // status gets the same closest-approach check, so a dispatcher who
+      // sweeps a queue closed can still see wrong-house visits. The
+      // `currentStatus !== completed/done` gate prevents re-flagging on
+      // a `completed → done` batch follow-up.
+      if (status === 'completed' || status === 'done') {
+        for (const j of currentJobs) {
+          const prev = j.status as string;
+          if (prev !== 'completed' && prev !== 'done') {
+            void flagBadArrivalIfNeeded(pool, tenantId, j.id as string, userId);
+          }
+        }
+      }
+
       return res.json({ updated: rowCount, ids: rows.map(r => r.id) });
     } else {
       const updates: string[] = ['updated_at = NOW()'];
@@ -1506,6 +1521,15 @@ export const addAttachmentHandler: RequestHandler = async (req, res) => {
         );
         const trigger = STATUS_TO_TRIGGER[completion_transition];
         if (trigger) fireNotifications(pool, tenantId, id, trigger);
+
+        // Mirror the bad-arrival auto-flag from `transitionJobHandler`: when
+        // a tech finishes via the mobile "complete with photos" flow, run
+        // the same closest-approach check so wrong-house visits surface as
+        // an exception regardless of which path closed the job. Gated on
+        // `isCompleting` to skip the `completed → done` follow-up.
+        if (isCompleting) {
+          void flagBadArrivalIfNeeded(pool, tenantId, id, userId);
+        }
       }
     }
 
