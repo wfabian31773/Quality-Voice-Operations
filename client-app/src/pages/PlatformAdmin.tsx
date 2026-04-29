@@ -805,6 +805,31 @@ interface ConnectorExpiringSoonRow {
   expiresInMs: number;
 }
 
+interface StuckOutboxEventRow {
+  id: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string | null;
+  integrationProvider: string | null;
+  integrationName: string | null;
+  integrationType: string | null;
+  eventType: string;
+  status: 'failed' | 'dead_letter';
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  nextAttemptAt: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+interface StuckOutboxSummary {
+  failed: number;
+  deadLetter: number;
+  affectedTenants: number;
+}
+
 interface ConnectorHealthResponse {
   connectors: ConnectorHealthRow[];
   recentRefreshFailures: ConnectorRefreshFailure[];
@@ -823,7 +848,15 @@ interface ConnectorHealthResponse {
   expiringSoon?: ConnectorExpiringSoonRow[];
   expiringSoonWindowMs?: number;
   expiringSoonWithinHours?: number;
-  window: { sinceDays: number; eventsLimit: number; expiringWithinHours?: number };
+  stuckOutboxEvents?: StuckOutboxEventRow[];
+  stuckOutboxSummary?: StuckOutboxSummary;
+  stuckOutboxLimit?: number;
+  window: {
+    sinceDays: number;
+    eventsLimit: number;
+    expiringWithinHours?: number;
+    stuckOutboxLimit?: number;
+  };
 }
 
 function formatRelativeTime(iso: string | null): string {
@@ -876,6 +909,8 @@ function ConnectorHealthPanel() {
     expiringSoon,
     expiringSoonWindowMs,
     expiringSoonWithinHours,
+    stuckOutboxEvents,
+    stuckOutboxSummary,
   } = data;
   const reconnectConnectors = connectors.filter((c) => c.lastSyncStatus === 'needs_reconnect');
   const erroredConnectors = connectors.filter((c) => c.lastSyncStatus === 'error');
@@ -886,6 +921,13 @@ function ConnectorHealthPanel() {
     expiringSoonWithinHours
     ?? (expiringSoonWindowMs ? Math.round(expiringSoonWindowMs / (60 * 60 * 1000)) : 48);
   const expiringSoonCount = summary.expiringSoon ?? expiringSoonRows.length;
+  const stuckRows = stuckOutboxEvents ?? [];
+  const stuckSummary = stuckOutboxSummary ?? {
+    failed: 0,
+    deadLetter: 0,
+    affectedTenants: 0,
+  };
+  const stuckTotal = stuckSummary.failed + stuckSummary.deadLetter;
 
   return (
     <div className="space-y-4">
@@ -909,7 +951,7 @@ function ConnectorHealthPanel() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">Reconnect needed</div>
           <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
@@ -930,6 +972,18 @@ function ConnectorHealthPanel() {
             {expiringSoonCount}
           </div>
           <div className="text-xs text-text-muted mt-0.5">in {expiringSoonHours}h</div>
+        </div>
+        <div
+          className="bg-surface border border-border rounded-xl p-3"
+          title="Outbox events parked in failed/dead_letter — see the Stuck connector messages panel below"
+        >
+          <div className="text-xs text-text-muted">Stuck outbox</div>
+          <div className={`text-2xl font-bold ${stuckTotal > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+            {stuckTotal}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">
+            {stuckSummary.deadLetter} dead · {stuckSummary.failed} retrying
+          </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">Healthy</div>
@@ -960,6 +1014,8 @@ function ConnectorHealthPanel() {
         rows={expiringSoonRows}
         windowHours={expiringSoonHours}
       />
+
+      <StuckOutboxEventsPanel rows={stuckRows} summary={stuckSummary} />
 
       <ConnectorTokenHealthPanel
         rows={tokenHealth ?? []}
@@ -1367,6 +1423,250 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
                   : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700/50 text-red-800 dark:text-red-200'
               }`}
               role="status"
+            >
+              {feedback.message}
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function formatNextAttempt(iso: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const diffMs = date.getTime() - Date.now();
+  const absMin = Math.floor(Math.abs(diffMs) / 60_000);
+  const absHr = Math.floor(absMin / 60);
+  const absDays = Math.floor(absHr / 24);
+  let label: string;
+  if (absMin < 1) label = 'less than a minute';
+  else if (absMin < 60) label = `${absMin}m`;
+  else if (absHr < 24) label = `${absHr}h ${absMin - absHr * 60}m`;
+  else label = `${absDays}d ${absHr - absDays * 24}h`;
+  return diffMs >= 0 ? `in ${label}` : `${label} ago`;
+}
+
+function StuckOutboxEventsPanel({
+  rows,
+  summary,
+}: {
+  rows: StuckOutboxEventRow[];
+  summary: StuckOutboxSummary;
+}) {
+  const total = summary.failed + summary.deadLetter;
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+            Stuck connector messages
+            <span
+              className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                total > 0
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                  : 'bg-surface-secondary text-text-muted border border-border'
+              }`}
+            >
+              {total}
+            </span>
+            {summary.deadLetter > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                {summary.deadLetter} dead-letter
+              </span>
+            )}
+            {summary.failed > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                {summary.failed} retrying
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Outbox events the drain worker has parked. Failed rows still have automatic retries
+            scheduled; dead-letter rows have hit <code className="font-mono">max_attempts</code>
+            and need manual intervention. Retry now requeues the row immediately; Mark resolved
+            archives a dead-letter row so it stops surfacing here.
+          </p>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-text-muted">
+          No outbox events are stuck. The drain worker is keeping up across all tenants.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Event</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Attempts</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Next retry</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Last error</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <StuckOutboxEventRowView key={r.id} row={r} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
+  const queryClient = useQueryClient();
+  const [feedback, setFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(
+    null,
+  );
+
+  const retryMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ ok: boolean; message?: string; error?: string }>(
+        `/platform/connector-health/outbox/${row.tenantId}/${row.id}/retry`,
+        {},
+      ),
+    onSuccess: (data) => {
+      setFeedback({ kind: 'success', message: data.message ?? 'Outbox event requeued.' });
+      queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
+    },
+    onError: (err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      setFeedback({ kind: 'error', message: detail || 'Failed to requeue outbox event.' });
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ ok: boolean; message?: string; error?: string }>(
+        `/platform/connector-health/outbox/${row.tenantId}/${row.id}/archive`,
+        {},
+      ),
+    onSuccess: (data) => {
+      setFeedback({ kind: 'success', message: data.message ?? 'Outbox event archived.' });
+      queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
+    },
+    onError: (err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      setFeedback({ kind: 'error', message: detail || 'Failed to archive outbox event.' });
+    },
+  });
+
+  const truncatedError =
+    row.lastError && row.lastError.length > 200
+      ? `${row.lastError.slice(0, 200)}…`
+      : row.lastError;
+  const isDeadLetter = row.status === 'dead_letter';
+  const retrying = retryMutation.isPending;
+  const archiving = archiveMutation.isPending;
+  const integrationLabel =
+    row.integrationName ?? row.integrationProvider ?? row.integrationType ?? null;
+
+  return (
+    <tr className="border-b border-border last:border-0 align-top">
+      <td className="px-4 py-2 text-xs">
+        <div className="font-medium">{row.tenantName ?? '—'}</div>
+        {row.tenantSlug && (
+          <div className="text-text-muted font-mono">{row.tenantSlug}</div>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs">
+        <div className="font-medium font-mono">{row.eventType}</div>
+        {integrationLabel && (
+          <div className="text-text-muted">
+            <span className="capitalize">{integrationLabel}</span>
+            {row.integrationProvider
+              && row.integrationProvider !== integrationLabel
+              && (
+                <span className="font-mono"> · {row.integrationProvider}</span>
+              )}
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs">
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+            isDeadLetter
+              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+          }`}
+        >
+          {isDeadLetter ? 'Dead-letter' : 'Failed'}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-xs whitespace-nowrap">
+        <span
+          className={
+            row.attempts >= row.maxAttempts
+              ? 'text-red-600 dark:text-red-400 font-medium'
+              : 'text-text-primary'
+          }
+        >
+          {row.attempts} / {row.maxAttempts}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-xs whitespace-nowrap">
+        {isDeadLetter ? (
+          <span className="text-text-muted">no automatic retry</span>
+        ) : (
+          <span
+            className="text-text-muted"
+            title={row.nextAttemptAt ? new Date(row.nextAttemptAt).toLocaleString() : 'unknown'}
+          >
+            {formatNextAttempt(row.nextAttemptAt)}
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[360px]">
+        {truncatedError ?? '—'}
+      </td>
+      <td className="px-4 py-2 text-xs">
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
+                retryMutation.mutate();
+              }}
+              disabled={retrying || archiving}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50"
+              title="Reset status to pending and trigger the drain worker on the next cycle"
+            >
+              <RotateCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+              Retry now
+            </button>
+            {isDeadLetter && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedback(null);
+                  archiveMutation.mutate();
+                }}
+                disabled={archiving || retrying}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50"
+                title="Archive this dead-letter row so it stops appearing here. The original payload stays in the table for forensics."
+              >
+                <Archive className="h-3 w-3" />
+                Mark resolved
+              </button>
+            )}
+          </div>
+          {feedback && (
+            <div
+              className={`text-[11px] ${
+                feedback.kind === 'success'
+                  ? 'text-green-700 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400'
+              }`}
             >
               {feedback.message}
             </div>

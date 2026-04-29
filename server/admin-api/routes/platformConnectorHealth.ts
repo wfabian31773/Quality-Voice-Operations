@@ -142,6 +142,34 @@ interface ExpiringSoonRow {
 }
 
 /**
+ * One row in the "Stuck connector messages" subview. Sourced from
+ * `outbox_events` rows that the drain worker has parked in `failed` (with
+ * a future `next_attempt_at`) or moved to `dead_letter` (attempts hit
+ * `max_attempts`). Archived rows (`archived_at IS NOT NULL`) are excluded.
+ */
+interface StuckOutboxEventRow {
+  id: string;
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  integrationId: string | null;
+  integrationProvider: string | null;
+  integrationName: string | null;
+  integrationType: string | null;
+  eventType: string;
+  status: 'failed' | 'dead_letter';
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  nextAttemptAt: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+const STUCK_OUTBOX_DEFAULT_LIMIT = 100;
+const STUCK_OUTBOX_MAX_LIMIT = 500;
+
+/**
  * Cross-tenant view of connectors that need ops attention. Returns the
  * connectors currently in `needs_reconnect` / `error`, plus recent
  * `connector.token_refresh_failed` audit events. Used by Platform Admin so
@@ -164,6 +192,12 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
     MAX_EXPIRING_SOON_HOURS,
   );
   const expiringSoonWindowMs = expiringWithinHours * 60 * 60 * 1000;
+  const stuckOutboxLimit = clampInt(
+    req.query.stuckOutboxLimit,
+    STUCK_OUTBOX_DEFAULT_LIMIT,
+    1,
+    STUCK_OUTBOX_MAX_LIMIT,
+  );
 
   try {
     const result = await withPrivilegedClient(async (client) => {
@@ -209,7 +243,46 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
         [sinceDays, eventsLimit],
       );
 
-      return { connectorRows, summaryRows, eventRows };
+      const { rows: stuckOutboxRows } = await client.query(
+        `SELECT
+            oe.id, oe.tenant_id, oe.event_type, oe.status,
+            oe.attempts, oe.max_attempts, oe.last_error,
+            oe.next_attempt_at, oe.created_at, oe.updated_at,
+            oe.integration_id,
+            i.provider AS integration_provider,
+            i.name AS integration_name,
+            i.integration_type::text AS integration_type,
+            t.name AS tenant_name, t.slug AS tenant_slug
+           FROM outbox_events oe
+           LEFT JOIN integrations i
+             ON i.id = oe.integration_id AND i.tenant_id = oe.tenant_id
+           LEFT JOIN tenants t ON t.id = oe.tenant_id
+          WHERE oe.status IN ('failed', 'dead_letter')
+            AND oe.archived_at IS NULL
+          ORDER BY
+            CASE oe.status WHEN 'dead_letter' THEN 0 ELSE 1 END,
+            COALESCE(oe.next_attempt_at, oe.updated_at, oe.created_at) DESC NULLS LAST
+          LIMIT $1`,
+        [stuckOutboxLimit],
+      );
+
+      const { rows: stuckOutboxSummaryRows } = await client.query(
+        `SELECT
+            COUNT(*) FILTER (WHERE status = 'failed') AS failed_count,
+            COUNT(*) FILTER (WHERE status = 'dead_letter') AS dead_letter_count,
+            COUNT(DISTINCT tenant_id) AS affected_tenants
+           FROM outbox_events
+          WHERE status IN ('failed', 'dead_letter')
+            AND archived_at IS NULL`,
+      );
+
+      return {
+        connectorRows,
+        summaryRows,
+        eventRows,
+        stuckOutboxRows,
+        stuckOutboxSummaryRows,
+      };
     });
 
     const connectors: ConnectorHealthRow[] = result.connectorRows.map((r) => ({
@@ -251,6 +324,34 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       // Filled in below once the token health snapshot has been computed
       // (or left at 0 when the snapshot helper failed).
       expiringSoon: 0,
+    };
+
+    const stuckOutboxEvents: StuckOutboxEventRow[] = result.stuckOutboxRows.map((r) => ({
+      id: r.id as string,
+      tenantId: r.tenant_id as string,
+      tenantName: (r.tenant_name as string) ?? null,
+      tenantSlug: (r.tenant_slug as string) ?? null,
+      integrationId: (r.integration_id as string) ?? null,
+      integrationProvider: (r.integration_provider as string) ?? null,
+      integrationName: (r.integration_name as string) ?? null,
+      integrationType: (r.integration_type as string) ?? null,
+      eventType: r.event_type as string,
+      status: r.status as 'failed' | 'dead_letter',
+      attempts: parseInt(String(r.attempts ?? '0'), 10),
+      maxAttempts: parseInt(String(r.max_attempts ?? '0'), 10),
+      lastError: (r.last_error as string) ?? null,
+      nextAttemptAt: r.next_attempt_at
+        ? new Date(r.next_attempt_at as string).toISOString()
+        : null,
+      createdAt: new Date(r.created_at as string).toISOString(),
+      updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
+    }));
+
+    const stuckSummaryRow = result.stuckOutboxSummaryRows[0] ?? {};
+    const stuckOutboxSummary = {
+      failed: parseInt(String(stuckSummaryRow.failed_count ?? '0'), 10),
+      deadLetter: parseInt(String(stuckSummaryRow.dead_letter_count ?? '0'), 10),
+      affectedTenants: parseInt(String(stuckSummaryRow.affected_tenants ?? '0'), 10),
     };
 
     const recentRefreshFailures: RefreshFailureRow[] = result.eventRows.map((r) => {
@@ -382,7 +483,10 @@ router.get('/platform/connector-health', requireAuth, requirePlatformAdmin, asyn
       expiringSoon,
       expiringSoonWindowMs,
       expiringSoonWithinHours: expiringWithinHours,
-      window: { sinceDays, eventsLimit, expiringWithinHours },
+      stuckOutboxEvents,
+      stuckOutboxSummary,
+      stuckOutboxLimit,
+      window: { sinceDays, eventsLimit, expiringWithinHours, stuckOutboxLimit },
     });
   } catch (err) {
     logger.error('Failed to query connector health', { error: String(err) });
@@ -731,6 +835,273 @@ router.post(
       emailedRecipients: result.emailedRecipients,
       reason,
       message,
+    });
+  },
+);
+
+interface StuckOutboxLookupRow {
+  id: string;
+  tenant_id: string;
+  status: 'failed' | 'dead_letter' | 'pending' | 'processing' | 'delivered';
+  attempts: number;
+  max_attempts: number;
+  event_type: string;
+  integration_id: string | null;
+  archived_at: Date | string | null;
+}
+
+async function loadStuckOutboxRow(
+  tenantId: string,
+  eventId: string,
+): Promise<StuckOutboxLookupRow | null> {
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, tenant_id, status::text AS status, attempts, max_attempts,
+              event_type, integration_id, archived_at
+         FROM outbox_events
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [eventId, tenantId],
+    );
+    return (rows[0] as unknown as StuckOutboxLookupRow | undefined) ?? null;
+  });
+}
+
+/**
+ * Operator-triggered "Retry now" for a stuck outbox event. Resets the row
+ * back to `pending` with `next_attempt_at = NOW()` so the next drain cycle
+ * picks it up. Attempts are zeroed because:
+ *
+ *   1. `dead_letter` rows have `attempts >= max_attempts`, and the drain
+ *      claim filters on `attempts < max_attempts`, so without a reset the
+ *      row would never be claimed.
+ *   2. `failed` rows have backoff baked into `next_attempt_at`; collapsing
+ *      that to NOW() AND resetting attempts gives the operator the same
+ *      "fresh shot" semantics regardless of which bucket the row was in.
+ *
+ * Archived rows are also un-archived in case an operator wants to revive
+ * a row that was previously dismissed.
+ */
+router.post(
+  '/platform/connector-health/outbox/:tenantId/:eventId/retry',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId, eventId } = req.params;
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(eventId)) {
+      return res.status(400).json({ error: 'Invalid tenantId or eventId' });
+    }
+
+    const row = await loadStuckOutboxRow(tenantId, eventId);
+    if (!row) {
+      return res.status(404).json({ error: 'Outbox event not found' });
+    }
+
+    if (row.status !== 'failed' && row.status !== 'dead_letter') {
+      return res.status(409).json({
+        error: `Outbox event is in status "${row.status}" and is not retryable. Only failed/dead_letter rows can be requeued.`,
+      });
+    }
+
+    const previousStatus = row.status;
+    const previousAttempts = row.attempts;
+
+    let updatedCount = 0;
+    try {
+      await withPrivilegedClient(async (client) => {
+        // Status predicate guards against TOCTOU: if the drain worker
+        // (or another admin) flipped this row between our SELECT above
+        // and this UPDATE, rowCount will be 0 and we'll surface a 409.
+        const result = await client.query(
+          `UPDATE outbox_events
+              SET status = 'pending',
+                  attempts = 0,
+                  next_attempt_at = NOW(),
+                  last_error = NULL,
+                  archived_at = NULL,
+                  updated_at = NOW()
+            WHERE id = $1
+              AND tenant_id = $2
+              AND status IN ('failed', 'dead_letter')`,
+          [eventId, tenantId],
+        );
+        updatedCount = result.rowCount ?? 0;
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to requeue stuck outbox event', {
+        tenantId,
+        eventId,
+        adminUserId: req.user?.userId,
+        error: message,
+      });
+      return res.status(500).json({ ok: false, error: 'Failed to requeue outbox event' });
+    }
+
+    if (updatedCount === 0) {
+      logger.warn('Stuck outbox retry lost a race — row state changed before UPDATE', {
+        tenantId,
+        eventId,
+        previousStatus,
+        adminUserId: req.user?.userId,
+      });
+      return res.status(409).json({
+        ok: false,
+        error:
+          'Outbox event status changed before the retry could be applied. Refresh and try again.',
+      });
+    }
+
+    try {
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: 'platform_admin',
+        action: 'connector.outbox_retry_queued',
+        resourceType: 'outbox_event',
+        resourceId: eventId,
+        severity: 'info',
+        changes: {
+          eventType: row.event_type,
+          integrationId: row.integration_id,
+          previousStatus,
+          previousAttempts,
+          maxAttempts: row.max_attempts,
+        },
+        ipAddress: extractIp(req),
+      });
+    } catch {
+      // best-effort
+    }
+
+    logger.info('Admin requeued stuck outbox event', {
+      tenantId,
+      eventId,
+      previousStatus,
+      adminUserId: req.user!.userId,
+    });
+
+    return res.json({
+      ok: true,
+      message:
+        previousStatus === 'dead_letter'
+          ? 'Dead-letter event requeued. The drain worker will retry it on the next cycle.'
+          : 'Failed event requeued. The drain worker will retry it on the next cycle.',
+      previousStatus,
+    });
+  },
+);
+
+/**
+ * Operator-triggered "Mark resolved" for a `dead_letter` outbox event.
+ * Soft-archives the row by stamping `archived_at` so the Stuck panel and
+ * the drain worker both ignore it, while keeping the original payload and
+ * error message in place for forensics. Only `dead_letter` rows are
+ * eligible — `failed` rows still have automatic retries pending and
+ * shouldn't be archived from the panel.
+ */
+router.post(
+  '/platform/connector-health/outbox/:tenantId/:eventId/archive',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const { tenantId, eventId } = req.params;
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(eventId)) {
+      return res.status(400).json({ error: 'Invalid tenantId or eventId' });
+    }
+
+    const row = await loadStuckOutboxRow(tenantId, eventId);
+    if (!row) {
+      return res.status(404).json({ error: 'Outbox event not found' });
+    }
+
+    if (row.archived_at) {
+      return res.json({
+        ok: true,
+        message: 'Outbox event was already archived.',
+        alreadyArchived: true,
+      });
+    }
+
+    if (row.status !== 'dead_letter') {
+      return res.status(409).json({
+        error: `Only dead_letter rows can be marked resolved. This row is in status "${row.status}".`,
+      });
+    }
+
+    let updatedCount = 0;
+    try {
+      await withPrivilegedClient(async (client) => {
+        // Status / archived_at predicates guard against TOCTOU: if the
+        // row was requeued (status flipped off dead_letter) or archived
+        // by another admin between our SELECT and UPDATE, rowCount will
+        // be 0 and we surface a 409 instead of silently no-oping.
+        const result = await client.query(
+          `UPDATE outbox_events
+              SET archived_at = NOW(),
+                  updated_at = NOW()
+            WHERE id = $1
+              AND tenant_id = $2
+              AND status = 'dead_letter'
+              AND archived_at IS NULL`,
+          [eventId, tenantId],
+        );
+        updatedCount = result.rowCount ?? 0;
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to archive stuck outbox event', {
+        tenantId,
+        eventId,
+        adminUserId: req.user?.userId,
+        error: message,
+      });
+      return res.status(500).json({ ok: false, error: 'Failed to archive outbox event' });
+    }
+
+    if (updatedCount === 0) {
+      logger.warn('Stuck outbox archive lost a race — row state changed before UPDATE', {
+        tenantId,
+        eventId,
+        adminUserId: req.user?.userId,
+      });
+      return res.status(409).json({
+        ok: false,
+        error:
+          'Outbox event status changed before it could be archived. Refresh and try again.',
+      });
+    }
+
+    try {
+      await writeAuditLog({
+        tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: 'platform_admin',
+        action: 'connector.outbox_archived',
+        resourceType: 'outbox_event',
+        resourceId: eventId,
+        severity: 'info',
+        changes: {
+          eventType: row.event_type,
+          integrationId: row.integration_id,
+          attempts: row.attempts,
+          maxAttempts: row.max_attempts,
+        },
+        ipAddress: extractIp(req),
+      });
+    } catch {
+      // best-effort
+    }
+
+    logger.info('Admin archived dead-letter outbox event', {
+      tenantId,
+      eventId,
+      adminUserId: req.user!.userId,
+    });
+
+    return res.json({
+      ok: true,
+      message: 'Outbox event archived. It will no longer appear in the Stuck panel.',
     });
   },
 );

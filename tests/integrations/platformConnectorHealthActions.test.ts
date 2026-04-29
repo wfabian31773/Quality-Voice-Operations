@@ -360,10 +360,23 @@ describe('POST /platform/connector-health/integrations/:tenantId/:integrationId/
 describe('GET /platform/connector-health (token health surface)', () => {
   const FIFTEEN_MIN = 15 * 60 * 1000;
 
-  function withGetClient(connectorRows: Array<Record<string, unknown>>) {
-    // The GET handler issues 3 sequential queries: connectors, summary,
-    // events. We satisfy them in order so the response body is fully
-    // populated for the token-health assertions below.
+  function withGetClient(
+    connectorRows: Array<Record<string, unknown>>,
+    options: {
+      stuckOutboxRows?: Array<Record<string, unknown>>;
+      stuckOutboxSummary?: Record<string, unknown>;
+    } = {},
+  ) {
+    // The GET handler issues 5 sequential queries: connectors, summary,
+    // events, stuck outbox rows, stuck outbox summary. We satisfy them in
+    // order so the response body is fully populated for the token-health
+    // and stuck-outbox assertions below.
+    const stuckRows = options.stuckOutboxRows ?? [];
+    const stuckSummary = options.stuckOutboxSummary ?? {
+      failed_count: '0',
+      dead_letter_count: '0',
+      affected_tenants: '0',
+    };
     let call = 0;
     withPrivilegedClientMock.mockImplementation(async (fn) =>
       fn({
@@ -381,6 +394,9 @@ describe('GET /platform/connector-health (token health surface)', () => {
               }],
             };
           }
+          if (call === 3) return { rows: [] };
+          if (call === 4) return { rows: stuckRows };
+          if (call === 5) return { rows: [stuckSummary] };
           return { rows: [] };
         },
       }),
@@ -608,5 +624,414 @@ describe('GET /platform/connector-health (token health surface)', () => {
     // The rest of the payload still comes through.
     expect(res.body.summary).toBeDefined();
     expect(res.body.connectors).toEqual([]);
+  });
+
+  it('projects stuck outbox events into stuckOutboxEvents + stuckOutboxSummary', async () => {
+    const stuckRows = [
+      {
+        id: 'oe-dead-1',
+        tenant_id: TENANT_ID,
+        event_type: 'lead.created',
+        status: 'dead_letter',
+        attempts: 5,
+        max_attempts: 5,
+        last_error: 'remote 502 — gateway timeout',
+        next_attempt_at: null,
+        created_at: new Date('2026-04-20T10:00:00Z'),
+        updated_at: new Date('2026-04-21T10:00:00Z'),
+        integration_id: 'int-hubspot',
+        integration_provider: 'hubspot',
+        integration_name: 'HubSpot CRM',
+        integration_type: 'crm',
+        tenant_name: 'Acme',
+        tenant_slug: 'acme',
+      },
+      {
+        id: 'oe-failed-1',
+        tenant_id: TENANT_ID,
+        event_type: 'call.completed',
+        status: 'failed',
+        attempts: 2,
+        max_attempts: 5,
+        last_error: 'transient connection reset',
+        next_attempt_at: new Date('2026-04-29T13:00:00Z'),
+        created_at: new Date('2026-04-29T11:00:00Z'),
+        updated_at: new Date('2026-04-29T11:30:00Z'),
+        integration_id: 'int-pipedrive',
+        integration_provider: 'pipedrive',
+        integration_name: null,
+        integration_type: 'crm',
+        tenant_name: 'Acme',
+        tenant_slug: 'acme',
+      },
+    ];
+    withGetClient([], {
+      stuckOutboxRows: stuckRows,
+      stuckOutboxSummary: {
+        failed_count: '1',
+        dead_letter_count: '1',
+        affected_tenants: '1',
+      },
+    });
+    const app = await buildApp();
+    const res = await request(app).get('/api/platform/connector-health');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.stuckOutboxEvents)).toBe(true);
+    expect(res.body.stuckOutboxEvents).toHaveLength(2);
+
+    const dead = res.body.stuckOutboxEvents.find(
+      (r: { id: string }) => r.id === 'oe-dead-1',
+    );
+    expect(dead).toMatchObject({
+      tenantId: TENANT_ID,
+      tenantName: 'Acme',
+      tenantSlug: 'acme',
+      eventType: 'lead.created',
+      status: 'dead_letter',
+      attempts: 5,
+      maxAttempts: 5,
+      integrationId: 'int-hubspot',
+      integrationProvider: 'hubspot',
+      integrationName: 'HubSpot CRM',
+      integrationType: 'crm',
+      lastError: 'remote 502 — gateway timeout',
+      nextAttemptAt: null,
+    });
+
+    const failed = res.body.stuckOutboxEvents.find(
+      (r: { id: string }) => r.id === 'oe-failed-1',
+    );
+    expect(failed.status).toBe('failed');
+    expect(failed.attempts).toBe(2);
+    expect(failed.nextAttemptAt).toBe(new Date('2026-04-29T13:00:00Z').toISOString());
+
+    expect(res.body.stuckOutboxSummary).toEqual({
+      failed: 1,
+      deadLetter: 1,
+      affectedTenants: 1,
+    });
+    expect(res.body.stuckOutboxLimit).toBe(100);
+    expect(res.body.window.stuckOutboxLimit).toBe(100);
+  });
+
+  it('clamps stuckOutboxLimit query param to the [1, 500] window', async () => {
+    withGetClient([]);
+    const app = await buildApp();
+    const tooBig = await request(app).get(
+      '/api/platform/connector-health?stuckOutboxLimit=99999',
+    );
+    expect(tooBig.body.stuckOutboxLimit).toBe(500);
+    const tooSmall = await request(app).get(
+      '/api/platform/connector-health?stuckOutboxLimit=0',
+    );
+    expect(tooSmall.body.stuckOutboxLimit).toBe(1);
+    const garbage = await request(app).get(
+      '/api/platform/connector-health?stuckOutboxLimit=abc',
+    );
+    expect(garbage.body.stuckOutboxLimit).toBe(100);
+  });
+});
+
+describe('POST /platform/connector-health/outbox/:tenantId/:eventId/retry', () => {
+  const EVENT_ID = randomUUID();
+
+  function mockOutboxLookupAndUpdate(
+    lookupRow: Record<string, unknown> | null,
+    updateRowCount = 1,
+  ) {
+    let call = 0;
+    withPrivilegedClientMock.mockImplementation(async (fn) =>
+      fn({
+        query: async (sql: string) => {
+          call += 1;
+          if (call === 1) {
+            // SELECT ... FROM outbox_events
+            expect(sql).toMatch(/FROM outbox_events/);
+            return {
+              rows: lookupRow ? [lookupRow] : [],
+              rowCount: lookupRow ? 1 : 0,
+            };
+          }
+          // UPDATE — assert the status guard predicate is in place so a
+          // worker race between SELECT and UPDATE can't sneak through.
+          expect(sql).toMatch(/UPDATE outbox_events/);
+          expect(sql).toMatch(/status IN \('failed', 'dead_letter'\)/);
+          return { rows: [], rowCount: updateRowCount };
+        },
+      }),
+    );
+  }
+
+  it('rejects malformed UUIDs', async () => {
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/platform/connector-health/outbox/bad/bad/retry')
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid/);
+  });
+
+  it('returns 404 when the outbox event row is missing', async () => {
+    mockOutboxLookupAndUpdate(null);
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/retry`)
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 409 when the row is already pending or delivered', async () => {
+    mockOutboxLookupAndUpdate({
+      id: EVENT_ID,
+      tenant_id: TENANT_ID,
+      status: 'delivered',
+      attempts: 1,
+      max_attempts: 5,
+      event_type: 'lead.created',
+      integration_id: 'int-1',
+      archived_at: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/retry`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/not retryable/);
+  });
+
+  it('requeues a dead_letter row, audits the action, and returns ok', async () => {
+    mockOutboxLookupAndUpdate({
+      id: EVENT_ID,
+      tenant_id: TENANT_ID,
+      status: 'dead_letter',
+      attempts: 5,
+      max_attempts: 5,
+      event_type: 'lead.created',
+      integration_id: 'int-hubspot',
+      archived_at: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/retry`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.previousStatus).toBe('dead_letter');
+    expect(res.body.message).toMatch(/Dead-letter event requeued/);
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    const audit = writeAuditLogMock.mock.calls[0][0];
+    expect(audit.action).toBe('connector.outbox_retry_queued');
+    expect(audit.tenantId).toBe(TENANT_ID);
+    expect(audit.resourceType).toBe('outbox_event');
+    expect(audit.resourceId).toBe(EVENT_ID);
+    expect(audit.actorRole).toBe('platform_admin');
+    const changes = audit.changes as Record<string, unknown>;
+    expect(changes.eventType).toBe('lead.created');
+    expect(changes.previousStatus).toBe('dead_letter');
+    expect(changes.previousAttempts).toBe(5);
+  });
+
+  it('also requeues a failed row with previousStatus=failed', async () => {
+    mockOutboxLookupAndUpdate({
+      id: EVENT_ID,
+      tenant_id: TENANT_ID,
+      status: 'failed',
+      attempts: 2,
+      max_attempts: 5,
+      event_type: 'lead.created',
+      integration_id: null,
+      archived_at: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/retry`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.previousStatus).toBe('failed');
+    expect(res.body.message).toMatch(/Failed event requeued/);
+  });
+
+  it('returns 409 when the row state changes between SELECT and UPDATE (lost race)', async () => {
+    // Row looked retryable at SELECT time, but the worker flipped its
+    // status to 'pending' before our UPDATE landed -> rowCount = 0.
+    mockOutboxLookupAndUpdate(
+      {
+        id: EVENT_ID,
+        tenant_id: TENANT_ID,
+        status: 'dead_letter',
+        attempts: 5,
+        max_attempts: 5,
+        event_type: 'lead.created',
+        integration_id: null,
+        archived_at: null,
+      },
+      0,
+    );
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/retry`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/status changed/);
+    // No audit row should be written for a no-op update.
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /platform/connector-health/outbox/:tenantId/:eventId/archive', () => {
+  const EVENT_ID = randomUUID();
+
+  function mockOutboxLookupAndUpdate(
+    lookupRow: Record<string, unknown> | null,
+    updateRowCount = 1,
+  ) {
+    let call = 0;
+    withPrivilegedClientMock.mockImplementation(async (fn) =>
+      fn({
+        query: async (sql: string) => {
+          call += 1;
+          if (call === 1) {
+            expect(sql).toMatch(/FROM outbox_events/);
+            return {
+              rows: lookupRow ? [lookupRow] : [],
+              rowCount: lookupRow ? 1 : 0,
+            };
+          }
+          // UPDATE — assert the status + archived_at guard predicates
+          // are present so a race against retry/archive can't sneak past.
+          expect(sql).toMatch(/UPDATE outbox_events/);
+          expect(sql).toMatch(/archived_at = NOW\(\)/);
+          expect(sql).toMatch(/status = 'dead_letter'/);
+          expect(sql).toMatch(/archived_at IS NULL/);
+          return { rows: [], rowCount: updateRowCount };
+        },
+      }),
+    );
+  }
+
+  it('rejects malformed UUIDs', async () => {
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/platform/connector-health/outbox/bad/bad/archive')
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when the row is missing', async () => {
+    mockOutboxLookupAndUpdate(null);
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/archive`)
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses to archive a still-retrying failed row (409)', async () => {
+    mockOutboxLookupAndUpdate({
+      id: EVENT_ID,
+      tenant_id: TENANT_ID,
+      status: 'failed',
+      attempts: 2,
+      max_attempts: 5,
+      event_type: 'lead.created',
+      integration_id: null,
+      archived_at: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/archive`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/dead_letter/);
+  });
+
+  it('returns ok+alreadyArchived when the row is already archived', async () => {
+    // For already-archived rows we never reach the UPDATE, so the mock only
+    // needs to satisfy the SELECT.
+    withPrivilegedClientMock.mockImplementation(async (fn) =>
+      fn({
+        query: async (sql: string) => {
+          expect(sql).toMatch(/FROM outbox_events/);
+          return {
+            rows: [{
+              id: EVENT_ID,
+              tenant_id: TENANT_ID,
+              status: 'dead_letter',
+              attempts: 5,
+              max_attempts: 5,
+              event_type: 'lead.created',
+              integration_id: null,
+              archived_at: new Date('2026-04-29T10:00:00Z'),
+            }],
+            rowCount: 1,
+          };
+        },
+      }),
+    );
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/archive`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alreadyArchived).toBe(true);
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
+  });
+
+  it('archives a dead_letter row and writes an audit row', async () => {
+    mockOutboxLookupAndUpdate({
+      id: EVENT_ID,
+      tenant_id: TENANT_ID,
+      status: 'dead_letter',
+      attempts: 5,
+      max_attempts: 5,
+      event_type: 'lead.created',
+      integration_id: 'int-hubspot',
+      archived_at: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/archive`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toMatch(/archived/);
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    const audit = writeAuditLogMock.mock.calls[0][0];
+    expect(audit.action).toBe('connector.outbox_archived');
+    expect(audit.resourceType).toBe('outbox_event');
+    expect(audit.resourceId).toBe(EVENT_ID);
+    const changes = audit.changes as Record<string, unknown>;
+    expect(changes.eventType).toBe('lead.created');
+    expect(changes.attempts).toBe(5);
+    expect(changes.maxAttempts).toBe(5);
+  });
+
+  it('returns 409 when the row state changes between SELECT and UPDATE (lost race)', async () => {
+    // Looked dead_letter at SELECT time, but another admin requeued it
+    // (status flipped to 'pending' or it got archived) before our UPDATE
+    // landed -> rowCount = 0, no audit entry should be written.
+    mockOutboxLookupAndUpdate(
+      {
+        id: EVENT_ID,
+        tenant_id: TENANT_ID,
+        status: 'dead_letter',
+        attempts: 5,
+        max_attempts: 5,
+        event_type: 'lead.created',
+        integration_id: null,
+        archived_at: null,
+      },
+      0,
+    );
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/api/platform/connector-health/outbox/${TENANT_ID}/${EVENT_ID}/archive`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/status changed/);
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
   });
 });

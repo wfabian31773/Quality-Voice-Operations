@@ -40,6 +40,7 @@ async function claimBatch(client: PoolClient, limit: number): Promise<OutboxRow[
           WHERE status IN ('pending', 'failed')
             AND attempts < max_attempts
             AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+            AND archived_at IS NULL
           ORDER BY next_attempt_at NULLS FIRST, created_at
           FOR UPDATE SKIP LOCKED
           LIMIT $1
