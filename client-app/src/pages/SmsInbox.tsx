@@ -89,6 +89,15 @@ interface InboxCounts {
   escalated: number;
   archived: number;
   unread: number;
+  deferred: number;
+}
+
+interface DeferredEntry {
+  conversationId: string;
+  messageId: string;
+  deferredUntil: string | null;
+  recipientTimezone: string | null;
+  scheduledAt: string | null;
 }
 
 interface Analytics {
@@ -101,7 +110,7 @@ interface Analytics {
 }
 
 type TabView = 'inbox' | 'templates' | 'automations' | 'analytics' | 'admin';
-type InboxFilter = 'all' | 'open' | 'pending' | 'closed' | 'escalated' | 'archived' | 'unread' | 'pinned' | 'followUp';
+type InboxFilter = 'all' | 'open' | 'pending' | 'closed' | 'escalated' | 'archived' | 'unread' | 'pinned' | 'followUp' | 'deferred';
 
 const STATUS_TOOLTIPS: Record<string, string> = {
   open: 'Open conversation — currently being handled by your team',
@@ -153,7 +162,8 @@ export default function SmsInbox() {
   const [notes, setNotes] = useState<InternalNote[]>([]);
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
-  const [inboxCounts, setInboxCounts] = useState<InboxCounts>({ open: 0, pending: 0, closed: 0, escalated: 0, archived: 0, unread: 0 });
+  const [inboxCounts, setInboxCounts] = useState<InboxCounts>({ open: 0, pending: 0, closed: 0, escalated: 0, archived: 0, unread: 0, deferred: 0 });
+  const [deferredEntries, setDeferredEntries] = useState<DeferredEntry[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
 
   const [replyText, setReplyText] = useState('');
@@ -180,6 +190,7 @@ export default function SmsInbox() {
       if (activeFilter === 'unread') params.set('unread', 'true');
       else if (activeFilter === 'pinned') params.set('pinned', 'true');
       else if (activeFilter === 'followUp') params.set('followUp', 'true');
+      else if (activeFilter === 'deferred') params.set('deferred', 'true');
       else if (activeFilter !== 'all') params.set('status', activeFilter);
       if (searchQuery) params.set('search', searchQuery);
 
@@ -190,13 +201,33 @@ export default function SmsInbox() {
     }
   }, [activeFilter, searchQuery]);
 
+  // Refresh the deferred queue alongside the inbox counts so the
+  // sidebar badge counter and the per-row "deferred until …" pill
+  // never drift from each other when the dispatcher parks (or
+  // releases) messages between polls.
+  const refreshDeferred = useCallback(async () => {
+    try {
+      const [counts, deferred] = await Promise.all([
+        api.get<{ counts: InboxCounts }>('/sms-inbox/counts'),
+        api.get<{ deferred: DeferredEntry[] }>('/sms-inbox/deferred'),
+      ]);
+      setInboxCounts(counts.counts);
+      setDeferredEntries(deferred.deferred);
+    } catch {
+      // Non-fatal: leave previous values in place so the UI degrades
+      // to "no badges" instead of throwing the whole inbox away.
+    }
+  }, []);
+
   useEffect(() => {
     Promise.all([
       api.get<{ conversations: PhoneLine[] }>('/sms-inbox/conversations'),
       api.get<{ counts: InboxCounts }>('/sms-inbox/counts'),
-    ]).then(([lines, counts]) => {
+      api.get<{ deferred: DeferredEntry[] }>('/sms-inbox/deferred'),
+    ]).then(([lines, counts, deferred]) => {
       setPhoneLines(lines.conversations);
       setInboxCounts(counts.counts);
+      setDeferredEntries(deferred.deferred);
     }).catch(() => setError('Failed to load inbox'))
       .finally(() => setLoading(false));
   }, []);
@@ -204,6 +235,40 @@ export default function SmsInbox() {
   useEffect(() => {
     if (!loading) loadConversations();
   }, [loadConversations, loading]);
+
+  // The deferred filter narrows the conversation list to those
+  // currently parked, so refresh the source-of-truth list whenever
+  // the operator switches into that view to avoid showing stale rows.
+  useEffect(() => {
+    if (loading) return;
+    if (activeFilter === 'deferred') {
+      void refreshDeferred();
+    }
+  }, [activeFilter, loading, refreshDeferred]);
+
+  const deferredByConv = useMemo(() => {
+    // If the same recipient has multiple parked messages, keep the
+    // earliest deferred-until time so the badge surfaces the next
+    // window the operator should watch — anything later is implied.
+    const map = new Map<string, DeferredEntry>();
+    for (const entry of deferredEntries) {
+      const existing = map.get(entry.conversationId);
+      const existingT = existing?.deferredUntil ? Date.parse(existing.deferredUntil) : Number.POSITIVE_INFINITY;
+      const candidateT = entry.deferredUntil ? Date.parse(entry.deferredUntil) : Number.POSITIVE_INFINITY;
+      if (!existing || candidateT < existingT) {
+        map.set(entry.conversationId, entry);
+      }
+    }
+    return map;
+  }, [deferredEntries]);
+
+  const deferredCountByConv = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of deferredEntries) {
+      counts.set(entry.conversationId, (counts.get(entry.conversationId) ?? 0) + 1);
+    }
+    return counts;
+  }, [deferredEntries]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -409,6 +474,8 @@ export default function SmsInbox() {
           notes={notes}
           activityLog={activityLog}
           inboxCounts={inboxCounts}
+          deferredByConv={deferredByConv}
+          deferredCountByConv={deferredCountByConv}
           cannedResponses={cannedResponses}
           replyText={replyText}
           noteText={noteText}
@@ -459,7 +526,8 @@ export default function SmsInbox() {
 }
 
 function InboxView({
-  conversations, selectedConv, messages, notes, activityLog, inboxCounts, cannedResponses,
+  conversations, selectedConv, messages, notes, activityLog, inboxCounts,
+  deferredByConv, deferredCountByConv, cannedResponses,
   replyText, noteText, searchQuery, activeFilter, sending, drafting,
   showContactPanel, showNotes, showTemplates, showSchedule, scheduleDate,
   selectedConvIds, setSelectedConvIds, bulkAction, isManager, messagesEndRef,
@@ -474,6 +542,8 @@ function InboxView({
   notes: InternalNote[];
   activityLog: ActivityEntry[];
   inboxCounts: InboxCounts;
+  deferredByConv: Map<string, DeferredEntry>;
+  deferredCountByConv: Map<string, number>;
   cannedResponses: CannedResponse[];
   replyText: string;
   noteText: string;
@@ -535,6 +605,7 @@ function InboxView({
     { key: 'escalated', label: 'Escalated', count: inboxCounts.escalated },
     { key: 'closed', label: 'Closed', count: inboxCounts.closed },
     { key: 'unread', label: 'Unread', count: inboxCounts.unread },
+    { key: 'deferred', label: 'Deferred', count: inboxCounts.deferred },
     { key: 'pinned', label: 'Pinned' },
     { key: 'followUp', label: 'Follow-up' },
   ];
@@ -641,8 +712,35 @@ function InboxView({
                       <div className="text-[11px] text-muted">{conv.remoteNumber}</div>
                     )}
                     <p className="text-xs text-muted mt-0.5 truncate">{conv.lastMessagePreview || 'No messages yet'}</p>
-                    <div className="flex items-center gap-1.5 mt-1">
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <ConversationStatusBadge status={conv.status} />
+                      {(() => {
+                        const deferredEntry = deferredByConv.get(conv.id);
+                        if (!deferredEntry) return null;
+                        const queued = deferredCountByConv.get(conv.id) ?? 1;
+                        const tz = deferredEntry.recipientTimezone ?? 'recipient timezone';
+                        const display = formatDeferredUntil(deferredEntry.deferredUntil);
+                        const tooltip = queued > 1
+                          ? `${queued} outbound texts held back by TCPA quiet hours — next attempt ${display} (${tz})`
+                          : `Held back by TCPA quiet hours — next attempt ${display} (${tz})`;
+                        return (
+                          <span
+                            data-testid="sms-inbox-deferred-badge"
+                            data-conversation-id={conv.id}
+                            data-deferred-count={queued}
+                            title={tooltip}
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200"
+                          >
+                            <Clock className="h-3 w-3" aria-hidden="true" />
+                            <span>deferred until {display}</span>
+                            {queued > 1 && (
+                              <span className="rounded-full bg-amber-200/70 dark:bg-amber-800/70 px-1 text-[10px]">
+                                {queued}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
                       {conv.priority !== 'normal' && (() => {
                         const pi = PRIORITY_ICONS[conv.priority] ?? PRIORITY_ICONS.normal;
                         const PIcon = pi.icon;
@@ -1652,6 +1750,26 @@ function AdminView({ isManager }: { isManager: boolean }) {
       </div>
     </div>
   );
+}
+
+// Format a deferred-until ISO timestamp for the inbox badge. We keep
+// it short (e.g. "Mon 8:00 AM") because the badge sits in a dense row
+// alongside status, priority, and a relative timestamp. If parsing
+// fails for any reason, fall back to the raw ISO so the operator
+// still has *something* to act on.
+function formatDeferredUntil(iso: string | null): string {
+  if (!iso) return 'next quiet-hours window';
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso;
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (sameDay) return time;
+  const day = date.toLocaleDateString(undefined, { weekday: 'short' });
+  return `${day} ${time}`;
 }
 
 function formatRelativeTime(dateStr: string): string {

@@ -110,7 +110,7 @@ const listPhoneLinesHandler: RequestHandler = async (req, res) => {
 const listConversationsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
-  const { status, assignee, phoneNumberId, priority, pinned, followUp, unread, search } = req.query as Record<string, string>;
+  const { status, assignee, phoneNumberId, priority, pinned, followUp, unread, deferred, search } = req.query as Record<string, string>;
 
   const VALID_STATUSES = ['open', 'pending', 'closed', 'escalated', 'archived'];
   const VALID_PRIORITIES = ['normal', 'high', 'urgent'];
@@ -126,6 +126,7 @@ const listConversationsHandler: RequestHandler = async (req, res) => {
       pinned: pinned === 'true' ? true : pinned === 'false' ? false : undefined,
       followUp: followUp === 'true' ? true : followUp === 'false' ? false : undefined,
       unreadOnly: unread === 'true',
+      deferredOnly: deferred === 'true',
       search,
       limit,
       offset,
@@ -401,6 +402,24 @@ const inboxCountsHandler: RequestHandler = async (req, res) => {
     return res.json({ counts });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to get inbox counts' });
+  }
+};
+
+// Surface every outbound SMS that the dispatcher is currently holding back
+// because the recipient was inside the TCPA quiet-hours window. The inbox
+// UI joins this list to its conversation rows so operators can see "deferred
+// until <time>" badges and a queue total without trawling server logs —
+// task #989. Defense-in-depth: the dispatcher inserts the activity-log row
+// every time it parks a message, so this is always derived from the source
+// of truth for what's actually delayed (no separate flag column to drift).
+const deferredMessagesHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const deferred = await SmsService.listDeferredMessages(tenantId);
+    return res.json({ deferred });
+  } catch (err) {
+    logger.error('Failed to list deferred SMS', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list deferred SMS' });
   }
 };
 
@@ -713,6 +732,7 @@ router.post('/sms-inbox/threads/:id/notes', requireAuth, requireMiniSystemWrite,
 router.get('/sms-inbox/threads/:id/notes', requireAuth, listNotesHandler);
 router.get('/sms-inbox/threads/:id/activity', requireAuth, activityLogHandler);
 router.get('/sms-inbox/counts', requireAuth, inboxCountsHandler);
+router.get('/sms-inbox/deferred', requireAuth, deferredMessagesHandler);
 router.post('/sms-inbox/bulk-update', requireAuth, requireMiniSystemWrite, bulkUpdateHandler);
 
 router.get('/sms-inbox/templates', requireAuth, listCannedResponsesHandler);

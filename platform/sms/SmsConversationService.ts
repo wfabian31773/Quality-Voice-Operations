@@ -281,6 +281,7 @@ export async function listConversations(
     pinned?: boolean;
     followUp?: boolean;
     unreadOnly?: boolean;
+    deferredOnly?: boolean;
     search?: string;
     limit?: number;
     offset?: number;
@@ -299,6 +300,39 @@ export async function listConversations(
     if (opts.pinned !== undefined) { values.push(opts.pinned); conditions.push(`c.pinned = $${values.length}`); countConditions.push(`pinned = $${values.length}`); }
     if (opts.followUp !== undefined) { values.push(opts.followUp); conditions.push(`c.follow_up = $${values.length}`); countConditions.push(`follow_up = $${values.length}`); }
     if (opts.unreadOnly) { conditions.push(`c.unread_count > 0`); countConditions.push(`unread_count > 0`); }
+    if (opts.deferredOnly) {
+      // Restrict to conversations that currently have at least one
+      // outbound SMS still pending in the scheduled queue *and* whose
+      // most recent activity-log entry for that message is a TCPA
+      // quiet-hours defer. Any later defer entry overrides an earlier
+      // sent/cancelled one because the dispatcher inserts a fresh row
+      // each time it pushes the send to the next 8am-local window —
+      // see processScheduledMessages in server/admin-api/routes/smsInbox.ts.
+      conditions.push(`c.id IN (
+        SELECT m.conversation_id FROM sms_messages m
+        WHERE m.tenant_id = c.tenant_id AND m.status = 'scheduled'
+          AND EXISTS (
+            SELECT 1 FROM sms_conversation_activity_log l
+            WHERE l.tenant_id = m.tenant_id
+              AND l.conversation_id = m.conversation_id
+              AND l.action = 'message_deferred'
+              AND l.details->>'messageId' = m.id
+              AND l.details->>'reason' = 'sms_quiet_hours'
+          )
+      )`);
+      countConditions.push(`id IN (
+        SELECT m.conversation_id FROM sms_messages m
+        WHERE m.tenant_id = sms_conversations.tenant_id AND m.status = 'scheduled'
+          AND EXISTS (
+            SELECT 1 FROM sms_conversation_activity_log l
+            WHERE l.tenant_id = m.tenant_id
+              AND l.conversation_id = m.conversation_id
+              AND l.action = 'message_deferred'
+              AND l.details->>'messageId' = m.id
+              AND l.details->>'reason' = 'sms_quiet_hours'
+          )
+      )`);
+    }
     if (opts.search) {
       values.push(`%${opts.search}%`);
       conditions.push(`(c.remote_number ILIKE $${values.length} OR c.contact_name ILIKE $${values.length} OR c.last_message_preview ILIKE $${values.length})`);
@@ -1091,7 +1125,7 @@ export async function getInboxCounts(tenantId: string): Promise<Record<string, n
       `SELECT status, COUNT(*)::int AS count FROM sms_conversations WHERE tenant_id = $1 GROUP BY status`,
       [tenantId],
     );
-    const counts: Record<string, number> = { open: 0, pending: 0, closed: 0, escalated: 0, archived: 0, unread: 0 };
+    const counts: Record<string, number> = { open: 0, pending: 0, closed: 0, escalated: 0, archived: 0, unread: 0, deferred: 0 };
     for (const r of rows) counts[r.status as string] = r.count as number;
 
     const { rows: unreadRows } = await client.query(
@@ -1099,6 +1133,74 @@ export async function getInboxCounts(tenantId: string): Promise<Record<string, n
       [tenantId],
     );
     counts.unread = (unreadRows[0]?.count as number) ?? 0;
+
+    // "deferred" tracks every outbound SMS that the dispatcher pushed to
+    // the next 8am-local window because the recipient was inside the
+    // TCPA quiet-hours window. We count messages (not conversations) so
+    // operators see the total backlog of held-back texts even when
+    // multiple are queued for the same recipient — task #989.
+    const { rows: deferredRows } = await client.query(
+      `SELECT COUNT(DISTINCT m.id)::int AS count
+       FROM sms_messages m
+       WHERE m.tenant_id = $1 AND m.status = 'scheduled'
+         AND EXISTS (
+           SELECT 1 FROM sms_conversation_activity_log l
+           WHERE l.tenant_id = m.tenant_id
+             AND l.conversation_id = m.conversation_id
+             AND l.action = 'message_deferred'
+             AND l.details->>'messageId' = m.id
+             AND l.details->>'reason' = 'sms_quiet_hours'
+         )`,
+      [tenantId],
+    );
+    counts.deferred = (deferredRows[0]?.count as number) ?? 0;
+
     return counts;
+  });
+}
+
+export interface DeferredSmsEntry {
+  conversationId: string;
+  messageId: string;
+  deferredUntil: Date | null;
+  recipientTimezone: string | null;
+  scheduledAt: Date | null;
+}
+
+/**
+ * List every outbound SMS the dispatcher currently has parked because the
+ * recipient was inside the TCPA quiet-hours window. We pick the most recent
+ * `message_deferred` activity-log row per message so a re-defer (e.g. DST
+ * boundary, or two consecutive nights) shows the latest target time. The
+ * SMS Inbox UI uses this to render the per-conversation "deferred until …"
+ * badge and to drive the "deferred" filter — task #989.
+ */
+export async function listDeferredMessages(tenantId: string): Promise<DeferredSmsEntry[]> {
+  return withTenant(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT DISTINCT ON (m.id)
+         m.id AS message_id,
+         m.conversation_id,
+         m.scheduled_at,
+         l.details->>'deferredUntil' AS deferred_until,
+         l.details->>'recipientTimezone' AS recipient_timezone
+       FROM sms_messages m
+       JOIN sms_conversation_activity_log l
+         ON l.tenant_id = m.tenant_id
+        AND l.conversation_id = m.conversation_id
+        AND l.action = 'message_deferred'
+        AND l.details->>'messageId' = m.id
+        AND l.details->>'reason' = 'sms_quiet_hours'
+       WHERE m.tenant_id = $1 AND m.status = 'scheduled'
+       ORDER BY m.id, l.created_at DESC`,
+      [tenantId],
+    );
+    return rows.map((r) => ({
+      messageId: r.message_id as string,
+      conversationId: r.conversation_id as string,
+      deferredUntil: r.deferred_until ? new Date(r.deferred_until as string) : null,
+      recipientTimezone: (r.recipient_timezone as string | null) ?? null,
+      scheduledAt: r.scheduled_at ? new Date(r.scheduled_at as string) : null,
+    }));
   });
 }
