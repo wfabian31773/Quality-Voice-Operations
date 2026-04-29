@@ -4556,10 +4556,88 @@ const getReportingHandler: RequestHandler = async (req, res) => {
       values,
     );
 
+    // "Visit-the-right-house" rollup. For every completed job in the
+    // window we recompute the same closest-approach distance the board
+    // badge / queue column / live-map popup show per job, then bucket
+    // it. Jobs without an address geocode or without breadcrumbs land
+    // in `no_data` so they don't pollute the rate. The thresholds
+    // (50 / 100 / 250 m) are intentionally fixed across tenants — the
+    // tenant-tunable `bad_arrival_threshold_m` only governs the auto-
+    // flag exception, not this distribution view, so leaders can compare
+    // technician behavior across tenants on the same axis.
+    const { rows: approachBucketRows } = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE ca.closest_approach_m IS NOT NULL AND ca.closest_approach_m < 50)::int AS under_50,
+         COUNT(*) FILTER (WHERE ca.closest_approach_m IS NOT NULL AND ca.closest_approach_m >= 50 AND ca.closest_approach_m < 100)::int AS m_50_100,
+         COUNT(*) FILTER (WHERE ca.closest_approach_m IS NOT NULL AND ca.closest_approach_m >= 100 AND ca.closest_approach_m <= 250)::int AS m_100_250,
+         COUNT(*) FILTER (WHERE ca.closest_approach_m IS NOT NULL AND ca.closest_approach_m > 250)::int AS over_250,
+         COUNT(*) FILTER (WHERE ca.closest_approach_m IS NULL)::int AS no_data
+       FROM dispatch_jobs d
+       LEFT JOIN LATERAL (
+         SELECT MIN(
+           6371000 * 2 * ASIN(
+             SQRT(LEAST(1.0,
+               POWER(SIN(RADIANS((h.latitude - d.address_lat::float8) / 2)), 2)
+               + COS(RADIANS(d.address_lat::float8)) * COS(RADIANS(h.latitude))
+                 * POWER(SIN(RADIANS((h.longitude - d.address_lon::float8) / 2)), 2)
+             ))
+           )
+         ) AS closest_approach_m
+         FROM dispatch_resource_location_history h
+         WHERE h.tenant_id = d.tenant_id
+           AND h.active_job_id = d.id
+           AND d.address_lat IS NOT NULL
+           AND d.address_lon IS NOT NULL
+       ) ca ON TRUE
+       WHERE ${where} AND d.status IN ('completed','done')`,
+      values,
+    );
+
+    // Daily "% within 50 m" trend over the same window. Keyed off
+    // `created_at` (matches `dailyTrend` and the date-range filter so
+    // dates align across charts in the UI). `with_data` counts jobs
+    // where we could compute a distance — the rate denominator — and
+    // `good` counts the under-50 m wins. The client renders a sparkline
+    // so a single dot per day is fine; missing days are simply absent.
+    const { rows: approachTrendRows } = await pool.query(
+      `SELECT DATE(d.created_at) AS date,
+              COUNT(*) FILTER (WHERE ca.closest_approach_m IS NOT NULL)::int AS with_data,
+              COUNT(*) FILTER (WHERE ca.closest_approach_m IS NOT NULL AND ca.closest_approach_m < 50)::int AS good
+       FROM dispatch_jobs d
+       LEFT JOIN LATERAL (
+         SELECT MIN(
+           6371000 * 2 * ASIN(
+             SQRT(LEAST(1.0,
+               POWER(SIN(RADIANS((h.latitude - d.address_lat::float8) / 2)), 2)
+               + COS(RADIANS(d.address_lat::float8)) * COS(RADIANS(h.latitude))
+                 * POWER(SIN(RADIANS((h.longitude - d.address_lon::float8) / 2)), 2)
+             ))
+           )
+         ) AS closest_approach_m
+         FROM dispatch_resource_location_history h
+         WHERE h.tenant_id = d.tenant_id
+           AND h.active_job_id = d.id
+           AND d.address_lat IS NOT NULL
+           AND d.address_lon IS NOT NULL
+       ) ca ON TRUE
+       WHERE ${where} AND d.status IN ('completed','done')
+       GROUP BY DATE(d.created_at) ORDER BY date`,
+      values,
+    );
+
     const stats = overview[0] || {};
     const totalJobs = (stats.total_jobs as number) || 0;
     const completedJobs = (stats.completed_jobs as number) || 0;
     const totalExceptions = exceptionStats.reduce((s, r) => s + (r.count as number), 0);
+
+    const ab = approachBucketRows[0] || {};
+    const approachUnder50 = (ab.under_50 as number) || 0;
+    const approach50to100 = (ab.m_50_100 as number) || 0;
+    const approach100to250 = (ab.m_100_250 as number) || 0;
+    const approachOver250 = (ab.over_250 as number) || 0;
+    const approachNoData = (ab.no_data as number) || 0;
+    const approachWithData =
+      approachUnder50 + approach50to100 + approach100to250 + approachOver250;
 
     return res.json({
       metrics: {
@@ -4582,6 +4660,25 @@ const getReportingHandler: RequestHandler = async (req, res) => {
       territoryPerformance: territoryPerf,
       resourcePerformance: resourcePerf,
       dailyTrend,
+      approachBuckets: {
+        under_50: approachUnder50,
+        m_50_100: approach50to100,
+        m_100_250: approach100to250,
+        over_250: approachOver250,
+        no_data: approachNoData,
+        with_data: approachWithData,
+        good_rate: approachWithData > 0
+          ? Number(((approachUnder50 / approachWithData) * 100).toFixed(1))
+          : 0,
+        bad_rate: approachWithData > 0
+          ? Number(((approachOver250 / approachWithData) * 100).toFixed(1))
+          : 0,
+      },
+      approachTrend: approachTrendRows.map(r => ({
+        date: r.date,
+        with_data: (r.with_data as number) || 0,
+        good: (r.good as number) || 0,
+      })),
       dateRange: { from: dateFrom, to: dateTo },
     });
   } catch (err) {

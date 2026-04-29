@@ -139,6 +139,23 @@ interface ReportingData {
   territoryPerformance: { territory_name: string; total_jobs: number; completed: number }[];
   resourcePerformance: { resource_name: string; total_jobs: number; completed: number; avg_duration: number }[];
   dailyTrend: { date: string; created: number; completed: number }[];
+  // "Visit-the-right-house" rollup: distribution of completed jobs in
+  // the window by closest-approach distance (m), plus a per-day series
+  // for the trend sparkline. `with_data` is the rate denominator (jobs
+  // where we could compute a distance); `no_data` is the count of
+  // completed jobs with no geocode or no breadcrumbs and is shown as a
+  // muted footnote so the rate isn't misread.
+  approachBuckets?: {
+    under_50: number;
+    m_50_100: number;
+    m_100_250: number;
+    over_250: number;
+    no_data: number;
+    with_data: number;
+    good_rate: number;
+    bad_rate: number;
+  };
+  approachTrend?: { date: string; with_data: number; good: number }[];
 }
 
 interface JobEvent {
@@ -319,6 +336,11 @@ export default function Dispatch() {
   const [notifTemplates, setNotifTemplates] = useState<NotificationTemplate[]>([]);
   const [assignmentRules, setAssignmentRules] = useState<AssignmentRule[]>([]);
   const [reportingData, setReportingData] = useState<ReportingData | null>(null);
+  // Lifted out of QueueView so the Reporting tab's "drill into >250 m"
+  // link can switch tabs and surface the worst arrivals at the top
+  // with a single click. Cycles desc → asc → off, same as the column
+  // header in QueueView.
+  const [approachSort, setApproachSort] = useState<'desc' | 'asc' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showJobForm, setShowJobForm] = useState(false);
@@ -551,7 +573,8 @@ export default function Dispatch() {
           transitionJob={transitionJob} openJobDetail={openJobDetail}
           setEditingJob={setEditingJob} setShowJobForm={setShowJobForm}
           selectedJobs={selectedJobs} setSelectedJobs={setSelectedJobs} batchUpdate={batchUpdate}
-          badThresholdM={dispatchSettings.bad_arrival_threshold_m} />
+          badThresholdM={dispatchSettings.bad_arrival_threshold_m}
+          approachSort={approachSort} setApproachSort={setApproachSort} />
       )}
 
       {activeTab === 'map' && (
@@ -564,7 +587,14 @@ export default function Dispatch() {
       )}
 
       {activeTab === 'reporting' && (
-        <ReportingView data={reportingData} fetchReporting={fetchReporting} />
+        <ReportingView
+          data={reportingData}
+          fetchReporting={fetchReporting}
+          onDrilldownToBadArrivals={() => {
+            setApproachSort('desc');
+            setActiveTab('queue');
+          }}
+        />
       )}
 
       {activeTab === 'admin' && (
@@ -2187,7 +2217,8 @@ function escapeHtml(s: string): string {
 // ============ QUEUE VIEW ============
 
 function QueueView({ jobs, statusCounts, filters, setFilters, territories, resources, isReadOnly,
-  transitionJob, openJobDetail, setEditingJob, setShowJobForm, selectedJobs, setSelectedJobs, batchUpdate, badThresholdM }: {
+  transitionJob, openJobDetail, setEditingJob, setShowJobForm, selectedJobs, setSelectedJobs, batchUpdate, badThresholdM,
+  approachSort, setApproachSort }: {
   jobs: DispatchJob[]; statusCounts: Record<string, number>;
   filters: Record<string, string>; setFilters: React.Dispatch<React.SetStateAction<{ status: string; priority: string; territory_id: string; resource_id: string; search: string }>>;
   territories: Territory[]; resources: Resource[]; isReadOnly: boolean;
@@ -2197,14 +2228,17 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
   selectedJobs: Set<string>; setSelectedJobs: (s: Set<string>) => void;
   batchUpdate: (u: Record<string, unknown>) => void;
   badThresholdM: number;
-}) {
-  const [queueFilter, setQueueFilter] = useState('');
   // Sort state for the closest-approach column. Cycles desc → asc → off
   // so dispatchers can pull worst arrivals to the top with a single
   // click and clear it with a third. Rows where the value is missing
   // (status doesn't qualify, or no breadcrumbs) sort to the bottom in
   // both directions so they don't drown out the actionable rows.
-  const [approachSort, setApproachSort] = useState<'desc' | 'asc' | null>(null);
+  // Lifted to the parent so the Reporting tab's "drill-down" link can
+  // pre-select the desc order before flipping the active tab.
+  approachSort: 'desc' | 'asc' | null;
+  setApproachSort: React.Dispatch<React.SetStateAction<'desc' | 'asc' | null>>;
+}) {
+  const [queueFilter, setQueueFilter] = useState('');
 
   const filteredJobs = useMemo(() => {
     let result = jobs;
@@ -2669,10 +2703,19 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
 
 // ============ REPORTING VIEW ============
 
-function ReportingView({ data, fetchReporting }: { data: ReportingData | null; fetchReporting: () => void }) {
+function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
+  data: ReportingData | null;
+  fetchReporting: () => void;
+  // Switches the active tab to Queue and pre-selects the descending
+  // closest-approach sort so the worst arrivals are at the top. Used
+  // by the >250 m bucket link in the Visit-the-right-house card.
+  onDrilldownToBadArrivals: () => void;
+}) {
   if (!data) return <SkeletonRows count={5} rowClassName="h-16" />;
 
   const m = data.metrics;
+  const approach = data.approachBuckets;
+  const approachTrend = data.approachTrend ?? [];
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -2770,6 +2813,12 @@ function ReportingView({ data, fetchReporting }: { data: ReportingData | null; f
         )}
       </div>
 
+      <ApproachQualityCard
+        approach={approach}
+        approachTrend={approachTrend}
+        onDrilldownToBadArrivals={onDrilldownToBadArrivals}
+      />
+
       <div className="bg-surface border border-border rounded-xl p-4">
         <h3 className="text-sm font-semibold text-heading mb-3">Daily Trend</h3>
         {data.dailyTrend.length === 0 ? (
@@ -2793,6 +2842,205 @@ function ReportingView({ data, fetchReporting }: { data: ReportingData | null; f
           <span className="flex items-center gap-1"><div className="w-2 h-2 bg-blue-400 rounded" /> Created</span>
           <span className="flex items-center gap-1"><div className="w-2 h-2 bg-green-400 rounded" /> Completed</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// "Visit-the-right-house" rollup. Shows the share of completed jobs in
+// the reporting window whose closest GPS ping was within 50/100/250 m
+// of the customer address (per-job number that already powers the
+// board badge, queue column, and live-map popup), plus a sparkline of
+// the daily "% within 50 m" rate so leaders can spot tech-behavior or
+// address-quality regressions across the window without scrolling the
+// board. The >250 m bucket is the actionable one — a click drills
+// into the queue with the closest-approach desc sort applied.
+function ApproachQualityCard({
+  approach,
+  approachTrend,
+  onDrilldownToBadArrivals,
+}: {
+  approach: ReportingData['approachBuckets'];
+  approachTrend: NonNullable<ReportingData['approachTrend']>;
+  onDrilldownToBadArrivals: () => void;
+}) {
+  if (!approach || approach.with_data === 0) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-heading">Visit-the-Right-House Score</h3>
+          <span className="text-[10px] text-muted">Closest GPS ping vs. address</span>
+        </div>
+        <p className="text-xs text-muted">
+          {approach && approach.no_data > 0
+            ? `No completed jobs in this window had both an address geocode and technician GPS breadcrumbs (${approach.no_data} skipped).`
+            : 'No completed jobs in this window yet.'}
+        </p>
+      </div>
+    );
+  }
+
+  const buckets = [
+    { key: 'under_50', label: '< 50 m', count: approach.under_50, tone: 'bg-green-500', tooltip: 'Tech reached the address — within 50 m' },
+    { key: 'm_50_100', label: '50–100 m', count: approach.m_50_100, tone: 'bg-emerald-400', tooltip: 'Within a typical front yard — 50 to 100 m' },
+    { key: 'm_100_250', label: '100–250 m', count: approach.m_100_250, tone: 'bg-amber-400', tooltip: 'GPS-noisy or wrong building — 100 to 250 m' },
+    { key: 'over_250', label: '> 250 m', count: approach.over_250, tone: 'bg-red-500', tooltip: 'Probably wrong house — over 250 m' },
+  ];
+  const total = approach.with_data;
+  const trendMax = Math.max(1, ...approachTrend.map(d => d.with_data));
+
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4">
+      <div className="flex items-start justify-between mb-3 gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-heading">Visit-the-Right-House Score</h3>
+          <p className="text-[11px] text-muted mt-0.5">
+            Share of completed jobs whose closest GPS ping landed within each distance band of the customer address.
+          </p>
+        </div>
+        <div className="flex items-baseline gap-3">
+          <div>
+            <div className="text-2xl font-semibold text-heading leading-none">{approach.good_rate}%</div>
+            <div className="text-[10px] text-muted mt-1">within 50 m</div>
+          </div>
+          <div>
+            <div className="text-2xl font-semibold text-red-500 leading-none">{approach.bad_rate}%</div>
+            <div className="text-[10px] text-muted mt-1">over 250 m</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stacked distribution bar */}
+      <div className="flex h-3 rounded-full overflow-hidden bg-surface-secondary mb-3" title={`${total} completed jobs with measurable approach distance`}>
+        {buckets.map(b => {
+          const pct = total > 0 ? (b.count / total) * 100 : 0;
+          if (pct === 0) return null;
+          return (
+            <div
+              key={b.key}
+              className={b.tone}
+              style={{ width: `${pct}%` }}
+              title={`${b.label}: ${b.count} (${pct.toFixed(1)}%)`}
+            />
+          );
+        })}
+      </div>
+
+      {/* Bucket legend / breakdown */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {buckets.map(b => {
+          const pct = total > 0 ? (b.count / total) * 100 : 0;
+          const isBad = b.key === 'over_250';
+          const clickable = isBad && b.count > 0;
+          const inner = (
+            <>
+              <div className="flex items-center gap-1.5 mb-1">
+                <div className={`w-2 h-2 rounded ${b.tone}`} />
+                <span className="text-[11px] text-muted">{b.label}</span>
+              </div>
+              <div className="text-sm font-semibold text-heading">{pct.toFixed(1)}%</div>
+              <div className="text-[10px] text-muted">{b.count} job{b.count === 1 ? '' : 's'}</div>
+            </>
+          );
+          if (clickable) {
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={onDrilldownToBadArrivals}
+                title="Open the queue sorted by farthest-from-address first"
+                className="text-left bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/60 rounded-lg p-2 hover:border-red-400 dark:hover:border-red-600 transition-colors"
+              >
+                {inner}
+                <div className="text-[10px] text-red-600 dark:text-red-400 mt-1 inline-flex items-center gap-1">
+                  Drill into queue <ArrowRight className="h-2.5 w-2.5" />
+                </div>
+              </button>
+            );
+          }
+          return (
+            <div key={b.key} className="bg-surface-secondary/50 rounded-lg p-2" title={b.tooltip}>
+              {inner}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Trend line: % within 50 m per day */}
+      <div className="border-t border-border pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-medium text-muted">% within 50 m — daily trend</span>
+          <span className="text-[10px] text-muted">{approachTrend.length} day{approachTrend.length === 1 ? '' : 's'}</span>
+        </div>
+        {approachTrend.length === 0 ? (
+          <p className="text-[11px] text-muted">No trend data in this window.</p>
+        ) : (
+          <ApproachTrendSparkline points={approachTrend} trendMax={trendMax} />
+        )}
+      </div>
+
+      {approach.no_data > 0 && (
+        <p className="text-[10px] text-muted mt-3">
+          {approach.no_data} completed job{approach.no_data === 1 ? '' : 's'} excluded — missing address geocode or technician GPS breadcrumbs.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// SVG sparkline for the daily "% within 50 m" rate. Renders a baseline
+// at 100% (the goal) and a polyline of the actual daily rate. Days
+// with no measurable jobs are still plotted on the x-axis so the
+// horizontal spacing matches calendar time, but the dot is rendered
+// dim and the line skips through them at 0 to keep the regression
+// visible. Tooltip on each dot surfaces the numerator/denominator.
+function ApproachTrendSparkline({
+  points,
+  trendMax,
+}: {
+  points: { date: string; with_data: number; good: number }[];
+  trendMax: number;
+}) {
+  const W = 600;
+  const H = 80;
+  const padX = 4;
+  const padY = 6;
+  const stepX = points.length > 1 ? (W - padX * 2) / (points.length - 1) : 0;
+  const yFor = (rate: number) => padY + (1 - rate / 100) * (H - padY * 2);
+
+  const coords = points.map((p, i) => {
+    const rate = p.with_data > 0 ? (p.good / p.with_data) * 100 : 0;
+    return { x: padX + i * stepX, y: yFor(rate), rate, p };
+  });
+  const path = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(2)} ${c.y.toFixed(2)}`).join(' ');
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none" role="img" aria-label="Daily percentage of completed jobs within 50 m of the customer address">
+        {/* Goal line at 100% (top of chart) and 50% midline for context */}
+        <line x1={padX} x2={W - padX} y1={yFor(100)} y2={yFor(100)} className="stroke-border" strokeDasharray="2 3" strokeWidth="1" />
+        <line x1={padX} x2={W - padX} y1={yFor(50)} y2={yFor(50)} className="stroke-border opacity-50" strokeDasharray="2 3" strokeWidth="1" />
+        <path d={path} className="stroke-green-500 fill-none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {coords.map((c, i) => (
+          <circle
+            key={i}
+            cx={c.x}
+            cy={c.y}
+            r={c.p.with_data > 0 ? 2.5 : 1.5}
+            className={c.p.with_data > 0 ? 'fill-green-600' : 'fill-border'}
+          >
+            <title>
+              {c.p.date}: {c.p.with_data > 0
+                ? `${c.rate.toFixed(0)}% within 50 m (${c.p.good}/${c.p.with_data})`
+                : 'No measurable jobs'}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <div className="flex justify-between text-[9px] text-muted mt-1">
+        <span>{points[0]?.date}</span>
+        <span className="text-muted">peak {trendMax} job{trendMax === 1 ? '' : 's'}/day</span>
+        <span>{points[points.length - 1]?.date}</span>
       </div>
     </div>
   );
