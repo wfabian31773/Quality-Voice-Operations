@@ -318,7 +318,12 @@ export async function reportUsage(
       return { success: false, error: 'No subscription item found for usage reporting' };
     }
 
-    await stripe.subscriptionItems.createUsageRecord(subItem.id, {
+    await (stripe.subscriptionItems as unknown as {
+      createUsageRecord: (
+        id: string,
+        params: { quantity: number; timestamp: number; action: 'increment' | 'set' },
+      ) => Promise<unknown>;
+    }).createUsageRecord(subItem.id, {
       quantity,
       timestamp: Math.floor(Date.now() / 1000),
       action: 'increment',

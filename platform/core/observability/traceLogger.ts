@@ -19,18 +19,19 @@ export type TraceType =
   | 'integration_call';
 
 export interface TraceEvent {
+  id?: string;
   tenantId: string;
   callSessionId: string;
   traceType: TraceType;
   stepName: string;
   sequenceNumber?: number;
   startedAt?: Date;
-  endedAt?: Date;
-  durationMs?: number;
-  inputData?: Record<string, unknown>;
-  outputData?: Record<string, unknown>;
+  endedAt?: Date | null;
+  durationMs?: number | null;
+  inputData?: Record<string, unknown> | null;
+  outputData?: Record<string, unknown> | null;
   metadata?: Record<string, unknown>;
-  parentTraceId?: string;
+  parentTraceId?: string | null;
 }
 
 const PII_FIELDS = ['phone', 'email', 'ssn', 'dob', 'address', 'caller_number', 'called_number', 'from', 'to', 'name', 'patient', 'date_of_birth', 'social_security', 'credit_card', 'card_number', 'account_number'];
@@ -89,7 +90,7 @@ export async function recordTrace(event: TraceEvent): Promise<string | null> {
           event.parentTraceId ?? null,
         ],
       );
-      return rows[0]?.id ?? null;
+      return (rows[0]?.id as string | undefined) ?? null;
     });
   } catch (err) {
     logger.error('Failed to record trace', {
@@ -116,7 +117,7 @@ export async function getCallTraces(tenantId: string, callSessionId: string): Pr
         [tenantId, callSessionId],
       );
       return rows.map((r: Record<string, unknown>) => ({
-        id: r.id,
+        id: r.id as string,
         tenantId,
         callSessionId,
         traceType: r.trace_type as TraceType,
@@ -180,7 +181,7 @@ export async function recordIntegrationEvent(event: {
           event.serviceName ?? null,
         ],
       );
-      return rows[0]?.id ?? null;
+      return (rows[0]?.id as string | undefined) ?? null;
     });
   } catch (err) {
     logger.error('Failed to record integration event', {

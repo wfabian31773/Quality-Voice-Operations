@@ -465,7 +465,7 @@ export async function runVerifiedCallerHealthCycle(): Promise<VerifiedCallerHeal
     });
   }
 
-  logger.info('Verified-caller health cycle complete', stats);
+  logger.info('Verified-caller health cycle complete', { ...stats });
   return stats;
 }
 

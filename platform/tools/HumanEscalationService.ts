@@ -325,7 +325,7 @@ export async function listEscalationTasks(
 
     return {
       tasks: rows.map(mapRow),
-      total: countRows[0]?.total ?? 0,
+      total: (countRows[0]?.total as number | undefined) ?? 0,
     };
   });
 }
@@ -517,10 +517,10 @@ export async function getEscalationTaskStats(tenantId: string): Promise<{
     }
 
     return {
-      total: rows[0]?.total ?? 0,
-      pending: rows[0]?.pending ?? 0,
-      inProgress: rows[0]?.in_progress ?? 0,
-      completed: rows[0]?.completed ?? 0,
+      total: (rows[0]?.total as number | undefined) ?? 0,
+      pending: (rows[0]?.pending as number | undefined) ?? 0,
+      inProgress: (rows[0]?.in_progress as number | undefined) ?? 0,
+      completed: (rows[0]?.completed as number | undefined) ?? 0,
       byPriority,
     };
   });

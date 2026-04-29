@@ -36,10 +36,10 @@ const {
     updatedBy: null,
   })),
   getTenantAlertEmailRecipientsMock: vi.fn(async () => ({
-    emails: [],
-    userIds: [],
+    emails: [] as string[],
+    userIds: [] as string[],
   })),
-  getTenantAlertPhoneRecipientsMock: vi.fn(async () => []),
+  getTenantAlertPhoneRecipientsMock: vi.fn(async () => [] as string[]),
 }));
 
 vi.mock('../../db', () => ({

@@ -8,7 +8,10 @@ const dnsResolve6 = promisify(dns.resolve6);
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
-    const pdfParse = (await import('pdf-parse')).default;
+    const pdfParseModule = (await import('pdf-parse')) as unknown as {
+      default?: (b: Buffer) => Promise<{ text?: string; numpages?: number }>;
+    } & ((b: Buffer) => Promise<{ text?: string; numpages?: number }>);
+    const pdfParse = pdfParseModule.default ?? pdfParseModule;
     const data = await pdfParse(buffer);
     const text = data.text?.trim();
     if (!text) {

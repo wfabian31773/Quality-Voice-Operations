@@ -130,6 +130,8 @@ export interface TrustHubSnapshot {
   businessInfoEndUserSid: string | null;
   addressEndUserSid: string | null;
   representativeEndUserSid: string | null;
+  lastSubmittedAt?: string | null;
+  lastSyncedAt?: string | null;
 }
 
 // ---- HTTP plumbing ----------------------------------------------------------

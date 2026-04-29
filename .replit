@@ -11,10 +11,10 @@ channel = "stable-25_05"
 language = "nodejs"
 
 [deployment]
-run = ["bash", "-c", "npx vite build --config client-app/vite.config.ts && npx tsx server/admin-api/start.ts & npx tsx server/voice-gateway/start.ts & wait"]
+run = ["bash", "-c", "npx tsx server/admin-api/start.ts & npx tsx server/voice-gateway/start.ts & wait"]
 deploymentTarget = "vm"
 ignorePorts = false
-build = ["bash", "-c", "npx tsc --noEmit"]
+build = ["bash", "-c", "npx tsc --noEmit && npm --prefix client-app run typecheck && npx vite build --config client-app/vite.config.ts"]
 
 [[ports]]
 localPort = 3001

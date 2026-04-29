@@ -342,7 +342,6 @@ function buildToolHandler(
         tenantId,
         callSessionId,
         executionId: demoExecId,
-        callSessionId,
         result: (() => { try { return JSON.parse(demoResult); } catch { return { raw: demoResult }; } })(),
         status: 'success',
         durationMs: Date.now() - demoStartTime,

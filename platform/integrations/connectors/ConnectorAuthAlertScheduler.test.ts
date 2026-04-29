@@ -707,7 +707,8 @@ describe('runConnectorAuthAlertCycle digest opt-out', () => {
     const result = await runConnectorAuthAlertCycle();
 
     expect(connectorSyncDigestEmailMock).toHaveBeenCalledTimes(1);
-    const digestArgs = connectorSyncDigestEmailMock.mock.calls[0][0] as {
+    const digestCalls = connectorSyncDigestEmailMock.mock.calls as unknown as Array<Array<unknown>>;
+    const digestArgs = digestCalls[0]?.[0] as {
       failures: Array<{ provider: string; providerLabel: string; name: string | null }>;
       connectorsUrl: string;
     };
