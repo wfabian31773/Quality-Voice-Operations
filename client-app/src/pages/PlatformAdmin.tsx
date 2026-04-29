@@ -209,6 +209,12 @@ interface Tenant {
   total_calls: string;
   last_call_at: string | null;
   calls_last_30d: string;
+  // Most-recently granted owner's onboarding state, surfaced by
+  // `GET /platform/tenants` so the All Tenants table can render an
+  // Onboarding badge without expanding each row (Task #994). Both
+  // fields are `null` when the tenant has no active owner row yet.
+  latest_owner_onboarding_step: number | null;
+  latest_owner_onboarding_completed: boolean | null;
 }
 
 interface TenantDetail {
@@ -3466,6 +3472,7 @@ export default function PlatformAdmin() {
                   <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">Onboarding</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">Users</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">Calls (30d)</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">Last Activity</th>
@@ -3474,9 +3481,9 @@ export default function PlatformAdmin() {
               </thead>
               <tbody>
                 {tenantsLoading ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-text-muted">Loading...</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">Loading...</td></tr>
                 ) : !tenantsData?.tenants.length ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-text-muted">No tenants found</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">No tenants found</td></tr>
                 ) : (
                   tenantsData.tenants.map((tenant) => (
                     <Fragment key={tenant.id}>
@@ -3497,6 +3504,20 @@ export default function PlatformAdmin() {
                         </td>
                         <td className="px-4 py-3"><StatusBadge status={tenant.status} /></td>
                         <td className="px-4 py-3"><PlanBadge plan={tenant.plan} /></td>
+                        <td className="px-4 py-3">
+                          {/* Server returns NULL for both onboarding fields only when the tenant
+                              has no active owner row. When an owner exists, `step` is server-clamped
+                              to [1..3] and `completed` is COALESCE'd to a clean boolean, so we only
+                              need to gate on `step` here. */}
+                          {tenant.latest_owner_onboarding_step === null ? (
+                            <span className="text-xs text-text-muted">—</span>
+                          ) : (
+                            <OwnerOnboardingBadge
+                              step={tenant.latest_owner_onboarding_step}
+                              completed={tenant.latest_owner_onboarding_completed ?? false}
+                            />
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-text-muted">{tenant.user_count}</td>
                         <td className="px-4 py-3 text-text-muted">{tenant.calls_last_30d}</td>
                         <td className="px-4 py-3 text-text-muted whitespace-nowrap">
@@ -3541,7 +3562,7 @@ export default function PlatformAdmin() {
                       </tr>
                       {expandedTenant === tenant.id && (
                         <tr className="border-b border-border">
-                          <td colSpan={8} className="p-0">
+                          <td colSpan={9} className="p-0">
                             <TenantDetailPanel tenantId={tenant.id} />
                           </td>
                         </tr>

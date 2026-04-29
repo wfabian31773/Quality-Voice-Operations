@@ -47,6 +47,11 @@ const logger = createLogger('PLATFORM_ADMIN');
 router.get('/platform/tenants', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
     const tenants = await withPrivilegedClient(async (client) => {
+      // The `latest_owner` LATERAL join surfaces the most-recently granted
+      // tenant_owner so the All Tenants table can show an Onboarding badge
+      // without admins expanding each row (Task #994). The defensive
+      // JSONB parsing matches `/platform/tenants/:id/onboarding` so a
+      // corrupt legacy `users.preferences` row can't 500 the list.
       const { rows } = await client.query(`
         SELECT
           t.id, t.name, t.slug, t.status, t.plan, t.created_at, t.updated_at,
@@ -55,8 +60,37 @@ router.get('/platform/tenants', requireAuth, requirePlatformAdmin, async (_req, 
           (SELECT MAX(cs.created_at) FROM call_sessions cs WHERE cs.tenant_id = t.id) AS last_call_at,
           (SELECT COUNT(*) FROM call_sessions cs
            WHERE cs.tenant_id = t.id
-             AND cs.created_at > NOW() - INTERVAL '30 days') AS calls_last_30d
+             AND cs.created_at > NOW() - INTERVAL '30 days') AS calls_last_30d,
+          latest_owner.onboarding_step AS latest_owner_onboarding_step,
+          latest_owner.onboarding_completed AS latest_owner_onboarding_completed
         FROM tenants t
+        LEFT JOIN LATERAL (
+          SELECT
+            -- COALESCE so a missing onboarding_completed key (or NULL
+            -- preferences blob) projects FALSE rather than NULL. Without
+            -- this, (LOWER(NULL) = 'true') evaluates to NULL and the
+            -- client would suppress the badge for an owner that is
+            -- actually still mid-onboarding -- exactly the stuck-signup
+            -- case this column is supposed to surface.
+            COALESCE(
+              (LOWER(u.preferences->>'onboarding_completed') = 'true'),
+              FALSE
+            ) AS onboarding_completed,
+            GREATEST(1, LEAST(3,
+              CASE
+                WHEN u.preferences->>'onboarding_step' ~ '^[0-9]+$'
+                  THEN (u.preferences->>'onboarding_step')::int
+                ELSE 1
+              END
+            )) AS onboarding_step
+          FROM user_roles ur
+          JOIN users u ON u.id = ur.user_id
+          WHERE ur.tenant_id = t.id
+            AND ur.role = 'tenant_owner'
+            AND ur.revoked_at IS NULL
+          ORDER BY ur.granted_at DESC NULLS LAST, u.created_at DESC
+          LIMIT 1
+        ) AS latest_owner ON TRUE
         ORDER BY t.created_at DESC
       `);
       return rows;

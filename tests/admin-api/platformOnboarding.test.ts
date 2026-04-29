@@ -1,10 +1,11 @@
 /**
- * Coverage for the Platform Admin onboarding-visibility endpoints (Task #612):
+ * Coverage for the Platform Admin onboarding-visibility endpoints (Task #612 / #994):
  *
- *   GET /platform/tenants/:id/onboarding   — per-owner step + completed flag
- *   GET /platform/onboarding-funnel        — step 1 / 2 / 3 / completed funnel
+ *   GET /platform/tenants                   — list tenants with latest-owner onboarding badge
+ *   GET /platform/tenants/:id/onboarding    — per-owner step + completed flag
+ *   GET /platform/onboarding-funnel         — step 1 / 2 / 3 / completed funnel
  *
- * The endpoints both read `users.preferences.onboarding_step` +
+ * The endpoints all read `users.preferences.onboarding_step` +
  * `onboarding_completed` joined to `user_roles` filtered to `tenant_owner`.
  * These tests mock the platform pool / RBAC middleware and assert:
  *
@@ -15,6 +16,9 @@
  *   - The funnel parameterises `days` via `make_interval` (no string
  *     interpolation) and clamps a hostile `?days=99999` to 365.
  *   - 404 is returned when the requested tenant doesn't exist.
+ *   - The list endpoint surfaces the most-recent owner's onboarding state
+ *     via a LATERAL join so the All Tenants table can render a badge
+ *     without admins expanding each row.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express, { type Request, type Response, type NextFunction } from 'express';
@@ -107,6 +111,114 @@ function captureSql(): string[] {
 function captureParams(): unknown[][] {
   return queryMock.mock.calls.map((c) => (c[1] as unknown[]) ?? []);
 }
+
+describe('GET /platform/tenants (Task #994 — onboarding badge column)', () => {
+  it('joins each tenant to its most-recent active owner via LATERAL', async () => {
+    const tenantRows = [
+      {
+        id: 'tenant-a',
+        name: 'Acme',
+        slug: 'acme',
+        status: 'active',
+        plan: 'pro',
+        created_at: '2026-04-01T00:00:00Z',
+        updated_at: '2026-04-15T00:00:00Z',
+        user_count: '3',
+        total_calls: '120',
+        last_call_at: '2026-04-20T00:00:00Z',
+        calls_last_30d: '40',
+        latest_owner_onboarding_step: 2,
+        latest_owner_onboarding_completed: false,
+      },
+      {
+        id: 'tenant-b',
+        name: 'Stale',
+        slug: 'stale',
+        status: 'active',
+        plan: 'starter',
+        created_at: '2026-03-01T00:00:00Z',
+        updated_at: '2026-03-01T00:00:00Z',
+        user_count: '1',
+        total_calls: '0',
+        last_call_at: null,
+        calls_last_30d: '0',
+        latest_owner_onboarding_step: null,
+        latest_owner_onboarding_completed: null,
+      },
+    ];
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/FROM tenants t/.test(sql) && /LATERAL/i.test(sql)) {
+        return { rows: tenantRows };
+      }
+      return { rows: [] };
+    });
+
+    const res = await request(buildApp()).get('/platform/tenants');
+    expect(res.status).toBe(200);
+    expect(res.body.tenants).toEqual(tenantRows);
+
+    const sql = captureSql().find((s) => /FROM tenants t/.test(s) && /LATERAL/i.test(s)) ?? '';
+    // Latest owner is found via a LATERAL subquery scoped to non-revoked
+    // tenant_owner rows so the list query stays a single round-trip.
+    expect(sql).toMatch(/LEFT\s+JOIN\s+LATERAL/i);
+    expect(sql).toMatch(/ur\.role\s*=\s*'tenant_owner'/);
+    expect(sql).toMatch(/ur\.revoked_at\s+IS\s+NULL/);
+    // Most-recently granted owner wins when a tenant has more than one.
+    expect(sql).toMatch(/ORDER\s+BY\s+ur\.granted_at\s+DESC\s+NULLS\s+LAST/i);
+    expect(sql).toMatch(/LIMIT\s+1/i);
+    // The same defensive JSONB parsing as the per-tenant onboarding
+    // endpoint so a corrupt legacy row can't 500 the entire list.
+    expect(sql).toMatch(/GREATEST\(1,\s*LEAST\(3/);
+    expect(sql).toMatch(/'\^\[0-9\]\+\$'/);
+    expect(sql).toMatch(/LOWER\(u\.preferences->>'onboarding_completed'\)\s*=\s*'true'/);
+    // The boolean comparison must be COALESCE'd to FALSE so an owner
+    // whose preferences blob is missing the `onboarding_completed` key
+    // still renders an in-progress badge instead of a NULL placeholder.
+    expect(sql).toMatch(/COALESCE\(\s*\(LOWER\(u\.preferences->>'onboarding_completed'\)\s*=\s*'true'\),\s*FALSE\s*\)/);
+    // Both onboarding columns must be exposed on the projection so the
+    // client can render the badge.
+    expect(sql).toMatch(/latest_owner_onboarding_step/);
+    expect(sql).toMatch(/latest_owner_onboarding_completed/);
+  });
+
+  it('returns step + completed=false for an owner whose preferences lack the completed key', async () => {
+    // Mirrors what Postgres would project for an owner whose
+    // `users.preferences` blob doesn't contain `onboarding_completed`
+    // at all (a common state for accounts created before the wizard
+    // was introduced or for owners who never advanced past step 1).
+    // The COALESCE in the LATERAL projection guarantees `false` —
+    // not `null` — so the badge renders as "Step 1/3" instead of an
+    // em-dash placeholder.
+    const tenantRows = [
+      {
+        id: 'tenant-c',
+        name: 'New Signup',
+        slug: 'new-signup',
+        status: 'active',
+        plan: 'starter',
+        created_at: '2026-04-25T00:00:00Z',
+        updated_at: '2026-04-25T00:00:00Z',
+        user_count: '1',
+        total_calls: '0',
+        last_call_at: null,
+        calls_last_30d: '0',
+        latest_owner_onboarding_step: 1,
+        latest_owner_onboarding_completed: false,
+      },
+    ];
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/FROM tenants t/.test(sql) && /LATERAL/i.test(sql)) {
+        return { rows: tenantRows };
+      }
+      return { rows: [] };
+    });
+
+    const res = await request(buildApp()).get('/platform/tenants');
+    expect(res.status).toBe(200);
+    expect(res.body.tenants[0].latest_owner_onboarding_step).toBe(1);
+    expect(res.body.tenants[0].latest_owner_onboarding_completed).toBe(false);
+  });
+});
 
 describe('GET /platform/tenants/:id/onboarding', () => {
   it('returns 404 when the tenant does not exist', async () => {
