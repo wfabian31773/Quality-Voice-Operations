@@ -621,7 +621,16 @@ function ConnectModal({
   const [oauthPending, setOauthPending] = useState(false);
   const [oauthConfigError, setOauthConfigError] = useState<OAuthNotConfigured | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
-  const isReconnect = !!existingConnector;
+  // Freeze the initial reconnect state so labels/copy don't flip mid-session
+  // when an OAuth popup completes and the freshly-saved connector arrives via
+  // the parent's connectors query (Task #927).
+  const [isReconnect] = useState(() => !!existingConnector);
+  // True after the OAuth popup posts `oauth_complete` for a brand-new
+  // connection. The connectors query gets invalidated and the parent re-renders
+  // with the just-saved connector as `existingConnector`, which lets the
+  // calendar picker effects below load the dropdown without a save→reopen
+  // cycle.
+  const [justConnectedViaOAuth, setJustConnectedViaOAuth] = useState(false);
   const isSalesforce = definition.provider === 'salesforce';
   const dispositionConfig = DISPOSITION_MAPPING_CONFIGS[definition.provider];
   const hasDispositionMapping = !!dispositionConfig;
@@ -847,9 +856,20 @@ function ConnectModal({
     if (event.data?.type === 'oauth_complete' && event.data?.provider === definition.provider) {
       setOauthPending(false);
       queryClient.invalidateQueries({ queryKey: ['connectors'] });
+      // For Google/Outlook calendar connections, keep the modal open after
+      // OAuth so the admin can pick a calendar from the dropdown immediately
+      // (Task #927). The connector is already persisted server-side by the
+      // OAuth callback; the parent will re-render with the new connector as
+      // `existingConnector` and the calendar-picker effects below will load
+      // the list. For all other providers, preserve the historical behaviour
+      // of closing the modal as soon as OAuth completes.
+      if (supportsCalendarPicker) {
+        setJustConnectedViaOAuth(true);
+        return;
+      }
       onClose();
     }
-  }, [definition.provider, queryClient, onClose]);
+  }, [definition.provider, supportsCalendarPicker, queryClient, onClose]);
 
   useEffect(() => {
     window.addEventListener('message', handleOAuthMessage);
@@ -1022,7 +1042,13 @@ function ConnectModal({
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const requiredFilled = isReconnect
+  // Once a brand-new calendar connector lands via the OAuth popup callback
+  // the modal stays open so the admin can pick a calendar (Task #927). The
+  // manual credential fields stay empty in this case (OAuth supplied them
+  // server-side), so we treat the form as "ready to save" the moment the
+  // freshly-saved connector becomes visible to the parent's connectors query.
+  const hasLiveConnector = !!existingConnector;
+  const requiredFilled = isReconnect || hasLiveConnector
     ? true
     : definition.fields
         .filter((f) => f.required !== false)
@@ -1068,7 +1094,7 @@ function ConnectModal({
             </div>
           )}
 
-          {definition.oauthProvider && (
+          {definition.oauthProvider && !justConnectedViaOAuth && (
             <div>
               {oauthConfigError && (
                 <div
@@ -1158,6 +1184,13 @@ function ConnectModal({
             <div className="space-y-3">
               {definition.fields
                 .filter((field) => !(supportsCalendarPicker && field.key === 'calendar_id'))
+                // After OAuth completes for a calendar provider the modal stays
+                // open so the admin can pick a calendar (Task #927). The
+                // manual credential fields (client_id / client_secret /
+                // refresh_token / timezone) were filled server-side by the
+                // OAuth callback, so hide them in this state to avoid
+                // confusing empty-input boxes.
+                .filter((field) => !(supportsCalendarPicker && justConnectedViaOAuth))
                 .map((field) => (
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-text-primary mb-1">
@@ -1377,9 +1410,15 @@ function ConnectModal({
                       : 'Choose which Outlook calendar the AI agent should write appointments to. Leave on Default to use your default calendar.'}
                   </p>
                   {!existingConnector ? (
-                    <p className="text-[11px] text-text-secondary mt-2">
-                      Calendars load after the initial connection. You can come back to set this once {definition.name} is connected.
-                    </p>
+                    justConnectedViaOAuth ? (
+                      <p className="text-[11px] text-text-secondary mt-2">
+                        {definition.name} connected. Loading your calendars…
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-text-secondary mt-2">
+                        Calendars load after the initial connection. You can come back to set this once {definition.name} is connected.
+                      </p>
+                    )
                   ) : calendarsLoading ? (
                     <p className="text-[11px] text-text-secondary mt-2">Loading calendars from {definition.name}…</p>
                   ) : calendarsError ? (
@@ -1586,7 +1625,13 @@ function ConnectModal({
                 disabled={connectMutation.isPending || !requiredFilled}
                 className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50"
               >
-                {connectMutation.isPending ? 'Connecting...' : isReconnect ? 'Reconnect' : 'Connect'}
+                {connectMutation.isPending
+                  ? 'Connecting...'
+                  : isReconnect
+                    ? 'Reconnect'
+                    : justConnectedViaOAuth
+                      ? 'Save calendar'
+                      : 'Connect'}
               </button>
             </div>
           </form>

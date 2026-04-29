@@ -307,6 +307,234 @@ describe('Connectors calendar pickers', () => {
     expect(body.credentialsToDelete ?? []).toContain('calendar_id');
   });
 
+  it('shows the calendar dropdown immediately after OAuth on a brand-new Google Calendar connection (Task #927)', async () => {
+    // Initially no connectors exist — the user sees "Connect Google Calendar".
+    // After the OAuth popup posts `oauth_complete`, the connectors query is
+    // invalidated and the next GET returns the freshly-saved connector. The
+    // modal must stay open and load the calendar dropdown without forcing the
+    // admin through a save→reopen cycle.
+    let connectorsExist = false;
+    const handlers: Record<string, FetchHandler> = {
+      'GET /connectors': () => ({
+        connectors: connectorsExist ? [buildGoogleConnector()] : [],
+        total: connectorsExist ? 1 : 0,
+        limit: 100,
+        offset: 0,
+      }),
+      'GET /connectors/oauth/availability': () => ({
+        providers: { google: { available: true, providerLabel: 'Google' } },
+      }),
+      'GET /connectors/gcal-int-1/settings': () => ({
+        provider: 'google-calendar',
+        settings: {
+          calendarId: null,
+          timezone: 'America/New_York',
+          calendarLabel: null,
+          calendarLookupError: null,
+        },
+      }),
+      'GET /connectors/gcal-int-1/google-calendar/calendars': () => ({
+        calendars: GOOGLE_CALENDARS,
+      }),
+      'POST /connectors': () => ({ integrationId: 'gcal-int-1' }),
+    };
+    vi.stubGlobal('fetch', makeFetch(handlers));
+
+    const { QueryClient, QueryClientProvider, Connectors } = await loadConnectorsModule();
+    renderConnectors(QueryClientProvider, QueryClient, Connectors);
+
+    // Click the suggested-first "Connect Google Calendar" tile to open the
+    // modal (the modal is not yet open).
+    const tileButton = await waitFor(() =>
+      screen.getByRole('button', { name: /Connect Google Calendar/i }),
+    );
+    fireEvent.click(tileButton);
+
+    // Modal opens in "Connect" mode (the Reconnect copy must not flip after
+    // OAuth completes, so the dialog header stays as "Connect Google Calendar").
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /Connect Google Calendar/i }),
+      ).toBeTruthy();
+    });
+
+    // Simulate the OAuth popup posting back `oauth_complete`. Flip the GET
+    // /connectors mock to start returning the freshly-saved connector so the
+    // invalidate+refetch picks it up.
+    connectorsExist = true;
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'oauth_complete', provider: 'google-calendar' },
+        origin: window.location.origin,
+      }),
+    );
+
+    // The "loading your calendars" interstitial appears while the connectors
+    // query is refetching.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Google Calendar connected\. Loading your calendars…/i),
+      ).toBeTruthy();
+    });
+
+    // Once the refetch lands, the calendar dropdown is rendered and populated
+    // from the GET /connectors/:id/google-calendar/calendars endpoint.
+    const calendarSelect = await waitFor(() =>
+      getSelectByOptionText('Team appointments'),
+    );
+
+    // Default selection is "primary" (no calendar_id saved yet).
+    expect(calendarSelect.value).toBe('');
+
+    // Pick a non-default calendar and save.
+    fireEvent.change(calendarSelect, { target: { value: 'sales-cal-id' } });
+    expect(calendarSelect.value).toBe('sales-cal-id');
+
+    // Header still says "Connect" (frozen at modal open) — the button label
+    // becomes "Save calendar" once the freshly-saved connector lands.
+    const saveButton = await waitFor(() =>
+      screen.getByRole('button', { name: /Save calendar/i }),
+    );
+    expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(saveButton);
+
+    const postRequest = await waitFor(() => {
+      const req = capturedRequests.find(
+        (r) => r.method === 'POST' && r.path === '/connectors',
+      );
+      expect(req).toBeTruthy();
+      return req!;
+    });
+
+    const body = postRequest.body as {
+      provider: string;
+      credentials: Record<string, string>;
+    };
+    expect(body.provider).toBe('google-calendar');
+    expect(body.credentials.calendar_id).toBe('sales-cal-id');
+    // The OAuth-supplied tokens must not be touched by this save (the
+    // calendar-only save must not overwrite client_id/client_secret/
+    // refresh_token, which the OAuth callback already persisted).
+    expect(body.credentials.client_id).toBeUndefined();
+    expect(body.credentials.client_secret).toBeUndefined();
+    expect(body.credentials.refresh_token).toBeUndefined();
+
+    // The calendars endpoint was hit at least once after OAuth completed.
+    expect(
+      capturedRequests.some(
+        (r) =>
+          r.method === 'GET' &&
+          r.path === '/connectors/gcal-int-1/google-calendar/calendars',
+      ),
+    ).toBe(true);
+  });
+
+  it('shows the calendar dropdown immediately after OAuth on a brand-new Outlook Calendar connection (Task #927)', async () => {
+    // Outlook parity for the Google first-run OAuth test above. Same flow:
+    // no connector initially, OAuth popup posts `oauth_complete`, the
+    // connectors query is invalidated, and the modal stays open to let the
+    // admin pick a calendar from the dropdown.
+    let connectorsExist = false;
+    const handlers: Record<string, FetchHandler> = {
+      'GET /connectors': () => ({
+        connectors: connectorsExist ? [buildOutlookConnector()] : [],
+        total: connectorsExist ? 1 : 0,
+        limit: 100,
+        offset: 0,
+      }),
+      'GET /connectors/oauth/availability': () => ({
+        providers: { outlook: { available: true, providerLabel: 'Outlook' } },
+      }),
+      'GET /connectors/outlook-int-1/settings': () => ({
+        provider: 'outlook-calendar',
+        settings: {
+          calendarId: null,
+          timezone: 'America/New_York',
+          calendarLabel: null,
+          calendarLookupError: null,
+        },
+      }),
+      'GET /connectors/outlook-int-1/outlook-calendar/calendars': () => ({
+        calendars: OUTLOOK_CALENDARS,
+      }),
+      'POST /connectors': () => ({ integrationId: 'outlook-int-1' }),
+    };
+    vi.stubGlobal('fetch', makeFetch(handlers));
+
+    const { QueryClient, QueryClientProvider, Connectors } = await loadConnectorsModule();
+    renderConnectors(QueryClientProvider, QueryClient, Connectors);
+
+    // Outlook Calendar isn't in SUGGESTED_FIRST, so click the inline tile
+    // "Connect" button on the Available list. The tile root carries
+    // `data-provider="outlook-calendar"`, so scope the button lookup to it.
+    const tile = await waitFor(() => {
+      const el = document.querySelector('[data-provider="outlook-calendar"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    const tileConnect = Array.from(tile.querySelectorAll('button')).find(
+      (b) => /^Connect$/.test((b.textContent ?? '').trim()),
+    );
+    expect(tileConnect).toBeTruthy();
+    fireEvent.click(tileConnect!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /Connect Outlook Calendar/i }),
+      ).toBeTruthy();
+    });
+
+    connectorsExist = true;
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'oauth_complete', provider: 'outlook-calendar' },
+        origin: window.location.origin,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Outlook Calendar connected\. Loading your calendars…/i),
+      ).toBeTruthy();
+    });
+
+    const calendarSelect = await waitFor(() =>
+      getSelectByOptionText('Team appointments'),
+    );
+    fireEvent.change(calendarSelect, { target: { value: 'BBB-team' } });
+    expect(calendarSelect.value).toBe('BBB-team');
+
+    const saveButton = await waitFor(() =>
+      screen.getByRole('button', { name: /Save calendar/i }),
+    );
+    fireEvent.click(saveButton);
+
+    const postRequest = await waitFor(() => {
+      const req = capturedRequests.find(
+        (r) => r.method === 'POST' && r.path === '/connectors',
+      );
+      expect(req).toBeTruthy();
+      return req!;
+    });
+    const body = postRequest.body as {
+      provider: string;
+      credentials: Record<string, string>;
+    };
+    expect(body.provider).toBe('outlook-calendar');
+    expect(body.credentials.calendar_id).toBe('BBB-team');
+    expect(body.credentials.client_id).toBeUndefined();
+    expect(body.credentials.client_secret).toBeUndefined();
+    expect(body.credentials.refresh_token).toBeUndefined();
+
+    expect(
+      capturedRequests.some(
+        (r) =>
+          r.method === 'GET' &&
+          r.path === '/connectors/outlook-int-1/outlook-calendar/calendars',
+      ),
+    ).toBe(true);
+  });
+
   it('falls back to the legacy text input when the calendar list lookup fails', async () => {
     const handlers: Record<string, FetchHandler> = {
       'GET /connectors': () => ({
