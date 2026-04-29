@@ -134,6 +134,103 @@ or a misconfigured backfill window. The rebalance is automatic and safe,
 but a flood of cross-day shifts is a signal the upstream system needs
 fixing.
 
+## Appendix B — Sweeping pre-existing negative-quantity rollup rows
+
+Audience: Finance / billing ops
+Surface: `operations_alerts.type = 'billing_negative_usage_row_detected'`
+(severity `warning`)
+
+The forward-looking guard in `server/admin-api/routes/ingest.ts` ensures
+the cross-day rebalance path can never *create* a new
+`daily_org_usage` / `usage_metrics` row with a negative quantity. But
+rows that landed in the database *before* the guard shipped are still
+sitting there, and downstream invoicing has to special-case them.
+
+The one-off sweeper at `scripts/sweep-negative-usage-rows.ts`:
+
+* lists every `daily_org_usage` and `usage_metrics` row whose `quantity`
+  / `total_calls` / `total_ai_minutes` / `total_cost_cents` is negative,
+  grouped by tenant and date;
+* opens one `billing_negative_usage_row_detected` alert per affected
+  tenant (severity `warning`) with the row counts, date range, and a
+  capped sample of the offending rows in `metadata`;
+* is idempotent: tenants with an already-open
+  `billing_negative_usage_row_detected` alert are skipped so re-runs
+  don't churn duplicate alerts at finance.
+
+### Running the sweeper
+
+```bash
+# Development (against the local Replit DB)
+APP_ENV=development DATABASE_URL=postgres://... \
+  npx tsx scripts/sweep-negative-usage-rows.ts --dry-run
+
+# Production
+APP_ENV=production PLATFORM_DB_POOL_URL=postgres://... \
+  npx tsx scripts/sweep-negative-usage-rows.ts
+```
+
+`--dry-run` prints the audit report without inserting any alerts.
+`--tenant=<id>` scopes both the audit and the alert to a single
+tenant — useful when re-running after a manual cleanup pass.
+
+### Audit query (run-anywhere, no dependencies)
+
+If you'd rather just see the rows without touching `operations_alerts`:
+
+```sql
+-- Negative daily_org_usage rows
+SELECT tenant_id, date, total_calls, total_ai_minutes, total_cost_cents
+  FROM daily_org_usage
+ WHERE total_calls < 0
+    OR total_ai_minutes < 0
+    OR total_cost_cents < 0
+ ORDER BY tenant_id, date;
+
+-- Negative usage_metrics rows
+SELECT tenant_id, metric_type, period_start, quantity, total_cost_cents
+  FROM usage_metrics
+ WHERE quantity < 0
+    OR total_cost_cents < 0
+ ORDER BY tenant_id, period_start, metric_type;
+```
+
+### Cleaning up a flagged row by hand
+
+For each negative row the sweeper surfaces, finance has two options:
+
+1. **Zero it out** when the OLD-day rollup row is purely residue from a
+   pre-guard cross-day correction (the call has already been credited
+   to the NEW day in `call_sessions`, so the OLD-day row is just a
+   stale debit):
+
+   ```sql
+   UPDATE daily_org_usage
+      SET total_calls       = GREATEST(total_calls,       0),
+          total_ai_minutes  = GREATEST(total_ai_minutes,  0),
+          total_cost_cents  = GREATEST(total_cost_cents,  0)
+    WHERE tenant_id = $tenant_id AND date = $old_date;
+
+   UPDATE usage_metrics
+      SET quantity         = GREATEST(quantity,         0),
+          total_cost_cents = GREATEST(total_cost_cents, 0)
+    WHERE tenant_id   = $tenant_id
+      AND metric_type = $metric_type
+      AND period_start = ($old_date || 'T00:00:00Z')::timestamptz;
+   ```
+
+2. **Re-derive** the day's totals from `call_sessions` when the negative
+   value indicates a deeper drift (e.g. a bulk delete that took out
+   real calls along with the residue). Recompute the day's totals from
+   the surviving `call_sessions` rows for that tenant/day and replace
+   the rollup row's columns wholesale.
+
+After cleanup, re-run the audit query above to confirm the row is no
+longer negative, then acknowledge the
+`billing_negative_usage_row_detected` alert in the admin UI. Re-running
+`scripts/sweep-negative-usage-rows.ts` after acknowledgement will open
+a fresh alert if any negative rows remain — a useful self-check.
+
 ## Appendix A — Legacy manual rebalance procedure (no longer required)
 
 > **Retained for audit / forensic use only.** As of the auto-rebalance
