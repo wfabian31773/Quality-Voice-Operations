@@ -1,5 +1,6 @@
 import { Link, Navigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Phone, Clock, BarChart3, Shield, ArrowRight,
   Stethoscope, Scale, Home, HeadphonesIcon, Users,
@@ -58,143 +59,9 @@ function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; s
   return <span ref={ref}>{count.toLocaleString()}{suffix}</span>;
 }
 
-const socialProofStats = [
-  { value: 2400000, suffix: '+', label: 'Calls Handled' },
-  { value: 850, suffix: '+', label: 'Agents Deployed' },
-  { value: 99, suffix: '.9%', label: 'Uptime' },
-  { value: 12, suffix: '+', label: 'Industries Served' },
-];
-
-const industryLogos = [
-  { name: 'Healthcare', icon: Stethoscope },
-  { name: 'Legal', icon: Scale },
-  { name: 'Real Estate', icon: Home },
-  { name: 'Home Services', icon: Wrench },
-  { name: 'Finance', icon: DollarSign },
-  { name: 'Support', icon: HeadphonesIcon },
-  { name: 'Insurance', icon: Shield },
-];
-
-const painPoints = [
-  { icon: PhoneOff, title: 'Missed Calls', desc: '67% of callers won\'t leave a voicemail — every missed call is lost revenue.' },
-  { icon: DollarSign, title: 'High Staffing Costs', desc: 'Full-time receptionists cost $35K+/year per location with turnover and training overhead.' },
-  { icon: UserX, title: 'Manual Call Centers', desc: 'Outsourced centers lack context about your business and frustrate callers.' },
-  { icon: Timer, title: 'Slow Lead Response', desc: 'Leads contacted after 5 minutes are 10x less likely to convert.' },
-];
-
-const solutionFeatures = [
-  { icon: VoiceAgentIcon, title: 'AI Voice Agents', desc: 'Natural-sounding agents that understand context and handle complex conversations.' },
-  { icon: MegaphoneIcon, title: 'Outbound Campaigns', desc: 'Automated outreach for appointment reminders, follow-ups, and lead nurturing.' },
-  { icon: IntegrationsIcon, title: 'CRM Integrations', desc: 'Sync with your existing tools — contacts, appointments, and notes flow automatically.' },
-  { icon: AlwaysOnIcon, title: '24/7 Call Answering', desc: 'Never miss a call again. Your AI agent works nights, weekends, and holidays.' },
-  { icon: SmsFollowupIcon, title: 'SMS Follow-ups', desc: 'Automatic text confirmations, reminders, and follow-up messages after every call.' },
-  { icon: AnalyticsIcon, title: 'Call Analytics', desc: 'Real-time dashboards with call outcomes, sentiment, and conversion tracking.' },
-];
-
-const agentTemplates = [
-  {
-    icon: Stethoscope,
-    name: 'Medical Receptionist',
-    desc: 'Handles patient intake, appointment scheduling, prescription refill requests, and insurance verification.',
-    capabilities: ['Appointment booking', 'Patient triage', 'Insurance checks', 'HIPAA compliant'],
-    example: '"I\'d like to schedule a checkup." → Books appointment, sends confirmation SMS',
-    color: 'from-primary/20 to-success/10',
-    iconBg: 'bg-primary/15 text-primary',
-    avatar: '/assets/avatars/medical.png',
-  },
-  {
-    icon: Scale,
-    name: 'Legal Intake',
-    desc: 'Qualifies potential clients, captures case details, and schedules consultations with the right attorney.',
-    capabilities: ['Case qualification', 'Conflict checks', 'Consultation scheduling', 'Document collection'],
-    example: '"I need help with a car accident claim." → Captures details, books consultation',
-    color: 'from-sidebar-bg/10 to-info-light/20',
-    iconBg: 'bg-sidebar-bg/15 text-text-primary',
-    avatar: '/assets/avatars/legal.png',
-  },
-  {
-    icon: Home,
-    name: 'Real Estate Lead',
-    desc: 'Captures buyer/seller leads, answers property questions, and books showings automatically.',
-    capabilities: ['Lead capture', 'Property Q&A', 'Showing scheduler', 'CRM sync'],
-    example: '"Is the house on Oak St still available?" → Answers questions, schedules showing',
-    color: 'from-accent/10 to-accent-light/30',
-    iconBg: 'bg-accent/15 text-accent',
-    avatar: '/assets/avatars/real-estate.png',
-  },
-  {
-    icon: HeadphonesIcon,
-    name: 'Customer Support',
-    desc: 'Resolves common inquiries, processes returns, checks order status, and escalates when needed.',
-    capabilities: ['Ticket creation', 'Order tracking', 'Returns processing', 'Smart escalation'],
-    example: '"Where\'s my order #4521?" → Checks status, provides ETA and tracking link',
-    color: 'from-primary/10 to-info-light/15',
-    iconBg: 'bg-primary/15 text-primary',
-    avatar: '/assets/avatars/customer-support.png',
-  },
-  {
-    icon: DollarSign,
-    name: 'Collections',
-    desc: 'Professional payment reminder calls with compliant scripts, payment plan setup, and promise-to-pay tracking.',
-    capabilities: ['Payment reminders', 'Plan negotiation', 'Compliance scripts', 'Payment links'],
-    example: '"Can I set up a payment plan?" → Negotiates terms, sends payment link',
-    color: 'from-danger/10 to-accent/10',
-    iconBg: 'bg-danger/15 text-danger',
-    avatar: '/assets/avatars/collections.png',
-  },
-  {
-    icon: Wrench,
-    name: 'HVAC / Home Services',
-    desc: 'Handles service calls, triages emergencies, dispatches technicians, and sends customers real-time ETAs via SMS.',
-    capabilities: ['Service call intake', 'Emergency triage', 'Tech dispatch', 'SMS ETAs'],
-    example: '"My AC stopped working." → Captures details, dispatches tech, sends ETA',
-    color: 'from-orange-100/80 to-accent/10',
-    iconBg: 'bg-orange-100 text-orange-700',
-    avatar: '/assets/avatars/hvac.png',
-  },
-];
-
-const featureGrid = [
-  { icon: VoiceEngineIcon, title: 'Voice AI Engine', desc: 'Natural language understanding with real-time speech synthesis and emotion detection.' },
-  { icon: AutomationIcon, title: 'Campaign Automation', desc: 'Schedule and launch outbound calling campaigns with dynamic scripts and branching logic.' },
-  { icon: DashboardIcon, title: 'Analytics Dashboard', desc: 'Track call volume, outcomes, agent performance, and ROI in real-time dashboards.' },
-  { icon: CustomizationIcon, title: 'Agent Customization', desc: 'Fine-tune voice, personality, scripts, and escalation rules for each agent.' },
-  { icon: ApiIcon, title: 'API Integrations', desc: 'Connect to 50+ tools including Salesforce, HubSpot, Calendly, and custom webhooks.' },
-  { icon: SecurityIcon, title: 'Enterprise Security', desc: 'SOC 2 compliant, encrypted calls, role-based access, and audit logging.' },
-];
-
-const customerResults = [
-  {
-    metric: '400%',
-    metricLabel: 'Faster Lead Response',
-    industry: 'Real Estate',
-    quote: 'QVO answers every inquiry within seconds. Our agents went from chasing leads to closing deals. Response time dropped from 4 hours to under a minute.',
-    name: 'Marcus Rivera',
-    role: 'Broker, Summit Realty Group',
-    icon: Home,
-  },
-  {
-    metric: '40%',
-    metricLabel: 'Fewer Missed Calls',
-    industry: 'Medical',
-    quote: 'During flu season, our front desk was drowning. QVO handled overflow so seamlessly that patients thought they were speaking to our staff.',
-    name: 'Dr. Sarah Chen',
-    role: 'Practice Owner, Bright Smiles Dental',
-    icon: Stethoscope,
-  },
-  {
-    metric: '2x',
-    metricLabel: 'Conversion Rate',
-    industry: 'Legal',
-    quote: 'We doubled our consultation bookings by capturing after-hours intake calls. Every potential client gets a professional first impression now.',
-    name: 'James Whitfield',
-    role: 'Managing Partner, Summit Legal',
-    icon: Scale,
-  },
-];
-
 export default function Landing() {
   const { user, initialized } = useAuth();
+  const { t } = useTranslation('marketing');
 
   useEffect(() => {
     trackPageView('/');
@@ -206,11 +73,176 @@ export default function Landing() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  const socialProofStats = [
+    { value: 2400000, suffix: '+', label: t('landing.stats.calls_handled') },
+    { value: 850, suffix: '+', label: t('landing.stats.agents_deployed') },
+    { value: 99, suffix: '.9%', label: t('landing.stats.uptime') },
+    { value: 12, suffix: '+', label: t('landing.stats.industries_served') },
+  ];
+
+  const industryLogos = [
+    { name: t('landing.industries.healthcare'), icon: Stethoscope },
+    { name: t('landing.industries.legal'), icon: Scale },
+    { name: t('landing.industries.real_estate'), icon: Home },
+    { name: t('landing.industries.home_services'), icon: Wrench },
+    { name: t('landing.industries.finance'), icon: DollarSign },
+    { name: t('landing.industries.support'), icon: HeadphonesIcon },
+    { name: t('landing.industries.insurance'), icon: Shield },
+  ];
+
+  const painPoints = [
+    { icon: PhoneOff, title: t('landing.problem.missed_calls_title'), desc: t('landing.problem.missed_calls_desc') },
+    { icon: DollarSign, title: t('landing.problem.staffing_title'), desc: t('landing.problem.staffing_desc') },
+    { icon: UserX, title: t('landing.problem.manual_title'), desc: t('landing.problem.manual_desc') },
+    { icon: Timer, title: t('landing.problem.slow_lead_title'), desc: t('landing.problem.slow_lead_desc') },
+  ];
+
+  const solutionFeatures = [
+    { icon: VoiceAgentIcon, title: t('landing.solution.voice_agents_title'), desc: t('landing.solution.voice_agents_desc') },
+    { icon: MegaphoneIcon, title: t('landing.solution.outbound_title'), desc: t('landing.solution.outbound_desc') },
+    { icon: IntegrationsIcon, title: t('landing.solution.crm_title'), desc: t('landing.solution.crm_desc') },
+    { icon: AlwaysOnIcon, title: t('landing.solution.always_on_title'), desc: t('landing.solution.always_on_desc') },
+    { icon: SmsFollowupIcon, title: t('landing.solution.sms_title'), desc: t('landing.solution.sms_desc') },
+    { icon: AnalyticsIcon, title: t('landing.solution.analytics_title'), desc: t('landing.solution.analytics_desc') },
+  ];
+
+  const agentTemplates = [
+    {
+      icon: Stethoscope,
+      name: t('landing.marketplace.medical.name'),
+      desc: t('landing.marketplace.medical.desc'),
+      capabilities: [
+        t('landing.marketplace.medical.cap_appointment'),
+        t('landing.marketplace.medical.cap_triage'),
+        t('landing.marketplace.medical.cap_insurance'),
+        t('landing.marketplace.medical.cap_hipaa'),
+      ],
+      example: t('landing.marketplace.medical.example'),
+      color: 'from-primary/20 to-success/10',
+      iconBg: 'bg-primary/15 text-primary',
+      avatar: '/assets/avatars/medical.png',
+    },
+    {
+      icon: Scale,
+      name: t('landing.marketplace.legal.name'),
+      desc: t('landing.marketplace.legal.desc'),
+      capabilities: [
+        t('landing.marketplace.legal.cap_qualification'),
+        t('landing.marketplace.legal.cap_conflict'),
+        t('landing.marketplace.legal.cap_consultation'),
+        t('landing.marketplace.legal.cap_documents'),
+      ],
+      example: t('landing.marketplace.legal.example'),
+      color: 'from-sidebar-bg/10 to-info-light/20',
+      iconBg: 'bg-sidebar-bg/15 text-text-primary',
+      avatar: '/assets/avatars/legal.png',
+    },
+    {
+      icon: Home,
+      name: t('landing.marketplace.real_estate.name'),
+      desc: t('landing.marketplace.real_estate.desc'),
+      capabilities: [
+        t('landing.marketplace.real_estate.cap_lead'),
+        t('landing.marketplace.real_estate.cap_qa'),
+        t('landing.marketplace.real_estate.cap_showing'),
+        t('landing.marketplace.real_estate.cap_crm'),
+      ],
+      example: t('landing.marketplace.real_estate.example'),
+      color: 'from-accent/10 to-accent-light/30',
+      iconBg: 'bg-accent/15 text-accent',
+      avatar: '/assets/avatars/real-estate.png',
+    },
+    {
+      icon: HeadphonesIcon,
+      name: t('landing.marketplace.support.name'),
+      desc: t('landing.marketplace.support.desc'),
+      capabilities: [
+        t('landing.marketplace.support.cap_ticket'),
+        t('landing.marketplace.support.cap_order'),
+        t('landing.marketplace.support.cap_returns'),
+        t('landing.marketplace.support.cap_escalation'),
+      ],
+      example: t('landing.marketplace.support.example'),
+      color: 'from-primary/10 to-info-light/15',
+      iconBg: 'bg-primary/15 text-primary',
+      avatar: '/assets/avatars/customer-support.png',
+    },
+    {
+      icon: DollarSign,
+      name: t('landing.marketplace.collections.name'),
+      desc: t('landing.marketplace.collections.desc'),
+      capabilities: [
+        t('landing.marketplace.collections.cap_reminder'),
+        t('landing.marketplace.collections.cap_plan'),
+        t('landing.marketplace.collections.cap_compliance'),
+        t('landing.marketplace.collections.cap_payment'),
+      ],
+      example: t('landing.marketplace.collections.example'),
+      color: 'from-danger/10 to-accent/10',
+      iconBg: 'bg-danger/15 text-danger',
+      avatar: '/assets/avatars/collections.png',
+    },
+    {
+      icon: Wrench,
+      name: t('landing.marketplace.hvac.name'),
+      desc: t('landing.marketplace.hvac.desc'),
+      capabilities: [
+        t('landing.marketplace.hvac.cap_intake'),
+        t('landing.marketplace.hvac.cap_emergency'),
+        t('landing.marketplace.hvac.cap_dispatch'),
+        t('landing.marketplace.hvac.cap_eta'),
+      ],
+      example: t('landing.marketplace.hvac.example'),
+      color: 'from-orange-100/80 to-accent/10',
+      iconBg: 'bg-orange-100 text-orange-700',
+      avatar: '/assets/avatars/hvac.png',
+    },
+  ];
+
+  const featureGrid = [
+    { icon: VoiceEngineIcon, title: t('landing.platform_capabilities.voice_engine_title'), desc: t('landing.platform_capabilities.voice_engine_desc') },
+    { icon: AutomationIcon, title: t('landing.platform_capabilities.campaign_title'), desc: t('landing.platform_capabilities.campaign_desc') },
+    { icon: DashboardIcon, title: t('landing.platform_capabilities.analytics_title'), desc: t('landing.platform_capabilities.analytics_desc') },
+    { icon: CustomizationIcon, title: t('landing.platform_capabilities.customization_title'), desc: t('landing.platform_capabilities.customization_desc') },
+    { icon: ApiIcon, title: t('landing.platform_capabilities.api_title'), desc: t('landing.platform_capabilities.api_desc') },
+    { icon: SecurityIcon, title: t('landing.platform_capabilities.security_title'), desc: t('landing.platform_capabilities.security_desc') },
+  ];
+
+  const customerResults = [
+    {
+      metric: t('landing.results.real_estate.metric'),
+      metricLabel: t('landing.results.real_estate.metric_label'),
+      industry: t('landing.results.real_estate.industry'),
+      quote: t('landing.results.real_estate.quote'),
+      name: t('landing.results.real_estate.name'),
+      role: t('landing.results.real_estate.role'),
+      icon: Home,
+    },
+    {
+      metric: t('landing.results.medical.metric'),
+      metricLabel: t('landing.results.medical.metric_label'),
+      industry: t('landing.results.medical.industry'),
+      quote: t('landing.results.medical.quote'),
+      name: t('landing.results.medical.name'),
+      role: t('landing.results.medical.role'),
+      icon: Stethoscope,
+    },
+    {
+      metric: t('landing.results.legal.metric'),
+      metricLabel: t('landing.results.legal.metric_label'),
+      industry: t('landing.results.legal.industry'),
+      quote: t('landing.results.legal.quote'),
+      name: t('landing.results.legal.name'),
+      role: t('landing.results.legal.role'),
+      icon: Scale,
+    },
+  ];
+
   const keyBenefits = [
-    { icon: PhoneCall, text: 'Never Miss a Call' },
-    { icon: CalendarCheck, text: 'Book Appointments Automatically' },
-    { icon: Truck, text: 'Dispatch Technicians Instantly' },
-    { icon: HelpCircle, text: 'Answer Questions 24/7' },
+    { icon: PhoneCall, text: t('landing.hero.benefits.never_miss_call') },
+    { icon: CalendarCheck, text: t('landing.hero.benefits.book_appointments') },
+    { icon: Truck, text: t('landing.hero.benefits.dispatch_technicians') },
+    { icon: HelpCircle, text: t('landing.hero.benefits.answer_questions') },
   ];
 
   const organizationSchema = {
@@ -230,8 +262,8 @@ export default function Landing() {
   return (
     <div className="overflow-hidden">
       <SEO
-        title="QVO — AI Voice Agents That Run Your Business"
-        description="AI voice agents for call answering, appointment scheduling, and business automation. AI receptionist and call automation for HVAC, medical offices, dental, legal, and more."
+        title={t('landing.seo_title')}
+        description={t('landing.seo_description')}
         canonicalPath="/"
         structuredData={organizationSchema}
       />
@@ -246,13 +278,13 @@ export default function Landing() {
             <div>
               <div className="inline-flex items-center gap-2 bg-primary/15 border border-primary/25 rounded-full px-4 py-1.5 mb-6">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-primary text-sm font-medium">AI-Powered Voice Platform</span>
+                <span className="text-primary text-sm font-medium">{t('landing.hero.badge')}</span>
               </div>
               <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] mb-6">
-                <span className="hero-gradient-text">AI Voice Agents</span> That Run Your Business
+                <span className="hero-gradient-text">{t('landing.hero.title_highlight')}</span>{t('landing.hero.title_rest')}
               </h1>
               <p className="text-lg lg:text-xl text-white/65 leading-relaxed mb-8 max-w-xl font-body">
-                Deploy intelligent voice agents that answer calls, book appointments, dispatch technicians, and answer customer questions — 24/7, on autopilot.
+                {t('landing.hero.description')}
               </p>
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {keyBenefits.map((benefit) => (
@@ -268,7 +300,7 @@ export default function Landing() {
                   className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                   onClick={() => trackCTAClick('Try Live Demo', '/', 'hero')}
                 >
-                  Try Live Demo
+                  {t('common.try_live_demo')}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
@@ -276,7 +308,7 @@ export default function Landing() {
                   className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
                   onClick={() => trackCTAClick('See How It Works', '/', 'hero')}
                 >
-                  See How It Works
+                  {t('common.see_how_it_works')}
                 </Link>
               </div>
             </div>
@@ -300,7 +332,7 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-6 mt-6 pt-6 border-t border-white/5">
-            <span className="text-xs text-white/30 uppercase tracking-wider font-medium">Trusted by</span>
+            <span className="text-xs text-white/30 uppercase tracking-wider font-medium">{t('common.trusted_by')}</span>
             {industryLogos.map((logo) => (
               <div key={logo.name} className="flex items-center gap-1.5 opacity-40 hover:opacity-60 transition-opacity">
                 <logo.icon className="h-4 w-4 text-white" />
@@ -310,16 +342,16 @@ export default function Landing() {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-primary" /> SOC 2 in progress
+              <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.soc2_in_progress')}
             </Link>
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-primary" /> HIPAA-ready
+              <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.hipaa_ready')}
             </Link>
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-primary" /> GDPR compliant
+              <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.gdpr_compliant')}
             </Link>
             <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
-              <ShieldCheck className="h-3 w-3 text-primary" /> AES-256 encryption
+              <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.aes_encryption')}
             </Link>
           </div>
         </div>
@@ -329,12 +361,12 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-16">
-              <span className="inline-block text-sm font-semibold text-danger bg-danger/10 px-4 py-1.5 rounded-full mb-4">The Problem</span>
+              <span className="inline-block text-sm font-semibold text-danger bg-danger/10 px-4 py-1.5 rounded-full mb-4">{t('landing.problem.eyebrow')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Every Missed Call Is a Missed Opportunity
+                {t('landing.problem.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                Small businesses lose thousands in revenue every month to unanswered calls, slow response times, and overwhelmed front desks.
+                {t('landing.problem.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -355,12 +387,12 @@ export default function Landing() {
 
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">The Solution</span>
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">{t('landing.solution.eyebrow')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                QVO Handles It All
+                {t('landing.solution.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                One platform to answer calls, run campaigns, and automate your entire voice operations.
+                {t('landing.solution.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -385,12 +417,12 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">Agent Marketplace</span>
+              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">{t('landing.marketplace.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Pre-Built Agents, Ready to Deploy
+                {t('landing.marketplace.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                Choose from industry-specific agent templates. Customize scripts, personality, and integrations — then go live in minutes.
+                {t('landing.marketplace.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -431,7 +463,7 @@ export default function Landing() {
                 to="/ai-agents"
                 className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
               >
-                Explore Marketplace
+                {t('common.explore_marketplace')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -445,13 +477,13 @@ export default function Landing() {
           <RevealSection>
             <div className="grid lg:grid-cols-[1fr,2fr] gap-10 lg:gap-14 items-end mb-14">
               <div>
-                <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">Built for your industry</span>
+                <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">{t('landing.industry_section.badge')}</span>
                 <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.05] mb-4">
-                  Purpose-built voice AI for the way <span className="text-primary">your industry</span> actually works.
+                  {t('landing.industry_section.title_pre')}<span className="text-primary">{t('landing.industry_section.title_emph')}</span>{t('landing.industry_section.title_post')}
                 </h2>
               </div>
               <p className="text-lg text-text-primary/65 font-body leading-relaxed max-w-xl lg:pb-2">
-                Every vertical has its own jargon, compliance rules, and customer expectations. QVO ships pre-trained templates, integrations, and call flows for the industries where voice matters most.
+                {t('landing.industry_section.description')}
               </p>
             </div>
           </RevealSection>
@@ -464,12 +496,12 @@ export default function Landing() {
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">Platform Capabilities</span>
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">{t('landing.platform_capabilities.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Everything You Need to Automate Voice Operations
+                {t('landing.platform_capabilities.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                A complete toolkit for managing AI voice agents, campaigns, and analytics in one place.
+                {t('landing.platform_capabilities.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -494,12 +526,12 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
-              <span className="inline-block text-sm font-semibold text-success bg-success/10 px-4 py-1.5 rounded-full mb-4">Customer Results</span>
+              <span className="inline-block text-sm font-semibold text-success bg-success/10 px-4 py-1.5 rounded-full mb-4">{t('landing.results.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Real Businesses, Real Results
+                {t('landing.results.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                See how businesses across industries are transforming their operations with QVO.
+                {t('landing.results.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -541,12 +573,12 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">In Their Words</span>
+              <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">{t('landing.testimonials.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Hear it straight from operators.
+                {t('landing.testimonials.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                Real teams replacing missed calls and overwhelmed front desks with QVO.
+                {t('landing.testimonials.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -565,12 +597,12 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
-              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">How We Compare</span>
+              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">{t('landing.comparison.badge')}</span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                QVO vs. the alternatives.
+                {t('landing.comparison.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                A side-by-side look at QVO, voice-AI toolkits, and traditional answering services.
+                {t('landing.comparison.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -584,20 +616,20 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
-              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">Security & Compliance</span>
+              <span className="inline-block text-sm font-semibold text-text-primary bg-sidebar-bg/10 px-4 py-1.5 rounded-full mb-4">{t('landing.security.badge')}</span>
               <h2 className="font-display text-2xl lg:text-3xl font-bold text-text-primary mb-3">
-                Enterprise-grade security built in.
+                {t('landing.security.title')}
               </h2>
               <p className="text-text-primary/60 font-body max-w-xl mx-auto">
-                Your data and your customers' data are protected at every layer.
+                {t('landing.security.subtitle')}
               </p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
               {[
-                { icon: ShieldCheck, label: 'HIPAA Ready' },
-                { icon: Lock, label: 'SOC 2 Compliant' },
-                { icon: Shield, label: 'AES-256 Encryption' },
-                { icon: BarChart3, label: 'Full Audit Logs' },
+                { icon: ShieldCheck, label: t('landing.security.hipaa_ready') },
+                { icon: Lock, label: t('landing.security.soc2') },
+                { icon: Shield, label: t('landing.security.aes') },
+                { icon: BarChart3, label: t('landing.security.audit_logs') },
               ].map((badge) => (
                 <div key={badge.label} className="flex flex-col items-center text-center bg-white rounded-xl border border-border/30 p-5">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
@@ -620,10 +652,10 @@ export default function Landing() {
         <RevealSection>
           <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="font-display text-3xl lg:text-4xl font-bold text-white mb-4">
-              Deploy Your First AI Voice Agent Today
+              {t('landing.bottom_cta.title')}
             </h2>
             <p className="text-lg text-white/60 font-body mb-10 max-w-xl mx-auto">
-              Join hundreds of businesses using QVO to automate calls, capture leads, and grow revenue. No contracts, cancel anytime.
+              {t('landing.bottom_cta.subtitle')}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
@@ -631,7 +663,7 @@ export default function Landing() {
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Start Free Trial', '/', 'bottom-cta')}
               >
-                Start Free Trial
+                {t('common.start_free_trial')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -639,14 +671,14 @@ export default function Landing() {
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
                 onClick={() => trackCTAClick('Book a Demo', '/', 'bottom-cta')}
               >
-                Book a Demo
+                {t('common.book_a_demo')}
               </Link>
               <Link
                 to="/demo"
                 className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3.5 rounded-xl transition-colors duration-[var(--motion-fast)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Try the Live Demo', '/', 'bottom-cta')}
               >
-                Try the Live Demo
+                {t('landing.bottom_cta.try_live')}
               </Link>
             </div>
           </div>

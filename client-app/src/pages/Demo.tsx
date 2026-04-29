@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Phone,
   PhoneOff,
@@ -129,6 +130,7 @@ function CallTimer({ startTime }: { startTime: number }) {
 }
 
 function DemoCompletionCelebration({ show }: { show: boolean }) {
+  const { t } = useTranslation('marketing');
   if (!show) return null;
   return (
     <div className="demo-celebration-overlay">
@@ -136,8 +138,8 @@ function DemoCompletionCelebration({ show }: { show: boolean }) {
         <div className="w-16 h-16 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4 demo-celebration-icon">
           <CheckCircle2 className="h-8 w-8 text-success" />
         </div>
-        <p className="font-display text-lg font-semibold text-sidebar-bg">Demo Complete!</p>
-        <p className="text-sm text-text-primary/60 font-body mt-1">Great experience, right?</p>
+        <p className="font-display text-lg font-semibold text-sidebar-bg">{t('demo.celebration.title')}</p>
+        <p className="text-sm text-text-primary/60 font-body mt-1">{t('demo.celebration.subtitle')}</p>
       </div>
     </div>
   );
@@ -204,13 +206,14 @@ function AgentCard({
 }
 
 function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
+  const { t } = useTranslation('marketing');
   if (!agent.phoneNumber) {
     return (
       <div className="flex items-center gap-3 bg-accent/10 border border-accent/20 rounded-xl px-5 py-4">
         <AlertCircle className="h-5 w-5 text-accent shrink-0" />
         <div>
-          <p className="text-xs text-accent mb-0.5">Demo line</p>
-          <p className="text-sm text-text-primary/50">Not configured</p>
+          <p className="text-xs text-accent mb-0.5">{t('demo.phone_card.demo_line')}</p>
+          <p className="text-sm text-text-primary/50">{t('demo.phone_card.not_configured')}</p>
         </div>
       </div>
     );
@@ -221,8 +224,8 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
       <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-5 py-4">
         <Phone className="h-5 w-5 text-primary shrink-0" />
         <div>
-          <p className="text-xs text-primary mb-0.5">Demo line — awaiting real number</p>
-          <p className="text-sm text-text-primary/50">Contact your administrator to provision a Twilio number</p>
+          <p className="text-xs text-primary mb-0.5">{t('demo.phone_card.awaiting_real')}</p>
+          <p className="text-sm text-text-primary/50">{t('demo.phone_card.ask_admin')}</p>
         </div>
       </div>
     );
@@ -232,7 +235,7 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
     <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-5 py-4">
       <Phone className="h-5 w-5 text-primary shrink-0" />
       <div>
-        <p className="text-xs text-primary mb-0.5">Call to try it</p>
+        <p className="text-xs text-primary mb-0.5">{t('demo.phone_card.call_to_try')}</p>
         <p className="text-lg font-mono font-bold text-sidebar-bg">{formatPhoneNumber(agent.phoneNumber)}</p>
       </div>
     </div>
@@ -240,6 +243,7 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
 }
 
 function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAgentRef?: string }) {
+  const { t } = useTranslation('marketing');
   if (!visible) return null;
 
   return (
@@ -247,14 +251,13 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
       <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
         <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-medium px-4 py-1.5 rounded-full mb-6">
           <Sparkles className="h-4 w-4" />
-          You just experienced QVO
+          {t('demo.conversion.experienced')}
         </div>
         <h2 className="font-display text-3xl lg:text-4xl font-bold text-sidebar-bg mb-4">
-          Deploy your own AI voice agents in minutes
+          {t('demo.conversion.title')}
         </h2>
         <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto mb-8">
-          What you just heard is the same technology powering hundreds of businesses.
-          Get started with your own custom voice agents today.
+          {t('demo.conversion.subtitle')}
         </p>
 
         <div className="grid sm:grid-cols-3 gap-6 mb-10 text-left max-w-2xl mx-auto">
@@ -263,8 +266,8 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
               <Zap className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-sidebar-bg">5-Minute Setup</p>
-              <p className="text-xs text-text-primary/50 font-body">Deploy your first agent in minutes, not weeks</p>
+              <p className="font-display text-sm font-semibold text-sidebar-bg">{t('demo.conversion.feat1_title')}</p>
+              <p className="text-xs text-text-primary/50 font-body">{t('demo.conversion.feat1_desc')}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
@@ -272,8 +275,8 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
               <Shield className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-sidebar-bg">HIPAA Ready</p>
-              <p className="text-xs text-text-primary/50 font-body">Enterprise-grade security built in</p>
+              <p className="font-display text-sm font-semibold text-sidebar-bg">{t('demo.conversion.feat2_title')}</p>
+              <p className="text-xs text-text-primary/50 font-body">{t('demo.conversion.feat2_desc')}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
@@ -281,8 +284,8 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
               <Clock className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-sidebar-bg">24/7 Coverage</p>
-              <p className="text-xs text-text-primary/50 font-body">Never miss a call again</p>
+              <p className="font-display text-sm font-semibold text-sidebar-bg">{t('demo.conversion.feat3_title')}</p>
+              <p className="text-xs text-text-primary/50 font-body">{t('demo.conversion.feat3_desc')}</p>
             </div>
           </div>
         </div>
@@ -293,7 +296,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
             className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 text-base"
             onClick={() => trackDemoCTA('start_free_trial', activeAgentRef)}
           >
-            Start Free Trial
+            {t('common.start_free_trial')}
             <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
@@ -301,7 +304,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
             className="inline-flex items-center gap-2 bg-white border border-border-strong/50 hover:border-primary/30 text-sidebar-bg font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
             onClick={() => trackDemoCTA('book_demo', activeAgentRef)}
           >
-            Book a Demo
+            {t('common.book_demo')}
           </Link>
         </div>
       </div>
@@ -321,6 +324,7 @@ function trackDemoCTA(ctaType: string, agentType?: string) {
 }
 
 export default function Demo() {
+  const { t } = useTranslation('marketing');
   const [totalCalls, setTotalCalls] = useState(0);
   const [agents, setAgents] = useState<DemoAgent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -421,8 +425,8 @@ export default function Demo() {
   return (
     <div>
       <SEO
-        title="Live Demo — See QVO AI Voice Agents in Action"
-        description="Experience QVO's AI voice agents live. Watch real-time call handling, see how conversations flow, and explore the analytics dashboard."
+        title={t('demo.seo_title')}
+        description={t('demo.seo_description')}
         canonicalPath="/demo"
       />
 
@@ -433,13 +437,13 @@ export default function Demo() {
         <div className="absolute inset-0 demo-grid-pattern opacity-5" />
         <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center relative z-10">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-            Live Demo
+            {t('demo.hero.eyebrow')}
           </p>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
-            Experience QVO live.
+            {t('demo.hero.title')}
           </h1>
           <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-8">
-            Choose an agent below and call to watch the conversation unfold in real-time. No signup required.
+            {t('demo.hero.description')}
           </p>
           <div className="flex items-center justify-center">
             <VoiceWaveform active={isActive} />
@@ -451,14 +455,14 @@ export default function Demo() {
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           {demoConfigured === false && (
             <div className="mb-8 p-4 bg-accent/10 border border-accent/30 rounded-xl text-center text-accent text-sm font-body">
-              Demo phone lines are not yet provisioned. The demo system is ready but requires phone numbers to accept calls.
+              {t('demo.config_warning')}
             </div>
           )}
 
           <div className="mb-8">
-            <h2 className="font-display text-2xl font-bold text-sidebar-bg mb-2">Choose a Demo Agent</h2>
+            <h2 className="font-display text-2xl font-bold text-sidebar-bg mb-2">{t('demo.agent_picker.title')}</h2>
             <p className="text-sm text-text-primary/60 font-body">
-              Select an agent to see its details and try it out.
+              {t('demo.agent_picker.subtitle')}
             </p>
           </div>
 
@@ -474,7 +478,7 @@ export default function Demo() {
             ))}
             {agents.length === 0 && !loading && (
               <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-12 text-text-primary/40 font-body">
-                <p>No demo agents configured yet.</p>
+                <p>{t('demo.agent_picker.empty')}</p>
               </div>
             )}
           </div>
@@ -514,14 +518,14 @@ export default function Demo() {
                     <>
                       <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
                       <Phone className="h-4 w-4 text-success" />
-                      <span className="text-sm font-medium text-success">Call Active</span>
+                      <span className="text-sm font-medium text-success">{t('demo.status.active')}</span>
                       {callStartTime && <CallTimer startTime={callStartTime} />}
                     </>
                   ) : (
                     <>
                       <div className="w-2 h-2 rounded-full bg-border-strong/40" />
                       <PhoneOff className="h-4 w-4 text-text-primary/40" />
-                      <span className="text-sm text-text-primary/40">Idle</span>
+                      <span className="text-sm text-text-primary/40">{t('demo.status.idle')}</span>
                     </>
                   )}
                 </div>
@@ -534,7 +538,7 @@ export default function Demo() {
               <div className="flex items-center gap-4 mb-4">
                 <VoiceWaveform active={isActive} />
                 {isActive && (
-                  <span className="text-xs text-primary font-body animate-pulse">Listening...</span>
+                  <span className="text-xs text-primary font-body animate-pulse">{t('demo.status.listening')}</span>
                 )}
               </div>
 
@@ -555,16 +559,16 @@ export default function Demo() {
             <div className="md:col-span-1 demo-glass-card rounded-2xl border border-white/20 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="h-5 w-5 text-success" />
-                <h3 className="font-display font-semibold text-sidebar-bg">Demo Stats</h3>
+                <h3 className="font-display font-semibold text-sidebar-bg">{t('demo.stats_card.title')}</h3>
               </div>
               <div className="text-center py-6">
                 <p className="text-5xl font-display font-bold text-primary">
                   {loading ? '...' : totalCalls.toLocaleString()}
                 </p>
-                <p className="text-sm text-text-primary/50 font-body mt-2">Total Demo Calls</p>
+                <p className="text-sm text-text-primary/50 font-body mt-2">{t('demo.stats_card.label')}</p>
               </div>
               <p className="text-xs text-text-primary/40 font-body text-center">
-                Rate limited to 5 calls per hour per caller
+                {t('demo.stats_card.rate_limit')}
               </p>
             </div>
 
@@ -575,7 +579,7 @@ export default function Demo() {
 
           <div className="text-center text-sm text-text-primary/50 font-body space-y-2">
             <p>
-              Demo calls are handled by the same system used in production.
+              {t('demo.footer_note')}
             </p>
           </div>
         </div>

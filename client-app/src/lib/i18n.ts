@@ -4,14 +4,29 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 import enCommon from '../locales/en/common.json';
 import enDocs from '../locales/en/docs.json';
+import enMarketing from '../locales/en/marketing.json';
+import enTenant from '../locales/en/tenant.json';
+import enAdmin from '../locales/en/admin.json';
 import esCommon from '../locales/es/common.json';
 import esDocs from '../locales/es/docs.json';
+import esMarketing from '../locales/es/marketing.json';
+import esTenant from '../locales/es/tenant.json';
+import esAdmin from '../locales/es/admin.json';
 import ptBRCommon from '../locales/pt-BR/common.json';
 import ptBRDocs from '../locales/pt-BR/docs.json';
+import ptBRMarketing from '../locales/pt-BR/marketing.json';
+import ptBRTenant from '../locales/pt-BR/tenant.json';
+import ptBRAdmin from '../locales/pt-BR/admin.json';
 import frCommon from '../locales/fr/common.json';
 import frDocs from '../locales/fr/docs.json';
+import frMarketing from '../locales/fr/marketing.json';
+import frTenant from '../locales/fr/tenant.json';
+import frAdmin from '../locales/fr/admin.json';
 import deCommon from '../locales/de/common.json';
 import deDocs from '../locales/de/docs.json';
+import deMarketing from '../locales/de/marketing.json';
+import deTenant from '../locales/de/tenant.json';
+import deAdmin from '../locales/de/admin.json';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English', nativeLabel: 'English' },
@@ -28,11 +43,11 @@ export const DEFAULT_LANGUAGE: SupportedLanguageCode = 'en';
 export const I18N_STORAGE_KEY = 'qvo_lang';
 
 const resources = {
-  en: { common: enCommon, docs: enDocs },
-  es: { common: esCommon, docs: esDocs },
-  'pt-BR': { common: ptBRCommon, docs: ptBRDocs },
-  fr: { common: frCommon, docs: frDocs },
-  de: { common: deCommon, docs: deDocs },
+  en: { common: enCommon, docs: enDocs, marketing: enMarketing, tenant: enTenant, admin: enAdmin },
+  es: { common: esCommon, docs: esDocs, marketing: esMarketing, tenant: esTenant, admin: esAdmin },
+  'pt-BR': { common: ptBRCommon, docs: ptBRDocs, marketing: ptBRMarketing, tenant: ptBRTenant, admin: ptBRAdmin },
+  fr: { common: frCommon, docs: frDocs, marketing: frMarketing, tenant: frTenant, admin: frAdmin },
+  de: { common: deCommon, docs: deDocs, marketing: deMarketing, tenant: deTenant, admin: deAdmin },
 } as const;
 
 if (!i18n.isInitialized) {
@@ -44,7 +59,7 @@ if (!i18n.isInitialized) {
       fallbackLng: DEFAULT_LANGUAGE,
       supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
       defaultNS: 'common',
-      ns: ['common', 'docs'],
+      ns: ['common', 'docs', 'marketing', 'tenant', 'admin'],
       interpolation: { escapeValue: false },
       detection: {
         order: ['localStorage', 'navigator', 'htmlTag'],

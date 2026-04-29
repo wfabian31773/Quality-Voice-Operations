@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
@@ -262,6 +263,7 @@ function ExampleWorkflowCards({ navigate }: { navigate: (path: string) => void }
 }
 
 export default function Dashboard() {
+  const { t: tenantT } = useTranslation('tenant');
   const navigate = useNavigate();
   const todaySince = todayIso();
   const [showCelebration, setShowCelebration] = useState(false);
@@ -356,8 +358,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Dashboard"
-        description="What's happening today, what's working, and what needs attention"
+        title={tenantT('dashboard.page_title')}
+        description={tenantT('dashboard.page_subtitle')}
         status={
           sseConnected ? (
             <StatusBadge tone="success" icon={<Wifi className="h-3 w-3" />}>Live</StatusBadge>

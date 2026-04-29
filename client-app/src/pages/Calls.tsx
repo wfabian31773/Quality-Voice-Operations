@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
@@ -658,6 +659,7 @@ function filtersEqual(a: FiltersState, b: FiltersState): boolean {
 }
 
 export default function Calls() {
+  const { t: tenantT } = useTranslation('tenant');
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1));
   const [selectedCall, setSelectedCall] = useState<string | null>(null);
@@ -965,8 +967,8 @@ export default function Calls() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Conversations"
-        description="Browse and review past calls with transcripts"
+        title={tenantT('calls.page_title')}
+        description={tenantT('calls.page_subtitle')}
         actions={
           <>
             {activeView && isViewDirty && (

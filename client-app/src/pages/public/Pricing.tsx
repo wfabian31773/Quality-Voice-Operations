@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
@@ -14,106 +15,11 @@ function formatOverageRate(ratePerMinute: number): string {
 }
 
 interface Feature {
-  name: string;
+  nameKey: string;
   starter: boolean | string;
   pro: boolean | string;
   enterprise: boolean | string;
 }
-
-const features: Feature[] = [
-  {
-    name: 'AI minutes included',
-    starter: PLAN_CATALOG.starter.includedMinutes.toLocaleString(),
-    pro: PLAN_CATALOG.pro.includedMinutes.toLocaleString(),
-    enterprise: PLAN_CATALOG.enterprise.includedMinutes.toLocaleString(),
-  },
-  {
-    name: 'Overage rate',
-    starter: formatOverageRate(PLAN_CATALOG.starter.overageRatePerMinute),
-    pro: formatOverageRate(PLAN_CATALOG.pro.overageRatePerMinute),
-    enterprise: formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute),
-  },
-  { name: 'Voice agents', starter: 'Unlimited', pro: 'Unlimited', enterprise: 'Unlimited' },
-  { name: 'Phone numbers', starter: 'Up to 3', pro: 'Up to 10', enterprise: 'Unlimited' },
-  { name: 'Inbound call handling', starter: true, pro: true, enterprise: true },
-  { name: 'Outbound campaigns', starter: false, pro: true, enterprise: true },
-  { name: 'Call transcripts', starter: true, pro: true, enterprise: true },
-  { name: 'Quality scoring', starter: false, pro: true, enterprise: true },
-  { name: 'Analytics dashboard', starter: true, pro: true, enterprise: true },
-  { name: 'Team members', starter: 'Up to 3', pro: 'Up to 10', enterprise: 'Unlimited' },
-  { name: 'Role-based access', starter: false, pro: true, enterprise: true },
-  { name: 'API access', starter: false, pro: true, enterprise: true },
-  { name: 'CRM integrations', starter: false, pro: true, enterprise: true },
-  { name: 'Custom agent templates', starter: false, pro: true, enterprise: true },
-  { name: 'Audit logs', starter: false, pro: false, enterprise: true },
-  { name: 'Multi-location support', starter: false, pro: false, enterprise: true },
-  { name: 'Priority support', starter: false, pro: true, enterprise: true },
-  { name: 'Dedicated onboarding', starter: false, pro: false, enterprise: true },
-  { name: 'Interactive demo access', starter: true, pro: true, enterprise: true },
-  { name: '14-day free trial', starter: true, pro: true, enterprise: true },
-];
-
-const TIER_COPY: Record<'starter' | 'pro' | 'enterprise', { desc: string; popular?: boolean }> = {
-  starter: {
-    desc: 'For small practices getting started with voice automation.',
-  },
-  pro: {
-    desc: 'For growing businesses that need campaigns and integrations.',
-    popular: true,
-  },
-  enterprise: {
-    desc: 'For multi-location organizations with high call volume.',
-  },
-};
-
-const tiers = (['starter', 'pro', 'enterprise'] as const).map((key) => {
-  const plan = PLAN_CATALOG[key];
-  const copy = TIER_COPY[key];
-  return {
-    key,
-    name: plan.name,
-    price: getPlanMonthlyPriceWholeDollars(key),
-    desc: copy.desc,
-    popular: copy.popular,
-    minutes: `${plan.includedMinutes.toLocaleString()} AI minutes`,
-    overage: `${formatOverageRate(plan.overageRatePerMinute)} overage`,
-  };
-});
-
-const faqs = [
-  {
-    q: 'How does the 14-day free trial work?',
-    a: 'You get full access to all features on your chosen plan for 14 days. No credit card required to start. If you decide not to continue, your account is simply paused — no charges.',
-  },
-  {
-    q: 'What counts as an AI minute?',
-    a: 'An AI minute is one minute of active call time handled by your voice agent. Hold time, ringing, and system processing are not counted. Only actual conversation time is billed.',
-  },
-  {
-    q: 'What happens if I exceed my included minutes?',
-    a: `You'll be billed at your plan's overage rate for any minutes beyond your monthly allocation. Starter plans pay ${formatOverageRate(PLAN_CATALOG.starter.overageRatePerMinute)}, Pro pays ${formatOverageRate(PLAN_CATALOG.pro.overageRatePerMinute)}, and Enterprise pays ${formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute)}.`,
-  },
-  {
-    q: 'Can I change plans at any time?',
-    a: 'Yes. Upgrade or downgrade at any time from your account settings. When upgrading, you get immediate access to the new features. Downgrades take effect at the start of your next billing cycle.',
-  },
-  {
-    q: 'Are there any contracts or commitments?',
-    a: 'No. All plans are month-to-month with no long-term contracts. You can cancel at any time and your account will remain active through the end of your current billing period.',
-  },
-  {
-    q: 'Do you offer annual pricing?',
-    a: 'Yes. Annual billing saves you 20% compared to monthly pricing. Contact our sales team or select annual billing during signup to get the discounted rate.',
-  },
-  {
-    q: 'Is there a setup fee?',
-    a: 'No setup fees on any plan. Starter and Pro plans are entirely self-service. Enterprise plans include dedicated onboarding at no additional cost.',
-  },
-  {
-    q: 'What payment methods do you accept?',
-    a: 'We accept all major credit cards (Visa, Mastercard, American Express) and ACH bank transfers for annual Enterprise plans. Invoicing is available for Enterprise customers.',
-  },
-];
 
 function FeatureCell({ value }: { value: boolean | string }) {
   if (typeof value === 'string') {
@@ -164,11 +70,96 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
 }
 
 export default function Pricing() {
+  const { t } = useTranslation('marketing');
+
   useEffect(() => {
     trackPageView('/pricing');
     captureUtmOnLoad();
     trackConversionEvent('page_view', '/pricing');
   }, []);
+
+  const tUnlimited = t('pricing.features_list.unlimited');
+  const tUpTo3 = t('pricing.features_list.up_to_3');
+  const tUpTo10 = t('pricing.features_list.up_to_10');
+
+  const features: Feature[] = [
+    {
+      nameKey: 'ai_minutes',
+      starter: PLAN_CATALOG.starter.includedMinutes.toLocaleString(),
+      pro: PLAN_CATALOG.pro.includedMinutes.toLocaleString(),
+      enterprise: PLAN_CATALOG.enterprise.includedMinutes.toLocaleString(),
+    },
+    {
+      nameKey: 'overage',
+      starter: formatOverageRate(PLAN_CATALOG.starter.overageRatePerMinute),
+      pro: formatOverageRate(PLAN_CATALOG.pro.overageRatePerMinute),
+      enterprise: formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute),
+    },
+    { nameKey: 'agents', starter: tUnlimited, pro: tUnlimited, enterprise: tUnlimited },
+    { nameKey: 'phones', starter: tUpTo3, pro: tUpTo10, enterprise: tUnlimited },
+    { nameKey: 'inbound', starter: true, pro: true, enterprise: true },
+    { nameKey: 'outbound', starter: false, pro: true, enterprise: true },
+    { nameKey: 'transcripts', starter: true, pro: true, enterprise: true },
+    { nameKey: 'quality', starter: false, pro: true, enterprise: true },
+    { nameKey: 'analytics', starter: true, pro: true, enterprise: true },
+    { nameKey: 'team', starter: tUpTo3, pro: tUpTo10, enterprise: tUnlimited },
+    { nameKey: 'rbac', starter: false, pro: true, enterprise: true },
+    { nameKey: 'api', starter: false, pro: true, enterprise: true },
+    { nameKey: 'crm', starter: false, pro: true, enterprise: true },
+    { nameKey: 'templates', starter: false, pro: true, enterprise: true },
+    { nameKey: 'audit', starter: false, pro: false, enterprise: true },
+    { nameKey: 'multi_loc', starter: false, pro: false, enterprise: true },
+    { nameKey: 'priority', starter: false, pro: true, enterprise: true },
+    { nameKey: 'onboarding', starter: false, pro: false, enterprise: true },
+    { nameKey: 'demo', starter: true, pro: true, enterprise: true },
+    { nameKey: 'trial', starter: true, pro: true, enterprise: true },
+  ];
+
+  const TIER_COPY: Record<'starter' | 'pro' | 'enterprise', { desc: string; popular?: boolean }> = {
+    starter: { desc: t('pricing.tier_copy.starter_desc') },
+    pro: { desc: t('pricing.tier_copy.pro_desc'), popular: true },
+    enterprise: { desc: t('pricing.tier_copy.enterprise_desc') },
+  };
+
+  const tiers = (['starter', 'pro', 'enterprise'] as const).map((key) => {
+    const plan = PLAN_CATALOG[key];
+    const copy = TIER_COPY[key];
+    return {
+      key,
+      name: plan.name,
+      price: getPlanMonthlyPriceWholeDollars(key),
+      desc: copy.desc,
+      popular: copy.popular,
+      minutes: t('pricing.tier_card.minutes_included', { minutes: plan.includedMinutes.toLocaleString() }),
+      overage: t('pricing.tier_card.overage_label', { overage: formatOverageRate(plan.overageRatePerMinute) }),
+    };
+  });
+
+  const overageInterp = {
+    starter: formatOverageRate(PLAN_CATALOG.starter.overageRatePerMinute),
+    pro: formatOverageRate(PLAN_CATALOG.pro.overageRatePerMinute),
+    enterprise: formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute),
+  };
+
+  const faqs = [
+    { q: t('pricing.faq.q1'), a: t('pricing.faq.a1') },
+    { q: t('pricing.faq.q2'), a: t('pricing.faq.a2') },
+    { q: t('pricing.faq.q3'), a: t('pricing.faq.a3', overageInterp) },
+    { q: t('pricing.faq.q4'), a: t('pricing.faq.a4') },
+    { q: t('pricing.faq.q5'), a: t('pricing.faq.a5') },
+    { q: t('pricing.faq.q6'), a: t('pricing.faq.a6') },
+    { q: t('pricing.faq.q7'), a: t('pricing.faq.a7') },
+    { q: t('pricing.faq.q8'), a: t('pricing.faq.a8') },
+  ];
+
+  const complianceBadges = [
+    t('pricing.compliance.soc2'),
+    t('pricing.compliance.hipaa'),
+    t('pricing.compliance.gdpr'),
+    t('pricing.compliance.ccpa'),
+    t('pricing.compliance.tls'),
+    t('pricing.compliance.aes'),
+  ];
 
   const faqSchema = {
     '@context': 'https://schema.org',
@@ -195,25 +186,25 @@ export default function Pricing() {
   return (
     <div>
       <SEO
-        title="Pricing — AI Voice Agent Plans with AI Minutes, Agents & Integrations"
-        description={`QVO pricing starts at $${getPlanMonthlyPriceWholeDollars('starter')}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial.`}
+        title={t('pricing.seo_title')}
+        description={t('pricing.seo_description', { starter: getPlanMonthlyPriceWholeDollars('starter') })}
         canonicalPath="/pricing"
         structuredData={faqSchema}
       />
       <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-            Pricing
+            {t('pricing.hero.eyebrow')}
           </p>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-6">
-            Simple plans, honest pricing.
+            {t('pricing.hero.title')}
           </h1>
           <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-6">
-            Start with a 14-day free trial on any plan. No contracts, no hidden fees. Scale as your business grows.
+            {t('pricing.hero.description')}
           </p>
           <div className="inline-flex items-center gap-2 bg-success/15 border border-success/30 rounded-full px-4 py-1.5 text-success text-sm font-medium">
             <ShieldCheck className="h-4 w-4" />
-            30-day money-back guarantee
+            {t('pricing.hero.guarantee')}
           </div>
         </div>
       </section>
@@ -235,7 +226,7 @@ export default function Pricing() {
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                     <span className="inline-flex items-center gap-1.5 bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm">
                       <Star className="h-3 w-3 fill-current" />
-                      Most Popular
+                      {t('pricing.tier_card.most_popular')}
                     </span>
                   </div>
                 )}
@@ -243,10 +234,10 @@ export default function Pricing() {
                 <p className="text-sm text-text-primary/50 font-body mb-5">{tier.desc}</p>
                 <div className="mb-2">
                   <span className="font-display text-5xl font-bold text-text-primary">${tier.price}</span>
-                  <span className="text-sm text-text-primary/50 font-body">/month</span>
+                  <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
                 </div>
                 <div className="flex flex-col gap-1 mb-6">
-                  <span className="text-xs text-primary font-semibold font-body">{tier.minutes} included</span>
+                  <span className="text-xs text-primary font-semibold font-body">{tier.minutes}</span>
                   <span className="text-xs text-text-primary/40 font-body">{tier.overage}</span>
                 </div>
                 <Link
@@ -258,7 +249,7 @@ export default function Pricing() {
                   }`}
                   onClick={() => trackCTAClick('start_free_trial', 'pricing_card', tier.key)}
                 >
-                  Start free trial
+                  {t('pricing.tier_card.start_trial')}
                   <ArrowRight className="h-4 w-4 inline-block ml-2" />
                 </Link>
               </div>
@@ -270,13 +261,13 @@ export default function Pricing() {
           <div className="max-w-5xl mx-auto mb-20">
             <div className="text-center mb-8">
               <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                Per-minute calculator
+                {t('pricing.calculator.eyebrow')}
               </p>
               <h2 className="font-display text-2xl font-bold text-text-primary mb-3">
-                See your effective price per minute
+                {t('pricing.calculator.title')}
               </h2>
               <p className="text-text-primary/60 font-body max-w-2xl mx-auto">
-                Drag the slider to match your expected monthly volume. We'll show your estimated bill and effective per-minute rate on every plan, using the same rates billed by your usage meter.
+                {t('pricing.calculator.subtitle')}
               </p>
             </div>
             <MinutesPricingCalculator />
@@ -286,19 +277,23 @@ export default function Pricing() {
           <RevealSection>
           <div className="max-w-5xl mx-auto">
             <h2 className="font-display text-2xl font-bold text-text-primary mb-8 text-center">
-              Compare all features
+              {t('pricing.compare.title')}
             </h2>
             <div className="bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border/30 bg-surface-secondary/50">
-                      <th className="text-left py-4 px-6 font-display text-sm font-semibold text-text-primary">Feature</th>
-                      {tiers.map((t) => (
-                        <th key={t.key} className="text-center py-4 px-4 font-display text-sm font-semibold text-text-primary w-36">
-                          <span className={t.popular ? 'text-primary' : ''}>{t.name}</span>
-                          {t.popular && (
-                            <span className="block text-[10px] text-primary font-medium mt-0.5">RECOMMENDED</span>
+                      <th className="text-left py-4 px-6 font-display text-sm font-semibold text-text-primary">
+                        {t('pricing.compare.feature_col')}
+                      </th>
+                      {tiers.map((tier) => (
+                        <th key={tier.key} className="text-center py-4 px-4 font-display text-sm font-semibold text-text-primary w-36">
+                          <span className={tier.popular ? 'text-primary' : ''}>{tier.name}</span>
+                          {tier.popular && (
+                            <span className="block text-[10px] text-primary font-medium mt-0.5">
+                              {t('pricing.tier_card.recommended')}
+                            </span>
                           )}
                         </th>
                       ))}
@@ -307,10 +302,12 @@ export default function Pricing() {
                   <tbody>
                     {features.map((f, i) => (
                       <tr
-                        key={f.name}
+                        key={f.nameKey}
                         className={`transition-colors hover:bg-primary/5 ${i % 2 === 0 ? 'bg-surface-secondary/30' : ''}`}
                       >
-                        <td className="py-3.5 px-6 text-sm text-text-primary/70 font-body">{f.name}</td>
+                        <td className="py-3.5 px-6 text-sm text-text-primary/70 font-body">
+                          {t(`pricing.features_list.${f.nameKey}`)}
+                        </td>
                         <td className="py-3.5 px-4 text-center"><FeatureCell value={f.starter} /></td>
                         <td className={`py-3.5 px-4 text-center ${tiers[1].popular ? 'bg-primary/[0.02]' : ''}`}>
                           <FeatureCell value={f.pro} />
@@ -330,17 +327,10 @@ export default function Pricing() {
       <section className="bg-white py-12 border-t border-border/30">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
           <p className="text-center text-xs font-semibold text-text-primary/40 uppercase tracking-wider mb-6">
-            Enterprise-ready compliance
+            {t('pricing.compliance.eyebrow')}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            {[
-              'SOC 2 Type II (in progress)',
-              'HIPAA available with BAA',
-              'GDPR compliant',
-              'CCPA / CPRA',
-              'TLS 1.2+ in transit',
-              'AES-256 at rest',
-            ].map((badge) => (
+            {complianceBadges.map((badge) => (
               <Link
                 key={badge}
                 to="/security"
@@ -357,13 +347,13 @@ export default function Pricing() {
         <div className="max-w-3xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-              FAQ
+              {t('pricing.faq.eyebrow')}
             </p>
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-              Common questions about billing.
+              {t('pricing.faq.title')}
             </h2>
             <p className="text-text-primary/60 font-body leading-relaxed">
-              Everything you need to know about our plans and pricing.
+              {t('pricing.faq.subtitle')}
             </p>
           </div>
           <div className="bg-white rounded-2xl border border-border/30 px-6 lg:px-8 shadow-sm">
@@ -377,8 +367,8 @@ export default function Pricing() {
       <section className="bg-surface-secondary py-16">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="font-display text-2xl font-bold text-text-primary mb-3">Calculate Your ROI</h2>
-            <p className="text-slate-600">See how much your business could save with QVO AI voice agents.</p>
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-3">{t('pricing.roi.title')}</h2>
+            <p className="text-slate-600">{t('pricing.roi.subtitle')}</p>
           </div>
           <ROICalculator />
         </div>
@@ -386,17 +376,17 @@ export default function Pricing() {
 
       <section className="bg-white py-14 border-t border-border/20">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
-          <LogosStrip title="Teams already running on QVO" />
+          <LogosStrip title={t('pricing.logos.title')} />
         </div>
       </section>
 
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold mb-4">
-            Questions about pricing?
+            {t('pricing.bottom_cta.title')}
           </h2>
           <p className="text-white/60 font-body mb-8">
-            Talk to our team to find the right plan for your practice.
+            {t('pricing.bottom_cta.subtitle')}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
@@ -404,7 +394,7 @@ export default function Pricing() {
               className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] min-h-[44px]"
               onClick={() => trackCTAClick('book_demo', 'pricing_bottom')}
             >
-              Book a demo
+              {t('common.book_a_demo')}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
@@ -412,14 +402,14 @@ export default function Pricing() {
               className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] border border-white/15 hover:border-white/25 min-h-[44px]"
               onClick={() => trackCTAClick('start_free_trial', 'pricing_bottom')}
             >
-              Start free trial
+              {t('common.start_free_trial')}
             </Link>
             <Link
               to="/contact"
               className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
               onClick={() => trackCTAClick('contact_sales', 'pricing_bottom')}
             >
-              Contact sales
+              {t('common.contact_sales')}
             </Link>
           </div>
         </div>

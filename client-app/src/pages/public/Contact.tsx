@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mail, Phone, MapPin, CheckCircle2 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 
 export default function Contact() {
+  const { t } = useTranslation('marketing');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -21,11 +23,11 @@ export default function Contact() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to send message');
+        throw new Error(data.error || t('contact.form.send_default_error'));
       }
       setSubmitted(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to send message. Please try emailing us directly.');
+      setError(err instanceof Error ? err.message : t('contact.form.send_fallback_error'));
     } finally {
       setSubmitting(false);
     }
@@ -34,21 +36,21 @@ export default function Contact() {
   return (
     <div>
       <SEO
-        title="Contact Us — Get in Touch with QVO"
-        description="Have questions about QVO? Contact our team for demos, pricing information, or technical support. We're here to help your business succeed."
+        title={t('contact.seo_title')}
+        description={t('contact.seo_description')}
         canonicalPath="/contact"
       />
       <section className="bg-sidebar-bg text-white py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-              Contact
+              {t('contact.hero.eyebrow')}
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
-              Let's talk about your voice operations.
+              {t('contact.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl">
-              Whether you're evaluating QVO for your practice or need help with an existing account, our team is here.
+              {t('contact.hero.description')}
             </p>
           </div>
         </div>
@@ -64,18 +66,22 @@ export default function Contact() {
                   <div className="w-14 h-14 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-6">
                     <CheckCircle2 className="h-7 w-7 text-success" />
                   </div>
-                  <h2 className="font-display text-2xl font-bold text-text-primary mb-3">Message received.</h2>
+                  <h2 className="font-display text-2xl font-bold text-text-primary mb-3">
+                    {t('contact.form.submitted_title')}
+                  </h2>
                   <p className="text-text-primary/60 font-body">
-                    We'll get back to you within one business day. If your request is urgent, call us directly.
+                    {t('contact.form.submitted_desc')}
                   </p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-border/50 p-8 lg:p-10">
-                  <h2 className="font-display text-xl font-bold text-text-primary mb-6">Send us a message</h2>
+                  <h2 className="font-display text-xl font-bold text-text-primary mb-6">
+                    {t('contact.form.title')}
+                  </h2>
                   <div className="space-y-5">
                     <div className="grid md:grid-cols-2 gap-5">
                       <div>
-                        <label htmlFor="contact-name" className="block text-sm font-medium font-body text-text-primary mb-1.5">Full name</label>
+                        <label htmlFor="contact-name" className="block text-sm font-medium font-body text-text-primary mb-1.5">{t('contact.form.name_label')}</label>
                         <input
                           id="contact-name"
                           type="text"
@@ -83,11 +89,11 @@ export default function Contact() {
                           value={form.name}
                           onChange={(e) => setForm({ ...form, name: e.target.value })}
                           className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                          placeholder="Jane Smith"
+                          placeholder={t('contact.form.name_placeholder')}
                         />
                       </div>
                       <div>
-                        <label htmlFor="contact-email" className="block text-sm font-medium font-body text-text-primary mb-1.5">Email</label>
+                        <label htmlFor="contact-email" className="block text-sm font-medium font-body text-text-primary mb-1.5">{t('contact.form.email_label')}</label>
                         <input
                           id="contact-email"
                           type="email"
@@ -95,23 +101,23 @@ export default function Contact() {
                           value={form.email}
                           onChange={(e) => setForm({ ...form, email: e.target.value })}
                           className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                          placeholder="jane@practice.com"
+                          placeholder={t('contact.form.email_placeholder')}
                         />
                       </div>
                     </div>
                     <div>
-                      <label htmlFor="contact-company" className="block text-sm font-medium font-body text-text-primary mb-1.5">Company or practice name</label>
+                      <label htmlFor="contact-company" className="block text-sm font-medium font-body text-text-primary mb-1.5">{t('contact.form.company_label')}</label>
                       <input
                         id="contact-company"
                         type="text"
                         value={form.company}
                         onChange={(e) => setForm({ ...form, company: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                        placeholder="Bright Smiles Dental"
+                        placeholder={t('contact.form.company_placeholder')}
                       />
                     </div>
                     <div>
-                      <label htmlFor="contact-message" className="block text-sm font-medium font-body text-text-primary mb-1.5">How can we help?</label>
+                      <label htmlFor="contact-message" className="block text-sm font-medium font-body text-text-primary mb-1.5">{t('contact.form.message_label')}</label>
                       <textarea
                         id="contact-message"
                         required
@@ -119,7 +125,7 @@ export default function Contact() {
                         value={form.message}
                         onChange={(e) => setForm({ ...form, message: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition resize-none"
-                        placeholder="Tell us about your call volume, current setup, and what you'd like to improve."
+                        placeholder={t('contact.form.message_placeholder')}
                       />
                     </div>
                     {error && (
@@ -132,7 +138,7 @@ export default function Contact() {
                       disabled={submitting}
                       className="bg-primary hover:bg-primary-hover text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors disabled:opacity-50"
                     >
-                      {submitting ? 'Sending...' : 'Send message'}
+                      {submitting ? t('common.sending') : t('common.send_message')}
                     </button>
                   </div>
                 </form>
@@ -145,9 +151,9 @@ export default function Contact() {
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Mail className="h-4.5 w-4.5 text-primary" />
                   </div>
-                  <h3 className="font-display text-sm font-semibold text-text-primary">Email</h3>
+                  <h3 className="font-display text-sm font-semibold text-text-primary">{t('contact.info.email_label')}</h3>
                 </div>
-                <p className="text-sm text-text-primary/60 font-body">hello@qualityvoiceops.com</p>
+                <p className="text-sm text-text-primary/60 font-body">{t('contact.info.email_value')}</p>
               </div>
 
               <div className="bg-white rounded-2xl border border-border/50 p-7">
@@ -155,9 +161,9 @@ export default function Contact() {
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Phone className="h-4.5 w-4.5 text-primary" />
                   </div>
-                  <h3 className="font-display text-sm font-semibold text-text-primary">Phone</h3>
+                  <h3 className="font-display text-sm font-semibold text-text-primary">{t('contact.info.phone_label')}</h3>
                 </div>
-                <p className="text-sm text-text-primary/60 font-body">Available during business hours</p>
+                <p className="text-sm text-text-primary/60 font-body">{t('contact.info.phone_value')}</p>
               </div>
 
               <div className="bg-white rounded-2xl border border-border/50 p-7">
@@ -165,15 +171,15 @@ export default function Contact() {
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <MapPin className="h-4.5 w-4.5 text-primary" />
                   </div>
-                  <h3 className="font-display text-sm font-semibold text-text-primary">Location</h3>
+                  <h3 className="font-display text-sm font-semibold text-text-primary">{t('contact.info.location_label')}</h3>
                 </div>
-                <p className="text-sm text-text-primary/60 font-body">Remote-first. Serving businesses across the US.</p>
+                <p className="text-sm text-text-primary/60 font-body">{t('contact.info.location_value')}</p>
               </div>
 
               <div className="bg-info-light rounded-2xl p-7">
-                <h3 className="font-display text-sm font-semibold text-text-primary mb-2">Already a customer?</h3>
+                <h3 className="font-display text-sm font-semibold text-text-primary mb-2">{t('contact.info.customer_label')}</h3>
                 <p className="text-sm text-text-primary/60 font-body">
-                  Sign in to your dashboard for account support, or email our support team directly.
+                  {t('contact.info.customer_value')}
                 </p>
               </div>
             </div>

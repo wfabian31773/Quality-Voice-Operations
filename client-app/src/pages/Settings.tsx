@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, type ComponentType } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
@@ -1349,6 +1350,7 @@ const TAB_COMPONENTS: Record<Tab, ComponentType> = {
 };
 
 export default function Settings() {
+  const { t: tenantT } = useTranslation('tenant');
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
   const rawTab = params.tab ?? 'general';
@@ -1379,8 +1381,8 @@ export default function Settings() {
   return (
     <div>
       <PageHeader
-        title="Settings"
-        description="Manage your organization configuration"
+        title={tenantT('settings.page_title')}
+        description={tenantT('settings.page_subtitle')}
         icon={<Settings2 className="h-5 w-5" />}
       />
 

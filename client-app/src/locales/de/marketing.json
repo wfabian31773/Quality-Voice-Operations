@@ -1,0 +1,794 @@
+{
+  "common": {
+    "try_live_demo": "Try Live Demo",
+    "see_use_cases": "See Use Cases",
+    "explore_agents": "Explore Agents",
+    "start_free_trial": "Start Free Trial",
+    "book_demo": "Book a Demo",
+    "talk_to_us": "Talk to us",
+    "book_a_demo": "Book a demo",
+    "see_how_it_works": "See How It Works",
+    "explore_marketplace": "Explore Marketplace",
+    "view_all_integrations": "View all integrations",
+    "contact_sales": "Contact sales",
+    "send_message": "Send message",
+    "sending": "Sending...",
+    "trusted_by": "Trusted by"
+  },
+  "landing": {
+    "seo_title": "QVO — AI Voice Agents That Run Your Business",
+    "seo_description": "AI voice agents for call answering, appointment scheduling, and business automation. AI receptionist and call automation for HVAC, medical offices, dental, legal, and more.",
+    "hero": {
+      "badge": "AI-Powered Voice Platform",
+      "title_highlight": "AI Voice Agents",
+      "title_rest": " That Run Your Business",
+      "description": "Deploy intelligent voice agents that answer calls, book appointments, dispatch technicians, and answer customer questions — 24/7, on autopilot.",
+      "benefits": {
+        "never_miss_call": "Never Miss a Call",
+        "book_appointments": "Book Appointments Automatically",
+        "dispatch_technicians": "Dispatch Technicians Instantly",
+        "answer_questions": "Answer Questions 24/7"
+      }
+    },
+    "stats": {
+      "calls_handled": "Calls Handled",
+      "agents_deployed": "Agents Deployed",
+      "uptime": "Uptime",
+      "industries_served": "Industries Served",
+      "soc2_in_progress": "SOC 2 in progress",
+      "hipaa_ready": "HIPAA-ready",
+      "gdpr_compliant": "GDPR compliant",
+      "aes_encryption": "AES-256 encryption"
+    },
+    "industries": {
+      "healthcare": "Healthcare",
+      "legal": "Legal",
+      "real_estate": "Real Estate",
+      "home_services": "Home Services",
+      "finance": "Finance",
+      "support": "Support",
+      "insurance": "Insurance"
+    },
+    "problem": {
+      "eyebrow": "The Problem",
+      "title": "Every Missed Call Is a Missed Opportunity",
+      "subtitle": "Small businesses lose thousands in revenue every month to unanswered calls, slow response times, and overwhelmed front desks.",
+      "missed_calls_title": "Missed Calls",
+      "missed_calls_desc": "67% of callers won't leave a voicemail — every missed call is lost revenue.",
+      "staffing_title": "High Staffing Costs",
+      "staffing_desc": "Full-time receptionists cost $35K+/year per location with turnover and training overhead.",
+      "manual_title": "Manual Call Centers",
+      "manual_desc": "Outsourced centers lack context about your business and frustrate callers.",
+      "slow_lead_title": "Slow Lead Response",
+      "slow_lead_desc": "Leads contacted after 5 minutes are 10x less likely to convert."
+    },
+    "solution": {
+      "eyebrow": "The Solution",
+      "title": "QVO Handles It All",
+      "subtitle": "One platform to answer calls, run campaigns, and automate your entire voice operations.",
+      "voice_agents_title": "AI Voice Agents",
+      "voice_agents_desc": "Natural-sounding agents that understand context and handle complex conversations.",
+      "outbound_title": "Outbound Campaigns",
+      "outbound_desc": "Automated outreach for appointment reminders, follow-ups, and lead nurturing.",
+      "crm_title": "CRM Integrations",
+      "crm_desc": "Sync with your existing tools — contacts, appointments, and notes flow automatically.",
+      "always_on_title": "24/7 Call Answering",
+      "always_on_desc": "Never miss a call again. Your AI agent works nights, weekends, and holidays.",
+      "sms_title": "SMS Follow-ups",
+      "sms_desc": "Automatic text confirmations, reminders, and follow-up messages after every call.",
+      "analytics_title": "Call Analytics",
+      "analytics_desc": "Real-time dashboards with call outcomes, sentiment, and conversion tracking."
+    },
+    "marketplace": {
+      "badge": "Agent Marketplace",
+      "title": "Pre-Built Agents, Ready to Deploy",
+      "subtitle": "Choose from industry-specific agent templates. Customize scripts, personality, and integrations — then go live in minutes.",
+      "medical": {
+        "name": "Medical Receptionist",
+        "desc": "Handles patient intake, appointment scheduling, prescription refill requests, and insurance verification.",
+        "example": "\"I'd like to schedule a checkup.\" → Books appointment, sends confirmation SMS",
+        "cap_appointment": "Appointment booking",
+        "cap_triage": "Patient triage",
+        "cap_insurance": "Insurance checks",
+        "cap_hipaa": "HIPAA compliant"
+      },
+      "legal": {
+        "name": "Legal Intake",
+        "desc": "Qualifies potential clients, captures case details, and schedules consultations with the right attorney.",
+        "example": "\"I need help with a car accident claim.\" → Captures details, books consultation",
+        "cap_qualification": "Case qualification",
+        "cap_conflict": "Conflict checks",
+        "cap_consultation": "Consultation scheduling",
+        "cap_documents": "Document collection"
+      },
+      "real_estate": {
+        "name": "Real Estate Lead",
+        "desc": "Captures buyer/seller leads, answers property questions, and books showings automatically.",
+        "example": "\"Is the house on Oak St still available?\" → Answers questions, schedules showing",
+        "cap_lead": "Lead capture",
+        "cap_qa": "Property Q&A",
+        "cap_showing": "Showing scheduler",
+        "cap_crm": "CRM sync"
+      },
+      "support": {
+        "name": "Customer Support",
+        "desc": "Resolves common inquiries, processes returns, checks order status, and escalates when needed.",
+        "example": "\"Where's my order #4521?\" → Checks status, provides ETA and tracking link",
+        "cap_ticket": "Ticket creation",
+        "cap_order": "Order tracking",
+        "cap_returns": "Returns processing",
+        "cap_escalation": "Smart escalation"
+      },
+      "collections": {
+        "name": "Collections",
+        "desc": "Professional payment reminder calls with compliant scripts, payment plan setup, and promise-to-pay tracking.",
+        "example": "\"Can I set up a payment plan?\" → Negotiates terms, sends payment link",
+        "cap_reminder": "Payment reminders",
+        "cap_plan": "Plan negotiation",
+        "cap_compliance": "Compliance scripts",
+        "cap_payment": "Payment links"
+      },
+      "hvac": {
+        "name": "HVAC / Home Services",
+        "desc": "Handles service calls, triages emergencies, dispatches technicians, and sends customers real-time ETAs via SMS.",
+        "example": "\"My AC stopped working.\" → Captures details, dispatches tech, sends ETA",
+        "cap_intake": "Service call intake",
+        "cap_emergency": "Emergency triage",
+        "cap_dispatch": "Tech dispatch",
+        "cap_eta": "SMS ETAs"
+      }
+    },
+    "industry_section": {
+      "badge": "Built for your industry",
+      "title_pre": "Purpose-built voice AI for the way ",
+      "title_emph": "your industry",
+      "title_post": " actually works.",
+      "description": "Every vertical has its own jargon, compliance rules, and customer expectations. QVO ships pre-trained templates, integrations, and call flows for the industries where voice matters most."
+    },
+    "platform_capabilities": {
+      "badge": "Platform Capabilities",
+      "title": "Everything You Need to Automate Voice Operations",
+      "subtitle": "A complete toolkit for managing AI voice agents, campaigns, and analytics in one place.",
+      "voice_engine_title": "Voice AI Engine",
+      "voice_engine_desc": "Natural language understanding with real-time speech synthesis and emotion detection.",
+      "campaign_title": "Campaign Automation",
+      "campaign_desc": "Schedule and launch outbound calling campaigns with dynamic scripts and branching logic.",
+      "analytics_title": "Analytics Dashboard",
+      "analytics_desc": "Track call volume, outcomes, agent performance, and ROI in real-time dashboards.",
+      "customization_title": "Agent Customization",
+      "customization_desc": "Fine-tune voice, personality, scripts, and escalation rules for each agent.",
+      "api_title": "API Integrations",
+      "api_desc": "Connect to 50+ tools including Salesforce, HubSpot, Calendly, and custom webhooks.",
+      "security_title": "Enterprise Security",
+      "security_desc": "SOC 2 compliant, encrypted calls, role-based access, and audit logging."
+    },
+    "results": {
+      "badge": "Customer Results",
+      "title": "Real Businesses, Real Results",
+      "subtitle": "See how businesses across industries are transforming their operations with QVO.",
+      "real_estate": {
+        "metric": "400%",
+        "metric_label": "Faster Lead Response",
+        "industry": "Real Estate",
+        "quote": "QVO answers every inquiry within seconds. Our agents went from chasing leads to closing deals. Response time dropped from 4 hours to under a minute.",
+        "name": "Marcus Rivera",
+        "role": "Broker, Summit Realty Group"
+      },
+      "medical": {
+        "metric": "40%",
+        "metric_label": "Fewer Missed Calls",
+        "industry": "Medical",
+        "quote": "During flu season, our front desk was drowning. QVO handled overflow so seamlessly that patients thought they were speaking to our staff.",
+        "name": "Dr. Sarah Chen",
+        "role": "Practice Owner, Bright Smiles Dental"
+      },
+      "legal": {
+        "metric": "2x",
+        "metric_label": "Conversion Rate",
+        "industry": "Legal",
+        "quote": "We doubled our consultation bookings by capturing after-hours intake calls. Every potential client gets a professional first impression now.",
+        "name": "James Whitfield",
+        "role": "Managing Partner, Summit Legal"
+      }
+    },
+    "testimonials": {
+      "badge": "In Their Words",
+      "title": "Hear it straight from operators.",
+      "subtitle": "Real teams replacing missed calls and overwhelmed front desks with QVO."
+    },
+    "comparison": {
+      "badge": "How We Compare",
+      "title": "QVO vs. the alternatives.",
+      "subtitle": "A side-by-side look at QVO, voice-AI toolkits, and traditional answering services."
+    },
+    "security": {
+      "badge": "Security & Compliance",
+      "title": "Enterprise-grade security built in.",
+      "subtitle": "Your data and your customers' data are protected at every layer.",
+      "hipaa_ready": "HIPAA Ready",
+      "soc2": "SOC 2 Compliant",
+      "aes": "AES-256 Encryption",
+      "audit_logs": "Full Audit Logs"
+    },
+    "bottom_cta": {
+      "title": "Deploy Your First AI Voice Agent Today",
+      "subtitle": "Join hundreds of businesses using QVO to automate calls, capture leads, and grow revenue. No contracts, cancel anytime.",
+      "try_live": "Try the Live Demo"
+    }
+  },
+  "product": {
+    "seo_title": "Platform Overview — AI Voice Operations Command Center",
+    "seo_description": "QVO platform overview: AI voice agents, call handling, appointment scheduling, technician dispatch, outbound campaigns, and real-time analytics for small businesses.",
+    "hero": {
+      "eyebrow": "Product",
+      "title": "A voice operations command center for your business.",
+      "description": "QVO combines call handling, scheduling, routing, follow-up logic, and team visibility in one system. Every call is answered, every outcome is tracked."
+    },
+    "intro": {
+      "title": "Everything your front desk does, automated and visible.",
+      "subtitle": "From the first ring to the follow-up task, QVO handles the complete voice operations workflow."
+    },
+    "capabilities": {
+      "voice_agents_title": "AI voice agents",
+      "voice_agents_desc": "Purpose-built voice agents that answer calls, collect information, and handle conversations with natural language understanding. Configurable per industry template.",
+      "call_handling_title": "Real-time call handling",
+      "call_handling_desc": "Calls are answered immediately, 24/7. The AI agent engages callers in natural conversation, captures details, and routes based on your rules.",
+      "routing_title": "Smart routing and escalation",
+      "routing_desc": "Define routing rules based on caller intent, urgency, time of day, or department. Escalate to on-call staff when the situation demands it.",
+      "scheduling_title": "Scheduling and intake",
+      "scheduling_desc": "Book appointments, collect patient intake information, and confirm details — all within the call flow. Integrates with your existing scheduling systems.",
+      "campaigns_title": "Campaign dialing",
+      "campaigns_desc": "Run outbound campaigns to reach patients, clients, or leads. Automated dialing with answering machine detection and outcome classification.",
+      "analytics_title": "Operational analytics",
+      "analytics_desc": "Real-time dashboards showing call volume, conversion rates, cost per call, agent performance, and campaign success metrics.",
+      "qa_title": "Quality assurance",
+      "qa_desc": "Every call is scored for quality. Review transcripts, track prompt versions, and continuously improve agent performance.",
+      "alerts_title": "Alerts and notifications",
+      "alerts_desc": "Get notified about missed calls, urgent escalations, and system events via SMS, email, or webhook integrations.",
+      "multitenant_title": "Multi-tenant architecture",
+      "multitenant_desc": "Manage multiple locations, teams, or client organizations from one platform. Full isolation between tenants with role-based access control.",
+      "transcripts_title": "Transcripts and recordings",
+      "transcripts_desc": "Full conversation transcripts and call recordings for compliance, training, and operational review. PHI redaction built in.",
+      "afterhours_title": "After-hours coverage",
+      "afterhours_desc": "Your voice operations never sleep. Calls are handled with the same quality at 2 AM as they are at 2 PM.",
+      "numbers_title": "Number management",
+      "numbers_desc": "Provision local or toll-free numbers, assign them to agents, and configure routing — all from the dashboard."
+    },
+    "workflow": {
+      "eyebrow": "How it works",
+      "title": "Live in three steps.",
+      "subtitle": "From sign-up to your first answered call in under 15 minutes.",
+      "step_label": "Step {{n}}: {{title}}",
+      "configure_title": "Configure Agent",
+      "configure_desc": "Choose an industry template, customize the voice and prompts, and set your routing rules.",
+      "configure_d1": "Select from healthcare, legal, or custom templates",
+      "configure_d2": "Tune voice personality and tone",
+      "configure_d3": "Define escalation triggers",
+      "connect_title": "Connect Number",
+      "connect_desc": "Provision a number or bring your own. Assign it to your agent and set call handling preferences.",
+      "connect_d1": "Provision local or toll-free numbers instantly",
+      "connect_d2": "Port existing numbers seamlessly",
+      "connect_d3": "Configure after-hours and overflow rules",
+      "live_title": "Go Live",
+      "live_desc": "Start taking calls. Monitor performance, review transcripts, and refine your agent over time.",
+      "live_d1": "Real-time call monitoring dashboard",
+      "live_d2": "Automated quality scoring from day one",
+      "live_d3": "Continuous improvement with prompt versioning"
+    },
+    "agent_workflow": {
+      "eyebrow": "Agent Workflow",
+      "title": "From call to resolution, fully automated.",
+      "subtitle": "Every call follows a proven flow — your AI agent handles each step in real time.",
+      "industry_workflows": "Industry-specific workflows"
+    },
+    "tools_section": {
+      "eyebrow": "Built-in Tools",
+      "title": "Every tool your agent needs, ready to go.",
+      "subtitle": "Your AI agents don't just talk — they take action. Scheduling, CRM updates, ticket creation, and SMS follow-ups happen in real time.",
+      "calendar_title": "Calendar Scheduling",
+      "calendar_desc": "Book, reschedule, and confirm appointments directly within the call flow.",
+      "crm_title": "CRM Lookup",
+      "crm_desc": "Pull caller history, contact details, and interaction records instantly.",
+      "ticket_title": "Ticket Creation",
+      "ticket_desc": "Auto-create support tickets with full context from the conversation.",
+      "sms_title": "SMS Confirmation",
+      "sms_desc": "Send instant text confirmations, reminders, and follow-ups after every call."
+    },
+    "screenshots_section": {
+      "eyebrow": "See it in action",
+      "title": "Your voice operations command center.",
+      "subtitle": "Every call, every outcome, every metric — visible from one dashboard.",
+      "call_history_title": "Call History",
+      "call_history_desc": "Complete log of every call with transcripts, outcomes, and quality scores.",
+      "analytics_title": "Analytics Dashboard",
+      "analytics_desc": "Real-time metrics on call volume, conversion rates, and agent performance.",
+      "config_title": "Agent Configuration",
+      "config_desc": "Visual editor for prompts, routing rules, and voice personality settings.",
+      "creation_title": "Agent Creation",
+      "creation_desc": "Step-by-step wizard to configure and deploy a new AI voice agent from industry templates.",
+      "prompt_title": "Prompt Editor",
+      "prompt_desc": "Version-controlled prompt editor with test playground for refining agent behavior.",
+      "transcript_title": "Transcript View",
+      "transcript_desc": "Full conversation transcripts with tool execution indicators and call metadata."
+    },
+    "platform_features": {
+      "eyebrow": "Platform Features",
+      "title": "Built for voice operations at scale.",
+      "voice_ai_title": "Voice AI Automation",
+      "voice_ai_desc": "Natural language understanding with real-time speech synthesis powers every conversation.",
+      "tool_int_title": "Tool Integration Ecosystem",
+      "tool_int_desc": "Connect to 50+ tools including CRMs, calendars, EHRs, and custom webhooks.",
+      "multi_agent_title": "Multi-Agent Orchestration",
+      "multi_agent_desc": "Deploy specialized agents for different use cases, all managed from one platform.",
+      "realtime_title": "Real-Time Analytics",
+      "realtime_desc": "Track call volume, outcomes, agent performance, and ROI in real-time dashboards."
+    },
+    "integrations_section": {
+      "eyebrow": "Integrations",
+      "title": "Connects to the tools you already use.",
+      "subtitle": "Sync call data, trigger workflows, and push outcomes to your CRM, calendar, or EHR system.",
+      "ehr": "EHR Systems",
+      "calendar": "Google Calendar",
+      "salesforce": "Salesforce",
+      "hubspot": "HubSpot",
+      "slack": "Slack",
+      "webhooks": "Webhooks",
+      "zapier": "Zapier",
+      "custom_api": "Custom API"
+    },
+    "security_section": {
+      "eyebrow": "Security & Compliance",
+      "title": "Built for regulated industries.",
+      "subtitle": "Enterprise-grade security and compliance controls baked into every layer of the platform.",
+      "hipaa_title": "HIPAA Ready",
+      "hipaa_desc": "Built for healthcare compliance with BAA support and PHI safeguards.",
+      "phi_title": "PHI Redaction",
+      "phi_desc": "Automatic detection and redaction of protected health information in transcripts.",
+      "rls_title": "Row-Level Security",
+      "rls_desc": "Tenant data isolation enforced at the database level with RLS policies.",
+      "encryption_title": "Encryption at Rest",
+      "encryption_desc": "All data encrypted at rest and in transit using industry-standard AES-256."
+    },
+    "deeper": {
+      "eyebrow": "Go deeper",
+      "title": "Three product surfaces worth a closer look",
+      "subtitle": "Federated Ingest brings external agents under one roof, the Global Intelligence Network benchmarks you against your peers, and Vertical Agents skip the blank prompt entirely.",
+      "ingest_eyebrow": "For developers",
+      "ingest_title": "Federated Ingest",
+      "ingest_desc": "Post calls from any external voice agent into QVO over HTTPS and inherit analytics, billing, and the tool engine.",
+      "ingest_cta": "Read the developer pitch",
+      "gin_eyebrow": "For operators",
+      "gin_title": "Global Intelligence Network",
+      "gin_desc": "Opt-in, anonymized cross-tenant benchmarks for your vertical — and prompt patterns the top quartile uses.",
+      "gin_cta": "See how GIN works",
+      "vertical_eyebrow": "For practices and crews",
+      "vertical_title": "Vertical Agents",
+      "vertical_desc": "Native agents like Azul Vision plus templates for medical, dental, field service, legal, and real estate.",
+      "vertical_cta": "Browse the catalog"
+    },
+    "bottom_cta": {
+      "title": "See it in action.",
+      "subtitle": "Try our live demo agents or start your free trial today.",
+      "try_demo": "Try the demo",
+      "start_trial": "Start free trial"
+    }
+  },
+  "features": {
+    "seo_title": "Features — AI Voice Agent Platform Capabilities",
+    "seo_description": "Explore QVO's platform features: Voice AI Runtime, Agent Builder, Tool Execution Engine, Live Operations Dashboard, Knowledge RAG System, and Integration Framework.",
+    "hero": {
+      "eyebrow": "Platform Features",
+      "title": "Everything you need to automate voice operations.",
+      "description": "Six core platform capabilities and five mini systems that work together to handle calls, execute actions, and give you complete operational visibility."
+    },
+    "architecture": {
+      "title": "Platform Architecture",
+      "subtitle": "A modular architecture where each subsystem handles a specific responsibility, working together to deliver end-to-end voice automation.",
+      "voice_runtime": "Voice AI Runtime",
+      "agent_builder": "Agent Builder",
+      "tool_engine": "Tool Engine",
+      "knowledge_rag": "Knowledge RAG",
+      "integrations": "Integrations",
+      "security_layer": "Security Layer",
+      "footer": "All subsystems communicate through event-driven APIs with full audit logging"
+    },
+    "capabilities": {
+      "voice_runtime_title": "Voice AI Runtime",
+      "voice_runtime_desc": "Real-time speech-to-text and text-to-speech engine with natural language understanding, emotion detection, and multi-turn conversation management.",
+      "voice_runtime_d1": "Sub-200ms response latency",
+      "voice_runtime_d2": "Multi-language support",
+      "voice_runtime_d3": "Speaker diarization",
+      "voice_runtime_d4": "Emotion and sentiment analysis",
+      "voice_runtime_d5": "Noise cancellation and echo removal",
+      "agent_builder_title": "Agent Builder",
+      "agent_builder_desc": "Visual configuration tool for creating AI voice agents. Choose industry templates, customize scripts, set routing rules, and define escalation triggers without writing code.",
+      "agent_builder_d1": "Industry-specific templates",
+      "agent_builder_d2": "Drag-and-drop prompt editor",
+      "agent_builder_d3": "Voice personality tuning",
+      "agent_builder_d4": "Conditional routing logic",
+      "agent_builder_d5": "Version-controlled prompts",
+      "tool_engine_title": "Tool Execution Engine",
+      "tool_engine_desc": "Agents take actions during calls in real time — booking appointments, creating tickets, looking up records, and dispatching technicians through connected integrations.",
+      "tool_engine_d1": "Real-time tool invocation during calls",
+      "tool_engine_d2": "Parallel tool execution",
+      "tool_engine_d3": "Error handling and retry logic",
+      "tool_engine_d4": "Audit logging for every action",
+      "tool_engine_d5": "Custom tool definitions via API",
+      "dashboard_title": "Live Operations Dashboard",
+      "dashboard_desc": "Monitor every call, agent, and campaign from a single pane. Real-time metrics on call volume, resolution rates, quality scores, and conversion tracking.",
+      "dashboard_d1": "Real-time call monitoring",
+      "dashboard_d2": "Agent performance scorecards",
+      "dashboard_d3": "Campaign ROI tracking",
+      "dashboard_d4": "Quality assurance scoring",
+      "dashboard_d5": "Custom report builder",
+      "knowledge_title": "Knowledge + RAG System",
+      "knowledge_desc": "Upload documents, FAQs, and product catalogs. Agents use retrieval-augmented generation to answer caller questions accurately with sourced information.",
+      "knowledge_d1": "Document ingestion (PDF, DOCX, CSV)",
+      "knowledge_d2": "Automatic chunking and indexing",
+      "knowledge_d3": "Source attribution in responses",
+      "knowledge_d4": "Knowledge base versioning",
+      "knowledge_d5": "Per-agent knowledge scoping",
+      "integration_title": "Integration Framework",
+      "integration_desc": "Connect QVO to your existing tools with pre-built connectors and a flexible webhook/API system. Push call data, trigger workflows, and sync records automatically.",
+      "integration_d1": "Pre-built CRM connectors",
+      "integration_d2": "Calendar system integration",
+      "integration_d3": "Webhook delivery with retries",
+      "integration_d4": "REST API with full CRUD",
+      "integration_d5": "Zapier and Make support"
+    },
+    "mini_systems": {
+      "badge": "Built-In Operations Suite",
+      "title": "Integrated systems that power your agents.",
+      "subtitle": "Every QVO agent has access to these built-in systems — no external tools required for core operations.",
+      "scheduling_title": "Scheduling System",
+      "scheduling_desc": "Built-in appointment scheduling with availability checks, conflict detection, and automatic confirmations. Syncs with Google Calendar and practice management systems.",
+      "ticketing_title": "Ticketing System",
+      "ticketing_desc": "Create, route, and track service tickets directly from call conversations. Priority classification, assignment rules, and SLA tracking included.",
+      "sms_title": "SMS Messaging",
+      "sms_desc": "Send appointment confirmations, follow-up messages, and ETA updates via SMS. Two-way messaging for callback coordination and reminders.",
+      "dispatch_title": "Dispatch System",
+      "dispatch_desc": "Assign and dispatch field technicians based on availability, location, and skill set. Automated SMS notifications with real-time ETA updates.",
+      "tracking_title": "Customer Tracking",
+      "tracking_desc": "Maintain caller profiles with interaction history, preferences, and notes. Build a complete picture of every customer relationship over time."
+    },
+    "bottom_cta": {
+      "title": "Build Your First Agent Today",
+      "subtitle": "Start with a pre-built template or create a custom agent from scratch. Deploy in minutes, not weeks."
+    }
+  },
+  "pricing": {
+    "seo_title": "Pricing — AI Voice Agent Plans with AI Minutes, Agents & Integrations",
+    "seo_description": "QVO pricing starts at ${{starter}}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial.",
+    "hero": {
+      "eyebrow": "Pricing",
+      "title": "Simple plans, honest pricing.",
+      "description": "Start with a 14-day free trial on any plan. No contracts, no hidden fees. Scale as your business grows.",
+      "guarantee": "30-day money-back guarantee"
+    },
+    "tier_copy": {
+      "starter_desc": "For small practices getting started with voice automation.",
+      "pro_desc": "For growing businesses that need campaigns and integrations.",
+      "enterprise_desc": "For multi-location organizations with high call volume."
+    },
+    "tier_card": {
+      "most_popular": "Most Popular",
+      "per_month": "/month",
+      "minutes_included": "{{minutes}} AI minutes included",
+      "overage_label": "{{overage}} overage",
+      "start_trial": "Start free trial",
+      "recommended": "RECOMMENDED"
+    },
+    "calculator": {
+      "eyebrow": "Per-minute calculator",
+      "title": "See your effective price per minute",
+      "subtitle": "Drag the slider to match your expected monthly volume. We'll show your estimated bill and effective per-minute rate on every plan, using the same rates billed by your usage meter."
+    },
+    "compare": {
+      "title": "Compare all features",
+      "feature_col": "Feature"
+    },
+    "features_list": {
+      "ai_minutes": "AI minutes included",
+      "overage": "Overage rate",
+      "agents": "Voice agents",
+      "phones": "Phone numbers",
+      "inbound": "Inbound call handling",
+      "outbound": "Outbound campaigns",
+      "transcripts": "Call transcripts",
+      "quality": "Quality scoring",
+      "analytics": "Analytics dashboard",
+      "team": "Team members",
+      "rbac": "Role-based access",
+      "api": "API access",
+      "crm": "CRM integrations",
+      "templates": "Custom agent templates",
+      "audit": "Audit logs",
+      "multi_loc": "Multi-location support",
+      "priority": "Priority support",
+      "onboarding": "Dedicated onboarding",
+      "demo": "Interactive demo access",
+      "trial": "14-day free trial",
+      "unlimited": "Unlimited",
+      "up_to_3": "Up to 3",
+      "up_to_10": "Up to 10"
+    },
+    "compliance": {
+      "eyebrow": "Enterprise-ready compliance",
+      "soc2": "SOC 2 Type II (in progress)",
+      "hipaa": "HIPAA available with BAA",
+      "gdpr": "GDPR compliant",
+      "ccpa": "CCPA / CPRA",
+      "tls": "TLS 1.2+ in transit",
+      "aes": "AES-256 at rest"
+    },
+    "faq": {
+      "eyebrow": "FAQ",
+      "title": "Common questions about billing.",
+      "subtitle": "Everything you need to know about our plans and pricing.",
+      "q1": "How does the 14-day free trial work?",
+      "a1": "You get full access to all features on your chosen plan for 14 days. No credit card required to start. If you decide not to continue, your account is simply paused — no charges.",
+      "q2": "What counts as an AI minute?",
+      "a2": "An AI minute is one minute of active call time handled by your voice agent. Hold time, ringing, and system processing are not counted. Only actual conversation time is billed.",
+      "q3": "What happens if I exceed my included minutes?",
+      "a3": "You'll be billed at your plan's overage rate for any minutes beyond your monthly allocation. Starter plans pay {{starter}}, Pro pays {{pro}}, and Enterprise pays {{enterprise}}.",
+      "q4": "Can I change plans at any time?",
+      "a4": "Yes. Upgrade or downgrade at any time from your account settings. When upgrading, you get immediate access to the new features. Downgrades take effect at the start of your next billing cycle.",
+      "q5": "Are there any contracts or commitments?",
+      "a5": "No. All plans are month-to-month with no long-term contracts. You can cancel at any time and your account will remain active through the end of your current billing period.",
+      "q6": "Do you offer annual pricing?",
+      "a6": "Yes. Annual billing saves you 20% compared to monthly pricing. Contact our sales team or select annual billing during signup to get the discounted rate.",
+      "q7": "Is there a setup fee?",
+      "a7": "No setup fees on any plan. Starter and Pro plans are entirely self-service. Enterprise plans include dedicated onboarding at no additional cost.",
+      "q8": "What payment methods do you accept?",
+      "a8": "We accept all major credit cards (Visa, Mastercard, American Express) and ACH bank transfers for annual Enterprise plans. Invoicing is available for Enterprise customers."
+    },
+    "roi": {
+      "title": "Calculate Your ROI",
+      "subtitle": "See how much your business could save with QVO AI voice agents."
+    },
+    "logos": {
+      "title": "Teams already running on QVO"
+    },
+    "bottom_cta": {
+      "title": "Questions about pricing?",
+      "subtitle": "Talk to our team to find the right plan for your practice."
+    }
+  },
+  "use_cases": {
+    "seo_title": "Use Cases — AI Voice Agent Scenarios for Every Business",
+    "seo_description": "See how businesses use QVO AI voice agents for HVAC service dispatch, appointment scheduling, after-hours answering, customer intake, and lead qualification.",
+    "hero": {
+      "eyebrow": "Use Cases",
+      "title": "Real-world scenarios, solved by AI voice agents.",
+      "description": "Five common business scenarios where QVO replaces manual processes with intelligent, automated voice handling — from emergency dispatch to lead qualification."
+    },
+    "labels": {
+      "the_problem": "The Problem",
+      "how_qvo_solves": "How QVO Solves It",
+      "workflow": "Workflow",
+      "tools_used": "Tools Used",
+      "key_metrics": "Key Metrics"
+    },
+    "scenarios": {
+      "hvac": {
+        "title": "HVAC Service Dispatch",
+        "subtitle": "Emergency triage, technician dispatch, and real-time ETAs",
+        "problem": "After-hours HVAC emergencies go to voicemail. Dispatchers manually coordinate technicians with no visibility into availability. Customers wait hours with no updates.",
+        "solution": "QVO answers every service call 24/7, triages emergencies (gas leaks, no-heat, no-AC), and dispatches the nearest available technician automatically. Customers get SMS updates with real-time ETAs.",
+        "step1": "Caller describes the issue — AI captures location, equipment, and symptoms",
+        "step2": "Urgency classifier flags safety risks (gas leak, carbon monoxide)",
+        "step3": "Dispatch system assigns nearest available technician by skill and geography",
+        "step4": "SMS sent to customer with technician name and live ETA",
+        "step5": "Service ticket created with full call transcript and issue details",
+        "tool1": "Technician dispatch",
+        "tool2": "SMS gateway",
+        "tool3": "Service ticket system",
+        "tool4": "Scheduling calendar",
+        "tool5": "GPS routing",
+        "metric1_label": "Response time",
+        "metric1_value": "< 30 seconds",
+        "metric2_label": "Dispatch speed",
+        "metric2_value": "5 min avg",
+        "metric3_label": "Calls captured",
+        "metric3_value": "100%"
+      },
+      "scheduling": {
+        "title": "Appointment Scheduling",
+        "subtitle": "Book, reschedule, and confirm appointments during the call",
+        "problem": "Front desk staff juggle scheduling with check-ins, leading to missed calls and booking errors. Patients and clients wait on hold or call back later — and often don't.",
+        "solution": "QVO handles appointment scheduling entirely within the call. It checks real-time availability, books the appointment, sends a confirmation SMS, and logs everything in your calendar system.",
+        "step1": "Caller requests an appointment — AI identifies the provider or service type",
+        "step2": "Real-time availability checked against calendar system",
+        "step3": "Appointment booked with confirmation details read back to caller",
+        "step4": "SMS confirmation sent with date, time, location, and prep instructions",
+        "step5": "Calendar system updated and reminder sequence triggered",
+        "tool1": "Calendar API",
+        "tool2": "Practice management system",
+        "tool3": "SMS confirmations",
+        "tool4": "Reminder scheduler",
+        "tool5": "Patient database",
+        "metric1_label": "Booking rate",
+        "metric1_value": "94%",
+        "metric2_label": "SMS confirmations",
+        "metric2_value": "Instant",
+        "metric3_label": "No-show reduction",
+        "metric3_value": "35%"
+      },
+      "after_hours": {
+        "title": "After-Hours Answering",
+        "subtitle": "24/7 professional call handling when your office is closed",
+        "problem": "67% of callers won't leave a voicemail. After-hours calls to competitors mean lost patients, lost clients, and lost revenue. Overnight answering services lack context about your business.",
+        "solution": "QVO answers after-hours calls with the same quality and knowledge as your best receptionist. It handles scheduling, FAQs, urgency triage, and escalation — all with full business context from your knowledge base.",
+        "step1": "Call answered with professional greeting customized to your business",
+        "step2": "AI identifies caller intent using natural language understanding",
+        "step3": "Routine requests handled immediately (scheduling, FAQs, directions)",
+        "step4": "Urgent matters escalated to on-call staff with full context via SMS",
+        "step5": "Complete call summary and transcript ready for morning review",
+        "tool1": "Knowledge base",
+        "tool2": "On-call roster",
+        "tool3": "SMS escalation",
+        "tool4": "Call transcript system",
+        "tool5": "Scheduling API",
+        "metric1_label": "Coverage",
+        "metric1_value": "24/7/365",
+        "metric2_label": "Answer rate",
+        "metric2_value": "100%",
+        "metric3_label": "Resolution rate",
+        "metric3_value": "87%"
+      },
+      "intake": {
+        "title": "Customer Intake",
+        "subtitle": "Structured intake conversations that capture every detail",
+        "problem": "Intake forms are incomplete because details are lost between calls. Staff spend time on repetitive questions instead of higher-value work. No standardization across intake calls.",
+        "solution": "QVO conducts structured intake conversations that capture all required information in a single call. Every question is asked, every answer is recorded, and the complete intake record flows into your system automatically.",
+        "step1": "Caller identified and matched to existing records (or new record created)",
+        "step2": "Structured intake interview conducted with required fields",
+        "step3": "Information validated and confirmed with caller",
+        "step4": "Intake record created in case management or EHR system",
+        "step5": "Follow-up tasks assigned to the appropriate team member",
+        "tool1": "Case management system",
+        "tool2": "EHR integration",
+        "tool3": "Patient database",
+        "tool4": "Document generation",
+        "tool5": "Task assignment",
+        "metric1_label": "Data completeness",
+        "metric1_value": "98%",
+        "metric2_label": "Intake time",
+        "metric2_value": "4 min avg",
+        "metric3_label": "Staff time saved",
+        "metric3_value": "60%"
+      },
+      "qualification": {
+        "title": "Lead Qualification",
+        "subtitle": "Score and route inbound leads in real time",
+        "problem": "Leads contacted after 5 minutes are 10x less likely to convert. Sales teams spend hours on unqualified leads. After-hours inquiries sit until morning while competitors respond instantly.",
+        "solution": "QVO qualifies every inbound lead in real time — capturing contact info, budget, timeline, and needs. High-value leads are warm-transferred or flagged for immediate callback. Every lead gets a professional first impression.",
+        "step1": "Inbound call or inquiry answered immediately",
+        "step2": "AI conducts qualifying questions (budget, timeline, decision-maker)",
+        "step3": "Lead scored based on configurable criteria",
+        "step4": "High-priority leads warm-transferred or flagged for urgent callback",
+        "step5": "Lead record synced to CRM with full conversation context",
+        "tool1": "Lead scoring engine",
+        "tool2": "CRM integration",
+        "tool3": "SMS follow-up",
+        "tool4": "Calendar booking",
+        "tool5": "Call transfer system",
+        "metric1_label": "Qualification rate",
+        "metric1_value": "92%",
+        "metric2_label": "Response time",
+        "metric2_value": "< 10 sec",
+        "metric3_label": "Conversion lift",
+        "metric3_value": "2x"
+      }
+    },
+    "mid_cta": {
+      "title": "See these scenarios in action",
+      "subtitle": "Try our interactive demo to experience how QVO handles real conversations across industries. No signup required.",
+      "try_demo": "Try the Demo",
+      "explore_features": "Explore Features"
+    },
+    "bottom_cta": {
+      "title": "Don't see your use case?",
+      "subtitle": "QVO's agent platform is fully configurable. Contact us to discuss your specific scenario."
+    }
+  },
+  "demo": {
+    "seo_title": "Live Demo — See QVO AI Voice Agents in Action",
+    "seo_description": "Experience QVO's AI voice agents live. Watch real-time call handling, see how conversations flow, and explore the analytics dashboard.",
+    "celebration": {
+      "title": "Demo Complete!",
+      "subtitle": "Great experience, right?"
+    },
+    "hero": {
+      "eyebrow": "Live Demo",
+      "title": "Experience QVO live.",
+      "description": "Choose an agent below and call to watch the conversation unfold in real-time. No signup required."
+    },
+    "config_warning": "Demo phone lines are not yet provisioned. The demo system is ready but requires phone numbers to accept calls.",
+    "agent_picker": {
+      "title": "Choose a Demo Agent",
+      "subtitle": "Select an agent to see its details and try it out.",
+      "empty": "No demo agents configured yet."
+    },
+    "phone_card": {
+      "demo_line": "Demo line",
+      "not_configured": "Not configured",
+      "awaiting_real": "Demo line — awaiting real number",
+      "ask_admin": "Contact your administrator to provision a Twilio number",
+      "call_to_try": "Call to try it"
+    },
+    "status": {
+      "active": "Call Active",
+      "idle": "Idle",
+      "listening": "Listening..."
+    },
+    "stats_card": {
+      "title": "Demo Stats",
+      "label": "Total Demo Calls",
+      "rate_limit": "Rate limited to 5 calls per hour per caller"
+    },
+    "footer_note": "Demo calls are handled by the same system used in production.",
+    "conversion": {
+      "experienced": "You just experienced QVO",
+      "title": "Deploy your own AI voice agents in minutes",
+      "subtitle": "What you just heard is the same technology powering hundreds of businesses. Get started with your own custom voice agents today.",
+      "feat1_title": "5-Minute Setup",
+      "feat1_desc": "Deploy your first agent in minutes, not weeks",
+      "feat2_title": "HIPAA Ready",
+      "feat2_desc": "Enterprise-grade security built in",
+      "feat3_title": "24/7 Coverage",
+      "feat3_desc": "Never miss a call again"
+    }
+  },
+  "resources_page": {
+    "seo_title": "Resources — Guides & Documentation",
+    "hero": {
+      "eyebrow": "Resources",
+      "title": "Guides & documentation.",
+      "description": "Step-by-step guides, integration tutorials, and best practices to help you get the most from QVO."
+    },
+    "categories": {
+      "title": "Browse by category"
+    },
+    "guides": {
+      "title": "All guides",
+      "showing": "Showing {{count}} of {{total}}",
+      "no_results": "No guides match your search.",
+      "minutes": "{{count}} min read"
+    }
+  },
+  "contact": {
+    "seo_title": "Contact Us — Get in Touch with QVO",
+    "seo_description": "Have questions about QVO? Contact our team for demos, pricing information, or technical support. We're here to help your business succeed.",
+    "hero": {
+      "eyebrow": "Contact",
+      "title": "Let's talk about your voice operations.",
+      "description": "Whether you're evaluating QVO for your practice or need help with an existing account, our team is here."
+    },
+    "form": {
+      "submitted_title": "Message received.",
+      "submitted_desc": "We'll get back to you within one business day. If your request is urgent, call us directly.",
+      "title": "Send us a message",
+      "name_label": "Full name",
+      "name_placeholder": "Jane Smith",
+      "email_label": "Email",
+      "email_placeholder": "jane@practice.com",
+      "company_label": "Company or practice name",
+      "company_placeholder": "Bright Smiles Dental",
+      "message_label": "How can we help?",
+      "message_placeholder": "Tell us about your call volume, current setup, and what you'd like to improve.",
+      "send_default_error": "Failed to send message",
+      "send_fallback_error": "Failed to send message. Please try emailing us directly."
+    },
+    "info": {
+      "email_label": "Email",
+      "email_value": "hello@qualityvoiceops.com",
+      "phone_label": "Phone",
+      "phone_value": "Available during business hours",
+      "location_label": "Location",
+      "location_value": "Remote-first. Serving businesses across the US.",
+      "customer_label": "Already a customer?",
+      "customer_value": "Sign in to your dashboard for account support, or email our support team directly."
+    }
+  }
+}

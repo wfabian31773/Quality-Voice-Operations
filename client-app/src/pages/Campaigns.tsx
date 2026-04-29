@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
 import {
@@ -1622,6 +1623,7 @@ function getCampaignTypeIcon(type: string) {
 }
 
 export default function Campaigns() {
+  const { t: tenantT } = useTranslation('tenant');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | ''>('');
@@ -1652,8 +1654,8 @@ export default function Campaigns() {
   return (
     <div>
       <PageHeader
-        title="Automation"
-        description="Create and manage outbound calling campaigns"
+        title={tenantT('campaigns.page_title')}
+        description={tenantT('campaigns.page_subtitle')}
         icon={<Megaphone className="h-5 w-5" />}
         actions={
           isManager ? (

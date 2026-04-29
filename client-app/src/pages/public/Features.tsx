@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Mic, Settings, Zap, LayoutDashboard, BookOpen, Plug,
   Calendar, Ticket, MessageSquare, Truck, Users, ArrowRight,
@@ -9,128 +10,110 @@ import RevealSection from '../../components/RevealSection';
 import { useEffect } from 'react';
 import { trackPageView, trackFeatureView, trackCTAClick } from '../../lib/analytics';
 
-const platformCapabilities = [
-  {
-    icon: Mic,
-    title: 'Voice AI Runtime',
-    desc: 'Real-time speech-to-text and text-to-speech engine with natural language understanding, emotion detection, and multi-turn conversation management.',
-    details: [
-      'Sub-200ms response latency',
-      'Multi-language support',
-      'Speaker diarization',
-      'Emotion and sentiment analysis',
-      'Noise cancellation and echo removal',
-    ],
-  },
-  {
-    icon: Settings,
-    title: 'Agent Builder',
-    desc: 'Visual configuration tool for creating AI voice agents. Choose industry templates, customize scripts, set routing rules, and define escalation triggers without writing code.',
-    details: [
-      'Industry-specific templates',
-      'Drag-and-drop prompt editor',
-      'Voice personality tuning',
-      'Conditional routing logic',
-      'Version-controlled prompts',
-    ],
-  },
-  {
-    icon: Zap,
-    title: 'Tool Execution Engine',
-    desc: 'Agents take actions during calls in real time — booking appointments, creating tickets, looking up records, and dispatching technicians through connected integrations.',
-    details: [
-      'Real-time tool invocation during calls',
-      'Parallel tool execution',
-      'Error handling and retry logic',
-      'Audit logging for every action',
-      'Custom tool definitions via API',
-    ],
-  },
-  {
-    icon: LayoutDashboard,
-    title: 'Live Operations Dashboard',
-    desc: 'Monitor every call, agent, and campaign from a single pane. Real-time metrics on call volume, resolution rates, quality scores, and conversion tracking.',
-    details: [
-      'Real-time call monitoring',
-      'Agent performance scorecards',
-      'Campaign ROI tracking',
-      'Quality assurance scoring',
-      'Custom report builder',
-    ],
-  },
-  {
-    icon: BookOpen,
-    title: 'Knowledge + RAG System',
-    desc: 'Upload documents, FAQs, and product catalogs. Agents use retrieval-augmented generation to answer caller questions accurately with sourced information.',
-    details: [
-      'Document ingestion (PDF, DOCX, CSV)',
-      'Automatic chunking and indexing',
-      'Source attribution in responses',
-      'Knowledge base versioning',
-      'Per-agent knowledge scoping',
-    ],
-  },
-  {
-    icon: Plug,
-    title: 'Integration Framework',
-    desc: 'Connect QVO to your existing tools with pre-built connectors and a flexible webhook/API system. Push call data, trigger workflows, and sync records automatically.',
-    details: [
-      'Pre-built CRM connectors',
-      'Calendar system integration',
-      'Webhook delivery with retries',
-      'REST API with full CRUD',
-      'Zapier and Make support',
-    ],
-  },
-];
-
-const miniSystems = [
-  {
-    icon: Calendar,
-    title: 'Scheduling System',
-    desc: 'Built-in appointment scheduling with availability checks, conflict detection, and automatic confirmations. Syncs with Google Calendar and practice management systems.',
-  },
-  {
-    icon: Ticket,
-    title: 'Ticketing System',
-    desc: 'Create, route, and track service tickets directly from call conversations. Priority classification, assignment rules, and SLA tracking included.',
-  },
-  {
-    icon: MessageSquare,
-    title: 'SMS Messaging',
-    desc: 'Send appointment confirmations, follow-up messages, and ETA updates via SMS. Two-way messaging for callback coordination and reminders.',
-  },
-  {
-    icon: Truck,
-    title: 'Dispatch System',
-    desc: 'Assign and dispatch field technicians based on availability, location, and skill set. Automated SMS notifications with real-time ETA updates.',
-  },
-  {
-    icon: Users,
-    title: 'Customer Tracking',
-    desc: 'Maintain caller profiles with interaction history, preferences, and notes. Build a complete picture of every customer relationship over time.',
-  },
-];
-
-const architectureBlocks = [
-  { icon: Cpu, label: 'Voice AI Runtime', color: 'bg-primary/15 text-primary' },
-  { icon: Bot, label: 'Agent Builder', color: 'bg-sidebar-bg/15 text-text-primary' },
-  { icon: Zap, label: 'Tool Engine', color: 'bg-accent/15 text-accent' },
-  { icon: Database, label: 'Knowledge RAG', color: 'bg-success/15 text-success' },
-  { icon: Plug, label: 'Integrations', color: 'bg-primary/15 text-primary' },
-  { icon: Shield, label: 'Security Layer', color: 'bg-danger/15 text-danger' },
-];
-
 export default function Features() {
+  const { t } = useTranslation('marketing');
+
   useEffect(() => {
     trackPageView('/features');
   }, []);
 
+  const platformCapabilities = [
+    {
+      icon: Mic,
+      title: t('features.capabilities.voice_runtime_title'),
+      desc: t('features.capabilities.voice_runtime_desc'),
+      details: [
+        t('features.capabilities.voice_runtime_d1'),
+        t('features.capabilities.voice_runtime_d2'),
+        t('features.capabilities.voice_runtime_d3'),
+        t('features.capabilities.voice_runtime_d4'),
+        t('features.capabilities.voice_runtime_d5'),
+      ],
+    },
+    {
+      icon: Settings,
+      title: t('features.capabilities.agent_builder_title'),
+      desc: t('features.capabilities.agent_builder_desc'),
+      details: [
+        t('features.capabilities.agent_builder_d1'),
+        t('features.capabilities.agent_builder_d2'),
+        t('features.capabilities.agent_builder_d3'),
+        t('features.capabilities.agent_builder_d4'),
+        t('features.capabilities.agent_builder_d5'),
+      ],
+    },
+    {
+      icon: Zap,
+      title: t('features.capabilities.tool_engine_title'),
+      desc: t('features.capabilities.tool_engine_desc'),
+      details: [
+        t('features.capabilities.tool_engine_d1'),
+        t('features.capabilities.tool_engine_d2'),
+        t('features.capabilities.tool_engine_d3'),
+        t('features.capabilities.tool_engine_d4'),
+        t('features.capabilities.tool_engine_d5'),
+      ],
+    },
+    {
+      icon: LayoutDashboard,
+      title: t('features.capabilities.dashboard_title'),
+      desc: t('features.capabilities.dashboard_desc'),
+      details: [
+        t('features.capabilities.dashboard_d1'),
+        t('features.capabilities.dashboard_d2'),
+        t('features.capabilities.dashboard_d3'),
+        t('features.capabilities.dashboard_d4'),
+        t('features.capabilities.dashboard_d5'),
+      ],
+    },
+    {
+      icon: BookOpen,
+      title: t('features.capabilities.knowledge_title'),
+      desc: t('features.capabilities.knowledge_desc'),
+      details: [
+        t('features.capabilities.knowledge_d1'),
+        t('features.capabilities.knowledge_d2'),
+        t('features.capabilities.knowledge_d3'),
+        t('features.capabilities.knowledge_d4'),
+        t('features.capabilities.knowledge_d5'),
+      ],
+    },
+    {
+      icon: Plug,
+      title: t('features.capabilities.integration_title'),
+      desc: t('features.capabilities.integration_desc'),
+      details: [
+        t('features.capabilities.integration_d1'),
+        t('features.capabilities.integration_d2'),
+        t('features.capabilities.integration_d3'),
+        t('features.capabilities.integration_d4'),
+        t('features.capabilities.integration_d5'),
+      ],
+    },
+  ];
+
+  const miniSystems = [
+    { icon: Calendar, title: t('features.mini_systems.scheduling_title'), desc: t('features.mini_systems.scheduling_desc') },
+    { icon: Ticket, title: t('features.mini_systems.ticketing_title'), desc: t('features.mini_systems.ticketing_desc') },
+    { icon: MessageSquare, title: t('features.mini_systems.sms_title'), desc: t('features.mini_systems.sms_desc') },
+    { icon: Truck, title: t('features.mini_systems.dispatch_title'), desc: t('features.mini_systems.dispatch_desc') },
+    { icon: Users, title: t('features.mini_systems.tracking_title'), desc: t('features.mini_systems.tracking_desc') },
+  ];
+
+  const architectureBlocks = [
+    { icon: Cpu, label: t('features.architecture.voice_runtime'), color: 'bg-primary/15 text-primary' },
+    { icon: Bot, label: t('features.architecture.agent_builder'), color: 'bg-sidebar-bg/15 text-text-primary' },
+    { icon: Zap, label: t('features.architecture.tool_engine'), color: 'bg-accent/15 text-accent' },
+    { icon: Database, label: t('features.architecture.knowledge_rag'), color: 'bg-success/15 text-success' },
+    { icon: Plug, label: t('features.architecture.integrations'), color: 'bg-primary/15 text-primary' },
+    { icon: Shield, label: t('features.architecture.security_layer'), color: 'bg-danger/15 text-danger' },
+  ];
+
   return (
     <div>
       <SEO
-        title="Features — AI Voice Agent Platform Capabilities"
-        description="Explore QVO's platform features: Voice AI Runtime, Agent Builder, Tool Execution Engine, Live Operations Dashboard, Knowledge RAG System, and Integration Framework."
+        title={t('features.seo_title')}
+        description={t('features.seo_description')}
         canonicalPath="/features"
       />
 
@@ -138,13 +121,13 @@ export default function Features() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-              Platform Features
+              {t('features.hero.eyebrow')}
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
-              Everything you need to automate voice operations.
+              {t('features.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl mb-8">
-              Six core platform capabilities and five mini systems that work together to handle calls, execute actions, and give you complete operational visibility.
+              {t('features.hero.description')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
@@ -152,7 +135,7 @@ export default function Features() {
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Try Live Demo', '/features', 'hero')}
               >
-                Try Live Demo
+                {t('common.try_live_demo')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -160,7 +143,7 @@ export default function Features() {
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
                 onClick={() => trackCTAClick('See Use Cases', '/features', 'hero')}
               >
-                See Use Cases
+                {t('common.see_use_cases')}
               </Link>
             </div>
           </div>
@@ -172,10 +155,10 @@ export default function Features() {
           <RevealSection>
             <div className="text-center mb-14">
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Platform Architecture
+                {t('features.architecture.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                A modular architecture where each subsystem handles a specific responsibility, working together to deliver end-to-end voice automation.
+                {t('features.architecture.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -198,7 +181,7 @@ export default function Features() {
                 </div>
                 <div className="mt-6 pt-6 border-t border-border/20 text-center">
                   <p className="text-xs text-text-primary/40 font-body">
-                    All subsystems communicate through event-driven APIs with full audit logging
+                    {t('features.architecture.footer')}
                   </p>
                 </div>
               </div>
@@ -245,13 +228,13 @@ export default function Features() {
           <RevealSection>
             <div className="text-center mb-14">
               <span className="inline-block text-sm font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full mb-4">
-                Built-In Operations Suite
+                {t('features.mini_systems.badge')}
               </span>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Integrated systems that power your agents.
+                {t('features.mini_systems.title')}
               </h2>
               <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
-                Every QVO agent has access to these built-in systems — no external tools required for core operations.
+                {t('features.mini_systems.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -281,10 +264,10 @@ export default function Features() {
         <RevealSection>
           <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="font-display text-3xl lg:text-4xl font-bold text-white mb-4">
-              Build Your First Agent Today
+              {t('features.bottom_cta.title')}
             </h2>
             <p className="text-lg text-white/60 font-body mb-10 max-w-xl mx-auto">
-              Start with a pre-built template or create a custom agent from scratch. Deploy in minutes, not weeks.
+              {t('features.bottom_cta.subtitle')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
@@ -292,7 +275,7 @@ export default function Features() {
                 className="btn-primary-glow inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-on-primary font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm min-h-[44px]"
                 onClick={() => trackCTAClick('Start Free Trial', '/features', 'bottom-cta')}
               >
-                Start Free Trial
+                {t('common.start_free_trial')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -300,7 +283,7 @@ export default function Features() {
                 className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
                 onClick={() => trackCTAClick('Try Live Demo', '/features', 'bottom-cta')}
               >
-                Try Live Demo
+                {t('common.try_live_demo')}
               </Link>
             </div>
           </div>

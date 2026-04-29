@@ -1,0 +1,96 @@
+{
+  "platform_admin": {
+    "page_title": "Administración de la plataforma",
+    "page_subtitle": "Gestión de inquilinos, versionado de plantillas, salud de facturación y diagnósticos a nivel plataforma",
+    "tabs": {
+      "overview": "Visión general",
+      "tenants": "Tenants",
+      "users": "Usuarios",
+      "billing": "Facturación",
+      "voice_models": "Modelos de voz",
+      "integrations": "Integraciones",
+      "feature_flags": "Banderas de funciones",
+      "system_health": "Salud del sistema",
+      "audit": "Registro de auditoría",
+      "deployments": "Despliegues"
+    },
+    "overview": {
+      "active_tenants": "Tenants activos",
+      "active_users": "Usuarios activos",
+      "calls_24h": "Llamadas (24 h)",
+      "platform_uptime": "Disponibilidad de la plataforma",
+      "revenue_mtd": "Ingresos (mes en curso)",
+      "incidents": "Incidentes abiertos"
+    },
+    "tenants": {
+      "title": "Tenants",
+      "create": "Crear tenant",
+      "search_placeholder": "Buscar por nombre o dominio",
+      "table": {
+        "name": "Nombre",
+        "plan": "Plan",
+        "users": "Usuarios",
+        "minutes": "Minutos (mes)",
+        "status": "Estado",
+        "created": "Creado",
+        "actions": "Acciones"
+      },
+      "actions": {
+        "view": "Ver",
+        "suspend": "Suspender",
+        "activate": "Activar",
+        "delete": "Eliminar"
+      }
+    },
+    "users": {
+      "title": "Usuarios",
+      "invite": "Invitar usuario",
+      "table": {
+        "name": "Nombre",
+        "email": "Correo",
+        "tenant": "Tenant",
+        "role": "Rol",
+        "last_seen": "Visto por última vez",
+        "status": "Estado"
+      }
+    },
+    "feature_flags": {
+      "title": "Banderas de funciones",
+      "subtitle": "Activa o desactiva funciones a nivel plataforma o por tenant.",
+      "global": "Global",
+      "per_tenant": "Por tenant",
+      "enabled": "Habilitada",
+      "disabled": "Deshabilitada"
+    },
+    "system_health": {
+      "title": "Salud del sistema",
+      "subtitle": "Vista en vivo de servicios, colas y dependencias.",
+      "service": "Servicio",
+      "status": "Estado",
+      "latency": "Latencia",
+      "error_rate": "Tasa de error",
+      "operational": "Operativo",
+      "degraded": "Degradado",
+      "outage": "Caído"
+    },
+    "audit": {
+      "title": "Registro de auditoría",
+      "subtitle": "Cada acción administrativa en la plataforma.",
+      "table": {
+        "time": "Hora",
+        "actor": "Actor",
+        "action": "Acción",
+        "target": "Objetivo",
+        "ip": "IP"
+      }
+    },
+    "common": {
+      "loading": "Cargando...",
+      "error": "Algo salió mal",
+      "retry": "Reintentar",
+      "no_data": "Sin datos",
+      "save": "Guardar",
+      "cancel": "Cancelar"
+    }
+  }
+}

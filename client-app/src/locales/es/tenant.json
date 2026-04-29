@@ -1,0 +1,208 @@
+{
+  "dashboard": {
+    "page_title": "Tablero",
+    "page_subtitle": "Lo que está pasando hoy, lo que funciona y lo que requiere atención",
+    "stats": {
+      "calls_today": "Llamadas hoy",
+      "answered": "Atendidas",
+      "missed": "Perdidas",
+      "avg_duration": "Duración promedio",
+      "active_agents": "Agentes activos",
+      "minutes_used": "Minutos usados"
+    },
+    "sections": {
+      "recent_calls": "Llamadas recientes",
+      "quick_actions": "Acciones rápidas",
+      "agent_status": "Estado de los agentes",
+      "alerts": "Alertas",
+      "performance": "Desempeño"
+    },
+    "empty_state": "Aún sin datos — cuando tus agentes reciban llamadas aparecerán aquí.",
+    "view_all": "Ver todo"
+  },
+  "calls": {
+    "page_title": "Conversaciones",
+    "page_subtitle": "Explora y revisa llamadas pasadas con sus transcripciones",
+    "filters": {
+      "all": "Todas",
+      "inbound": "Entrantes",
+      "outbound": "Salientes",
+      "answered": "Atendidas",
+      "missed": "Perdidas",
+      "transferred": "Transferidas",
+      "search_placeholder": "Busca por teléfono, agente o transcripción",
+      "from_date": "Desde",
+      "to_date": "Hasta",
+      "agent": "Agente",
+      "outcome": "Resultado",
+      "clear": "Limpiar filtros"
+    },
+    "table": {
+      "time": "Hora",
+      "caller": "Quien llama",
+      "agent": "Agente",
+      "duration": "Duración",
+      "outcome": "Resultado",
+      "quality": "Calidad",
+      "actions": "Acciones"
+    },
+    "detail": {
+      "transcript": "Transcripción",
+      "tools_used": "Herramientas usadas",
+      "metadata": "Metadatos",
+      "recording": "Grabación",
+      "summary": "Resumen",
+      "outcome_label": "Resultado",
+      "tags": "Etiquetas",
+      "back_to_calls": "Volver a llamadas"
+    },
+    "empty": "Ninguna llamada coincide con tus filtros."
+  },
+  "agents": {
+    "page_title": "Agentes",
+    "page_subtitle": "Administra tus agentes de voz con IA",
+    "actions": {
+      "create": "Crear agente",
+      "duplicate": "Duplicar",
+      "delete": "Eliminar",
+      "deploy": "Desplegar",
+      "test": "Probar",
+      "edit": "Editar"
+    },
+    "card": {
+      "active": "Activo",
+      "draft": "Borrador",
+      "paused": "Pausado",
+      "calls_handled": "Llamadas atendidas",
+      "avg_quality": "Calidad promedio",
+      "last_active": "Última actividad"
+    },
+    "empty": "Aún no tienes agentes. Crea el primero para comenzar.",
+    "templates": {
+      "title": "Empieza desde una plantilla",
+      "subtitle": "Elige una vertical para acelerar la configuración del agente."
+    }
+  },
+  "agent_builder": {
+    "page_title": "Generador de agentes",
+    "tabs": {
+      "overview": "Visión general",
+      "prompt": "Prompt",
+      "voice": "Voz",
+      "tools": "Herramientas",
+      "knowledge": "Conocimiento",
+      "routing": "Enrutamiento",
+      "test": "Pruebas",
+      "deploy": "Desplegar",
+      "history": "Historial"
+    },
+    "fields": {
+      "name": "Nombre del agente",
+      "description": "Descripción",
+      "industry": "Plantilla por industria",
+      "voice_id": "Voz",
+      "language": "Idioma",
+      "first_message": "Primer mensaje",
+      "system_prompt": "Prompt del sistema",
+      "fallback_message": "Mensaje de respaldo"
+    },
+    "actions": {
+      "save": "Guardar",
+      "save_and_deploy": "Guardar y desplegar",
+      "discard": "Descartar cambios",
+      "test_call": "Llamada de prueba",
+      "back": "Volver"
+    },
+    "save_status": {
+      "saved": "Cambios guardados",
+      "saving": "Guardando...",
+      "unsaved": "Cambios sin guardar"
+    }
+  },
+  "campaigns": {
+    "page_title": "Automatización",
+    "page_subtitle": "Crea y gestiona campañas de llamadas salientes",
+    "actions": {
+      "create": "Nueva campaña",
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "stop": "Detener",
+      "duplicate": "Duplicar"
+    },
+    "stats": {
+      "contacts": "Contactos",
+      "completed": "Completadas",
+      "in_progress": "En progreso",
+      "scheduled": "Programadas",
+      "success_rate": "Tasa de éxito"
+    },
+    "table": {
+      "name": "Nombre",
+      "status": "Estado",
+      "agent": "Agente",
+      "progress": "Progreso",
+      "started": "Iniciada",
+      "actions": "Acciones"
+    },
+    "empty": "Aún no hay campañas. Crea la primera para comenzar el alcance."
+  },
+  "settings": {
+    "page_title": "Configuración",
+    "tabs": {
+      "general": "General",
+      "team": "Equipo",
+      "billing": "Facturación",
+      "numbers": "Números telefónicos",
+      "integrations": "Integraciones",
+      "notifications": "Notificaciones",
+      "security": "Seguridad",
+      "api_keys": "Claves de API",
+      "webhooks": "Webhooks",
+      "audit": "Registro de auditoría"
+    },
+    "general": {
+      "tenant_name": "Nombre de la organización",
+      "timezone": "Zona horaria",
+      "default_language": "Idioma predeterminado",
+      "logo": "Logo",
+      "branding": "Marca"
+    },
+    "billing": {
+      "plan": "Plan actual",
+      "minutes_used": "Minutos usados este mes",
+      "next_invoice": "Próxima factura",
+      "payment_method": "Método de pago",
+      "manage_subscription": "Administrar suscripción",
+      "view_invoices": "Ver facturas"
+    },
+    "team": {
+      "invite": "Invitar miembro",
+      "role": "Rol",
+      "status": "Estado",
+      "remove": "Quitar",
+      "resend_invite": "Reenviar invitación"
+    },
+    "save": "Guardar cambios",
+    "saved": "Configuración guardada",
+    "page_subtitle": "Administra la configuración de tu organización"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Algo salió mal",
+    "retry": "Reintentar",
+    "no_data": "Sin datos",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "export": "Exportar",
+    "refresh": "Actualizar",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "save": "Guardar",
+    "view": "Ver",
+    "yes": "Sí",
+    "no": "No"
+  }
+}

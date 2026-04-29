@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertTriangle } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
@@ -595,6 +596,7 @@ function AgentModal({
 }
 
 export default function Agents() {
+  const { t: tenantT } = useTranslation('tenant');
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
   const [prefillRecommendedVoice, setPrefillRecommendedVoice] = useState(false);
   const navigate = useNavigate();
@@ -706,8 +708,8 @@ export default function Agents() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Agents"
-        description="Manage your AI voice agents"
+        title={tenantT('agents.page_title')}
+        description={tenantT('agents.page_subtitle')}
         actions={isManager ? (
           <TooltipWalkthrough
             tooltipKey="agents-create"

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Phone, Clock, Calendar, BarChart3, Shield, ArrowRight,
   Zap, GitBranch, Layers, Bot, Bell, FileText,
@@ -20,151 +21,45 @@ import WorkflowDiagram, {
   hvacWorkflow,
 } from '../../components/WorkflowDiagram';
 
-const capabilities = [
-  {
-    icon: Bot,
-    title: 'AI voice agents',
-    desc: 'Purpose-built voice agents that answer calls, collect information, and handle conversations with natural language understanding. Configurable per industry template.',
-  },
-  {
-    icon: Phone,
-    title: 'Real-time call handling',
-    desc: 'Calls are answered immediately, 24/7. The AI agent engages callers in natural conversation, captures details, and routes based on your rules.',
-  },
-  {
-    icon: GitBranch,
-    title: 'Smart routing and escalation',
-    desc: 'Define routing rules based on caller intent, urgency, time of day, or department. Escalate to on-call staff when the situation demands it.',
-  },
-  {
-    icon: Calendar,
-    title: 'Scheduling and intake',
-    desc: 'Book appointments, collect patient intake information, and confirm details — all within the call flow. Integrates with your existing scheduling systems.',
-  },
-  {
-    icon: Zap,
-    title: 'Campaign dialing',
-    desc: 'Run outbound campaigns to reach patients, clients, or leads. Automated dialing with answering machine detection and outcome classification.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Operational analytics',
-    desc: 'Real-time dashboards showing call volume, conversion rates, cost per call, agent performance, and campaign success metrics.',
-  },
-  {
-    icon: Shield,
-    title: 'Quality assurance',
-    desc: 'Every call is scored for quality. Review transcripts, track prompt versions, and continuously improve agent performance.',
-  },
-  {
-    icon: Bell,
-    title: 'Alerts and notifications',
-    desc: 'Get notified about missed calls, urgent escalations, and system events via SMS, email, or webhook integrations.',
-  },
-  {
-    icon: Layers,
-    title: 'Multi-tenant architecture',
-    desc: 'Manage multiple locations, teams, or client organizations from one platform. Full isolation between tenants with role-based access control.',
-  },
-  {
-    icon: FileText,
-    title: 'Transcripts and recordings',
-    desc: 'Full conversation transcripts and call recordings for compliance, training, and operational review. PHI redaction built in.',
-  },
-  {
-    icon: Clock,
-    title: 'After-hours coverage',
-    desc: 'Your voice operations never sleep. Calls are handled with the same quality at 2 AM as they are at 2 PM.',
-  },
-  {
-    icon: Phone,
-    title: 'Number management',
-    desc: 'Provision local or toll-free numbers, assign them to agents, and configure routing — all from the dashboard.',
-  },
-];
-
-const setupSteps = [
-  {
-    step: 1,
-    icon: Settings,
-    title: 'Configure Agent',
-    desc: 'Choose an industry template, customize the voice and prompts, and set your routing rules.',
-    details: ['Select from healthcare, legal, or custom templates', 'Tune voice personality and tone', 'Define escalation triggers'],
-  },
-  {
-    step: 2,
-    icon: PhoneCall,
-    title: 'Connect Number',
-    desc: 'Provision a number or bring your own. Assign it to your agent and set call handling preferences.',
-    details: ['Provision local or toll-free numbers instantly', 'Port existing numbers seamlessly', 'Configure after-hours and overflow rules'],
-  },
-  {
-    step: 3,
-    icon: Rocket,
-    title: 'Go Live',
-    desc: 'Start taking calls. Monitor performance, review transcripts, and refine your agent over time.',
-    details: ['Real-time call monitoring dashboard', 'Automated quality scoring from day one', 'Continuous improvement with prompt versioning'],
-  },
-];
-
-const dashboardScreenshots = [
-  {
-    icon: LayoutDashboard,
-    title: 'Call History',
-    desc: 'Complete log of every call with transcripts, outcomes, and quality scores.',
-    gradient: 'from-primary/20 to-primary/5',
-    image: '/assets/screenshots/call-history.png',
-  },
-  {
-    icon: Activity,
-    title: 'Analytics Dashboard',
-    desc: 'Real-time metrics on call volume, conversion rates, and agent performance.',
-    gradient: 'from-success/20 to-success/5',
-    image: '/assets/screenshots/analytics-dashboard.png',
-  },
-  {
-    icon: Sliders,
-    title: 'Agent Configuration',
-    desc: 'Visual editor for prompts, routing rules, and voice personality settings.',
-    gradient: 'from-accent/20 to-accent/5',
-    image: '/assets/screenshots/agent-config.png',
-  },
-  {
-    icon: Bot,
-    title: 'Agent Creation',
-    desc: 'Step-by-step wizard to configure and deploy a new AI voice agent from industry templates.',
-    gradient: 'from-primary/15 to-sidebar-bg/10',
-    image: '/assets/screenshots/agent-creation.png',
-  },
-  {
-    icon: FileText,
-    title: 'Prompt Editor',
-    desc: 'Version-controlled prompt editor with test playground for refining agent behavior.',
-    gradient: 'from-sidebar-bg/15 to-info-light/10',
-    image: '/assets/screenshots/prompt-editor.png',
-  },
-  {
-    icon: PhoneCall,
-    title: 'Transcript View',
-    desc: 'Full conversation transcripts with tool execution indicators and call metadata.',
-    gradient: 'from-success/15 to-primary/10',
-    image: '/assets/screenshots/transcript-view.png',
-  },
-];
-
-const securityBadges = [
-  { icon: ShieldCheck, title: 'HIPAA Ready', desc: 'Built for healthcare compliance with BAA support and PHI safeguards.' },
-  { icon: Eye, title: 'PHI Redaction', desc: 'Automatic detection and redaction of protected health information in transcripts.' },
-  { icon: Lock, title: 'Row-Level Security', desc: 'Tenant data isolation enforced at the database level with RLS policies.' },
-  { icon: Database, title: 'Encryption at Rest', desc: 'All data encrypted at rest and in transit using industry-standard AES-256.' },
-];
-
-const integrations = [
-  'EHR Systems', 'Google Calendar', 'Salesforce', 'HubSpot', 'Slack', 'Webhooks', 'Zapier', 'Custom API',
-];
-
 function WorkflowSection() {
+  const { t } = useTranslation('marketing');
   const [activeStep, setActiveStep] = useState(0);
+
+  const setupSteps = [
+    {
+      step: 1,
+      icon: Settings,
+      title: t('product.workflow.configure_title'),
+      desc: t('product.workflow.configure_desc'),
+      details: [
+        t('product.workflow.configure_d1'),
+        t('product.workflow.configure_d2'),
+        t('product.workflow.configure_d3'),
+      ],
+    },
+    {
+      step: 2,
+      icon: PhoneCall,
+      title: t('product.workflow.connect_title'),
+      desc: t('product.workflow.connect_desc'),
+      details: [
+        t('product.workflow.connect_d1'),
+        t('product.workflow.connect_d2'),
+        t('product.workflow.connect_d3'),
+      ],
+    },
+    {
+      step: 3,
+      icon: Rocket,
+      title: t('product.workflow.live_title'),
+      desc: t('product.workflow.live_desc'),
+      details: [
+        t('product.workflow.live_d1'),
+        t('product.workflow.live_d2'),
+        t('product.workflow.live_d3'),
+      ],
+    },
+  ];
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -180,13 +75,13 @@ function WorkflowSection() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-16">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-            How it works
+            {t('product.workflow.eyebrow')}
           </p>
           <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-            Live in three steps.
+            {t('product.workflow.title')}
           </h2>
           <p className="text-text-primary/60 font-body leading-relaxed">
-            From sign-up to your first answered call in under 15 minutes.
+            {t('product.workflow.subtitle')}
           </p>
         </div>
 
@@ -207,7 +102,7 @@ function WorkflowSection() {
                 <button
                   key={s.step}
                   type="button"
-                  aria-label={`Step ${s.step}: ${s.title}`}
+                  aria-label={t('product.workflow.step_label', { n: s.step, title: s.title })}
                   className="relative flex flex-col items-center text-center px-6 cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-xl"
                   onClick={() => setActiveStep(i)}
                 >
@@ -262,18 +157,29 @@ function WorkflowSection() {
 }
 
 function ScreenshotsSection() {
+  const { t } = useTranslation('marketing');
+
+  const dashboardScreenshots = [
+    { icon: LayoutDashboard, title: t('product.screenshots_section.call_history_title'), desc: t('product.screenshots_section.call_history_desc'), image: '/assets/screenshots/call-history.png' },
+    { icon: Activity, title: t('product.screenshots_section.analytics_title'), desc: t('product.screenshots_section.analytics_desc'), image: '/assets/screenshots/analytics-dashboard.png' },
+    { icon: Sliders, title: t('product.screenshots_section.config_title'), desc: t('product.screenshots_section.config_desc'), image: '/assets/screenshots/agent-config.png' },
+    { icon: Bot, title: t('product.screenshots_section.creation_title'), desc: t('product.screenshots_section.creation_desc'), image: '/assets/screenshots/agent-creation.png' },
+    { icon: FileText, title: t('product.screenshots_section.prompt_title'), desc: t('product.screenshots_section.prompt_desc'), image: '/assets/screenshots/prompt-editor.png' },
+    { icon: PhoneCall, title: t('product.screenshots_section.transcript_title'), desc: t('product.screenshots_section.transcript_desc'), image: '/assets/screenshots/transcript-view.png' },
+  ];
+
   return (
     <section className="py-20 lg:py-28 bg-surface-secondary">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-14">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-            See it in action
+            {t('product.screenshots_section.eyebrow')}
           </p>
           <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-            Your voice operations command center.
+            {t('product.screenshots_section.title')}
           </h2>
           <p className="text-text-primary/60 font-body leading-relaxed">
-            Every call, every outcome, every metric — visible from one dashboard.
+            {t('product.screenshots_section.subtitle')}
           </p>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -284,7 +190,7 @@ function ScreenshotsSection() {
               >
                 <img
                   src={s.image}
-                  alt={`${s.title} — QVO dashboard screenshot`}
+                  alt={`${s.title} — QVO`}
                   loading="lazy"
                   className="w-full h-full object-cover"
                 />
@@ -300,25 +206,39 @@ function ScreenshotsSection() {
 }
 
 function IntegrationsSection() {
+  const { t } = useTranslation('marketing');
+
+  const integrations = [
+    t('product.integrations_section.ehr'),
+    t('product.integrations_section.calendar'),
+    t('product.integrations_section.salesforce'),
+    t('product.integrations_section.hubspot'),
+    t('product.integrations_section.slack'),
+    t('product.integrations_section.webhooks'),
+    t('product.integrations_section.zapier'),
+    t('product.integrations_section.custom_api'),
+  ];
+  const customApi = t('product.integrations_section.custom_api');
+
   return (
     <section className="py-20 lg:py-28">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-5xl mx-auto flex flex-col lg:flex-row items-center gap-12">
           <div className="lg:w-1/2">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-              Integrations
+              {t('product.integrations_section.eyebrow')}
             </p>
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-              Connects to the tools you already use.
+              {t('product.integrations_section.title')}
             </h2>
             <p className="text-text-primary/60 font-body leading-relaxed mb-6">
-              Sync call data, trigger workflows, and push outcomes to your CRM, calendar, or EHR system.
+              {t('product.integrations_section.subtitle')}
             </p>
             <Link
               to="/integrations"
               className="inline-flex items-center gap-2 text-primary hover:text-primary-hover font-semibold text-sm transition-colors"
             >
-              View all integrations
+              {t('common.view_all_integrations')}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -330,7 +250,7 @@ function IntegrationsSection() {
                   className="flex items-center gap-3 bg-white rounded-xl border border-border/30 px-4 py-3.5 hover:border-primary/30 hover:shadow-sm transition-all duration-200"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    {name === 'Custom API' ? (
+                    {name === customApi ? (
                       <Link2 className="h-4 w-4 text-primary" />
                     ) : (
                       <Plug className="h-4 w-4 text-primary" />
@@ -348,18 +268,27 @@ function IntegrationsSection() {
 }
 
 function SecuritySection() {
+  const { t } = useTranslation('marketing');
+
+  const securityBadges = [
+    { icon: ShieldCheck, title: t('product.security_section.hipaa_title'), desc: t('product.security_section.hipaa_desc') },
+    { icon: Eye, title: t('product.security_section.phi_title'), desc: t('product.security_section.phi_desc') },
+    { icon: Lock, title: t('product.security_section.rls_title'), desc: t('product.security_section.rls_desc') },
+    { icon: Database, title: t('product.security_section.encryption_title'), desc: t('product.security_section.encryption_desc') },
+  ];
+
   return (
     <section className="py-20 lg:py-28 bg-sidebar-bg text-white">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-14">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-            Security & Compliance
+            {t('product.security_section.eyebrow')}
           </p>
           <h2 className="font-display text-3xl lg:text-4xl font-bold mb-4">
-            Built for regulated industries.
+            {t('product.security_section.title')}
           </h2>
           <p className="text-white/60 font-body leading-relaxed">
-            Enterprise-grade security and compliance controls baked into every layer of the platform.
+            {t('product.security_section.subtitle')}
           </p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
@@ -382,9 +311,26 @@ function SecuritySection() {
 }
 
 export default function Product() {
+  const { t } = useTranslation('marketing');
+
   useEffect(() => {
     trackPageView('/product');
   }, []);
+
+  const capabilities = [
+    { icon: Bot, title: t('product.capabilities.voice_agents_title'), desc: t('product.capabilities.voice_agents_desc') },
+    { icon: Phone, title: t('product.capabilities.call_handling_title'), desc: t('product.capabilities.call_handling_desc') },
+    { icon: GitBranch, title: t('product.capabilities.routing_title'), desc: t('product.capabilities.routing_desc') },
+    { icon: Calendar, title: t('product.capabilities.scheduling_title'), desc: t('product.capabilities.scheduling_desc') },
+    { icon: Zap, title: t('product.capabilities.campaigns_title'), desc: t('product.capabilities.campaigns_desc') },
+    { icon: BarChart3, title: t('product.capabilities.analytics_title'), desc: t('product.capabilities.analytics_desc') },
+    { icon: Shield, title: t('product.capabilities.qa_title'), desc: t('product.capabilities.qa_desc') },
+    { icon: Bell, title: t('product.capabilities.alerts_title'), desc: t('product.capabilities.alerts_desc') },
+    { icon: Layers, title: t('product.capabilities.multitenant_title'), desc: t('product.capabilities.multitenant_desc') },
+    { icon: FileText, title: t('product.capabilities.transcripts_title'), desc: t('product.capabilities.transcripts_desc') },
+    { icon: Clock, title: t('product.capabilities.afterhours_title'), desc: t('product.capabilities.afterhours_desc') },
+    { icon: Phone, title: t('product.capabilities.numbers_title'), desc: t('product.capabilities.numbers_desc') },
+  ];
 
   const productSchema = {
     '@context': 'https://schema.org',
@@ -404,8 +350,8 @@ export default function Product() {
   return (
     <div>
       <SEO
-        title="Platform Overview — AI Voice Operations Command Center"
-        description="QVO platform overview: AI voice agents, call handling, appointment scheduling, technician dispatch, outbound campaigns, and real-time analytics for small businesses."
+        title={t('product.seo_title')}
+        description={t('product.seo_description')}
         canonicalPath="/product"
         structuredData={productSchema}
       />
@@ -413,13 +359,13 @@ export default function Product() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-              Product
+              {t('product.hero.eyebrow')}
             </p>
             <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
-              A voice operations command center for your business.
+              {t('product.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl">
-              QVO combines call handling, scheduling, routing, follow-up logic, and team visibility in one system. Every call is answered, every outcome is tracked.
+              {t('product.hero.description')}
             </p>
           </div>
         </div>
@@ -430,10 +376,10 @@ export default function Product() {
           <RevealSection>
             <div className="max-w-2xl mb-14">
               <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-                Everything your front desk does, automated and visible.
+                {t('product.intro.title')}
               </h2>
               <p className="text-text-primary/60 font-body leading-relaxed">
-                From the first ring to the follow-up task, QVO handles the complete voice operations workflow.
+                {t('product.intro.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -460,20 +406,20 @@ export default function Product() {
           <RevealSection>
             <div className="text-center mb-10">
               <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                Agent Workflow
+                {t('product.agent_workflow.eyebrow')}
               </p>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                From call to resolution, fully automated.
+                {t('product.agent_workflow.title')}
               </h2>
               <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
-                Every call follows a proven flow — your AI agent handles each step in real time.
+                {t('product.agent_workflow.subtitle')}
               </p>
             </div>
             <div className="mb-14">
               <WorkflowDiagram steps={genericWorkflowSteps} />
             </div>
             <h3 className="font-display text-xl lg:text-2xl font-semibold text-text-primary text-center mb-8">
-              Industry-specific workflows
+              {t('product.agent_workflow.industry_workflows')}
             </h3>
             <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
               {[healthcareWorkflow, legalWorkflow, realEstateWorkflow, customerSupportWorkflow].map((wf) => (
@@ -503,29 +449,29 @@ export default function Product() {
           <RevealSection>
             <div className="text-center mb-14">
               <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                Built-in Tools
+                {t('product.tools_section.eyebrow')}
               </p>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Every tool your agent needs, ready to go.
+                {t('product.tools_section.title')}
               </h2>
               <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
-                Your AI agents don't just talk — they take action. Scheduling, CRM updates, ticket creation, and SMS follow-ups happen in real time.
+                {t('product.tools_section.subtitle')}
               </p>
             </div>
           </RevealSection>
           <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
             {[
-              { src: '/assets/tools/calendar-scheduling.png', title: 'Calendar Scheduling', desc: 'Book, reschedule, and confirm appointments directly within the call flow.' },
-              { src: '/assets/tools/crm-lookup.png', title: 'CRM Lookup', desc: 'Pull caller history, contact details, and interaction records instantly.' },
-              { src: '/assets/tools/ticket-creation.png', title: 'Ticket Creation', desc: 'Auto-create support tickets with full context from the conversation.' },
-              { src: '/assets/tools/sms-confirmation.png', title: 'SMS Confirmation', desc: 'Send instant text confirmations, reminders, and follow-ups after every call.' },
+              { src: '/assets/tools/calendar-scheduling.png', title: t('product.tools_section.calendar_title'), desc: t('product.tools_section.calendar_desc') },
+              { src: '/assets/tools/crm-lookup.png', title: t('product.tools_section.crm_title'), desc: t('product.tools_section.crm_desc') },
+              { src: '/assets/tools/ticket-creation.png', title: t('product.tools_section.ticket_title'), desc: t('product.tools_section.ticket_desc') },
+              { src: '/assets/tools/sms-confirmation.png', title: t('product.tools_section.sms_title'), desc: t('product.tools_section.sms_desc') },
             ].map((tool) => (
               <RevealSection key={tool.title}>
                 <div className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow group">
                   <div className="aspect-[4/3] overflow-hidden">
                     <img
                       src={tool.src}
-                      alt={`${tool.title} tool visualization`}
+                      alt={`${tool.title}`}
                       loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                     />
@@ -548,26 +494,26 @@ export default function Product() {
           <RevealSection>
             <div className="text-center mb-14">
               <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                Platform Features
+                {t('product.platform_features.eyebrow')}
               </p>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Built for voice operations at scale.
+                {t('product.platform_features.title')}
               </h2>
             </div>
           </RevealSection>
           <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
             {[
-              { src: '/assets/features/voice-ai-automation.png', title: 'Voice AI Automation', desc: 'Natural language understanding with real-time speech synthesis powers every conversation.' },
-              { src: '/assets/features/tool-integration.png', title: 'Tool Integration Ecosystem', desc: 'Connect to 50+ tools including CRMs, calendars, EHRs, and custom webhooks.' },
-              { src: '/assets/features/multi-agent.png', title: 'Multi-Agent Orchestration', desc: 'Deploy specialized agents for different use cases, all managed from one platform.' },
-              { src: '/assets/features/realtime-analytics.png', title: 'Real-Time Analytics', desc: 'Track call volume, outcomes, agent performance, and ROI in real-time dashboards.' },
+              { src: '/assets/features/voice-ai-automation.png', title: t('product.platform_features.voice_ai_title'), desc: t('product.platform_features.voice_ai_desc') },
+              { src: '/assets/features/tool-integration.png', title: t('product.platform_features.tool_int_title'), desc: t('product.platform_features.tool_int_desc') },
+              { src: '/assets/features/multi-agent.png', title: t('product.platform_features.multi_agent_title'), desc: t('product.platform_features.multi_agent_desc') },
+              { src: '/assets/features/realtime-analytics.png', title: t('product.platform_features.realtime_title'), desc: t('product.platform_features.realtime_desc') },
             ].map((feature) => (
               <RevealSection key={feature.title}>
                 <div className="bg-surface-secondary rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow group">
                   <div className="aspect-[4/3] overflow-hidden">
                     <img
                       src={feature.src}
-                      alt={`${feature.title} feature illustration`}
+                      alt={`${feature.title}`}
                       loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                     />
@@ -591,13 +537,13 @@ export default function Product() {
           <RevealSection>
             <div className="text-center mb-10">
               <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
-                Go deeper
+                {t('product.deeper.eyebrow')}
               </p>
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-                Three product surfaces worth a closer look
+                {t('product.deeper.title')}
               </h2>
               <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
-                Federated Ingest brings external agents under one roof, the Global Intelligence Network benchmarks you against your peers, and Vertical Agents skip the blank prompt entirely.
+                {t('product.deeper.subtitle')}
               </p>
             </div>
           </RevealSection>
@@ -605,24 +551,24 @@ export default function Product() {
             {[
               {
                 to: '/product/federated-ingest',
-                eyebrow: 'For developers',
-                title: 'Federated Ingest',
-                desc: 'Post calls from any external voice agent into QVO over HTTPS and inherit analytics, billing, and the tool engine.',
-                cta: 'Read the developer pitch',
+                eyebrow: t('product.deeper.ingest_eyebrow'),
+                title: t('product.deeper.ingest_title'),
+                desc: t('product.deeper.ingest_desc'),
+                cta: t('product.deeper.ingest_cta'),
               },
               {
                 to: '/product/global-intelligence-network',
-                eyebrow: 'For operators',
-                title: 'Global Intelligence Network',
-                desc: 'Opt-in, anonymized cross-tenant benchmarks for your vertical — and prompt patterns the top quartile uses.',
-                cta: 'See how GIN works',
+                eyebrow: t('product.deeper.gin_eyebrow'),
+                title: t('product.deeper.gin_title'),
+                desc: t('product.deeper.gin_desc'),
+                cta: t('product.deeper.gin_cta'),
               },
               {
                 to: '/industries/vertical-agents',
-                eyebrow: 'For practices and crews',
-                title: 'Vertical Agents',
-                desc: 'Native agents like Azul Vision plus templates for medical, dental, field service, legal, and real estate.',
-                cta: 'Browse the catalog',
+                eyebrow: t('product.deeper.vertical_eyebrow'),
+                title: t('product.deeper.vertical_title'),
+                desc: t('product.deeper.vertical_desc'),
+                cta: t('product.deeper.vertical_cta'),
               },
             ].map((card) => (
               <RevealSection key={card.to}>
@@ -648,10 +594,10 @@ export default function Product() {
       <section className="bg-surface-secondary py-20 lg:py-24">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-            See it in action.
+            {t('product.bottom_cta.title')}
           </h2>
           <p className="text-lg text-text-primary/60 font-body mb-10">
-            Try our live demo agents or start your free trial today.
+            {t('product.bottom_cta.subtitle')}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
@@ -659,14 +605,14 @@ export default function Product() {
               className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
               onClick={() => trackCTAClick('try_demo', 'product_bottom')}
             >
-              Try the demo
+              {t('product.bottom_cta.try_demo')}
             </Link>
             <Link
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
               onClick={() => trackCTAClick('start_free_trial', 'product_bottom')}
             >
-              Start free trial
+              {t('product.bottom_cta.start_trial')}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>

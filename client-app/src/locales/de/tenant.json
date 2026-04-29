@@ -1,0 +1,208 @@
+{
+  "dashboard": {
+    "page_title": "Dashboard",
+    "page_subtitle": "Was heute passiert, was funktioniert und was Aufmerksamkeit braucht",
+    "stats": {
+      "calls_today": "Calls today",
+      "answered": "Answered",
+      "missed": "Missed",
+      "avg_duration": "Avg duration",
+      "active_agents": "Active agents",
+      "minutes_used": "Minutes used"
+    },
+    "sections": {
+      "recent_calls": "Recent calls",
+      "quick_actions": "Quick actions",
+      "agent_status": "Agent status",
+      "alerts": "Alerts",
+      "performance": "Performance"
+    },
+    "empty_state": "No data yet — when your agents take calls they'll appear here.",
+    "view_all": "View all"
+  },
+  "calls": {
+    "page_title": "Gespräche",
+    "page_subtitle": "Vergangene Anrufe mit Transkripten durchsuchen und überprüfen",
+    "filters": {
+      "all": "All",
+      "inbound": "Inbound",
+      "outbound": "Outbound",
+      "answered": "Answered",
+      "missed": "Missed",
+      "transferred": "Transferred",
+      "search_placeholder": "Search by phone, agent, or transcript",
+      "from_date": "From",
+      "to_date": "To",
+      "agent": "Agent",
+      "outcome": "Outcome",
+      "clear": "Clear filters"
+    },
+    "table": {
+      "time": "Time",
+      "caller": "Caller",
+      "agent": "Agent",
+      "duration": "Duration",
+      "outcome": "Outcome",
+      "quality": "Quality",
+      "actions": "Actions"
+    },
+    "detail": {
+      "transcript": "Transcript",
+      "tools_used": "Tools used",
+      "metadata": "Metadata",
+      "recording": "Recording",
+      "summary": "Summary",
+      "outcome_label": "Outcome",
+      "tags": "Tags",
+      "back_to_calls": "Back to calls"
+    },
+    "empty": "No calls match your filters."
+  },
+  "agents": {
+    "page_title": "Agents",
+    "page_subtitle": "Verwalten Sie Ihre KI-Sprachagenten",
+    "actions": {
+      "create": "Create agent",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "deploy": "Deploy",
+      "test": "Test",
+      "edit": "Edit"
+    },
+    "card": {
+      "active": "Active",
+      "draft": "Draft",
+      "paused": "Paused",
+      "calls_handled": "Calls handled",
+      "avg_quality": "Avg. quality",
+      "last_active": "Last active"
+    },
+    "empty": "You don't have any agents yet. Create your first one to get started.",
+    "templates": {
+      "title": "Start from a template",
+      "subtitle": "Choose a vertical to get a head start on your agent."
+    }
+  },
+  "agent_builder": {
+    "page_title": "Agent builder",
+    "tabs": {
+      "overview": "Overview",
+      "prompt": "Prompt",
+      "voice": "Voice",
+      "tools": "Tools",
+      "knowledge": "Knowledge",
+      "routing": "Routing",
+      "test": "Test",
+      "deploy": "Deploy",
+      "history": "History"
+    },
+    "fields": {
+      "name": "Agent name",
+      "description": "Description",
+      "industry": "Industry template",
+      "voice_id": "Voice",
+      "language": "Language",
+      "first_message": "First message",
+      "system_prompt": "System prompt",
+      "fallback_message": "Fallback message"
+    },
+    "actions": {
+      "save": "Save",
+      "save_and_deploy": "Save and deploy",
+      "discard": "Discard changes",
+      "test_call": "Test call",
+      "back": "Back"
+    },
+    "save_status": {
+      "saved": "All changes saved",
+      "saving": "Saving...",
+      "unsaved": "Unsaved changes"
+    }
+  },
+  "campaigns": {
+    "page_title": "Automatisierung",
+    "page_subtitle": "Ausgehende Anrufkampagnen erstellen und verwalten",
+    "actions": {
+      "create": "New campaign",
+      "pause": "Pause",
+      "resume": "Resume",
+      "stop": "Stop",
+      "duplicate": "Duplicate"
+    },
+    "stats": {
+      "contacts": "Contacts",
+      "completed": "Completed",
+      "in_progress": "In progress",
+      "scheduled": "Scheduled",
+      "success_rate": "Success rate"
+    },
+    "table": {
+      "name": "Name",
+      "status": "Status",
+      "agent": "Agent",
+      "progress": "Progress",
+      "started": "Started",
+      "actions": "Actions"
+    },
+    "empty": "No campaigns yet. Create your first campaign to start outreach."
+  },
+  "settings": {
+    "page_title": "Settings",
+    "tabs": {
+      "general": "General",
+      "team": "Team",
+      "billing": "Billing",
+      "numbers": "Phone numbers",
+      "integrations": "Integrations",
+      "notifications": "Notifications",
+      "security": "Security",
+      "api_keys": "API keys",
+      "webhooks": "Webhooks",
+      "audit": "Audit log"
+    },
+    "general": {
+      "tenant_name": "Organization name",
+      "timezone": "Time zone",
+      "default_language": "Default language",
+      "logo": "Logo",
+      "branding": "Branding"
+    },
+    "billing": {
+      "plan": "Current plan",
+      "minutes_used": "Minutes used this month",
+      "next_invoice": "Next invoice",
+      "payment_method": "Payment method",
+      "manage_subscription": "Manage subscription",
+      "view_invoices": "View invoices"
+    },
+    "team": {
+      "invite": "Invite member",
+      "role": "Role",
+      "status": "Status",
+      "remove": "Remove",
+      "resend_invite": "Resend invite"
+    },
+    "save": "Save changes",
+    "saved": "Settings saved",
+    "page_subtitle": "Verwalten Sie die Konfiguration Ihrer Organisation"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try again",
+    "no_data": "No data",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "refresh": "Refresh",
+    "close": "Close",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "save": "Save",
+    "view": "View",
+    "yes": "Yes",
+    "no": "No"
+  }
+}

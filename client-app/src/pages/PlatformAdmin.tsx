@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
@@ -2137,6 +2138,7 @@ const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; label: string; icon: typeof 
 ];
 
 export default function PlatformAdmin() {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PlatformAdminTab>('tenants');
@@ -2209,8 +2211,8 @@ export default function PlatformAdmin() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Platform Administration"
-        description="Tenant management, template versioning, billing health, and platform-wide diagnostics"
+        title={adminT('platform_admin.page_title')}
+        description={adminT('platform_admin.page_subtitle')}
         icon={<Building2 className="h-5 w-5" />}
         className="mb-0"
       />

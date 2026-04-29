@@ -1,0 +1,794 @@
+{
+  "common": {
+    "try_live_demo": "Probar demo en vivo",
+    "see_use_cases": "Ver casos de uso",
+    "explore_agents": "Explorar agentes",
+    "start_free_trial": "Comenzar prueba gratis",
+    "book_demo": "Reservar una demo",
+    "talk_to_us": "Hablar con nosotros",
+    "book_a_demo": "Reservar una demo",
+    "see_how_it_works": "Ver cómo funciona",
+    "explore_marketplace": "Explorar el catálogo",
+    "view_all_integrations": "Ver todas las integraciones",
+    "contact_sales": "Contactar a ventas",
+    "send_message": "Enviar mensaje",
+    "sending": "Enviando...",
+    "trusted_by": "Con la confianza de"
+  },
+  "landing": {
+    "seo_title": "QVO — Agentes de voz con IA que operan tu negocio",
+    "seo_description": "Agentes de voz con IA para atender llamadas, agendar citas y automatizar operaciones. Recepción virtual y automatización de llamadas para climatización, consultorios médicos, dentales, legales y más.",
+    "hero": {
+      "badge": "Plataforma de voz con IA",
+      "title_highlight": "Agentes de voz con IA",
+      "title_rest": " que operan tu negocio",
+      "description": "Despliega agentes de voz inteligentes que atienden llamadas, agendan citas, despachan técnicos y responden a tus clientes — 24/7 y en piloto automático.",
+      "benefits": {
+        "never_miss_call": "No pierdas ni una llamada",
+        "book_appointments": "Agenda citas automáticamente",
+        "dispatch_technicians": "Despacha técnicos al instante",
+        "answer_questions": "Responde preguntas 24/7"
+      }
+    },
+    "stats": {
+      "calls_handled": "Llamadas atendidas",
+      "agents_deployed": "Agentes desplegados",
+      "uptime": "Disponibilidad",
+      "industries_served": "Industrias atendidas",
+      "soc2_in_progress": "SOC 2 en proceso",
+      "hipaa_ready": "Listo para HIPAA",
+      "gdpr_compliant": "Cumple con GDPR",
+      "aes_encryption": "Cifrado AES-256"
+    },
+    "industries": {
+      "healthcare": "Salud",
+      "legal": "Legal",
+      "real_estate": "Bienes raíces",
+      "home_services": "Servicios para el hogar",
+      "finance": "Finanzas",
+      "support": "Soporte",
+      "insurance": "Seguros"
+    },
+    "problem": {
+      "eyebrow": "El problema",
+      "title": "Cada llamada perdida es una oportunidad perdida",
+      "subtitle": "Las pequeñas empresas pierden miles de dólares al mes por llamadas sin atender, respuestas lentas y recepciones saturadas.",
+      "missed_calls_title": "Llamadas perdidas",
+      "missed_calls_desc": "El 67% de quienes llaman no deja mensaje de voz — cada llamada perdida son ingresos que se van.",
+      "staffing_title": "Costos altos de personal",
+      "staffing_desc": "Una recepcionista de tiempo completo cuesta más de USD 35K/año por sede, sin contar rotación y entrenamiento.",
+      "manual_title": "Centros de llamadas manuales",
+      "manual_desc": "Los centros tercerizados no conocen tu negocio y frustran a quienes llaman.",
+      "slow_lead_title": "Respuesta lenta a prospectos",
+      "slow_lead_desc": "Los prospectos contactados después de 5 minutos tienen 10 veces menos probabilidad de convertir."
+    },
+    "solution": {
+      "eyebrow": "La solución",
+      "title": "QVO se encarga de todo",
+      "subtitle": "Una sola plataforma para atender llamadas, ejecutar campañas y automatizar todas tus operaciones de voz.",
+      "voice_agents_title": "Agentes de voz con IA",
+      "voice_agents_desc": "Agentes con voz natural que entienden el contexto y manejan conversaciones complejas.",
+      "outbound_title": "Campañas salientes",
+      "outbound_desc": "Comunicación automatizada para recordatorios de citas, seguimientos y nutrición de prospectos.",
+      "crm_title": "Integraciones con CRM",
+      "crm_desc": "Sincroniza con tus herramientas actuales — contactos, citas y notas fluyen automáticamente.",
+      "always_on_title": "Atención 24/7",
+      "always_on_desc": "Nunca vuelvas a perder una llamada. Tu agente de IA trabaja noches, fines de semana y feriados.",
+      "sms_title": "Seguimientos por SMS",
+      "sms_desc": "Confirmaciones, recordatorios y mensajes de seguimiento automáticos después de cada llamada.",
+      "analytics_title": "Analítica de llamadas",
+      "analytics_desc": "Tableros en tiempo real con resultados, sentimiento y seguimiento de conversiones."
+    },
+    "marketplace": {
+      "badge": "Catálogo de agentes",
+      "title": "Agentes preconstruidos, listos para desplegar",
+      "subtitle": "Elige plantillas específicas por industria. Personaliza guiones, personalidad e integraciones — y sal en vivo en minutos.",
+      "medical": {
+        "name": "Recepción médica",
+        "desc": "Maneja la admisión de pacientes, agendamiento, solicitudes de recetas y verificación de seguro.",
+        "example": "\"Quisiera agendar un chequeo.\" → Agenda la cita y envía SMS de confirmación",
+        "cap_appointment": "Agendamiento de citas",
+        "cap_triage": "Triaje de pacientes",
+        "cap_insurance": "Verificación de seguro",
+        "cap_hipaa": "Cumple con HIPAA"
+      },
+      "legal": {
+        "name": "Admisión legal",
+        "desc": "Califica clientes potenciales, captura detalles del caso y agenda consultas con el abogado correcto.",
+        "example": "\"Necesito ayuda con un caso de accidente automovilístico.\" → Captura detalles y agenda la consulta",
+        "cap_qualification": "Calificación de casos",
+        "cap_conflict": "Verificación de conflictos",
+        "cap_consultation": "Agendamiento de consultas",
+        "cap_documents": "Recolección de documentos"
+      },
+      "real_estate": {
+        "name": "Prospectos inmobiliarios",
+        "desc": "Captura prospectos de compradores y vendedores, responde preguntas sobre propiedades y agenda visitas automáticamente.",
+        "example": "\"¿Sigue disponible la casa de la calle Oak?\" → Responde y agenda la visita",
+        "cap_lead": "Captura de prospectos",
+        "cap_qa": "Preguntas sobre propiedades",
+        "cap_showing": "Agenda de visitas",
+        "cap_crm": "Sincronización con CRM"
+      },
+      "support": {
+        "name": "Atención al cliente",
+        "desc": "Resuelve consultas comunes, procesa devoluciones, consulta el estado de pedidos y escala cuando es necesario.",
+        "example": "\"¿Dónde está mi pedido #4521?\" → Verifica el estado, da el ETA y enlace de seguimiento",
+        "cap_ticket": "Creación de tickets",
+        "cap_order": "Seguimiento de pedidos",
+        "cap_returns": "Procesamiento de devoluciones",
+        "cap_escalation": "Escalamiento inteligente"
+      },
+      "collections": {
+        "name": "Cobranzas",
+        "desc": "Llamadas profesionales de recordatorio de pago con guiones que cumplen normativas, plan de pagos y seguimiento de promesas de pago.",
+        "example": "\"¿Puedo armar un plan de pagos?\" → Negocia los términos y envía el enlace de pago",
+        "cap_reminder": "Recordatorios de pago",
+        "cap_plan": "Negociación de planes",
+        "cap_compliance": "Guiones que cumplen normativas",
+        "cap_payment": "Enlaces de pago"
+      },
+      "hvac": {
+        "name": "Climatización / Servicios para el hogar",
+        "desc": "Atiende llamadas de servicio, hace triaje de emergencias, despacha técnicos y envía ETAs en tiempo real por SMS.",
+        "example": "\"Mi aire dejó de funcionar.\" → Captura detalles, despacha técnico y envía el ETA",
+        "cap_intake": "Recepción de servicios",
+        "cap_emergency": "Triaje de emergencias",
+        "cap_dispatch": "Despacho de técnicos",
+        "cap_eta": "ETAs por SMS"
+      }
+    },
+    "industry_section": {
+      "badge": "Hecho para tu industria",
+      "title_pre": "IA de voz diseñada para cómo trabaja ",
+      "title_emph": "tu industria",
+      "title_post": " en la realidad.",
+      "description": "Cada vertical tiene su propia jerga, normas y expectativas de los clientes. QVO ofrece plantillas, integraciones y flujos preentrenados para las industrias donde la voz importa más."
+    },
+    "platform_capabilities": {
+      "badge": "Capacidades de la plataforma",
+      "title": "Todo lo que necesitas para automatizar tus operaciones de voz",
+      "subtitle": "Un kit completo para gestionar agentes de voz con IA, campañas y analítica en un solo lugar.",
+      "voice_engine_title": "Motor de voz con IA",
+      "voice_engine_desc": "Comprensión del lenguaje natural con síntesis de voz en tiempo real y detección de emoción.",
+      "campaign_title": "Automatización de campañas",
+      "campaign_desc": "Programa y lanza campañas salientes con guiones dinámicos y lógica condicional.",
+      "analytics_title": "Tablero de analítica",
+      "analytics_desc": "Sigue volumen, resultados, desempeño del agente y ROI en tableros en tiempo real.",
+      "customization_title": "Personalización de agentes",
+      "customization_desc": "Ajusta voz, personalidad, guiones y reglas de escalamiento para cada agente.",
+      "api_title": "Integraciones por API",
+      "api_desc": "Conecta con más de 50 herramientas como Salesforce, HubSpot, Calendly y webhooks personalizados.",
+      "security_title": "Seguridad empresarial",
+      "security_desc": "Compatibilidad con SOC 2, llamadas cifradas, accesos por rol y auditoría completa."
+    },
+    "results": {
+      "badge": "Resultados de clientes",
+      "title": "Negocios reales, resultados reales",
+      "subtitle": "Mira cómo empresas de distintas industrias están transformando sus operaciones con QVO.",
+      "real_estate": {
+        "metric": "400%",
+        "metric_label": "Respuesta más rápida a prospectos",
+        "industry": "Bienes raíces",
+        "quote": "QVO responde cada consulta en segundos. Nuestros agentes pasaron de perseguir prospectos a cerrar negocios. El tiempo de respuesta bajó de 4 horas a menos de un minuto.",
+        "name": "Marcus Rivera",
+        "role": "Bróker, Summit Realty Group"
+      },
+      "medical": {
+        "metric": "40%",
+        "metric_label": "Menos llamadas perdidas",
+        "industry": "Médico",
+        "quote": "Durante la temporada de gripe, nuestra recepción no daba abasto. QVO atendió el desborde tan bien que los pacientes pensaban que hablaban con nuestro equipo.",
+        "name": "Dra. Sarah Chen",
+        "role": "Dueña, Bright Smiles Dental"
+      },
+      "legal": {
+        "metric": "2x",
+        "metric_label": "Tasa de conversión",
+        "industry": "Legal",
+        "quote": "Duplicamos las consultas reservadas al capturar las llamadas fuera de horario. Cada cliente potencial recibe una primera impresión profesional.",
+        "name": "James Whitfield",
+        "role": "Socio director, Summit Legal"
+      }
+    },
+    "testimonials": {
+      "badge": "En sus palabras",
+      "title": "Escucha a quienes operan con QVO.",
+      "subtitle": "Equipos reales que reemplazaron llamadas perdidas y recepciones saturadas con QVO."
+    },
+    "comparison": {
+      "badge": "Cómo nos comparamos",
+      "title": "QVO vs. las alternativas.",
+      "subtitle": "Una mirada lado a lado entre QVO, kits de IA de voz y servicios de respuesta tradicionales."
+    },
+    "security": {
+      "badge": "Seguridad y cumplimiento",
+      "title": "Seguridad de nivel empresarial integrada.",
+      "subtitle": "Tus datos y los de tus clientes están protegidos en cada capa.",
+      "hipaa_ready": "Listo para HIPAA",
+      "soc2": "Cumple con SOC 2",
+      "aes": "Cifrado AES-256",
+      "audit_logs": "Registros de auditoría completos"
+    },
+    "bottom_cta": {
+      "title": "Despliega hoy tu primer agente de voz con IA",
+      "subtitle": "Únete a cientos de negocios que usan QVO para automatizar llamadas, capturar prospectos e impulsar ingresos. Sin contratos, cancela cuando quieras.",
+      "try_live": "Probar la demo en vivo"
+    }
+  },
+  "product": {
+    "seo_title": "Visión general — Centro de operaciones de voz con IA",
+    "seo_description": "Visión general de QVO: agentes de voz con IA, atención de llamadas, agendamiento de citas, despacho de técnicos, campañas salientes y analítica en tiempo real para pequeñas empresas.",
+    "hero": {
+      "eyebrow": "Producto",
+      "title": "Un centro de operaciones de voz para tu negocio.",
+      "description": "QVO combina la atención de llamadas, el agendamiento, el enrutamiento, la lógica de seguimiento y la visibilidad del equipo en un solo sistema. Cada llamada se atiende, cada resultado queda registrado."
+    },
+    "intro": {
+      "title": "Todo lo que hace tu recepción, automatizado y visible.",
+      "subtitle": "Desde el primer timbre hasta la tarea de seguimiento, QVO maneja el flujo completo de operaciones de voz."
+    },
+    "capabilities": {
+      "voice_agents_title": "Agentes de voz con IA",
+      "voice_agents_desc": "Agentes especialmente diseñados para atender llamadas, recopilar información y manejar conversaciones con comprensión del lenguaje natural. Configurables por plantilla de industria.",
+      "call_handling_title": "Atención de llamadas en tiempo real",
+      "call_handling_desc": "Las llamadas se atienden de inmediato, 24/7. El agente conversa de forma natural, captura datos y enruta según tus reglas.",
+      "routing_title": "Enrutamiento y escalamiento inteligente",
+      "routing_desc": "Define reglas según intención, urgencia, hora del día o departamento. Escala al equipo de guardia cuando la situación lo amerita.",
+      "scheduling_title": "Agendamiento y admisión",
+      "scheduling_desc": "Agenda citas, recopila datos de admisión y confirma todo dentro de la llamada. Se integra con tus sistemas existentes.",
+      "campaigns_title": "Marcado por campañas",
+      "campaigns_desc": "Ejecuta campañas salientes para llegar a pacientes, clientes o prospectos. Marcado automático con detección de contestador y clasificación de resultados.",
+      "analytics_title": "Analítica operativa",
+      "analytics_desc": "Tableros en tiempo real con volumen, conversión, costo por llamada, desempeño del agente y métricas de campaña.",
+      "qa_title": "Aseguramiento de calidad",
+      "qa_desc": "Cada llamada se evalúa por calidad. Revisa transcripciones, controla versiones de prompts y mejora el desempeño del agente continuamente.",
+      "alerts_title": "Alertas y notificaciones",
+      "alerts_desc": "Recibe avisos sobre llamadas perdidas, escalamientos urgentes y eventos del sistema vía SMS, email o webhook.",
+      "multitenant_title": "Arquitectura multi-tenant",
+      "multitenant_desc": "Gestiona varias sedes, equipos u organizaciones cliente desde una sola plataforma. Aislamiento total entre tenants con control de acceso por rol.",
+      "transcripts_title": "Transcripciones y grabaciones",
+      "transcripts_desc": "Transcripciones completas y grabaciones para cumplimiento, capacitación y revisión operativa. Con redacción de PHI integrada.",
+      "afterhours_title": "Cobertura fuera de horario",
+      "afterhours_desc": "Tus operaciones de voz nunca duermen. Las llamadas a las 2 a. m. se atienden con la misma calidad que a las 2 p. m.",
+      "numbers_title": "Gestión de números",
+      "numbers_desc": "Provisiona números locales o gratuitos, asígnalos a agentes y configura el enrutamiento — todo desde el tablero."
+    },
+    "workflow": {
+      "eyebrow": "Cómo funciona",
+      "title": "En vivo en tres pasos.",
+      "subtitle": "Desde el alta hasta tu primera llamada atendida en menos de 15 minutos.",
+      "step_label": "Paso {{n}}: {{title}}",
+      "configure_title": "Configura el agente",
+      "configure_desc": "Elige una plantilla, personaliza la voz y los prompts, y define las reglas de enrutamiento.",
+      "configure_d1": "Plantillas para salud, legal o personalizadas",
+      "configure_d2": "Ajuste de personalidad y tono de voz",
+      "configure_d3": "Definición de disparadores de escalamiento",
+      "connect_title": "Conecta el número",
+      "connect_desc": "Provisiona un número o trae el tuyo. Asígnalo al agente y configura las preferencias de atención.",
+      "connect_d1": "Provisiona números locales o gratuitos al instante",
+      "connect_d2": "Porta tus números actuales sin fricciones",
+      "connect_d3": "Configura reglas de fuera de horario y desborde",
+      "live_title": "Sal en vivo",
+      "live_desc": "Comienza a recibir llamadas. Monitorea desempeño, revisa transcripciones y refina al agente con el tiempo.",
+      "live_d1": "Tablero de monitoreo de llamadas en tiempo real",
+      "live_d2": "Calificación de calidad automatizada desde el día uno",
+      "live_d3": "Mejora continua con versionado de prompts"
+    },
+    "agent_workflow": {
+      "eyebrow": "Flujo del agente",
+      "title": "De la llamada a la resolución, totalmente automatizado.",
+      "subtitle": "Cada llamada sigue un flujo probado — tu agente de IA maneja cada paso en tiempo real.",
+      "industry_workflows": "Flujos por industria"
+    },
+    "tools_section": {
+      "eyebrow": "Herramientas integradas",
+      "title": "Cada herramienta que tu agente necesita, lista para usar.",
+      "subtitle": "Tus agentes no solo hablan — también actúan. Agendamiento, actualizaciones de CRM, creación de tickets y seguimientos por SMS ocurren en tiempo real.",
+      "calendar_title": "Agenda en calendario",
+      "calendar_desc": "Reserva, reprograma y confirma citas dentro del flujo de la llamada.",
+      "crm_title": "Consulta a CRM",
+      "crm_desc": "Recupera al instante el historial, los datos de contacto y los registros de interacción.",
+      "ticket_title": "Creación de tickets",
+      "ticket_desc": "Crea tickets de soporte automáticamente con el contexto completo de la conversación.",
+      "sms_title": "Confirmación por SMS",
+      "sms_desc": "Envía confirmaciones, recordatorios y seguimientos por texto al instante después de cada llamada."
+    },
+    "screenshots_section": {
+      "eyebrow": "Velo en acción",
+      "title": "Tu centro de operaciones de voz.",
+      "subtitle": "Cada llamada, cada resultado, cada métrica — visibles desde un solo tablero.",
+      "call_history_title": "Historial de llamadas",
+      "call_history_desc": "Registro completo de cada llamada con transcripciones, resultados y puntajes de calidad.",
+      "analytics_title": "Tablero de analítica",
+      "analytics_desc": "Métricas en tiempo real de volumen, conversión y desempeño del agente.",
+      "config_title": "Configuración del agente",
+      "config_desc": "Editor visual para prompts, reglas de enrutamiento y ajustes de personalidad de voz.",
+      "creation_title": "Creación de agentes",
+      "creation_desc": "Asistente paso a paso para configurar y desplegar un nuevo agente de voz desde plantillas por industria.",
+      "prompt_title": "Editor de prompts",
+      "prompt_desc": "Editor con control de versiones y campo de pruebas para refinar el comportamiento del agente.",
+      "transcript_title": "Vista de transcripción",
+      "transcript_desc": "Transcripciones completas con indicadores de ejecución de herramientas y metadatos de la llamada."
+    },
+    "platform_features": {
+      "eyebrow": "Características de la plataforma",
+      "title": "Diseñada para operaciones de voz a escala.",
+      "voice_ai_title": "Automatización de voz con IA",
+      "voice_ai_desc": "La comprensión del lenguaje natural y la síntesis de voz en tiempo real impulsan cada conversación.",
+      "tool_int_title": "Ecosistema de integraciones",
+      "tool_int_desc": "Conecta con más de 50 herramientas: CRMs, calendarios, EHRs y webhooks personalizados.",
+      "multi_agent_title": "Orquestación multiagente",
+      "multi_agent_desc": "Despliega agentes especializados para distintos casos de uso, todos gestionados desde una sola plataforma.",
+      "realtime_title": "Analítica en tiempo real",
+      "realtime_desc": "Sigue volumen, resultados, desempeño y ROI en tableros en tiempo real."
+    },
+    "integrations_section": {
+      "eyebrow": "Integraciones",
+      "title": "Se conecta con las herramientas que ya usas.",
+      "subtitle": "Sincroniza datos de llamadas, dispara flujos y envía resultados a tu CRM, calendario o sistema EHR.",
+      "ehr": "Sistemas EHR",
+      "calendar": "Google Calendar",
+      "salesforce": "Salesforce",
+      "hubspot": "HubSpot",
+      "slack": "Slack",
+      "webhooks": "Webhooks",
+      "zapier": "Zapier",
+      "custom_api": "API personalizada"
+    },
+    "security_section": {
+      "eyebrow": "Seguridad y cumplimiento",
+      "title": "Diseñado para industrias reguladas.",
+      "subtitle": "Controles de seguridad y cumplimiento de nivel empresarial en cada capa de la plataforma.",
+      "hipaa_title": "Listo para HIPAA",
+      "hipaa_desc": "Diseñado para el cumplimiento en salud con soporte para BAA y resguardo de PHI.",
+      "phi_title": "Redacción de PHI",
+      "phi_desc": "Detección y redacción automáticas de información de salud protegida en las transcripciones.",
+      "rls_title": "Seguridad a nivel de fila",
+      "rls_desc": "Aislamiento de datos por tenant aplicado en la base de datos con políticas RLS.",
+      "encryption_title": "Cifrado en reposo",
+      "encryption_desc": "Todos los datos cifrados en reposo y en tránsito con AES-256 estándar de la industria."
+    },
+    "deeper": {
+      "eyebrow": "Profundiza",
+      "title": "Tres superficies del producto que vale la pena conocer",
+      "subtitle": "Federated Ingest reúne agentes externos bajo el mismo techo, la Red Global de Inteligencia te compara con tus pares y los Agentes Verticales evitan partir desde un prompt en blanco.",
+      "ingest_eyebrow": "Para desarrolladores",
+      "ingest_title": "Federated Ingest",
+      "ingest_desc": "Envía las llamadas de cualquier agente de voz externo a QVO por HTTPS y hereda analítica, facturación y motor de herramientas.",
+      "ingest_cta": "Leer la propuesta para devs",
+      "gin_eyebrow": "Para operadores",
+      "gin_title": "Red Global de Inteligencia",
+      "gin_desc": "Comparativas anonimizadas opt-in entre tenants de tu vertical — y los patrones de prompt que usa el cuartil superior.",
+      "gin_cta": "Ver cómo funciona GIN",
+      "vertical_eyebrow": "Para clínicas y cuadrillas",
+      "vertical_title": "Agentes verticales",
+      "vertical_desc": "Agentes nativos como Azul Vision más plantillas para salud, dental, servicio en campo, legal y bienes raíces.",
+      "vertical_cta": "Explorar el catálogo"
+    },
+    "bottom_cta": {
+      "title": "Velo en acción.",
+      "subtitle": "Prueba nuestros agentes de demo en vivo o comienza tu prueba gratis hoy.",
+      "try_demo": "Probar la demo",
+      "start_trial": "Comenzar prueba gratis"
+    }
+  },
+  "features": {
+    "seo_title": "Características — Capacidades de la plataforma de agentes de voz con IA",
+    "seo_description": "Conoce las características de QVO: motor de voz con IA, generador de agentes, motor de ejecución de herramientas, tablero de operaciones en vivo, sistema de conocimiento RAG y marco de integraciones.",
+    "hero": {
+      "eyebrow": "Características",
+      "title": "Todo lo que necesitas para automatizar tus operaciones de voz.",
+      "description": "Seis capacidades centrales y cinco mini sistemas que trabajan juntos para atender llamadas, ejecutar acciones y darte visibilidad operativa total."
+    },
+    "architecture": {
+      "title": "Arquitectura de la plataforma",
+      "subtitle": "Una arquitectura modular en la que cada subsistema cumple una responsabilidad específica y, en conjunto, entregan automatización de voz extremo a extremo.",
+      "voice_runtime": "Motor de voz con IA",
+      "agent_builder": "Generador de agentes",
+      "tool_engine": "Motor de herramientas",
+      "knowledge_rag": "Conocimiento RAG",
+      "integrations": "Integraciones",
+      "security_layer": "Capa de seguridad",
+      "footer": "Todos los subsistemas se comunican por APIs orientadas a eventos con auditoría completa"
+    },
+    "capabilities": {
+      "voice_runtime_title": "Motor de voz con IA",
+      "voice_runtime_desc": "Motor de voz a texto y texto a voz en tiempo real con comprensión del lenguaje natural, detección de emoción y manejo de conversaciones de varios turnos.",
+      "voice_runtime_d1": "Latencia de respuesta menor a 200 ms",
+      "voice_runtime_d2": "Soporte multilingüe",
+      "voice_runtime_d3": "Diarización de hablantes",
+      "voice_runtime_d4": "Análisis de emoción y sentimiento",
+      "voice_runtime_d5": "Cancelación de ruido y eco",
+      "agent_builder_title": "Generador de agentes",
+      "agent_builder_desc": "Herramienta visual para crear agentes de voz con IA. Elige plantillas, personaliza guiones, define reglas de enrutamiento y disparadores de escalamiento sin escribir código.",
+      "agent_builder_d1": "Plantillas por industria",
+      "agent_builder_d2": "Editor de prompts arrastrar y soltar",
+      "agent_builder_d3": "Ajuste de la personalidad de voz",
+      "agent_builder_d4": "Lógica de enrutamiento condicional",
+      "agent_builder_d5": "Prompts con control de versiones",
+      "tool_engine_title": "Motor de ejecución de herramientas",
+      "tool_engine_desc": "Los agentes ejecutan acciones durante la llamada: agendan citas, crean tickets, consultan registros y despachan técnicos a través de integraciones conectadas.",
+      "tool_engine_d1": "Invocación de herramientas en tiempo real durante la llamada",
+      "tool_engine_d2": "Ejecución de herramientas en paralelo",
+      "tool_engine_d3": "Manejo de errores y reintentos",
+      "tool_engine_d4": "Auditoría de cada acción",
+      "tool_engine_d5": "Definición de herramientas personalizadas vía API",
+      "dashboard_title": "Tablero de operaciones en vivo",
+      "dashboard_desc": "Monitorea cada llamada, agente y campaña desde un único panel. Métricas en tiempo real de volumen, resolución, calidad y conversión.",
+      "dashboard_d1": "Monitoreo de llamadas en tiempo real",
+      "dashboard_d2": "Tarjetas de desempeño por agente",
+      "dashboard_d3": "Seguimiento de ROI por campaña",
+      "dashboard_d4": "Calificación de aseguramiento de calidad",
+      "dashboard_d5": "Generador de reportes a medida",
+      "knowledge_title": "Sistema de conocimiento + RAG",
+      "knowledge_desc": "Sube documentos, FAQs y catálogos. Los agentes usan generación aumentada por recuperación para responder con precisión y citar las fuentes.",
+      "knowledge_d1": "Ingesta de documentos (PDF, DOCX, CSV)",
+      "knowledge_d2": "Particionado e indexado automáticos",
+      "knowledge_d3": "Atribución de fuente en cada respuesta",
+      "knowledge_d4": "Versionado de la base de conocimiento",
+      "knowledge_d5": "Conocimiento por agente",
+      "integration_title": "Marco de integraciones",
+      "integration_desc": "Conecta QVO con tus herramientas mediante conectores listos y un sistema flexible de webhooks/API. Envía datos de llamadas, dispara flujos y sincroniza registros automáticamente.",
+      "integration_d1": "Conectores CRM listos",
+      "integration_d2": "Integración con sistemas de calendario",
+      "integration_d3": "Entrega de webhooks con reintentos",
+      "integration_d4": "API REST con CRUD completo",
+      "integration_d5": "Soporte para Zapier y Make"
+    },
+    "mini_systems": {
+      "badge": "Suite de operaciones integrada",
+      "title": "Sistemas integrados que potencian a tus agentes.",
+      "subtitle": "Cada agente de QVO accede a estos sistemas integrados — sin necesidad de herramientas externas para las operaciones centrales.",
+      "scheduling_title": "Sistema de agendamiento",
+      "scheduling_desc": "Agendamiento integrado con verificación de disponibilidad, detección de conflictos y confirmaciones automáticas. Sincroniza con Google Calendar y sistemas de gestión de prácticas.",
+      "ticketing_title": "Sistema de tickets",
+      "ticketing_desc": "Crea, enruta y da seguimiento a tickets de servicio directamente desde las conversaciones. Incluye clasificación por prioridad, reglas de asignación y seguimiento de SLA.",
+      "sms_title": "Mensajería SMS",
+      "sms_desc": "Envía confirmaciones, mensajes de seguimiento y avisos de ETA por SMS. Mensajería bidireccional para coordinar devoluciones de llamada y recordatorios.",
+      "dispatch_title": "Sistema de despacho",
+      "dispatch_desc": "Asigna y despacha técnicos en campo según disponibilidad, ubicación y habilidades. Notificaciones SMS automáticas con ETA en tiempo real.",
+      "tracking_title": "Seguimiento de clientes",
+      "tracking_desc": "Mantén perfiles con historial de interacciones, preferencias y notas. Construye una visión completa de cada cliente con el tiempo."
+    },
+    "bottom_cta": {
+      "title": "Crea tu primer agente hoy",
+      "subtitle": "Empieza con una plantilla preconstruida o crea un agente desde cero. Despliega en minutos, no en semanas."
+    }
+  },
+  "pricing": {
+    "seo_title": "Precios — Planes de agentes de voz con IA, minutos, agentes e integraciones",
+    "seo_description": "Los precios de QVO comienzan en USD {{starter}}/mes. Compara planes Starter, Pro y Enterprise con minutos de IA, agentes ilimitados, integraciones con CRM y acceso al demo. Prueba gratuita de 14 días.",
+    "hero": {
+      "eyebrow": "Precios",
+      "title": "Planes simples y precios honestos.",
+      "description": "Comienza con una prueba gratuita de 14 días en cualquier plan. Sin contratos ni costos ocultos. Escala a medida que crece tu negocio.",
+      "guarantee": "Garantía de devolución de 30 días"
+    },
+    "tier_copy": {
+      "starter_desc": "Para clínicas pequeñas que comienzan con automatización de voz.",
+      "pro_desc": "Para empresas en crecimiento que necesitan campañas e integraciones.",
+      "enterprise_desc": "Para organizaciones con varias sedes y alto volumen de llamadas."
+    },
+    "tier_card": {
+      "most_popular": "Más popular",
+      "per_month": "/mes",
+      "minutes_included": "{{minutes}} minutos de IA incluidos",
+      "overage_label": "{{overage}} por exceso",
+      "start_trial": "Iniciar prueba gratis",
+      "recommended": "RECOMENDADO"
+    },
+    "calculator": {
+      "eyebrow": "Calculadora por minuto",
+      "title": "Conoce tu precio efectivo por minuto",
+      "subtitle": "Mueve el control deslizante para coincidir con tu volumen mensual esperado. Te mostramos la factura estimada y la tarifa efectiva por minuto en cada plan, con las mismas tarifas que aplica tu medidor de uso."
+    },
+    "compare": {
+      "title": "Compara todas las características",
+      "feature_col": "Característica"
+    },
+    "features_list": {
+      "ai_minutes": "Minutos de IA incluidos",
+      "overage": "Tarifa por exceso",
+      "agents": "Agentes de voz",
+      "phones": "Números telefónicos",
+      "inbound": "Atención de llamadas entrantes",
+      "outbound": "Campañas salientes",
+      "transcripts": "Transcripciones de llamadas",
+      "quality": "Puntaje de calidad",
+      "analytics": "Tablero de analítica",
+      "team": "Miembros del equipo",
+      "rbac": "Control de acceso por rol",
+      "api": "Acceso a la API",
+      "crm": "Integraciones con CRM",
+      "templates": "Plantillas de agentes a medida",
+      "audit": "Registros de auditoría",
+      "multi_loc": "Soporte multisede",
+      "priority": "Soporte prioritario",
+      "onboarding": "Onboarding dedicado",
+      "demo": "Acceso al demo interactivo",
+      "trial": "Prueba gratis de 14 días",
+      "unlimited": "Ilimitado",
+      "up_to_3": "Hasta 3",
+      "up_to_10": "Hasta 10"
+    },
+    "compliance": {
+      "eyebrow": "Cumplimiento de nivel empresarial",
+      "soc2": "SOC 2 Tipo II (en proceso)",
+      "hipaa": "HIPAA disponible con BAA",
+      "gdpr": "Cumple con GDPR",
+      "ccpa": "CCPA / CPRA",
+      "tls": "TLS 1.2+ en tránsito",
+      "aes": "AES-256 en reposo"
+    },
+    "faq": {
+      "eyebrow": "Preguntas frecuentes",
+      "title": "Preguntas comunes sobre facturación.",
+      "subtitle": "Todo lo que necesitas saber sobre nuestros planes y precios.",
+      "q1": "¿Cómo funciona la prueba gratuita de 14 días?",
+      "a1": "Tienes acceso completo a todas las características de tu plan durante 14 días. No se requiere tarjeta de crédito para comenzar. Si decides no continuar, tu cuenta simplemente se pausa — sin cargos.",
+      "q2": "¿Qué cuenta como un minuto de IA?",
+      "a2": "Un minuto de IA es un minuto de tiempo de llamada activa atendida por tu agente. El tiempo en espera, el timbre y el procesamiento del sistema no se cuentan. Solo se factura el tiempo real de conversación.",
+      "q3": "¿Qué pasa si supero los minutos incluidos?",
+      "a3": "Se factura a la tarifa de exceso de tu plan por cada minuto adicional. Starter paga {{starter}}, Pro paga {{pro}} y Enterprise paga {{enterprise}}.",
+      "q4": "¿Puedo cambiar de plan en cualquier momento?",
+      "a4": "Sí. Sube o baja de plan cuando quieras desde la configuración de tu cuenta. Al subir, accedes de inmediato a las nuevas funciones. Las bajadas aplican al inicio del siguiente ciclo de facturación.",
+      "q5": "¿Hay contratos o compromisos?",
+      "a5": "No. Todos los planes son mes a mes y sin contratos a largo plazo. Puedes cancelar cuando quieras y tu cuenta sigue activa hasta el final del ciclo en curso.",
+      "q6": "¿Ofrecen precio anual?",
+      "a6": "Sí. La facturación anual te ahorra un 20% frente al precio mensual. Contacta a ventas o elige facturación anual al registrarte para acceder al descuento.",
+      "q7": "¿Hay costo de configuración?",
+      "a7": "No. Sin costos de configuración en ningún plan. Starter y Pro son completamente autoservicio. Enterprise incluye onboarding dedicado sin costo adicional.",
+      "q8": "¿Qué métodos de pago aceptan?",
+      "a8": "Aceptamos las principales tarjetas de crédito (Visa, Mastercard, American Express) y transferencias ACH para planes Enterprise anuales. Hay facturación disponible para clientes Enterprise."
+    },
+    "roi": {
+      "title": "Calcula tu ROI",
+      "subtitle": "Descubre cuánto puede ahorrar tu negocio con los agentes de voz con IA de QVO."
+    },
+    "logos": {
+      "title": "Equipos que ya operan con QVO"
+    },
+    "bottom_cta": {
+      "title": "¿Preguntas sobre precios?",
+      "subtitle": "Habla con nuestro equipo para encontrar el plan ideal para tu clínica."
+    }
+  },
+  "use_cases": {
+    "seo_title": "Casos de uso — Escenarios de agentes de voz con IA para todo negocio",
+    "seo_description": "Mira cómo los negocios usan los agentes de voz de QVO para despacho de servicios HVAC, agendamiento, atención fuera de horario, admisión de clientes y calificación de prospectos.",
+    "hero": {
+      "eyebrow": "Casos de uso",
+      "title": "Escenarios reales, resueltos con agentes de voz con IA.",
+      "description": "Cinco escenarios comunes donde QVO reemplaza procesos manuales con atención de voz inteligente y automatizada — del despacho de emergencias a la calificación de prospectos."
+    },
+    "labels": {
+      "the_problem": "El problema",
+      "how_qvo_solves": "Cómo lo resuelve QVO",
+      "workflow": "Flujo",
+      "tools_used": "Herramientas usadas",
+      "key_metrics": "Métricas clave"
+    },
+    "scenarios": {
+      "hvac": {
+        "title": "Despacho de servicio HVAC",
+        "subtitle": "Triaje de emergencias, despacho de técnicos y ETA en tiempo real",
+        "problem": "Las emergencias HVAC fuera de horario terminan en buzón. Los despachadores coordinan a mano sin visibilidad de la disponibilidad. Los clientes esperan horas sin novedades.",
+        "solution": "QVO atiende cada llamada de servicio 24/7, hace triaje de emergencias (fugas de gas, sin calefacción, sin aire) y despacha automáticamente al técnico disponible más cercano. El cliente recibe avisos por SMS con ETAs en tiempo real.",
+        "step1": "Quien llama describe el problema — la IA captura ubicación, equipo y síntomas",
+        "step2": "El clasificador de urgencia marca riesgos (fuga de gas, monóxido)",
+        "step3": "El sistema asigna al técnico más cercano por habilidad y geografía",
+        "step4": "Se envía SMS al cliente con el nombre del técnico y el ETA en vivo",
+        "step5": "Se crea un ticket de servicio con la transcripción y los detalles",
+        "tool1": "Despacho de técnicos",
+        "tool2": "Pasarela SMS",
+        "tool3": "Sistema de tickets de servicio",
+        "tool4": "Calendario de agendamiento",
+        "tool5": "Ruteo GPS",
+        "metric1_label": "Tiempo de respuesta",
+        "metric1_value": "< 30 segundos",
+        "metric2_label": "Velocidad de despacho",
+        "metric2_value": "5 min promedio",
+        "metric3_label": "Llamadas capturadas",
+        "metric3_value": "100%"
+      },
+      "scheduling": {
+        "title": "Agendamiento de citas",
+        "subtitle": "Reserva, reprograma y confirma citas durante la llamada",
+        "problem": "El personal de recepción combina agendamiento con llegadas, lo que causa llamadas perdidas y errores de reserva. Pacientes y clientes esperan en la línea o vuelven a llamar — y muchas veces no lo hacen.",
+        "solution": "QVO maneja el agendamiento dentro de la llamada. Verifica disponibilidad en tiempo real, reserva la cita, envía SMS de confirmación y registra todo en tu sistema de calendario.",
+        "step1": "Quien llama solicita una cita — la IA identifica al proveedor o tipo de servicio",
+        "step2": "Se verifica la disponibilidad en tiempo real contra el calendario",
+        "step3": "Se reserva la cita y se confirman los datos al cliente",
+        "step4": "Se envía SMS de confirmación con fecha, hora, ubicación y preparación",
+        "step5": "Se actualiza el calendario y se dispara la secuencia de recordatorios",
+        "tool1": "API de calendario",
+        "tool2": "Sistema de gestión de prácticas",
+        "tool3": "Confirmaciones por SMS",
+        "tool4": "Programador de recordatorios",
+        "tool5": "Base de datos de pacientes",
+        "metric1_label": "Tasa de reserva",
+        "metric1_value": "94%",
+        "metric2_label": "Confirmaciones SMS",
+        "metric2_value": "Inmediatas",
+        "metric3_label": "Reducción de inasistencias",
+        "metric3_value": "35%"
+      },
+      "after_hours": {
+        "title": "Atención fuera de horario",
+        "subtitle": "Atención profesional 24/7 cuando tu oficina está cerrada",
+        "problem": "El 67% de quienes llaman no deja mensaje. Las llamadas fuera de horario que van a la competencia significan pacientes, clientes e ingresos perdidos. Los servicios nocturnos no conocen tu negocio.",
+        "solution": "QVO atiende fuera de horario con la misma calidad y conocimiento que tu mejor recepcionista. Maneja agendamiento, FAQs, triaje de urgencia y escalamiento — siempre con el contexto de tu base de conocimiento.",
+        "step1": "Llamada atendida con un saludo profesional adaptado a tu negocio",
+        "step2": "La IA identifica la intención usando comprensión del lenguaje natural",
+        "step3": "Las solicitudes rutinarias se resuelven al instante (agenda, FAQs, indicaciones)",
+        "step4": "Los temas urgentes se escalan al equipo de guardia con todo el contexto vía SMS",
+        "step5": "Resumen y transcripción listos para revisar en la mañana",
+        "tool1": "Base de conocimiento",
+        "tool2": "Lista de guardia",
+        "tool3": "Escalamiento por SMS",
+        "tool4": "Sistema de transcripciones",
+        "tool5": "API de agendamiento",
+        "metric1_label": "Cobertura",
+        "metric1_value": "24/7/365",
+        "metric2_label": "Tasa de atención",
+        "metric2_value": "100%",
+        "metric3_label": "Tasa de resolución",
+        "metric3_value": "87%"
+      },
+      "intake": {
+        "title": "Admisión de clientes",
+        "subtitle": "Conversaciones de admisión estructuradas que capturan cada detalle",
+        "problem": "Los formularios de admisión quedan incompletos porque se pierden detalles entre llamadas. El personal pierde tiempo en preguntas repetitivas en vez de en tareas de mayor valor. No hay estandarización entre llamadas.",
+        "solution": "QVO realiza entrevistas de admisión estructuradas que capturan toda la información necesaria en una sola llamada. Cada pregunta se hace, cada respuesta se registra y el expediente fluye automáticamente a tu sistema.",
+        "step1": "Se identifica a la persona y se busca en registros (o se crea uno nuevo)",
+        "step2": "Se realiza la entrevista estructurada con los campos requeridos",
+        "step3": "Se valida y confirma la información con la persona",
+        "step4": "Se crea el registro en el sistema de gestión de casos o EHR",
+        "step5": "Se asignan tareas de seguimiento al miembro adecuado del equipo",
+        "tool1": "Sistema de gestión de casos",
+        "tool2": "Integración con EHR",
+        "tool3": "Base de datos de pacientes",
+        "tool4": "Generación de documentos",
+        "tool5": "Asignación de tareas",
+        "metric1_label": "Completitud de datos",
+        "metric1_value": "98%",
+        "metric2_label": "Tiempo de admisión",
+        "metric2_value": "4 min promedio",
+        "metric3_label": "Tiempo del personal ahorrado",
+        "metric3_value": "60%"
+      },
+      "qualification": {
+        "title": "Calificación de prospectos",
+        "subtitle": "Califica y enruta prospectos entrantes en tiempo real",
+        "problem": "Los prospectos contactados después de 5 minutos tienen 10 veces menos probabilidad de convertir. Los equipos de ventas pierden horas con prospectos no calificados. Las consultas fuera de horario quedan sin atender mientras la competencia responde al instante.",
+        "solution": "QVO califica cada prospecto en tiempo real — captura contacto, presupuesto, plazos y necesidades. Los prospectos de alto valor se transfieren en caliente o se marcan para devolución de llamada. Cada uno recibe una primera impresión profesional.",
+        "step1": "Llamada o consulta entrante atendida de inmediato",
+        "step2": "La IA hace preguntas de calificación (presupuesto, plazos, decisor)",
+        "step3": "Se califica el prospecto según criterios configurables",
+        "step4": "Los de alta prioridad se transfieren en caliente o se marcan para devolución urgente",
+        "step5": "El registro del prospecto se sincroniza al CRM con todo el contexto",
+        "tool1": "Motor de calificación",
+        "tool2": "Integración con CRM",
+        "tool3": "Seguimiento por SMS",
+        "tool4": "Reserva en calendario",
+        "tool5": "Sistema de transferencia de llamadas",
+        "metric1_label": "Tasa de calificación",
+        "metric1_value": "92%",
+        "metric2_label": "Tiempo de respuesta",
+        "metric2_value": "< 10 seg",
+        "metric3_label": "Aumento de conversión",
+        "metric3_value": "2x"
+      }
+    },
+    "mid_cta": {
+      "title": "Mira estos escenarios en acción",
+      "subtitle": "Prueba nuestro demo interactivo para experimentar cómo QVO maneja conversaciones reales en distintas industrias. Sin registro.",
+      "try_demo": "Probar el demo",
+      "explore_features": "Explorar características"
+    },
+    "bottom_cta": {
+      "title": "¿No ves tu caso de uso?",
+      "subtitle": "La plataforma de agentes de QVO es totalmente configurable. Contáctanos para conversar tu escenario."
+    }
+  },
+  "demo": {
+    "seo_title": "Demo en vivo — Mira a los agentes de voz con IA de QVO en acción",
+    "seo_description": "Vive en vivo a los agentes de voz de QVO. Observa la atención de llamadas en tiempo real, cómo fluyen las conversaciones y explora el tablero de analítica.",
+    "celebration": {
+      "title": "¡Demo completa!",
+      "subtitle": "Buena experiencia, ¿verdad?"
+    },
+    "hero": {
+      "eyebrow": "Demo en vivo",
+      "title": "Vive QVO en vivo.",
+      "description": "Elige un agente y llama para ver la conversación desplegarse en tiempo real. Sin registro."
+    },
+    "config_warning": "Las líneas del demo aún no están provisionadas. El sistema está listo, pero requiere números de teléfono para recibir llamadas.",
+    "agent_picker": {
+      "title": "Elige un agente de demo",
+      "subtitle": "Selecciona un agente para ver sus detalles y probarlo.",
+      "empty": "Aún no hay agentes de demo configurados."
+    },
+    "phone_card": {
+      "demo_line": "Línea de demo",
+      "not_configured": "Sin configurar",
+      "awaiting_real": "Línea de demo — esperando un número real",
+      "ask_admin": "Contacta a tu administrador para provisionar un número de Twilio",
+      "call_to_try": "Llama para probarlo"
+    },
+    "status": {
+      "active": "Llamada activa",
+      "idle": "Inactivo",
+      "listening": "Escuchando..."
+    },
+    "stats_card": {
+      "title": "Estadísticas del demo",
+      "label": "Llamadas de demo totales",
+      "rate_limit": "Limitado a 5 llamadas por hora por persona"
+    },
+    "footer_note": "Las llamadas del demo se atienden con el mismo sistema que está en producción.",
+    "conversion": {
+      "experienced": "Acabas de experimentar QVO",
+      "title": "Despliega tus propios agentes de voz con IA en minutos",
+      "subtitle": "Lo que acabas de escuchar es la misma tecnología que usa cientos de negocios. Comienza con tus propios agentes de voz personalizados hoy.",
+      "feat1_title": "Configuración en 5 minutos",
+      "feat1_desc": "Despliega tu primer agente en minutos, no en semanas",
+      "feat2_title": "Listo para HIPAA",
+      "feat2_desc": "Seguridad de nivel empresarial integrada",
+      "feat3_title": "Cobertura 24/7",
+      "feat3_desc": "Nunca vuelvas a perder una llamada"
+    }
+  },
+  "resources_page": {
+    "seo_title": "Recursos — Guías y documentación",
+    "hero": {
+      "eyebrow": "Recursos",
+      "title": "Guías y documentación.",
+      "description": "Guías paso a paso, tutoriales de integración y mejores prácticas para sacar el máximo de QVO."
+    },
+    "categories": {
+      "title": "Explora por categoría"
+    },
+    "guides": {
+      "title": "Todas las guías",
+      "showing": "Mostrando {{count}} de {{total}}",
+      "no_results": "Ninguna guía coincide con tu búsqueda.",
+      "minutes": "{{count}} min de lectura"
+    }
+  },
+  "contact": {
+    "seo_title": "Contáctanos — Habla con QVO",
+    "seo_description": "¿Tienes preguntas sobre QVO? Contacta a nuestro equipo para demos, información de precios o soporte técnico. Estamos para ayudar a tu negocio.",
+    "hero": {
+      "eyebrow": "Contacto",
+      "title": "Hablemos sobre tus operaciones de voz.",
+      "description": "Si estás evaluando QVO para tu clínica o necesitas ayuda con una cuenta existente, nuestro equipo está disponible."
+    },
+    "form": {
+      "submitted_title": "Mensaje recibido.",
+      "submitted_desc": "Te responderemos en un día hábil. Si tu solicitud es urgente, llámanos directamente.",
+      "title": "Envíanos un mensaje",
+      "name_label": "Nombre completo",
+      "name_placeholder": "Jane Smith",
+      "email_label": "Correo electrónico",
+      "email_placeholder": "jane@clinica.com",
+      "company_label": "Nombre de la empresa o clínica",
+      "company_placeholder": "Bright Smiles Dental",
+      "message_label": "¿En qué podemos ayudarte?",
+      "message_placeholder": "Cuéntanos sobre tu volumen de llamadas, tu configuración actual y qué te gustaría mejorar.",
+      "send_default_error": "No se pudo enviar el mensaje",
+      "send_fallback_error": "No se pudo enviar el mensaje. Intenta escribirnos por correo directamente."
+    },
+    "info": {
+      "email_label": "Correo electrónico",
+      "email_value": "hello@qualityvoiceops.com",
+      "phone_label": "Teléfono",
+      "phone_value": "Disponible en horario comercial",
+      "location_label": "Ubicación",
+      "location_value": "Trabajo remoto. Atendemos negocios en todo EE. UU.",
+      "customer_label": "¿Ya eres cliente?",
+      "customer_value": "Inicia sesión para soporte de tu cuenta o escribe directamente a nuestro equipo de soporte por correo."
+    }
+  }
+}

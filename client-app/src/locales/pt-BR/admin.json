@@ -1,0 +1,96 @@
+{
+  "platform_admin": {
+    "page_title": "Administração da plataforma",
+    "page_subtitle": "Gestão de inquilinos, versionamento de templates, saúde de faturamento e diagnósticos da plataforma",
+    "tabs": {
+      "overview": "Overview",
+      "tenants": "Tenants",
+      "users": "Users",
+      "billing": "Billing",
+      "voice_models": "Voice models",
+      "integrations": "Integrations",
+      "feature_flags": "Feature flags",
+      "system_health": "System health",
+      "audit": "Audit log",
+      "deployments": "Deployments"
+    },
+    "overview": {
+      "active_tenants": "Active tenants",
+      "active_users": "Active users",
+      "calls_24h": "Calls (24h)",
+      "platform_uptime": "Platform uptime",
+      "revenue_mtd": "Revenue (MTD)",
+      "incidents": "Open incidents"
+    },
+    "tenants": {
+      "title": "Tenants",
+      "create": "Create tenant",
+      "search_placeholder": "Search by name or domain",
+      "table": {
+        "name": "Name",
+        "plan": "Plan",
+        "users": "Users",
+        "minutes": "Minutes (mo)",
+        "status": "Status",
+        "created": "Created",
+        "actions": "Actions"
+      },
+      "actions": {
+        "view": "View",
+        "suspend": "Suspend",
+        "activate": "Activate",
+        "delete": "Delete"
+      }
+    },
+    "users": {
+      "title": "Users",
+      "invite": "Invite user",
+      "table": {
+        "name": "Name",
+        "email": "Email",
+        "tenant": "Tenant",
+        "role": "Role",
+        "last_seen": "Last seen",
+        "status": "Status"
+      }
+    },
+    "feature_flags": {
+      "title": "Feature flags",
+      "subtitle": "Toggle features platform-wide or per tenant.",
+      "global": "Global",
+      "per_tenant": "Per tenant",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "system_health": {
+      "title": "System health",
+      "subtitle": "Live view of services, queues, and dependencies.",
+      "service": "Service",
+      "status": "Status",
+      "latency": "Latency",
+      "error_rate": "Error rate",
+      "operational": "Operational",
+      "degraded": "Degraded",
+      "outage": "Outage"
+    },
+    "audit": {
+      "title": "Audit log",
+      "subtitle": "Every administrative action across the platform.",
+      "table": {
+        "time": "Time",
+        "actor": "Actor",
+        "action": "Action",
+        "target": "Target",
+        "ip": "IP"
+      }
+    },
+    "common": {
+      "loading": "Loading...",
+      "error": "Something went wrong",
+      "retry": "Try again",
+      "no_data": "No data",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  }
+}
