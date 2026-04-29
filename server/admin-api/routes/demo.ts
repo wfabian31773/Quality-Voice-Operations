@@ -5,6 +5,7 @@ import { createRateLimiter } from '../../../platform/infra/rate-limit/createRate
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
+import { raiseDemoAnalyticsWriteFailureAlert } from '../../../platform/analytics/demoAnalyticsAlert';
 
 const logger = createLogger('DEMO_ANALYTICS');
 const router = Router();
@@ -54,6 +55,19 @@ export async function recordDemoAnalyticsEvent(
     );
   } catch (err) {
     logger.warn('Failed to record demo analytics event', { eventType, error: String(err) });
+    // The user-facing flow is intentionally not broken on a demo_analytics
+    // write failure (the prospect still navigates to Start Free Trial /
+    // Book a Demo), but we MUST page ops or the dropped lead intent goes
+    // unnoticed until someone reads the warn logs by hand. The alert
+    // helper writes a critical row to error_logs (the same channel
+    // raiseDeliveryFailureAlert uses for high-priority infra issues) and
+    // dedups repeat fires to keep a downed DB from spamming the page.
+    await raiseDemoAnalyticsWriteFailureAlert({
+      eventType,
+      ctaType,
+      agentType,
+      error: err,
+    });
   }
 }
 

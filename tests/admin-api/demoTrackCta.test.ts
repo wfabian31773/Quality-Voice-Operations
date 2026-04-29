@@ -25,7 +25,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-const queryMock = vi.fn();
+const { queryMock, raiseDemoAnalyticsWriteFailureAlertMock } = vi.hoisted(() => ({
+  queryMock: vi.fn(),
+  raiseDemoAnalyticsWriteFailureAlertMock: vi.fn(),
+}));
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
@@ -38,6 +41,10 @@ vi.mock('../../platform/core/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+}));
+
+vi.mock('../../platform/analytics/demoAnalyticsAlert', () => ({
+  raiseDemoAnalyticsWriteFailureAlert: raiseDemoAnalyticsWriteFailureAlertMock,
 }));
 
 import demoRouter from '../../server/admin-api/routes/demo';
@@ -59,6 +66,7 @@ function buildApp(): express.Express {
 describe('POST /demo/track-cta', () => {
   beforeEach(() => {
     queryMock.mockReset();
+    raiseDemoAnalyticsWriteFailureAlertMock.mockReset().mockResolvedValue(undefined);
   });
 
   it('persists a cta_clicked row when the Start Free Trial CTA is clicked', async () => {
@@ -177,5 +185,68 @@ describe('POST /demo/track-cta', () => {
       /INSERT INTO demo_analytics/i.test(String(call[0])),
     );
     expect(insertCalls).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Failure-path coverage for the silent-write regression this task fixes.
+  //
+  // Before the fix, a failed `demo_analytics` insert was caught inside
+  // `recordDemoAnalyticsEvent` and reduced to a `logger.warn` — the handler
+  // still returned `{ ok: true }` and nothing paged ops, so dropped lead
+  // intent went unnoticed in production. We now route those failures
+  // through `raiseDemoAnalyticsWriteFailureAlert`, which writes a critical
+  // row to `error_logs`. These tests assert that contract holds end to end.
+  // ---------------------------------------------------------------------------
+  it('dispatches a high-priority alert when the demo_analytics insert fails', async () => {
+    queryMock.mockRejectedValue(new Error('connection pool exhausted'));
+
+    const res = await request(buildApp())
+      .post('/demo/track-cta')
+      .send({ ctaType: 'start_free_trial', agentType: 'medical-after-hours' });
+
+    // The user-facing flow must not break — the prospect still navigates
+    // to Start Free Trial. The alert is the page, not a 500.
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+
+    expect(raiseDemoAnalyticsWriteFailureAlertMock).toHaveBeenCalledTimes(1);
+    const [arg] = raiseDemoAnalyticsWriteFailureAlertMock.mock.calls[0] as [{
+      eventType: string;
+      ctaType?: string | null;
+      agentType?: string | null;
+      error: unknown;
+    }];
+    expect(arg.eventType).toBe('cta_clicked');
+    expect(arg.ctaType).toBe('start_free_trial');
+    expect(arg.agentType).toBe('medical-after-hours');
+    expect(arg.error).toBeInstanceOf(Error);
+    expect((arg.error as Error).message).toMatch(/connection pool exhausted/);
+  });
+
+  it('still dispatches the alert for the Book a Demo CTA failure path', async () => {
+    queryMock.mockRejectedValue(new Error('relation "demo_analytics" does not exist'));
+
+    const res = await request(buildApp())
+      .post('/demo/track-cta')
+      .send({ ctaType: 'book_demo', agentType: 'dental' });
+
+    expect(res.status).toBe(200);
+    expect(raiseDemoAnalyticsWriteFailureAlertMock).toHaveBeenCalledTimes(1);
+    const [arg] = raiseDemoAnalyticsWriteFailureAlertMock.mock.calls[0] as [{
+      ctaType?: string | null;
+      agentType?: string | null;
+    }];
+    expect(arg.ctaType).toBe('book_demo');
+    expect(arg.agentType).toBe('dental');
+  });
+
+  it('does not invoke the alert when the insert succeeds', async () => {
+    queryMock.mockResolvedValue({ rows: [], rowCount: 1 });
+
+    await request(buildApp())
+      .post('/demo/track-cta')
+      .send({ ctaType: 'start_free_trial', agentType: 'dental' });
+
+    expect(raiseDemoAnalyticsWriteFailureAlertMock).not.toHaveBeenCalled();
   });
 });
