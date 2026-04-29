@@ -1,5 +1,17 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
+import {
+  type IndustryTemplateKey,
+  getDefaultSystemPrompt,
+  getDefaultWelcomeGreeting,
+  getIndustryTemplateCopy,
+  makeBuilderT,
+} from '../../client-app/src/lib/agentBuilderI18n';
+import {
+  DEFAULT_AGENT_LANGUAGE,
+  getAgentLanguageLabel,
+  normalizeAgentLanguage,
+} from '../../client-app/src/lib/agentLanguages';
 
 const logger = createLogger('PLATFORM_ASSISTANT');
 
@@ -273,36 +285,52 @@ const ASSISTANT_TOOLS = [
 const PRIVILEGED_TOOLS = new Set(['create_agent', 'deploy_agent', 'enable_widget', 'connect_integration']);
 
 /**
- * English industry-template starter copy used when the assistant creates an
- * agent and the caller didn't provide a custom prompt. These mirror the
- * defaults applied by the Agents page quick-create flow (see
- * `client-app/src/pages/Agents.tsx` AGENT_TYPE_TO_TEMPLATE and
- * `client-app/src/lib/agentBuilderI18n.ts` industry template copy) so that
- * agents created via the assistant land in the Agent Builder pre-loaded with
- * the matching template content.
+ * Maps the quick-create agent-type slug to an industry template key when one
+ * exists. Mirrors `AGENT_TYPE_TO_TEMPLATE` in `client-app/src/pages/Agents.tsx`
+ * so that agents created via the assistant land in the Agent Builder
+ * pre-loaded with the same localized industry copy as the Agents page
+ * quick-create flow. Types not listed here keep the generic localized
+ * defaults (see {@link getDefaultWelcomeGreeting} / {@link getDefaultSystemPrompt}).
  */
-const ASSISTANT_AGENT_TEMPLATE_COPY: Record<string, { systemPrompt: string; welcomeGreeting: string }> = {
-  'real-estate': {
-    welcomeGreeting:
-      "Thanks for calling. Are you looking to buy, sell, or rent — or just touring a listing?",
-    systemPrompt:
-      'You are a real estate front desk assistant.\n- Capture every caller as a lead, even if they only want a brochure.\n- Confirm name, phone, email, and budget or property of interest before ending the call.\n- Never quote a final price; always offer to book a showing or a call with the listing agent.',
-  },
-  restaurant: {
-    welcomeGreeting:
-      "Thanks for calling. Would you like to make a reservation, change one, or check tonight's availability?",
-    systemPrompt:
-      'You are a restaurant reservations host.\n- Always confirm party size, date, and time before checking the book.\n- If the requested time is not available, offer the closest open slot or the waitlist.\n- Note any allergies or special occasions on the booking.',
-  },
-  salon: {
-    welcomeGreeting:
-      "Thanks for calling. Are you booking a service, changing an appointment, or asking about a stylist's availability?",
-    systemPrompt:
-      'You are a salon and spa booking assistant.\n- Confirm the requested service, preferred stylist or therapist, and time window.\n- Honour stylist preferences when possible; offer a comparable provider if not.\n- Read the appointment back before saving, and remind the guest of the cancellation policy.',
-  },
+const AGENT_TYPE_TO_TEMPLATE_KEY: Record<string, IndustryTemplateKey> = {
+  'medical-after-hours': 'medical',
+  'dental': 'dental',
+  'home-services': 'hvac',
+  'legal': 'legal',
+  'customer-support': 'support',
+  'technical-support': 'support',
+  'real-estate': 'realestate',
+  'restaurant': 'restaurant',
+  'salon': 'salon',
 };
 
-async function executeToolCall(
+/**
+ * Resolves the tenant's primary language from `tenants.settings.primaryLanguage`,
+ * matching the source the Agents page reads via `useTenantPrimaryLanguage`.
+ * Falls back to the default agent language when the setting is missing,
+ * unrecognised, or the lookup fails.
+ */
+async function resolveTenantPrimaryLanguage(tenantId: string): Promise<string> {
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query(
+      `SELECT settings FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    const settings = (rows[0]?.settings as Record<string, unknown> | null) ?? {};
+    const raw = settings.primaryLanguage;
+    if (typeof raw !== 'string' || !raw.trim()) return DEFAULT_AGENT_LANGUAGE;
+    return normalizeAgentLanguage(raw);
+  } catch (error) {
+    logger.warn('Failed to resolve tenant primary language; defaulting to English', {
+      tenantId,
+      error: (error as Error)?.message,
+    });
+    return DEFAULT_AGENT_LANGUAGE;
+  }
+}
+
+export async function executeToolCall(
   toolName: string,
   args: Record<string, unknown>,
   tenantId: string,
@@ -340,18 +368,46 @@ async function executeToolCall(
           return { action: 'create_agent', status: 'error', message: limitCheck.reason || 'Agent limit reached for your plan' };
         }
 
+        // Resolve the tenant's preferred language so the seeded greeting and
+        // system prompt match the rest of their workspace — the Agents page
+        // reads the same `tenants.settings.primaryLanguage` setting via
+        // `useTenantPrimaryLanguage` and seeds the same localized copy.
+        const language = await resolveTenantPrimaryLanguage(tenantId);
+
         // When the caller didn't supply a custom prompt, seed the agent with
-        // the matching industry-template copy so it lands in the Agent Builder
-        // pre-loaded just like the Agents page quick-create flow does.
-        const templateCopy = ASSISTANT_AGENT_TEMPLATE_COPY[type];
-        const systemPrompt = customSystemPrompt ?? templateCopy?.systemPrompt ?? null;
-        const welcomeGreeting = customSystemPrompt ? null : templateCopy?.welcomeGreeting ?? null;
+        // the matching industry-template copy (or the generic localized
+        // default when the agent type isn't an industry template) so it lands
+        // in the Agent Builder pre-loaded just like the Agents page
+        // quick-create flow does.
+        let systemPrompt: string | null;
+        let welcomeGreeting: string | null;
+        let fallbackHint: string | null = null;
+        const templateKey = AGENT_TYPE_TO_TEMPLATE_KEY[type];
+        if (customSystemPrompt) {
+          systemPrompt = customSystemPrompt;
+          welcomeGreeting = null;
+        } else if (templateKey) {
+          const copy = getIndustryTemplateCopy(language, templateKey);
+          systemPrompt = copy.systemPrompt;
+          welcomeGreeting = copy.welcomeGreeting;
+          if (copy.usedEnglishFallback) {
+            // Reuse the exact same localized hint string the Agents page
+            // surfaces (`templateFallbackHint`) so the two flows stay in
+            // sync as translations evolve.
+            fallbackHint = makeBuilderT(language)('templateFallbackHint', {
+              language: getAgentLanguageLabel(language),
+            });
+          }
+        } else {
+          systemPrompt = getDefaultSystemPrompt(language);
+          welcomeGreeting = getDefaultWelcomeGreeting(language);
+        }
 
         const { rows } = await pool.query(
-          `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata)
-           VALUES ($1, $2, $3, $4, $5, 'alloy', 'gpt-4o-realtime-preview', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
-           RETURNING id, name, type, status`,
-          [tenantId, name, type, systemPrompt, welcomeGreeting],
+          `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, language, voice, model, temperature, tools, escalation_config, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, 'alloy', 'gpt-4o-realtime-preview', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
+           RETURNING id, name, type, status, language`,
+          [tenantId, name, type, systemPrompt, welcomeGreeting, language],
         );
 
         try {
@@ -359,7 +415,9 @@ async function executeToolCall(
           await recordActivationEvent(tenantId, 'tenant_agent_created', { agentId: rows[0].id, source: 'assistant' });
         } catch {}
 
-        return { action: 'create_agent', status: 'success', result: { agent: rows[0] }, message: `Agent "${name}" created successfully` };
+        const baseMessage = `Agent "${name}" created successfully`;
+        const message = fallbackHint ? `${baseMessage}. ${fallbackHint}` : baseMessage;
+        return { action: 'create_agent', status: 'success', result: { agent: rows[0] }, message };
       }
 
       case 'deploy_agent': {
