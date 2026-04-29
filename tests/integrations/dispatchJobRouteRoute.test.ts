@@ -528,11 +528,90 @@ describe('GET /dispatch/jobs/:id/route', () => {
     it('ignores unknown format values and falls back to JSON', async () => {
       mockJobAndPoints();
       const app = await buildApp();
-      const res = await request(app).get('/dispatch/jobs/job-1/route?format=kml');
+      const res = await request(app).get('/dispatch/jobs/job-1/route?format=xlsx');
 
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/application\/json/);
       expect(res.body.points).toHaveLength(2);
+    });
+
+    it('returns valid KML 2.2 with a styled LineString of the points in order', async () => {
+      mockJobAndPoints();
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-1/route?format=kml');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(
+        /application\/vnd\.google-earth\.kml\+xml/,
+      );
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename="route-job-1-2026-04-28.kml"',
+      );
+      expect(res.text).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+      expect(res.text).toContain('<kml xmlns="http://www.opengis.net/kml/2.2">');
+      // Single Placemark + LineString with the points serialized as
+      // lon,lat,alt tuples in chronological order. Order matters here:
+      // KML expects longitude *before* latitude, the opposite of GPX.
+      expect(res.text).toContain('<LineString>');
+      expect(res.text).toContain(
+        '<coordinates>-122.4194,37.7749,0 -122.418,37.776,0</coordinates>',
+      );
+      // Per-point Placemark for the row that has speed + heading. The
+      // values ride along inside <ExtendedData> so Google Earth surfaces
+      // them on click — same evidence the GPX export carries.
+      expect(res.text).toContain(`<TimeStamp><when>${t1}</when></TimeStamp>`);
+      expect(res.text).toContain(
+        '<Data name="speed_mps"><value>12.5</value></Data>',
+      );
+      expect(res.text).toContain(
+        '<Data name="heading_deg"><value>90</value></Data>',
+      );
+      expect(res.text).toContain(
+        '<Point><coordinates>-122.4194,37.7749,0</coordinates></Point>',
+      );
+      // Second row has no speed/heading but still has a timestamp, so it
+      // gets a Placemark with the time but no <ExtendedData> block.
+      expect(res.text).toContain(`<TimeStamp><when>${t2}</when></TimeStamp>`);
+      expect(res.text).toContain(
+        '<Point><coordinates>-122.418,37.776,0</coordinates></Point>',
+      );
+      // Points appear in chronological order in the KML body.
+      const i1 = res.text.indexOf(`<when>${t1}</when>`);
+      const i2 = res.text.indexOf(`<when>${t2}</when>`);
+      expect(i1).toBeGreaterThan(0);
+      expect(i2).toBeGreaterThan(i1);
+    });
+
+    it('falls back to scheduled_at for the KML filename date when no pings exist', async () => {
+      queryMock
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'job-2',
+              title: 'Office HVAC',
+              status: 'pending',
+              scheduled_at: '2026-05-10T10:00:00.000Z',
+              completed_at: null,
+              resource_id: null,
+              resource_name: null,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const app = await buildApp();
+      const res = await request(app).get('/dispatch/jobs/job-2/route?format=kml');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename="route-job-2-2026-05-10.kml"',
+      );
+      // Empty point list ⇒ no LineString placemark, no point folder, but
+      // the document scaffolding is still valid KML.
+      expect(res.text).toContain('<kml xmlns="http://www.opengis.net/kml/2.2">');
+      expect(res.text).not.toContain('<LineString>');
+      expect(res.text).not.toContain('<Folder>');
+      expect(res.text).toContain('</kml>');
     });
   });
 });

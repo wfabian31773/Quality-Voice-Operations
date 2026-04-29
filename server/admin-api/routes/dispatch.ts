@@ -2617,6 +2617,85 @@ function buildRouteGpx(jobId: string, jobTitle: string | null, points: RoutePoin
   );
 }
 
+function buildRouteKml(jobId: string, jobTitle: string | null, points: RoutePoint[]): string {
+  // KML 2.2 — one <Placemark><LineString> for the styled track plus a
+  // companion <Folder> of per-point <Placemark><Point> markers carrying
+  // speed/heading/timestamps inside <ExtendedData>. Google Earth and
+  // Google My Maps render the LineString as the visible route and surface
+  // the per-point evidence on click, mirroring the GPX TrackPointExtension
+  // payload so insurance adjusters and field-ops folks see the same data.
+  const trackName = xmlEscape(`Job ${jobId}${jobTitle ? ` — ${jobTitle}` : ''}`);
+  // KML coordinate tuples are lon,lat[,alt] — order matters; flipping
+  // them silently mirrors the route across the equator/meridian.
+  const coords = points.map((p) => `${p.lng},${p.lat},0`).join(' ');
+  const lineString = points.length > 0
+    ? `    <Placemark>\n`
+      + `      <name>${trackName}</name>\n`
+      + `      <styleUrl>#routeLine</styleUrl>\n`
+      + `      <LineString>\n`
+      + `        <tessellate>1</tessellate>\n`
+      + `        <coordinates>${coords}</coordinates>\n`
+      + `      </LineString>\n`
+      + `    </Placemark>\n`
+    : '';
+  // Per-point markers only get emitted when the row carries at least one
+  // piece of evidence beyond lat/lng (timestamp, speed, or heading).
+  // Otherwise we'd flood Google Earth with anonymous pins that add no
+  // forensic value over the LineString itself.
+  const pointPlacemarks = points
+    .map((p, idx) => {
+      const hasSpeed = p.speed_mps != null && Number.isFinite(Number(p.speed_mps));
+      const hasHeading = p.heading_deg != null && Number.isFinite(Number(p.heading_deg));
+      const hasTime = !!p.recorded_at;
+      if (!hasSpeed && !hasHeading && !hasTime) return '';
+      const time = hasTime
+        ? `        <TimeStamp><when>${p.recorded_at}</when></TimeStamp>\n`
+        : '';
+      const dataParts: string[] = [];
+      if (hasSpeed) {
+        dataParts.push(
+          `          <Data name="speed_mps"><value>${Number(p.speed_mps)}</value></Data>`,
+        );
+      }
+      if (hasHeading) {
+        dataParts.push(
+          `          <Data name="heading_deg"><value>${Number(p.heading_deg)}</value></Data>`,
+        );
+      }
+      const extended = dataParts.length > 0
+        ? `        <ExtendedData>\n${dataParts.join('\n')}\n        </ExtendedData>\n`
+        : '';
+      const seq = idx + 1;
+      return `    <Placemark>\n`
+        + `      <name>Point ${seq}</name>\n`
+        + time
+        + extended
+        + `      <Point><coordinates>${p.lng},${p.lat},0</coordinates></Point>\n`
+        + `    </Placemark>\n`;
+    })
+    .filter((s) => s.length > 0)
+    .join('');
+  const pointsFolder = pointPlacemarks
+    ? `    <Folder>\n      <name>Breadcrumb points</name>\n${pointPlacemarks}    </Folder>\n`
+    : '';
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n`
+    + `<kml xmlns="http://www.opengis.net/kml/2.2">\n`
+    + `  <Document>\n`
+    + `    <name>${trackName}</name>\n`
+    + `    <Style id="routeLine">\n`
+    + `      <LineStyle>\n`
+    + `        <color>ff0066ff</color>\n`
+    + `        <width>4</width>\n`
+    + `      </LineStyle>\n`
+    + `    </Style>\n`
+    + lineString
+    + pointsFolder
+    + `  </Document>\n`
+    + `</kml>\n`
+  );
+}
+
 function safeJobIdForFilename(jobId: string): string {
   return jobId.replace(/[^A-Za-z0-9_-]/g, '');
 }
@@ -2629,7 +2708,7 @@ function safeJobIdForFilename(jobId: string): string {
  */
 function buildRouteFilename(
   jobId: string,
-  format: 'gpx' | 'csv',
+  format: 'gpx' | 'csv' | 'kml',
   windowStart: string | null,
   scheduledAt: string | Date | null | undefined,
   completedAt: string | Date | null | undefined,
@@ -2664,14 +2743,21 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
   const { id } = req.params;
   const pool = getPlatformPool();
 
-  // Optional `?format=gpx|csv` turns the response into a downloadable
+  // Optional `?format=gpx|csv|kml` turns the response into a downloadable
   // breadcrumb file (used by the dispatcher's "Route taken" tab for
   // disputes — handing the data to a customer, lawyer, or external
-  // mapping tool without screenshots). Default (no format) keeps the
-  // JSON shape that the in-app map replay depends on.
+  // mapping tool without screenshots). KML opens directly in Google Earth
+  // and Google My Maps. Default (no format) keeps the JSON shape that the
+  // in-app map replay depends on.
   const formatRaw = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : '';
-  const exportFormat: 'gpx' | 'csv' | null =
-    formatRaw === 'gpx' ? 'gpx' : formatRaw === 'csv' ? 'csv' : null;
+  const exportFormat: 'gpx' | 'csv' | 'kml' | null =
+    formatRaw === 'gpx'
+      ? 'gpx'
+      : formatRaw === 'csv'
+        ? 'csv'
+        : formatRaw === 'kml'
+          ? 'kml'
+          : null;
 
   try {
     const { rows: jobRows } = await pool.query(
@@ -2719,6 +2805,21 @@ const getJobRouteHandler: RequestHandler = async (req, res) => {
       if (exportFormat === 'csv') {
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         return res.send(buildRouteCsv(points));
+      }
+
+      if (exportFormat === 'kml') {
+        // KML 2.2 — styled <LineString> for the route plus a folder of
+        // per-point <Point> placemarks with speed/heading/timestamps in
+        // <ExtendedData>. Opens directly in Google Earth and Google My
+        // Maps (handled inside `buildRouteKml`).
+        res.setHeader('Content-Type', 'application/vnd.google-earth.kml+xml; charset=utf-8');
+        return res.send(
+          buildRouteKml(
+            String(job.id),
+            job.title ? String(job.title) : null,
+            points,
+          ),
+        );
       }
 
       // GPX 1.1 — one <trk> with one <trkseg>. Each <trkpt> carries the
