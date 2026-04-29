@@ -25,5 +25,8 @@ export default defineConfig({
   },
   esbuild: {
     jsx: 'automatic',
+    // Avoid esbuild trying to resolve mobile/tsconfig.json which extends
+    // `expo/tsconfig.base` (only present inside the Expo install).
+    tsconfigRaw: '{}',
   },
 });

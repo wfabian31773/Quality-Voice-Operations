@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,9 +25,9 @@ import {
 import { isOffline } from '@/lib/connectivity';
 import {
   enqueueJobTransition,
-  getJobQueueEntry,
+  getJobQueueSummary,
   subscribe as subscribeQueue,
-  type QueuedItem,
+  type JobQueueSummary,
 } from '@/lib/offlineQueue';
 import { StatusPill } from '@/components/StatusPill';
 import { ContactRow } from '@/components/ContactRow';
@@ -100,15 +100,17 @@ export default function JobDetailScreen() {
   const events = query.data?.events ?? [];
   const attachments = query.data?.attachments ?? [];
 
-  const [queuedEntry, setQueuedEntry] = useState<QueuedItem | null>(
-    id ? getJobQueueEntry(id) : null,
+  const [queueSummary, setQueueSummary] = useState<JobQueueSummary>(
+    id
+      ? getJobQueueSummary(id)
+      : { transition: null, pendingCompletionTransition: null, photoCount: 0, noteCount: 0, total: 0, lastError: null },
   );
 
   useEffect(() => {
     if (!id) return;
-    setQueuedEntry(getJobQueueEntry(id));
+    setQueueSummary(getJobQueueSummary(id));
     return subscribeQueue(() => {
-      setQueuedEntry(getJobQueueEntry(id));
+      setQueueSummary(getJobQueueSummary(id));
     });
   }, [id]);
 
@@ -275,7 +277,7 @@ export default function JobDetailScreen() {
         </Text>
       ) : null}
 
-      {queuedEntry ? (
+      {queueSummary.total > 0 ? (
         <View
           style={[
             styles.queuedCard,
@@ -284,6 +286,8 @@ export default function JobDetailScreen() {
               borderColor: colors.warning,
             },
           ]}
+          accessibilityRole="alert"
+          accessibilityLabel="Pending sync"
         >
           <Ionicons
             name="cloud-upload-outline"
@@ -292,14 +296,20 @@ export default function JobDetailScreen() {
           />
           <View style={{ flex: 1 }}>
             <Text style={[styles.queuedTitle, { color: colors.text }]}>
-              Queued offline:{' '}
-              {formatStatus(queuedEntry.jobStatus ?? '')}
+              Pending sync
             </Text>
             <Text style={[styles.queuedHint, { color: colors.textMuted }]}>
-              {queuedEntry.lastError
-                ? `Last try failed: ${queuedEntry.lastError}`
-                : 'Will sync as soon as you’re back online.'}
+              {describePendingSync(queueSummary)}
             </Text>
+            {queueSummary.lastError ? (
+              <Text style={[styles.queuedHint, { color: colors.textMuted }]}>
+                Last try failed: {queueSummary.lastError}
+              </Text>
+            ) : (
+              <Text style={[styles.queuedHint, { color: colors.textMuted }]}>
+                Will sync as soon as you’re back online.
+              </Text>
+            )}
           </View>
         </View>
       ) : null}
@@ -533,6 +543,7 @@ export default function JobDetailScreen() {
         <CompletionSheet
           visible={completionSheetOpen}
           jobId={job.id}
+          jobTitle={job.title}
           jobStatus={job.status}
           onClose={() => setCompletionSheetOpen(false)}
           onCompleted={() => {
@@ -543,6 +554,33 @@ export default function JobDetailScreen() {
       ) : null}
     </ScrollView>
   );
+}
+
+function describePendingSync(summary: JobQueueSummary): string {
+  const parts: string[] = [];
+  if (summary.photoCount > 0) {
+    parts.push(
+      summary.photoCount === 1
+        ? '1 photo'
+        : `${summary.photoCount} photos`,
+    );
+  }
+  if (summary.noteCount > 0) {
+    parts.push(
+      summary.noteCount === 1 ? '1 note' : `${summary.noteCount} notes`,
+    );
+  }
+  if (summary.pendingCompletionTransition) {
+    parts.push(`“${formatStatus(summary.pendingCompletionTransition)}”`);
+  }
+  if (parts.length === 0) {
+    return 'Updates queued.';
+  }
+  if (parts.length === 1) return `${parts[0]} waiting to upload.`;
+  if (parts.length === 2) {
+    return `${parts[0]} and ${parts[1]} waiting to upload.`;
+  }
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]} waiting to upload.`;
 }
 
 function MetaRow({

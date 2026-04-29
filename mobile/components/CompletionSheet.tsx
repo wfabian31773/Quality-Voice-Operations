@@ -16,10 +16,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/hooks/useAuth';
-import { api, ApiError, type DispatchTransition, type JobAttachment } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  OfflineError,
+  type DispatchTransition,
+} from '@/lib/api';
+import { isOffline } from '@/lib/connectivity';
+import {
+  enqueueJobAttachmentNote,
+  enqueueJobAttachmentPhoto,
+} from '@/lib/offlineQueue';
+import { persistAttachmentForUpload } from '@/lib/attachmentStorage';
 import { PrimaryButton } from '@/components/PrimaryButton';
-
-type AttachmentType = JobAttachment['attachment_type'];
 
 interface PendingPhoto {
   uri: string;
@@ -31,6 +40,7 @@ interface PendingPhoto {
 interface CompletionSheetProps {
   visible: boolean;
   jobId: string;
+  jobTitle?: string | null;
   jobStatus: string;
   onClose: () => void;
   onCompleted: () => void;
@@ -49,9 +59,26 @@ const NEXT_TRANSITIONS: Record<string, DispatchTransition | null> = {
   cancelled: null,
 };
 
+function isLikelyNetworkError(err: unknown): boolean {
+  if (err instanceof OfflineError) return true;
+  if (err instanceof ApiError) return false;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return (
+      msg.includes('network request failed') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('load failed') ||
+      msg.includes('network error') ||
+      msg.includes('timed out')
+    );
+  }
+  return false;
+}
+
 export function CompletionSheet({
   visible,
   jobId,
+  jobTitle,
   jobStatus,
   onClose,
   onCompleted,
@@ -137,6 +164,58 @@ export function CompletionSheet({
   const canSubmit =
     !submitting && (trimmedNote.length > 0 || photos.length > 0);
 
+  const titleForPhoto = (
+    photo: PendingPhoto,
+    index: number,
+  ): string => {
+    const prefix =
+      photo.attachmentType === 'proof_of_completion'
+        ? 'Proof of completion'
+        : 'Field photo';
+    return `${prefix} ${index + 1}`;
+  };
+
+  const queueRemaining = async (
+    pendingPhotos: { photo: PendingPhoto; index: number }[],
+    pendingNote: string | null,
+    completionTransition: DispatchTransition | null,
+  ): Promise<void> => {
+    const willHaveNote = pendingNote !== null && pendingNote.length > 0;
+    for (let i = 0; i < pendingPhotos.length; i++) {
+      const { photo, index } = pendingPhotos[i];
+      setProgress(`Saving photo ${i + 1} of ${pendingPhotos.length} for later…`);
+      const isLast = i === pendingPhotos.length - 1;
+      const transitionForCall =
+        isLast && !willHaveNote ? completionTransition : null;
+      const enqueueId = `${jobId}_${Date.now()}_${index}`;
+      const localUri = await persistAttachmentForUpload(
+        photo.uri,
+        photo.mimeType,
+        enqueueId,
+      );
+      await enqueueJobAttachmentPhoto({
+        jobId,
+        jobTitle: jobTitle ?? null,
+        attachmentType: photo.attachmentType,
+        title: titleForPhoto(photo, index),
+        localFileUri: localUri,
+        mimeType: photo.mimeType,
+        fileSizeBytes: photo.fileSize,
+        completionTransition: transitionForCall,
+      });
+    }
+    if (willHaveNote) {
+      setProgress('Saving note for later…');
+      await enqueueJobAttachmentNote({
+        jobId,
+        jobTitle: jobTitle ?? null,
+        title: 'Completion note',
+        content: pendingNote!,
+        completionTransition,
+      });
+    }
+  };
+
   const submit = async () => {
     if (!client || !canSubmit) return;
     setSubmitting(true);
@@ -146,48 +225,105 @@ export function CompletionSheet({
       markComplete && canMarkComplete ? NEXT_TRANSITIONS[jobStatus] : null;
 
     try {
-      let lastResponseJob: unknown = null;
+      // If the device is already known to be offline, skip the network
+      // round-trip entirely and persist everything to the local queue. The
+      // background runner will pick it up the next time we have connectivity.
+      if (isOffline()) {
+        const pending = photos.map((photo, index) => ({ photo, index }));
+        await queueRemaining(
+          pending,
+          trimmedNote.length > 0 ? trimmedNote : null,
+          completionTransition,
+        );
+        setProgress(null);
+        setSubmitting(false);
+        reset();
+        Alert.alert(
+          'Saved offline',
+          completionTransition
+            ? 'Your photos, notes, and completion will sync as soon as you’re back online.'
+            : 'Your photos and notes will sync as soon as you’re back online.',
+        );
+        onCompleted();
+        onClose();
+        return;
+      }
+
       const totalPhotos = photos.length;
+      const willHaveNote = trimmedNote.length > 0;
 
       for (let i = 0; i < totalPhotos; i++) {
         const photo = photos[i];
         setProgress(`Uploading photo ${i + 1} of ${totalPhotos}…`);
-        const ticket = await api.requestAttachmentUpload(client, {
-          mime_type: photo.mimeType,
-          size_bytes: photo.fileSize ?? undefined,
-        });
-        await api.uploadAttachmentBinary(ticket, {
-          uri: photo.uri,
-          mimeType: photo.mimeType,
-          sizeBytes: photo.fileSize,
-        });
         const isLast = i === totalPhotos - 1;
         const transitionForCall =
-          isLast && trimmedNote.length === 0 ? completionTransition : null;
-        const titlePrefix =
-          photo.attachmentType === 'proof_of_completion'
-            ? 'Proof of completion'
-            : 'Field photo';
-        const res = await api.addAttachment(client, jobId, {
-          attachment_type: photo.attachmentType,
-          title: `${titlePrefix} ${i + 1}`,
-          object_path: ticket.objectPath,
-          mime_type: photo.mimeType,
-          file_size_bytes: photo.fileSize,
-          completion_transition: transitionForCall,
-        });
-        lastResponseJob = res.job;
+          isLast && !willHaveNote ? completionTransition : null;
+        try {
+          const ticket = await api.requestAttachmentUpload(client, {
+            mime_type: photo.mimeType,
+            size_bytes: photo.fileSize ?? undefined,
+          });
+          await api.uploadAttachmentBinary(ticket, {
+            uri: photo.uri,
+            mimeType: photo.mimeType,
+            sizeBytes: photo.fileSize,
+          });
+          await api.addAttachment(client, jobId, {
+            attachment_type: photo.attachmentType,
+            title: titleForPhoto(photo, i),
+            object_path: ticket.objectPath,
+            mime_type: photo.mimeType,
+            file_size_bytes: photo.fileSize,
+            completion_transition: transitionForCall,
+          });
+        } catch (err) {
+          if (!isLikelyNetworkError(err)) throw err;
+          // Connectivity blip — persist this photo and everything after it,
+          // including the note + completion transition, then exit cleanly.
+          const remainingPhotos = photos
+            .slice(i)
+            .map((p, idx) => ({ photo: p, index: i + idx }));
+          await queueRemaining(
+            remainingPhotos,
+            willHaveNote ? trimmedNote : null,
+            completionTransition,
+          );
+          setProgress(null);
+          setSubmitting(false);
+          reset();
+          Alert.alert(
+            'Saved offline',
+            'We lost the connection mid-upload — the rest will sync as soon as you’re back online.',
+          );
+          onCompleted();
+          onClose();
+          return;
+        }
       }
 
-      if (trimmedNote.length > 0) {
+      if (willHaveNote) {
         setProgress('Saving note…');
-        const res = await api.addAttachment(client, jobId, {
-          attachment_type: 'note',
-          title: 'Completion note',
-          content: trimmedNote,
-          completion_transition: completionTransition,
-        });
-        lastResponseJob = res.job;
+        try {
+          await api.addAttachment(client, jobId, {
+            attachment_type: 'note',
+            title: 'Completion note',
+            content: trimmedNote,
+            completion_transition: completionTransition,
+          });
+        } catch (err) {
+          if (!isLikelyNetworkError(err)) throw err;
+          await queueRemaining([], trimmedNote, completionTransition);
+          setProgress(null);
+          setSubmitting(false);
+          reset();
+          Alert.alert(
+            'Saved offline',
+            'We lost the connection — your note will sync as soon as you’re back online.',
+          );
+          onCompleted();
+          onClose();
+          return;
+        }
       }
 
       setProgress(null);
@@ -195,9 +331,6 @@ export function CompletionSheet({
       reset();
       onCompleted();
       onClose();
-      if (completionTransition && lastResponseJob === null) {
-        // No-op: transition shouldn't fail silently here.
-      }
     } catch (err) {
       setSubmitting(false);
       setProgress(null);
