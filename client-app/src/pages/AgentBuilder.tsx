@@ -460,6 +460,60 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
       { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', label: 'Callback' },
     ],
   },
+  {
+    labelKey: 'tplRealEstate',
+    key: 'realestate',
+    nodes: [
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'createContact' },
+      { id: '4', type: 'action', position: { x: 250, y: 450 }, nodeType: 'scheduleAppt' },
+      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
+    ],
+    edges: [
+      { id: 'e1-2', source: '1', target: '2' },
+      { id: 'e2-3', source: '2', target: '3' },
+      { id: 'e3-4', source: '3', target: '4' },
+      { id: 'e4-5', source: '4', target: '5' },
+    ],
+  },
+  {
+    labelKey: 'tplRestaurant',
+    key: 'restaurant',
+    nodes: [
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'tableAvailable === true' },
+      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'scheduleAppt' },
+      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'createTicket' },
+      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
+    ],
+    edges: [
+      { id: 'e1-2', source: '1', target: '2' },
+      { id: 'e2-3', source: '2', target: '3' },
+      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', label: 'Available' },
+      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', label: 'Waitlist' },
+      { id: 'e4-6', source: '4', target: '6' },
+      { id: 'e5-6', source: '5', target: '6' },
+    ],
+  },
+  {
+    labelKey: 'tplSalon',
+    key: 'salon',
+    nodes: [
+      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
+      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
+      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'scheduleAppt' },
+      { id: '4', type: 'conversation', position: { x: 250, y: 450 }, nodeType: 'confirmInfo' },
+      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
+    ],
+    edges: [
+      { id: 'e1-2', source: '1', target: '2' },
+      { id: 'e2-3', source: '2', target: '3' },
+      { id: 'e3-4', source: '3', target: '4' },
+      { id: 'e4-5', source: '4', target: '5' },
+    ],
+  },
 ];
 
 function buildIndustryTemplates(t: BuilderT, language: string): IndustryTemplate[] {

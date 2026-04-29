@@ -150,6 +150,9 @@ export type AgentBuilderTKey =
   | 'tplHvac'
   | 'tplLegal'
   | 'tplSupport'
+  | 'tplRealEstate'
+  | 'tplRestaurant'
+  | 'tplSalon'
   | 'commandBarTitle'
   | 'commandBarPlaceholder'
   | 'commandBarHint'
@@ -313,6 +316,9 @@ const EN: Record<AgentBuilderTKey, string> = {
   tplHvac: 'HVAC / Home Services',
   tplLegal: 'Legal Intake',
   tplSupport: 'Customer Support',
+  tplRealEstate: 'Real Estate Lead',
+  tplRestaurant: 'Restaurant Reservations',
+  tplSalon: 'Salon & Spa',
   commandBarTitle: 'Command palette',
   commandBarPlaceholder: 'Type to add a node, or "connect A to B"…',
   commandBarHint: '↑↓ to navigate · Enter to run · Esc to close',
@@ -468,6 +474,9 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Servicios para el hogar',
   tplLegal: 'Recepción legal',
   tplSupport: 'Atención al cliente',
+  tplRealEstate: 'Captación inmobiliaria',
+  tplRestaurant: 'Reservas de restaurante',
+  tplSalon: 'Salón y spa',
   commandBarTitle: 'Paleta de comandos',
   commandBarPlaceholder: 'Escribe para añadir un nodo o "connect A to B"…',
   commandBarHint: '↑↓ para navegar · Enter para ejecutar · Esc para cerrar',
@@ -623,6 +632,9 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'CVC / Services à domicile',
   tplLegal: "Accueil juridique",
   tplSupport: 'Support client',
+  tplRealEstate: 'Lead immobilier',
+  tplRestaurant: 'Réservations de restaurant',
+  tplSalon: 'Salon & spa',
   commandBarTitle: 'Palette de commandes',
   commandBarPlaceholder: 'Tapez pour ajouter un nœud ou "connect A to B"…',
   commandBarHint: '↑↓ pour naviguer · Entrée pour exécuter · Échap pour fermer',
@@ -778,6 +790,9 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Hausdienste',
   tplLegal: 'Rechtsannahme',
   tplSupport: 'Kundensupport',
+  tplRealEstate: 'Immobilien-Lead',
+  tplRestaurant: 'Restaurantreservierungen',
+  tplSalon: 'Salon & Spa',
   commandBarTitle: 'Befehlspalette',
   commandBarPlaceholder: 'Tippen, um einen Knoten hinzuzufügen, oder "connect A to B"…',
   commandBarHint: '↑↓ navigieren · Enter ausführen · Esc schließen',
@@ -933,6 +948,9 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Serviços residenciais',
   tplLegal: 'Recepção jurídica',
   tplSupport: 'Atendimento ao cliente',
+  tplRealEstate: 'Lead imobiliário',
+  tplRestaurant: 'Reservas de restaurante',
+  tplSalon: 'Salão e spa',
   commandBarTitle: 'Paleta de comandos',
   commandBarPlaceholder: 'Digite para adicionar um nó ou "connect A to B"…',
   commandBarHint: '↑↓ para navegar · Enter para executar · Esc para fechar',
@@ -1088,6 +1106,9 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Servizi domestici',
   tplLegal: 'Accoglienza legale',
   tplSupport: 'Assistenza clienti',
+  tplRealEstate: 'Lead immobiliare',
+  tplRestaurant: 'Prenotazioni ristorante',
+  tplSalon: 'Salone e spa',
   commandBarTitle: 'Tavolozza dei comandi',
   commandBarPlaceholder: 'Digita per aggiungere un nodo o "connect A to B"…',
   commandBarHint: '↑↓ per navigare · Invio per eseguire · Esc per chiudere',
@@ -1243,6 +1264,9 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / Huisdiensten',
   tplLegal: 'Juridische intake',
   tplSupport: 'Klantenservice',
+  tplRealEstate: 'Vastgoedlead',
+  tplRestaurant: 'Restaurantreserveringen',
+  tplSalon: 'Salon & spa',
   commandBarTitle: 'Opdrachtenpalet',
   commandBarPlaceholder: 'Typ om een knoop toe te voegen of "connect A to B"…',
   commandBarHint: '↑↓ navigeren · Enter uitvoeren · Esc sluiten',
@@ -1398,6 +1422,9 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: '暖通空调 / 家政服务',
   tplLegal: '法律咨询',
   tplSupport: '客户支持',
+  tplRealEstate: '房地产线索',
+  tplRestaurant: '餐厅预订',
+  tplSalon: '美容美发 / 水疗',
   commandBarTitle: '命令面板',
   commandBarPlaceholder: '输入以添加节点,或使用 "connect A to B"…',
   commandBarHint: '↑↓ 导航 · Enter 执行 · Esc 关闭',
@@ -1553,6 +1580,9 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: '空調 / 住宅サービス',
   tplLegal: '法律相談受付',
   tplSupport: 'カスタマーサポート',
+  tplRealEstate: '不動産リード',
+  tplRestaurant: 'レストラン予約',
+  tplSalon: 'サロン & スパ',
   commandBarTitle: 'コマンドパレット',
   commandBarPlaceholder: 'ノード名を入力するか、"connect A to B" と入力…',
   commandBarHint: '↑↓ で移動 · Enter で実行 · Esc で閉じる',
@@ -1708,6 +1738,9 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: '냉난방 / 가정 서비스',
   tplLegal: '법률 상담 접수',
   tplSupport: '고객 지원',
+  tplRealEstate: '부동산 리드',
+  tplRestaurant: '레스토랑 예약',
+  tplSalon: '살롱 & 스파',
   commandBarTitle: '명령 팔레트',
   commandBarPlaceholder: '노드를 추가하려면 입력하거나 "connect A to B"…',
   commandBarHint: '↑↓ 이동 · Enter 실행 · Esc 닫기',
@@ -1863,6 +1896,9 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'تكييف / خدمات منزلية',
   tplLegal: 'استقبال قانوني',
   tplSupport: 'دعم العملاء',
+  tplRealEstate: 'عميل عقاري',
+  tplRestaurant: 'حجوزات المطعم',
+  tplSalon: 'صالون وسبا',
   commandBarTitle: 'لوحة الأوامر',
   commandBarPlaceholder: 'اكتب لإضافة عقدة، أو "connect A to B"…',
   commandBarHint: '↑↓ للتنقل · Enter للتنفيذ · Esc للإغلاق',
@@ -2018,6 +2054,9 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   tplHvac: 'HVAC / गृह सेवाएँ',
   tplLegal: 'कानूनी पंजीकरण',
   tplSupport: 'ग्राहक सहायता',
+  tplRealEstate: 'रियल एस्टेट लीड',
+  tplRestaurant: 'रेस्तरां आरक्षण',
+  tplSalon: 'सैलून और स्पा',
   commandBarTitle: 'कमांड पैलेट',
   commandBarPlaceholder: 'नोड जोड़ने के लिए टाइप करें, या "connect A to B"…',
   commandBarHint: '↑↓ नेविगेट · Enter चलाएँ · Esc बंद करें',
@@ -2226,7 +2265,15 @@ export function isDefaultSystemPrompt(value: string | undefined | null): boolean
 
 // ===== Industry template copy =====
 
-export type IndustryTemplateKey = 'medical' | 'dental' | 'hvac' | 'legal' | 'support';
+export type IndustryTemplateKey =
+  | 'medical'
+  | 'dental'
+  | 'hvac'
+  | 'legal'
+  | 'support'
+  | 'realestate'
+  | 'restaurant'
+  | 'salon';
 
 export const INDUSTRY_TEMPLATE_KEYS: readonly IndustryTemplateKey[] = [
   'medical',
@@ -2234,6 +2281,9 @@ export const INDUSTRY_TEMPLATE_KEYS: readonly IndustryTemplateKey[] = [
   'hvac',
   'legal',
   'support',
+  'realestate',
+  'restaurant',
+  'salon',
 ];
 
 interface IndustryTemplateNodeCopy {
@@ -3062,6 +3112,489 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '3': { label: 'प्रकार के अनुसार रूटिंग' },
         '4': { label: 'सपोर्ट टिकट', toolConfig: 'समस्या के विवरण के साथ सपोर्ट टिकट बनाएँ' },
         '5': { label: 'कॉलबैक शेड्यूल करें', toolConfig: 'विशेषज्ञ के साथ कॉलबैक शेड्यूल करें' },
+      },
+    },
+  },
+  realestate: {
+    en: {
+      welcomeGreeting:
+        "Thanks for calling. Are you looking to buy, sell, or rent — or just touring a listing?",
+      systemPromptSuffix:
+        'You are a real estate front desk assistant.\n- Capture every caller as a lead, even if they only want a brochure.\n- Confirm name, phone, email, and budget or property of interest before ending the call.\n- Never quote a final price; always offer to book a showing or a call with the listing agent.',
+      nodes: {
+        '1': { label: 'Caller Greeting', prompt: 'Warmly greet the caller and identify the brokerage.' },
+        '2': { label: 'Buying / Selling / Renting', prompt: 'Ask whether they want to buy, sell, or rent, the property of interest, target budget, and timeline.' },
+        '3': { label: 'Capture Lead', toolConfig: 'Create CRM contact with name, phone, email, intent, budget, and property of interest' },
+        '4': { label: 'Book Showing', toolConfig: 'Schedule a showing or listing consultation with the assigned agent' },
+        '5': { label: 'SMS Confirmation', toolConfig: 'Send a text with the appointment time, address, and agent name' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. ¿Quiere comprar, vender, alquilar o solo visitar una propiedad?',
+      systemPromptSuffix:
+        'Eres asistente de recepción de una inmobiliaria.\n- Registra a cada persona que llama como lead, aunque solo pida un folleto.\n- Confirma nombre, teléfono, email y presupuesto o propiedad de interés antes de colgar.\n- No des nunca un precio final; siempre ofrece agendar una visita o una llamada con el agente.',
+      nodes: {
+        '1': { label: 'Saludo al cliente', prompt: 'Saluda cálidamente y di el nombre de la inmobiliaria.' },
+        '2': { label: 'Comprar / vender / alquilar', prompt: 'Pregunta si quiere comprar, vender o alquilar, la propiedad de interés, el presupuesto y el plazo.' },
+        '3': { label: 'Registrar lead', toolConfig: 'Crear contacto en CRM con nombre, teléfono, email, intención, presupuesto y propiedad' },
+        '4': { label: 'Agendar visita', toolConfig: 'Programar visita o consulta con el agente asignado' },
+        '5': { label: 'Confirmación por SMS', toolConfig: 'Enviar un SMS con la hora de la cita, la dirección y el agente' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        "Merci de votre appel. Souhaitez-vous acheter, vendre, louer ou simplement visiter un bien ?",
+      systemPromptSuffix:
+        "Vous êtes l'assistant d'accueil d'une agence immobilière.\n- Enregistrez chaque appelant comme lead, même s'il ne demande qu'une brochure.\n- Confirmez nom, téléphone, e-mail et budget ou bien d'intérêt avant de raccrocher.\n- Ne donnez jamais de prix définitif ; proposez toujours une visite ou un rappel par l'agent.",
+      nodes: {
+        '1': { label: "Accueil de l'appelant", prompt: "Saluez chaleureusement et identifiez l'agence immobilière." },
+        '2': { label: 'Achat / vente / location', prompt: "Demandez s'il s'agit d'un achat, d'une vente ou d'une location, le bien d'intérêt, le budget et le délai." },
+        '3': { label: 'Enregistrer le lead', toolConfig: 'Créer un contact CRM avec nom, téléphone, e-mail, intention, budget et bien' },
+        '4': { label: 'Réserver une visite', toolConfig: "Planifier une visite ou un entretien avec l'agent assigné" },
+        '5': { label: 'Confirmation SMS', toolConfig: "Envoyer un SMS avec l'heure du rendez-vous, l'adresse et l'agent" },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Möchten Sie kaufen, verkaufen, mieten oder eine Immobilie besichtigen?',
+      systemPromptSuffix:
+        'Sie sind die Empfangsassistenz eines Immobilienmaklers.\n- Erfassen Sie jeden Anrufer als Lead, auch wenn nur ein Exposé gewünscht wird.\n- Bestätigen Sie Name, Telefon, E-Mail und Budget oder die Wunschimmobilie vor dem Auflegen.\n- Nennen Sie nie einen Endpreis; bieten Sie stets eine Besichtigung oder einen Rückruf des Maklers an.',
+      nodes: {
+        '1': { label: 'Begrüßung des Anrufers', prompt: 'Begrüßen Sie den Anrufer herzlich und nennen Sie das Maklerbüro.' },
+        '2': { label: 'Kauf / Verkauf / Miete', prompt: 'Fragen Sie nach Anliegen (kaufen, verkaufen, mieten), gewünschter Immobilie, Budget und Zeitrahmen.' },
+        '3': { label: 'Lead erfassen', toolConfig: 'CRM-Kontakt mit Name, Telefon, E-Mail, Anliegen, Budget und Wunschimmobilie anlegen' },
+        '4': { label: 'Besichtigung buchen', toolConfig: 'Besichtigung oder Beratungstermin mit dem zuständigen Makler vereinbaren' },
+        '5': { label: 'SMS-Bestätigung', toolConfig: 'SMS mit Termin, Adresse und Maklername senden' },
+      },
+    },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Quer comprar, vender, alugar ou apenas visitar um imóvel?',
+      systemPromptSuffix:
+        'Você é o assistente de recepção de uma imobiliária.\n- Registre cada pessoa que liga como lead, mesmo que peça apenas um folheto.\n- Confirme nome, telefone, e-mail e orçamento ou imóvel de interesse antes de encerrar.\n- Nunca informe um preço final; sempre ofereça agendar uma visita ou um retorno do corretor.',
+      nodes: {
+        '1': { label: 'Saudação ao cliente', prompt: 'Cumprimente o cliente e identifique a imobiliária.' },
+        '2': { label: 'Compra / venda / aluguel', prompt: 'Pergunte se quer comprar, vender ou alugar, qual o imóvel, o orçamento e o prazo.' },
+        '3': { label: 'Registrar lead', toolConfig: 'Criar contato no CRM com nome, telefone, e-mail, intenção, orçamento e imóvel' },
+        '4': { label: 'Agendar visita', toolConfig: 'Agendar visita ou conversa com o corretor responsável' },
+        '5': { label: 'Confirmação por SMS', toolConfig: 'Enviar SMS com horário, endereço e nome do corretor' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. Vuole acquistare, vendere, affittare o solo visitare un immobile?',
+      systemPromptSuffix:
+        "Sei l'assistente di reception di un'agenzia immobiliare.\n- Registra ogni chiamante come lead, anche se chiede solo una brochure.\n- Conferma nome, telefono, e-mail e budget o immobile di interesse prima di chiudere.\n- Non comunicare mai un prezzo definitivo; offri sempre una visita o un richiamo dell'agente.",
+      nodes: {
+        '1': { label: 'Saluto al cliente', prompt: "Saluta cordialmente e identifica l'agenzia immobiliare." },
+        '2': { label: 'Acquisto / vendita / affitto', prompt: 'Chiedi se vuole comprare, vendere o affittare, quale immobile, il budget e i tempi.' },
+        '3': { label: 'Registrare il lead', toolConfig: 'Creare un contatto CRM con nome, telefono, e-mail, intento, budget e immobile' },
+        '4': { label: 'Prenota visita', toolConfig: "Pianificare visita o consulenza con l'agente assegnato" },
+        '5': { label: 'Conferma SMS', toolConfig: "Inviare SMS con orario, indirizzo e nome dell'agente" },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Wilt u kopen, verkopen, huren of een woning bezichtigen?',
+      systemPromptSuffix:
+        'Je bent de receptie-assistent van een makelaarskantoor.\n- Registreer iedere beller als lead, ook als ze alleen een brochure willen.\n- Bevestig naam, telefoon, e-mail en budget of gewenste woning voor het beëindigen van het gesprek.\n- Noem nooit een eindprijs; bied altijd een bezichtiging of terugbelafspraak met de makelaar aan.',
+      nodes: {
+        '1': { label: 'Begroeting beller', prompt: 'Begroet de beller hartelijk en noem het makelaarskantoor.' },
+        '2': { label: 'Kopen / verkopen / huren', prompt: 'Vraag of het om kopen, verkopen of huren gaat, welke woning, het budget en de termijn.' },
+        '3': { label: 'Lead vastleggen', toolConfig: 'CRM-contact aanmaken met naam, telefoon, e-mail, intentie, budget en woning' },
+        '4': { label: 'Bezichtiging plannen', toolConfig: 'Bezichtiging of intakegesprek met toegewezen makelaar inplannen' },
+        '5': { label: 'SMS-bevestiging', toolConfig: 'SMS sturen met afspraaktijd, adres en naam van de makelaar' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您来电。请问您是想买房、卖房、租房,还是只是想看房?',
+      systemPromptSuffix:
+        '您是房地产前台助理。\n- 把每位来电者都登记为潜在客户,即便只是索取楼书。\n- 在结束通话前确认姓名、电话、邮箱以及预算或意向房源。\n- 切勿报出最终价格,始终主动邀请安排看房或经纪人回拨。',
+      nodes: {
+        '1': { label: '客户问候', prompt: '热情问候来电者,并报出经纪公司名称。' },
+        '2': { label: '买 / 卖 / 租', prompt: '询问对方是想买、卖还是租,意向房源、预算和时间安排。' },
+        '3': { label: '登记线索', toolConfig: '在 CRM 创建联系人,记录姓名、电话、邮箱、意向、预算和房源' },
+        '4': { label: '预约看房', toolConfig: '与负责经纪人安排看房或咨询' },
+        '5': { label: '短信确认', toolConfig: '发送预约时间、地址及经纪人姓名的短信' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。購入・売却・賃貸、または物件のご見学のご相談でしょうか?',
+      systemPromptSuffix:
+        'あなたは不動産会社の窓口アシスタントです。\n- 資料請求のみのお客様もすべて見込み客として登録してください。\n- 通話終了前に氏名・電話番号・メール・予算または対象物件を必ず確認してください。\n- 最終価格は提示せず、必ず内見予約か担当エージェントの折り返しを提案してください。',
+      nodes: {
+        '1': { label: 'お客様への挨拶', prompt: 'お客様を丁寧にお迎えし、不動産会社名を伝えてください。' },
+        '2': { label: '購入 / 売却 / 賃貸', prompt: '購入・売却・賃貸の希望、対象物件、予算、時期を伺ってください。' },
+        '3': { label: '見込み客登録', toolConfig: 'CRMに氏名・電話・メール・意向・予算・物件を登録' },
+        '4': { label: '内見予約', toolConfig: '担当エージェントとの内見または相談を予約' },
+        '5': { label: 'SMS確認', toolConfig: '予約日時・住所・担当者名をSMSで送信' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 매수, 매도, 임대, 아니면 매물 둘러보기 중 어떤 것을 원하시나요?',
+      systemPromptSuffix:
+        '당신은 부동산 사무실 안내 어시스턴트입니다.\n- 자료만 요청한 경우라도 모든 통화자를 잠재 고객으로 등록하세요.\n- 통화 종료 전에 이름, 전화번호, 이메일, 예산 또는 관심 매물을 반드시 확인하세요.\n- 최종 가격은 절대 안내하지 말고, 항상 매물 안내 예약이나 담당 중개인의 콜백을 제안하세요.',
+      nodes: {
+        '1': { label: '고객 인사', prompt: '고객을 따뜻하게 맞이하고 부동산 사무소명을 안내하세요.' },
+        '2': { label: '매수 / 매도 / 임대', prompt: '매수·매도·임대 여부, 관심 매물, 예산, 일정 등을 확인하세요.' },
+        '3': { label: '리드 등록', toolConfig: 'CRM에 이름, 전화, 이메일, 의향, 예산, 매물 정보를 등록' },
+        '4': { label: '매물 안내 예약', toolConfig: '담당 중개인과 매물 안내 또는 상담 예약' },
+        '5': { label: 'SMS 확인', toolConfig: '예약 시간, 주소, 중개인 이름을 SMS로 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. هل ترغب بالشراء أم البيع أم الإيجار، أم بمعاينة عقار فقط؟',
+      systemPromptSuffix:
+        'أنت مساعد استقبال في مكتب عقاري.\n- سجّل كل متصل كعميل محتمل حتى لو طلب كتيبًا فقط.\n- أكد الاسم والهاتف والبريد الإلكتروني والميزانية أو العقار المهتم به قبل إنهاء المكالمة.\n- لا تعطِ سعرًا نهائيًا أبدًا، واقترح دائمًا حجز جولة أو معاودة الاتصال من الوكيل.',
+      nodes: {
+        '1': { label: 'الترحيب بالمتصل', prompt: 'رحّب بالمتصل بحرارة وعرّف عن المكتب العقاري.' },
+        '2': { label: 'شراء / بيع / إيجار', prompt: 'اسأل عن نية الشراء أو البيع أو الإيجار، والعقار المستهدف، والميزانية، والإطار الزمني.' },
+        '3': { label: 'تسجيل العميل', toolConfig: 'إنشاء جهة اتصال CRM بالاسم والهاتف والبريد والنية والميزانية والعقار' },
+        '4': { label: 'حجز معاينة', toolConfig: 'جدولة معاينة أو استشارة مع الوكيل المعني' },
+        '5': { label: 'تأكيد عبر SMS', toolConfig: 'إرسال رسالة بوقت الموعد والعنوان واسم الوكيل' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। क्या आप ख़रीदना, बेचना, किराए पर लेना चाहते हैं — या केवल कोई प्रॉपर्टी देखना चाहते हैं?',
+      systemPromptSuffix:
+        'आप एक रियल एस्टेट फ्रंट डेस्क असिस्टेंट हैं।\n- हर कॉलर को लीड के रूप में दर्ज करें, भले ही वे केवल ब्रोशर माँग रहे हों।\n- कॉल समाप्त करने से पहले नाम, फ़ोन, ईमेल और बजट या रुचि की प्रॉपर्टी की पुष्टि करें।\n- कभी भी अंतिम क़ीमत न बताएं; हमेशा शोइंग या लिस्टिंग एजेंट के कॉलबैक की पेशकश करें।',
+      nodes: {
+        '1': { label: 'कॉलर अभिवादन', prompt: 'कॉलर का गर्मजोशी से स्वागत करें और ब्रोकरेज का नाम बताएं।' },
+        '2': { label: 'ख़रीद / बिक्री / किराया', prompt: 'पूछें कि वे ख़रीदना, बेचना या किराए पर लेना चाहते हैं, किस प्रॉपर्टी में रुचि है, बजट और समयसीमा क्या है।' },
+        '3': { label: 'लीड दर्ज करें', toolConfig: 'CRM में नाम, फ़ोन, ईमेल, इरादा, बजट और प्रॉपर्टी के साथ संपर्क बनाएँ' },
+        '4': { label: 'शोइंग बुक करें', toolConfig: 'सौंपे गए एजेंट के साथ शोइंग या परामर्श शेड्यूल करें' },
+        '5': { label: 'SMS पुष्टि', toolConfig: 'अपॉइंटमेंट समय, पता और एजेंट का नाम SMS से भेजें' },
+      },
+    },
+  },
+  restaurant: {
+    en: {
+      welcomeGreeting:
+        "Thanks for calling. Would you like to make a reservation, change one, or check tonight's availability?",
+      systemPromptSuffix:
+        'You are a restaurant reservations host.\n- Always confirm party size, date, and time before checking the book.\n- If the requested time is not available, offer the closest open slot or the waitlist.\n- Note any allergies or special occasions on the booking.',
+      nodes: {
+        '1': { label: 'Guest Greeting', prompt: 'Welcome the guest and identify the restaurant by name.' },
+        '2': { label: 'Booking Details', prompt: 'Ask for party size, date, time, dietary needs, and the occasion.' },
+        '3': { label: 'Table Available?' },
+        '4': { label: 'Book Reservation', toolConfig: 'Reserve table for requested party size, date, and time' },
+        '5': { label: 'Add to Waitlist', toolConfig: 'Create waitlist entry with party size and preferred window; notify host on opening' },
+        '6': { label: 'SMS Confirmation', toolConfig: 'Send reservation or waitlist confirmation with cancel link' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. ¿Quiere hacer una reserva, modificar una o consultar disponibilidad para esta noche?',
+      systemPromptSuffix:
+        'Eres anfitrión de reservas de un restaurante.\n- Confirma siempre número de personas, fecha y hora antes de mirar el libro.\n- Si la hora pedida no está disponible, ofrece el horario más cercano o la lista de espera.\n- Anota alergias y celebraciones especiales en la reserva.',
+      nodes: {
+        '1': { label: 'Saludo al cliente', prompt: 'Saluda al cliente e indica el nombre del restaurante.' },
+        '2': { label: 'Datos de la reserva', prompt: 'Pide número de personas, fecha, hora, necesidades dietéticas y motivo.' },
+        '3': { label: '¿Mesa disponible?' },
+        '4': { label: 'Reservar mesa', toolConfig: 'Reservar mesa según número de personas, fecha y hora' },
+        '5': { label: 'Lista de espera', toolConfig: 'Crear entrada en lista de espera y avisar al anfitrión cuando se libere mesa' },
+        '6': { label: 'Confirmación por SMS', toolConfig: 'Enviar SMS con la reserva o lista de espera y enlace para cancelar' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        "Merci de votre appel. Souhaitez-vous réserver, modifier une réservation ou vérifier les disponibilités de ce soir ?",
+      systemPromptSuffix:
+        "Vous êtes hôte de réservations dans un restaurant.\n- Confirmez toujours le nombre de personnes, la date et l'heure avant de consulter le carnet.\n- Si l'horaire demandé n'est pas disponible, proposez le créneau le plus proche ou la liste d'attente.\n- Notez les allergies et les occasions spéciales sur la réservation.",
+      nodes: {
+        '1': { label: "Accueil de l'invité", prompt: "Souhaitez la bienvenue à l'invité et identifiez le restaurant." },
+        '2': { label: 'Détails de la réservation', prompt: "Demandez le nombre de personnes, la date, l'heure, les contraintes alimentaires et l'occasion." },
+        '3': { label: 'Table disponible ?' },
+        '4': { label: 'Réserver la table', toolConfig: 'Réserver une table selon le nombre, la date et l’heure' },
+        '5': { label: "Ajouter à la liste d'attente", toolConfig: "Créer une entrée en liste d'attente et avertir l'hôte dès qu'une table se libère" },
+        '6': { label: 'Confirmation SMS', toolConfig: "Envoyer un SMS de confirmation de réservation ou de liste d'attente avec lien d'annulation" },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Möchten Sie reservieren, eine Reservierung ändern oder die Verfügbarkeit für heute Abend prüfen?',
+      systemPromptSuffix:
+        'Sie sind Reservierungsempfang eines Restaurants.\n- Bestätigen Sie immer Personenzahl, Datum und Uhrzeit, bevor Sie ins Buch schauen.\n- Ist die gewünschte Zeit nicht verfügbar, bieten Sie den nächsten freien Slot oder die Warteliste an.\n- Notieren Sie Allergien oder besondere Anlässe bei der Buchung.',
+      nodes: {
+        '1': { label: 'Gästebegrüßung', prompt: 'Begrüßen Sie die Gäste und nennen Sie den Restaurantnamen.' },
+        '2': { label: 'Reservierungsdetails', prompt: 'Fragen Sie nach Personenzahl, Datum, Uhrzeit, Allergien und Anlass.' },
+        '3': { label: 'Tisch verfügbar?' },
+        '4': { label: 'Tisch reservieren', toolConfig: 'Tisch für Personenzahl, Datum und Uhrzeit reservieren' },
+        '5': { label: 'Auf Warteliste setzen', toolConfig: 'Wartelisteneintrag anlegen und Empfang bei Verfügbarkeit benachrichtigen' },
+        '6': { label: 'SMS-Bestätigung', toolConfig: 'SMS mit Reservierungs- oder Wartelisten-Bestätigung und Stornolink senden' },
+      },
+    },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Quer fazer uma reserva, alterar uma ou consultar disponibilidade para hoje à noite?',
+      systemPromptSuffix:
+        'Você é o anfitrião de reservas de um restaurante.\n- Confirme sempre quantidade de pessoas, data e horário antes de consultar a agenda.\n- Se o horário pedido não estiver disponível, ofereça o horário mais próximo ou a lista de espera.\n- Registre alergias e ocasiões especiais na reserva.',
+      nodes: {
+        '1': { label: 'Saudação ao cliente', prompt: 'Cumprimente o cliente e identifique o restaurante.' },
+        '2': { label: 'Detalhes da reserva', prompt: 'Pergunte número de pessoas, data, horário, restrições alimentares e ocasião.' },
+        '3': { label: 'Mesa disponível?' },
+        '4': { label: 'Reservar mesa', toolConfig: 'Reservar mesa para a quantidade, data e horário pedidos' },
+        '5': { label: 'Adicionar à lista de espera', toolConfig: 'Criar entrada na lista de espera e avisar o anfitrião quando vagar' },
+        '6': { label: 'Confirmação por SMS', toolConfig: 'Enviar SMS de confirmação de reserva ou lista de espera com link para cancelar' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. Vuole prenotare, modificare una prenotazione o verificare la disponibilità per stasera?',
+      systemPromptSuffix:
+        'Sei il responsabile delle prenotazioni di un ristorante.\n- Conferma sempre numero di persone, data e ora prima di controllare il registro.\n- Se l’orario richiesto non è disponibile, proponi lo slot più vicino o la lista d’attesa.\n- Annota allergie e occasioni speciali sulla prenotazione.',
+      nodes: {
+        '1': { label: "Saluto all'ospite", prompt: "Saluta l'ospite e identifica il ristorante." },
+        '2': { label: 'Dettagli prenotazione', prompt: "Chiedi numero di persone, data, ora, esigenze alimentari e occasione." },
+        '3': { label: 'Tavolo disponibile?' },
+        '4': { label: 'Prenotare il tavolo', toolConfig: 'Prenotare un tavolo per numero, data e ora richiesti' },
+        '5': { label: "Aggiungere alla lista d'attesa", toolConfig: "Creare voce in lista d'attesa e avvisare l'host alla disponibilità" },
+        '6': { label: 'Conferma SMS', toolConfig: "Inviare SMS di conferma prenotazione o lista d'attesa con link per annullare" },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Wilt u reserveren, een reservering wijzigen of de beschikbaarheid voor vanavond controleren?',
+      systemPromptSuffix:
+        'Je bent de reserveringshost van een restaurant.\n- Bevestig altijd aantal gasten, datum en tijd voordat je in het boek kijkt.\n- Is de gewenste tijd niet beschikbaar, bied dan het dichtstbijzijnde slot of de wachtlijst aan.\n- Noteer allergieën en speciale gelegenheden bij de boeking.',
+      nodes: {
+        '1': { label: 'Begroeting gast', prompt: 'Verwelkom de gast en noem de naam van het restaurant.' },
+        '2': { label: 'Reserveringsgegevens', prompt: 'Vraag naar aantal gasten, datum, tijd, dieetwensen en gelegenheid.' },
+        '3': { label: 'Tafel beschikbaar?' },
+        '4': { label: 'Tafel reserveren', toolConfig: 'Reserveer tafel voor aantal gasten, datum en tijd' },
+        '5': { label: 'Op wachtlijst zetten', toolConfig: 'Wachtlijst-invoer aanmaken en host informeren bij beschikbaarheid' },
+        '6': { label: 'SMS-bevestiging', toolConfig: 'SMS met reservering of wachtlijst-bevestiging en annuleerlink versturen' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您来电。请问您要预订、改期,还是查询今晚的座位?',
+      systemPromptSuffix:
+        '您是餐厅订位接待。\n- 在查阅订位簿之前,务必先确认人数、日期和时间。\n- 如所选时间没有空位,请提供最接近的可用时段或加入候补名单。\n- 在订位中记录过敏信息或特殊场合。',
+      nodes: {
+        '1': { label: '客人问候', prompt: '热情迎接客人,并报出餐厅名称。' },
+        '2': { label: '订位信息', prompt: '询问人数、日期、时间、饮食需求和用餐场合。' },
+        '3': { label: '是否有空位?' },
+        '4': { label: '预订座位', toolConfig: '按人数、日期和时间为客人预订座位' },
+        '5': { label: '加入候补名单', toolConfig: '创建候补名单条目,有空位时通知接待' },
+        '6': { label: '短信确认', toolConfig: '发送预订或候补确认短信,附取消链接' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。ご予約・変更、または本日の空席のご確認でしょうか?',
+      systemPromptSuffix:
+        'あなたはレストランの予約担当ホストです。\n- 予約台帳を確認する前に、人数・日付・時間を必ず復唱してください。\n- 希望時間が満席の場合は、最も近い空き時間かウェイトリストをご案内してください。\n- アレルギーや記念日などの情報は予約に必ず記載してください。',
+      nodes: {
+        '1': { label: 'お客様への挨拶', prompt: 'お客様を迎え、レストラン名をお伝えしてください。' },
+        '2': { label: '予約内容', prompt: '人数・日付・時間・食事制限・ご利用シーンを伺ってください。' },
+        '3': { label: '席は空いていますか?' },
+        '4': { label: '席を予約', toolConfig: 'ご希望の人数・日付・時間で予約を作成' },
+        '5': { label: 'ウェイトリストに追加', toolConfig: 'ウェイトリストに登録し、空きが出次第ホストに通知' },
+        '6': { label: 'SMS確認', toolConfig: '予約またはウェイトリスト確認とキャンセルリンクをSMSで送信' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 예약을 하시겠습니까, 변경하시겠습니까, 아니면 오늘 저녁 자리를 확인하시겠습니까?',
+      systemPromptSuffix:
+        '당신은 레스토랑 예약 호스트입니다.\n- 예약 장부를 확인하기 전에 인원수, 날짜, 시간을 반드시 확인하세요.\n- 원하는 시간이 만석이라면 가장 가까운 시간이나 대기 등록을 제안하세요.\n- 알레르기와 특별한 자리 여부는 예약에 반드시 기록하세요.',
+      nodes: {
+        '1': { label: '고객 인사', prompt: '고객을 맞이하고 레스토랑 이름을 안내하세요.' },
+        '2': { label: '예약 정보', prompt: '인원수, 날짜, 시간, 식사 제한 사항, 모임 성격을 확인하세요.' },
+        '3': { label: '자리 있음?' },
+        '4': { label: '자리 예약', toolConfig: '요청한 인원, 날짜, 시간으로 예약 생성' },
+        '5': { label: '대기 등록', toolConfig: '대기 명단을 생성하고, 자리가 나면 호스트에게 알림' },
+        '6': { label: 'SMS 확인', toolConfig: '예약 또는 대기 확인과 취소 링크를 SMS로 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. هل ترغب بإجراء حجز، أو تعديل حجز، أو التحقق من توفّر الطاولات لهذه الليلة؟',
+      systemPromptSuffix:
+        'أنت موظف استقبال الحجوزات في مطعم.\n- أكّد دائمًا عدد الأشخاص والتاريخ والوقت قبل الاطلاع على جدول الحجوزات.\n- إذا لم يتوفر الوقت المطلوب فاقترح أقرب وقت متاح أو قائمة الانتظار.\n- دوّن أي حساسيات أو مناسبات خاصة على الحجز.',
+      nodes: {
+        '1': { label: 'الترحيب بالضيف', prompt: 'رحّب بالضيف واذكر اسم المطعم.' },
+        '2': { label: 'تفاصيل الحجز', prompt: 'اسأل عن عدد الأشخاص والتاريخ والوقت والاحتياجات الغذائية والمناسبة.' },
+        '3': { label: 'هل تتوفر طاولة؟' },
+        '4': { label: 'حجز الطاولة', toolConfig: 'حجز طاولة وفق العدد والتاريخ والوقت المطلوب' },
+        '5': { label: 'إضافة لقائمة الانتظار', toolConfig: 'إنشاء قيد قائمة انتظار وإعلام المستضيف عند توفّر طاولة' },
+        '6': { label: 'تأكيد عبر SMS', toolConfig: 'إرسال تأكيد الحجز أو قائمة الانتظار مع رابط الإلغاء' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। क्या आप आरक्षण करना चाहते हैं, बदलना चाहते हैं, या आज रात की उपलब्धता देखना चाहते हैं?',
+      systemPromptSuffix:
+        'आप एक रेस्तरां आरक्षण होस्ट हैं।\n- बुकिंग रजिस्टर देखने से पहले हमेशा लोगों की संख्या, तारीख और समय की पुष्टि करें।\n- अगर माँगा गया समय उपलब्ध नहीं है तो सबसे नज़दीकी समय या वेटलिस्ट का विकल्प दें।\n- एलर्जी या विशेष अवसरों को आरक्षण में दर्ज करें।',
+      nodes: {
+        '1': { label: 'अतिथि अभिवादन', prompt: 'अतिथि का स्वागत करें और रेस्तरां का नाम बताएं।' },
+        '2': { label: 'आरक्षण विवरण', prompt: 'लोगों की संख्या, तारीख, समय, आहार आवश्यकताएँ और अवसर पूछें।' },
+        '3': { label: 'टेबल उपलब्ध?' },
+        '4': { label: 'टेबल आरक्षित करें', toolConfig: 'माँगी गई संख्या, तारीख और समय के लिए टेबल आरक्षित करें' },
+        '5': { label: 'वेटलिस्ट में जोड़ें', toolConfig: 'वेटलिस्ट प्रविष्टि बनाएँ और टेबल खाली होने पर होस्ट को सूचित करें' },
+        '6': { label: 'SMS पुष्टि', toolConfig: 'आरक्षण या वेटलिस्ट पुष्टि व रद्द लिंक SMS से भेजें' },
+      },
+    },
+  },
+  salon: {
+    en: {
+      welcomeGreeting:
+        "Thanks for calling. Are you booking a service, changing an appointment, or asking about a stylist's availability?",
+      systemPromptSuffix:
+        'You are a salon and spa booking assistant.\n- Confirm the requested service, preferred stylist or therapist, and time window.\n- Honour stylist preferences when possible; offer a comparable provider if not.\n- Read the appointment back before saving, and remind the guest of the cancellation policy.',
+      nodes: {
+        '1': { label: 'Guest Greeting', prompt: 'Welcome the guest and identify the salon or spa.' },
+        '2': { label: 'Service & Stylist', prompt: 'Ask which service, preferred stylist or therapist, and ideal day/time.' },
+        '3': { label: 'Book Appointment', toolConfig: 'Schedule service with the chosen stylist; respect duration and add-ons' },
+        '4': { label: 'Confirm Details', prompt: 'Read back the service, stylist, date, time, and price estimate.' },
+        '5': { label: 'SMS Reminder', toolConfig: 'Send confirmation now and a reminder 24 hours before the appointment' },
+      },
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. ¿Quiere reservar un servicio, cambiar una cita o consultar la disponibilidad de un estilista?',
+      systemPromptSuffix:
+        'Eres asistente de reservas de un salón y spa.\n- Confirma el servicio solicitado, el estilista o terapeuta preferido y el horario.\n- Respeta las preferencias de estilista cuando sea posible; si no, ofrece otro profesional equivalente.\n- Lee la cita en voz alta antes de guardar y recuerda la política de cancelación.',
+      nodes: {
+        '1': { label: 'Saludo al cliente', prompt: 'Saluda al cliente e indica el nombre del salón o spa.' },
+        '2': { label: 'Servicio y estilista', prompt: 'Pregunta qué servicio quiere, estilista o terapeuta preferido, día y hora ideales.' },
+        '3': { label: 'Reservar cita', toolConfig: 'Agendar el servicio con el estilista elegido respetando duración y extras' },
+        '4': { label: 'Confirmar datos', prompt: 'Lee en voz alta servicio, estilista, fecha, hora y precio estimado.' },
+        '5': { label: 'Recordatorio por SMS', toolConfig: 'Enviar confirmación inmediata y recordatorio 24 horas antes' },
+      },
+    },
+    fr: {
+      welcomeGreeting:
+        "Merci de votre appel. Souhaitez-vous réserver une prestation, modifier un rendez-vous ou connaître les disponibilités d'un coiffeur ?",
+      systemPromptSuffix:
+        "Vous êtes l'assistant de réservation d'un salon et spa.\n- Confirmez la prestation, le coiffeur ou la praticienne souhaité et le créneau.\n- Respectez les préférences de praticien quand c'est possible ; sinon proposez un équivalent.\n- Relisez le rendez-vous avant d'enregistrer et rappelez la politique d'annulation.",
+      nodes: {
+        '1': { label: "Accueil de l'invité", prompt: "Souhaitez la bienvenue à l'invité et identifiez le salon ou le spa." },
+        '2': { label: 'Prestation et coiffeur', prompt: 'Demandez la prestation, le coiffeur ou la praticienne préféré et le jour/horaire idéal.' },
+        '3': { label: 'Réserver le rendez-vous', toolConfig: 'Planifier la prestation avec le coiffeur choisi en respectant la durée et les options' },
+        '4': { label: 'Confirmer les détails', prompt: "Relisez la prestation, le coiffeur, la date, l'heure et le prix estimé." },
+        '5': { label: 'Rappel SMS', toolConfig: 'Envoyer la confirmation maintenant et un rappel 24 h avant le rendez-vous' },
+      },
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Möchten Sie eine Behandlung buchen, einen Termin ändern oder die Verfügbarkeit einer Stylistin prüfen?',
+      systemPromptSuffix:
+        'Sie sind Buchungsassistenz eines Salons und Spas.\n- Bestätigen Sie Behandlung, gewünschten Stylisten oder Therapeuten und Zeitfenster.\n- Berücksichtigen Sie Stylisten-Präferenzen; wenn nicht möglich, schlagen Sie eine vergleichbare Person vor.\n- Lesen Sie den Termin vor dem Speichern vor und erinnern Sie an die Stornoregeln.',
+      nodes: {
+        '1': { label: 'Gästebegrüßung', prompt: 'Begrüßen Sie den Gast und nennen Sie Salon oder Spa.' },
+        '2': { label: 'Behandlung & Stylist', prompt: 'Fragen Sie nach Behandlung, bevorzugtem Stylisten/Therapeuten sowie Wunschtag und -zeit.' },
+        '3': { label: 'Termin buchen', toolConfig: 'Behandlung mit gewähltem Stylisten planen, Dauer und Zusatzleistungen berücksichtigen' },
+        '4': { label: 'Details bestätigen', prompt: 'Wiederholen Sie Behandlung, Stylist, Datum, Uhrzeit und voraussichtlichen Preis.' },
+        '5': { label: 'SMS-Erinnerung', toolConfig: 'Bestätigung jetzt und Erinnerung 24 Stunden vorher senden' },
+      },
+    },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Quer marcar um serviço, alterar um agendamento ou consultar a disponibilidade de um cabeleireiro?',
+      systemPromptSuffix:
+        'Você é assistente de agendamentos de um salão e spa.\n- Confirme o serviço, o profissional preferido e a janela de horário.\n- Respeite a preferência de profissional quando possível; senão, ofereça um equivalente.\n- Releia o agendamento antes de salvar e lembre a política de cancelamento.',
+      nodes: {
+        '1': { label: 'Saudação ao cliente', prompt: 'Cumprimente o cliente e identifique o salão ou spa.' },
+        '2': { label: 'Serviço e profissional', prompt: 'Pergunte qual serviço, profissional preferido e dia/horário ideais.' },
+        '3': { label: 'Agendar serviço', toolConfig: 'Agendar serviço com o profissional escolhido, respeitando duração e adicionais' },
+        '4': { label: 'Confirmar detalhes', prompt: 'Releia serviço, profissional, data, horário e estimativa de preço.' },
+        '5': { label: 'Lembrete por SMS', toolConfig: 'Enviar confirmação agora e lembrete 24 horas antes' },
+      },
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. Vuole prenotare un trattamento, spostare un appuntamento o verificare la disponibilità di un parrucchiere?',
+      systemPromptSuffix:
+        "Sei l'assistente alle prenotazioni di un salone e spa.\n- Conferma il trattamento richiesto, il parrucchiere o estetista preferito e l'orario.\n- Rispetta le preferenze sul professionista quando possibile, altrimenti proponi un'alternativa equivalente.\n- Rileggi l'appuntamento prima di salvarlo e ricorda la politica di cancellazione.",
+      nodes: {
+        '1': { label: "Saluto all'ospite", prompt: "Saluta l'ospite e identifica il salone o spa." },
+        '2': { label: 'Servizio e professionista', prompt: 'Chiedi servizio, parrucchiere o estetista preferito, giorno e orario ideali.' },
+        '3': { label: 'Prenota appuntamento', toolConfig: 'Pianificare il servizio con il professionista scelto rispettando durata e aggiunte' },
+        '4': { label: 'Conferma dettagli', prompt: 'Rileggi servizio, professionista, data, ora e prezzo stimato.' },
+        '5': { label: 'Promemoria SMS', toolConfig: 'Inviare conferma immediata e promemoria 24 ore prima' },
+      },
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Wilt u een behandeling boeken, een afspraak wijzigen of de beschikbaarheid van een stylist opvragen?',
+      systemPromptSuffix:
+        'Je bent de boekingsassistent van een salon en spa.\n- Bevestig de gewenste behandeling, de voorkeursstylist of -therapeut en het tijdvak.\n- Respecteer de voorkeur waar mogelijk; anders bied je een gelijkwaardige collega aan.\n- Lees de afspraak voor opslaan voor en herinner aan het annuleringsbeleid.',
+      nodes: {
+        '1': { label: 'Begroeting gast', prompt: 'Verwelkom de gast en noem de salon of spa.' },
+        '2': { label: 'Behandeling & stylist', prompt: 'Vraag welke behandeling, voorkeursstylist of -therapeut en gewenste dag/tijd.' },
+        '3': { label: 'Afspraak boeken', toolConfig: 'Plan behandeling met gekozen stylist, rekening houdend met duur en extra’s' },
+        '4': { label: 'Details bevestigen', prompt: 'Herhaal behandeling, stylist, datum, tijd en geschatte prijs.' },
+        '5': { label: 'SMS-herinnering', toolConfig: 'Stuur nu een bevestiging en 24 uur vooraf een herinnering' },
+      },
+    },
+    zh: {
+      welcomeGreeting: '感谢您来电。请问您是要预约项目、更改预约,还是询问发型师的空闲时间?',
+      systemPromptSuffix:
+        '您是美容美发与水疗的预约助理。\n- 确认所选项目、心仪的发型师或理疗师以及时间段。\n- 尽量满足指定专业人员;如果排不上,提供同等水准的替代人员。\n- 保存前向客人复述预约信息,并提醒取消政策。',
+      nodes: {
+        '1': { label: '客人问候', prompt: '热情迎接客人,并报出店铺名称。' },
+        '2': { label: '项目与发型师', prompt: '询问需要的项目、心仪的发型师或理疗师,以及理想日期与时间。' },
+        '3': { label: '预约项目', toolConfig: '为指定发型师安排项目,注意时长和加项' },
+        '4': { label: '确认信息', prompt: '复述项目、发型师、日期、时间及预估价格。' },
+        '5': { label: '短信提醒', toolConfig: '立即发送确认短信,并在预约前 24 小时再发提醒' },
+      },
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。ご予約・変更、またはスタイリストの空き状況のご確認でしょうか?',
+      systemPromptSuffix:
+        'あなたはサロン・スパの予約アシスタントです。\n- ご希望のメニュー、指名のスタイリストまたはセラピスト、ご希望時間を必ず確認してください。\n- 指名はできる限り尊重し、難しい場合は同等の担当者を提案してください。\n- 保存前に内容を復唱し、キャンセルポリシーをご案内してください。',
+      nodes: {
+        '1': { label: 'お客様への挨拶', prompt: 'お客様を迎え、サロンまたはスパ名をお伝えしてください。' },
+        '2': { label: 'メニューと指名', prompt: 'ご希望メニュー、指名スタイリストまたはセラピスト、ご希望日時を伺ってください。' },
+        '3': { label: '予約登録', toolConfig: '指名スタイリストでメニューを予約し、所要時間とオプションを反映' },
+        '4': { label: '内容確認', prompt: 'メニュー・担当者・日付・時間・料金見込みを復唱してください。' },
+        '5': { label: 'SMSリマインダー', toolConfig: '今すぐ確認SMSを送信し、24時間前にもリマインドを送信' },
+      },
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 예약을 잡으시겠습니까, 변경하시겠습니까, 아니면 디자이너 일정 확인이 필요하신가요?',
+      systemPromptSuffix:
+        '당신은 살롱과 스파의 예약 어시스턴트입니다.\n- 원하시는 시술, 디자이너 또는 테라피스트 지정, 희망 시간대를 반드시 확인하세요.\n- 가능하면 지정 요청을 존중하고, 어렵다면 동등한 다른 전문가를 제안하세요.\n- 저장 전에 예약 내용을 다시 읽어 드리고 취소 정책을 안내하세요.',
+      nodes: {
+        '1': { label: '고객 인사', prompt: '고객을 환영하고 살롱 또는 스파 이름을 안내하세요.' },
+        '2': { label: '시술 & 디자이너', prompt: '원하시는 시술, 디자이너 또는 테라피스트 지정, 희망 일정을 확인하세요.' },
+        '3': { label: '예약 등록', toolConfig: '지정 디자이너로 시술을 예약하고 소요 시간과 옵션을 반영' },
+        '4': { label: '내용 확인', prompt: '시술, 디자이너, 날짜, 시간, 예상 금액을 다시 읽어 주세요.' },
+        '5': { label: 'SMS 알림', toolConfig: '확인 SMS를 즉시 발송하고 예약 24시간 전 리마인더 발송' },
+      },
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. هل ترغب بحجز خدمة أم تعديل موعد أم الاستفسار عن توفر مصفّف الشعر؟',
+      systemPromptSuffix:
+        'أنت مساعد حجوزات في صالون وسبا.\n- أكد نوع الخدمة المطلوبة، والمصفّف أو المعالج المفضّل، والوقت المناسب.\n- احترم تفضيل المصفّف عند الإمكان، وإلا اقترح مختصًا مكافئًا.\n- اقرأ تفاصيل الموعد قبل الحفظ وذكّر بسياسة الإلغاء.',
+      nodes: {
+        '1': { label: 'الترحيب بالضيف', prompt: 'رحّب بالضيف واذكر اسم الصالون أو السبا.' },
+        '2': { label: 'الخدمة والمصفّف', prompt: 'اسأل عن الخدمة المطلوبة، والمصفّف أو المعالج المفضّل، واليوم والوقت المناسبين.' },
+        '3': { label: 'حجز الموعد', toolConfig: 'حجز الخدمة مع المصفّف المختار مع مراعاة المدة والإضافات' },
+        '4': { label: 'تأكيد التفاصيل', prompt: 'أعد قراءة الخدمة والمصفّف والتاريخ والوقت والسعر التقديري.' },
+        '5': { label: 'تذكير عبر SMS', toolConfig: 'إرسال تأكيد فوري وتذكير قبل الموعد بـ 24 ساعة' },
+      },
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। क्या आप कोई सेवा बुक करना चाहते हैं, अपॉइंटमेंट बदलना चाहते हैं, या स्टाइलिस्ट की उपलब्धता पूछना चाहते हैं?',
+      systemPromptSuffix:
+        'आप एक सैलून और स्पा के बुकिंग असिस्टेंट हैं।\n- माँगी गई सेवा, पसंदीदा स्टाइलिस्ट या थेरेपिस्ट, और समय अवधि की पुष्टि करें।\n- जहाँ संभव हो स्टाइलिस्ट की पसंद का सम्मान करें; न होने पर समान योग्यता वाला विकल्प दें।\n- सहेजने से पहले अपॉइंटमेंट दोहराएँ और रद्दीकरण नीति याद दिलाएँ।',
+      nodes: {
+        '1': { label: 'अतिथि अभिवादन', prompt: 'अतिथि का स्वागत करें और सैलून या स्पा का नाम बताएं।' },
+        '2': { label: 'सेवा व स्टाइलिस्ट', prompt: 'पूछें कि कौन-सी सेवा चाहिए, पसंदीदा स्टाइलिस्ट या थेरेपिस्ट कौन है, और कौन-सा दिन/समय उपयुक्त है।' },
+        '3': { label: 'अपॉइंटमेंट बुक करें', toolConfig: 'चुने गए स्टाइलिस्ट के साथ सेवा शेड्यूल करें, अवधि और एड-ऑन का ध्यान रखें' },
+        '4': { label: 'विवरण की पुष्टि', prompt: 'सेवा, स्टाइलिस्ट, तारीख, समय और अनुमानित क़ीमत दोहराएँ।' },
+        '5': { label: 'SMS रिमाइंडर', toolConfig: 'अभी पुष्टि भेजें और अपॉइंटमेंट से 24 घंटे पहले रिमाइंडर भेजें' },
       },
     },
   },
