@@ -1,3 +1,26 @@
+/**
+ * Agent language options + per-language voice recommendations.
+ *
+ * The `RECOMMENDED_VOICES_BY_LANGUAGE` map below is hand-curated against the
+ * canonical OpenAI Realtime voice list in `./agentVoices.ts`. Voice quality
+ * per language drifts as OpenAI ships new voices and improves existing ones,
+ * so we re-grade on a fixed cadence:
+ *
+ *   • Review cadence: quarterly (or sooner if OpenAI announces new/removed
+ *     Realtime voices on the changelog).
+ *   • Listening test: see the rubric in `./agentVoices.ts` (4-line script,
+ *     two reviewers, must average ≥ 3.5 on pronunciation, prosody, and
+ *     comfort to be added to a language's recommended list).
+ *
+ * Guard rails:
+ *   • Every voice id in `RECOMMENDED_VOICES_BY_LANGUAGE` MUST appear in
+ *     `VOICES` from `./agentVoices.ts`. The test in
+ *     `tests/components/voiceLanguageRecommendations.test.ts` enforces this,
+ *     so removing a voice from the canonical list will fail CI rather than
+ *     silently dangling here.
+ *   • Every language in `AGENT_LANGUAGES` must have a non-empty entry in
+ *     `RECOMMENDED_VOICES_BY_LANGUAGE` (also asserted by the test).
+ */
 export interface AgentLanguageOption {
   code: string;
   label: string;

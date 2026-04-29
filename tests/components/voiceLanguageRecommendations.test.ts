@@ -7,6 +7,8 @@ import {
   getDefaultVoiceForLanguage,
   AGENT_LANGUAGES,
 } from '../../client-app/src/lib/agentLanguages';
+import { VOICES } from '../../client-app/src/lib/agentVoices';
+import { VOICES as PICKER_VOICES } from '../../client-app/src/components/VoicePicker';
 
 describe('voice/language recommendations', () => {
   it('has a recommendation list for every supported agent language', () => {
@@ -15,6 +17,27 @@ describe('voice/language recommendations', () => {
       expect(recs, `missing recommended voices for ${lang.code}`).toBeDefined();
       expect(recs!.length).toBeGreaterThan(0);
     }
+  });
+
+  it('every recommended voice exists in the canonical VOICES list', () => {
+    const canonical = new Set<string>(VOICES);
+    for (const [lang, recs] of Object.entries(RECOMMENDED_VOICES_BY_LANGUAGE)) {
+      for (const voice of recs) {
+        expect(
+          canonical.has(voice),
+          `voice "${voice}" recommended for "${lang}" is not in the canonical VOICES list (client-app/src/lib/agentVoices.ts). ` +
+            `If OpenAI removed the voice, drop it from RECOMMENDED_VOICES_BY_LANGUAGE; if it's a typo, fix it.`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('VoicePicker re-exports the same canonical VOICES list (single source of truth)', () => {
+    expect(PICKER_VOICES).toBe(VOICES);
+  });
+
+  it('canonical VOICES list has no duplicates', () => {
+    expect(new Set(VOICES).size).toBe(VOICES.length);
   });
 
   it('falls back to English recommendations for unknown languages', () => {

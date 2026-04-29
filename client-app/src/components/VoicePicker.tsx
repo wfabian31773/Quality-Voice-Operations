@@ -5,6 +5,7 @@ import {
   getRecommendedVoicesForLanguage,
   isVoiceRecommendedForLanguage,
 } from '../lib/agentLanguages';
+import { VOICES } from '../lib/agentVoices';
 import {
   type AgentBuilderTKey,
   makeBuilderT,
@@ -15,19 +16,7 @@ type BuilderT = (
   params?: Record<string, string | number>,
 ) => string;
 
-export const VOICES = [
-  'alloy',
-  'ash',
-  'ballad',
-  'coral',
-  'echo',
-  'fable',
-  'onyx',
-  'nova',
-  'sage',
-  'shimmer',
-  'verse',
-];
+export { VOICES };
 
 export interface VoicePickerProps {
   voice: string;
