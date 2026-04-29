@@ -29,6 +29,7 @@ router.get('/tenants/me', requireAuth, async (req, res) => {
       `SELECT id, name, slug, domain, status, plan, settings, feature_flags,
               COALESCE(sms_alerts_disabled, FALSE) AS sms_alerts_disabled,
               COALESCE(billing_currency, 'usd') AS billing_currency,
+              COALESCE(timezone, 'America/New_York') AS timezone,
               created_at, updated_at
        FROM tenants WHERE id = $1`,
       [tenantId],
@@ -180,12 +181,26 @@ const SUPPORTED_PRIMARY_LANGUAGES = new Set([
 
 router.patch('/tenants/me', requireAuth, requireRole('owner'), async (req, res) => {
   const { tenantId } = req.user!;
-  const { name, domain, settings, smsAlertsDisabled } = req.body as {
+  const { name, domain, settings, smsAlertsDisabled, timezone } = req.body as {
     name?: string;
     domain?: string;
     settings?: Record<string, unknown>;
     smsAlertsDisabled?: boolean;
+    timezone?: string;
   };
+
+  // Top-level `timezone` writes the dedicated `tenants.timezone` column added
+  // in migration 097 — that column is what the scheduling code
+  // (`getTenantTimezone` in `routes/scheduling.ts`) reads when expanding
+  // recurring series and checking override windows. Keeping it as a top-level
+  // field (rather than nested in `settings`) avoids the historical drift
+  // where `settings.timezone` was a JSON-blob-only value the scheduler never
+  // saw.
+  if (timezone !== undefined) {
+    if (typeof timezone !== 'string' || !isValidTimezone(timezone)) {
+      return res.status(400).json({ error: `Invalid timezone: "${timezone}". Must be a valid IANA timezone identifier.` });
+    }
+  }
 
   if (settings && settings.timezone !== undefined) {
     if (typeof settings.timezone !== 'string' || !isValidTimezone(settings.timezone)) {
@@ -225,11 +240,16 @@ router.patch('/tenants/me', requireAuth, requireRole('owner'), async (req, res) 
       values.push(smsAlertsDisabled);
       updates.push(`sms_alerts_disabled = $${values.length}`);
     }
+    if (timezone !== undefined) {
+      values.push(timezone);
+      updates.push(`timezone = $${values.length}`);
+    }
 
     const { rows } = await client.query(
       `UPDATE tenants SET ${updates.join(', ')} WHERE id = $1
        RETURNING id, name, slug, domain, status, plan, settings,
-                 COALESCE(sms_alerts_disabled, FALSE) AS sms_alerts_disabled, updated_at`,
+                 COALESCE(sms_alerts_disabled, FALSE) AS sms_alerts_disabled,
+                 COALESCE(timezone, 'America/New_York') AS timezone, updated_at`,
       values,
     );
     await client.query('COMMIT');

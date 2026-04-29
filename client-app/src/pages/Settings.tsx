@@ -36,6 +36,13 @@ interface Tenant {
   status: string;
   plan: string;
   settings: Record<string, unknown> | null;
+  // Top-level `timezone` mirrors the `tenants.timezone` column added in
+  // migration 097. The scheduling code (`getTenantTimezone` in
+  // `server/admin-api/routes/scheduling.ts`) reads this column directly when
+  // expanding recurring series and checking override windows, so the General
+  // Settings form writes it as a top-level field rather than nesting it
+  // inside `settings.timezone` (which the scheduler never sees).
+  timezone: string;
   created_at: string;
   updated_at: string;
 }
@@ -164,7 +171,13 @@ function GeneralSettings() {
       const s = (t.settings ?? {}) as Record<string, string>;
       setForm({
         name: t.name ?? '',
-        timezone: s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // The `/tenants/me` GET COALESCEs `tenants.timezone` to
+        // 'America/New_York', so `t.timezone` is always populated. The
+        // remaining fallbacks (`s.timezone` from the legacy JSON blob, then
+        // the browser zone) are belt-and-suspenders defenses for any
+        // hypothetical response that omits the column entirely.
+        timezone:
+          t.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
         defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
         defaultVoice: s.defaultVoice ?? 'sage',
@@ -174,36 +187,45 @@ function GeneralSettings() {
   }, [data]);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      api.patch('/tenants/me', {
+    mutationFn: () => {
+      // Strip any legacy `timezone` entry from the JSON `settings` blob so
+      // there's a single source of truth (the `tenants.timezone` column).
+      // Without this, a stale `settings.timezone` could drift away from the
+      // value the scheduler actually reads.
+      const nextSettings: Record<string, unknown> = {
+        ...(data?.tenant?.settings ?? {}),
+        primaryLanguage: form.primaryLanguage,
+        defaultVoiceModel: form.defaultVoiceModel,
+        defaultVoice: form.defaultVoice,
+        defaultAgentType: form.defaultAgentType,
+      };
+      delete nextSettings.timezone;
+      return api.patch('/tenants/me', {
         name: form.name,
-        settings: {
-          ...(data?.tenant?.settings ?? {}),
-          timezone: form.timezone,
-          primaryLanguage: form.primaryLanguage,
-          defaultVoiceModel: form.defaultVoiceModel,
-          defaultVoice: form.defaultVoice,
-          defaultAgentType: form.defaultAgentType,
-        },
-      }),
+        timezone: form.timezone,
+        settings: nextSettings,
+      });
+    },
     onSuccess: () => {
       // Update the cached tenant immediately so the dirty comparison
       // (form vs. baseline) flips to false right away — otherwise the
       // unsaved-changes dot can linger until the refetch resolves.
       const previous = queryClient.getQueryData<{ tenant: Tenant }>(['tenant-settings']);
       if (previous?.tenant) {
+        const nextSettings: Record<string, unknown> = {
+          ...((previous.tenant.settings ?? {}) as Record<string, unknown>),
+          primaryLanguage: form.primaryLanguage,
+          defaultVoiceModel: form.defaultVoiceModel,
+          defaultVoice: form.defaultVoice,
+          defaultAgentType: form.defaultAgentType,
+        };
+        delete nextSettings.timezone;
         queryClient.setQueryData(['tenant-settings'], {
           tenant: {
             ...previous.tenant,
             name: form.name,
-            settings: {
-              ...((previous.tenant.settings ?? {}) as Record<string, unknown>),
-              timezone: form.timezone,
-              primaryLanguage: form.primaryLanguage,
-              defaultVoiceModel: form.defaultVoiceModel,
-              defaultVoice: form.defaultVoice,
-              defaultAgentType: form.defaultAgentType,
-            },
+            timezone: form.timezone,
+            settings: nextSettings,
           },
         });
       }
@@ -220,7 +242,8 @@ function GeneralSettings() {
     const s = (t.settings ?? {}) as Record<string, string>;
     const original = {
       name: t.name ?? '',
-      timezone: s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone:
+        t.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
       defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
       defaultVoice: s.defaultVoice ?? 'sage',
