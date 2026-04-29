@@ -6,12 +6,14 @@ const logger = createLogger('TWILIO_SIGNATURE_METRICS');
 export type RejectionReason =
   | 'missing_header'
   | 'invalid_signature'
-  | 'validator_unavailable';
+  | 'validator_unavailable'
+  | 'replay_detected';
 
 export const REJECTION_REASONS: RejectionReason[] = [
   'missing_header',
   'invalid_signature',
   'validator_unavailable',
+  'replay_detected',
 ];
 
 const BUCKET_COUNT = 60;
@@ -21,6 +23,10 @@ const ALERT_THRESHOLDS_PER_MINUTE: Record<RejectionReason, number> = {
   invalid_signature: 5,
   missing_header: 20,
   validator_unavailable: 1,
+  // A genuine Twilio retry storm could push this above 1, but the dedupe key
+  // includes SequenceNumber on status callbacks so even retries should hash
+  // distinctly. A burst here almost certainly means a replay attempt.
+  replay_detected: 1,
 };
 
 const ALERT_COOLDOWN_MS = 5 * 60_000;
@@ -39,15 +45,30 @@ interface InternalState {
 }
 
 function emptyCounts(): Record<RejectionReason, number> {
-  return { missing_header: 0, invalid_signature: 0, validator_unavailable: 0 };
+  return {
+    missing_header: 0,
+    invalid_signature: 0,
+    validator_unavailable: 0,
+    replay_detected: 0,
+  };
 }
 
 function emptyAlertMap(): Record<RejectionReason, number> {
-  return { missing_header: 0, invalid_signature: 0, validator_unavailable: 0 };
+  return {
+    missing_header: 0,
+    invalid_signature: 0,
+    validator_unavailable: 0,
+    replay_detected: 0,
+  };
 }
 
 function emptyLastSeen(): Record<RejectionReason, number | null> {
-  return { missing_header: null, invalid_signature: null, validator_unavailable: null };
+  return {
+    missing_header: null,
+    invalid_signature: null,
+    validator_unavailable: null,
+    replay_detected: null,
+  };
 }
 
 function newBucket(startedAt: number): BucketState {
@@ -161,38 +182,15 @@ export function getTwilioSignatureMetrics(): TwilioSignatureMetricsSnapshot {
     ratePerMinute[reason] = head.counts[reason];
   }
 
-  const lastRejectionAt: Record<RejectionReason, string | null> = {
-    missing_header: state.lastRejectionAt.missing_header
-      ? new Date(state.lastRejectionAt.missing_header).toISOString()
-      : null,
-    invalid_signature: state.lastRejectionAt.invalid_signature
-      ? new Date(state.lastRejectionAt.invalid_signature).toISOString()
-      : null,
-    validator_unavailable: state.lastRejectionAt.validator_unavailable
-      ? new Date(state.lastRejectionAt.validator_unavailable).toISOString()
-      : null,
-  };
-
-  const lastAlertAt: Record<RejectionReason, string | null> = {
-    missing_header: state.lastAlertAt.missing_header
-      ? new Date(state.lastAlertAt.missing_header).toISOString()
-      : null,
-    invalid_signature: state.lastAlertAt.invalid_signature
-      ? new Date(state.lastAlertAt.invalid_signature).toISOString()
-      : null,
-    validator_unavailable: state.lastAlertAt.validator_unavailable
-      ? new Date(state.lastAlertAt.validator_unavailable).toISOString()
-      : null,
-  };
-
-  const alertActive: Record<RejectionReason, boolean> = {
-    missing_header: false,
-    invalid_signature: false,
-    validator_unavailable: false,
-  };
+  const lastRejectionAt = {} as Record<RejectionReason, string | null>;
+  const lastAlertAt = {} as Record<RejectionReason, string | null>;
+  const alertActive = {} as Record<RejectionReason, boolean>;
   for (const reason of REJECTION_REASONS) {
-    const last = state.lastAlertAt[reason];
-    alertActive[reason] = !!last && now - last < ALERT_COOLDOWN_MS;
+    const lastRej = state.lastRejectionAt[reason];
+    lastRejectionAt[reason] = lastRej ? new Date(lastRej).toISOString() : null;
+    const lastAlert = state.lastAlertAt[reason];
+    lastAlertAt[reason] = lastAlert ? new Date(lastAlert).toISOString() : null;
+    alertActive[reason] = !!lastAlert && now - lastAlert < ALERT_COOLDOWN_MS;
   }
 
   return {

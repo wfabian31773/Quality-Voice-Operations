@@ -206,6 +206,15 @@ router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req,
   }
 });
 
+// Replay protection note (audited as part of #942):
+// Stripe's `Stripe-Signature` header has the form `t=<unix>,v1=<sig>,…`. The
+// `stripe.webhooks.constructEvent` helper called from `constructStripeEvent`
+// re-derives the HMAC over `t.payload` and *also* enforces a default 300s
+// tolerance on `t`, rejecting payloads outside the window with
+// `StripeSignatureVerificationError`. That gives us the same timestamp-bound
+// replay defense we hand-rolled for Cal.com (#430) and the per-request-ID
+// nonce cache we added for Twilio in #942 — no additional layer is required
+// here. Do not lower the tolerance; do not strip the timestamp check.
 router.post('/billing/stripe-webhook', async (req, res) => {
   const signature = req.headers['stripe-signature'];
   if (!signature || typeof signature !== 'string') {

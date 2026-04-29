@@ -2913,6 +2913,24 @@ router.post(
   },
 );
 
+// Replay protection note (audited as part of #942):
+// Unlike Stripe (`Stripe-Signature` with `t=…`), Cal.com / Calendly (signed
+// timestamp), or Twilio (per-event `MessageSid` / `CallSid` nonce — see
+// `server/voice-gateway/middleware/twilioReplayCache.ts`), SendGrid Inbound
+// Parse does NOT cryptographically sign the payload. Authentication here is a
+// static shared secret (`SUPPORT_INBOUND_SECRET`) carried in either the
+// `X-Webhook-Secret` header or the `?secret=` query string. That means a
+// captured request — including the secret — could in principle be replayed
+// against this endpoint. Mitigations relied on today:
+//   * Transport is HTTPS-only (provider configuration), so the secret isn't
+//     exposed on the wire.
+//   * Downstream ticket processing is keyed on the support+<token>@... address
+//     and idempotent at the ticket level (a re-fired email lands as another
+//     reply on the same ticket, not as a duplicated user action).
+// Follow-up tracked in #942: move this endpoint to a provider-signed flow
+// (e.g. SendGrid's signed webhooks) or add a content-hash + timestamp nonce
+// cache modeled on the Twilio replay cache. Until then, rotate the secret on
+// any suspected exposure.
 router.post('/support/inbound', async (req, res) => {
   const isProduction = process.env.NODE_ENV === 'production';
   if (isProduction && !INBOUND_SECRET) {
