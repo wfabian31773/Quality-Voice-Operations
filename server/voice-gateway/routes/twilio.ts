@@ -682,6 +682,11 @@ router.post('/twilio/sms', async (req: Request, res: Response) => {
         toNumber: from,
         body: autoReply,
         status: 'sent',
+        // FCC treats direct auto-replies to a consumer-initiated inbound
+        // SMS as exempt from the 8am–9pm TCPA quiet-hours window. Pass the
+        // opt-out so the chokepoint guard in saveMessage doesn't reject
+        // legitimate keyword/HELP responses sent at night. (Task #604)
+        allowOutsideQuietHours: true,
       });
     }
 

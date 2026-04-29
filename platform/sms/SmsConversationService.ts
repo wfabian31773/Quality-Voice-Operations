@@ -389,6 +389,28 @@ export async function markConversationRead(tenantId: string, conversationId: str
   });
 }
 
+/**
+ * Thrown by `saveMessage` when an outbound SMS would land outside the TCPA
+ * quiet-hours window for the recipient's local time. Callers (route
+ * handlers, campaign senders, etc.) should pre-check using
+ * `evaluateSmsQuietHours` to surface friendly errors; this throw is a
+ * defense-in-depth at the shared chokepoint so no future caller can
+ * accidentally bypass quiet-hours enforcement (Task #604).
+ */
+export class SmsQuietHoursError extends Error {
+  readonly code = 'sms_quiet_hours' as const;
+  readonly recipientTimezone: string;
+  readonly recipientLocalTime: string | undefined;
+  constructor(opts: { toNumber: string; timezone: string; localTimeIso: string | undefined }) {
+    super(
+      `SMS to ${opts.toNumber} blocked by TCPA quiet hours (recipient timezone ${opts.timezone}, local time ${opts.localTimeIso ?? 'unknown'})`,
+    );
+    this.name = 'SmsQuietHoursError';
+    this.recipientTimezone = opts.timezone;
+    this.recipientLocalTime = opts.localTimeIso;
+  }
+}
+
 export async function saveMessage(
   tenantId: string,
   conversationId: string,
@@ -400,8 +422,53 @@ export async function saveMessage(
     status: string;
     twilioSid?: string;
     scheduledAt?: Date;
+    /**
+     * Opt-out for the chokepoint quiet-hours guard. Set to `true` ONLY when
+     * the outbound message is a direct response to a consumer-initiated
+     * inbound message (auto-reply, HELP/STOP confirmation), which the FCC
+     * treats as exempt from the 8am–9pm window. Marketing blasts,
+     * transactional notifications, and operator-composed replies must NOT
+     * use this flag — they go through the default check.
+     */
+    allowOutsideQuietHours?: boolean;
+    /**
+     * Optional pre-check timestamp from a route-level
+     * `evaluateSmsQuietHours(...)` call. Passing this lets the chokepoint
+     * guard re-evaluate against the same instant the caller already used,
+     * which prevents a boundary race where Twilio accepted a send at
+     * 20:59:59 local but the chokepoint then re-evaluates at 21:00:00 and
+     * throws — leaving a sent text with no `sms_messages` row. Defaults to
+     * `new Date()` for callers that don't pre-check.
+     */
+    quietHoursEvaluatedAt?: Date;
   },
 ): Promise<SmsMessage> {
+  // Chokepoint quiet-hours enforcement. Inbound messages are always saved
+  // (we still need to record what the recipient sent us). For outbound,
+  // immediate sends are checked against `now`, scheduled sends against the
+  // requested `scheduledAt`. Status 'failed'/'undelivered' rows (e.g.
+  // recording a Twilio error after the fact) are exempt — they aren't
+  // dispatch attempts. Consumer-initiated auto-replies pass
+  // `allowOutsideQuietHours: true`. We import lazily to avoid any
+  // circular-import risk since SmsQuietHours is a small leaf module.
+  const skipQuietHours =
+    msg.allowOutsideQuietHours === true ||
+    msg.status === 'failed' ||
+    msg.status === 'undelivered';
+  if (msg.direction === 'outbound' && !skipQuietHours) {
+    const { evaluateSmsQuietHours } = await import('./SmsQuietHours');
+    const at =
+      msg.scheduledAt ?? msg.quietHoursEvaluatedAt ?? new Date();
+    const decision = evaluateSmsQuietHours(msg.toNumber, at);
+    if (!decision.allowed) {
+      throw new SmsQuietHoursError({
+        toNumber: msg.toNumber,
+        timezone: decision.timezone,
+        localTimeIso: decision.localTimeIso,
+      });
+    }
+  }
+
   return withTenant(tenantId, async (client) => {
     const id = randomUUID();
     const { rows } = await client.query(

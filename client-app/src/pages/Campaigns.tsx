@@ -213,6 +213,16 @@ interface ComplianceReport {
     contactName: string | null;
     source?: 'tenant' | 'federal';
   }>;
+  /**
+   * SMS coverage flags surfaced in the compliance panel so operators see a
+   * single number across both voice and SMS channels (Task #604). Optional
+   * for forward compatibility with reports generated before the feature
+   * shipped.
+   */
+  smsQuietHoursEnforced?: boolean;
+  smsQuietHoursWindow?: string;
+  hasQuietHoursConfig?: boolean;
+  respectsContactTimezone?: boolean;
   complianceScore: number;
   recommendations: string[];
   preflightTruncated?: boolean;
@@ -977,6 +987,36 @@ function CompliancePanel({
           Federal DNC registry version: <span className="font-mono">{report.federalDncRegistryVersion}</span>
         </p>
       )}
+
+      {/*
+        Channel coverage strip: confirms voice quiet hours come from the
+        campaign config and that SMS is locked to the platform-wide TCPA
+        window. Shows operators a single picture of both channels — Task #604.
+      */}
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-md border border-border bg-surface-hover px-2.5 py-2 flex items-start gap-2">
+          <ShieldCheck className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${report.hasQuietHoursConfig ? 'text-success' : 'text-warning'}`} />
+          <div>
+            <p className="font-medium text-text-primary">Voice quiet hours</p>
+            <p className="text-text-muted">
+              {report.hasQuietHoursConfig
+                ? `Configured · ${report.respectsContactTimezone ? "recipient's local time" : 'campaign timezone'}`
+                : 'Not configured'}
+            </p>
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-surface-hover px-2.5 py-2 flex items-start gap-2">
+          <ShieldCheck className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${report.smsQuietHoursEnforced === false ? 'text-warning' : 'text-success'}`} />
+          <div>
+            <p className="font-medium text-text-primary">SMS quiet hours</p>
+            <p className="text-text-muted">
+              {report.smsQuietHoursEnforced === false
+                ? 'Not enforced'
+                : `Enforced · ${report.smsQuietHoursWindow ?? '08:00–21:00 local'}`}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {report.dncMatches.length > 0 && (
         <div className="mt-4">

@@ -9,6 +9,10 @@ import {
   getCurrentFederalDncVersion,
   isOnFederalDnc,
 } from './FederalDncService';
+import {
+  SMS_QUIET_HOURS_WINDOW_END,
+  SMS_QUIET_HOURS_WINDOW_START,
+} from '../sms/SmsQuietHours';
 import type { Campaign } from './types';
 
 const logger = createLogger('CAMPAIGN_COMPLIANCE');
@@ -77,6 +81,16 @@ export interface ComplianceCheck {
   unknownTimezoneCount: number;
   hasQuietHoursConfig: boolean;
   respectsContactTimezone: boolean;
+  /**
+   * Whether outbound SMS is also gated by the platform-wide TCPA quiet-hours
+   * enforcement (always `true` once Task #604 shipped). Surfaced so the
+   * compliance panel can show a single number that covers both voice and SMS
+   * coverage instead of leaving operators wondering whether texts share the
+   * same protections as calls.
+   */
+  smsQuietHoursEnforced: boolean;
+  /** Window the SMS quiet-hours enforcement uses, e.g. "08:00–21:00 local". */
+  smsQuietHoursWindow: string;
   complianceScore: number;
   recommendations: string[];
   preflightTruncated: boolean;
@@ -279,6 +293,15 @@ export async function checkCampaignCompliance(
       );
     }
 
+    // SMS quiet hours are enforced platform-wide, but if the *voice* path
+    // doesn't yet have a window configured, the operator will still see a
+    // recommendation above to set one up. Confirming SMS is already covered
+    // helps them understand they only need to fix the voice gap, not both.
+    const smsQuietHoursWindow = `${SMS_QUIET_HOURS_WINDOW_START}–${SMS_QUIET_HOURS_WINDOW_END} local`;
+    recommendations.push(
+      `SMS quiet hours are enforced platform-wide (${smsQuietHoursWindow}); outbound texts outside that window are deferred or rejected automatically.`,
+    );
+
     // Refuse to launch if (a) any DNC match was found, (b) the campaign is
     // empty, or (c) we couldn't fully verify the contact list. This is the
     // "fail closed" behavior required for TCPA compliance.
@@ -296,6 +319,8 @@ export async function checkCampaignCompliance(
       unknownTimezoneCount,
       hasQuietHoursConfig,
       respectsContactTimezone,
+      smsQuietHoursEnforced: true,
+      smsQuietHoursWindow,
       complianceScore: clampScore(score),
       recommendations,
       preflightTruncated,

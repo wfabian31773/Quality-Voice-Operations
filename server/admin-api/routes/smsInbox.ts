@@ -8,6 +8,12 @@ import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import * as SmsService from '../../../platform/sms/SmsConversationService';
 import {
+  evaluateSmsQuietHours,
+  nextSmsWindowStart,
+  SMS_QUIET_HOURS_WINDOW_END,
+  SMS_QUIET_HOURS_WINDOW_START,
+} from '../../../platform/sms/SmsQuietHours';
+import {
   SMS_CANNED_RESPONSE_TOKENS,
   findUnknownSmsCannedResponseTokens,
 } from '../../../shared/sms/cannedResponseTokens';
@@ -244,6 +250,36 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
       return res.status(400).json({ error: 'Invalid scheduledAt date' });
     }
 
+    // TCPA quiet-hours enforcement (8am-9pm in the recipient's local time).
+    // Mirrors the voice-side `evaluateQuietHours` pre-flight so SMS can't be
+    // used to side-step the same regulatory window. For immediate sends we
+    // reject with 403; for scheduled sends we reject if the operator picked
+    // a `scheduledAt` that falls outside the recipient's local window so the
+    // problem surfaces in the UI rather than silently deferring.
+    const quietHoursAt = schedDate ?? new Date();
+    const quietHours = evaluateSmsQuietHours(conv.remoteNumber, quietHoursAt);
+    if (!quietHours.allowed) {
+      logger.info('SMS blocked by TCPA quiet hours', {
+        tenantId,
+        conversationId: id,
+        to: conv.remoteNumber,
+        timezone: quietHours.timezone,
+        localTime: quietHours.localTimeIso,
+        scheduled: Boolean(schedDate),
+      });
+      return res.status(403).json({
+        error: 'Outside SMS quiet hours',
+        reason: 'sms_quiet_hours',
+        details: {
+          recipientTimezone: quietHours.timezone,
+          recipientLocalTime: quietHours.localTimeIso,
+          windowStart: SMS_QUIET_HOURS_WINDOW_START,
+          windowEnd: SMS_QUIET_HOURS_WINDOW_END,
+        },
+        message: `TCPA: SMS to this recipient can only be sent between ${SMS_QUIET_HOURS_WINDOW_START} and ${SMS_QUIET_HOURS_WINDOW_END} in their local time (${quietHours.timezone}).`,
+      });
+    }
+
     if (!schedDate) {
       const creds = await getTwilioCredentials(tenantId);
       if (!creds) return res.status(503).json({ error: 'SMS service not configured' });
@@ -261,6 +297,10 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         body,
         status: (twilioResponse.status as string) || 'queued',
         twilioSid: twilioResponse.sid as string,
+        // Reuse the pre-check instant so the chokepoint guard cannot throw
+        // a false positive at the 21:00:00 boundary after Twilio already
+        // accepted the send.
+        quietHoursEvaluatedAt: quietHoursAt,
       });
 
       await SmsService.logActivity(tenantId, id, 'message_sent', userId, req.user!.email, { messageId: message.id });
@@ -293,6 +333,26 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
       return res.json({ message });
     }
   } catch (err) {
+    // Map the chokepoint quiet-hours throw to a 403 so the UI shows the
+    // same friendly message regardless of which layer caught the violation.
+    if (err && typeof err === 'object' && (err as { code?: string }).code === 'sms_quiet_hours') {
+      const e = err as { recipientTimezone?: string; recipientLocalTime?: string };
+      logger.info('SMS blocked by chokepoint quiet-hours guard', {
+        tenantId,
+        timezone: e.recipientTimezone,
+        localTime: e.recipientLocalTime,
+      });
+      return res.status(403).json({
+        error: 'Outside SMS quiet hours',
+        reason: 'sms_quiet_hours',
+        details: {
+          recipientTimezone: e.recipientTimezone,
+          recipientLocalTime: e.recipientLocalTime,
+          windowStart: SMS_QUIET_HOURS_WINDOW_START,
+          windowEnd: SMS_QUIET_HOURS_WINDOW_END,
+        },
+      });
+    }
     logger.error('Failed to send message', { tenantId, error: String(err) });
     return res.status(500).json({ error: `Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}` });
   }
@@ -700,6 +760,35 @@ async function processScheduledMessages(): Promise<void> {
             reason: 'recipient_opted_out_after_schedule',
           });
           logger.info('Scheduled SMS suppressed — recipient on DNC', { tenantId: msg.tenantId, messageId: msg.id, to: msg.toNumber });
+          continue;
+        }
+
+        // TCPA quiet-hours defense-in-depth at dispatch time. The send
+        // handler already rejects sends that would land outside the window,
+        // but the recipient's local time can drift across DST boundaries or
+        // a tenant could enqueue a scheduled message via another path that
+        // skips the route. Defer the message to the next 8am-local instead
+        // of dropping it so the operator's intent is preserved.
+        const quietHours = evaluateSmsQuietHours(msg.toNumber);
+        if (!quietHours.allowed) {
+          const deferUntil = nextSmsWindowStart(msg.toNumber);
+          const pool = getPlatformPool();
+          await pool.query(
+            `UPDATE sms_messages SET status = 'scheduled', scheduled_at = $1 WHERE id = $2 AND tenant_id = $3`,
+            [deferUntil, msg.id, msg.tenantId],
+          );
+          await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_deferred', null, null, {
+            messageId: msg.id,
+            reason: 'sms_quiet_hours',
+            recipientTimezone: quietHours.timezone,
+            deferredUntil: deferUntil.toISOString(),
+          });
+          logger.info('Scheduled SMS deferred — outside TCPA quiet hours', {
+            tenantId: msg.tenantId,
+            messageId: msg.id,
+            timezone: quietHours.timezone,
+            deferredUntil: deferUntil.toISOString(),
+          });
           continue;
         }
 

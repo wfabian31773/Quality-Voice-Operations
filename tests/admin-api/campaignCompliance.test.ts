@@ -459,6 +459,13 @@ describe('GET /campaigns/:id/compliance', () => {
     });
     expect(typeof res.body.compliance.complianceScore).toBe('number');
     expect(res.body.compliance.recommendations.some((r: string) => /do-not-call/i.test(r))).toBe(true);
+    // Task #604: SMS coverage must be surfaced in the report so the
+    // compliance panel can show one number across both channels.
+    expect(res.body.compliance.smsQuietHoursEnforced).toBe(true);
+    expect(res.body.compliance.smsQuietHoursWindow).toBe('08:00–21:00 local');
+    expect(
+      res.body.compliance.recommendations.some((r: string) => /SMS quiet hours/i.test(r)),
+    ).toBe(true);
   });
 });
 
@@ -544,5 +551,135 @@ describe('evaluateQuietHours (per-area-code TCPA window)', () => {
     expect(decision.timezone).toBe('America/Los_Angeles');
     // 14:00 UTC = 07:00 Pacific, before window start
     expect(decision.allowed).toBe(false);
+  });
+});
+
+/**
+ * Task #604 regression: SMS blasts must respect TCPA quiet hours in the
+ * recipient's local timezone, not the tenant's. A Pacific-time tenant texting
+ * an east-coast (NY area code) number at 10pm Eastern would be just barely
+ * inside the Pacific window (7pm), but the TCPA window applies in the
+ * recipient's locale (10pm Eastern = blocked).
+ */
+describe('evaluateSmsQuietHours (TCPA SMS window)', () => {
+  it("rejects an east-coast number at 10pm Eastern even when the tenant is Pacific", async () => {
+    const { evaluateSmsQuietHours } = await import('../../platform/sms/SmsQuietHours');
+    // 2026-04-28 02:00 UTC = 22:00 Eastern (10pm) = 19:00 Pacific.
+    const now = new Date(Date.UTC(2026, 3, 28, 2, 0));
+    const decision = evaluateSmsQuietHours('+12025550100', now);
+    expect(decision.allowed).toBe(false);
+    expect(decision.timezone).toBe('America/New_York');
+    expect(decision.reason).toBe('outside_window');
+  });
+
+  it("allows the same east-coast number at 8pm Eastern (still inside SMS window)", async () => {
+    const { evaluateSmsQuietHours } = await import('../../platform/sms/SmsQuietHours');
+    // 2026-04-28 00:00 UTC = 20:00 Eastern (8pm) = inside SMS 8am–9pm window.
+    const now = new Date(Date.UTC(2026, 3, 28, 0, 0));
+    const decision = evaluateSmsQuietHours('+12025550100', now);
+    expect(decision.allowed).toBe(true);
+    expect(decision.timezone).toBe('America/New_York');
+  });
+
+  it('rejects an east-coast number before 8am Eastern', async () => {
+    const { evaluateSmsQuietHours } = await import('../../platform/sms/SmsQuietHours');
+    // 2026-04-28 11:00 UTC = 07:00 Eastern (before window opens).
+    const now = new Date(Date.UTC(2026, 3, 28, 11, 0));
+    const decision = evaluateSmsQuietHours('+12025550100', now);
+    expect(decision.allowed).toBe(false);
+    expect(decision.timezone).toBe('America/New_York');
+    expect(decision.reason).toBe('outside_window');
+  });
+
+  it('nextSmsWindowStart returns a future time inside the recipient window', async () => {
+    const { evaluateSmsQuietHours, nextSmsWindowStart } = await import(
+      '../../platform/sms/SmsQuietHours'
+    );
+    // 2026-04-28 02:00 UTC = 22:00 Eastern, blocked.
+    const now = new Date(Date.UTC(2026, 3, 28, 2, 0));
+    const next = nextSmsWindowStart('+12025550100', now);
+    expect(next.getTime()).toBeGreaterThan(now.getTime());
+    // Once we advance to the returned instant, sending must be allowed.
+    expect(evaluateSmsQuietHours('+12025550100', next).allowed).toBe(true);
+  });
+});
+
+/**
+ * Task #604 chokepoint coverage: every outbound SMS path eventually hits
+ * `SmsConversationService.saveMessage` to record the row. Even if a future
+ * caller (campaign sender, transactional script, etc.) skips the route-level
+ * pre-check, saveMessage must throw `SmsQuietHoursError` for outbound
+ * messages whose dispatch time falls outside the recipient's local window.
+ *
+ * We import the module fresh inside each test so the mocked `withTenant`
+ * (set up in this test file) doesn't intercept — the throw happens *before*
+ * any DB call is made, which is exactly the property under test.
+ */
+describe('saveMessage chokepoint quiet-hours guard', () => {
+  it('throws SmsQuietHoursError for an outbound SMS at 10pm Eastern', async () => {
+    vi.useFakeTimers();
+    // 2026-04-28 02:00 UTC = 22:00 Eastern.
+    vi.setSystemTime(new Date(Date.UTC(2026, 3, 28, 2, 0)));
+    try {
+      const svc = await import('../../platform/sms/SmsConversationService');
+      await expect(
+        svc.saveMessage('tenant-1', 'conv-1', {
+          direction: 'outbound',
+          fromNumber: '+15555550100',
+          toNumber: '+12025550100',
+          body: 'Late-night blast',
+          status: 'queued',
+        }),
+      ).rejects.toMatchObject({
+        code: 'sms_quiet_hours',
+        recipientTimezone: 'America/New_York',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects an outbound scheduled SMS whose scheduledAt lands outside the recipient window', async () => {
+    const svc = await import('../../platform/sms/SmsConversationService');
+    // Scheduled for 2026-04-28 02:00 UTC = 22:00 Eastern.
+    await expect(
+      svc.saveMessage('tenant-1', 'conv-1', {
+        direction: 'outbound',
+        fromNumber: '+15555550100',
+        toNumber: '+12025550100',
+        body: 'Late-night scheduled blast',
+        status: 'scheduled',
+        scheduledAt: new Date(Date.UTC(2026, 3, 28, 2, 0)),
+      }),
+    ).rejects.toMatchObject({ code: 'sms_quiet_hours' });
+  });
+
+  it('does not block inbound messages even if local time is outside the window', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 3, 28, 2, 0)));
+    try {
+      const svc = await import('../../platform/sms/SmsConversationService');
+      // We only care that the quiet-hours guard does not throw; we don't
+      // need the DB write to succeed (it will fail with no matching mock,
+      // and that's fine — that failure is *after* the guard). The assertion
+      // is that whatever error surfaces is NOT the quiet-hours code.
+      let caught: unknown;
+      try {
+        await svc.saveMessage('tenant-1', 'conv-1', {
+          direction: 'inbound',
+          fromNumber: '+12025550100',
+          toNumber: '+15555550100',
+          body: 'Hi',
+          status: 'received',
+        });
+      } catch (e) {
+        caught = e;
+      }
+      if (caught && typeof caught === 'object') {
+        expect((caught as { code?: string }).code).not.toBe('sms_quiet_hours');
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
