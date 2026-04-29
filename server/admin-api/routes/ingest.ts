@@ -7,6 +7,7 @@ import { requireApiKeyPermission } from '../middleware/apiKeyScope';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { notifyFinanceOfBackfillCrossDayAlert } from '../../../platform/billing/billingBackfillCrossDayNotifier';
 import {
   CallBackfillEventV1Schema,
   CallCompletionEventV1Schema,
@@ -169,10 +170,12 @@ async function recordBackfillCrossDayAlert(
     metadata.missing_old_rollups = shift.missingRollups;
     metadata.manual_rebalance_required = true;
   }
+  let insertedAlertId: string | null = null;
   try {
-    await pool.query(
+    const r = await pool.query<{ id: string }>(
       `INSERT INTO operations_alerts (tenant_id, type, severity, message, metadata, call_session_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
       [
         tenantId,
         alertType,
@@ -182,6 +185,7 @@ async function recordBackfillCrossDayAlert(
         shift.callSessionId,
       ],
     );
+    insertedAlertId = r.rows[0]?.id ?? null;
   } catch (err) {
     logger.warn('Failed to insert finance alert for cross-day backfill shift', {
       tenantId,
@@ -191,6 +195,23 @@ async function recordBackfillCrossDayAlert(
       kind: shift.kind,
       error: String(err),
     });
+  }
+
+  // Push notification (email/Slack) for finance. Best-effort: a failure here
+  // must NOT roll back or rethrow into the ingest path. The notifier itself
+  // is acknowledgement-aware (see billingBackfillCrossDayNotifier.ts) so
+  // late acks suppress the ping atomically.
+  if (insertedAlertId) {
+    try {
+      await notifyFinanceOfBackfillCrossDayAlert(insertedAlertId);
+    } catch (err) {
+      logger.warn('Failed to dispatch finance push notification for backfill alert', {
+        tenantId,
+        alertId: insertedAlertId,
+        externalId: shift.externalId,
+        error: String(err),
+      });
+    }
   }
 }
 
