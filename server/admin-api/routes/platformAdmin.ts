@@ -662,9 +662,14 @@ router.get('/platform/template-analytics', requireAuth, requirePlatformAdmin, as
           (SELECT COALESCE(AVG(cs.duration_seconds), 0) FROM tenant_agent_installations tai
             JOIN call_sessions cs ON cs.agent_id = tai.agent_id AND cs.tenant_id = tai.tenant_id
             WHERE tai.template_id = tr.id AND cs.duration_seconds > 0) AS avg_call_duration,
-          (SELECT COALESCE(AVG(cs.customer_satisfaction_score), 0) FROM tenant_agent_installations tai
+          (SELECT CASE WHEN COUNT(ccr.score_normalized) = 0 THEN 0
+                       ELSE 1 + AVG(ccr.score_normalized) * 4 END
+            FROM tenant_agent_installations tai
             JOIN call_sessions cs ON cs.agent_id = tai.agent_id AND cs.tenant_id = tai.tenant_id
-            WHERE tai.template_id = tr.id AND cs.customer_satisfaction_score IS NOT NULL) AS avg_satisfaction,
+            JOIN call_csat_responses ccr ON ccr.call_session_id = cs.id AND ccr.tenant_id = cs.tenant_id
+            WHERE tai.template_id = tr.id
+              AND ccr.status = 'responded'
+              AND ccr.score_normalized IS NOT NULL) AS avg_satisfaction,
           (SELECT COUNT(DISTINCT c.id) FROM tenant_agent_installations tai
             JOIN campaigns c ON c.agent_id = tai.agent_id AND c.tenant_id = tai.tenant_id
             WHERE tai.template_id = tr.id) AS total_campaigns,
