@@ -476,7 +476,14 @@
       "minutes_included": "{{minutes}} KI-Minuten enthalten",
       "overage_label": "{{overage}} Übernutzung",
       "start_trial": "Kostenlose Testphase starten",
-      "recommended": "EMPFOHLEN"
+      "recommended": "EMPFOHLEN",
+      "billed_monthly": "Monatliche Abrechnung · jederzeit kündbar",
+      "billed_annually": "Jährliche Abrechnung · 20% sparen"
+    },
+    "billing_toggle": {
+      "monthly": "Monatlich",
+      "annual": "Jährlich",
+      "save_badge": "20% sparen"
     },
     "calculator": {
       "eyebrow": "Pro-Minute-Rechner",

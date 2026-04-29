@@ -5,7 +5,7 @@ import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck } 
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
-import MinutesPricingCalculator from '../../components/MinutesPricingCalculator';
+import MinutesPricingCalculator, { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPricingCalculator';
 import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
@@ -80,6 +80,8 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
+  const isAnnual = billingPeriod === 'annual';
 
   useEffect(() => {
     trackPageView('/pricing');
@@ -220,10 +222,60 @@ export default function Pricing() {
       <section className="py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-20">
-            {tiers.map((tier) => (
+          <div className="max-w-5xl mx-auto mb-20">
+            <div className="flex justify-center mb-8">
+              <div
+                role="group"
+                aria-label="Billing period"
+                data-testid="pricing-billing-toggle"
+                className="inline-flex items-center bg-white border border-border-strong/50 rounded-lg p-0.5 shadow-sm"
+              >
+                <button
+                  type="button"
+                  data-testid="pricing-billing-monthly"
+                  aria-pressed={!isAnnual}
+                  onClick={() => setBillingPeriod('monthly')}
+                  className={`px-4 py-2 text-sm font-display font-semibold rounded-md transition-colors ${
+                    !isAnnual
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-text-primary/70 hover:text-text-primary'
+                  }`}
+                >
+                  {t('pricing.billing_toggle.monthly')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="pricing-billing-annual"
+                  aria-pressed={isAnnual}
+                  onClick={() => setBillingPeriod('annual')}
+                  className={`px-4 py-2 text-sm font-display font-semibold rounded-md transition-colors inline-flex items-center gap-2 ${
+                    isAnnual
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-text-primary/70 hover:text-text-primary'
+                  }`}
+                >
+                  {t('pricing.billing_toggle.annual')}
+                  <span
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                      isAnnual ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                    }`}
+                  >
+                    {t('pricing.billing_toggle.save_badge')}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+            {tiers.map((tier) => {
+              const monthlyPrice = getPlanMonthlyPriceWholeDollars(tier.key);
+              const annualMonthlyPrice = Math.round(monthlyPrice * (1 - ANNUAL_DISCOUNT));
+              const displayedPrice = isAnnual ? annualMonthlyPrice : monthlyPrice;
+              const signupHref = `/signup?plan=${tier.key}${isAnnual ? '&interval=annual' : ''}`;
+              return (
               <div
                 key={tier.key}
+                data-testid={`pricing-tier-${tier.key}`}
                 className={`relative bg-white rounded-2xl border p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group ${
                   tier.popular
                     ? 'border-primary ring-2 ring-primary/20 shadow-lg shadow-primary/10'
@@ -241,27 +293,48 @@ export default function Pricing() {
                 <h3 className="font-display text-xl font-bold text-text-primary mb-1">{tier.name}</h3>
                 <p className="text-sm text-text-primary/50 font-body mb-5">{tier.desc}</p>
                 <div className="mb-2">
-                  <span className="font-display text-5xl font-bold text-text-primary">{formatPlanMonthlyPrice(tier.key)}</span>
+                  {isAnnual && (
+                    <div className="text-xs text-text-primary/40 font-body line-through" data-testid={`pricing-tier-${tier.key}-monthly-price`}>
+                      {formatDollars(monthlyPrice, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{t('pricing.tier_card.per_month')}
+                    </div>
+                  )}
+                  <span
+                    data-testid={`pricing-tier-${tier.key}-price`}
+                    className="font-display text-5xl font-bold text-text-primary"
+                  >
+                    {formatDollars(displayedPrice, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  </span>
                   <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
+                </div>
+                <div
+                  data-testid={`pricing-tier-${tier.key}-billing-label`}
+                  className="text-xs text-text-primary/50 font-body mb-3"
+                >
+                  {isAnnual
+                    ? t('pricing.tier_card.billed_annually')
+                    : t('pricing.tier_card.billed_monthly')}
                 </div>
                 <div className="flex flex-col gap-1 mb-6">
                   <span className="text-xs text-primary font-semibold font-body">{tier.minutes}</span>
                   <span className="text-xs text-text-primary/40 font-body">{tier.overage}</span>
                 </div>
                 <Link
-                  to={`/signup?plan=${tier.key}`}
+                  to={signupHref}
+                  data-testid={`pricing-tier-${tier.key}-cta`}
                   className={`block text-center font-semibold py-3.5 px-4 rounded-lg text-sm transition-colors duration-[var(--motion-base)] min-h-[44px] ${
                     tier.popular
                       ? 'btn-primary-glow bg-primary hover:bg-primary-hover text-on-primary'
                       : 'bg-surface-hover hover:bg-primary text-text-primary hover:text-on-primary'
                   }`}
-                  onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_card', tier.key)}
+                  onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_card', `${tier.key}_${billingPeriod}`)}
                 >
                   {t('pricing.tier_card.start_trial')}
                   <ArrowRight className="h-4 w-4 inline-block ml-2" />
                 </Link>
               </div>
-            ))}
+              );
+            })}
+            </div>
           </div>
           </RevealSection>
 
@@ -278,7 +351,10 @@ export default function Pricing() {
                 {t('pricing.calculator.subtitle')}
               </p>
             </div>
-            <MinutesPricingCalculator />
+            <MinutesPricingCalculator
+              billingPeriod={billingPeriod}
+              onBillingPeriodChange={setBillingPeriod}
+            />
           </div>
           </RevealSection>
 

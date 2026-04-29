@@ -10,6 +10,7 @@ import SEO from '../../components/SEO';
 import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
 import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
+import { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPricingCalculator';
 
 const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
 
@@ -20,6 +21,9 @@ export default function Signup() {
   const [password, setPassword] = useState('');
   const [orgName, setOrgName] = useState('');
   const [plan, setPlan] = useState(searchParams.get('plan') || 'starter');
+  const initialInterval: BillingPeriod = searchParams.get('interval') === 'annual' ? 'annual' : 'monthly';
+  const [interval, setInterval] = useState<BillingPeriod>(initialInterval);
+  const isAnnual = interval === 'annual';
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
@@ -27,10 +31,15 @@ export default function Signup() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const computePrice = (tier: 'starter' | 'pro' | 'enterprise') => {
+    const monthly = getPlanMonthlyPriceWholeDollars(tier);
+    return isAnnual ? Math.round(monthly * (1 - ANNUAL_DISCOUNT)) : monthly;
+  };
+
   const plans = [
-    { key: 'starter', name: t('auth.plan_starter'), price: getPlanMonthlyPriceWholeDollars('starter') },
-    { key: 'pro', name: t('auth.plan_pro'), price: getPlanMonthlyPriceWholeDollars('pro'), popular: true },
-    { key: 'enterprise', name: t('auth.plan_enterprise'), price: getPlanMonthlyPriceWholeDollars('enterprise') },
+    { key: 'starter', name: t('auth.plan_starter'), price: computePrice('starter') },
+    { key: 'pro', name: t('auth.plan_pro'), price: computePrice('pro'), popular: true },
+    { key: 'enterprise', name: t('auth.plan_enterprise'), price: computePrice('enterprise') },
   ];
 
   const benefits = [
@@ -109,6 +118,7 @@ export default function Signup() {
         email,
         password,
         plan,
+        interval,
         captchaToken: captchaToken || undefined,
         visitorId: getVisitorId(),
       });
@@ -116,7 +126,7 @@ export default function Signup() {
         setToken(res.token);
       }
       trackSignupConversion(plan, res.checkoutUrl ? 'checkout' : 'onboarding');
-      trackConversionEvent('signup_completed', '/signup', { plan });
+      trackConversionEvent('signup_completed', '/signup', { plan, interval });
       if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {
@@ -224,13 +234,56 @@ export default function Signup() {
                 </div>
 
                 <div>
-                  <span id="signup-plan-label" className="block text-sm font-medium text-text-primary mb-2">{t('auth.select_plan')}</span>
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <span id="signup-plan-label" className="block text-sm font-medium text-text-primary">{t('auth.select_plan')}</span>
+                    <div
+                      role="group"
+                      aria-label="Billing period"
+                      data-testid="signup-billing-toggle"
+                      className="inline-flex items-center bg-surface-secondary border border-border rounded-md p-0.5 text-[11px]"
+                    >
+                      <button
+                        type="button"
+                        data-testid="signup-billing-monthly"
+                        aria-pressed={!isAnnual}
+                        onClick={() => setInterval('monthly')}
+                        className={`px-2.5 py-1 rounded font-display font-semibold transition-colors ${
+                          !isAnnual
+                            ? 'bg-primary text-white shadow-sm'
+                            : 'text-text-primary/70 hover:text-text-primary'
+                        }`}
+                      >
+                        {t('auth.billing_monthly')}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="signup-billing-annual"
+                        aria-pressed={isAnnual}
+                        onClick={() => setInterval('annual')}
+                        className={`px-2.5 py-1 rounded font-display font-semibold transition-colors inline-flex items-center gap-1 ${
+                          isAnnual
+                            ? 'bg-primary text-white shadow-sm'
+                            : 'text-text-primary/70 hover:text-text-primary'
+                        }`}
+                      >
+                        {t('auth.billing_annual')}
+                        <span
+                          className={`text-[9px] font-semibold px-1 py-0.5 rounded-full ${
+                            isAnnual ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                          }`}
+                        >
+                          −20%
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                   <div role="group" aria-labelledby="signup-plan-label" className="grid grid-cols-3 gap-2">
                     {plans.map((p) => (
                       <button
                         key={p.key}
                         type="button"
-                        onClick={() => { setPlan(p.key); trackCTAClick(CTA.PLAN_SELECTED, 'signup', p.key); }}
+                        data-testid={`signup-plan-${p.key}`}
+                        onClick={() => { setPlan(p.key); trackCTAClick(CTA.PLAN_SELECTED, 'signup', `${p.key}_${interval}`); }}
                         className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
                           plan === p.key
                             ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
@@ -247,6 +300,9 @@ export default function Signup() {
                       </button>
                     ))}
                   </div>
+                  <p className="mt-2 text-[11px] text-text-primary/50 font-body" data-testid="signup-billing-note">
+                    {isAnnual ? t('auth.billing_annual_note') : t('auth.billing_monthly_note')}
+                  </p>
                 </div>
 
                 {TURNSTILE_SITE_KEY && (

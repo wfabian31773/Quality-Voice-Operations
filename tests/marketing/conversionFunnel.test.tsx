@@ -387,6 +387,63 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
       expect(screen.getByText(STUB_MARKERS.signup)).toBeTruthy();
     });
   });
+
+  it('appends interval=annual to plan-card signup links when Annual is selected', () => {
+    render(
+      <FunnelHarness
+        initialPath="/pricing"
+        pageRoutePath="/pricing"
+        pageElement={<Pricing />}
+      />,
+    );
+
+    // Default (monthly): tier CTAs should NOT carry interval=annual.
+    const monthlyCta = screen.getByTestId('pricing-tier-pro-cta') as HTMLAnchorElement;
+    expect(monthlyCta.getAttribute('href')).toBe('/signup?plan=pro');
+
+    // Toggle Annual on the pricing page.
+    fireEvent.click(screen.getByTestId('pricing-billing-annual'));
+
+    // Now every tier CTA should pass interval=annual through to /signup so
+    // the server creates an ANNUAL Stripe checkout.
+    const tiers: ReadonlyArray<'starter' | 'pro' | 'enterprise'> = [
+      'starter',
+      'pro',
+      'enterprise',
+    ];
+    for (const tier of tiers) {
+      const cta = screen.getByTestId(`pricing-tier-${tier}-cta`) as HTMLAnchorElement;
+      expect(cta.getAttribute('href')).toBe(`/signup?plan=${tier}&interval=annual`);
+    }
+
+    // The calculator (which lives below the cards) is controlled by the same
+    // state, so its annual toggle button must reflect Annual being on too.
+    expect(
+      screen.getByTestId('calc-billing-annual').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('mirrors a toggle change on the calculator back into plan-card signup links', () => {
+    render(
+      <FunnelHarness
+        initialPath="/pricing"
+        pageRoutePath="/pricing"
+        pageElement={<Pricing />}
+      />,
+    );
+
+    // Toggling Annual on the calculator (the place the user is most likely
+    // to interact with) must also flip the cards above.
+    fireEvent.click(screen.getByTestId('calc-billing-annual'));
+    expect(
+      (screen.getByTestId('pricing-tier-pro-cta') as HTMLAnchorElement).getAttribute(
+        'href',
+      ),
+    ).toBe('/signup?plan=pro&interval=annual');
+    expect(
+      screen.getByTestId('pricing-billing-annual').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
 });
 
 describe('Marketing conversion funnel: Case Studies CTAs', () => {

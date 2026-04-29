@@ -476,7 +476,14 @@
       "minutes_included": "{{minutes}} minutes IA incluses",
       "overage_label": "{{overage}} de dépassement",
       "start_trial": "Commencer l'essai gratuit",
-      "recommended": "RECOMMANDÉ"
+      "recommended": "RECOMMANDÉ",
+      "billed_monthly": "Facturation mensuelle · annulez à tout moment",
+      "billed_annually": "Facturation annuelle · économisez 20%"
+    },
+    "billing_toggle": {
+      "monthly": "Mensuel",
+      "annual": "Annuel",
+      "save_badge": "Économisez 20%"
     },
     "calculator": {
       "eyebrow": "Calculateur à la minute",

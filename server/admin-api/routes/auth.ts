@@ -13,6 +13,7 @@ const router = Router();
 const logger = createLogger('ADMIN_AUTH_ROUTES');
 
 const VALID_PLANS = new Set<string>(['starter', 'pro', 'enterprise']);
+const VALID_INTERVALS = new Set<string>(['monthly', 'annual']);
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY;
 
 async function verifyTurnstileToken(token: string, ip: string): Promise<boolean> {
@@ -131,11 +132,12 @@ router.post('/auth/login', async (req, res) => {
 });
 
 router.post('/auth/signup', async (req, res) => {
-  const { name, email, password, plan = 'starter', captchaToken, visitorId } = req.body as {
+  const { name, email, password, plan = 'starter', interval = 'monthly', captchaToken, visitorId } = req.body as {
     name?: string;
     email?: string;
     password?: string;
     plan?: string;
+    interval?: string;
     captchaToken?: string;
     visitorId?: string;
   };
@@ -150,6 +152,10 @@ router.post('/auth/signup', async (req, res) => {
 
   if (!VALID_PLANS.has(plan)) {
     return res.status(400).json({ error: `plan must be one of: ${[...VALID_PLANS].join(', ')}` });
+  }
+
+  if (!VALID_INTERVALS.has(interval)) {
+    return res.status(400).json({ error: `interval must be one of: ${[...VALID_INTERVALS].join(', ')}` });
   }
 
   if (TURNSTILE_SECRET && !captchaToken) {
@@ -214,7 +220,7 @@ router.post('/auth/signup', async (req, res) => {
     let checkoutUrl: string | null = null;
     try {
       const stripe = getStripeClient();
-      const priceId = getPlanPriceId(plan as PlanTier);
+      const priceId = getPlanPriceId(plan as PlanTier, interval as 'monthly' | 'annual');
 
       const isProd = (process.env.APP_ENV ?? process.env.NODE_ENV ?? '').startsWith('prod') || process.env.APP_ENV === 'staging';
       const baseUrl = process.env.APP_URL ?? (isProd ? '' : `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`);
@@ -225,7 +231,10 @@ router.post('/auth/signup', async (req, res) => {
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
-        metadata: { tenantId, userId, plan, ...(visitorId ? { visitorId } : {}) },
+        metadata: { tenantId, userId, plan, interval, ...(visitorId ? { visitorId } : {}) },
+        subscription_data: {
+          metadata: { tenantId, userId, plan, interval },
+        },
         client_reference_id: visitorId || undefined,
         success_url: `${baseUrl}/onboarding?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/login?cancelled=true`,
@@ -261,7 +270,7 @@ router.post('/auth/signup', async (req, res) => {
 
     res.cookie('auth_token', token, authCookieOptions());
 
-    logger.info('Signup initiated', { tenantId, userId, emailVerificationRequired: true });
+    logger.info('Signup initiated', { tenantId, userId, plan, interval, emailVerificationRequired: true });
 
     try {
       const { sendEmail, emailVerificationEmail } = await import('../../../platform/email');

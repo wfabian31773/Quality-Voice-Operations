@@ -476,7 +476,14 @@
       "minutes_included": "{{minutes}} AI minutes included",
       "overage_label": "{{overage}} overage",
       "start_trial": "Start free trial",
-      "recommended": "RECOMMENDED"
+      "recommended": "RECOMMENDED",
+      "billed_monthly": "Billed monthly · cancel anytime",
+      "billed_annually": "Billed annually · save 20%"
+    },
+    "billing_toggle": {
+      "monthly": "Monthly",
+      "annual": "Annual",
+      "save_badge": "Save 20%"
     },
     "calculator": {
       "eyebrow": "Per-minute calculator",

@@ -12,7 +12,7 @@ interface CalculatorTier {
   popular?: boolean;
 }
 
-type BillingPeriod = 'monthly' | 'annual';
+export type BillingPeriod = 'monthly' | 'annual';
 
 const POPULAR_TIER: PlanTier = 'pro';
 export const ANNUAL_DISCOUNT = 0.2;
@@ -55,9 +55,23 @@ export function getDiscountedBasePrice(basePrice: number, period: BillingPeriod)
   return period === 'annual' ? basePrice * (1 - ANNUAL_DISCOUNT) : basePrice;
 }
 
-export default function MinutesPricingCalculator() {
+export interface MinutesPricingCalculatorProps {
+  billingPeriod?: BillingPeriod;
+  onBillingPeriodChange?: (period: BillingPeriod) => void;
+}
+
+export default function MinutesPricingCalculator({
+  billingPeriod: billingPeriodProp,
+  onBillingPeriodChange,
+}: MinutesPricingCalculatorProps = {}) {
   const [minutes, setMinutes] = useState<number>(1_500);
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
+  const [billingPeriodInternal, setBillingPeriodInternal] = useState<BillingPeriod>('monthly');
+  const isControlled = billingPeriodProp !== undefined;
+  const billingPeriod = isControlled ? billingPeriodProp : billingPeriodInternal;
+  const setBillingPeriod = (period: BillingPeriod) => {
+    if (!isControlled) setBillingPeriodInternal(period);
+    onBillingPeriodChange?.(period);
+  };
 
   const results = useMemo(() => {
     const safeMinutes = Math.max(0, Math.min(MAX_MINUTES, Math.round(minutes)));
