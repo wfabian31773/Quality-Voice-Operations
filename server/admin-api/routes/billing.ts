@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createCheckoutSession, createPortalSession } from '../../../platform/billing/stripe/checkout';
 import { constructStripeEvent, handleStripeEvent } from '../../../platform/billing/stripe/webhook';
+import { getTenantEffectiveRate } from '../../../platform/billing/stripe/effectiveRate';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
@@ -145,6 +146,20 @@ router.post('/billing/portal', requireAuth, requireRole('manager'), async (req, 
   } catch (err) {
     logger.error('Portal session creation failed', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to create billing portal session' });
+  }
+});
+
+router.get('/billing/effective-rate', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const rate = await getTenantEffectiveRate(tenantId);
+    return res.json(rate);
+  } catch (err) {
+    // getTenantEffectiveRate already swallows expected errors and falls
+    // back to the catalog. Anything bubbling up here is a true 500 — log
+    // it but still avoid leaking internals to the client.
+    logger.error('Effective rate lookup failed', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to resolve effective rate' });
   }
 });
 

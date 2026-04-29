@@ -4,3 +4,5 @@ export type { PlanTier, PlanLimits } from './plans';
 export { createCheckoutSession, createPortalSession } from './checkout';
 export { constructStripeEvent, handleStripeEvent } from './webhook';
 export { reportUsageForTenant, reportUsageForAllTenants, startUsageMeteringWorker, stopUsageMeteringWorker } from './usage';
+export { getTenantEffectiveRate } from './effectiveRate';
+export type { TenantEffectiveRate, EffectiveRateSource } from './effectiveRate';

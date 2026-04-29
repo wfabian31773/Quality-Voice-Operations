@@ -179,6 +179,11 @@ export default function Billing() {
     if (params.get('checkout') === 'success') {
       queryClient.invalidateQueries({ queryKey: ['trial-status'] });
       queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      // The Stripe price attached to the subscription just changed (new
+      // checkout = new subscription items), so the catalog override cached
+      // by the BillingEstimator is now stale even though our 30-minute
+      // staleTime would otherwise keep it.
+      queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
     }
   }, [queryClient]);
 
@@ -203,6 +208,26 @@ export default function Billing() {
     queryKey: ['billing-invoices'],
     queryFn: () => api.get<{ invoices: Invoice[] }>('/billing/invoices'),
     enabled: isAdmin,
+  });
+
+  // Live per-minute overage + base price sourced from the tenant's actual
+  // Stripe subscription items. Falls back to catalog defaults server-side
+  // when no Stripe subscription exists, so the BillingEstimator stays
+  // accurate for tenants on a custom / negotiated / grandfathered price.
+  const { data: effectiveRateData } = useQuery({
+    queryKey: ['billing-effective-rate'],
+    queryFn: () => api.get<{
+      basePriceCents: number;
+      overageRatePerMinute: number;
+      basePriceSource: 'stripe' | 'catalog';
+      overagePriceSource: 'stripe' | 'catalog';
+    }>('/billing/effective-rate'),
+    // The Stripe subscription rate is stable across a billing period, so a
+    // 30-minute stale window keeps every page navigation from re-hitting
+    // Stripe — the override only matters when it differs from the catalog
+    // default and that change is invariably accompanied by a new
+    // subscription/checkout event that already invalidates this key.
+    staleTime: 30 * 60 * 1000,
   });
 
   const portalMutation = useMutation({
@@ -390,6 +415,18 @@ export default function Billing() {
           <BillingEstimator
             currentPlan={plan}
             monthToDateAiMinutes={aiMinutesUsed}
+            rateOverride={effectiveRateData
+              ? {
+                  basePriceCents:
+                    effectiveRateData.basePriceSource === 'stripe'
+                      ? effectiveRateData.basePriceCents
+                      : null,
+                  overageRatePerMinute:
+                    effectiveRateData.overagePriceSource === 'stripe'
+                      ? effectiveRateData.overageRatePerMinute
+                      : null,
+                }
+              : undefined}
           />
 
           {sub && isAdmin && (

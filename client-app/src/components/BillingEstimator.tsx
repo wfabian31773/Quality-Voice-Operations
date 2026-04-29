@@ -12,9 +12,32 @@ import {
 } from './MinutesPricingCalculator';
 import { formatDollars } from '../lib/formatCurrency';
 
+/**
+ * Live override of the catalog rates, sourced from the tenant's actual
+ * Stripe subscription (`/billing/effective-rate`). When provided, these
+ * values take precedence over the static `PLAN_CATALOG` for the *current*
+ * tier so the estimate matches what Stripe will actually invoice for a
+ * tenant on a custom / negotiated / grandfathered price. The next-tier-up
+ * card always uses the published catalog price because we don't know what
+ * Stripe will quote that tenant for an upgrade.
+ */
+export interface BillingEstimatorRateOverride {
+  /** Effective monthly base price, in cents. */
+  basePriceCents?: number | null;
+  /** Effective per-minute overage rate, in dollars (e.g. 0.12 = $0.12/min). */
+  overageRatePerMinute?: number | null;
+}
+
 interface BillingEstimatorProps {
   currentPlan: PlanTier | string;
   monthToDateAiMinutes: number;
+  /**
+   * Optional Stripe-sourced rate override for the current tier. Falls back
+   * to the catalog when omitted or when individual fields are nullish, so
+   * the component still renders correctly during the loading window before
+   * the API responds.
+   */
+  rateOverride?: BillingEstimatorRateOverride;
 }
 
 interface TierSpec {
@@ -23,20 +46,48 @@ interface TierSpec {
   basePrice: number;
   includedMinutes: number;
   overageRate: number;
+  /**
+   * Set when this tier's `basePrice` / `overageRate` were sourced from the
+   * tenant's live Stripe subscription rather than the catalog defaults.
+   */
+  sourcedFromStripe?: boolean;
 }
 
 const MIN_MINUTES = 0;
 const MAX_MINUTES = 25_000;
 const STEP_MINUTES = 50;
 
-function toTierSpec(key: PlanTier): TierSpec {
+function toTierSpec(
+  key: PlanTier,
+  override?: BillingEstimatorRateOverride,
+): TierSpec {
   const plan = PLAN_CATALOG[key];
+  // Coerce the override fields once: anything non-finite or nullish falls
+  // back to the catalog so a partial Stripe response can't render NaN.
+  const overrideBaseCents =
+    override?.basePriceCents != null && Number.isFinite(override.basePriceCents)
+      ? override.basePriceCents
+      : null;
+  const overrideOverage =
+    override?.overageRatePerMinute != null
+      && Number.isFinite(override.overageRatePerMinute)
+      ? override.overageRatePerMinute
+      : null;
+
+  const basePrice = overrideBaseCents != null
+    ? Math.round(overrideBaseCents / 100)
+    : getPlanMonthlyPriceWholeDollars(plan.key);
+  const overageRate = overrideOverage != null
+    ? overrideOverage
+    : plan.overageRatePerMinute;
+
   return {
     key: plan.key,
     name: plan.name,
-    basePrice: getPlanMonthlyPriceWholeDollars(plan.key),
+    basePrice,
     includedMinutes: plan.includedMinutes,
-    overageRate: plan.overageRatePerMinute,
+    overageRate,
+    sourcedFromStripe: overrideBaseCents != null || overrideOverage != null,
   };
 }
 
@@ -113,6 +164,16 @@ function TierEstimate({
         </div>
       </div>
 
+      {tier.sourcedFromStripe && (
+        <div
+          data-testid={`billing-estimator-source-${tier.key}`}
+          className="mb-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+          title="Pulled from your live Stripe subscription — overrides published catalog rates"
+        >
+          Live Stripe rate
+        </div>
+      )}
+
       <div
         data-testid={`billing-estimator-effective-${tier.key}`}
         className="text-xs text-text-muted mb-3"
@@ -157,9 +218,16 @@ function TierEstimate({
 export default function BillingEstimator({
   currentPlan,
   monthToDateAiMinutes,
+  rateOverride,
 }: BillingEstimatorProps) {
   const currentTierKey = normalizePlan(currentPlan);
-  const currentTier = useMemo(() => toTierSpec(currentTierKey), [currentTierKey]);
+  // Only the current tier gets the Stripe override — the next-tier card has
+  // to use catalog defaults because we have no way to know what Stripe
+  // would quote that tenant on a higher plan they aren't subscribed to.
+  const currentTier = useMemo(
+    () => toTierSpec(currentTierKey, rateOverride),
+    [currentTierKey, rateOverride],
+  );
   const nextTierKey = useMemo(() => nextTierUp(currentTierKey), [currentTierKey]);
   const nextTier = useMemo(
     () => (nextTierKey ? toTierSpec(nextTierKey) : null),
