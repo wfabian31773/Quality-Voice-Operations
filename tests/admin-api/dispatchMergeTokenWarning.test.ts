@@ -12,7 +12,9 @@ import type { Request, Response } from 'express';
 
 import {
   DISPATCH_MERGE_TOKENS,
+  DISPATCH_MERGE_TOKEN_SAMPLES,
   findUnknownDispatchMergeTokens,
+  renderDispatchTemplate,
 } from '../../shared/dispatch/mergeTokens';
 
 describe('findUnknownDispatchMergeTokens', () => {
@@ -50,6 +52,17 @@ describe('findUnknownDispatchMergeTokens', () => {
     expect(findUnknownDispatchMergeTokens(42)).toEqual([]);
   });
 
+  it('provides an obvious-fake sample value for every supported token', () => {
+    // The editor's live preview (task #807) uses these to render the
+    // template against a sample job. Adding a token without a sample
+    // would be a TS compile error — this guard catches the case where
+    // the typed Record itself is widened by accident.
+    for (const token of DISPATCH_MERGE_TOKENS) {
+      expect(DISPATCH_MERGE_TOKEN_SAMPLES[token]).toBeTypeOf('string');
+      expect(DISPATCH_MERGE_TOKEN_SAMPLES[token].length).toBeGreaterThan(0);
+    }
+  });
+
   it('exports the full list of renderer-supported tokens', () => {
     // If this changes, fireNotifications() in
     // server/admin-api/routes/dispatch.ts must add a value for the
@@ -66,6 +79,44 @@ describe('findUnknownDispatchMergeTokens', () => {
       'address',
       'tracking_url',
     ]);
+  });
+});
+
+describe('renderDispatchTemplate', () => {
+  it('substitutes every known token using the supplied value map', () => {
+    const out = renderDispatchTemplate(
+      'Hi {{contact_name}}, your tech {{resource_name}} arrives by {{eta_arrival_time}}. Track: {{tracking_url}}',
+    );
+    expect(out).toBe(
+      `Hi ${DISPATCH_MERGE_TOKEN_SAMPLES.contact_name}, your tech ${DISPATCH_MERGE_TOKEN_SAMPLES.resource_name} arrives by ${DISPATCH_MERGE_TOKEN_SAMPLES.eta_arrival_time}. Track: ${DISPATCH_MERGE_TOKEN_SAMPLES.tracking_url}`,
+    );
+  });
+
+  it('tolerates inner whitespace just like the server renderer', () => {
+    expect(renderDispatchTemplate('Hi {{ contact_name }}!')).toBe(
+      `Hi ${DISPATCH_MERGE_TOKEN_SAMPLES.contact_name}!`,
+    );
+  });
+
+  it('leaves unknown tokens untouched so the preview matches what customers would see', () => {
+    expect(renderDispatchTemplate('Hi {{contact_name}}, see {{tracking_link}}')).toBe(
+      `Hi ${DISPATCH_MERGE_TOKEN_SAMPLES.contact_name}, see {{tracking_link}}`,
+    );
+  });
+
+  it('returns an empty string for empty / non-string inputs so callers can pass raw form state', () => {
+    expect(renderDispatchTemplate('')).toBe('');
+    // Defensive: form state can briefly be undefined while a field
+    // mounts; the editor passes the raw value through without a guard.
+    expect(renderDispatchTemplate(undefined as unknown as string)).toBe('');
+  });
+
+  it('accepts a custom value map for callers that want non-sample data', () => {
+    const out = renderDispatchTemplate('Hi {{contact_name}}', {
+      ...DISPATCH_MERGE_TOKEN_SAMPLES,
+      contact_name: 'Tester',
+    });
+    expect(out).toBe('Hi Tester');
   });
 });
 

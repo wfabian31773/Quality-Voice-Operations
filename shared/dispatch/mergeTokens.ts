@@ -70,3 +70,47 @@ export function findUnknownDispatchMergeTokens(template: unknown): string[] {
   }
   return unknown;
 }
+
+/**
+ * Obvious-fake sample values used by the template editor's live
+ * preview. They're deliberately recognizable as placeholders ("Jane
+ * Doe", "Today 3:45 PM") so a dispatcher reviewing the preview can't
+ * mistake it for a real customer message.
+ *
+ * Keep one entry per {@link DISPATCH_MERGE_TOKENS} key — the typed
+ * Record makes it a compile error to add a new merge token without
+ * giving the preview something to substitute.
+ */
+export const DISPATCH_MERGE_TOKEN_SAMPLES: Record<DispatchMergeToken, string> = {
+  job_title: 'Kitchen sink leak repair',
+  contact_name: 'Jane Doe',
+  eta: 'Today 3:45 PM',
+  eta_drive_minutes: '12',
+  eta_arrival_time: 'Today 3:45 PM',
+  resource_name: 'Alex Rivera',
+  status: 'en route',
+  address: '123 Main St, Springfield',
+  tracking_url: 'https://example.com/track/abc123',
+};
+
+/**
+ * Substitute `{{token}}` references in `template` using the supplied
+ * value map. Mirrors the server-side `substitute()` helper in
+ * `fireNotifications` so the editor's preview can't drift from what
+ * customers actually receive: same tolerant whitespace handling
+ * (`{{ contact_name }}`), same allowlist-only substitution (unknown
+ * tokens are left as raw text so they show up in the preview the same
+ * way they would in production).
+ */
+export function renderDispatchTemplate(
+  template: string,
+  values: Record<DispatchMergeToken, string> = DISPATCH_MERGE_TOKEN_SAMPLES,
+): string {
+  if (typeof template !== 'string' || template.length === 0) return '';
+  let out = template;
+  for (const token of DISPATCH_MERGE_TOKENS) {
+    const re = new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, 'g');
+    out = out.replace(re, values[token]);
+  }
+  return out;
+}

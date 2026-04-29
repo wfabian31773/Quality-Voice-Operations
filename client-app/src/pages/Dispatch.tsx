@@ -19,7 +19,9 @@ import {
 } from '../lib/dispatchRouteReplay';
 import {
   DISPATCH_MERGE_TOKENS,
+  DISPATCH_MERGE_TOKEN_SAMPLES,
   findUnknownDispatchMergeTokens,
+  renderDispatchTemplate,
 } from '../../../shared/dispatch/mergeTokens';
 
 // Live driving ETA from the technician's last known fix to the job
@@ -2513,6 +2515,24 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
   );
   const hasUnknownTokens =
     unknownBodyTokens.length > 0 || unknownSubjectTokens.length > 0;
+  // Live preview against the same allowlist the renderer uses, so a
+  // dispatcher can spot truncation, double-spaces or awkward sentences
+  // before the template ever fires for a real customer (task #807).
+  // Unknown tokens are intentionally left as raw `{{...}}` so the
+  // preview matches what the renderer would actually emit.
+  const previewSubject = useMemo(
+    () => (formType === 'notification'
+      ? renderDispatchTemplate((formData.subject as string) || '')
+      : ''),
+    [formType, formData.subject],
+  );
+  const previewBody = useMemo(
+    () => (formType === 'notification'
+      ? renderDispatchTemplate((formData.body_template as string) || '')
+      : ''),
+    [formType, formData.body_template],
+  );
+  const previewChannel = (formData.channel as string) || 'sms';
   return (
     <Modal open onClose={onClose} ariaLabel={`${formData.id ? 'Edit' : 'New'} ${titles[formType]}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -2633,6 +2653,49 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
                 <p className="mt-1 text-[11px] text-muted">
                   <code>{'{{eta_drive_minutes}}'}</code> and <code>{'{{eta_arrival_time}}'}</code> are filled with the live driving ETA from the technician&apos;s last GPS fix when the job is en route.
                   {' '}<code>{'{{tracking_url}}'}</code> renders an absolute link to the customer&apos;s booking-tracker page (e.g. <code>https://&lt;host&gt;/track/&lt;token&gt;</code>).
+                </p>
+              </div>
+              <div data-testid="notification-template-preview">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-muted">Preview</label>
+                  <span className="text-[10px] uppercase tracking-wide text-muted">
+                    Sample data — not real
+                  </span>
+                </div>
+                <div className="rounded-lg border border-dashed border-border bg-surface-secondary p-3 space-y-2">
+                  {previewChannel !== 'sms' && previewSubject.length > 0 && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">Subject</div>
+                      <div
+                        data-testid="notification-template-preview-subject"
+                        className="text-xs text-heading whitespace-pre-wrap break-words"
+                      >
+                        {previewSubject}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">
+                      {previewChannel === 'email' ? 'Body' : 'Message'}
+                    </div>
+                    {previewBody.length > 0 ? (
+                      <div
+                        data-testid="notification-template-preview-body"
+                        className="text-sm text-heading whitespace-pre-wrap break-words"
+                      >
+                        {previewBody}
+                      </div>
+                    ) : (
+                      <div className="text-xs italic text-muted">
+                        Start typing the body template to see a preview.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-muted">
+                  Rendered against a sample job: <code>{DISPATCH_MERGE_TOKEN_SAMPLES.contact_name}</code> at{' '}
+                  <code>{DISPATCH_MERGE_TOKEN_SAMPLES.address}</code>, ETA{' '}
+                  <code>{DISPATCH_MERGE_TOKEN_SAMPLES.eta_arrival_time}</code>.
                 </p>
               </div>
             </>
