@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { type IndustryTemplateKey, getIndustryTemplateCopy } from '../lib/agentBuilderI18n';
+import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
 
 interface ProvisioningStatus {
   status: 'pending' | 'provisioning' | 'ready';
@@ -32,7 +34,29 @@ const AGENT_TEMPLATES = [
   { value: 'property-management', label: 'Property Management', description: 'Maintenance requests and emergency dispatch' },
   { value: 'home-services', label: 'Home Services', description: 'HVAC, plumbing, and electrical service booking' },
   { value: 'legal', label: 'Legal Intake', description: 'Consultation scheduling with conflict-of-interest screening' },
+  { value: 'real-estate', label: 'Real Estate', description: 'Buyer/seller qualification and showing scheduling' },
+  { value: 'restaurant', label: 'Restaurant Reservations', description: 'Take reservations or add callers to the waitlist' },
+  { value: 'salon', label: 'Salon & Spa', description: 'Book stylist appointments and confirm the day before' },
 ];
+
+/**
+ * Maps an onboarding template slug (the agent `type` we save on the starter
+ * agent) to the industry template key used by `getIndustryTemplateCopy`. Slugs
+ * not listed here keep the agent's existing greeting/system prompt — that's
+ * the case for `answering-service` (the provisioning default) and
+ * `property-management` (no industry copy authored yet). Mirrors
+ * `AGENT_TYPE_TO_TEMPLATE` in `client-app/src/pages/Agents.tsx` so the wizard
+ * seeds the same copy as the Agents page quick-create.
+ */
+const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
+  'medical-after-hours': 'medical',
+  'dental': 'dental',
+  'home-services': 'hvac',
+  'legal': 'legal',
+  'real-estate': 'realestate',
+  'restaurant': 'restaurant',
+  'salon': 'salon',
+};
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -46,6 +70,7 @@ export default function Onboarding() {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const verifyAttempted = useRef(false);
   const persistedStepRef = useRef<number | null>(null);
+  const tenantPrimaryLanguage = useTenantPrimaryLanguage();
 
   // Persist the user's current step to the server so they can resume
   // exactly where they left off after a refresh, logout, or new login.
@@ -190,10 +215,22 @@ export default function Onboarding() {
     try {
       const agents = await api.get<{ agents: Array<{ id: string }> }>('/agents');
       if (agents.agents.length > 0) {
-        await api.patch(`/agents/${agents.agents[0].id}`, {
+        const updates: Record<string, unknown> = {
           type: selectedTemplate,
           name: AGENT_TEMPLATES.find((t) => t.value === selectedTemplate)?.label ?? selectedTemplate,
-        });
+        };
+        // When the chosen template has industry copy authored, seed the
+        // greeting + system prompt from it — same behaviour as the Agents
+        // page quick-create. The fresh starter agent only has the generic
+        // defaults at this point, so it's always safe to overwrite without
+        // checking for user customisation.
+        const templateKey = AGENT_TYPE_TO_TEMPLATE[selectedTemplate];
+        if (templateKey) {
+          const copy = getIndustryTemplateCopy(tenantPrimaryLanguage, templateKey);
+          updates.welcome_greeting = copy.welcomeGreeting;
+          updates.system_prompt = copy.systemPrompt;
+        }
+        await api.patch(`/agents/${agents.agents[0].id}`, updates);
       }
       advanceTo(3);
     } catch {
