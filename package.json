@@ -86,6 +86,7 @@
     "passport": "^0.7.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.16.3",
+    "pg-mem": "^3.0.14",
     "playwright": "^1.52.0",
     "postgres": "^3.4.8",
     "react": "^19.2.4",

@@ -64,7 +64,7 @@ import {
 } from '../platform/integrations/routing/geocoder';
 import type { GeocoderProviderName } from '../platform/integrations/routing/types';
 
-interface CliOptions {
+export interface CliOptions {
   dryRun: boolean;
   actionableOnly: boolean;
   tenantId: string | null;
@@ -72,7 +72,7 @@ interface CliOptions {
   rps: number | null;
 }
 
-function parseArgs(argv: readonly string[]): CliOptions {
+export function parseArgs(argv: readonly string[]): CliOptions {
   let dryRun = false;
   let actionableOnly = false;
   let tenantId: string | null = null;
@@ -114,7 +114,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
  *                to 10 req/sec to stay polite and predictable
  *   - none:      irrelevant (no requests issued)
  */
-function defaultRpsFor(provider: GeocoderProviderName): number {
+export function defaultRpsFor(provider: GeocoderProviderName): number {
   switch (provider) {
     case 'mapbox':
       return 5;
@@ -128,7 +128,7 @@ function defaultRpsFor(provider: GeocoderProviderName): number {
   }
 }
 
-function getRpsCap(provider: GeocoderProviderName, override: number | null): number {
+export function getRpsCap(provider: GeocoderProviderName, override: number | null): number {
   if (override != null) return override;
   const envRaw = process.env.DISPATCH_GEOCODE_BACKFILL_RPS;
   if (envRaw) {
@@ -142,13 +142,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface JobRow {
+export interface JobRow {
   id: string;
   tenant_id: string;
   address: string;
 }
 
-interface PerTenantResult {
+export interface PerTenantResult {
   tenantId: string;
   scanned: number;
   geocoded: number;
@@ -164,14 +164,14 @@ interface PerTenantResult {
  * row failures across runs without leaking the customer's full street
  * address into the log archive.
  */
-function maskAddress(address: string): string {
+export function maskAddress(address: string): string {
   const trimmed = address.trim();
   if (!trimmed) return '<empty>';
   const head = trimmed.slice(0, 4);
   return `${head}***(len=${trimmed.length})`;
 }
 
-const ACTIONABLE_STATUSES = [
+export const ACTIONABLE_STATUSES = [
   'pending',
   'assigned',
   'scheduled',
@@ -180,7 +180,7 @@ const ACTIONABLE_STATUSES = [
   'in_progress',
 ];
 
-async function selectCandidates(
+export async function selectCandidates(
   client: PoolClient,
   opts: CliOptions,
 ): Promise<JobRow[]> {
@@ -215,7 +215,7 @@ async function selectCandidates(
   return rows;
 }
 
-async function persistCoords(
+export async function persistCoords(
   client: PoolClient,
   jobId: string,
   tenantId: string,
@@ -245,12 +245,162 @@ async function persistCoords(
   return result.rowCount ?? 0;
 }
 
-function emitTenantSummary(result: PerTenantResult): void {
-  console.log(
+export function emitTenantSummary(
+  result: PerTenantResult,
+  log: Pick<Console, 'log'> = console,
+): void {
+  log.log(
     `[BACKFILL]   tenant=${result.tenantId} scanned=${result.scanned} ` +
       `geocoded=${result.geocoded} written=${result.written} ` +
       `not_found=${result.notFound} failed=${result.failed}`,
   );
+}
+
+export interface BackfillTotals {
+  scanned: number;
+  geocoded: number;
+  written: number;
+  notFound: number;
+  failed: number;
+}
+
+export interface RunBackfillResult {
+  perTenant: PerTenantResult[];
+  totals: BackfillTotals;
+  processed: number;
+}
+
+export interface RunBackfillDeps {
+  /**
+   * Geocoder callable. Returns coords for a hit, `null` for no_result, or
+   * throws on transport / provider failure. Production wires this to
+   * `geocodeAddress(address, provider)`.
+   */
+  geocode: (address: string) => Promise<{ lat: number; lon: number } | null>;
+  /** Sleep helper, injectable so tests can avoid real timers. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Logger surface. Defaults to console; tests pass a silent stub. */
+  logger?: Pick<Console, 'log' | 'warn' | 'error'>;
+  /** Min ms between geocode calls (rate limit). */
+  minIntervalMs?: number;
+}
+
+/**
+ * Drives the candidate-scan + per-row geocode/persist loop, returning a
+ * structured tally so callers (the CLI shim or tests) can format/assert
+ * however they like. Extracted from `main()` so the behavior is testable
+ * without spinning up a real Pool or geocoder provider.
+ */
+export async function runBackfill(
+  client: PoolClient,
+  opts: CliOptions,
+  deps: RunBackfillDeps,
+): Promise<RunBackfillResult> {
+  const logger = deps.logger ?? console;
+  const sleepFn = deps.sleep ?? sleep;
+  const minIntervalMs = deps.minIntervalMs ?? 0;
+
+  const perTenant = new Map<string, PerTenantResult>();
+  let processed = 0;
+
+  logger.log('[BACKFILL] Selecting candidate jobs ...');
+  const candidates = await selectCandidates(client, opts);
+  logger.log(`[BACKFILL] ${candidates.length} candidate row(s) selected.`);
+
+  let lastCallAt = 0;
+
+  for (const job of candidates) {
+    let bucket = perTenant.get(job.tenant_id);
+    if (!bucket) {
+      bucket = {
+        tenantId: job.tenant_id,
+        scanned: 0,
+        geocoded: 0,
+        written: 0,
+        notFound: 0,
+        failed: 0,
+      };
+      perTenant.set(job.tenant_id, bucket);
+    }
+    bucket.scanned += 1;
+    processed += 1;
+
+    const address = job.address.trim();
+    if (!address) {
+      // Defensive — selectCandidates already filters this out.
+      continue;
+    }
+
+    if (minIntervalMs > 0) {
+      const now = Date.now();
+      const wait = lastCallAt + minIntervalMs - now;
+      if (wait > 0) {
+        await sleepFn(wait);
+      }
+      lastCallAt = Date.now();
+    }
+
+    try {
+      const point = await deps.geocode(address);
+      if (!point) {
+        bucket.notFound += 1;
+        logger.warn(
+          `[BACKFILL] no_result tenant=${job.tenant_id} job=${job.id} address=${maskAddress(address)}`,
+        );
+        continue;
+      }
+      bucket.geocoded += 1;
+      if (!opts.dryRun) {
+        const written = await persistCoords(
+          client,
+          job.id,
+          job.tenant_id,
+          address,
+          point.lat,
+          point.lon,
+        );
+        bucket.written += written;
+        if (written === 0) {
+          // Either a concurrent address edit raced us, or another
+          // backfill instance already wrote the same coords. Either
+          // way the job is in a consistent state — log it as info
+          // rather than failed so the totals stay meaningful.
+          logger.warn(
+            `[BACKFILL] no_write tenant=${job.tenant_id} job=${job.id} address=${maskAddress(address)} (concurrent edit or already populated)`,
+          );
+        }
+      } else {
+        // In dry-run we don't actually UPDATE, but the row *would*
+        // have been written, so reflect that intent in the tally.
+        bucket.written += 1;
+      }
+    } catch (err) {
+      bucket.failed += 1;
+      logger.error(
+        `[BACKFILL] error tenant=${job.tenant_id} job=${job.id} address=${maskAddress(address)} error=${String(err)}`,
+      );
+    }
+
+    if (bucket.scanned % 25 === 0) {
+      emitTenantSummary(bucket, logger);
+    }
+  }
+
+  const tenants = Array.from(perTenant.values()).sort((a, b) =>
+    a.tenantId.localeCompare(b.tenantId),
+  );
+  const totals = tenants.reduce<BackfillTotals>(
+    (acc, r) => ({
+      scanned: acc.scanned + r.scanned,
+      geocoded: acc.geocoded + r.geocoded,
+      written: acc.written + r.written,
+      notFound: acc.notFound + r.notFound,
+      failed: acc.failed + r.failed,
+    }),
+    { scanned: 0, geocoded: 0, written: 0, notFound: 0, failed: 0 },
+  );
+
+  return { perTenant: tenants, totals, processed };
 }
 
 async function main(): Promise<void> {
@@ -293,129 +443,51 @@ async function main(): Promise<void> {
   });
 
   const client = await pool.connect();
-  const perTenant = new Map<string, PerTenantResult>();
-  let processed = 0;
-
+  let result: RunBackfillResult;
   try {
-    console.log('[BACKFILL] Selecting candidate jobs ...');
-    const candidates = await selectCandidates(client, opts);
-    console.log(`[BACKFILL] ${candidates.length} candidate row(s) selected.`);
-
-    let lastCallAt = 0;
-
-    for (const job of candidates) {
-      let bucket = perTenant.get(job.tenant_id);
-      if (!bucket) {
-        bucket = {
-          tenantId: job.tenant_id,
-          scanned: 0,
-          geocoded: 0,
-          written: 0,
-          notFound: 0,
-          failed: 0,
-        };
-        perTenant.set(job.tenant_id, bucket);
-      }
-      bucket.scanned += 1;
-      processed += 1;
-
-      const address = job.address.trim();
-      if (!address) {
-        // Defensive — selectCandidates already filters this out.
-        continue;
-      }
-
-      // Rate limit: ensure at least minIntervalMs between provider calls.
-      const now = Date.now();
-      const wait = lastCallAt + minIntervalMs - now;
-      if (wait > 0) {
-        await sleep(wait);
-      }
-      lastCallAt = Date.now();
-
-      try {
-        const point = await geocodeAddress(address, provider);
-        if (!point) {
-          bucket.notFound += 1;
-          console.warn(
-            `[BACKFILL] no_result tenant=${job.tenant_id} job=${job.id} address=${maskAddress(address)}`,
-          );
-          continue;
-        }
-        bucket.geocoded += 1;
-        if (!opts.dryRun) {
-          const written = await persistCoords(
-            client,
-            job.id,
-            job.tenant_id,
-            address,
-            point.lat,
-            point.lon,
-          );
-          bucket.written += written;
-          if (written === 0) {
-            // Either a concurrent address edit raced us, or another
-            // backfill instance already wrote the same coords. Either
-            // way the job is in a consistent state — log it as info
-            // rather than failed so the totals stay meaningful.
-            console.warn(
-              `[BACKFILL] no_write tenant=${job.tenant_id} job=${job.id} address=${maskAddress(address)} (concurrent edit or already populated)`,
-            );
-          }
-        } else {
-          // In dry-run we don't actually UPDATE, but the row *would*
-          // have been written, so reflect that intent in the tally.
-          bucket.written += 1;
-        }
-      } catch (err) {
-        bucket.failed += 1;
-        console.error(
-          `[BACKFILL] error tenant=${job.tenant_id} job=${job.id} address=${maskAddress(address)} error=${String(err)}`,
-        );
-      }
-
-      // Per-tenant rolling progress every 25 rows so long runs are observable
-      // without spamming the log on small batches.
-      if (bucket.scanned % 25 === 0) {
-        emitTenantSummary(bucket);
-      }
-    }
+    result = await runBackfill(client, opts, {
+      geocode: (address) => geocodeAddress(address, provider),
+      minIntervalMs,
+    });
   } finally {
     client.release();
     await pool.end();
   }
 
   console.log('[BACKFILL] Per-tenant results:');
-  const tenants = Array.from(perTenant.values()).sort((a, b) =>
-    a.tenantId.localeCompare(b.tenantId),
-  );
-  for (const r of tenants) emitTenantSummary(r);
-
-  const totals = tenants.reduce(
-    (acc, r) => ({
-      scanned: acc.scanned + r.scanned,
-      geocoded: acc.geocoded + r.geocoded,
-      written: acc.written + r.written,
-      notFound: acc.notFound + r.notFound,
-      failed: acc.failed + r.failed,
-    }),
-    { scanned: 0, geocoded: 0, written: 0, notFound: 0, failed: 0 },
-  );
+  for (const r of result.perTenant) emitTenantSummary(r);
 
   console.log('[BACKFILL] Done.');
   console.log(
-    `[BACKFILL] Totals — tenants=${tenants.length} scanned=${totals.scanned} ` +
-      `geocoded=${totals.geocoded} written=${totals.written} ` +
-      `not_found=${totals.notFound} failed=${totals.failed}` +
+    `[BACKFILL] Totals — tenants=${result.perTenant.length} scanned=${result.totals.scanned} ` +
+      `geocoded=${result.totals.geocoded} written=${result.totals.written} ` +
+      `not_found=${result.totals.notFound} failed=${result.totals.failed}` +
       `${opts.dryRun ? ' (no writes performed)' : ''}`,
   );
 
-  if (opts.limit != null && processed >= opts.limit) {
+  if (opts.limit != null && result.processed >= opts.limit) {
     console.log(`[BACKFILL] Stopped after --limit=${opts.limit} rows.`);
   }
 }
 
-main().catch((err) => {
-  console.error('[BACKFILL] Failed:', err);
-  process.exit(1);
-});
+// Only invoke main() when this file is executed as a script (e.g. via
+// `tsx scripts/backfill-dispatch-job-geocodes.ts`). When the module is
+// imported by the test suite the helpers above are exercised directly
+// and main() must NOT auto-run (it would try to open a real Pool).
+const invokedAsScript = (() => {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try {
+    const url = new URL(import.meta.url);
+    return url.pathname.endsWith(argv1) || argv1.endsWith('backfill-dispatch-job-geocodes.ts');
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) {
+  main().catch((err) => {
+    console.error('[BACKFILL] Failed:', err);
+    process.exit(1);
+  });
+}
