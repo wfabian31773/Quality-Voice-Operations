@@ -67,8 +67,39 @@ function dispatchAppointmentLifecycleEvent(
   // Fire-and-forget so a slow / failing connector doesn't block the admin
   // API response. Failures are logged so on-call can catch them via the
   // existing connector error alerter pipeline.
+  //
+  // Two failure modes have to be surfaced here:
+  //
+  //   1. The dispatch itself rejected (network blip, auth refresh threw).
+  //      Caught below.
+  //   2. The dispatch resolved cleanly but every adapter call returned
+  //      `success: false` — or there was no scheduling adapter to call
+  //      at all (no connector configured for this tenant, the dispatch
+  //      ledger has no entry for the original booking, and there is no
+  //      agent fallback). `dispatchEvent` does not throw in this case;
+  //      it just resolves with `{ dispatched: 0, results: [] }` (or with
+  //      `results` full of `success:false` rows). Without this branch
+  //      the reschedule notification silently disappears and on-call has
+  //      no signal that the calendar update never happened.
   void connectorService
     .dispatchEvent(tenantId, payload.type, payload)
+    .then((result) => {
+      const successful = result.results.filter((r) => r.success).length;
+      if (successful > 0) return;
+      const firstError = result.results.find((r) => !r.success)?.error;
+      const reason = firstError
+        ?? (result.results.length === 0
+          ? 'no_scheduling_adapter_dispatched'
+          : 'all_adapters_returned_failure');
+      logger.warn('Appointment lifecycle dispatch produced no successful adapter executions', {
+        tenantId,
+        eventType: payload.type,
+        appointmentId: payload.appointmentId,
+        dispatched: result.dispatched,
+        attempted: result.results.length,
+        reason,
+      });
+    })
     .catch((err) => {
       logger.warn('Appointment lifecycle dispatch failed', {
         tenantId,

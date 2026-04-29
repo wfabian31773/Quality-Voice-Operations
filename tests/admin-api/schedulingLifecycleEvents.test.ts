@@ -27,9 +27,18 @@ import request from 'supertest';
 // Mocks created via `vi.hoisted` are guaranteed to be initialized before
 // any `vi.mock` factory runs (factories are hoisted to the top of the
 // file, so closing over a regular `const` would dereference `undefined`).
-const { queryMock, dispatchEventMock } = vi.hoisted(() => ({
+const { queryMock, dispatchEventMock, warnMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
-  dispatchEventMock: vi.fn(async () => ({ success: true })),
+  // `dispatchEvent` resolves with `{ dispatched, results }` — the route
+  // inspects `results` to detect "zero successful adapter executions",
+  // so the default mock returns one successful adapter row.
+  dispatchEventMock: vi.fn(async () => ({
+    dispatched: 1,
+    results: [
+      { connectorType: 'scheduling', provider: 'google_calendar', success: true },
+    ],
+  })),
+  warnMock: vi.fn(),
 }));
 
 vi.mock('../../platform/db', () => ({
@@ -40,7 +49,7 @@ vi.mock('../../platform/db', () => ({
 vi.mock('../../platform/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: warnMock,
     error: vi.fn(),
     debug: vi.fn(),
   }),
@@ -116,8 +125,17 @@ describe('admin scheduling routes fan out appointment lifecycle events to the co
       const rows = next.rows ?? [];
       return { rows, rowCount: next.rowCount ?? rows.length };
     });
-    dispatchEventMock.mockClear();
-    dispatchEventMock.mockImplementation(async () => ({ success: true }));
+    // `mockReset` (not `mockClear`) so any unconsumed
+    // `mockImplementationOnce` from a previous test that short-circuited
+    // before reaching dispatchEvent does not bleed into this run.
+    dispatchEventMock.mockReset();
+    dispatchEventMock.mockImplementation(async () => ({
+      dispatched: 1,
+      results: [
+        { connectorType: 'scheduling', provider: 'google_calendar', success: true },
+      ],
+    }));
+    warnMock.mockReset();
 
     app = express();
     app.use(express.json());
@@ -158,6 +176,8 @@ describe('admin scheduling routes fan out appointment lifecycle events to the co
       },
       // checkConflicts — no overlapping bookings
       { match: /FROM bookings WHERE/i, rows: [] },
+      // getTenantTimezone — load tenant tz before override check
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'America/Los_Angeles' }] },
       // findBlockingOverride — no blackout, reschedule allowed
       { match: /FROM scheduling_overrides/i, rows: [] },
       // UPDATE bookings (status = 'rescheduled')
@@ -373,6 +393,8 @@ describe('admin scheduling routes fan out appointment lifecycle events to the co
       },
       // checkConflicts → no overlap
       { match: /FROM bookings WHERE/i, rows: [] },
+      // getTenantTimezone → tenant tz lookup before override check
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'America/Los_Angeles' }] },
       // findBlockingOverride → no blackout
       { match: /FROM scheduling_overrides/i, rows: [] },
       // UPDATE bookings RETURNING *
@@ -517,6 +539,7 @@ describe('admin scheduling routes fan out appointment lifecycle events to the co
         ],
       },
       { match: /FROM bookings WHERE/i, rows: [] },
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'America/Los_Angeles' }] },
       { match: /FROM scheduling_overrides/i, rows: [] },
       { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
       {
@@ -541,5 +564,208 @@ describe('admin scheduling routes fan out appointment lifecycle events to the co
     // test exits — keeps Vitest from logging an unhandled rejection.
     await new Promise((r) => setImmediate(r));
     expect(dispatchEventMock).toHaveBeenCalledTimes(1);
+
+    // The throw path was already wired to log; assert it still fires so
+    // we don't regress it while wiring the no-success-results branch.
+    expect(warnMock).toHaveBeenCalledWith(
+      'Appointment lifecycle dispatch failed',
+      expect.objectContaining({
+        tenantId: TENANT,
+        eventType: 'appointment.rescheduled',
+        appointmentId: ORIGINAL_BOOKING_ID,
+        error: expect.stringContaining('calendar API down'),
+      }),
+    );
+  });
+
+  // ─── Non-throwing "no successful adapter" failures must not be silent ───
+  //
+  // `dispatchEvent` resolves cleanly with `{ dispatched: 0, results: [] }`
+  // when no scheduling adapter was available to receive the event — e.g.
+  // the tenant has no scheduling connector configured, the dispatch
+  // ledger has no entry for the original booking, and there is no
+  // per-agent fallback. Without the warn log, on-call has no signal that
+  // the calendar update was lost.
+  it('reschedule logs a warn when dispatchEvent resolves with zero successful adapter executions (no adapter configured)', async () => {
+    dispatchEventMock.mockImplementationOnce(async () => ({
+      dispatched: 0,
+      results: [],
+    }));
+
+    queryQueue.push(
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: ORIGINAL_BOOKING_ID,
+            tenant_id: TENANT,
+            status: 'confirmed',
+            start_time: ORIGINAL_START,
+            end_time: ORIGINAL_END,
+            contact_phone: CALLER_PHONE,
+            agent_id: AGENT_PRIMARY,
+            provider_id: PROVIDER_A,
+            resource_id: null,
+          },
+        ],
+      },
+      { match: /FROM bookings WHERE/i, rows: [] },
+      { match: /SELECT timezone FROM tenants/i, rows: [{ timezone: 'America/Los_Angeles' }] },
+      { match: /FROM scheduling_overrides/i, rows: [] },
+      { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
+      {
+        match: /INSERT INTO bookings/i,
+        rows: [{ id: NEW_BOOKING_ID, start_time: NEW_START, end_time: NEW_END }],
+      },
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+    );
+
+    const res = await request(app)
+      .post(`/scheduling/bookings/${ORIGINAL_BOOKING_ID}/transition`)
+      .send({
+        action: 'reschedule',
+        new_start_time: NEW_START,
+        new_end_time: NEW_END,
+      });
+
+    expect(res.status).toBe(200);
+    await new Promise((r) => setImmediate(r));
+
+    expect(warnMock).toHaveBeenCalledWith(
+      'Appointment lifecycle dispatch produced no successful adapter executions',
+      expect.objectContaining({
+        tenantId: TENANT,
+        eventType: 'appointment.rescheduled',
+        appointmentId: ORIGINAL_BOOKING_ID,
+        dispatched: 0,
+        attempted: 0,
+        reason: 'no_scheduling_adapter_dispatched',
+      }),
+    );
+  });
+
+  // ─── All adapters returned success:false ───
+  //
+  // The other "lost notification" mode: a scheduling adapter WAS picked
+  // up but it returned `success: false` (e.g. expired token, calendar
+  // event not found upstream, validation rejected). This used to be
+  // silently swallowed — the warn log surfaces it so we can build a
+  // dashboard / dead-letter pipeline on top of it.
+  it('cancel logs a warn (with the adapter error reason) when every adapter returns success:false', async () => {
+    dispatchEventMock.mockImplementationOnce(async () => ({
+      dispatched: 1,
+      results: [
+        {
+          connectorType: 'scheduling',
+          provider: 'google_calendar',
+          success: false,
+          error: 'event not found upstream',
+        },
+      ],
+    }));
+
+    queryQueue.push(
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: ORIGINAL_BOOKING_ID,
+            tenant_id: TENANT,
+            status: 'confirmed',
+            start_time: ORIGINAL_START,
+            end_time: ORIGINAL_END,
+            contact_phone: CALLER_PHONE,
+            agent_id: AGENT_PRIMARY,
+            provider_id: PROVIDER_A,
+            resource_id: null,
+            appointment_type_id: null,
+          },
+        ],
+      },
+      { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
+      { match: /FROM scheduling_waitlist/i, rows: [] },
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [{ id: ORIGINAL_BOOKING_ID, status: 'cancelled' }],
+      },
+    );
+
+    const res = await request(app)
+      .post(`/scheduling/bookings/${ORIGINAL_BOOKING_ID}/transition`)
+      .send({ action: 'cancel' });
+
+    expect(res.status).toBe(200);
+    await new Promise((r) => setImmediate(r));
+
+    expect(warnMock).toHaveBeenCalledWith(
+      'Appointment lifecycle dispatch produced no successful adapter executions',
+      expect.objectContaining({
+        tenantId: TENANT,
+        eventType: 'appointment.cancelled',
+        appointmentId: ORIGINAL_BOOKING_ID,
+        dispatched: 1,
+        attempted: 1,
+        reason: 'event not found upstream',
+      }),
+    );
+  });
+
+  // ─── Sanity: a fully-successful dispatch must NOT log the warn ───
+  //
+  // The warn is meant for on-call signal; firing it on the happy path
+  // would drown out real failures. Lock that down so a future change to
+  // the predicate doesn't flip the polarity.
+  it('does NOT log the no-success warn when at least one adapter succeeds', async () => {
+    dispatchEventMock.mockImplementationOnce(async () => ({
+      dispatched: 2,
+      results: [
+        { connectorType: 'scheduling', provider: 'google_calendar', success: true },
+        {
+          connectorType: 'scheduling',
+          provider: 'outlook',
+          success: false,
+          error: 'unrelated outlook hiccup',
+        },
+      ],
+    }));
+
+    queryQueue.push(
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [
+          {
+            id: ORIGINAL_BOOKING_ID,
+            tenant_id: TENANT,
+            status: 'confirmed',
+            start_time: ORIGINAL_START,
+            end_time: ORIGINAL_END,
+            contact_phone: CALLER_PHONE,
+            agent_id: AGENT_PRIMARY,
+            provider_id: PROVIDER_A,
+            resource_id: null,
+            appointment_type_id: null,
+          },
+        ],
+      },
+      { match: /UPDATE bookings/i, rows: [], rowCount: 1 },
+      { match: /INSERT INTO scheduling_audit_log/i, rows: [] },
+      {
+        match: /FROM bookings WHERE id = \$1 AND tenant_id = \$2/i,
+        rows: [{ id: ORIGINAL_BOOKING_ID, status: 'no_show' }],
+      },
+    );
+
+    const res = await request(app)
+      .post(`/scheduling/bookings/${ORIGINAL_BOOKING_ID}/transition`)
+      .send({ action: 'no_show' });
+
+    expect(res.status).toBe(200);
+    await new Promise((r) => setImmediate(r));
+
+    expect(warnMock).not.toHaveBeenCalledWith(
+      'Appointment lifecycle dispatch produced no successful adapter executions',
+      expect.anything(),
+    );
   });
 });
