@@ -16,7 +16,7 @@ import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../li
 import {
   Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
   Lock, Download, Trash2, Bell, BellOff, Mail, Sparkles, Loader2,
-  MessageSquareHeart, Star,
+  MessageSquareHeart, Star, DollarSign,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 import VoicePicker from '../components/VoicePicker';
@@ -43,8 +43,24 @@ interface Tenant {
   // Settings form writes it as a top-level field rather than nesting it
   // inside `settings.timezone` (which the scheduler never sees).
   timezone: string;
+  billing_currency?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface SupportedCurrency {
+  code: string;
+  name: string;
+  symbol: string;
+}
+
+const DEFAULT_BILLING_CURRENCY = 'usd';
+
+function normalizeBillingCurrencyCode(value: string | null | undefined): string {
+  if (!value || typeof value !== 'string') return DEFAULT_BILLING_CURRENCY;
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.length !== 3) return DEFAULT_BILLING_CURRENCY;
+  return trimmed;
 }
 
 const VOICE_MODELS = [
@@ -156,6 +172,16 @@ function GeneralSettings() {
 
   const agentTypes = agentTypesData?.agentTypes ?? [{ value: 'general', label: 'General' }];
 
+  const { data: currenciesData } = useQuery({
+    queryKey: ['supported-billing-currencies'],
+    queryFn: () => api.get<{ currencies: SupportedCurrency[] }>('/tenants/me/supported-currencies'),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const supportedCurrencies = currenciesData?.currencies ?? [
+    { code: 'usd', name: 'US Dollar', symbol: '$' },
+  ];
+
   const [form, setForm] = useState({
     name: '',
     timezone: '',
@@ -163,6 +189,7 @@ function GeneralSettings() {
     defaultVoiceModel: '',
     defaultVoice: '',
     defaultAgentType: '',
+    billingCurrency: DEFAULT_BILLING_CURRENCY,
   });
 
   useEffect(() => {
@@ -182,6 +209,7 @@ function GeneralSettings() {
         defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
         defaultVoice: s.defaultVoice ?? 'sage',
         defaultAgentType: s.defaultAgentType ?? 'general',
+        billingCurrency: normalizeBillingCurrencyCode(t.billing_currency),
       });
     }
   }, [data]);
@@ -200,11 +228,19 @@ function GeneralSettings() {
         defaultAgentType: form.defaultAgentType,
       };
       delete nextSettings.timezone;
-      return api.patch('/tenants/me', {
+      const originalCurrency = normalizeBillingCurrencyCode(data?.tenant?.billing_currency);
+      const payload: Record<string, unknown> = {
         name: form.name,
         timezone: form.timezone,
         settings: nextSettings,
-      });
+      };
+      // Only send the currency when the owner actually changed it. This
+      // keeps unrelated saves (rename, voice swap, ...) from echoing a
+      // legacy code back to the backend.
+      if (form.billingCurrency !== originalCurrency) {
+        payload.billingCurrency = form.billingCurrency;
+      }
+      return api.patch('/tenants/me', payload);
     },
     onSuccess: () => {
       // Update the cached tenant immediately so the dirty comparison
@@ -225,12 +261,16 @@ function GeneralSettings() {
             ...previous.tenant,
             name: form.name,
             timezone: form.timezone,
+            billing_currency: form.billingCurrency,
             settings: nextSettings,
           },
         });
       }
       queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-primary-language'] });
+      // Cost screens key off the tenant currency hook; refetch it so the
+      // dollar/euro/yen symbols update immediately after a save.
+      queryClient.invalidateQueries({ queryKey: ['tenant-billing-currency'] });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     },
@@ -248,6 +288,7 @@ function GeneralSettings() {
       defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
       defaultVoice: s.defaultVoice ?? 'sage',
       defaultAgentType: s.defaultAgentType ?? 'general',
+      billingCurrency: normalizeBillingCurrencyCode(t.billing_currency),
     };
     return (
       original.name !== form.name ||
@@ -255,10 +296,18 @@ function GeneralSettings() {
       original.primaryLanguage !== form.primaryLanguage ||
       original.defaultVoiceModel !== form.defaultVoiceModel ||
       original.defaultVoice !== form.defaultVoice ||
-      original.defaultAgentType !== form.defaultAgentType
+      original.defaultAgentType !== form.defaultAgentType ||
+      original.billingCurrency !== form.billingCurrency
     );
   }, [data, form]);
   useReportDirty('general', dirty);
+
+  const currencyChanged = useMemo(() => {
+    if (!data?.tenant) return false;
+    return (
+      normalizeBillingCurrencyCode(data.tenant.billing_currency) !== form.billingCurrency
+    );
+  }, [data, form.billingCurrency]);
 
   if (isLoading) {
     return (
@@ -287,6 +336,9 @@ function GeneralSettings() {
     setForm((f) => {
       if (key === 'primaryLanguage') {
         return { ...f, primaryLanguage: normalizeAgentLanguage(value) };
+      }
+      if (key === 'billingCurrency') {
+        return { ...f, billingCurrency: normalizeBillingCurrencyCode(value) };
       }
       return { ...f, [key]: value };
     });
@@ -414,6 +466,52 @@ function GeneralSettings() {
             ))}
           </select>
           <p className="text-xs text-text-muted mt-1.5">Template used when creating new agents</p>
+        </div>
+
+        <div className="p-6">
+          <label
+            htmlFor="billing-currency-select"
+            className="block text-sm font-medium text-text-primary mb-1.5"
+          >
+            <DollarSign className="h-4 w-4 inline-block mr-1.5 -mt-0.5 text-text-muted" />
+            Billing currency
+          </label>
+          <select
+            id="billing-currency-select"
+            value={form.billingCurrency}
+            onChange={(e) => set('billingCurrency', e.target.value)}
+            disabled={!isOwner}
+            className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {supportedCurrencies.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code.toUpperCase()} — {c.name} ({c.symbol})
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">
+            Sets the currency used to display call costs, revenue analytics, and new invoices.
+            Currency is stored as a lowercase ISO 4217 code.
+          </p>
+          {currencyChanged && (
+            <div
+              role="alert"
+              className="mt-3 max-w-md rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-medium">Heads up — historical reports are not re-converted.</p>
+                  <p className="text-warning/90">
+                    Cost and revenue rows that were recorded before this change keep the
+                    amounts that were originally charged. Only new activity is denominated in{' '}
+                    <span className="font-semibold">{form.billingCurrency.toUpperCase()}</span>.
+                    Contact support if you need a one-time historical re-conversion.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
