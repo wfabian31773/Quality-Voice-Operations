@@ -6,6 +6,7 @@ import {
   Shield, Download, Lock, FileText, Building2, Users, Trash2,
   CheckCircle2, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight,
   Plus, Server, Activity, KeyRound, Globe, Mail, Zap, ArrowUpRight,
+  PhoneOff,
 } from 'lucide-react';
 import { EmptyState, Skeleton } from '../../components/state';
 import { StatCard } from '../../components/ui';
@@ -43,6 +44,7 @@ type Tab =
   | 'overview'
   | 'audit'
   | 'encryption'
+  | 'federal-dnc'
   | 'subprocessors'
   | 'deletions'
   | 'isolation'
@@ -188,6 +190,7 @@ const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: 'overview', label: 'Overview', icon: Shield },
   { id: 'audit', label: 'Platform Audit Log', icon: FileText },
   { id: 'encryption', label: 'Encryption', icon: Lock },
+  { id: 'federal-dnc', label: 'Federal DNC', icon: PhoneOff },
   { id: 'subprocessors', label: 'Sub-processors', icon: Globe },
   { id: 'deletions', label: 'Deletion Requests', icon: Trash2 },
   { id: 'isolation', label: 'Tenant Isolation', icon: Server },
@@ -1277,6 +1280,200 @@ function IsolationTab() {
   );
 }
 
+interface FederalDncStateResponse {
+  state: {
+    lastSyncStartedAt: string | null;
+    lastSyncCompletedAt: string | null;
+    lastRegistryVersion: string | null;
+    lastRecordCount: number | null;
+    lastStatus: string | null;
+    lastError: string | null;
+    updatedAt: string | null;
+  };
+  running: boolean;
+}
+
+function federalStatusTone(status: string | null): {
+  label: string;
+  classes: string;
+} {
+  if (!status) {
+    return {
+      label: 'Never synced',
+      classes: 'bg-surface-hover text-text-secondary',
+    };
+  }
+  if (status === 'completed') {
+    return {
+      label: 'Completed',
+      classes: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    };
+  }
+  if (status === 'failed') {
+    return {
+      label: 'Failed',
+      classes: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    };
+  }
+  if (status === 'skipped') {
+    return {
+      label: 'Skipped',
+      classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+    };
+  }
+  return {
+    label: status,
+    classes: 'bg-surface-hover text-text-secondary',
+  };
+}
+
+function FederalDncTab() {
+  const queryClient = useQueryClient();
+  const [actionMessage, setActionMessage] = useState<{
+    kind: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['platform-compliance-federal-dnc'],
+    queryFn: () => api.get<FederalDncStateResponse>('/platform/compliance/federal-dnc/state'),
+    // Poll while a sync is in flight so the operator sees the result land
+    // without manually refreshing. The federal load can take several
+    // minutes; 5s gives a snappy UI without hammering the platform DB.
+    refetchInterval: (query) => (query.state.data?.running ? 5_000 : 60_000),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ started: boolean; running: boolean; state: FederalDncStateResponse['state'] }>(
+        '/platform/compliance/federal-dnc/sync',
+      ),
+    onMutate: () => {
+      setActionMessage(null);
+    },
+    onSuccess: () => {
+      setActionMessage({
+        kind: 'success',
+        text: 'Sync started. The federal snapshot is large; this view will update when the load finishes.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['platform-compliance-federal-dnc'] });
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : 'Failed to start federal DNC sync.';
+      setActionMessage({ kind: 'error', text: message });
+    },
+  });
+
+  const state = data?.state;
+  const running = data?.running ?? false;
+  const status = state?.lastStatus ?? null;
+  const tone = federalStatusTone(status);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1 max-w-2xl">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <PhoneOff className="h-4 w-4 text-primary" />
+              Federal Do-Not-Call registry sync
+            </h3>
+            <p className="text-sm text-muted">
+              The platform pulls the FTC National DNC Registry once a week. Use this only when a
+              support case can't wait for the next scheduled run — e.g. a customer reports we
+              dialed a number that's already on the public federal list. The federal snapshot
+              is several gigabytes and the load typically takes a few minutes.
+            </p>
+          </div>
+          <button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || running}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`h-4 w-4 ${running || syncMutation.isPending ? 'animate-spin' : ''}`} />
+            {running ? 'Sync in progress…' : 'Sync federal DNC now'}
+          </button>
+        </div>
+
+        {actionMessage && (
+          <div
+            role="status"
+            className={`text-sm rounded-lg px-3 py-2 border ${
+              actionMessage.kind === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800/40 dark:text-green-300'
+                : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800/40 dark:text-red-300'
+            }`}
+          >
+            {actionMessage.text}
+          </div>
+        )}
+
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : error ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Could not load federal DNC sync state"
+            variant="compact"
+          />
+        ) : state ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted">Status</div>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tone.classes}`}
+              >
+                {tone.label}
+              </span>
+              {running && (
+                <div className="text-[11px] text-muted">A sync cycle is currently running.</div>
+              )}
+            </div>
+            <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted">Last sync started</div>
+              <div className="text-sm font-medium">{formatDate(state.lastSyncStartedAt)}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted">Last sync completed</div>
+              <div className="text-sm font-medium">{formatDate(state.lastSyncCompletedAt)}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted">Registry version</div>
+              <div className="text-sm font-medium font-mono break-all">
+                {state.lastRegistryVersion ?? '—'}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted">Numbers loaded</div>
+              <div className="text-sm font-medium">
+                {state.lastRecordCount === null
+                  ? '—'
+                  : state.lastRecordCount.toLocaleString()}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted">State updated</div>
+              <div className="text-sm font-medium">{formatDate(state.updatedAt)}</div>
+            </div>
+          </div>
+        ) : null}
+
+        {state?.lastError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/40 p-3">
+            <div className="text-[11px] uppercase tracking-wide text-red-700 dark:text-red-300 font-semibold">
+              Last error
+            </div>
+            <div className="text-xs text-red-800 dark:text-red-200 mt-1 font-mono break-words whitespace-pre-wrap">
+              {state.lastError}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PlatformAdminsTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['platform-compliance-admins'],
@@ -1358,6 +1555,7 @@ export default function PlatformCompliance() {
       {tab === 'overview' && <OverviewTab />}
       {tab === 'audit' && <PlatformAuditTab />}
       {tab === 'encryption' && <EncryptionTab />}
+      {tab === 'federal-dnc' && <FederalDncTab />}
       {tab === 'subprocessors' && <SubprocessorsTab />}
       {tab === 'deletions' && <DeletionRequestsTab />}
       {tab === 'isolation' && <IsolationTab />}

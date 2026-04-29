@@ -7,6 +7,10 @@ import { runAllIsolationTests } from '../../../platform/security/TenantIsolation
 import { getOrCreateTenantDEK } from '../../../platform/security/EncryptionService';
 import { getTenantIsolationSchedulerStatus } from '../../../platform/security/TenantIsolationScheduler';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import {
+  getFederalDncSyncState,
+  runFederalDncSyncCycle,
+} from '../../../platform/campaigns';
 import { sendEmail } from '../../../platform/email/EmailService';
 import { encryptionInitializationReminderEmail } from '../../../platform/email/templates';
 
@@ -710,6 +714,111 @@ router.post('/platform/compliance/isolation-tests/run', requireAuth, requirePlat
     return res.status(500).json({ error: 'Failed to run isolation tests' });
   }
 });
+
+// ---------- Federal DNC registry sync ----------
+//
+// The federal DNC registry is pulled on a weekly cadence by
+// `FederalDncSyncScheduler`. Support cases occasionally need an immediate
+// pull (e.g. a customer reports we dialed a number that is on the public
+// federal list but our snapshot is stale). These endpoints expose:
+//   - GET  /platform/compliance/federal-dnc/state — the latest row from
+//     `federal_dnc_sync_state` so the console can render last sync /
+//     version / record count / status / error.
+//   - POST /platform/compliance/federal-dnc/sync — fire one sync cycle on
+//     behalf of the operator. We serialize concurrent invocations behind a
+//     module-local promise so two impatient operators clicking the button
+//     can't kick off two simultaneous bulk loads (each is a multi-minute,
+//     ~250M-row INSERT). The action is captured in the audit log.
+
+let inFlightSync: Promise<void> | null = null;
+const SYNC_NOW_ACTION = 'platform.federal_dnc.sync_triggered';
+
+router.get(
+  '/platform/compliance/federal-dnc/state',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const state = await getFederalDncSyncState();
+      return res.json({
+        state,
+        running: inFlightSync !== null,
+      });
+    } catch (err) {
+      logger.error('Failed to load federal DNC sync state', { error: String(err) });
+      return res.status(500).json({ error: 'Failed to load federal DNC sync state' });
+    }
+  },
+);
+
+router.post(
+  '/platform/compliance/federal-dnc/sync',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    if (inFlightSync) {
+      return res.status(409).json({
+        error: 'A federal DNC sync is already running. Wait for it to finish before starting another.',
+        running: true,
+      });
+    }
+
+    // Kick off the sync but don't await it before responding — the federal
+    // snapshot is several gigabytes and routinely takes minutes to load,
+    // which would blow past any reasonable HTTP timeout. The button on the
+    // console polls `/state` to surface the result.
+    inFlightSync = runFederalDncSyncCycle().finally(() => {
+      inFlightSync = null;
+    });
+
+    try {
+      await writeAuditLog({
+        tenantId: req.user!.tenantId,
+        actorUserId: req.user!.userId,
+        actorRole: req.user!.role,
+        action: SYNC_NOW_ACTION,
+        resourceType: 'federal_dnc_registry',
+        severity: 'info',
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+        changes: {
+          triggeredBy: req.user?.email ?? null,
+          source: 'platform_admin_console',
+        },
+      });
+    } catch (err) {
+      // Don't fail the operator's click if the audit write trips — the sync
+      // is already in flight. Log loudly so it's still recoverable.
+      logger.error('Failed to write audit log for federal DNC sync trigger', {
+        error: String(err),
+      });
+    }
+
+    let state: Awaited<ReturnType<typeof getFederalDncSyncState>>;
+    try {
+      state = await getFederalDncSyncState();
+    } catch (err) {
+      logger.warn('Failed to read federal DNC sync state after triggering sync', {
+        error: String(err),
+      });
+      state = {
+        lastSyncStartedAt: null,
+        lastSyncCompletedAt: null,
+        lastRegistryVersion: null,
+        lastRecordCount: null,
+        lastStatus: null,
+        lastError: null,
+        updatedAt: null,
+      };
+    }
+
+    return res.status(202).json({
+      started: true,
+      running: true,
+      state,
+    });
+  },
+);
 
 // ---------- Platform admin users ----------
 router.get('/platform/compliance/platform-admins', requireAuth, requirePlatformAdmin, async (_req, res) => {
