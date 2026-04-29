@@ -24,7 +24,7 @@ interface DemoSSEState {
   connected: boolean;
 }
 
-function lifecycleToCallStatus(state: string): CallStatus {
+export function lifecycleToCallStatus(state: string): CallStatus {
   switch (state) {
     case 'CALL_RECEIVED':
     case 'SESSION_INITIALIZED':
