@@ -5,9 +5,79 @@ import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { fireDispatchPush } from '../../../platform/notifications/dispatchPush';
+import { connectorService } from '../../../platform/integrations/connectors';
+import type { StandardEventType } from '../../../platform/integrations/connectors/types';
+import type { TenantId } from '../../../platform/core/types';
 
 const router = Router();
 const logger = createLogger('ADMIN_SCHEDULING');
+
+// ─── APPOINTMENT LIFECYCLE EVENT FAN-OUT ───
+//
+// `connectorService.dispatchEvent` is wired up so that reschedule, cancel,
+// and no-show transitions on a booking fan out to whichever scheduling
+// integration originally received the booking (the "ledger" inside
+// ConnectorService records that mapping at booking time). Without these
+// dispatches, downstream calendars never learn about the change and
+// customers walk into a calendar that still shows their old slot.
+//
+// We forward every identifier the ledger keys can be derived from:
+//
+//   - `appointmentId` ↔ the booking row id
+//   - `callerPhone` + `startTime` ↔ booking.contact_phone + booking.start_time
+//
+// `agentId` is also forwarded so that, if the ledger has no entry yet
+// (e.g. the booking was created via the admin UI rather than a voice call),
+// the dispatch falls back to the per-agent scheduling preference instead of
+// broadcasting to every enabled scheduling integration.
+function bookingTimeToISO(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function buildAppointmentLifecyclePayload(
+  booking: Record<string, unknown>,
+  type: StandardEventType,
+  extras: Record<string, unknown> = {},
+): { type: StandardEventType; [key: string]: unknown } {
+  const payload: Record<string, unknown> = {
+    type,
+    appointmentId: booking.id,
+    agentId: booking.agent_id ?? undefined,
+    title: booking.title ?? undefined,
+    contactName: booking.contact_name ?? undefined,
+    callerPhone: booking.contact_phone ?? undefined,
+    attendeeEmail: booking.contact_email ?? undefined,
+    startTime: bookingTimeToISO(booking.start_time),
+    endTime: bookingTimeToISO(booking.end_time),
+    timezone: booking.timezone ?? undefined,
+    ...extras,
+  };
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined) delete payload[key];
+  }
+  return payload as { type: StandardEventType; [key: string]: unknown };
+}
+
+function dispatchAppointmentLifecycleEvent(
+  tenantId: TenantId,
+  payload: { type: StandardEventType; [key: string]: unknown },
+): void {
+  // Fire-and-forget so a slow / failing connector doesn't block the admin
+  // API response. Failures are logged so on-call can catch them via the
+  // existing connector error alerter pipeline.
+  void connectorService
+    .dispatchEvent(tenantId, payload.type, payload)
+    .catch((err) => {
+      logger.warn('Appointment lifecycle dispatch failed', {
+        tenantId,
+        eventType: payload.type,
+        appointmentId: payload.appointmentId,
+        error: String(err),
+      });
+    });
+}
 
 async function auditLog(
   pool: ReturnType<typeof getPlatformPool>,
@@ -915,6 +985,50 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
       await auditLog(pool, tenantId, id, 'updated', old.status, rows[0].status, req.user!.userId, { changed_fields: Object.keys(req.body) });
     }
 
+    // A direct PUT that moves the appointment time is a reschedule from
+    // the customer's point of view, even though the caller didn't go
+    // through the dedicated `transition` endpoint. Fan it out to the
+    // original calendar so the connected scheduling integration stays in
+    // sync. The lookup keys are derived from the OLD booking row so the
+    // dispatch ledger resolves the calendar that already holds the event.
+    const startChanged = !!start_time && bookingTimeToISO(start_time) !== bookingTimeToISO(old.start_time);
+    const endChanged = !!end_time && bookingTimeToISO(end_time) !== bookingTimeToISO(old.end_time);
+    if (startChanged || endChanged) {
+      const updatedBooking = rows[0] as Record<string, unknown>;
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(old, 'appointment.rescheduled', {
+          newStartTime: bookingTimeToISO(updatedBooking.start_time),
+          newEndTime: bookingTimeToISO(updatedBooking.end_time),
+          rescheduleReason: override_reason || undefined,
+        }),
+      );
+    }
+
+    // A status flip to cancelled / no_show through the generic update
+    // handler is functionally identical to the transition endpoint — fan
+    // the corresponding lifecycle event out so connected calendars stay
+    // in sync regardless of which write path the admin used.
+    //
+    // Note: a single PUT can simultaneously move the time AND flip the
+    // status to a terminal one. In that case BOTH events are intentionally
+    // dispatched: the calendar adapter needs to learn the slot moved
+    // (`appointment.rescheduled`) before being told the appointment is
+    // cancelled / no-show, so it can update or remove the right event.
+    if (status && status !== old.status) {
+      if (status === 'cancelled') {
+        dispatchAppointmentLifecycleEvent(
+          tenantId,
+          buildAppointmentLifecyclePayload(old, 'appointment.cancelled'),
+        );
+      } else if (status === 'no_show') {
+        dispatchAppointmentLifecycleEvent(
+          tenantId,
+          buildAppointmentLifecyclePayload(old, 'appointment.no_show'),
+        );
+      }
+    }
+
     return res.json({ booking: rows[0] });
   } catch (err) {
     logger.error('Failed to update booking', { tenantId, error: String(err) });
@@ -1061,6 +1175,22 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
         });
       }
 
+      // Fan the reschedule out to whichever scheduling integration received
+      // the original booking. Identifiers are derived from the ORIGINAL
+      // booking row (`appointmentId`, `callerPhone`, original `startTime`)
+      // so the dispatch ledger lookup resolves the calendar that holds the
+      // existing event; the new slot travels along in `newStartTime` /
+      // `newEndTime` so adapters can update the calendar entry in place.
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(booking, 'appointment.rescheduled', {
+          newAppointmentId: newBooking?.id ?? undefined,
+          newStartTime: bookingTimeToISO(new_start_time),
+          newEndTime: bookingTimeToISO(new_end_time),
+          rescheduleReason: override_reason || undefined,
+        }),
+      );
+
       return res.json({ booking: newBookingRows[0], previous_booking_id: id });
     }
 
@@ -1098,6 +1228,26 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
           },
         });
       }
+
+      // Fan the cancellation out to whichever scheduling integration received
+      // the original booking. The original booking row is the source of
+      // truth for the lookup keys (appointmentId, callerPhone+startTime).
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(booking, 'appointment.cancelled', {
+          cancellationReason: cancellation_reason || override_reason || undefined,
+        }),
+      );
+    }
+
+    if (action === 'no_show') {
+      // Mirror the cancel path: tell the original calendar that the
+      // appointment didn't happen so the slot can be reclaimed (or marked
+      // as a no-show on the booking event itself).
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(booking, 'appointment.no_show'),
+      );
     }
 
     await auditLog(pool, tenantId, id, action, booking.status, newStatus, req.user!.userId, { cancellation_reason }, override_reason || '');
