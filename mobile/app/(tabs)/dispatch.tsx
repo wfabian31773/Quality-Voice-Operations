@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/hooks/useAuth';
 import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
+import { useJobDistances } from '@/hooks/useJobDistances';
 import { api, type DispatchJob } from '@/lib/api';
 import { JobCard } from '@/components/JobCard';
 import { EmptyState } from '@/components/EmptyState';
@@ -34,6 +35,13 @@ const ACTIVE_STATUSES = new Set([
   'in_progress',
 ]);
 
+type SortMode = 'scheduled' | 'distance';
+
+const SORT_MODES: Array<{ label: string; value: SortMode; icon: keyof typeof Ionicons.glyphMap }> = [
+  { label: 'Time', value: 'scheduled', icon: 'time-outline' },
+  { label: 'Closest', value: 'distance', icon: 'navigate-outline' },
+];
+
 export default function DispatchScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -41,7 +49,8 @@ export default function DispatchScreen() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(
     undefined,
   );
-  useTechnicianLocation();
+  const [sortMode, setSortMode] = useState<SortMode>('scheduled');
+  const { origin, status: locationStatus } = useTechnicianLocation();
 
   const query = useQuery({
     queryKey: ['jobs', resourceId, statusFilter],
@@ -60,10 +69,71 @@ export default function DispatchScreen() {
     }, [query]),
   );
 
-  const jobs: DispatchJob[] = (query.data?.jobs ?? []).filter((job) => {
-    if (statusFilter) return true;
-    return ACTIVE_STATUSES.has(job.status);
-  });
+  const jobs: DispatchJob[] = useMemo(
+    () =>
+      (query.data?.jobs ?? []).filter((job) => {
+        if (statusFilter) return true;
+        return ACTIVE_STATUSES.has(job.status);
+      }),
+    [query.data?.jobs, statusFilter],
+  );
+
+  const distanceSortActive = sortMode === 'distance' && origin !== null;
+  const { distances, isComputing: distancesComputing } = useJobDistances(
+    jobs,
+    distanceSortActive ? origin : null,
+  );
+
+  const sortedJobs = useMemo(() => {
+    if (!distanceSortActive) return jobs;
+    if (distances.size === 0) return jobs;
+    const withDistance: DispatchJob[] = [];
+    const withoutDistance: DispatchJob[] = [];
+    for (const job of jobs) {
+      if (distances.has(job.id)) {
+        withDistance.push(job);
+      } else {
+        withoutDistance.push(job);
+      }
+    }
+    withDistance.sort(
+      (a, b) => (distances.get(a.id) ?? 0) - (distances.get(b.id) ?? 0),
+    );
+    return [...withDistance, ...withoutDistance];
+  }, [jobs, distances, distanceSortActive]);
+
+  const distanceUnavailable =
+    sortMode === 'distance' &&
+    (locationStatus === 'denied' ||
+      locationStatus === 'unsupported' ||
+      locationStatus === 'error');
+
+  let sortHint: string | null = null;
+  if (sortMode === 'distance') {
+    if (distanceUnavailable) {
+      sortHint =
+        locationStatus === 'unsupported'
+          ? 'Location is unavailable on this device — showing scheduled order.'
+          : 'Location permission is off — showing scheduled order.';
+    } else if (!origin && locationStatus === 'requesting') {
+      sortHint = 'Locating you — order will update when ready.';
+    } else if (
+      origin &&
+      jobs.length > 0 &&
+      distances.size === 0 &&
+      distancesComputing
+    ) {
+      sortHint = 'Calculating distances — order will update shortly.';
+    } else if (
+      origin &&
+      jobs.length > 0 &&
+      distances.size === 0 &&
+      !distancesComputing
+    ) {
+      sortHint =
+        "We couldn't resolve any job addresses — showing scheduled order.";
+    }
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -126,6 +196,59 @@ export default function DispatchScreen() {
         })}
       </View>
 
+      <View style={styles.sortRow}>
+        <Text style={[styles.sortLabel, { color: colors.textMuted }]}>
+          Sort by
+        </Text>
+        <View
+          style={[
+            styles.segmented,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          {SORT_MODES.map((opt) => {
+            const active = opt.value === sortMode;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => setSortMode(opt.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Sort by ${opt.label}`}
+                style={({ pressed }) => [
+                  styles.segmentedItem,
+                  {
+                    backgroundColor: active ? colors.primary : 'transparent',
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={opt.icon}
+                  size={14}
+                  color={active ? colors.textInverse : colors.text}
+                />
+                <Text
+                  style={{
+                    color: active ? colors.textInverse : colors.text,
+                    fontWeight: '600',
+                    fontSize: 13,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {sortHint ? (
+        <Text style={[styles.sortHint, { color: colors.textMuted }]}>
+          {sortHint}
+        </Text>
+      ) : null}
+
       {query.isLoading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.primary} />
@@ -141,7 +264,7 @@ export default function DispatchScreen() {
         />
       ) : (
         <FlatList
-          data={jobs}
+          data={sortedJobs}
           keyExtractor={(j) => j.id}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
@@ -206,6 +329,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  sortLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 2,
+  },
+  segmentedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+  },
+  sortHint: {
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   list: {
     padding: 16,
