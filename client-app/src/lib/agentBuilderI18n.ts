@@ -238,7 +238,33 @@ export type AgentBuilderTKey =
   | 'translateRunning'
   | 'translateDismiss'
   | 'translateError'
-  | 'translateSuccess';
+  | 'translateSuccess'
+  | 'kbdHelpButton'
+  | 'kbdHelpTitle'
+  | 'kbdHelpClose'
+  | 'kbdHelpIntro'
+  | 'kbdGroupNavigate'
+  | 'kbdGroupEdit'
+  | 'kbdGroupConnect'
+  | 'kbdGroupHelp'
+  | 'kbdShortcutTab'
+  | 'kbdShortcutEnter'
+  | 'kbdShortcutEscape'
+  | 'kbdShortcutArrows'
+  | 'kbdShortcutShiftArrows'
+  | 'kbdShortcutDelete'
+  | 'kbdShortcutConnect'
+  | 'kbdShortcutCommandPalette'
+  | 'kbdShortcutSlash'
+  | 'kbdShortcutHelp'
+  | 'connectModeBanner'
+  | 'connectModeHelp'
+  | 'connectModeCancel'
+  | 'connectModeNoSelection'
+  | 'connectModeSameNode'
+  | 'connectModeCancelled'
+  | 'connectModeCompleted'
+  | 'connectModeDuplicate';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -475,6 +501,32 @@ const EN: Record<AgentBuilderTKey, string> = {
   translateDismiss: 'Keep original',
   translateError: "Couldn't translate: {message}",
   translateSuccess: 'Translated to {language}',
+  kbdHelpButton: 'Keyboard shortcuts',
+  kbdHelpTitle: 'Builder keyboard shortcuts',
+  kbdHelpClose: 'Close',
+  kbdHelpIntro: 'You can build and edit this agent without a mouse. Press Tab to focus a node, Enter to select it, then use the shortcuts below.',
+  kbdGroupNavigate: 'Navigate',
+  kbdGroupEdit: 'Edit',
+  kbdGroupConnect: 'Connect',
+  kbdGroupHelp: 'Help',
+  kbdShortcutTab: 'Move focus between nodes',
+  kbdShortcutEnter: 'Open the focused node and edit its settings',
+  kbdShortcutEscape: 'Close panel or cancel a pending connection',
+  kbdShortcutArrows: 'Move the selected node',
+  kbdShortcutShiftArrows: 'Move the selected node in larger steps',
+  kbdShortcutDelete: 'Delete the selected node and its connections',
+  kbdShortcutConnect: 'Start a connection from the selected node, then Tab to a target and press Enter',
+  kbdShortcutCommandPalette: 'Open the command palette to add or connect nodes by name',
+  kbdShortcutSlash: 'Open the command palette (alternative)',
+  kbdShortcutHelp: 'Show this shortcuts dialog',
+  connectModeBanner: 'Connecting from {label}',
+  connectModeHelp: 'Tab or click another node, then press Enter to connect — Esc cancels',
+  connectModeCancel: 'Cancel connection',
+  connectModeNoSelection: 'Select a node first, then press C to start a connection',
+  connectModeSameNode: 'Pick a different node to connect to',
+  connectModeCancelled: 'Connection cancelled',
+  connectModeCompleted: 'Connected {source} → {target}',
+  connectModeDuplicate: '{source} → {target} is already connected',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {

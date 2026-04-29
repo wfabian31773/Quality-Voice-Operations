@@ -1814,6 +1814,125 @@ interface CommandSuggestion {
   action: () => void;
 }
 
+// Standalone shortcuts dialog for the builder. Lives outside the global
+// platform shortcuts modal (TenantLayout) because the builder has its own
+// canvas-only shortcuts (arrow movement, "c" for connect, etc.) that aren't
+// meaningful on other surfaces. Press "?" or click the header "?" button to
+// open it.
+function BuilderShortcutsModal({
+  onClose,
+  t,
+}: {
+  onClose: () => void;
+  t: (key: AgentBuilderTKey, vars?: Record<string, string | number>) => string;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const groups: { title: string; rows: { keys: string[]; description: string }[] }[] = [
+    {
+      title: t('kbdGroupNavigate'),
+      rows: [
+        { keys: ['Tab'], description: t('kbdShortcutTab') },
+        { keys: ['Enter'], description: t('kbdShortcutEnter') },
+        { keys: ['Esc'], description: t('kbdShortcutEscape') },
+      ],
+    },
+    {
+      title: t('kbdGroupEdit'),
+      rows: [
+        { keys: ['↑', '↓', '←', '→'], description: t('kbdShortcutArrows') },
+        { keys: ['Shift', '↑/↓/←/→'], description: t('kbdShortcutShiftArrows') },
+        { keys: ['Delete'], description: t('kbdShortcutDelete') },
+      ],
+    },
+    {
+      title: t('kbdGroupConnect'),
+      rows: [
+        { keys: ['C'], description: t('kbdShortcutConnect') },
+        { keys: ['⌘/Ctrl', 'K'], description: t('kbdShortcutCommandPalette') },
+        { keys: ['/'], description: t('kbdShortcutSlash') },
+      ],
+    },
+    {
+      title: t('kbdGroupHelp'),
+      rows: [{ keys: ['?'], description: t('kbdShortcutHelp') }],
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="builder-shortcuts-title"
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl bg-surface border border-border shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 id="builder-shortcuts-title" className="text-base font-semibold text-text-primary">
+              {t('kbdHelpTitle')}
+            </h2>
+            <p className="mt-1 text-xs text-text-secondary max-w-md">{t('kbdHelpIntro')}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('kbdHelpClose')}
+            className="ml-4 p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+          {groups.map((group) => (
+            <section key={group.title} aria-labelledby={`kbd-group-${group.title}`}>
+              <h3
+                id={`kbd-group-${group.title}`}
+                className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2"
+              >
+                {group.title}
+              </h3>
+              <ul className="space-y-2">
+                {group.rows.map((row, idx) => (
+                  <li key={idx} className="flex items-start justify-between gap-3">
+                    <span className="text-xs text-text-secondary leading-snug flex-1">
+                      {row.description}
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {row.keys.map((k, ki) => (
+                        <kbd
+                          key={ki}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded border border-border bg-surface-secondary text-[10px] font-mono text-text-primary"
+                        >
+                          {k}
+                        </kbd>
+                      ))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CommandBar({
   isOpen,
   onClose,
@@ -2019,6 +2138,15 @@ function AgentBuilderInner() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; tone: 'success' | 'error' } | null>(null);
   const [commandBarOpen, setCommandBarOpen] = useState(false);
+  // Tracks an in-progress keyboard-driven connection. When non-null the user
+  // pressed `c` while a node was selected; the next node activated (via Tab+
+  // Enter, click, or the command bar) becomes the connection target. We keep
+  // both id and label so the on-canvas banner can read naturally without
+  // re-deriving from the nodes array on every render.
+  const [pendingConnection, setPendingConnection] = useState<
+    { sourceId: string; sourceLabel: string } | null
+  >(null);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -2758,12 +2886,18 @@ function AgentBuilderInner() {
     [setNodes, t],
   );
 
+  // Returns the outcome so callers (specifically the keyboard connect-mode
+  // effect) can show the right feedback. The internal "cannotConnect" toast
+  // for invalid pairings still fires here so the existing
+  // command-palette-driven flow keeps its current UX, but successful or
+  // duplicate completions are silent — the calling code decides whether to
+  // celebrate them.
   const connectNodesById = useCallback(
-    (sourceId: string, targetId: string) => {
+    (sourceId: string, targetId: string): 'connected' | 'invalid' | 'duplicate' | 'noop' => {
       const current = nodesRef.current;
       const sourceNode = current.find((n) => n.id === sourceId);
       const targetNode = current.find((n) => n.id === targetId);
-      if (!sourceNode || !targetNode || sourceId === targetId) return;
+      if (!sourceNode || !targetNode || sourceId === targetId) return 'noop';
       const srcType = (sourceNode.data.nodeType as string) || '';
       const tgtType = (targetNode.data.nodeType as string) || '';
       if (!isValidConnection(srcType, tgtType)) {
@@ -2775,13 +2909,13 @@ function AgentBuilderInner() {
           tone: 'error',
         });
         setTimeout(() => setSaveMessage(null), 3000);
-        return;
+        return 'invalid';
       }
       // Avoid duplicate edges between the same two endpoints.
       const exists = edgesRef.current.some(
         (e) => e.source === sourceId && e.target === targetId,
       );
-      if (exists) return;
+      if (exists) return 'duplicate';
       setEdges((eds) =>
         addEdge(
           {
@@ -2796,6 +2930,7 @@ function AgentBuilderInner() {
         ),
       );
       setHasChanges(true);
+      return 'connected';
     },
     [setEdges, t],
   );
@@ -2812,12 +2947,57 @@ function AgentBuilderInner() {
     [setNodes],
   );
 
+  // Watches for the "second leg" of a keyboard- or mouse-initiated connection.
+  // When pendingConnection is set and the user activates a different node
+  // (whether via Enter on a focused node, a click, or the command palette),
+  // selectedNode flips to the target — at which point we finalise the edge
+  // and clear pending state. Centralising this in a single effect keeps
+  // mouse and keyboard paths consistent.
+  //
+  // We only show the success toast when an edge was actually created.
+  // `connectNodesById` returns 'invalid' (incompatible node types — it owns
+  // its own toast in that case so we stay silent), 'duplicate' (edge already
+  // exists), or 'connected'. We always clear pending state so the user
+  // can move on regardless of outcome.
+  useEffect(() => {
+    if (!pendingConnection || !selectedNode) return;
+    if (selectedNode.id === pendingConnection.sourceId) return;
+    const sourceLabel = pendingConnection.sourceLabel;
+    const targetLabel = (selectedNode.data?.label as string) || selectedNode.id;
+    const result = connectNodesById(pendingConnection.sourceId, selectedNode.id);
+    setPendingConnection(null);
+    if (result === 'connected') {
+      setSaveMessage({
+        text: t('connectModeCompleted', { source: sourceLabel, target: targetLabel }),
+        tone: 'success',
+      });
+      setTimeout(() => setSaveMessage(null), 2500);
+    } else if (result === 'duplicate') {
+      setSaveMessage({
+        text: t('connectModeDuplicate', { source: sourceLabel, target: targetLabel }),
+        tone: 'error',
+      });
+      setTimeout(() => setSaveMessage(null), 2500);
+    }
+    // 'invalid' already showed its own cannotConnect toast; 'noop' means
+    // the source/target was missing or self-referential, which the
+    // command palette / connect-mode flow shouldn't be able to produce —
+    // staying silent avoids spamming a meaningless message.
+  }, [selectedNode, pendingConnection, connectNodesById, t]);
+
   // Global keyboard handlers for the builder canvas:
   //   - Cmd/Ctrl+K or "/"  → open command palette
-  //   - Esc                → close command palette / right panel
+  //   - ?                  → open builder shortcuts dialog
+  //   - Esc                → cancel pending connection / close palette / right panel
+  //   - c                  → start a connection from the currently selected node
+  //   - Enter              → if in connect mode, complete the connection on the focused node
+  //   - Delete / Backspace → remove selected node (canvas only)
   //   - Arrow keys         → nudge currently selected node (Shift = larger step)
-  // We intentionally ignore key events when the user is typing in a form field
-  // so we don't fight inputs/textareas inside the side panels.
+  // Arrow nudging is suppressed while focus is on a node, because ReactFlow
+  // already handles per-pixel movement on its own keydown handler — running
+  // both at the same time would double-move the node.
+  // We also ignore key events when the user is typing in a form field so we
+  // don't fight inputs/textareas inside the side panels.
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
@@ -2825,6 +3005,13 @@ function AgentBuilderInner() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
       if (target.isContentEditable) return true;
       return false;
+    };
+
+    const findFocusedNodeId = (target: EventTarget | null): string | null => {
+      if (!(target instanceof HTMLElement)) return null;
+      const nodeEl = target.closest('.react-flow__node') as HTMLElement | null;
+      if (!nodeEl) return null;
+      return nodeEl.getAttribute('data-id');
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2835,16 +3022,55 @@ function AgentBuilderInner() {
         setCommandBarOpen(true);
         return;
       }
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+      // "/" opens the command palette — but only WITHOUT Shift, because
+      // Shift+/ is "?" on US layouts and that should open the shortcuts
+      // dialog instead. Some keyboard-automation drivers (and some
+      // non-Latin layouts) deliver Shift+/ as `key: '/'` with `shiftKey:
+      // true` rather than the canonical `key: '?'`, so we explicitly guard.
+      if (
+        e.key === '/' &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey &&
+        !isEditableTarget(e.target)
+      ) {
         e.preventDefault();
         setCommandBarOpen(true);
         return;
       }
 
-      // Esc: close command palette first, otherwise collapse the right panel.
-      // The palette has its own local Esc handler when its input has focus;
-      // this global one is the fallback when focus is elsewhere.
+      // "?" opens the builder-specific shortcuts dialog. We also catch
+      // Shift+"/" here so layouts/automation that report `key: '/'` with
+      // `shiftKey: true` still work. Stop propagation so TenantLayout's
+      // global "?" handler doesn't also fire and stack two dialogs.
+      const isQuestionMark =
+        (e.key === '?' || (e.key === '/' && e.shiftKey)) &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey;
+      if (isQuestionMark && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setShortcutsHelpOpen((v) => !v);
+        return;
+      }
+
+      // Esc: cancel pending connection first (most surprising state to be
+      // stuck in), then close command palette, then collapse the right panel.
       if (e.key === 'Escape' && !isEditableTarget(e.target)) {
+        let handled = false;
+        setPendingConnection((pc) => {
+          if (pc) {
+            handled = true;
+            setSaveMessage({ text: t('connectModeCancelled'), tone: 'error' });
+            setTimeout(() => setSaveMessage(null), 2000);
+            return null;
+          }
+          return pc;
+        });
+        if (handled) return;
         setCommandBarOpen((open) => {
           if (open) return false;
           setRightPanel((panel) => (panel === 'none' ? panel : 'none'));
@@ -2855,8 +3081,94 @@ function AgentBuilderInner() {
 
       if (isEditableTarget(e.target)) return;
 
-      // Move selected nodes with arrow keys
+      // Enter on a Tab-focused node selects it. We do this explicitly
+      // rather than relying on React Flow's built-in Enter handling
+      // because v12's behaviour doesn't reliably re-select an already
+      // focused-but-not-selected node — which broke the keyboard-only
+      // connect flow (audit A-05). Whenever a single new selection
+      // lands, our `onSelectionChange` handler updates `selectedNode`,
+      // which in turn triggers the connect-mode completion effect for
+      // the second leg of a connection.
+      if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const focusedId = findFocusedNodeId(e.target);
+        if (focusedId) {
+          if (pendingConnection && focusedId === pendingConnection.sourceId) {
+            // Re-selecting the source while pending is meaningless — tell
+            // the user they need to pick a different target.
+            e.preventDefault();
+            setSaveMessage({ text: t('connectModeSameNode'), tone: 'error' });
+            setTimeout(() => setSaveMessage(null), 2000);
+            return;
+          }
+          e.preventDefault();
+          setNodes((nds) =>
+            nds.map((n) => ({ ...n, selected: n.id === focusedId })),
+          );
+          // `onSelectionChange` will fire on the next render and update
+          // `selectedNode`, which the connection-completion effect
+          // watches. Also open the right-hand config panel so Enter
+          // matches the shortcuts dialog copy ("Open the focused node
+          // and edit its settings"). Skip while a connection is pending
+          // so the connect flow isn't interrupted by the panel.
+          if (!pendingConnection) {
+            setRightPanel('config');
+          }
+          return;
+        }
+      }
+
+      // "c" starts a new connection from the currently selected node. We
+      // only honour the lowercase keystroke without modifiers so we don't
+      // collide with browser shortcuts (Cmd+C / Ctrl+C copy).
+      if (
+        (e.key === 'c' || e.key === 'C') &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        const selected = nodesRef.current.filter((n) => n.selected);
+        if (selected.length !== 1) {
+          // Only complain if the user clearly tried to use the shortcut
+          // (i.e. nothing else is focused). Avoids spamming a toast every
+          // time someone types in an empty area.
+          if (!findFocusedNodeId(e.target)) {
+            setSaveMessage({ text: t('connectModeNoSelection'), tone: 'error' });
+            setTimeout(() => setSaveMessage(null), 2000);
+          }
+          return;
+        }
+        e.preventDefault();
+        const src = selected[0];
+        setPendingConnection({
+          sourceId: src.id,
+          sourceLabel: (src.data?.label as string) || src.id,
+        });
+        return;
+      }
+
+      // Delete / Backspace removes the selected node(s). ReactFlow handles
+      // this when focus is on a node; we fall back to it when focus is on
+      // the canvas wrapper itself so the shortcut "just works" after the
+      // node was selected via the command palette.
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !findFocusedNodeId(e.target)) {
+        const selectedIds = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+        if (selectedIds.length === 0) return;
+        e.preventDefault();
+        setNodes((nds) => nds.filter((n) => !selectedIds.includes(n.id)));
+        setEdges((eds) =>
+          eds.filter((edge) => !selectedIds.includes(edge.source) && !selectedIds.includes(edge.target)),
+        );
+        setSelectedNode(null);
+        setRightPanel('none');
+        setHasChanges(true);
+        return;
+      }
+
+      // Move selected nodes with arrow keys — but only when focus is NOT on
+      // a node (ReactFlow handles its own per-pixel movement when a node has
+      // focus). This avoids the double-move bug where both handlers fire.
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (findFocusedNodeId(e.target)) return;
         const selected = nodesRef.current.filter((n) => n.selected);
         if (selected.length === 0) return;
         e.preventDefault();
@@ -2876,7 +3188,7 @@ function AgentBuilderInner() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setNodes]);
+  }, [setNodes, setEdges, t, pendingConnection]);
 
   if (isLoading) {
     return (
@@ -2942,6 +3254,15 @@ function AgentBuilderInner() {
             <kbd className="ml-1 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-surface-secondary text-[10px] font-mono text-text-muted">
               ⌘K
             </kbd>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShortcutsHelpOpen(true)}
+            aria-label={t('kbdHelpButton')}
+            title={t('kbdHelpButton')}
+            className="hidden xl:inline-flex items-center justify-center w-8 h-8 text-xs font-semibold text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
+          >
+            <span aria-hidden="true">?</span>
           </button>
           <button
             type="button"
@@ -3426,15 +3747,65 @@ function AgentBuilderInner() {
             onDrop={onDrop}
             onDragOver={onDragOver}
             onNodeClick={onNodeClick}
+            // Keep `selectedNode` in sync with React Flow's selection no
+            // matter how it changed — mouse click, command palette, or
+            // (critically for audit A-05) Enter/Space on a Tab-focused
+            // node. Without this, the keyboard-driven connect-mode
+            // effect never sees the second node activate. We treat
+            // exactly-one-selected-node as "the selection"; multi-select
+            // and zero-select are intentionally ignored so we don't
+            // clobber state during canvas pans, marquee drags, or
+            // intermediate React Flow churn.
+            onSelectionChange={({ nodes: selNodes }) => {
+              if (selNodes.length === 1) {
+                const next = selNodes[0];
+                setSelectedNode((prev) => (prev?.id === next.id ? prev : next));
+              }
+            }}
             onPaneClick={() => { setSelectedNode(null); if (rightPanel === 'config') setRightPanel('none'); }}
             nodeTypes={nodeTypes}
             fitView
+            // Keyboard accessibility (audit A-05): every node is reachable via
+            // Tab and gets selected with Enter/Space. autoPanOnNodeFocus keeps
+            // the focused node visible when the user tabs out of the viewport.
+            nodesFocusable
+            edgesFocusable
+            autoPanOnNodeFocus
             defaultEdgeOptions={{
               markerEnd: { type: MarkerType.ArrowClosed },
               style: { strokeWidth: 2 },
             }}
             className="bg-surface-secondary"
           >
+            {pendingConnection && (
+              <Panel position="top-center">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="mt-2 flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-medium text-text-primary shadow-sm"
+                >
+                  <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" aria-hidden="true" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold">
+                      {t('connectModeBanner', { label: pendingConnection.sourceLabel })}
+                    </span>
+                    <span className="text-text-secondary">{t('connectModeHelp')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingConnection(null);
+                      setSaveMessage({ text: t('connectModeCancelled'), tone: 'error' });
+                      setTimeout(() => setSaveMessage(null), 2000);
+                    }}
+                    className="ml-2 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition"
+                  >
+                    {t('connectModeCancel')}
+                    <kbd className="ml-1 inline-flex items-center px-1 py-0.5 rounded border border-border bg-surface-secondary text-[10px] font-mono text-text-muted">Esc</kbd>
+                  </button>
+                </div>
+              </Panel>
+            )}
             <Background gap={20} size={1} />
             <Controls className="!bg-surface !border-border !shadow-sm" />
             <MiniMap
@@ -3640,6 +4011,9 @@ function AgentBuilderInner() {
           isSaving={saveTemplateMutation.isPending}
           t={t}
         />
+      )}
+      {shortcutsHelpOpen && (
+        <BuilderShortcutsModal onClose={() => setShortcutsHelpOpen(false)} t={t} />
       )}
     </div>
   );

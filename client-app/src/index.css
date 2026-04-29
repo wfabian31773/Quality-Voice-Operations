@@ -472,3 +472,16 @@ body {
   outline-offset: var(--focus-ring-offset);
   border-radius: var(--radius-sm);
 }
+
+/* React Flow nodes/edges are keyboard-focusable but render their own
+ * styling, so the global rule above doesn't reliably reach them. Make the
+ * focus state unmistakable in the agent builder canvas (audit A-05). */
+.react-flow__node:focus-visible,
+.react-flow__edge:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.react-flow__node:focus-visible {
+  box-shadow: 0 0 0 4px rgba(61, 179, 166, 0.18);
+}
