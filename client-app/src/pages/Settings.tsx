@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
 import {
   Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
-  Lock, Download, Trash2, Bell, BellOff, Mail,
+  Lock, Download, Trash2, Bell, BellOff, Mail, Sparkles, Loader2,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 import VoicePicker from '../components/VoicePicker';
@@ -74,8 +74,32 @@ interface AgentType {
 
 function GeneralSettings() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { isOwner } = useRole();
   const [saved, setSaved] = useState(false);
+  const [restartingOnboarding, setRestartingOnboarding] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+
+  const restartOnboarding = async () => {
+    if (restartingOnboarding) return;
+    setRestartError(null);
+    setRestartingOnboarding(true);
+    try {
+      // Shallow-merge the wizard's resume keys back to a fresh state. The
+      // PATCH endpoint only supports merge (not delete), so we explicitly
+      // overwrite both keys with values that the wizard's resume logic
+      // treats as "not started": `clampStep(null)` returns null, and
+      // `!onboarding_completed` is truthy when set to false.
+      await api.patch('/me/preferences', {
+        onboarding_step: null,
+        onboarding_completed: false,
+      });
+      navigate('/onboarding');
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : 'Failed to restart onboarding');
+      setRestartingOnboarding(false);
+    }
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['tenant-settings'],
@@ -308,6 +332,40 @@ function GeneralSettings() {
       {!isOwner && (
         <p className="text-sm text-text-muted">Contact your organization owner to change settings.</p>
       )}
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-text-primary">Onboarding wizard</h3>
+            <p className="text-sm text-text-muted mt-1 mb-4">
+              Replay the welcome wizard to revisit the agent template picker and walk through setup again.
+              This affects only your account.
+            </p>
+            {restartError && (
+              <div className="bg-danger/10 text-danger text-xs px-3 py-2 rounded mb-3">{restartError}</div>
+            )}
+            <button
+              type="button"
+              onClick={restartOnboarding}
+              disabled={restartingOnboarding}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-surface-hover disabled:opacity-50"
+            >
+              {restartingOnboarding ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Restarting…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" /> Restart onboarding
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

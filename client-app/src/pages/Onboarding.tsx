@@ -455,6 +455,19 @@ export default function Onboarding() {
             </div>
           )}
         </div>
+
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => handleFinish('/')}
+            className="text-xs text-text-secondary hover:text-text-primary underline-offset-4 hover:underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+          >
+            Don't show this again
+          </button>
+          <p className="text-[11px] text-text-secondary mt-1">
+            You can restart onboarding anytime from Settings.
+          </p>
+        </div>
       </div>
     </div>
   );
