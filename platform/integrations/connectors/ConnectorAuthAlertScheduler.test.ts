@@ -7,12 +7,15 @@ const {
   connectorReconnectNeededEmailMock,
   connectorSyncErrorEmailMock,
   connectorSyncDigestEmailMock,
+  connectorTokenExpiringEmailMock,
   fanoutMock,
   filterRecipientsMock,
   writeAuditLogMock,
   getConnectorAlertSettingsMock,
   loadMuteSetsForTenantsMock,
   recordDigestSentMock,
+  listConnectorTokenHealthMock,
+  getRefreshableProvidersMock,
 } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   sendEmailMock: vi.fn(),
@@ -36,6 +39,11 @@ const {
     html: '<p>html</p>',
     text: 'text',
   })),
+  connectorTokenExpiringEmailMock: vi.fn<(...args: unknown[]) => { subject: string; html: string; text: string }>(() => ({
+    subject: 'Token expiring soon',
+    html: '<p>html</p>',
+    text: 'text',
+  })),
   fanoutMock: vi.fn().mockResolvedValue(undefined),
   filterRecipientsMock: vi.fn(async (_t: string, e: string[]) => e),
   writeAuditLogMock: vi.fn().mockResolvedValue(undefined),
@@ -47,6 +55,12 @@ const {
   })),
   loadMuteSetsForTenantsMock: vi.fn(async () => new Map()),
   recordDigestSentMock: vi.fn().mockResolvedValue(undefined),
+  // Typed as `unknown[]` so individual tests can resolve to richer fake
+  // health rows without fighting the inferred `never[]` from an empty
+  // default. The scheduler imports the helper through ./db, so the
+  // structural shape is checked at the consumer side.
+  listConnectorTokenHealthMock: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
+  getRefreshableProvidersMock: vi.fn(() => ['salesforce', 'hubspot']),
 }));
 
 vi.mock('../../db', () => ({
@@ -58,7 +72,16 @@ vi.mock('../../email', () => ({
   connectorSyncErrorEmail: connectorSyncErrorEmailMock,
   connectorAutoDisabledEmail: connectorAutoDisabledEmailMock,
   connectorReconnectNeededEmail: connectorReconnectNeededEmailMock,
+  connectorTokenExpiringEmail: connectorTokenExpiringEmailMock,
   connectorSyncDigestEmail: connectorSyncDigestEmailMock,
+}));
+
+vi.mock('./db', () => ({
+  listConnectorTokenHealth: listConnectorTokenHealthMock,
+}));
+
+vi.mock('./tokenRefresh', () => ({
+  getRefreshableProviders: getRefreshableProvidersMock,
 }));
 
 vi.mock('../../notifications/NotificationPreferences', () => ({
@@ -82,6 +105,7 @@ import {
   isAuthError,
   runConnectorAuthAlertCycle,
   runConnectorAutoDisableCycle,
+  runConnectorExpiryWarningCycle,
 } from './ConnectorAuthAlertScheduler';
 
 function setupQueries(opts: {
@@ -121,7 +145,10 @@ beforeEach(() => {
   sendEmailMock.mockReset();
   sendEmailMock.mockResolvedValue({ success: true });
   fanoutMock.mockClear();
-  filterRecipientsMock.mockClear();
+  // mockReset (not mockClear) drains queued mockResolvedValueOnce values
+  // from prior tests — otherwise an unconsumed opt-out queue from the
+  // digest tests can silently swallow recipients in later tests.
+  filterRecipientsMock.mockReset();
   filterRecipientsMock.mockImplementation(async (_t: string, e: string[]) => e);
   writeAuditLogMock.mockClear();
   connectorAutoDisabledEmailMock.mockClear();
@@ -138,6 +165,11 @@ beforeEach(() => {
   loadMuteSetsForTenantsMock.mockClear();
   loadMuteSetsForTenantsMock.mockResolvedValue(new Map());
   recordDigestSentMock.mockClear();
+  connectorTokenExpiringEmailMock.mockClear();
+  listConnectorTokenHealthMock.mockReset();
+  listConnectorTokenHealthMock.mockResolvedValue([]);
+  getRefreshableProvidersMock.mockClear();
+  getRefreshableProvidersMock.mockReturnValue(['salesforce', 'hubspot']);
   delete process.env.CONNECTOR_AUTO_DISABLE_DAYS;
 });
 
@@ -729,5 +761,319 @@ describe('runConnectorAuthAlertCycle digest opt-out', () => {
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     expect(recordDigestSentMock).toHaveBeenCalledWith('tenant-digest');
     expect(result.digestEmailsSent).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runConnectorExpiryWarningCycle
+// ---------------------------------------------------------------------------
+
+interface FakeTokenHealthRowOpts {
+  tenantId?: string;
+  tenantName?: string | null;
+  integrationId?: string;
+  integrationType?: string;
+  provider?: string;
+  name?: string | null;
+  isEnabled?: boolean;
+  lastSyncStatus?: string | null;
+  tokenExpiresAt: number | null;
+}
+
+function fakeTokenHealthRow(o: FakeTokenHealthRowOpts) {
+  return {
+    tenantId: o.tenantId ?? 'tenant-x',
+    tenantName: o.tenantName ?? 'Acme',
+    tenantSlug: 'acme',
+    integrationId: o.integrationId ?? 'integ-x',
+    integrationType: o.integrationType ?? 'crm',
+    provider: o.provider ?? 'salesforce',
+    name: o.name ?? null,
+    isEnabled: o.isEnabled ?? true,
+    lastSyncStatus: o.lastSyncStatus ?? 'success',
+    lastSyncAt: null,
+    lastSyncErrorAt: null,
+    tokenIssuedAt: null,
+    tokenExpiresAt: o.tokenExpiresAt,
+    tokenDecryptFailed: false,
+  };
+}
+
+/**
+ * Order of pool.query calls inside runConnectorExpiryWarningCycle, per
+ * candidate that survives mute filtering:
+ *   1. UPDATE integrations ... SET expiry_warning_sent_at  (slot claim)
+ *   2. SELECT name FROM tenants ... (getTenantAdmins)
+ *   3. SELECT users ... (getTenantAlertEmailRecipients)
+ */
+function setupExpiryQueries(opts: {
+  claimSucceeds?: boolean;
+  tenantName?: string | null;
+  adminEmails?: string[];
+}) {
+  queryMock.mockReset();
+  queryMock.mockImplementationOnce(async () => ({
+    rowCount: opts.claimSucceeds === false ? 0 : 1,
+  }));
+  if (opts.claimSucceeds === false) return;
+  queryMock.mockImplementationOnce(async () => ({
+    rows: opts.tenantName !== undefined ? [{ name: opts.tenantName }] : [],
+  }));
+  queryMock.mockImplementationOnce(async () => ({
+    rows: (opts.adminEmails ?? ['admin@example.com']).map((email, idx) => ({
+      id: `user-${idx}`,
+      email,
+      first_name: null,
+      last_name: null,
+    })),
+  }));
+}
+
+describe('runConnectorExpiryWarningCycle', () => {
+  it('sends a heads-up when the token expires within the horizon', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        tenantId: 'tenant-1',
+        integrationId: 'integ-1',
+        provider: 'salesforce',
+        tokenExpiresAt: now + 6 * 60 * 60 * 1000,
+        lastSyncStatus: 'success',
+      }),
+    ]);
+    setupExpiryQueries({ tenantName: 'Acme', adminEmails: ['ops@acme.test'] });
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.inspected).toBe(1);
+    expect(result.warned).toBe(1);
+    expect(result.emailedRecipients).toBe(1);
+    expect(result.skippedThrottled).toBe(0);
+    expect(result.skippedUnhealthy).toBe(0);
+
+    expect(connectorTokenExpiringEmailMock).toHaveBeenCalledTimes(1);
+    const args = (connectorTokenExpiringEmailMock.mock.calls[0]?.[0] ?? {}) as Record<string, unknown>;
+    expect(args.providerLabel).toBe('Salesforce');
+    expect(args.hoursRemaining).toBe(6);
+    expect(args.reconnectUrl).toContain('/connectors?provider=salesforce');
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0].to).toBe('ops@acme.test');
+
+    expect(fanoutMock).toHaveBeenCalledTimes(1);
+    expect(fanoutMock.mock.calls[0][0].metadata.reason).toBe('expiry_warning');
+
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    const auditCall = writeAuditLogMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(auditCall.action).toBe('connector.expiry_warning_sent');
+    expect(auditCall.resourceType).toBe('connector');
+    expect(auditCall.resourceId).toBe('integ-1');
+  });
+
+  it('skips connectors not within the expiring horizon', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        // Far in the future — well outside the ~24h horizon.
+        tokenExpiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      }),
+      fakeTokenHealthRow({
+        // Already expired — handled by the existing reconnect path.
+        integrationId: 'integ-expired',
+        tokenExpiresAt: now - 60 * 1000,
+      }),
+      fakeTokenHealthRow({
+        // No expiry data at all — provider doesn't track it.
+        integrationId: 'integ-noexp',
+        tokenExpiresAt: null,
+      }),
+    ]);
+    queryMock.mockReset();
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.inspected).toBe(0);
+    expect(result.warned).toBe(0);
+    expect(connectorTokenExpiringEmailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('skips connectors that are already in needs_reconnect / error', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        integrationId: 'integ-needs-reconnect',
+        tokenExpiresAt: now + 2 * 60 * 60 * 1000,
+        lastSyncStatus: 'needs_reconnect',
+      }),
+      fakeTokenHealthRow({
+        integrationId: 'integ-error',
+        tokenExpiresAt: now + 2 * 60 * 60 * 1000,
+        lastSyncStatus: 'error',
+      }),
+    ]);
+    queryMock.mockReset();
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.inspected).toBe(2);
+    expect(result.warned).toBe(0);
+    expect(result.skippedUnhealthy).toBe(2);
+    expect(connectorTokenExpiringEmailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    // Importantly: no slot claim attempted for unhealthy rows — they
+    // belong to the auth-error path's throttle ledger, not ours.
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('skips connectors when the throttle slot is already claimed', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        tokenExpiresAt: now + 4 * 60 * 60 * 1000,
+      }),
+    ]);
+    setupExpiryQueries({ claimSucceeds: false });
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.inspected).toBe(1);
+    expect(result.warned).toBe(0);
+    expect(result.skippedThrottled).toBe(1);
+    expect(connectorTokenExpiringEmailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
+    // Only the slot-claim UPDATE should have run.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects the tenant mute set by claiming the slot but not emailing', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        tenantId: 'tenant-muted',
+        provider: 'salesforce',
+        tokenExpiresAt: now + 5 * 60 * 60 * 1000,
+      }),
+    ]);
+    loadMuteSetsForTenantsMock.mockResolvedValue(
+      new Map([
+        [
+          'tenant-muted',
+          { providers: new Set(['salesforce']), integrations: new Set() },
+        ],
+      ]),
+    );
+    // Mute path only does the slot-claim UPDATE — no tenant/user lookups.
+    queryMock.mockReset();
+    queryMock.mockImplementationOnce(async () => ({ rowCount: 1 }));
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.warned).toBe(0);
+    expect(connectorTokenExpiringEmailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(writeAuditLogMock).not.toHaveBeenCalled();
+    // Slot was still claimed so we don't re-evaluate the muted row every tick.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the warning even when no admin recipients can be resolved', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        tokenExpiresAt: now + 3 * 60 * 60 * 1000,
+      }),
+    ]);
+    setupExpiryQueries({ tenantName: 'Acme', adminEmails: [] });
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.warned).toBe(1);
+    expect(result.skippedNoRecipients).toBe(1);
+    expect(result.emailedRecipients).toBe(0);
+    expect(connectorTokenExpiringEmailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    // Audit + in-app still fire so the trail is complete even when email fails.
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    expect(fanoutMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the warning when all recipients have opted out of integration emails', async () => {
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        tokenExpiresAt: now + 3 * 60 * 60 * 1000,
+      }),
+    ]);
+    setupExpiryQueries({
+      tenantName: 'Acme',
+      adminEmails: ['opted-out@acme.test'],
+    });
+    filterRecipientsMock.mockImplementationOnce(async () => []);
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.warned).toBe(1);
+    expect(result.skippedNoRecipients).toBe(1);
+    expect(result.emailedRecipients).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-sends a warning when the throttle window has elapsed', async () => {
+    // Documents intended product behavior: if the same connector is
+    // still expiring within the horizon AFTER ~20h has elapsed since
+    // the last warning, the slot-claim UPDATE matches again (the SQL
+    // predicate `expiry_warning_sent_at < NOW() - 20 hours` becomes
+    // true) and a fresh warning goes out. Tokens with a tight
+    // refresh cadence can therefore receive up to two heads-ups in
+    // the final 24h window — that's by design so the second hit
+    // catches admins who missed the first email.
+    const now = Date.UTC(2026, 3, 29, 12, 0, 0);
+    listConnectorTokenHealthMock.mockResolvedValue([
+      fakeTokenHealthRow({
+        tokenExpiresAt: now + 3 * 60 * 60 * 1000,
+      }),
+    ]);
+    // Slot claim succeeds because the throttle predicate matched
+    // (mocked here — the real query runs the `< NOW() - 20 hours`
+    // check against the previous expiry_warning_sent_at value).
+    setupExpiryQueries({ tenantName: 'Acme', adminEmails: ['ops@acme.test'] });
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: now });
+
+    expect(result.warned).toBe(1);
+    expect(result.emailedRecipients).toBe(1);
+    expect(connectorTokenExpiringEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    // Verify the slot-claim UPDATE includes the throttle window check
+    // — production behavior depends on this predicate being applied.
+    const claimSql = queryMock.mock.calls[0][0] as string;
+    expect(claimSql).toMatch(/expiry_warning_sent_at\s*=\s*NOW\(\)/);
+    expect(claimSql).toMatch(/expiry_warning_sent_at\s+IS\s+NULL/);
+    expect(claimSql).toMatch(/expiry_warning_sent_at\s*<\s*NOW\(\)\s*-/);
+  });
+
+  it('returns an empty result when the snapshot load throws', async () => {
+    listConnectorTokenHealthMock.mockRejectedValue(new Error('decrypt boom'));
+    queryMock.mockReset();
+
+    const result = await runConnectorExpiryWarningCycle({ nowMs: Date.now() });
+
+    expect(result).toEqual({
+      inspected: 0,
+      warned: 0,
+      emailedRecipients: 0,
+      skippedNoRecipients: 0,
+      skippedUnhealthy: 0,
+      skippedThrottled: 0,
+    });
+    // No throttle ledger writes when we bail — protects against
+    // suppressing real warnings for 20h after a transient snapshot error.
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(connectorTokenExpiringEmailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

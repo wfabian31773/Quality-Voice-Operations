@@ -351,6 +351,7 @@ export async function updateConnectorSyncStatus(
              SET last_sync_at = NOW(), last_sync_status = $3,
                  last_sync_error = NULL, last_sync_error_at = NULL,
                  auth_alert_sent_at = NULL,
+                 expiry_warning_sent_at = NULL,
                  auto_disabled_at = NULL,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND provider = $4 AND is_enabled = TRUE`,
@@ -362,6 +363,7 @@ export async function updateConnectorSyncStatus(
              SET last_sync_at = NOW(), last_sync_status = $3,
                  last_sync_error = NULL, last_sync_error_at = NULL,
                  auth_alert_sent_at = NULL,
+                 expiry_warning_sent_at = NULL,
                  auto_disabled_at = NULL,
                  updated_at = NOW()
              WHERE tenant_id = $1 AND integration_type = $2 AND is_enabled = TRUE`,

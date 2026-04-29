@@ -5,6 +5,7 @@ import {
   connectorSyncErrorEmail,
   connectorAutoDisabledEmail,
   connectorReconnectNeededEmail,
+  connectorTokenExpiringEmail,
   connectorSyncDigestEmail,
 } from '../../email';
 import {
@@ -18,6 +19,9 @@ import {
   recordDigestSent,
 } from './ConnectorAlertPreferences';
 import { getTenantAlertEmailRecipients } from './ConnectorAlertRecipients';
+import { listConnectorTokenHealth } from './db';
+import { getRefreshableProviders } from './tokenRefresh';
+import { TOKEN_EXPIRING_HORIZON_MS } from './connectorStaleHealth';
 
 const logger = createLogger('CONNECTOR_AUTH_ALERT');
 
@@ -28,6 +32,15 @@ const DIGEST_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 /** How long after a previous alert before we'll send another one for the same integration. */
 const ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long after a previous "token expiring soon" heads-up before we'll
+ * send another one for the same integration. Slightly under 24h so that
+ * a daily cycle that drifts a few minutes earlier each day doesn't
+ * accidentally suppress the next eligible warning, but large enough that
+ * the half-hour scheduler tick can't double-page within a single day.
+ */
+const EXPIRY_WARNING_THROTTLE_HOURS = 20;
 
 /**
  * Number of days a connector must remain in an auth-error / needs_reconnect
@@ -788,6 +801,357 @@ export async function runConnectorAuthAlertCycle(): Promise<CycleResult> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Proactive token-expiring warning cycle
+// ---------------------------------------------------------------------------
+
+export interface ExpiryWarningCycleResult {
+  /** Total candidates pulled from the token health snapshot. */
+  inspected: number;
+  /** Connectors we decided to warn about (still healthy + within horizon + not throttled). */
+  warned: number;
+  /** Email recipients who actually had a message delivered. */
+  emailedRecipients: number;
+  /** Warnings short-circuited because no admin email could be resolved (or all opted out). */
+  skippedNoRecipients: number;
+  /** Warnings skipped because the connector was already in error / needs_reconnect. */
+  skippedUnhealthy: number;
+  /** Warnings skipped because the throttle slot couldn't be claimed. */
+  skippedThrottled: number;
+}
+
+interface ExpiryWarningCandidate {
+  tenantId: string;
+  tenantName: string | null;
+  integrationId: string;
+  integrationType: string;
+  provider: string;
+  name: string | null;
+  /** Epoch ms when the token expires. */
+  tokenExpiresAt: number;
+}
+
+/**
+ * Atomic claim of `expiry_warning_sent_at`. Uses the same pattern as the
+ * auth-alert slot claim: the throttle predicate lives inside the WHERE
+ * clause so two scheduler workers can't both deliver the same warning.
+ */
+async function claimExpiryWarningSlot(
+  integrationId: string,
+  tenantId: string,
+): Promise<boolean> {
+  const pool = getPlatformPool();
+  try {
+    const result = await pool.query(
+      `UPDATE integrations
+          SET expiry_warning_sent_at = NOW(), updated_at = NOW()
+        WHERE id = $1
+          AND tenant_id = $2
+          AND (
+            expiry_warning_sent_at IS NULL
+            OR expiry_warning_sent_at < NOW() - ($3 || ' hours')::interval
+          )`,
+      [integrationId, tenantId, String(EXPIRY_WARNING_THROTTLE_HOURS)],
+    );
+    return ((result as { rowCount?: number }).rowCount ?? 0) === 1;
+  } catch (err) {
+    logger.warn('Failed to claim expiry warning slot', {
+      tenantId,
+      integrationId,
+      error: String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Send proactive "your connector token expires soon" emails to tenant
+ * admins for any connector whose access token expires within
+ * `TOKEN_EXPIRING_HORIZON_MS` (~24h) and is otherwise still healthy.
+ *
+ * Throttled to one warning per `EXPIRY_WARNING_THROTTLE_HOURS` per
+ * integration (claim-then-send) so a half-hour scheduler tick can't
+ * double-page tenants for the same upcoming expiry. The slot is cleared
+ * by `updateConnectorSyncStatus(success, ...)` on the next successful
+ * sync, so a connector that recovers and later has another short-lived
+ * token gets a fresh warning instead of being silenced for 24h.
+ */
+export async function runConnectorExpiryWarningCycle(
+  options: { nowMs?: number } = {},
+): Promise<ExpiryWarningCycleResult> {
+  const nowMs = options.nowMs ?? Date.now();
+
+  let snapshots;
+  try {
+    // Strict mode: a partial snapshot would silently drop warnings for
+    // tenants whose decrypt fan-out failed this cycle. Treat that as a
+    // hard error and bail without touching the throttle ledger.
+    snapshots = await listConnectorTokenHealth(getRefreshableProviders(), {
+      onTenantError: 'throw',
+    });
+  } catch (err) {
+    logger.error('Skipping connector expiry warning cycle — snapshot load failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      inspected: 0,
+      warned: 0,
+      emailedRecipients: 0,
+      skippedNoRecipients: 0,
+      skippedUnhealthy: 0,
+      skippedThrottled: 0,
+    };
+  }
+
+  let inspected = 0;
+  let warned = 0;
+  let emailedRecipients = 0;
+  let skippedNoRecipients = 0;
+  let skippedUnhealthy = 0;
+  let skippedThrottled = 0;
+
+  const candidates: ExpiryWarningCandidate[] = [];
+  for (const row of snapshots) {
+    if (!row.isEnabled) continue;
+    if (row.tokenExpiresAt === null) continue;
+    const expiresInMs = row.tokenExpiresAt - nowMs;
+    // Within the "expiring soon" horizon AND not yet expired. Negative
+    // (already expired) values are handled by the existing reconnect path.
+    if (expiresInMs <= 0) continue;
+    if (expiresInMs > TOKEN_EXPIRING_HORIZON_MS) continue;
+    inspected += 1;
+
+    // Only warn while the connector is still healthy. If it has already
+    // flipped to needs_reconnect / error, the existing alert path is on
+    // the hook for paging the tenant — sending another email here would
+    // just add noise.
+    const status = row.lastSyncStatus;
+    const healthy = status === null || status === 'success' || status === 'ok' || status === 'healthy';
+    if (!healthy) {
+      skippedUnhealthy += 1;
+      continue;
+    }
+
+    candidates.push({
+      tenantId: row.tenantId,
+      tenantName: row.tenantName,
+      integrationId: row.integrationId,
+      integrationType: row.integrationType,
+      provider: row.provider,
+      name: row.name,
+      tokenExpiresAt: row.tokenExpiresAt,
+    });
+  }
+
+  if (candidates.length === 0) {
+    logger.debug('No connector token expiry warnings to send', { totalSnapshots: snapshots.length });
+    return {
+      inspected,
+      warned,
+      emailedRecipients,
+      skippedNoRecipients,
+      skippedUnhealthy,
+      skippedThrottled,
+    };
+  }
+
+  // Tenant-level mute respects the same set the per-event reconnect
+  // alerts use — if a tenant has muted a provider/integration globally,
+  // the proactive heads-up should respect that.
+  const tenantIds = Array.from(new Set(candidates.map((c) => c.tenantId)));
+  const muteSets = await loadMuteSetsForTenants(tenantIds);
+
+  for (const candidate of candidates) {
+    const muteSet = muteSets.get(candidate.tenantId);
+    const muted =
+      !!muteSet &&
+      (muteSet.providers.has(candidate.provider.toLowerCase()) ||
+        muteSet.integrations.has(candidate.integrationId));
+    if (muted) {
+      logger.info('Connector expiry warning suppressed by mute', {
+        tenantId: candidate.tenantId,
+        integrationId: candidate.integrationId,
+        provider: candidate.provider,
+      });
+      // Stamp the slot anyway so we don't re-evaluate every cycle for
+      // muted rows. (The slot clears on recovery via
+      // updateConnectorSyncStatus.)
+      await claimExpiryWarningSlot(candidate.integrationId, candidate.tenantId);
+      continue;
+    }
+
+    // Atomic slot claim — race-safe source of truth for the throttle.
+    const claimed = await claimExpiryWarningSlot(candidate.integrationId, candidate.tenantId);
+    if (!claimed) {
+      skippedThrottled += 1;
+      continue;
+    }
+
+    const label =
+      typeof candidate.name === 'string' && candidate.name.trim().length > 0
+        ? candidate.name.trim()
+        : providerLabel(candidate.provider);
+    const reconnectPath = `/connectors?provider=${encodeURIComponent(candidate.provider)}`;
+    const reconnectUrl = `${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
+    const expiresAt = new Date(candidate.tokenExpiresAt).toUTCString();
+    const hoursRemaining = Math.max(
+      1,
+      Math.round((candidate.tokenExpiresAt - nowMs) / (60 * 60 * 1000)),
+    );
+
+    const {
+      name: tenantName,
+      emails: rawRecipients,
+      userIds: adminUserIds,
+    } = await getTenantAdmins(candidate.tenantId);
+
+    // Fan out an in-app notification regardless of email delivery so the
+    // bell icon mirrors what's in the inbox. Same dedupe shape as the
+    // auth-error path (provider fallback for legacy rows).
+    const inAppTitle = `${label} access expires soon`;
+    const inAppMessage = `${label} expires in ~${hoursRemaining} hour${hoursRemaining === 1 ? '' : 's'}. Reconnect now to avoid downtime.`;
+    try {
+      await fanoutInAppNotification({
+        tenantId: candidate.tenantId,
+        type: 'integration',
+        title: inAppTitle,
+        message: inAppMessage,
+        metadata: {
+          link: reconnectPath,
+          integrationId: candidate.integrationId,
+          connectorType: candidate.integrationType,
+          provider: candidate.provider,
+          reason: 'expiry_warning',
+          tokenExpiresAt: candidate.tokenExpiresAt,
+        },
+        category: 'integration',
+        userIds: adminUserIds,
+      });
+    } catch (err) {
+      logger.warn('Failed to fan out expiry warning in-app notification', {
+        tenantId: candidate.tenantId,
+        integrationId: candidate.integrationId,
+        error: String(err),
+      });
+    }
+
+    // Audit row so the trail is complete — pairs with the existing
+    // `connector.auto_disabled` and reconnect alert audit lines.
+    try {
+      await writeAuditLog({
+        tenantId: candidate.tenantId,
+        actorUserId: null,
+        actorRole: 'system',
+        action: 'connector.expiry_warning_sent',
+        resourceType: 'connector',
+        resourceId: candidate.integrationId,
+        severity: 'info',
+        changes: {
+          provider: candidate.provider,
+          connectorType: candidate.integrationType,
+          tokenExpiresAt: candidate.tokenExpiresAt,
+          hoursRemaining,
+        },
+      });
+    } catch {
+      // best-effort; writeAuditLog already logs
+    }
+
+    if (rawRecipients.length === 0) {
+      logger.info('Connector expiry warning: no admin recipients', {
+        tenantId: candidate.tenantId,
+        integrationId: candidate.integrationId,
+        provider: candidate.provider,
+      });
+      warned += 1;
+      skippedNoRecipients += 1;
+      continue;
+    }
+
+    const recipients = await filterEmailRecipientsByPreference(
+      candidate.tenantId,
+      rawRecipients,
+      'integration',
+    );
+    if (recipients.length === 0) {
+      logger.info('Connector expiry warning: all admins opted out', {
+        tenantId: candidate.tenantId,
+        integrationId: candidate.integrationId,
+        provider: candidate.provider,
+        removed: rawRecipients.length,
+      });
+      warned += 1;
+      skippedNoRecipients += 1;
+      continue;
+    }
+
+    const { subject, html, text } = connectorTokenExpiringEmail({
+      tenantName,
+      providerLabel: label,
+      reconnectUrl,
+      expiresAt,
+      hoursRemaining,
+    });
+
+    let delivered = 0;
+    for (const to of recipients) {
+      try {
+        const result = await sendEmail({ to, subject, html, text });
+        if (result.success) {
+          delivered += 1;
+        } else {
+          logger.warn('Connector expiry warning email send failed', {
+            tenantId: candidate.tenantId,
+            integrationId: candidate.integrationId,
+            to,
+            error: result.error,
+          });
+        }
+      } catch (err) {
+        logger.warn('Connector expiry warning email threw', {
+          tenantId: candidate.tenantId,
+          integrationId: candidate.integrationId,
+          to,
+          error: String(err),
+        });
+      }
+    }
+
+    warned += 1;
+    emailedRecipients += delivered;
+
+    if (delivered === 0) {
+      // Slot was already claimed; surface so ops can see we held the
+      // throttle without delivering. The next cycle will retry only
+      // after the throttle window expires.
+      logger.error('Connector expiry warning slot claimed but zero emails delivered', {
+        tenantId: candidate.tenantId,
+        integrationId: candidate.integrationId,
+        provider: candidate.provider,
+        attemptedRecipients: recipients.length,
+      });
+    } else {
+      logger.info('Connector expiry warning dispatched', {
+        tenantId: candidate.tenantId,
+        integrationId: candidate.integrationId,
+        provider: candidate.provider,
+        recipients: recipients.length,
+        delivered,
+        hoursRemaining,
+      });
+    }
+  }
+
+  return {
+    inspected,
+    warned,
+    emailedRecipients,
+    skippedNoRecipients,
+    skippedUnhealthy,
+    skippedThrottled,
+  };
+}
+
 interface PendingAutoDisable {
   tenant_id: string;
   integration_id: string;
@@ -1086,6 +1450,12 @@ async function runFullCycle(): Promise<void> {
   // auth_alert_sent_at IS NULL, auto-disable gates on auto_disabled_at IS NULL
   // and last_sync_error_at <= NOW() - threshold) so order doesn't change behavior.
   await runConnectorAutoDisableCycle();
+  // Proactive expiry warnings run last so they only fire for connectors
+  // that survived the auth-error cycle (still healthy) and weren't just
+  // auto-disabled. Slot-claim throttling makes this safe to invoke every
+  // tick; the email won't actually go out more than once per
+  // EXPIRY_WARNING_THROTTLE_HOURS per integration.
+  await runConnectorExpiryWarningCycle();
 }
 
 export function startConnectorAuthAlertScheduler(intervalMs: number = CHECK_INTERVAL_MS): void {

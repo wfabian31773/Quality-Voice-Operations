@@ -258,6 +258,41 @@ export function connectorReconnectNeededEmail(params: {
   return { subject, html, text };
 }
 
+export function connectorTokenExpiringEmail(params: {
+  tenantName?: string;
+  providerLabel: string;
+  reconnectUrl: string;
+  /** Human-readable absolute timestamp for when the token expires. */
+  expiresAt: string;
+  /** Whole hours remaining until expiry, for the headline copy. */
+  hoursRemaining: number;
+}): { subject: string; html: string; text: string } {
+  const org = params.tenantName ?? 'your organization';
+  const hours = Math.max(1, Math.round(params.hoursRemaining));
+  const subject = `Heads up: ${params.providerLabel} access expires in ~${hours}h`;
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>The <strong>${params.providerLabel}</strong> integration for <strong>${org}</strong> is about to expire — its access token runs out in roughly <strong>${hours} hour${hours === 1 ? '' : 's'}</strong>. Reconnecting now keeps calls, events, and other workflows that depend on this integration syncing without interruption.</p>
+    <div class="alert-warn">
+      <p style="margin:0"><strong>Token expiring soon</strong></p>
+      <p style="margin:4px 0 0">Expires ${params.expiresAt}</p>
+      <p style="margin:8px 0 0" class="muted">No action is needed if your provider auto-refreshes — but if reauthorization is required, do it now to avoid downtime.</p>
+    </div>
+    <p>The link below jumps straight to the ${params.providerLabel} card on your Connectors page so you can reauthorize without hunting for it:</p>
+    <p><a href="${params.reconnectUrl}" class="btn">Reconnect ${params.providerLabel}</a></p>
+    <p class="muted">We'll wait at least 20 hours before sending another heads-up for this connector, and if the token actually fails before you reconnect, we'll send the regular reconnect email too.</p>
+  `);
+
+  const text =
+    `${subject}\n\n` +
+    `The ${params.providerLabel} integration for ${org} is about to expire — its access token runs out in roughly ${hours} hour${hours === 1 ? '' : 's'} (${params.expiresAt}).\n\n` +
+    `Reconnect now to avoid downtime: ${params.reconnectUrl}\n\n` +
+    `We'll wait at least 20 hours before sending another heads-up for this connector, and if the token actually fails before you reconnect, we'll send the regular reconnect email too.`;
+
+  return { subject, html, text };
+}
+
 export function connectorSyncDigestEmail(params: {
   tenantName?: string;
   connectorsUrl: string;
