@@ -490,10 +490,14 @@ export async function saveMessage(
     msg.status === 'failed' ||
     msg.status === 'undelivered';
   if (msg.direction === 'outbound' && !skipQuietHours) {
-    const { evaluateSmsQuietHours } = await import('./SmsQuietHours');
+    // Load the tenant's effective window so a tenant override (Task #990)
+    // is honored at the chokepoint too — otherwise a route handler that
+    // pre-checked against the tenant's tighter window could still slip
+    // through here against the looser federal default.
+    const { evaluateSmsQuietHoursForTenant } = await import('./SmsQuietHours');
     const at =
       msg.scheduledAt ?? msg.quietHoursEvaluatedAt ?? new Date();
-    const decision = evaluateSmsQuietHours(msg.toNumber, at);
+    const decision = await evaluateSmsQuietHoursForTenant(tenantId, msg.toNumber, at);
     if (!decision.allowed) {
       throw new SmsQuietHoursError({
         toNumber: msg.toNumber,

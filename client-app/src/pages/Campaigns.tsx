@@ -221,12 +221,30 @@ interface ComplianceReport {
    */
   smsQuietHoursEnforced?: boolean;
   smsQuietHoursWindow?: string;
+  /**
+   * Task #990: true when the tenant has tightened the SMS quiet-hours
+   * window beyond the federal default. Drives the "Tenant override"
+   * badge in the channel coverage strip.
+   */
+  smsQuietHoursTenantOverride?: boolean;
+  smsQuietHoursFederalWindow?: string;
   hasQuietHoursConfig?: boolean;
   respectsContactTimezone?: boolean;
   complianceScore: number;
   recommendations: string[];
   preflightTruncated?: boolean;
   generatedAt?: string;
+}
+
+interface SmsComplianceSettings {
+  federalDefault: { windowStart: string; windowEnd: string };
+  tenantOverride: { windowStart: string | null; windowEnd: string | null };
+  effective: {
+    windowStart: string;
+    windowEnd: string;
+    isTenantOverride: boolean;
+    display: string;
+  };
 }
 
 interface DncEntry {
@@ -902,6 +920,143 @@ function CampaignListPrimaryRate({ campaignId, campaignType }: { campaignId: str
   );
 }
 
+/**
+ * Tenant-level SMS quiet-hours override editor (Task #990).
+ *
+ * Lets admins tighten the SMS quiet-hours window beyond the federal
+ * default (08:00–21:00 local). The server clamps any value back inside
+ * the federal floor and rejects loosenings with a 400, so this editor
+ * stays simple — a pair of HH:MM inputs and a Reset button. Only shown
+ * to roles that already have campaign-launch privileges (manager+).
+ */
+function SmsQuietHoursOverrideEditor() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['sms-compliance-settings'],
+    queryFn: () => api.get<{ settings: SmsComplianceSettings }>(`/sms-inbox/compliance-settings`),
+  });
+  const [start, setStart] = useState<string>('');
+  const [end, setEnd] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data?.settings) {
+      setStart(data.settings.tenantOverride.windowStart ?? '');
+      setEnd(data.settings.tenantOverride.windowEnd ?? '');
+    }
+  }, [data]);
+
+  const save = useMutation({
+    mutationFn: (body: { windowStart: string | null; windowEnd: string | null }) =>
+      api.put<{ settings: SmsComplianceSettings }>('/sms-inbox/compliance-settings', body),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ['sms-compliance-settings'] });
+      // The campaign-compliance report includes the effective SMS window;
+      // refresh it so the channel coverage strip re-renders without a
+      // page reload.
+      await queryClient.invalidateQueries({ queryKey: ['campaign-compliance'] });
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : 'Failed to save SMS quiet hours';
+      setError(msg);
+    },
+  });
+
+  if (isLoading || !data) {
+    return (
+      <div className="mt-3 rounded-md border border-border bg-surface-hover px-3 py-2 text-xs text-text-muted">
+        Loading SMS quiet-hours settings…
+      </div>
+    );
+  }
+
+  const fed = data.settings.federalDefault;
+  const tenantHasOverride = Boolean(
+    data.settings.tenantOverride.windowStart || data.settings.tenantOverride.windowEnd,
+  );
+  const dirty =
+    (start || null) !== (data.settings.tenantOverride.windowStart ?? null)
+    || (end || null) !== (data.settings.tenantOverride.windowEnd ?? null);
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-surface-hover px-3 py-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-medium text-text-primary flex items-center gap-2">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Tenant SMS quiet-hours override
+        </p>
+        <span className="text-[10px] text-text-muted">
+          Federal default: {fed.windowStart}–{fed.windowEnd}
+        </span>
+      </div>
+      <p className="text-[11px] text-text-muted mb-2">
+        Tighten the SMS window for stricter state laws (e.g. FL HB 761) or
+        enterprise contracts. Values outside the federal window are rejected.
+        Leave a side blank to fall back to the federal default for that side.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-[11px] text-text-secondary">
+          <span className="block mb-0.5">Start (HH:MM)</span>
+          <input
+            type="time"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            min={fed.windowStart}
+            max={fed.windowEnd}
+            className="px-2 py-1 text-xs bg-surface border border-border rounded-md w-28"
+          />
+        </label>
+        <label className="text-[11px] text-text-secondary">
+          <span className="block mb-0.5">End (HH:MM)</span>
+          <input
+            type="time"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            min={fed.windowStart}
+            max={fed.windowEnd}
+            className="px-2 py-1 text-xs bg-surface border border-border rounded-md w-28"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!dirty || save.isPending}
+          onClick={() =>
+            save.mutate({
+              windowStart: start || null,
+              windowEnd: end || null,
+            })
+          }
+          className="px-2.5 py-1 text-xs font-medium rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
+        >
+          {save.isPending ? 'Saving…' : 'Save'}
+        </button>
+        {tenantHasOverride && (
+          <button
+            type="button"
+            disabled={save.isPending}
+            onClick={() => save.mutate({ windowStart: null, windowEnd: null })}
+            className="px-2.5 py-1 text-xs font-medium rounded-md bg-surface border border-border hover:bg-surface-hover disabled:opacity-50"
+          >
+            Reset to federal default
+          </button>
+        )}
+      </div>
+      {error && (
+        <p className="mt-2 text-[11px] text-danger flex items-start gap-1">
+          <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" /> {error}
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-text-muted">
+        Currently in force: <span className="font-mono">{data.settings.effective.display}</span>
+        {data.settings.effective.isTenantOverride && (
+          <span className="ml-1 text-primary">(tenant override)</span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 function CompliancePanel({
   campaignId,
   canScrub,
@@ -1008,15 +1163,29 @@ function CompliancePanel({
         <div className="rounded-md border border-border bg-surface-hover px-2.5 py-2 flex items-start gap-2">
           <ShieldCheck className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${report.smsQuietHoursEnforced === false ? 'text-warning' : 'text-success'}`} />
           <div>
-            <p className="font-medium text-text-primary">SMS quiet hours</p>
+            <p className="font-medium text-text-primary flex items-center gap-1.5">
+              SMS quiet hours
+              {report.smsQuietHoursTenantOverride && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
+                  Tenant override
+                </span>
+              )}
+            </p>
             <p className="text-text-muted">
               {report.smsQuietHoursEnforced === false
                 ? 'Not enforced'
                 : `Enforced · ${report.smsQuietHoursWindow ?? '08:00–21:00 local'}`}
             </p>
+            {report.smsQuietHoursTenantOverride && report.smsQuietHoursFederalWindow && (
+              <p className="text-text-muted text-[10px]">
+                Federal default: {report.smsQuietHoursFederalWindow}
+              </p>
+            )}
           </div>
         </div>
       </div>
+
+      {canScrub && <SmsQuietHoursOverrideEditor />}
 
       {report.dncMatches.length > 0 && (
         <div className="mt-4">

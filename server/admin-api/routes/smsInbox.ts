@@ -8,8 +8,10 @@ import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import * as SmsService from '../../../platform/sms/SmsConversationService';
 import {
-  evaluateSmsQuietHours,
-  nextSmsWindowStart,
+  evaluateSmsQuietHoursForTenant,
+  formatSmsQuietHoursWindow,
+  getEffectiveSmsQuietHoursWindow,
+  nextSmsWindowStartForTenant,
   SMS_QUIET_HOURS_WINDOW_END,
   SMS_QUIET_HOURS_WINDOW_START,
 } from '../../../platform/sms/SmsQuietHours';
@@ -258,7 +260,8 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
     // a `scheduledAt` that falls outside the recipient's local window so the
     // problem surfaces in the UI rather than silently deferring.
     const quietHoursAt = schedDate ?? new Date();
-    const quietHours = evaluateSmsQuietHours(conv.remoteNumber, quietHoursAt);
+    const effectiveWindow = await getEffectiveSmsQuietHoursWindow(tenantId);
+    const quietHours = await evaluateSmsQuietHoursForTenant(tenantId, conv.remoteNumber, quietHoursAt);
     if (!quietHours.allowed) {
       logger.info('SMS blocked by TCPA quiet hours', {
         tenantId,
@@ -267,6 +270,9 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         timezone: quietHours.timezone,
         localTime: quietHours.localTimeIso,
         scheduled: Boolean(schedDate),
+        windowStart: effectiveWindow.start,
+        windowEnd: effectiveWindow.end,
+        tenantOverride: effectiveWindow.isTenantOverride,
       });
       return res.status(403).json({
         error: 'Outside SMS quiet hours',
@@ -274,10 +280,11 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         details: {
           recipientTimezone: quietHours.timezone,
           recipientLocalTime: quietHours.localTimeIso,
-          windowStart: SMS_QUIET_HOURS_WINDOW_START,
-          windowEnd: SMS_QUIET_HOURS_WINDOW_END,
+          windowStart: effectiveWindow.start,
+          windowEnd: effectiveWindow.end,
+          tenantOverride: effectiveWindow.isTenantOverride,
         },
-        message: `TCPA: SMS to this recipient can only be sent between ${SMS_QUIET_HOURS_WINDOW_START} and ${SMS_QUIET_HOURS_WINDOW_END} in their local time (${quietHours.timezone}).`,
+        message: `${effectiveWindow.isTenantOverride ? 'Tenant SMS quiet-hours override' : 'TCPA'}: SMS to this recipient can only be sent between ${effectiveWindow.start} and ${effectiveWindow.end} in their local time (${quietHours.timezone}).`,
       });
     }
 
@@ -343,14 +350,16 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         timezone: e.recipientTimezone,
         localTime: e.recipientLocalTime,
       });
+      const effectiveWindow = await getEffectiveSmsQuietHoursWindow(tenantId);
       return res.status(403).json({
         error: 'Outside SMS quiet hours',
         reason: 'sms_quiet_hours',
         details: {
           recipientTimezone: e.recipientTimezone,
           recipientLocalTime: e.recipientLocalTime,
-          windowStart: SMS_QUIET_HOURS_WINDOW_START,
-          windowEnd: SMS_QUIET_HOURS_WINDOW_END,
+          windowStart: effectiveWindow.start,
+          windowEnd: effectiveWindow.end,
+          tenantOverride: effectiveWindow.isTenantOverride,
         },
       });
     }
@@ -722,6 +731,201 @@ const aiDraftHandler: RequestHandler = async (req, res) => {
   }
 };
 
+/**
+ * Tenant-tunable SMS quiet-hours window (Task #990).
+ *
+ * Returns the effective window currently being applied to outbound SMS
+ * (post federal-floor clamp) plus the federal default and the raw tenant
+ * override so the admin UI can show "Federal default" vs "Tenant override"
+ * without doing the clamp itself.
+ */
+const getSmsComplianceSettingsHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const pool = getPlatformPool();
+    let rawStart: string | null = null;
+    let rawEnd: string | null = null;
+    try {
+      const { rows } = await pool.query(
+        `SELECT to_char(sms_quiet_hours_start, 'HH24:MI') AS s,
+                to_char(sms_quiet_hours_end,   'HH24:MI') AS e
+           FROM tenants WHERE id = $1 LIMIT 1`,
+        [tenantId],
+      );
+      if (rows.length > 0) {
+        rawStart = (rows[0].s as string | null) ?? null;
+        rawEnd = (rows[0].e as string | null) ?? null;
+      }
+    } catch (err) {
+      logger.warn('Failed to read tenant SMS quiet-hours raw override', { tenantId, error: String(err) });
+    }
+    const effective = await getEffectiveSmsQuietHoursWindow(tenantId);
+    return res.json({
+      settings: {
+        federalDefault: {
+          windowStart: SMS_QUIET_HOURS_WINDOW_START,
+          windowEnd: SMS_QUIET_HOURS_WINDOW_END,
+        },
+        tenantOverride: {
+          // Raw, un-clamped values as the admin saved them. `null` on
+          // either side means "use the federal default for this side".
+          windowStart: rawStart,
+          windowEnd: rawEnd,
+        },
+        effective: {
+          windowStart: effective.start,
+          windowEnd: effective.end,
+          isTenantOverride: effective.isTenantOverride,
+          display: formatSmsQuietHoursWindow(effective),
+        },
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to load SMS compliance settings', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to load SMS compliance settings' });
+  }
+};
+
+const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+function parseHHMM(value: string): number {
+  const [h, m] = value.split(':').map(Number);
+  return h * 60 + m;
+}
+
+const updateSmsComplianceSettingsHandler: RequestHandler = async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const body = (req.body ?? {}) as { windowStart?: string | null; windowEnd?: string | null };
+
+  // `null` on either side clears that side back to the federal default.
+  // `undefined` leaves it unchanged. Anything else must be HH:MM and must
+  // sit inside (or equal to) the federal floor — we reject loosenings at
+  // the API edge so the caller sees a clear 400, not a silent clamp.
+  const fStart = parseHHMM(SMS_QUIET_HOURS_WINDOW_START);
+  const fEnd = parseHHMM(SMS_QUIET_HOURS_WINDOW_END);
+
+  function validate(side: 'windowStart' | 'windowEnd', value: string | null | undefined):
+    | { kind: 'unchanged' }
+    | { kind: 'clear' }
+    | { kind: 'set'; value: string }
+    | { kind: 'error'; message: string } {
+    if (value === undefined) return { kind: 'unchanged' };
+    if (value === null) return { kind: 'clear' };
+    if (typeof value !== 'string' || !HHMM_RE.test(value)) {
+      return { kind: 'error', message: `${side} must be a HH:MM string (24-hour) or null` };
+    }
+    const v = parseHHMM(value);
+    if (v < fStart || v > fEnd) {
+      return {
+        kind: 'error',
+        message: `${side} must sit inside the federal default (${SMS_QUIET_HOURS_WINDOW_START}–${SMS_QUIET_HOURS_WINDOW_END}); ${value} would weaken the platform protection`,
+      };
+    }
+    return { kind: 'set', value };
+  }
+
+  const startResult = validate('windowStart', body.windowStart);
+  const endResult = validate('windowEnd', body.windowEnd);
+  if (startResult.kind === 'error') return res.status(400).json({ error: startResult.message });
+  if (endResult.kind === 'error') return res.status(400).json({ error: endResult.message });
+  if (startResult.kind === 'unchanged' && endResult.kind === 'unchanged') {
+    return res.status(400).json({ error: 'Provide windowStart and/or windowEnd (use null to clear back to the federal default)' });
+  }
+
+  // Cross-side validation: if the resulting pair would be inverted (start
+  // >= end), reject. Need to merge the requested change against the
+  // currently-stored row so a one-sided update can't invert with the
+  // existing value.
+  const pool = getPlatformPool();
+  const { rows: existingRows } = await pool.query(
+    `SELECT to_char(sms_quiet_hours_start, 'HH24:MI') AS s,
+            to_char(sms_quiet_hours_end,   'HH24:MI') AS e
+       FROM tenants WHERE id = $1 LIMIT 1`,
+    [tenantId],
+  );
+  const existing = existingRows[0] ?? {};
+  const nextStart =
+    startResult.kind === 'set' ? startResult.value
+    : startResult.kind === 'clear' ? null
+    : ((existing.s as string | null) ?? null);
+  const nextEnd =
+    endResult.kind === 'set' ? endResult.value
+    : endResult.kind === 'clear' ? null
+    : ((existing.e as string | null) ?? null);
+  if (nextStart && nextEnd && parseHHMM(nextStart) >= parseHHMM(nextEnd)) {
+    return res.status(400).json({
+      error: `windowStart (${nextStart}) must be earlier than windowEnd (${nextEnd})`,
+    });
+  }
+
+  const updates: string[] = [];
+  const values: unknown[] = [tenantId];
+  if (startResult.kind === 'set') {
+    values.push(startResult.value);
+    updates.push(`sms_quiet_hours_start = $${values.length}::time`);
+  } else if (startResult.kind === 'clear') {
+    updates.push(`sms_quiet_hours_start = NULL`);
+  }
+  if (endResult.kind === 'set') {
+    values.push(endResult.value);
+    updates.push(`sms_quiet_hours_end = $${values.length}::time`);
+  } else if (endResult.kind === 'clear') {
+    updates.push(`sms_quiet_hours_end = NULL`);
+  }
+
+  try {
+    await pool.query(
+      `UPDATE tenants SET ${updates.join(', ')} WHERE id = $1`,
+      values,
+    );
+  } catch (err) {
+    logger.error('Failed to update SMS compliance settings', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to update SMS compliance settings' });
+  }
+
+  // Drop the cached effective window so a subsequent send picks up the
+  // new value immediately rather than waiting out the 30s TTL.
+  const { clearSmsQuietHoursCache } = await import('../../../platform/sms/SmsQuietHours');
+  clearSmsQuietHoursCache(tenantId);
+
+  await writeAuditLog({
+    tenantId,
+    actorUserId: userId,
+    actorRole: req.user!.role,
+    action: 'sms_compliance.window_updated',
+    resourceType: 'tenant_settings',
+    resourceId: tenantId,
+    afterState: { windowStart: nextStart, windowEnd: nextEnd },
+    ipAddress: extractIp(req),
+    userAgent: req.headers['user-agent'],
+  });
+
+  const effective = await getEffectiveSmsQuietHoursWindow(tenantId);
+  return res.json({
+    settings: {
+      federalDefault: {
+        windowStart: SMS_QUIET_HOURS_WINDOW_START,
+        windowEnd: SMS_QUIET_HOURS_WINDOW_END,
+      },
+      tenantOverride: { windowStart: nextStart, windowEnd: nextEnd },
+      effective: {
+        windowStart: effective.start,
+        windowEnd: effective.end,
+        isTenantOverride: effective.isTenantOverride,
+        display: formatSmsQuietHoursWindow(effective),
+      },
+    },
+  });
+};
+
+router.get('/sms-inbox/compliance-settings', requireAuth, getSmsComplianceSettingsHandler);
+router.put(
+  '/sms-inbox/compliance-settings',
+  requireAuth,
+  requireRole('manager'),
+  updateSmsComplianceSettingsHandler,
+);
+
 router.get('/sms-inbox/conversations', requireAuth, listPhoneLinesHandler);
 router.get('/sms-inbox/threads', requireAuth, listConversationsHandler);
 router.get('/sms-inbox/threads/:id', requireAuth, getConversationHandler);
@@ -789,9 +993,9 @@ async function processScheduledMessages(): Promise<void> {
         // a tenant could enqueue a scheduled message via another path that
         // skips the route. Defer the message to the next 8am-local instead
         // of dropping it so the operator's intent is preserved.
-        const quietHours = evaluateSmsQuietHours(msg.toNumber);
+        const quietHours = await evaluateSmsQuietHoursForTenant(msg.tenantId, msg.toNumber);
         if (!quietHours.allowed) {
-          const deferUntil = nextSmsWindowStart(msg.toNumber);
+          const deferUntil = await nextSmsWindowStartForTenant(msg.tenantId, msg.toNumber);
           const pool = getPlatformPool();
           await pool.query(
             `UPDATE sms_messages SET status = 'scheduled', scheduled_at = $1 WHERE id = $2 AND tenant_id = $3`,

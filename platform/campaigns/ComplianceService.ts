@@ -12,6 +12,8 @@ import {
 import {
   SMS_QUIET_HOURS_WINDOW_END,
   SMS_QUIET_HOURS_WINDOW_START,
+  formatSmsQuietHoursWindow,
+  getEffectiveSmsQuietHoursWindow,
 } from '../sms/SmsQuietHours';
 import type { Campaign } from './types';
 
@@ -91,6 +93,15 @@ export interface ComplianceCheck {
   smsQuietHoursEnforced: boolean;
   /** Window the SMS quiet-hours enforcement uses, e.g. "08:00–21:00 local". */
   smsQuietHoursWindow: string;
+  /**
+   * True when the tenant has tightened the SMS quiet-hours window beyond
+   * the federal default (Task #990). Surfaced in the compliance panel so
+   * operators see at a glance that their tenant is on a stricter window
+   * than the platform floor.
+   */
+  smsQuietHoursTenantOverride: boolean;
+  /** Federal-default SMS window (post-clamp lower bound). */
+  smsQuietHoursFederalWindow: string;
   complianceScore: number;
   recommendations: string[];
   preflightTruncated: boolean;
@@ -297,10 +308,23 @@ export async function checkCampaignCompliance(
     // doesn't yet have a window configured, the operator will still see a
     // recommendation above to set one up. Confirming SMS is already covered
     // helps them understand they only need to fix the voice gap, not both.
-    const smsQuietHoursWindow = `${SMS_QUIET_HOURS_WINDOW_START}–${SMS_QUIET_HOURS_WINDOW_END} local`;
-    recommendations.push(
-      `SMS quiet hours are enforced platform-wide (${smsQuietHoursWindow}); outbound texts outside that window are deferred or rejected automatically.`,
-    );
+    //
+    // Task #990: surface the tenant override (if any) so the panel shows
+    // the actual window in force rather than the federal default. The
+    // helper handles the federal-floor clamp internally — `effectiveWindow`
+    // is always inside the federal window.
+    const effectiveSmsWindow = await getEffectiveSmsQuietHoursWindow(tenantId);
+    const smsQuietHoursWindow = formatSmsQuietHoursWindow(effectiveSmsWindow);
+    const smsQuietHoursFederalWindow = `${SMS_QUIET_HOURS_WINDOW_START}–${SMS_QUIET_HOURS_WINDOW_END} local`;
+    if (effectiveSmsWindow.isTenantOverride) {
+      recommendations.push(
+        `SMS quiet hours are tightened by your tenant override to ${smsQuietHoursWindow} (federal default ${smsQuietHoursFederalWindow}); outbound texts outside that window are deferred or rejected automatically.`,
+      );
+    } else {
+      recommendations.push(
+        `SMS quiet hours are enforced platform-wide (${smsQuietHoursWindow}); outbound texts outside that window are deferred or rejected automatically.`,
+      );
+    }
 
     // Refuse to launch if (a) any DNC match was found, (b) the campaign is
     // empty, or (c) we couldn't fully verify the contact list. This is the
@@ -321,6 +345,8 @@ export async function checkCampaignCompliance(
       respectsContactTimezone,
       smsQuietHoursEnforced: true,
       smsQuietHoursWindow,
+      smsQuietHoursTenantOverride: effectiveSmsWindow.isTenantOverride,
+      smsQuietHoursFederalWindow,
       complianceScore: clampScore(score),
       recommendations,
       preflightTruncated,
