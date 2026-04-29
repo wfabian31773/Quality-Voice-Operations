@@ -57,6 +57,9 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'ADMIN_PASSWORD', required: 'development', purpose: 'Seed admin password (used by seed-admin script)' },
   { name: 'ADMIN_INTERNAL_TOKEN', required: 'development', purpose: 'Internal bearer token for inter-service calls' },
   { name: 'OPS_SLACK_WEBHOOK_URL', required: 'development', purpose: 'Incoming-webhook URL for the ops Slack channel (used by docs-feedback alerts; falls back to SLACK_WEBHOOK_URL / SLACK_WEBHOOK)' },
+  { name: 'CALENDLY_WEBHOOK_SECRET', required: 'development', purpose: 'HMAC-SHA256 secret for verifying Calendly /book-demo/calendar-webhook requests (required only when VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly; route fails closed without it in production)' },
+  { name: 'CALENDLY_WEBHOOK_TOLERANCE_SECONDS', required: 'development', purpose: 'Optional override (default 300) for Calendly signature timestamp replay window' },
+  { name: 'VITE_BOOK_DEMO_SCHEDULER_PROVIDER', required: 'development', purpose: 'Scheduler provider for the /book-demo embed: "cal.com" (default) or "calendly"' },
 ];
 
 export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
@@ -112,6 +115,17 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   if (isProd && process.env.PLATFORM_DB_POOL_URL && !process.env.PLATFORM_DB_POOL_URL.includes('6543')) {
     warnings.push('PLATFORM_DB_POOL_URL may not be using transaction pooler port 6543');
+  }
+
+  if (
+    isProd &&
+    process.env.VITE_BOOK_DEMO_SCHEDULER_PROVIDER === 'calendly' &&
+    !process.env.CALENDLY_WEBHOOK_SECRET
+  ) {
+    console.log(
+      `  FAIL  CALENDLY_WEBHOOK_SECRET — required when VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly (route fails closed in production)`,
+    );
+    missing.push('CALENDLY_WEBHOOK_SECRET');
   }
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {

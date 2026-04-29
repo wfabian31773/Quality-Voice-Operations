@@ -59,6 +59,9 @@
 | `ADMIN_INTERNAL_TOKEN` | none | Internal bearer token for inter-service calls |
 | `VITE_BOOK_DEMO_SCHEDULER_PROVIDER` | `cal.com` | Set to `calendly` to switch the `/book-demo` embed and prefill semantics. Must be set at build time. |
 | `CALCOM_WEBHOOK_ALLOW_UNSIGNED` | unset | **Dev/staging only.** Set to `1` to accept unsigned `/book-demo/calendar-webhook` requests when `CALCOM_WEBHOOK_SECRET` is not configured. Has no effect when `NODE_ENV=production` or `APP_ENV=production` — production always fails closed. |
+| `CALENDLY_WEBHOOK_SECRET` | unset | **Required when `VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly`.** HMAC-SHA256 signing key used to verify the `Calendly-Webhook-Signature` header on `/book-demo/calendar-webhook`. Same fail-closed behaviour as `CALCOM_WEBHOOK_SECRET`. See §5. |
+| `CALENDLY_WEBHOOK_TOLERANCE_SECONDS` | `300` | Replay-protection window for Calendly signatures. Signatures with a `t=` timestamp outside this many seconds (past or future) are rejected. Bump only if you have unavoidable clock skew. |
+| `CALENDLY_WEBHOOK_ALLOW_UNSIGNED` | unset | **Dev/staging only.** Set to `1` to accept unsigned Calendly webhook requests when `CALENDLY_WEBHOOK_SECRET` is not configured. Production always fails closed regardless. |
 | `SALES_EMAIL` | none | Legacy fallback for `SALES_NOTIFICATION_EMAIL`. Prefer the latter. |
 | `OPS_SLACK_WEBHOOK_URL` | none | Default Slack incoming-webhook URL used for sales-alert messages when the in-app Slack channel is enabled and no per-instance webhook override has been configured in **Admin → Sales Inbox → Alert settings**. |
 | `PLATFORM_ADMIN_BASE_URL` | falls back to `ADMIN_PUBLIC_URL` → `APP_PUBLIC_URL` → `ADMIN_API_BASE_URL` | Public origin used to build deep links inside sales-alert emails / Slack messages (e.g. `https://app.example.com/admin/sales-inbox#lead-42`). Set this to the URL admins use to reach the SPA, not the raw API origin, when those differ. |
@@ -256,26 +259,68 @@ The public `/book-demo` page embeds an external scheduler (Cal.com by default, o
 
 #### Step 2 — Calendly alternative (optional)
 
-If you switch to Calendly:
+The same `/book-demo/calendar-webhook` endpoint accepts Calendly's signed payloads — it picks the right verifier by inspecting the request headers, so the public webhook URL is identical regardless of provider.
 
-1. Set `VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly` and rebuild the client bundle.
-2. Set `VITE_BOOK_DEMO_SCHEDULER_URL` to the public Calendly event link.
-3. Calendly does not currently push into `/book-demo/calendar-webhook` (the verifier is HMAC-SHA256 keyed for Cal.com). Lead capture still works via the on-page form; bookings will only show up in your Calendly dashboard until a Calendly verifier is added.
+**Required env vars** for Calendly (in addition to the embed URL above):
+
+- `VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly` — switches the embed semantics. Must be set at **`vite build` time** (the value is inlined into the client bundle); rebuild and redeploy after changing it.
+- `VITE_BOOK_DEMO_SCHEDULER_URL` — the public Calendly event link (e.g. `https://calendly.com/qvo/30min`).
+- `CALENDLY_WEBHOOK_SECRET` — HMAC-SHA256 signing key. **Production rejects every request that lacks a valid `Calendly-Webhook-Signature` header**; missing secret returns HTTP 500.
+- `CALENDLY_WEBHOOK_TOLERANCE_SECONDS` *(optional, default 300)* — replay-protection window in seconds. Signatures older than this are rejected.
+
+> Calendly's signature header is `Calendly-Webhook-Signature: t=<unix_seconds>,v1=<hex_hmac>`. Our verifier computes `HMAC_SHA256(secret, "<t>.<raw_body>")` and rejects timestamps outside the tolerance window. There is a `CALENDLY_WEBHOOK_ALLOW_UNSIGNED=1` dev escape hatch that mirrors the Cal.com one — it is ignored in production.
+
+##### Create the Calendly webhook subscription
+
+Calendly does not have a "click to add a webhook" page in the dashboard — you create the subscription with their API. With your Calendly **personal access token** (Settings → Integrations → API & webhooks → Generate new token) and your **organization URI** (`GET https://api.calendly.com/users/me`):
+
+```bash
+CALENDLY_TOKEN=...                # personal access token
+CALENDLY_ORG_URI=https://api.calendly.com/organizations/AAAAAA  # from /users/me
+SECRET=$(openssl rand -hex 32)    # set this as CALENDLY_WEBHOOK_SECRET
+ADMIN_API_BASE_URL=https://admin.example.com
+
+curl -X POST https://api.calendly.com/webhook_subscriptions \
+  -H "Authorization: Bearer $CALENDLY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"url\": \"$ADMIN_API_BASE_URL/book-demo/calendar-webhook\",
+    \"events\": [\"invitee.created\", \"invitee.canceled\"],
+    \"organization\": \"$CALENDLY_ORG_URI\",
+    \"scope\": \"organization\",
+    \"signing_key\": \"$SECRET\"
+  }"
+```
+
+Set `CALENDLY_WEBHOOK_SECRET=$SECRET` in the Admin API environment and restart so the verifier picks it up.
+
+##### Calendly event mapping
+
+| Calendly event | Our `eventType` | Notes |
+|---|---|---|
+| `invitee.created` | `created` | Standard new booking. |
+| `invitee.created` (after a reschedule) | `created` | Calendly fires `invitee.canceled` for the old slot, then `invitee.created` for the new slot — both flow through the same lead row. |
+| `invitee.canceled` | `cancelled` | Triggers the "Demo cancelled" sales-inbox alert. |
+
+The lead is resolved by the `utm_content=lead-<id>` query string that `client-app/src/pages/public/BookDemo.tsx` already appends to the Calendly embed URL. We fall back to invitee email lookup if the tracking parameter is missing.
 
 #### Step 3 — Verify end to end
 
 1. Visit `https://{ADMIN_API_BASE_URL}/book-demo`, fill the form, and submit. The page should land on the embedded scheduler. Confirm the sales inbox receives the "new demo lead" email.
-2. Pick a slot in the embed. Cal.com fires `BOOKING_CREATED`; check the Admin API logs for `Cal.com webhook processed` (rejections show up as `Cal.com webhook rejected`) and confirm a "booking created" email arrives.
-3. From the Cal.com dashboard, reschedule and cancel the test booking — the corresponding lifecycle emails should follow.
-4. If Cal.com shows `401 Invalid signature`, double-check that the secret in Cal.com matches the value in `CALCOM_WEBHOOK_SECRET` exactly (no trailing whitespace).
+2. Pick a slot in the embed. The provider fires its booking-created event; check the Admin API logs for `Cal.com webhook processed` or `calendly webhook processed` (rejections show up as `… webhook rejected`) and confirm a "booking created" email arrives.
+3. Reschedule and cancel the test booking from the provider dashboard — the corresponding lifecycle emails should follow.
+4. If you see `401 Invalid signature`, double-check that the secret in the provider's webhook config matches `CALCOM_WEBHOOK_SECRET` / `CALENDLY_WEBHOOK_SECRET` exactly (no trailing whitespace).
 5. If you see `500 Webhook secret not configured`, the env var is missing or empty — set it and restart the Admin API.
+6. If you see `401 Signature timestamp out of tolerance` from Calendly, your server clock is skewed by more than 5 minutes — fix NTP or bump `CALENDLY_WEBHOOK_TOLERANCE_SECONDS`.
 
 #### Local / staging testing
 
-For local development without a real Cal.com webhook, you can either:
+For local development without a real provider webhook, you can either:
 
-- Use Cal.com's webhook tester pointed at an `ngrok` tunnel of the Admin API, **or**
-- Set `CALCOM_WEBHOOK_ALLOW_UNSIGNED=1` (only honoured when both `NODE_ENV` and `APP_ENV` are non-production) and POST a hand-crafted JSON envelope. **Never set this in production** — the verifier deliberately ignores it there.
+- Use the provider's webhook tester pointed at an `ngrok` tunnel of the Admin API, **or**
+- Set `CALCOM_WEBHOOK_ALLOW_UNSIGNED=1` or `CALENDLY_WEBHOOK_ALLOW_UNSIGNED=1` (each only honoured when both `NODE_ENV` and `APP_ENV` are non-production) and POST a hand-crafted JSON envelope. **Never set these in production** — the verifier deliberately ignores them there.
+
+> **Calendly local testing gotcha.** Provider routing on `/book-demo/calendar-webhook` keys off the request headers: a request only enters the Calendly handler when a `Calendly-Webhook-Signature` header is present (otherwise the request falls through to the Cal.com handler, which will reject it). So even with `CALENDLY_WEBHOOK_ALLOW_UNSIGNED=1`, your hand-crafted curl must still include a placeholder header, e.g. `-H 'Calendly-Webhook-Signature: t=1,v1=ignored'`. The contents are not validated when the unsigned dev opt-in is on, but the header **must be present** for the request to be routed to the Calendly path.
 
 ## 6. Post-Deployment Verification
 
@@ -297,6 +342,7 @@ For local development without a real Cal.com webhook, you can either:
 - [ ] All Twilio webhook URLs use HTTPS
 - [ ] Stripe webhook signing secret is configured and verified
 - [ ] `CALCOM_WEBHOOK_SECRET` is set (and matches the secret pasted into the Cal.com webhook config) — verifier fails closed in production. Confirmed by `scripts/validate-env.ts` / Admin API startup (no manual review needed).
+- [ ] If `VITE_BOOK_DEMO_SCHEDULER_PROVIDER=calendly`, `CALENDLY_WEBHOOK_SECRET` is set and matches the `signing_key` registered with Calendly's `/webhook_subscriptions` API — verifier fails closed in production.
 - [ ] `SALES_NOTIFICATION_EMAIL` points at a monitored sales inbox so demo leads and bookings are not silently dropped. Confirmed by `scripts/validate-env.ts` / Admin API startup.
 - [ ] `VITE_BOOK_DEMO_SCHEDULER_URL` was set **before** running the production `vite build` (re-run the build if you change it later). Confirmed by `scripts/validate-env.ts` — run it as part of the pre-build step.
 
