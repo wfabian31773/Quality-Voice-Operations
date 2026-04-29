@@ -26,6 +26,9 @@ import {
   AGENT_LANGUAGES,
   DEFAULT_AGENT_LANGUAGE,
   getAgentLanguageLabel,
+  getDefaultVoiceForLanguage,
+  getRecommendedVoicesForLanguage,
+  isVoiceRecommendedForLanguage,
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import {
@@ -47,6 +50,7 @@ import {
   X, ChevronDown, ChevronRight, Mic, Settings2, Zap,
   RotateCcw, Eye, Trash2, Lightbulb, Check, XCircle, TrendingUp,
   Keyboard, Search, MoreHorizontal, BookmarkPlus, Users,
+  AlertTriangle,
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import VoicePicker from '../components/VoicePicker';
@@ -71,6 +75,7 @@ interface Agent {
   tools: Record<string, unknown>[];
   metadata: Record<string, unknown> | null;
   created_at: string;
+  execution_mode?: string;
 }
 
 interface PhoneNumber {
@@ -2130,6 +2135,69 @@ function AgentBuilderInner() {
     },
   });
 
+  // One-click fix when the configured voice isn't recommended for the agent's
+  // language. Mirrors the bulk-fix on the Agents list and the Quick Settings
+  // modal's `prefillRecommendedVoice` flow: pick the recommended voice for the
+  // current language and persist it. We patch both the agent record (so the
+  // Agents list reflects it immediately) and the workflow_definition.settings
+  // (so the realtime workflow runtime picks it up). Any pending node/edge
+  // changes are saved alongside, matching the regular Save button.
+  const useRecommendedVoiceMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error('Missing agent id');
+      const recommendedVoice = getDefaultVoiceForLanguage(agentSettings.language);
+      const workflowDef = {
+        nodes: nodesRef.current.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+        edges: edgesRef.current.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, label: e.label })),
+        settings: {
+          voice: recommendedVoice,
+          model: agentSettings.model,
+          temperature: agentSettings.temperature,
+          system_prompt: agentSettings.system_prompt,
+          welcome_greeting: agentSettings.welcome_greeting,
+          name: agentSettings.name,
+          language: agentSettings.language,
+          tone: agentSettings.tone,
+          speakingRate: agentSettings.speakingRate,
+        },
+      };
+      const payload: Record<string, unknown> = { workflow_definition: workflowDef };
+      payload.workflow_id = agentSettings.workflow_id || null;
+      await api.patch(`/agents/${id}/workflow`, payload);
+      await api.patch(`/agents/${id}`, { voice: recommendedVoice });
+      return recommendedVoice;
+    },
+    onSuccess: (recommendedVoice) => {
+      setAgentSettings((prev) => ({ ...prev, voice: recommendedVoice }));
+      setHasChanges(false);
+      queryClient.invalidateQueries({ queryKey: ['agent', id] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      setSaveMessage({ text: makeBuilderT(agentSettings.language)('saved'), tone: 'success' });
+      setTimeout(() => setSaveMessage(null), 2000);
+    },
+    onError: (err) => {
+      setSaveMessage({
+        text: makeBuilderT(agentSettings.language)('saveError', { message: (err as Error).message }),
+        tone: 'error',
+      });
+      setTimeout(() => setSaveMessage(null), 3000);
+    },
+  });
+
+  // Federated agents are managed by an upstream system — their voice is set
+  // remotely, so the builder shouldn't prompt the operator to "fix" it (this
+  // matches the Agents-list mismatch logic in `Agents.tsx`).
+  const isFederated = agentData?.agent?.execution_mode === 'federated';
+  const voiceMismatch = Boolean(
+    id &&
+      id !== 'new' &&
+      !isFederated &&
+      agentSettings.voice &&
+      !isVoiceRecommendedForLanguage(agentSettings.voice, agentSettings.language),
+  );
+  const recommendedVoiceForLang = getDefaultVoiceForLanguage(agentSettings.language);
+  const recommendedVoicesForLang = getRecommendedVoicesForLanguage(agentSettings.language);
+
   const handleSettingChange = useCallback((key: string, value: string | number) => {
     setAgentSettings((prev) => {
       const next = { ...prev, [key]: value };
@@ -2949,6 +3017,34 @@ function AgentBuilderInner() {
           }
         />
       </div>
+
+      {voiceMismatch && (
+        <div
+          role="status"
+          className="flex flex-col gap-2 border-b border-amber-300 bg-amber-50 px-4 py-2 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800/50 dark:bg-amber-900/20"
+        >
+          <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <p className="leading-snug">
+              {t('voiceMismatchWarning', {
+                voice: agentSettings.voice,
+                language: getAgentLanguageLabel(agentSettings.language),
+                recommended: recommendedVoicesForLang.slice(0, 3).join(', '),
+              })}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => useRecommendedVoiceMutation.mutate()}
+            disabled={useRecommendedVoiceMutation.isPending}
+            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            {useRecommendedVoiceMutation.isPending
+              ? t('saving')
+              : t('voiceSwitchToRecommended', { voice: recommendedVoiceForLang })}
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         <NodeLibrarySidebar onDragStart={() => {}} t={t} />
