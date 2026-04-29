@@ -130,10 +130,76 @@ export function resolveSupportedLanguage(detected: string | undefined | null): S
   return DEFAULT_LANGUAGE;
 }
 
+/**
+ * URL-prefix locale routing
+ * --------------------------
+ * The router treats `/<locale>/...` as a localized variant of the same route.
+ * `getLocaleFromPath` returns the locale code when the first path segment is a
+ * supported language (case-insensitive so `/pt-br/...` resolves the same as
+ * `/pt-BR/...`); otherwise `null`.
+ *
+ * The default locale (`en`) is intentionally served from un-prefixed URLs so
+ * existing inbound links and SEO continue to work — `/en/pricing` is still
+ * accepted as an alias and resolves to the English bundle.
+ */
+export function getLocaleFromPath(pathname: string): SupportedLanguageCode | null {
+  if (!pathname) return null;
+  const match = pathname.match(/^\/([A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?)(?=\/|$)/);
+  if (!match) return null;
+  const candidate = match[1];
+  const exact = (SUPPORTED_CODES as readonly string[]).find((c) => c === candidate);
+  if (exact) return exact as SupportedLanguageCode;
+  const ci = SUPPORTED_CODES.find((c) => c.toLowerCase() === candidate.toLowerCase());
+  return ci ?? null;
+}
+
+/** Strip a leading `/<locale>` prefix from the path. Returns `/` if only the prefix was present. */
+export function stripLocalePrefix(pathname: string): string {
+  const locale = getLocaleFromPath(pathname);
+  if (!locale) return pathname || '/';
+  // The matched segment in the URL may differ in casing from the canonical
+  // SUPPORTED_LANGUAGES entry (e.g. `/pt-br/...`), so strip by length, not by
+  // string concat with the canonical code.
+  const m = pathname.match(/^\/[A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?/);
+  const stripped = m ? pathname.slice(m[0].length) : pathname;
+  return stripped || '/';
+}
+
+/**
+ * Build a path string with the appropriate locale prefix.
+ *  - `en` (default): returned un-prefixed, e.g. `/pricing`.
+ *  - other locales: prefixed, e.g. `/pt-BR/pricing`.
+ *
+ * Always returns a leading-slash absolute path. The input may or may not start
+ * with `/` and may already include a different locale prefix, which is stripped
+ * first so this function is idempotent.
+ */
+export function withLocalePrefix(locale: SupportedLanguageCode, path: string): string {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  const withoutPrefix = stripLocalePrefix(normalized);
+  if (locale === DEFAULT_LANGUAGE) return withoutPrefix;
+  if (withoutPrefix === '/') return `/${locale}`;
+  return `/${locale}${withoutPrefix}`;
+}
+
 if (!i18n.isInitialized) {
+  // Custom detectors so the URL prefix and ?lang= query string take priority
+  // over localStorage. This is what makes `/pt-BR/pricing` and `/?lang=fr`
+  // shareable: a recipient lands in the sender's language regardless of their
+  // own browser/localStorage preference.
+  const detector = new LanguageDetector();
+  detector.addDetector({
+    name: 'urlPath',
+    lookup() {
+      if (typeof window === 'undefined') return undefined;
+      return getLocaleFromPath(window.location.pathname) ?? undefined;
+    },
+    cacheUserLanguage() {},
+  });
+
   i18n
     .use(dynamicImportBackend)
-    .use(LanguageDetector)
+    .use(detector)
     .use(initReactI18next)
     .init({
       resources: eagerResources,
@@ -145,8 +211,14 @@ if (!i18n.isInitialized) {
       load: 'currentOnly',
       interpolation: { escapeValue: false },
       detection: {
-        order: ['localStorage', 'navigator', 'htmlTag'],
+        // Order matters: URL prefix wins, then ?lang=, then prior manual
+        // choice, then browser language, then the <html lang> attribute.
+        order: ['urlPath', 'querystring', 'localStorage', 'navigator', 'htmlTag'],
+        lookupQuerystring: 'lang',
         lookupLocalStorage: I18N_STORAGE_KEY,
+        // localStorage is cached so manual picks survive across visits, but
+        // urlPath / querystring intentionally aren't — they reflect the URL,
+        // not the user's preference, so they shouldn't persist if removed.
         caches: ['localStorage'],
         convertDetectedLanguage: resolveSupportedLanguage,
       },

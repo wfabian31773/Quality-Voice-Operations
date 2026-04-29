@@ -1,6 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { Languages } from 'lucide-react';
-import { SUPPORTED_LANGUAGES } from '../lib/i18n';
+import {
+  SUPPORTED_LANGUAGES,
+  type SupportedLanguageCode,
+  withLocalePrefix,
+  stripLocalePrefix,
+  DEFAULT_LANGUAGE,
+} from '../lib/i18n';
 
 interface LanguageSwitcherProps {
   variant?: 'sidebar' | 'header' | 'muted';
@@ -16,7 +22,33 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
     : supportedCodes.find((code) => code.split('-')[0] === resolved.split('-')[0]) || 'en';
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    void i18n.changeLanguage(e.target.value);
+    const next = e.target.value as SupportedLanguageCode;
+    if (next === current) return;
+
+    // Persist the choice so subsequent visits to un-prefixed URLs honor it.
+    try {
+      i18n.changeLanguage(next);
+    } catch {
+      // changeLanguage is best-effort here — the page reload below picks up
+      // the new locale from the URL prefix regardless.
+    }
+
+    if (typeof window === 'undefined') return;
+    // Build the new URL with (or without, for `en`) a locale prefix and
+    // assign it. A full reload is intentional: BrowserRouter's `basename` is
+    // computed once at boot, so swapping the prefix requires a remount.
+    const currentPath = window.location.pathname;
+    const pathWithoutLocale = stripLocalePrefix(currentPath);
+    let nextPath = withLocalePrefix(next, pathWithoutLocale);
+    if (next === DEFAULT_LANGUAGE && nextPath === '') nextPath = '/';
+
+    // Drop ?lang= if present so the URL prefix is the single source of truth
+    // after the switch — otherwise refreshing could surface a stale value.
+    const search = new URLSearchParams(window.location.search);
+    search.delete('lang');
+    const qs = search.toString();
+    const url = `${nextPath}${qs ? `?${qs}` : ''}${window.location.hash}`;
+    window.location.assign(url);
   };
 
   if (variant === 'muted') {

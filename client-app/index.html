@@ -8,6 +8,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!--
+      Static hreflang fallbacks for the home page. These point crawlers that
+      do not execute JavaScript at every supported locale variant of `/`. The
+      <SEO> component sweeps every alternate hreflang tag on mount (matched
+      by `data-seo-hreflang-static` for these and `data-seo-hreflang` for
+      its own runtime tags) and re-emits per-page alternates for the active
+      route, so JS-enabled visitors never see both sets at once.
+    -->
+    <link rel="alternate" hreflang="en" href="/" data-seo-hreflang-static="true" />
+    <link rel="alternate" hreflang="es" href="/es" data-seo-hreflang-static="true" />
+    <link rel="alternate" hreflang="pt-BR" href="/pt-BR" data-seo-hreflang-static="true" />
+    <link rel="alternate" hreflang="fr" href="/fr" data-seo-hreflang-static="true" />
+    <link rel="alternate" hreflang="de" href="/de" data-seo-hreflang-static="true" />
+    <link rel="alternate" hreflang="x-default" href="/" data-seo-hreflang-static="true" />
   </head>
   <body class="antialiased">
     <div id="root"></div>
