@@ -14,6 +14,21 @@ const DEFAULT_BATCH_LIMIT = 50;
 const BACKOFF_BASE_MS = 60_000;
 const BACKOFF_MAX_MS = 60 * 60 * 1000;
 
+// How long a worker is allowed to hold a claim before the row is considered
+// abandoned and eligible to be reclaimed by another drain cycle. Defaults to
+// 5 minutes which is comfortably longer than any single connector dispatch
+// (HTTP timeouts in the adapters are <60s) but short enough that a crashed
+// worker doesn't strand a customer's CRM/Slack/Zapier event for long.
+const DEFAULT_LEASE_DURATION_MS = 5 * 60 * 1000;
+
+function leaseDurationMs(): number {
+  const raw = process.env.CONNECTOR_OUTBOX_LEASE_MS;
+  if (!raw) return DEFAULT_LEASE_DURATION_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LEASE_DURATION_MS;
+  return Math.floor(parsed);
+}
+
 interface OutboxRow {
   id: string;
   tenant_id: string;
@@ -21,6 +36,7 @@ interface OutboxRow {
   payload: ConnectorPayload | null;
   attempts: number;
   max_attempts: number;
+  prior_status: string;
 }
 
 function nextBackoffMs(attempts: number): number {
@@ -30,17 +46,37 @@ function nextBackoffMs(attempts: number): number {
   return Math.min(candidate, BACKOFF_MAX_MS);
 }
 
-async function claimBatch(client: PoolClient, limit: number): Promise<OutboxRow[]> {
+async function claimBatch(
+  client: PoolClient,
+  limit: number,
+  leaseMs: number,
+): Promise<OutboxRow[]> {
   await client.query('BEGIN');
   try {
+    // The CTE selects two kinds of rows:
+    //   1. Fresh work: pending/failed rows whose backoff has elapsed.
+    //   2. Abandoned work: 'processing' rows whose lease_expires_at has
+    //      passed — these belong to a worker that crashed mid-flight.
+    // We capture `prior_status` so the caller can count reclaims for
+    // observability, then atomically transition every selected row to
+    // 'processing' with a fresh lease.
     const { rows } = await client.query<OutboxRow>(
       `WITH claimed AS (
-         SELECT id
+         SELECT id, status AS prior_status
            FROM outbox_events
-          WHERE status IN ('pending', 'failed')
-            AND attempts < max_attempts
-            AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+          WHERE attempts < max_attempts
             AND archived_at IS NULL
+            AND (
+              (
+                status IN ('pending', 'failed')
+                AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+              )
+              OR (
+                status = 'processing'
+                AND lease_expires_at IS NOT NULL
+                AND lease_expires_at <= NOW()
+              )
+            )
           ORDER BY next_attempt_at NULLS FIRST, created_at
           FOR UPDATE SKIP LOCKED
           LIMIT $1
@@ -48,6 +84,8 @@ async function claimBatch(client: PoolClient, limit: number): Promise<OutboxRow[
        UPDATE outbox_events o
           SET status = 'processing',
               attempts = o.attempts + 1,
+              claimed_at = NOW(),
+              lease_expires_at = NOW() + ($2 || ' milliseconds')::interval,
               updated_at = NOW()
          FROM claimed c
         WHERE o.id = c.id
@@ -56,8 +94,9 @@ async function claimBatch(client: PoolClient, limit: number): Promise<OutboxRow[
                  o.event_type,
                  o.payload,
                  o.attempts,
-                 o.max_attempts`,
-      [limit],
+                 o.max_attempts,
+                 c.prior_status`,
+      [limit, String(leaseMs)],
     );
     await client.query('COMMIT');
     return rows;
@@ -74,6 +113,8 @@ async function markDelivered(id: string): Promise<void> {
         SET status = 'delivered',
             delivered_at = NOW(),
             last_error = NULL,
+            claimed_at = NULL,
+            lease_expires_at = NULL,
             updated_at = NOW()
       WHERE id = $1`,
     [id],
@@ -94,6 +135,8 @@ async function markFailure(
       `UPDATE outbox_events
           SET status = 'dead_letter',
               last_error = $2,
+              claimed_at = NULL,
+              lease_expires_at = NULL,
               updated_at = NOW()
         WHERE id = $1`,
       [id, truncated],
@@ -106,6 +149,8 @@ async function markFailure(
         SET status = 'failed',
             last_error = $2,
             next_attempt_at = NOW() + ($3 || ' milliseconds')::interval,
+            claimed_at = NULL,
+            lease_expires_at = NULL,
             updated_at = NOW()
       WHERE id = $1`,
     [id, truncated, String(backoffMs)],
@@ -115,18 +160,21 @@ async function markFailure(
 
 export interface DrainCycleResult {
   claimed: number;
+  reclaimed: number;
   delivered: number;
   failed: number;
   deadLettered: number;
 }
 
 export async function runConnectorOutboxDrainCycle(
-  options: { batchLimit?: number } = {},
+  options: { batchLimit?: number; leaseDurationMs?: number } = {},
 ): Promise<DrainCycleResult> {
   const limit = Math.max(1, options.batchLimit ?? DEFAULT_BATCH_LIMIT);
+  const leaseMs = Math.max(1_000, options.leaseDurationMs ?? leaseDurationMs());
   const pool = getPlatformPool();
   const result: DrainCycleResult = {
     claimed: 0,
+    reclaimed: 0,
     delivered: 0,
     failed: 0,
     deadLettered: 0,
@@ -142,7 +190,7 @@ export async function runConnectorOutboxDrainCycle(
 
   let claimed: OutboxRow[];
   try {
-    claimed = await claimBatch(client, limit);
+    claimed = await claimBatch(client, limit, leaseMs);
   } catch (err) {
     logger.error('Failed to claim outbox batch', { error: String(err) });
     client.release();
@@ -153,6 +201,14 @@ export async function runConnectorOutboxDrainCycle(
   client.release();
 
   result.claimed = claimed.length;
+  result.reclaimed = claimed.filter((r) => r.prior_status === 'processing').length;
+  if (result.reclaimed > 0) {
+    logger.warn('Reclaimed outbox rows from crashed/stalled worker', {
+      reclaimed: result.reclaimed,
+      leaseMs,
+      ids: claimed.filter((r) => r.prior_status === 'processing').map((r) => r.id),
+    });
+  }
   if (claimed.length === 0) return result;
 
   for (const row of claimed) {
@@ -191,6 +247,7 @@ export async function runConnectorOutboxDrainCycle(
 
   logger.info('Outbox drain cycle complete', {
     claimed: result.claimed,
+    reclaimed: result.reclaimed,
     delivered: result.delivered,
     failed: result.failed,
     deadLettered: result.deadLettered,
@@ -216,7 +273,10 @@ export function startConnectorOutboxDrainScheduler(intervalMs: number = DEFAULT_
     });
   }, intervalMs);
 
-  logger.info('Connector outbox drain scheduler started', { intervalMs });
+  logger.info('Connector outbox drain scheduler started', {
+    intervalMs,
+    leaseMs: leaseDurationMs(),
+  });
 }
 
 export function stopConnectorOutboxDrainScheduler(): void {
@@ -233,4 +293,6 @@ export function stopConnectorOutboxDrainScheduler(): void {
 
 export const __test = {
   nextBackoffMs,
+  leaseDurationMs,
+  DEFAULT_LEASE_DURATION_MS,
 };
