@@ -313,6 +313,9 @@
 /* Card hover surfaces inside marketing content sections */
 .dark .public-surface .hover\:bg-white:hover { background-color: var(--color-surface-hover); }
 
+/* Demo glass cards adapt to dark surface so contrast probes resolve to opaque ancestor */
+.dark .public-surface .demo-glass-card { background: var(--color-surface); }
+
 /* Primary CTA glow on harbor sections — keeps brand presence in dark */
 .public-surface .btn-primary-glow {
   box-shadow: 0 4px 16px rgba(31, 142, 131, 0.25);

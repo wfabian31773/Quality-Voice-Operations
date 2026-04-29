@@ -423,14 +423,14 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
         }
         if (block.type === 'h2') {
           return (
-            <h2 key={idx} id={slugify(block.text)} className="font-display text-xl font-bold text-sidebar-bg mt-8 mb-2 scroll-mt-24">
+            <h2 key={idx} id={slugify(block.text)} className="font-display text-xl font-bold text-text-primary mt-8 mb-2 scroll-mt-24">
               {block.text}
             </h2>
           );
         }
         if (block.type === 'h3') {
           return (
-            <h3 key={idx} id={slugify(block.text)} className="font-display text-base font-semibold text-sidebar-bg mt-6 mb-2 scroll-mt-24">
+            <h3 key={idx} id={slugify(block.text)} className="font-display text-base font-semibold text-text-primary mt-6 mb-2 scroll-mt-24">
               {block.text}
             </h3>
           );
@@ -531,7 +531,7 @@ export function DocBlocks({ blocks, dense = false }: { blocks: DocBlock[]; dense
             <div key={idx} className="my-3 border border-border-strong/50 rounded-xl divide-y divide-border-strong/50 overflow-hidden">
               {block.items.map((it, i) => (
                 <div key={i} className="p-4">
-                  <p className="text-sm font-semibold text-sidebar-bg mb-1">{it.problem}</p>
+                  <p className="text-sm font-semibold text-text-primary mb-1">{it.problem}</p>
                   <p className="text-sm text-text-primary/70 font-body leading-relaxed">{it.fix}</p>
                 </div>
               ))}
@@ -635,7 +635,7 @@ function renderInline(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
     const m = part.match(/^\*\*(.+)\*\*$/);
-    if (m) return <strong key={i} className="text-sidebar-bg font-semibold">{m[1]}</strong>;
+    if (m) return <strong key={i} className="text-text-primary font-semibold">{m[1]}</strong>;
     return <span key={i}>{part}</span>;
   });
 }

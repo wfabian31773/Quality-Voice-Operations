@@ -131,10 +131,10 @@ export default function SystemActivityFeed({ events, isActive }: SystemActivityF
   return (
     <div className="bg-white rounded-2xl border border-border-strong/50 p-6">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-sidebar-bg/10 flex items-center justify-center">
-          <Activity className="h-4 w-4 text-sidebar-bg" />
+        <div className="w-8 h-8 rounded-lg bg-surface-muted flex items-center justify-center">
+          <Activity className="h-4 w-4 text-text-primary" />
         </div>
-        <h3 className="font-display font-semibold text-sidebar-bg">System Activity</h3>
+        <h3 className="font-display font-semibold text-text-primary">System Activity</h3>
         {isActive && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-success font-body">
             <span aria-hidden="true" className="w-2 h-2 bg-success rounded-full animate-pulse" />
@@ -166,7 +166,7 @@ export default function SystemActivityFeed({ events, isActive }: SystemActivityF
                   <Icon className={`h-3.5 w-3.5 ${config.color}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-sidebar-bg font-body truncate">
+                  <p className="text-xs font-medium text-text-primary font-body truncate">
                     {config.label}
                     {toolDetail && (
                       <span className="text-text-primary/40 font-normal"> — {toolDetail}</span>

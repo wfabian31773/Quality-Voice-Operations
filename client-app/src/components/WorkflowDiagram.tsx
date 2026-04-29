@@ -73,7 +73,7 @@ function StepCard({ step, color, bg, compact, stepNumber, totalSteps }: {
       >
         {step.icon}
       </div>
-      <p className={`font-display font-semibold text-sidebar-bg leading-tight mb-1 ${compact ? 'text-xs lg:text-sm' : 'text-sm lg:text-base'}`}>
+      <p className={`font-display font-semibold text-text-primary leading-tight mb-1 ${compact ? 'text-xs lg:text-sm' : 'text-sm lg:text-base'}`}>
         {step.label}
       </p>
       {step.description && (
@@ -100,7 +100,7 @@ export default function WorkflowDiagram({
       aria-label={title ? `${title} workflow diagram` : 'Agent workflow diagram'}
     >
       {title && (
-        <h4 className="font-display text-base lg:text-lg font-bold text-sidebar-bg text-center mb-6 lg:mb-8">
+        <h4 className="font-display text-base lg:text-lg font-bold text-text-primary text-center mb-6 lg:mb-8">
           {title}
         </h4>
       )}

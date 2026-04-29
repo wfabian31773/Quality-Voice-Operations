@@ -320,7 +320,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="bg-sidebar-bg/95 border-t border-white/5">
+      <section className="bg-sidebar-bg border-t border-white/5">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             {socialProofStats.map((stat) => (

@@ -42,7 +42,7 @@ export default function CalendarToolVisual({ visible }: CalendarToolVisualProps)
         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
           <Calendar className="h-4 w-4 text-primary" />
         </div>
-        <h3 className="font-display font-semibold text-sidebar-bg">Scheduling</h3>
+        <h3 className="font-display font-semibold text-text-primary">Scheduling</h3>
         <span className="ml-auto text-xs text-success font-body flex items-center gap-1">
           <Check className="h-3 w-3" />
           Appointment booked

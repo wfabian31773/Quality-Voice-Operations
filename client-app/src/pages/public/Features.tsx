@@ -256,7 +256,7 @@ export default function Features() {
         </div>
       </section>
 
-      <section className="relative py-20 lg:py-24 overflow-hidden">
+      <section className="relative py-20 lg:py-24 overflow-hidden bg-sidebar-bg">
         <div className="absolute inset-0 bg-gradient-to-r from-sidebar-bg via-sidebar-hover/40 to-sidebar-bg" />
         <div className="absolute inset-0 opacity-15">
           <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary rounded-full blur-[100px]" />

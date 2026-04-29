@@ -84,7 +84,7 @@ export default function TestimonialsCarousel() {
           ))}
           <span className="ml-3 text-xs font-semibold uppercase tracking-wider text-text-primary/40">{current.industry}</span>
         </div>
-        <blockquote className="font-display text-xl lg:text-2xl text-sidebar-bg leading-relaxed mb-8 min-h-[6rem]">
+        <blockquote className="font-display text-xl lg:text-2xl text-text-primary leading-relaxed mb-8 min-h-[6rem]">
           "{current.quote}"
         </blockquote>
         <div className="flex items-center gap-4">
@@ -92,7 +92,7 @@ export default function TestimonialsCarousel() {
             {current.initials}
           </div>
           <div>
-            <p className="font-display font-semibold text-sidebar-bg">{current.name}</p>
+            <p className="font-display font-semibold text-text-primary">{current.name}</p>
             <p className="text-sm text-text-primary/60 font-body">{current.title}, {current.company}</p>
           </div>
         </div>
@@ -102,7 +102,7 @@ export default function TestimonialsCarousel() {
         <button
           onClick={() => setIndex((i) => (i - 1 + testimonials.length) % testimonials.length)}
           aria-label="Previous testimonial"
-          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-sidebar-bg hover:bg-primary hover:text-white hover:border-primary transition-colors"
+          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-text-primary hover:bg-primary hover:text-white hover:border-primary transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -119,7 +119,7 @@ export default function TestimonialsCarousel() {
         <button
           onClick={() => setIndex((i) => (i + 1) % testimonials.length)}
           aria-label="Next testimonial"
-          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-sidebar-bg hover:bg-primary hover:text-white hover:border-primary transition-colors"
+          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-text-primary hover:bg-primary hover:text-white hover:border-primary transition-colors"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

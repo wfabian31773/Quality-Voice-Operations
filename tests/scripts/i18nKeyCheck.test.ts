@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 // @ts-expect-error: pure-JS Node script with no type declarations.
-import { runI18nKeyCheck } from '../../scripts/check-i18n-keys.mjs';
+import { runI18nKeyCheck, parseNamespacesFromSource } from '../../scripts/check-i18n-keys.mjs';
 
 /**
  * Two-layer test:
@@ -195,6 +195,81 @@ describe('i18n key check (allowlist suppresses real drift)', () => {
       missing: [],
       extra: ['orphan'],
     });
+  });
+});
+
+describe('i18n key check (parseNamespacesFromSource)', () => {
+  // The script's `parseNamespaces()` was originally written for the literal
+  // `ns: ['common', 'docs', ...]` argument shape. Task #625 refactored
+  // `client-app/src/lib/i18n.ts` to use a hoisted `NAMESPACES = [...] as const`
+  // declaration that's then forwarded as `ns: NAMESPACES as unknown as
+  // string[]` — the literal array is gone from the init call. The script
+  // must accept BOTH shapes so the post-merge pipeline keeps working
+  // through the refactor (and through any future revert).
+  it('parses the new `NAMESPACES = [...] as const` declaration shape', () => {
+    const fixture = `
+      import i18n from 'i18next';
+
+      const NAMESPACES = ['common', 'docs', 'marketing', 'tenant', 'admin'] as const;
+      type Namespace = (typeof NAMESPACES)[number];
+
+      i18n.init({
+        defaultNS: 'common',
+        ns: NAMESPACES as unknown as string[],
+      });
+    `;
+    expect(parseNamespacesFromSource(fixture)).toEqual([
+      'common',
+      'docs',
+      'marketing',
+      'tenant',
+      'admin',
+    ]);
+  });
+
+  it('still parses the legacy literal `ns: [...]` shape', () => {
+    const fixture = `
+      i18n.init({
+        defaultNS: 'common',
+        ns: ['common', 'docs', 'marketing', 'tenant', 'admin'],
+      });
+    `;
+    expect(parseNamespacesFromSource(fixture)).toEqual([
+      'common',
+      'docs',
+      'marketing',
+      'tenant',
+      'admin',
+    ]);
+  });
+
+  it('prefers the const declaration over a stale literal `ns:` argument', () => {
+    // If both shapes are present (transitional commit) the const is the
+    // source of truth — that's what i18next actually receives at runtime.
+    const fixture = `
+      const NAMESPACES = ['common', 'docs'] as const;
+      i18n.init({ ns: ['stale', 'list'] });
+    `;
+    expect(parseNamespacesFromSource(fixture)).toEqual(['common', 'docs']);
+  });
+
+  it('accepts double-quoted string literals inside the const', () => {
+    const fixture = `const NAMESPACES = ["common", "docs"] as const;`;
+    expect(parseNamespacesFromSource(fixture)).toEqual(['common', 'docs']);
+  });
+
+  it('throws a helpful error when neither shape is present', () => {
+    const fixture = `const SOMETHING_ELSE = ['nope'];`;
+    expect(() => parseNamespacesFromSource(fixture, 'fixture.ts')).toThrowError(
+      /Could not find `NAMESPACES = \[\.\.\.\] as const` or `ns: \[\.\.\.\]` in fixture\.ts/,
+    );
+  });
+
+  it('throws when the const exists but is empty (regex would otherwise return [])', () => {
+    const fixture = `const NAMESPACES = [] as const;`;
+    expect(() => parseNamespacesFromSource(fixture, 'fixture.ts')).toThrowError(
+      /Namespaces parsed empty from fixture\.ts/,
+    );
   });
 });
 

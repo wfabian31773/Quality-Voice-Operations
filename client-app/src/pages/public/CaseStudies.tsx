@@ -181,7 +181,7 @@ export default function CaseStudies() {
         description="See how businesses across healthcare, legal, real estate, and home services use QVO AI voice agents to automate calls and grow revenue."
       />
 
-      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-slate-800">
+      <section className="py-20 bg-sidebar-bg bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-slate-800">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">Customer Success Stories</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
@@ -251,7 +251,7 @@ export default function CaseStudies() {
             <Link to="/signup" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Start Free Trial <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link to="/book-demo" className="inline-flex items-center gap-2 bg-sidebar-bg/5 hover:bg-sidebar-bg/10 text-text-primary px-8 py-3.5 rounded-xl font-semibold transition-colors">
+            <Link to="/book-demo" className="inline-flex items-center gap-2 bg-surface-secondary hover:bg-surface-muted text-text-primary px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Book a Demo
             </Link>
             <Link to="/demo" className="inline-flex items-center gap-2 text-text-primary/70 hover:text-text-primary px-6 py-3.5 rounded-xl font-semibold transition-colors">

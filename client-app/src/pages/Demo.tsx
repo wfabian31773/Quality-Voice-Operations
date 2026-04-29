@@ -139,7 +139,7 @@ function DemoCompletionCelebration({ show }: { show: boolean }) {
         <div className="w-16 h-16 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4 demo-celebration-icon">
           <CheckCircle2 className="h-8 w-8 text-success" />
         </div>
-        <p className="font-display text-lg font-semibold text-sidebar-bg">{t('demo.celebration.title')}</p>
+        <p className="font-display text-lg font-semibold text-text-primary">{t('demo.celebration.title')}</p>
         <p className="text-sm text-text-primary/60 font-body mt-1">{t('demo.celebration.subtitle')}</p>
       </div>
     </div>
@@ -166,9 +166,9 @@ function AgentCard({
       : 'border-sidebar-bg ring-2 ring-sidebar-bg/20'
     : 'border-white/20 hover:border-primary/30';
 
-  const iconBg = variant === 'teal' ? 'bg-primary/10' : 'bg-sidebar-bg/10';
-  const iconColor = variant === 'teal' ? 'text-primary' : 'text-sidebar-hover';
-  const categoryColor = variant === 'teal' ? 'text-primary' : 'text-sidebar-hover';
+  const iconBg = variant === 'teal' ? 'bg-primary/10' : 'bg-surface-muted';
+  const iconColor = variant === 'teal' ? 'text-primary' : 'text-text-primary';
+  const categoryColor = variant === 'teal' ? 'text-primary' : 'text-text-primary';
 
   return (
     <button
@@ -187,7 +187,7 @@ function AgentCard({
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="font-display text-lg font-semibold text-sidebar-bg truncate">{agent.name}</h3>
+          <h3 className="font-display text-lg font-semibold text-text-primary truncate">{agent.name}</h3>
           <span className={`text-xs font-medium ${categoryColor}`}>{agent.category}</span>
         </div>
       </div>
@@ -237,7 +237,7 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
       <Phone className="h-5 w-5 text-primary shrink-0" />
       <div>
         <p className="text-xs text-primary mb-0.5">{t('demo.phone_card.call_to_try')}</p>
-        <p className="text-lg font-mono font-bold text-sidebar-bg">{formatPhoneNumber(agent.phoneNumber)}</p>
+        <p className="text-lg font-mono font-bold text-text-primary">{formatPhoneNumber(agent.phoneNumber)}</p>
       </div>
     </div>
   );
@@ -254,7 +254,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
           <Sparkles className="h-4 w-4" />
           {t('demo.conversion.experienced')}
         </div>
-        <h2 className="font-display text-3xl lg:text-4xl font-bold text-sidebar-bg mb-4">
+        <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
           {t('demo.conversion.title')}
         </h2>
         <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto mb-8">
@@ -267,7 +267,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
               <Zap className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-sidebar-bg">{t('demo.conversion.feat1_title')}</p>
+              <p className="font-display text-sm font-semibold text-text-primary">{t('demo.conversion.feat1_title')}</p>
               <p className="text-xs text-text-primary/50 font-body">{t('demo.conversion.feat1_desc')}</p>
             </div>
           </div>
@@ -276,7 +276,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
               <Shield className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-sidebar-bg">{t('demo.conversion.feat2_title')}</p>
+              <p className="font-display text-sm font-semibold text-text-primary">{t('demo.conversion.feat2_title')}</p>
               <p className="text-xs text-text-primary/50 font-body">{t('demo.conversion.feat2_desc')}</p>
             </div>
           </div>
@@ -285,7 +285,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
               <Clock className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="font-display text-sm font-semibold text-sidebar-bg">{t('demo.conversion.feat3_title')}</p>
+              <p className="font-display text-sm font-semibold text-text-primary">{t('demo.conversion.feat3_title')}</p>
               <p className="text-xs text-text-primary/50 font-body">{t('demo.conversion.feat3_desc')}</p>
             </div>
           </div>
@@ -302,7 +302,7 @@ function ConversionCTA({ visible, activeAgentRef }: { visible: boolean; activeAg
           </Link>
           <Link
             to="/contact"
-            className="inline-flex items-center gap-2 bg-white border border-border-strong/50 hover:border-primary/30 text-sidebar-bg font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
+            className="inline-flex items-center gap-2 bg-white border border-border-strong/50 hover:border-primary/30 text-text-primary font-display font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-base"
             onClick={() => trackDemoCTA(CTA.BOOK_DEMO, activeAgentRef)}
           >
             {t('common.book_demo')}
@@ -461,7 +461,7 @@ export default function Demo() {
           )}
 
           <div className="mb-8">
-            <h2 className="font-display text-2xl font-bold text-sidebar-bg mb-2">{t('demo.agent_picker.title')}</h2>
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-2">{t('demo.agent_picker.title')}</h2>
             <p className="text-sm text-text-primary/60 font-body">
               {t('demo.agent_picker.subtitle')}
             </p>
@@ -507,7 +507,7 @@ export default function Demo() {
                     );
                   })()}
                   <div>
-                    <h3 className="font-display text-xl font-semibold text-sidebar-bg">{activeAgent.name}</h3>
+                    <h3 className="font-display text-xl font-semibold text-text-primary">{activeAgent.name}</h3>
                     <span className="text-xs font-medium text-primary">{activeAgent.category}</span>
                   </div>
                 </div>
@@ -560,7 +560,7 @@ export default function Demo() {
             <div className="md:col-span-1 demo-glass-card rounded-2xl border border-white/20 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="h-5 w-5 text-success" />
-                <h3 className="font-display font-semibold text-sidebar-bg">{t('demo.stats_card.title')}</h3>
+                <h3 className="font-display font-semibold text-text-primary">{t('demo.stats_card.title')}</h3>
               </div>
               <div className="text-center py-6">
                 <p className="text-5xl font-display font-bold text-primary">

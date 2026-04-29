@@ -422,7 +422,7 @@ export default function WebsiteSalesWidget() {
                   className={`p-2.5 rounded-xl transition-colors shrink-0 ${
                     isListening
                       ? 'bg-danger text-white animate-pulse'
-                      : 'bg-surface-secondary/50 text-sidebar-bg hover:bg-surface-secondary border border-border-strong/20'
+                      : 'bg-surface-secondary/50 text-text-primary hover:bg-surface-secondary border border-border-strong/20'
                   } disabled:opacity-40`}
                   aria-label={isListening ? 'Stop listening' : 'Start voice input'}
                   title={isListening ? 'Stop listening' : 'Speak your message'}
@@ -438,7 +438,7 @@ export default function WebsiteSalesWidget() {
                 onKeyDown={handleKeyDown}
                 placeholder={isListening ? 'Listening...' : 'Type a message...'}
                 disabled={loading}
-                className="flex-1 px-3.5 py-2.5 text-sm border border-border-strong/30 rounded-xl bg-surface-secondary/30 text-sidebar-bg placeholder:text-border-strong focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 disabled:opacity-50"
+                className="flex-1 px-3.5 py-2.5 text-sm border border-border-strong/30 rounded-xl bg-surface-secondary/30 text-text-primary placeholder:text-border-strong focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 disabled:opacity-50"
               />
               <button
                 onClick={() => sendMessage(input)}

@@ -33,7 +33,7 @@ export default function ConversationTranscript({ messages, isActive }: Conversat
         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
           <Bot className="h-4 w-4 text-primary" />
         </div>
-        <h3 className="font-display font-semibold text-sidebar-bg">Live Transcript</h3>
+        <h3 className="font-display font-semibold text-text-primary">Live Transcript</h3>
         {isActive && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-success font-body">
             <span aria-hidden="true" className="w-2 h-2 bg-success rounded-full animate-pulse" />
@@ -65,13 +65,13 @@ export default function ConversationTranscript({ messages, isActive }: Conversat
                 className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
                   msg.speaker === 'agent'
                     ? 'bg-primary/10'
-                    : 'bg-sidebar-bg/10'
+                    : 'bg-surface-muted'
                 }`}
               >
                 {msg.speaker === 'agent' ? (
                   <Bot className="h-3.5 w-3.5 text-primary" />
                 ) : (
-                  <User className="h-3.5 w-3.5 text-sidebar-bg" />
+                  <User className="h-3.5 w-3.5 text-text-primary" />
                 )}
               </div>
               <div
@@ -91,7 +91,7 @@ export default function ConversationTranscript({ messages, isActive }: Conversat
                   className={`inline-block px-3.5 py-2 rounded-2xl text-sm font-body leading-relaxed ${
                     msg.speaker === 'agent'
                       ? 'bg-primary/5 text-text-primary/80 rounded-tl-sm'
-                      : 'bg-sidebar-bg/5 text-text-primary/80 rounded-tr-sm'
+                      : 'bg-surface-secondary text-text-primary/80 rounded-tr-sm'
                   }`}
                 >
                   {msg.text}

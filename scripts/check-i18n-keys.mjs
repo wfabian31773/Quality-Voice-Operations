@@ -70,49 +70,44 @@ function parseSupportedLocales() {
 
 /** Parse the namespaces out of the i18n init call.
  *
- * Supports both shapes:
- *   ns: ['common', 'docs', ...]                          (inline literal)
- *   const NAMESPACES = ['common', ...] as const;
- *   ...
- *   ns: NAMESPACES as unknown as string[]                (named constant)
+ *  Two shapes are accepted, in priority order:
+ *    1. The current shape (added by task #625): a hoisted const declaration
+ *       like `const NAMESPACES = ['common', 'docs', ...] as const;` that is
+ *       passed into i18next.init({ ns: NAMESPACES as unknown as string[] }).
+ *    2. The legacy shape: a literal `ns: ['common', 'docs', ...]` argument
+ *       passed directly to i18next.init({ ... }).
+ *
+ *  Both shapes resolve to the same list of namespaces. We accept both so a
+ *  future revert (or a parallel branch still on the literal-`ns` form) does
+ *  not break the check.
  */
-function parseNamespaces() {
-  const src = readFileSync(i18nFile, "utf8");
-  let listSrc = null;
-  const inline = /\bns:\s*\[([^\]]+)\]/m.exec(src);
-  if (inline) {
-    listSrc = inline[1];
-  } else {
-    const nsRef = /\bns:\s*([A-Za-z_$][\w$]*)\b/m.exec(src);
-    if (nsRef) {
-      const ident = nsRef[1];
-      const constRe = new RegExp(
-        `\\b(?:const|let|var)\\s+${ident}\\s*=\\s*\\[([^\\]]+)\\]`,
-        "m",
-      );
-      const constMatch = constRe.exec(src);
-      if (constMatch) {
-        listSrc = constMatch[1];
-      }
-    }
-  }
-  if (!listSrc) {
+export function parseNamespacesFromSource(src, sourceLabel = "(source)") {
+  const constMatch =
+    /\bNAMESPACES\s*=\s*\[([\s\S]*?)\]\s*as\s+const/m.exec(src);
+  const literalMatch = /\bns:\s*\[([^\]]*)\]/m.exec(src);
+  const inner = constMatch?.[1] ?? literalMatch?.[1];
+  if (inner === undefined) {
     throw new Error(
-      `Could not find \`ns: [...]\` in ${i18nFile}. Update scripts/check-i18n-keys.mjs.`,
+      `Could not find \`NAMESPACES = [...] as const\` or \`ns: [...]\` in ${sourceLabel}. ` +
+        `Update scripts/check-i18n-keys.mjs.`,
     );
   }
   const names = [];
-  const nameRe = /'([^']+)'/g;
+  const nameRe = /['"]([^'"]+)['"]/g;
   let nm;
-  while ((nm = nameRe.exec(listSrc)) !== null) {
+  while ((nm = nameRe.exec(inner)) !== null) {
     names.push(nm[1]);
   }
   if (names.length === 0) {
     throw new Error(
-      `Namespaces parsed empty from ${i18nFile} — the regex may need updating.`,
+      `Namespaces parsed empty from ${sourceLabel} — the regex may need updating.`,
     );
   }
   return names;
+}
+
+function parseNamespaces() {
+  return parseNamespacesFromSource(readFileSync(i18nFile, "utf8"), i18nFile);
 }
 
 /** Recursively flatten a JSON object into dotted leaf-key paths. */

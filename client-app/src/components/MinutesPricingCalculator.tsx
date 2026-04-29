@@ -91,7 +91,7 @@ export default function MinutesPricingCalculator() {
               <Calculator className="h-4.5 w-4.5 text-primary" />
             </div>
             <div>
-              <h3 className="font-display text-lg font-bold text-sidebar-bg">Estimate your monthly bill</h3>
+              <h3 className="font-display text-lg font-bold text-text-primary">Estimate your monthly bill</h3>
               <p className="text-sm text-text-primary/60 font-body mt-0.5">
                 Pick how many AI minutes you expect to use each month and see the effective per-minute price for every plan.
               </p>
@@ -112,7 +112,7 @@ export default function MinutesPricingCalculator() {
               className={`px-3 py-1.5 text-xs font-display font-semibold rounded-md transition-colors ${
                 !isAnnual
                   ? 'bg-primary text-white shadow-sm'
-                  : 'text-text-primary/70 hover:text-sidebar-bg'
+                  : 'text-text-primary/70 hover:text-text-primary'
               }`}
             >
               Monthly
@@ -125,7 +125,7 @@ export default function MinutesPricingCalculator() {
               className={`px-3 py-1.5 text-xs font-display font-semibold rounded-md transition-colors inline-flex items-center gap-1.5 ${
                 isAnnual
                   ? 'bg-primary text-white shadow-sm'
-                  : 'text-text-primary/70 hover:text-sidebar-bg'
+                  : 'text-text-primary/70 hover:text-text-primary'
               }`}
             >
               Annual
@@ -142,7 +142,7 @@ export default function MinutesPricingCalculator() {
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-4">
-            <label htmlFor="minutes-slider" className="text-sm font-medium text-sidebar-bg">
+            <label htmlFor="minutes-slider" className="text-sm font-medium text-text-primary">
               Monthly AI minutes
             </label>
             <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export default function MinutesPricingCalculator() {
                   const v = Number(e.target.value);
                   if (Number.isFinite(v)) setMinutes(Math.max(0, Math.min(MAX_MINUTES, v)));
                 }}
-                className="w-28 px-3 py-1.5 rounded-lg border border-border-strong/50 text-sm font-display font-bold text-sidebar-bg text-right focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-28 px-3 py-1.5 rounded-lg border border-border-strong/50 text-sm font-display font-bold text-text-primary text-right focus:outline-none focus:ring-2 focus:ring-primary/40"
                 aria-label="Monthly AI minutes"
               />
               <span className="text-sm text-text-primary/60 font-body">min/mo</span>
@@ -193,7 +193,7 @@ export default function MinutesPricingCalculator() {
               }`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className={`font-display text-sm font-semibold ${tier.popular ? 'text-primary' : 'text-sidebar-bg'}`}>
+                <span className={`font-display text-sm font-semibold ${tier.popular ? 'text-primary' : 'text-text-primary'}`}>
                   {tier.name}
                 </span>
                 {isBest && (
@@ -208,7 +208,7 @@ export default function MinutesPricingCalculator() {
                 <div className="flex items-baseline gap-1">
                   <span
                     data-testid={`calc-monthly-${tier.key}`}
-                    className="font-display text-3xl font-bold text-sidebar-bg"
+                    className="font-display text-3xl font-bold text-text-primary"
                   >
                     {formatCurrency(monthlyCost)}
                   </span>
@@ -235,7 +235,7 @@ export default function MinutesPricingCalculator() {
                   <dt className="text-text-primary/50">Base plan</dt>
                   <dd
                     data-testid={`calc-base-${tier.key}`}
-                    className="text-sidebar-bg font-medium"
+                    className="text-text-primary font-medium"
                   >
                     {isAnnual ? (
                       <span className="inline-flex items-baseline gap-1.5">
@@ -249,11 +249,11 @@ export default function MinutesPricingCalculator() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Minutes included</dt>
-                  <dd className="text-sidebar-bg font-medium">{tier.includedMinutes.toLocaleString()}</dd>
+                  <dd className="text-text-primary font-medium">{tier.includedMinutes.toLocaleString()}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Overage rate</dt>
-                  <dd className="text-sidebar-bg font-medium">{formatPerMinute(tier.overageRate)}/min</dd>
+                  <dd className="text-text-primary font-medium">{formatPerMinute(tier.overageRate)}/min</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Overage this month</dt>

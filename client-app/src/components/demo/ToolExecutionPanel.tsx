@@ -42,13 +42,13 @@ const TOOL_CONFIG: Record<string, { label: string; icon: typeof Calendar; color:
     label: 'CRM Lookup',
     icon: Search,
     color: 'text-sidebar-hover',
-    bgColor: 'bg-sidebar-bg/10',
+    bgColor: 'bg-surface-muted',
   },
   searchCRM: {
     label: 'CRM Search',
     icon: Search,
     color: 'text-sidebar-hover',
-    bgColor: 'bg-sidebar-bg/10',
+    bgColor: 'bg-surface-muted',
   },
   sendSMS: {
     label: 'SMS Confirmation',
@@ -66,7 +66,7 @@ const TOOL_CONFIG: Record<string, { label: string; icon: typeof Calendar; color:
     label: 'Knowledge Base Search',
     icon: Search,
     color: 'text-sidebar-hover',
-    bgColor: 'bg-sidebar-bg/10',
+    bgColor: 'bg-surface-muted',
   },
 };
 
@@ -91,7 +91,7 @@ export default function ToolExecutionPanel({ tools, isActive }: ToolExecutionPan
         <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
           <Wrench className="h-4 w-4 text-accent" />
         </div>
-        <h3 className="font-display font-semibold text-sidebar-bg">Tool Executions</h3>
+        <h3 className="font-display font-semibold text-text-primary">Tool Executions</h3>
         {isActive && tools.some((t) => t.status === 'running') && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-accent font-body">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -126,7 +126,7 @@ export default function ToolExecutionPanel({ tools, isActive }: ToolExecutionPan
                   <Icon className={`h-4 w-4 ${config.color}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-sidebar-bg font-body truncate">{config.label}</p>
+                  <p className="text-sm font-medium text-text-primary font-body truncate">{config.label}</p>
                   <p className="text-[11px] text-text-primary/40 font-body">{formatToolTime(tool.startedAt)}</p>
                 </div>
                 <div className="shrink-0">

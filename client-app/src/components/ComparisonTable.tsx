@@ -34,7 +34,7 @@ function CellRender({ value }: { value: Cell }) {
   if (value === 'partial') {
     return <Minus className="h-4 w-4 text-accent mx-auto" aria-label="Partial" />;
   }
-  return <span className="text-xs font-medium text-sidebar-bg">{value}</span>;
+  return <span className="text-xs font-medium text-text-primary">{value}</span>;
 }
 
 const competitors = [
@@ -52,9 +52,9 @@ export default function ComparisonTable() {
         <table className="w-full min-w-[720px]">
           <thead>
             <tr className="border-b border-border-strong/30 bg-surface-secondary/60">
-              <th className="text-left py-4 px-6 font-display text-sm font-semibold text-sidebar-bg">Capability</th>
+              <th className="text-left py-4 px-6 font-display text-sm font-semibold text-text-primary">Capability</th>
               {competitors.map((c) => (
-                <th key={c.key} className={`text-center py-4 px-3 font-display text-sm font-semibold ${c.highlight ? 'text-primary bg-primary/5' : 'text-sidebar-bg'}`}>
+                <th key={c.key} className={`text-center py-4 px-3 font-display text-sm font-semibold ${c.highlight ? 'text-primary bg-primary/5' : 'text-text-primary'}`}>
                   {c.name}
                   {c.highlight && <span className="block text-[10px] text-primary font-medium mt-0.5">THIS PLATFORM</span>}
                 </th>

@@ -81,7 +81,7 @@ export function HelpDrawer() {
             <header className="px-5 py-4 border-b border-border-strong/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <HelpCircle className="h-5 w-5 text-primary" />
-                <h2 className="font-display text-base font-bold text-sidebar-bg">Help</h2>
+                <h2 className="font-display text-base font-bold text-text-primary">Help</h2>
               </div>
               <button
                 onClick={() => setOpen(false)}
@@ -123,7 +123,7 @@ export function HelpDrawer() {
                   <p className="text-[10px] uppercase tracking-wider text-primary font-semibold mb-1">
                     {article.category.replace('-', ' ')}
                   </p>
-                  <h3 className="font-display text-lg font-bold text-sidebar-bg mb-1">
+                  <h3 className="font-display text-lg font-bold text-text-primary mb-1">
                     {article.title}
                   </h3>
                   <p className="text-sm text-text-primary/60 font-body mb-4">{article.description}</p>
@@ -158,7 +158,7 @@ export function HelpDrawer() {
                       <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 flex items-center justify-center mb-4">
                         <Check className="h-6 w-6 text-emerald-600" />
                       </div>
-                      <h3 className="font-display text-lg font-bold text-sidebar-bg mb-1">Message sent</h3>
+                      <h3 className="font-display text-lg font-bold text-text-primary mb-1">Message sent</h3>
                       <p className="text-sm text-text-primary/70 font-body">
                         We've received your request{result.ticket_id ? ` (ticket ${result.ticket_id})` : ''} and will reply by email within one business day.
                       </p>
