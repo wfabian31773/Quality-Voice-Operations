@@ -5,6 +5,7 @@ import {
   SMS_CANNED_RESPONSE_TOKENS,
   findUnknownSmsCannedResponseTokens,
 } from '../../../shared/sms/cannedResponseTokens';
+import { countSmsSegments } from '../../../shared/sms/segments';
 import {
   MessageSquare, Send, Sparkles, Phone, ArrowLeft, Inbox, Search,
   Pin, Flag, Clock, User, Users, Tag, X, Check, AlertTriangle,
@@ -489,6 +490,20 @@ function InboxView({
   loadActivity: () => void;
 }) {
   const { user } = useAuth();
+
+  // Carriers split anything over 160 GSM-7 chars (or 70 UCS-2 chars
+  // if a non-GSM character sneaks in) into multiple billed segments.
+  // Surface that under the composer so an agent who pastes a long
+  // reply or sneaks in an em-dash sees the segment count jump
+  // immediately, instead of finding out from the next Twilio bill.
+  // Mirrors the dispatch template editor preview from task #824.
+  const replySegmentInfo = useMemo(
+    () => countSmsSegments(replyText),
+    [replyText],
+  );
+  const showReplySegmentWarning =
+    replySegmentInfo.segments > 1 || replySegmentInfo.encoding === 'UCS-2';
+
   const filters: { key: InboxFilter; label: string; count?: number }[] = [
     { key: 'all', label: 'All' },
     { key: 'open', label: 'Open', count: inboxCounts.open },
@@ -837,6 +852,38 @@ function InboxView({
                       {showSchedule && scheduleDate ? 'Schedule' : 'Send'}
                     </button>
                   </div>
+                  {replyText.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                      <span
+                        data-testid="sms-inbox-composer-segments"
+                        data-encoding={replySegmentInfo.encoding}
+                        data-segments={replySegmentInfo.segments}
+                        className={
+                          showReplySegmentWarning
+                            ? 'text-amber-700 dark:text-amber-400 font-medium'
+                            : 'text-muted'
+                        }
+                      >
+                        {replySegmentInfo.characters}{' '}
+                        character{replySegmentInfo.characters === 1 ? '' : 's'}
+                        {' · '}
+                        {replySegmentInfo.segments}{' '}
+                        segment{replySegmentInfo.segments === 1 ? '' : 's'}
+                        {replySegmentInfo.encoding === 'UCS-2' && ' (Unicode)'}
+                      </span>
+                      {showReplySegmentWarning && (
+                        <span
+                          role="alert"
+                          data-testid="sms-inbox-composer-segments-warning"
+                          className="text-[11px] text-amber-700 dark:text-amber-400"
+                        >
+                          {replySegmentInfo.encoding === 'UCS-2'
+                            ? `— a non-GSM character forced Unicode mode, dropping the per-segment limit to 70 (billed as ${replySegmentInfo.segments} SMS).`
+                            : `— billed as ${replySegmentInfo.segments} SMS. Trim to 160 characters to send as one.`}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
