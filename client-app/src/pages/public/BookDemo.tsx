@@ -19,22 +19,39 @@ const timeWindows = [
   'Flexible',
 ];
 
+// Build-time defaults from VITE_ env vars are kept ONLY as a fallback for
+// the brief window between the page mounting and the runtime
+// `/api/book-demo/config` fetch resolving (or for the case where that
+// endpoint fails). The authoritative value comes from the admin-controlled
+// platform_settings row, which is exposed via `/api/book-demo/config` and
+// can be flipped between cal.com and calendly without a redeploy.
 const VITE_ENV = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}) as Record<string, string | undefined>;
-const SCHEDULER_URL = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_URL || 'https://cal.com/qvo/30min').trim();
-const SCHEDULER_PROVIDER = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_PROVIDER || 'cal.com').trim().toLowerCase();
+const FALLBACK_SCHEDULER_URL = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_URL || 'https://cal.com/qvo/30min').trim();
+const FALLBACK_SCHEDULER_PROVIDER = (VITE_ENV.VITE_BOOK_DEMO_SCHEDULER_PROVIDER || 'cal.com').trim().toLowerCase();
 
-function buildSchedulerUrl(form: {
-  name: string;
-  email: string;
-  company: string;
-  teamSize: string;
-  useCase: string;
-}, leadId: number | null): string {
+interface SchedulerConfig {
+  provider: string;
+  embedUrl: string;
+}
+
+function buildSchedulerUrl(
+  form: {
+    name: string;
+    email: string;
+    company: string;
+    teamSize: string;
+    useCase: string;
+  },
+  leadId: number | null,
+  config: SchedulerConfig,
+): string {
+  const provider = (config.provider || 'cal.com').trim().toLowerCase();
+  const baseUrl = (config.embedUrl || FALLBACK_SCHEDULER_URL).trim();
   try {
-    const url = new URL(SCHEDULER_URL);
+    const url = new URL(baseUrl);
     const notes = `Company: ${form.company}\nTeam size: ${form.teamSize}${form.useCase ? `\nUse case: ${form.useCase}` : ''}${leadId ? `\nLead ID: ${leadId}` : ''}`;
 
-    if (SCHEDULER_PROVIDER === 'calendly') {
+    if (provider === 'calendly') {
       url.searchParams.set('name', form.name);
       url.searchParams.set('email', form.email);
       url.searchParams.set('a1', form.company);
@@ -52,7 +69,7 @@ function buildSchedulerUrl(form: {
     }
     return url.toString();
   } catch {
-    return SCHEDULER_URL;
+    return baseUrl;
   }
 }
 
@@ -61,6 +78,10 @@ export default function BookDemo() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leadId, setLeadId] = useState<number | null>(null);
+  const [schedulerConfig, setSchedulerConfig] = useState<SchedulerConfig>({
+    provider: FALLBACK_SCHEDULER_PROVIDER,
+    embedUrl: FALLBACK_SCHEDULER_URL,
+  });
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -75,6 +96,28 @@ export default function BookDemo() {
     trackPageView('/book-demo');
     captureUtmOnLoad();
     trackConversionEvent('page_view', '/book-demo');
+  }, []);
+
+  // Pull the live scheduler config from the admin-controlled
+  // `/api/book-demo/config` endpoint so an operator can switch the embed
+  // between Cal.com and Calendly without a redeploy. Failures keep the
+  // build-time fallback values (so the page stays functional).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/book-demo/config');
+        if (!res.ok) return;
+        const data = (await res.json().catch(() => null)) as SchedulerConfig | null;
+        if (cancelled || !data || typeof data.provider !== 'string' || typeof data.embedUrl !== 'string') return;
+        setSchedulerConfig({ provider: data.provider, embedUrl: data.embedUrl });
+      } catch {
+        // Keep the build-time fallback — the form still renders correctly.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -178,7 +221,7 @@ export default function BookDemo() {
                   </div>
                   <iframe
                     title="Schedule a QVO demo"
-                    src={buildSchedulerUrl(form, leadId)}
+                    src={buildSchedulerUrl(form, leadId, schedulerConfig)}
                     className="w-full"
                     style={{ height: '720px', border: 0 }}
                     loading="lazy"

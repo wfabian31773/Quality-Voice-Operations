@@ -130,12 +130,24 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
   // Conditional production requirement: when the /book-demo page is wired to
   // Calendly we must have a webhook secret so the verifier can authenticate
   // Calendly's deliveries (the route fails closed in production without it).
+  //
+  // NOTE: Admins can also store the secret in the DB-backed Demo Scheduler
+  // settings panel (Sales Inbox → Demo scheduler). The verifier prefers the
+  // env var when set and only falls back to the DB-stored value when the env
+  // var is empty, so this validator's env-only check stays correct: the only
+  // configuration that bypasses the env entirely is one where this var is
+  // unset *and* the admin panel has saved a value. validate-env.ts
+  // intentionally does *not* query the DB — it stays fast and dependency-free
+  // at boot — so operators relying on the DB-only path should set
+  // CALENDLY_WEBHOOK_SECRET to any non-empty placeholder to silence this
+  // check. Setting any non-empty value here also wins over the DB-stored
+  // secret; clear the env var first if you want the panel value to take over.
   const provider = resolveBookDemoSchedulerProvider();
   if (isProd && provider === 'calendly') {
     console.log('\nConditional variables:');
     if (!process.env.CALENDLY_WEBHOOK_SECRET) {
       console.log(
-        `  FAIL  CALENDLY_WEBHOOK_SECRET — required because BOOK_DEMO_SCHEDULER_PROVIDER (or VITE_BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly"`,
+        `  FAIL  CALENDLY_WEBHOOK_SECRET — required because BOOK_DEMO_SCHEDULER_PROVIDER (or VITE_BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly". Set the env var, or store a secret via the admin Demo scheduler panel and provide any placeholder value here to silence this check.`,
       );
       missing.push('CALENDLY_WEBHOOK_SECRET');
     } else {

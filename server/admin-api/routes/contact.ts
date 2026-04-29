@@ -10,6 +10,11 @@ import {
   findLeadById,
   type BookingDetails,
 } from '../services/marketing-leads';
+import {
+  getActiveCalcomWebhookSecret,
+  getActiveCalendlyWebhookSecret,
+  getPublicDemoSchedulerConfig,
+} from '../services/demo-scheduler-settings';
 
 const logger = createLogger('CONTACT');
 
@@ -143,8 +148,16 @@ export function verifyCalcomSignature(
   signatureHeader: string | undefined,
   timestampHeader: string | undefined,
   nowSeconds: number = Math.floor(Date.now() / 1000),
+  /**
+   * Optional pre-resolved secret. When provided (e.g. by the route handler
+   * that loaded the active secret from env-or-DB via
+   * `getActiveCalcomWebhookSecret`), the env-var lookup below is skipped.
+   * Tests and the original env-only callers can still call this without a
+   * secret and rely on `process.env.CALCOM_WEBHOOK_SECRET`.
+   */
+  resolvedSecret?: string | null,
 ): SignatureResult {
-  const secret = (process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
+  const secret = (resolvedSecret ?? process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
   if (!secret) {
     // Fail-closed: never accept unsigned webhooks. Allow only when explicit
     // dev opt-in is set so local testing can still exercise the flow.
@@ -271,8 +284,17 @@ export function verifyCalcomNativeSignature(
  * older than 5 minutes to mitigate replay attacks (the same tolerance Calendly
  * recommends in their docs).
  */
-function verifyCalendlySignature(rawBody: Buffer, signatureHeader: string | undefined): SignatureResult {
-  const secret = (process.env.CALENDLY_WEBHOOK_SECRET ?? '').trim();
+function verifyCalendlySignature(
+  rawBody: Buffer,
+  signatureHeader: string | undefined,
+  /**
+   * Optional pre-resolved secret. When provided, takes precedence over the
+   * `CALENDLY_WEBHOOK_SECRET` env var. Used by the route handler to swap in
+   * a DB-stored override without changing the env-var fallback contract.
+   */
+  resolvedSecret?: string | null,
+): SignatureResult {
+  const secret = (resolvedSecret ?? process.env.CALENDLY_WEBHOOK_SECRET ?? '').trim();
   if (!secret) {
     const allowUnsigned =
       (process.env.CALENDLY_WEBHOOK_ALLOW_UNSIGNED ?? '').trim() === '1' &&
@@ -438,7 +460,14 @@ async function handleCalcomWebhook(
   timestamp: string | undefined,
   res: Response,
 ): Promise<void> {
-  const sigResult = verifyCalcomSignature(raw, signature, timestamp);
+  const resolvedSecret = await getActiveCalcomWebhookSecret();
+  const sigResult = verifyCalcomSignature(
+    raw,
+    signature,
+    timestamp,
+    Math.floor(Date.now() / 1000),
+    resolvedSecret,
+  );
   if (!sigResult.ok) {
     logger.warn('Cal.com webhook rejected', { reason: sigResult.error, status: sigResult.status });
     res.status(sigResult.status).json({ error: sigResult.error });
@@ -507,7 +536,8 @@ async function handleCalcomWebhook(
 }
 
 async function handleCalendlyWebhook(raw: Buffer, signature: string | undefined, res: Response): Promise<void> {
-  const sigResult = verifyCalendlySignature(raw, signature);
+  const resolvedSecret = await getActiveCalendlyWebhookSecret();
+  const sigResult = verifyCalendlySignature(raw, signature, resolvedSecret);
   if (!sigResult.ok) {
     logger.warn('Calendly webhook rejected', { reason: sigResult.error, status: sigResult.status });
     res.status(sigResult.status).json({ error: sigResult.error });
@@ -682,6 +712,24 @@ async function dispatchBookingWebhook(args: DispatchBookingArgs): Promise<void> 
 
   res.json({ ok: true, leadId, duplicate });
 }
+
+// Public, unauthenticated config endpoint consumed by the /book-demo page.
+// Returns ONLY the provider + embed URL — never any secret material — so the
+// front-end can pick the right scheduler at runtime without rebuilding the
+// client bundle. Cached briefly on the edge so a flood of demo-page loads
+// doesn't hammer platform_settings.
+router.get('/book-demo/config', async (_req: Request, res: Response) => {
+  try {
+    const config = await getPublicDemoSchedulerConfig();
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(config);
+  } catch (err) {
+    logger.error('Failed to load public demo scheduler config', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: 'Failed to load demo scheduler configuration' });
+  }
+});
 
 router.post('/book-demo/calendar-webhook', async (req: Request, res: Response) => {
   // The router mount in app.ts attaches express.raw before json for this path,

@@ -46,5 +46,4 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Email:** Nodemailer (SMTP service), SendGrid Inbound Parse (for support ticket replies).
 - **CAPTCHA:** Cloudflare Turnstile.
 - **Frontend Libraries:** Zustand, `@tanstack/react-query`, `@xyflow/react`.
-- **Inbound Email:** SendGrid Inbound Parse.
-- **Scheduling:** Cal.com (or Calendly) via webhooks.
+- **Scheduling:** Cal.com (or Calendly) via webhooks for demo bookings. The active provider, embed URL, and webhook secrets are switchable at runtime from **Sales Inbox → Demo scheduler** without a redeploy; env vars (`CALCOM_WEBHOOK_SECRET`, `CALENDLY_WEBHOOK_SECRET`) take precedence over the DB-stored values.

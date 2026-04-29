@@ -8,7 +8,7 @@ import {
   CalendarCheck, CalendarX, CalendarClock, MailCheck, UserCheck, FileText,
   Download, Bell, Settings, Plus, Trash2,
   History, Sparkles, MessageSquare, Send, AlertTriangle,
-  Users, ArrowUp, ArrowDown,
+  Users, ArrowUp, ArrowDown, CalendarRange, Eye, EyeOff,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import GlobalScopeBanner from '../components/GlobalScopeBanner';
@@ -109,6 +109,25 @@ interface SalesAlertSettings {
 interface SalesAlertSettingsResponse {
   settings: SalesAlertSettings;
   fallbacks: { envEmail: string | null; envSlackConfigured: boolean };
+}
+
+type SchedulerProvider = 'cal.com' | 'calendly';
+
+interface DemoSchedulerSettings {
+  provider: SchedulerProvider;
+  embedUrl: string;
+  calcomWebhookSecretConfigured: boolean;
+  calendlyWebhookSecretConfigured: boolean;
+}
+
+interface DemoSchedulerSettingsResponse {
+  settings: DemoSchedulerSettings;
+  fallbacks: {
+    envProvider: string | null;
+    envEmbedUrl: string | null;
+    envCalcomSecretConfigured: boolean;
+    envCalendlySecretConfigured: boolean;
+  };
 }
 
 type AlertChannelStatus = 'sent' | 'skipped' | 'failed';
@@ -235,6 +254,7 @@ export default function AdminSalesInbox() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [schedulerOpen, setSchedulerOpen] = useState(false);
 
   // Persist the active filter set in the URL so reloads, back/forward
   // navigation, and shared links all restore the same view. We use { replace:
@@ -458,6 +478,14 @@ export default function AdminSalesInbox() {
               Alert settings
             </button>
             <button
+              onClick={() => setSchedulerOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-medium hover:bg-surface-hover transition-colors"
+              title="Switch the /book-demo embed between Cal.com and Calendly without a redeploy"
+            >
+              <CalendarRange className="h-4 w-4" />
+              Demo scheduler
+            </button>
+            <button
               onClick={() => refetch()}
               disabled={isFetching}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-medium hover:bg-surface-hover transition-colors disabled:opacity-50"
@@ -477,6 +505,10 @@ export default function AdminSalesInbox() {
 
       {settingsOpen && (
         <SalesAlertSettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {schedulerOpen && (
+        <DemoSchedulerSettingsModal onClose={() => setSchedulerOpen(false)} />
       )}
 
       {counts && (
@@ -1620,6 +1652,344 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
     </Modal>
+  );
+}
+
+function DemoSchedulerSettingsModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, error } = useQuery<DemoSchedulerSettingsResponse>({
+    queryKey: ['demo-scheduler-settings'],
+    queryFn: () => api.get<DemoSchedulerSettingsResponse>('/platform/demo-scheduler-settings'),
+  });
+
+  const [draftProvider, setDraftProvider] = useState<SchedulerProvider | null>(null);
+  const [draftEmbedUrl, setDraftEmbedUrl] = useState<string>('');
+  const [calcomSecret, setCalcomSecret] = useState<string>('');
+  const [calendlySecret, setCalendlySecret] = useState<string>('');
+  const [showCalcomSecret, setShowCalcomSecret] = useState(false);
+  const [showCalendlySecret, setShowCalendlySecret] = useState(false);
+  const [clearCalcom, setClearCalcom] = useState(false);
+  const [clearCalendly, setClearCalendly] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    if (data?.settings && draftProvider === null) {
+      setDraftProvider(data.settings.provider);
+      setDraftEmbedUrl(data.settings.embedUrl);
+    }
+  }, [data, draftProvider]);
+
+  const saveMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api.put<{ settings: DemoSchedulerSettings }>('/platform/demo-scheduler-settings', body),
+    onSuccess: (resp) => {
+      setSaveError(null);
+      setSaveSuccess(true);
+      // Wipe the secret inputs so they don't persist visibly after save.
+      setCalcomSecret('');
+      setCalendlySecret('');
+      setClearCalcom(false);
+      setClearCalendly(false);
+      setShowCalcomSecret(false);
+      setShowCalendlySecret(false);
+      // Push the canonical values back into the form so any normalisation
+      // (URL trimming, etc.) is reflected immediately.
+      setDraftProvider(resp.settings.provider);
+      setDraftEmbedUrl(resp.settings.embedUrl);
+      queryClient.invalidateQueries({ queryKey: ['demo-scheduler-settings'] });
+    },
+    onError: (err) => {
+      setSaveSuccess(false);
+      setSaveError(err instanceof Error ? err.message : 'Failed to save settings');
+    },
+  });
+
+  const handleSave = () => {
+    setSaveError(null);
+    setSaveSuccess(false);
+    if (!draftProvider) return;
+    const trimmedUrl = draftEmbedUrl.trim();
+    if (!trimmedUrl) {
+      setSaveError('Embed URL is required');
+      return;
+    }
+    try {
+      const u = new URL(trimmedUrl);
+      if (u.protocol !== 'https:') {
+        setSaveError('Embed URL must start with https://');
+        return;
+      }
+    } catch {
+      setSaveError('Embed URL is not a valid URL');
+      return;
+    }
+    const body: Record<string, unknown> = {
+      provider: draftProvider,
+      embedUrl: trimmedUrl,
+    };
+    if (clearCalcom) {
+      body.calcomWebhookSecret = null;
+    } else if (calcomSecret.trim()) {
+      body.calcomWebhookSecret = calcomSecret.trim();
+    }
+    if (clearCalendly) {
+      body.calendlyWebhookSecret = null;
+    } else if (calendlySecret.trim()) {
+      body.calendlyWebhookSecret = calendlySecret.trim();
+    }
+    saveMutation.mutate(body);
+  };
+
+  return (
+    <Modal open onClose={onClose} ariaLabel="Demo scheduler settings" panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+        <div className="flex items-center gap-2">
+          <CalendarRange className="h-5 w-5 text-purple-400" />
+          <h3 className="text-lg font-semibold text-white">Demo scheduler settings</h3>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+          aria-label="Close"
+        >
+          <XIcon className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="p-5 space-y-5">
+        {isLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        )}
+        {isError && (
+          <ErrorState variant="inline" title="Failed to load settings" error={error} />
+        )}
+        {data && draftProvider !== null && (
+          <>
+            <p className="text-xs text-slate-400">
+              Switches the public <code className="text-slate-300">/book-demo</code> embed between Cal.com and Calendly at runtime — no rebuild or redeploy needed. Webhook secrets entered here are AES-256-GCM-encrypted at rest. The verifier prefers the matching env var when one is set and only falls back to a stored secret when the env var is empty, so to fully migrate to a DB-managed secret you must clear the env var first.
+            </p>
+
+            <section className="space-y-3">
+              <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Provider</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <ProviderRadio
+                  label="Cal.com"
+                  description="Default — uses x-cal-signature-256 webhook auth"
+                  selected={draftProvider === 'cal.com'}
+                  onSelect={() => setDraftProvider('cal.com')}
+                />
+                <ProviderRadio
+                  label="Calendly"
+                  description="Uses Calendly-Webhook-Signature header"
+                  selected={draftProvider === 'calendly'}
+                  onSelect={() => setDraftProvider('calendly')}
+                />
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Embed URL</h4>
+              <input
+                type="url"
+                value={draftEmbedUrl}
+                onChange={(e) => setDraftEmbedUrl(e.target.value)}
+                placeholder={data.fallbacks.envEmbedUrl ?? 'https://cal.com/qvo/30min'}
+                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <p className="text-[11px] text-slate-500">
+                Loaded into the iframe on the demo page. {data.fallbacks.envEmbedUrl
+                  ? <>Build-time fallback: <code className="text-slate-400">{data.fallbacks.envEmbedUrl}</code>.</>
+                  : 'No build-time fallback configured.'}
+              </p>
+            </section>
+
+            <SecretField
+              label="Cal.com webhook secret"
+              configured={data.settings.calcomWebhookSecretConfigured}
+              envConfigured={data.fallbacks.envCalcomSecretConfigured}
+              envName="CALCOM_WEBHOOK_SECRET"
+              value={calcomSecret}
+              onChange={setCalcomSecret}
+              show={showCalcomSecret}
+              onToggleShow={() => setShowCalcomSecret((v) => !v)}
+              clear={clearCalcom}
+              onToggleClear={() => setClearCalcom((v) => !v)}
+            />
+
+            <SecretField
+              label="Calendly webhook secret"
+              configured={data.settings.calendlyWebhookSecretConfigured}
+              envConfigured={data.fallbacks.envCalendlySecretConfigured}
+              envName="CALENDLY_WEBHOOK_SECRET"
+              value={calendlySecret}
+              onChange={setCalendlySecret}
+              show={showCalendlySecret}
+              onToggleShow={() => setShowCalendlySecret((v) => !v)}
+              clear={clearCalendly}
+              onToggleClear={() => setClearCalendly((v) => !v)}
+            />
+
+            {saveError && (
+              <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+                {saveError}
+              </div>
+            )}
+            {saveSuccess && !saveError && (
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-200 text-sm flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Saved. The next /book-demo page load will pick up the new configuration.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="border-t border-slate-700 px-5 py-3 flex flex-wrap items-center justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={!data || saveMutation.isPending}
+          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {saveMutation.isPending ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ProviderRadio({
+  label,
+  description,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  description: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={clsx(
+        'flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
+        selected
+          ? 'border-purple-500 bg-purple-500/10'
+          : 'border-slate-700 bg-slate-800/40 hover:bg-slate-800/70',
+      )}
+    >
+      <div
+        className={clsx(
+          'mt-0.5 h-4 w-4 rounded-full border-2 flex-shrink-0',
+          selected ? 'border-purple-400 bg-purple-400' : 'border-slate-500',
+        )}
+      />
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-slate-100">{label}</div>
+        <div className="text-xs text-slate-400">{description}</div>
+      </div>
+    </button>
+  );
+}
+
+function SecretField({
+  label,
+  configured,
+  envConfigured,
+  envName,
+  value,
+  onChange,
+  show,
+  onToggleShow,
+  clear,
+  onToggleClear,
+}: {
+  label: string;
+  configured: boolean;
+  envConfigured: boolean;
+  envName: string;
+  value: string;
+  onChange: (v: string) => void;
+  show: boolean;
+  onToggleShow: () => void;
+  clear: boolean;
+  onToggleClear: () => void;
+}) {
+  // The verifier prefers `process.env.<envName>` first and only falls back to
+  // the encrypted DB-stored secret when no env var is set, so the badge wording
+  // reflects which value the verifier will actually use right now.
+  const activeSource: 'env' | 'db' | 'none' = envConfigured ? 'env' : configured ? 'db' : 'none';
+  const status = activeSource === 'env'
+    ? `Verifier is using ${envName} from env. The DB-stored secret (if any) is only used when the env var is empty.`
+    : activeSource === 'db'
+      ? 'Verifier is using the DB-stored secret (no env var set).'
+      : `No secret configured. Webhooks will fail until ${envName} is set or a value is saved here.`;
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">{label}</h4>
+        <span className={clsx(
+          'text-[11px] px-2 py-0.5 rounded-full',
+          activeSource === 'env'
+            ? 'bg-sky-500/15 text-sky-300'
+            : activeSource === 'db'
+              ? 'bg-emerald-500/15 text-emerald-300'
+              : 'bg-rose-500/15 text-rose-300',
+        )}>
+          {activeSource === 'env'
+            ? 'Env active'
+            : activeSource === 'db'
+              ? 'DB-stored, active'
+              : 'Not configured'}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={configured ? '•••••••• (leave blank to keep current)' : 'Paste new signing key to enable'}
+          disabled={clear}
+          autoComplete="new-password"
+          className="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-40"
+        />
+        <button
+          type="button"
+          onClick={onToggleShow}
+          disabled={clear}
+          className="px-2 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-40"
+          aria-label={show ? 'Hide secret' : 'Show secret'}
+          title={show ? 'Hide secret' : 'Show secret'}
+        >
+          {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+      {configured && (
+        <label className="inline-flex items-center gap-2 text-xs text-slate-400">
+          <input
+            type="checkbox"
+            checked={clear}
+            onChange={onToggleClear}
+            className="h-3.5 w-3.5 accent-rose-500"
+          />
+          Clear stored secret on save (revert to env fallback)
+        </label>
+      )}
+      <p className="text-[11px] text-slate-500">{status}</p>
+    </section>
   );
 }
 

@@ -32,6 +32,14 @@ import {
   setSalesAlertSettings,
   type SalesAlertSettingsPatch,
 } from '../services/sales-alert-settings';
+import {
+  getDemoSchedulerSettings,
+  setDemoSchedulerSettings,
+  toAdminView,
+  DemoSchedulerSettingsValidationError,
+  type DemoSchedulerSettingsPatch,
+  type SchedulerProvider,
+} from '../services/demo-scheduler-settings';
 
 const router = Router();
 const logger = createLogger('PLATFORM_ADMIN');
@@ -1370,6 +1378,94 @@ router.patch('/platform/notifications/:id/read', requireAuth, async (req, res) =
   } catch (err) {
     logger.error('Failed to mark notification read', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update notification' });
+  }
+});
+
+// ---------- Demo scheduler settings ----------
+//
+// Lets a platform admin switch the public /book-demo embed between Cal.com
+// and Calendly, swap the embed URL, and rotate either webhook secret WITHOUT
+// a redeploy. The plaintext webhook secrets are encrypted at rest in
+// platform_settings and never returned to the client (the GET endpoint only
+// reports whether each secret is currently configured).
+
+router.get('/platform/demo-scheduler-settings', requireAuth, requirePlatformAdmin, async (_req, res) => {
+  try {
+    const settings = await getDemoSchedulerSettings();
+    return res.json({
+      settings: toAdminView(settings),
+      fallbacks: {
+        envProvider:
+          (process.env.BOOK_DEMO_SCHEDULER_PROVIDER ?? process.env.VITE_BOOK_DEMO_SCHEDULER_PROVIDER ?? '').trim() ||
+          null,
+        envEmbedUrl: (process.env.VITE_BOOK_DEMO_SCHEDULER_URL ?? '').trim() || null,
+        envCalcomSecretConfigured: Boolean((process.env.CALCOM_WEBHOOK_SECRET ?? '').trim()),
+        envCalendlySecretConfigured: Boolean((process.env.CALENDLY_WEBHOOK_SECRET ?? '').trim()),
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to load demo scheduler settings', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to load demo scheduler settings' });
+  }
+});
+
+router.put('/platform/demo-scheduler-settings', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const patch: DemoSchedulerSettingsPatch = {};
+
+  if (body.provider !== undefined) {
+    if (body.provider !== 'cal.com' && body.provider !== 'calendly') {
+      return res.status(400).json({ error: 'provider must be "cal.com" or "calendly"' });
+    }
+    patch.provider = body.provider as SchedulerProvider;
+  }
+  if (body.embedUrl !== undefined) {
+    if (typeof body.embedUrl !== 'string') {
+      return res.status(400).json({ error: 'embedUrl must be a string' });
+    }
+    patch.embedUrl = body.embedUrl;
+  }
+  // Use `null` to clear, a non-empty string to rotate, or omit to leave
+  // unchanged. Empty string is treated as "leave unchanged" so an admin
+  // saving the form without re-typing the secret doesn't accidentally wipe
+  // it out.
+  if (body.calcomWebhookSecret !== undefined) {
+    if (body.calcomWebhookSecret === null) {
+      patch.calcomWebhookSecret = null;
+    } else if (typeof body.calcomWebhookSecret === 'string') {
+      const trimmed = body.calcomWebhookSecret.trim();
+      if (trimmed) patch.calcomWebhookSecret = trimmed;
+    } else {
+      return res.status(400).json({ error: 'calcomWebhookSecret must be a string or null' });
+    }
+  }
+  if (body.calendlyWebhookSecret !== undefined) {
+    if (body.calendlyWebhookSecret === null) {
+      patch.calendlyWebhookSecret = null;
+    } else if (typeof body.calendlyWebhookSecret === 'string') {
+      const trimmed = body.calendlyWebhookSecret.trim();
+      if (trimmed) patch.calendlyWebhookSecret = trimmed;
+    } else {
+      return res.status(400).json({ error: 'calendlyWebhookSecret must be a string or null' });
+    }
+  }
+
+  try {
+    const settings = await setDemoSchedulerSettings(patch, req.user!.userId);
+    logger.info('Demo scheduler settings updated', {
+      adminUserId: req.user!.userId,
+      provider: settings.provider,
+      embedUrl: settings.embedUrl,
+      calcomConfigured: Boolean(settings.calcomWebhookSecretEncrypted),
+      calendlyConfigured: Boolean(settings.calendlyWebhookSecretEncrypted),
+    });
+    return res.json({ settings: toAdminView(settings) });
+  } catch (err) {
+    if (err instanceof DemoSchedulerSettingsValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    logger.error('Failed to save demo scheduler settings', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to save demo scheduler settings' });
   }
 });
 
