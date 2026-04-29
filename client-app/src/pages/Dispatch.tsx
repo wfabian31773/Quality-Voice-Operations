@@ -731,12 +731,35 @@ function formatExportBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+// Payload pushed by the server's `route_export.status_changed` SSE event
+// (see `routeExportsStreamHandler` in `server/admin-api/routes/dispatch.ts`).
+// We only carry the fields the panel needs to react instantly — the
+// authoritative row (filename, byte count, expiry, etc.) is fetched
+// once via the existing list endpoint as a follow-up so the SSE wire
+// payload stays tiny and the server can grow new columns without a
+// coordinated client release.
+type RouteExportStatusChangedEvent = {
+  exportJobId: string;
+  status: RouteExportRow['status'];
+  emittedAt?: string;
+  errorMessage?: string | null;
+};
+
 // "Recent exports" panel rendered inside the bulk-download modal so the
 // dispatcher can watch their queued archives go from pending → running
-// → ready without leaving the page or waiting for the email link. Polls
-// the existing tenant-scoped list endpoint every 5s as long as any row
-// is still in flight; switches to a passive (no-poll) view once
-// everything is terminal so we don't hammer the server.
+// → ready without leaving the page or waiting for the email link.
+//
+// Primary signal is an SSE subscription to
+// `/api/dispatch/route-exports/stream`: the server emits
+// `route_export.status_changed` the instant `processRouteExportJob`
+// flips a row, so the badge here moves from "Building" → "Ready"
+// (or "Failed") with no perceptible delay. While the SSE connection
+// is alive we suspend polling entirely — the connection itself, plus
+// its 15s heartbeat, is enough liveness — so the previous "every 5s
+// per dispatcher per tab" poll storm collapses to zero. If the
+// connection drops (proxy hiccup, browser tab backgrounded long
+// enough to lose the stream, etc.), we fall back to the original 5s
+// poll cadence so the panel still catches up eventually.
 function RecentExportsPanel({ refreshKey, onRetried }: {
   refreshKey: number;
   onRetried: () => void;
@@ -744,6 +767,7 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
   const [rows, setRows] = useState<RouteExportRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -765,19 +789,148 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
-  // Poll while at least one row is still being built. We deliberately
-  // keep the cadence slow (5s) — these archives can take tens of
-  // seconds to assemble and the dispatcher is reading the panel
-  // visually, not staring at a millisecond timer.
+  // Subscribe to the tenant-scoped SSE channel. Each
+  // `route_export.status_changed` event triggers a targeted re-fetch
+  // of the affected row's authoritative payload (so we pick up the
+  // archive filename + download URL the server only fills in on
+  // `ready`). If the row is already in `rows`, we patch its status
+  // optimistically while the GET is in flight so the badge moves
+  // immediately even on a slow link.
+  //
+  // EventSource intentionally relies on cookie auth (`withCredentials`)
+  // — it can't carry a Bearer header. The stream endpoint accepts the
+  // same `auth_token` cookie that backs the rest of the admin-api in
+  // dev and prod.
+  useEffect(() => {
+    let cancelled = false;
+    const es = new EventSource('/api/dispatch/route-exports/stream', {
+      withCredentials: true,
+    });
+
+    // Client ack keeps the server-side idle limiter (default 60s) from
+    // force-closing this stream during quiet periods (no route exports
+    // in flight). The server sends `connectionId` in the `connection`
+    // event; we POST an ack every 30s while the stream is open.
+    let connectionId: string | null = null;
+    let ackTimer: ReturnType<typeof setInterval> | null = null;
+    const sendAck = async () => {
+      if (cancelled || !connectionId) return;
+      try {
+        const token = getToken();
+        await fetch('/api/dispatch/route-exports/stream/ack', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ connectionId }),
+        });
+      } catch {
+        // Ignore — onerror will flip the SSE state and the polling
+        // fallback will take over until the stream reconnects.
+      }
+    };
+
+    const refreshRow = async (exportJobId: string) => {
+      try {
+        const token = getToken();
+        const res = await fetch(
+          `/api/dispatch/route-exports/${exportJobId}`,
+          {
+            headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            credentials: 'include',
+          },
+        );
+        if (!res.ok) return;
+        const next = (await res.json()) as RouteExportRow;
+        if (cancelled) return;
+        setRows(prev => {
+          if (!prev) return prev;
+          // Only patch a row we already know about. A brand-new row
+          // (the dispatcher just clicked "queue" in another tab) will
+          // be picked up by the next list refresh — we don't want this
+          // panel to silently grow rows the user didn't request from
+          // *this* modal.
+          if (!prev.some(r => r.id === exportJobId)) return prev;
+          return prev.map(r => (r.id === exportJobId ? { ...r, ...next } : r));
+        });
+      } catch {
+        // Ignore — the next event (or the fallback poll) will retry.
+      }
+    };
+
+    es.addEventListener('connection', (raw) => {
+      if (cancelled) return;
+      setSseConnected(true);
+      try {
+        const data = JSON.parse((raw as MessageEvent).data) as { connectionId?: string };
+        if (data?.connectionId) {
+          connectionId = data.connectionId;
+          // Send the first ack immediately so the limiter resets the
+          // idle clock right away, then on a 30s cadence (well under
+          // the 60s server-side default).
+          void sendAck();
+          if (ackTimer) clearInterval(ackTimer);
+          ackTimer = setInterval(() => { void sendAck(); }, 30_000);
+        }
+      } catch {
+        // Connection envelope was malformed — the stream still works,
+        // but without an ack we'll get an idle disconnect after ~60s
+        // and EventSource will reconnect automatically.
+      }
+    });
+
+    es.addEventListener('route_export.status_changed', (raw) => {
+      if (cancelled) return;
+      try {
+        const evt = JSON.parse((raw as MessageEvent).data) as RouteExportStatusChangedEvent;
+        if (!evt?.exportJobId) return;
+        // Optimistic in-place patch so the badge flips before the GET
+        // returns. The follow-up GET corrects any drift (download
+        // URLs, byte counts, etc.) once the row is `ready`.
+        setRows(prev => prev
+          ? prev.map(r => (r.id === evt.exportJobId
+              ? { ...r, status: evt.status, error_message: evt.errorMessage ?? r.error_message }
+              : r))
+          : prev,
+        );
+        void refreshRow(evt.exportJobId);
+      } catch {
+        // Malformed payload — fall back to a full reload so the panel
+        // stays consistent with the server.
+        void load();
+      }
+    });
+
+    es.onerror = () => {
+      // EventSource auto-reconnects; we just flip the flag so the
+      // polling fallback kicks in until `connection` fires again.
+      if (cancelled) return;
+      setSseConnected(false);
+    };
+
+    return () => {
+      cancelled = true;
+      setSseConnected(false);
+      if (ackTimer) clearInterval(ackTimer);
+      es.close();
+    };
+  }, [load]);
+
+  // Polling fallback: only runs while at least one row is still being
+  // built AND the SSE channel isn't currently delivering events. With
+  // SSE healthy this is a no-op; with SSE down we fall back to the
+  // original 5s cadence so the panel still catches up.
   const inFlight = useMemo(
     () => (rows ?? []).some(r => r.status === 'pending' || r.status === 'running'),
     [rows],
   );
   useEffect(() => {
-    if (!inFlight) return;
+    if (!inFlight || sseConnected) return;
     const handle = window.setInterval(() => { void load(); }, 5000);
     return () => window.clearInterval(handle);
-  }, [inFlight, load]);
+  }, [inFlight, sseConnected, load]);
 
   const retryExport = async (exportId: string) => {
     setRetryingId(exportId);

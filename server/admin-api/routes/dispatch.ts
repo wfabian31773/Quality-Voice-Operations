@@ -8,6 +8,18 @@ import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { fireDispatchPush, type DispatchPushEvent } from '../../../platform/notifications/dispatchPush';
 import {
+  emitRouteExportStatusChanged,
+  subscribeRouteExportEvents,
+} from '../../../platform/notifications/routeExportEvents';
+import {
+  attachSseHeartbeat,
+  getTenantSseConnectionLimiter,
+  registerSseConnection,
+  ackSseConnection,
+  resolveLiveStreamCap,
+} from '../../../platform/infra/rate-limit/sseConnectionLimiter';
+import { randomUUID } from 'node:crypto';
+import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from '../../replit_integrations/object_storage';
@@ -3224,6 +3236,16 @@ export async function processRouteExportJob(exportJobId: string): Promise<void> 
       [exportJobId],
     );
 
+    // Push the pending → running transition out over SSE so the
+    // dispatcher's "Recent exports" panel can flip the row to "Building"
+    // without waiting for its 5s poll. Best-effort — the broker
+    // swallows listener errors, so a missing client connection (or no
+    // subscribers at all) can never disrupt the worker.
+    emitRouteExportStatusChanged(row.tenant_id, {
+      exportJobId,
+      status: 'running',
+    });
+
     const resolvedJobIds = Array.isArray(row.selection?.resolved_job_ids)
       ? row.selection!.resolved_job_ids!.filter((s): s is string => typeof s === 'string')
       : [];
@@ -3300,6 +3322,15 @@ export async function processRouteExportJob(exportJobId: string): Promise<void> 
         archive.skippedEmpty,
       ],
     );
+
+    // Push the running → ready transition out over SSE so the
+    // dispatcher's "Recent exports" panel can flip the row to "Ready"
+    // (and surface the download link) the instant the archive lands —
+    // ahead of the email round-trip and ahead of the next 5s poll tick.
+    emitRouteExportStatusChanged(row.tenant_id, {
+      exportJobId,
+      status: 'ready',
+    });
 
     // Look up the requester's first name + tenant display name so the
     // email reads like a personal note rather than a system noise. Both
@@ -3381,6 +3412,19 @@ export async function processRouteExportJob(exportJobId: string): Promise<void> 
           WHERE id = $1`,
         [exportJobId, errorMessage.slice(0, 1000)],
       );
+      // Notify any "Recent exports" panels that this row is terminal so
+      // they can flip it to "Failed" and surface the retry control —
+      // again, best-effort and gated on the row UPDATE actually
+      // succeeding so we never tell the client about a status the DB
+      // doesn't reflect. Fenced inside the same try/catch as the DB
+      // write so a broker-side hiccup can't shadow the DB error.
+      if (row?.tenant_id) {
+        emitRouteExportStatusChanged(row.tenant_id, {
+          exportJobId,
+          status: 'failed',
+          errorMessage: errorMessage.slice(0, 1000),
+        });
+      }
     } catch (updateErr) {
       logger.error('processRouteExportJob: failed to record failure status', {
         exportJobId,
@@ -3531,6 +3575,94 @@ export const listRouteExportsHandler: RequestHandler = async (req, res) => {
     });
     return res.status(500).json({ error: 'Failed to list exports' });
   }
+};
+
+/**
+ * GET /dispatch/route-exports/stream
+ *
+ * Server-Sent Events channel that pushes `route_export.status_changed`
+ * notifications for the calling tenant. The dispatcher's "Recent
+ * exports" panel subscribes here so each `pending → running → ready`
+ * (or `* → failed`) transition flips the row instantly instead of
+ * waiting for the next 5s poll tick. Polling stays in the UI as a
+ * fallback that only kicks in if this stream isn't connected.
+ *
+ * Tenant-scoped through `requireAuth` (which writes `req.user.tenantId`)
+ * and the broker subscription key. Shares the platform-wide SSE
+ * concurrency limiter and idle-disconnect heartbeat with the live-call
+ * streams so a runaway client can't blow past the per-tenant cap.
+ *
+ * The companion `POST /dispatch/route-exports/stream/ack` lets the
+ * client extend its idle deadline without bouncing the connection
+ * (mirroring `/calls/live/ack`). Only the route-export scope is
+ * accepted, so an ack from an unrelated stream can't keep this one
+ * alive.
+ */
+const ROUTE_EXPORT_STREAM_TENANT_CAP = resolveLiveStreamCap(
+  process.env.TENANT_LIVE_STREAM_CAP,
+);
+
+export const routeExportsStreamHandler: RequestHandler = (req, res) => {
+  const { tenantId } = req.user!;
+
+  if (!getTenantSseConnectionLimiter().acquire(req, res)) {
+    logger.warn('Rejected route-exports stream — tenant concurrency cap reached', {
+      tenantId,
+      cap: ROUTE_EXPORT_STREAM_TENANT_CAP,
+    });
+    return;
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  // The connection envelope mirrors the other tenant SSE streams so
+  // the client's reusable open-handler logic can treat them uniformly.
+  // The `connectionId` doubles as the key for the ack endpoint.
+  const connectionId = randomUUID();
+  res.write(`event: connection\ndata: ${JSON.stringify({ connectionId })}\n\n`);
+
+  const detachHeartbeat = attachSseHeartbeat(req, res, {
+    intervalMs: 15_000,
+    idleTimeoutMs: 60_000,
+  });
+  const unregister = registerSseConnection(
+    tenantId,
+    connectionId,
+    detachHeartbeat.ack,
+    { stream: 'route_exports' },
+  );
+
+  const unsubscribe = subscribeRouteExportEvents(tenantId, (payload) => {
+    if (res.writableEnded || res.destroyed) return;
+    res.write(
+      `event: route_export.status_changed\ndata: ${JSON.stringify(payload)}\n\n`,
+    );
+  });
+
+  req.on('close', () => {
+    unsubscribe();
+    unregister();
+    detachHeartbeat();
+  });
+};
+
+export const routeExportsStreamAckHandler: RequestHandler = (req, res) => {
+  const { tenantId } = req.user!;
+  const connectionId =
+    (req.body && typeof req.body === 'object' &&
+      (req.body as { connectionId?: unknown }).connectionId) ||
+    req.query.connectionId;
+  if (typeof connectionId !== 'string' || !connectionId) {
+    return res.status(400).json({ error: 'connectionId required' });
+  }
+  const ok = ackSseConnection(tenantId, connectionId, { stream: 'route_exports' });
+  if (!ok) return res.status(404).json({ error: 'unknown connectionId' });
+  return res.status(204).end();
 };
 
 /**
@@ -4720,6 +4852,11 @@ router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHan
 router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
 router.post('/dispatch/jobs/routes/export', requireAuth, bulkExportJobRoutesHandler);
 router.get('/dispatch/route-exports', requireAuth, listRouteExportsHandler);
+// SSE channel + companion ack endpoint. Registered BEFORE the
+// `/:id` parameterised routes so Express matches the literal "stream"
+// path instead of treating it as an export-job id.
+router.get('/dispatch/route-exports/stream', requireAuth, routeExportsStreamHandler);
+router.post('/dispatch/route-exports/stream/ack', requireAuth, routeExportsStreamAckHandler);
 router.get('/dispatch/route-exports/:id', requireAuth, getRouteExportStatusHandler);
 router.post('/dispatch/route-exports/:id/retry', requireAuth, retryRouteExportHandler);
 // Intentionally NOT behind requireAuth — the per-export `download_token`
