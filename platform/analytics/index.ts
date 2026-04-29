@@ -127,6 +127,8 @@ export type {
 } from './WebsiteConversionService';
 export {
   getTenantCsatSettings,
+  updateTenantCsatSettings,
+  validateCsatSettingsUpdate,
   createCsatRequest,
   recordCsatResponse,
   tryRecordSmsCsatResponse,
@@ -149,4 +151,5 @@ export type {
   CreateCsatRequestParams,
   RecordCsatResponseParams,
   DispatchSmsCsatParams,
+  UpdateTenantCsatSettingsInput,
 } from './CsatSurveyService';

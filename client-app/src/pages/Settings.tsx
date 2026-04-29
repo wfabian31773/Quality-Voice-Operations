@@ -8,7 +8,7 @@ import {
   type ComponentType,
 } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, Navigate } from 'react-router-dom';
+import { useNavigate, useParams, Navigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -16,6 +16,7 @@ import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../li
 import {
   Settings2, Shield, Key, Save, CheckCircle, AlertCircle, Globe, Clock, Users,
   Lock, Download, Trash2, Bell, BellOff, Mail, Sparkles, Loader2,
+  MessageSquareHeart, Star,
 } from 'lucide-react';
 import ApiKeys from './ApiKeys';
 import VoicePicker from '../components/VoicePicker';
@@ -64,11 +65,12 @@ const ALL_TIMEZONES: string[] = (() => {
   ];
 })();
 
-type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy' | 'notifications';
+type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy' | 'notifications' | 'csat';
 
 const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
   { key: 'general', label: 'General', icon: Settings2 },
   { key: 'notifications', label: 'Notifications', icon: Bell },
+  { key: 'csat', label: 'Customer Satisfaction', icon: MessageSquareHeart },
   { key: 'roles', label: 'Roles & Permissions', icon: Users },
   { key: 'security', label: 'Security', icon: Shield },
   { key: 'api-keys', label: 'API Keys', icon: Key },
@@ -1484,9 +1486,392 @@ function NotificationCategoryMatrix({
   );
 }
 
+interface CsatSettingsPayload {
+  enabled: boolean;
+  channel: 'sms' | 'web' | 'email';
+  scale: number;
+  minDurationSeconds: number;
+  smsTemplate: string | null;
+}
+
+interface CsatRecentResponse {
+  id: string;
+  callSessionId: string;
+  requestChannel: 'sms' | 'ivr' | 'web' | 'email';
+  responseChannel: 'sms' | 'ivr' | 'web' | 'email' | null;
+  scoreRaw: number | null;
+  scoreScale: number | null;
+  scoreNormalized: number | null;
+  comment: string | null;
+  respondedAt: string | null;
+}
+
+// Labels intentionally mirror the SMS prompt format ("Reply 1-N (1=poor,
+// N=great)") that buildCsatSmsBody actually sends, so the picker, the
+// preview, and the customer's text match exactly.
+const CSAT_SCALE_OPTIONS = [
+  { value: 2, label: '1–2 (thumbs up/down)' },
+  { value: 3, label: '1–3' },
+  { value: 5, label: '1–5 (stars)' },
+  { value: 7, label: '1–7' },
+  { value: 10, label: '1–10 (NPS-style)' },
+];
+
+const CSAT_CHANNEL_OPTIONS: { value: CsatSettingsPayload['channel']; label: string; helper: string }[] = [
+  { value: 'sms', label: 'SMS text', helper: 'Send a short text after the call asking for a rating reply.' },
+  { value: 'web', label: 'Web link', helper: 'Generate a per-call survey link surfaced via integrations or follow-ups.' },
+  { value: 'email', label: 'Email', helper: 'Include a survey link in a follow-up email (requires email integration).' },
+];
+
+function formatCsatChannel(channel: string | null): string {
+  if (!channel) return '—';
+  if (channel === 'sms') return 'SMS';
+  if (channel === 'ivr') return 'IVR';
+  if (channel === 'web') return 'Web';
+  if (channel === 'email') return 'Email';
+  return channel;
+}
+
+function formatCsatTimestamp(value: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
+}
+
+function CsatSettings() {
+  const queryClient = useQueryClient();
+  const { isOwner } = useRole();
+  const [saved, setSaved] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const settingsQuery = useQuery({
+    queryKey: ['csat-settings'],
+    queryFn: () => api.get<{ settings: CsatSettingsPayload }>('/csat/settings'),
+  });
+
+  const responsesQuery = useQuery({
+    queryKey: ['csat-recent-responses'],
+    queryFn: () =>
+      api.get<{ responses: CsatRecentResponse[] }>('/csat/responses/recent?limit=20'),
+  });
+
+  type CsatFormState = Omit<CsatSettingsPayload, 'smsTemplate'> & { smsTemplate: string };
+  const [form, setForm] = useState<CsatFormState>({
+    enabled: false,
+    channel: 'sms',
+    scale: 5,
+    minDurationSeconds: 30,
+    smsTemplate: '',
+  });
+
+  useEffect(() => {
+    if (settingsQuery.data?.settings) {
+      const s = settingsQuery.data.settings;
+      const channel: CsatSettingsPayload['channel'] =
+        s.channel === 'sms' || s.channel === 'web' || s.channel === 'email' ? s.channel : 'sms';
+      setForm({
+        enabled: s.enabled,
+        channel,
+        scale: s.scale,
+        minDurationSeconds: s.minDurationSeconds,
+        smsTemplate: s.smsTemplate ?? '',
+      });
+    }
+  }, [settingsQuery.data]);
+
+  const mutation = useMutation({
+    mutationFn: (payload: Partial<CsatSettingsPayload>) =>
+      api.patch<{ settings: CsatSettingsPayload }>('/csat/settings', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['csat-settings'] });
+      setSaved(true);
+      setValidationError(null);
+      setTimeout(() => setSaved(false), 3000);
+    },
+    onError: (err) => {
+      setValidationError(err instanceof Error ? err.message : 'Failed to save CSAT settings');
+    },
+  });
+
+  const handleSave = () => {
+    if (!isOwner) return;
+    setValidationError(null);
+    if (form.minDurationSeconds < 5 || form.minDurationSeconds > 600) {
+      setValidationError('Minimum call duration must be between 5 and 600 seconds.');
+      return;
+    }
+    if (form.smsTemplate && form.smsTemplate.length > 320) {
+      setValidationError('SMS template must be 320 characters or fewer.');
+      return;
+    }
+    mutation.mutate({
+      enabled: form.enabled,
+      channel: form.channel,
+      scale: form.scale,
+      minDurationSeconds: form.minDurationSeconds,
+      smsTemplate: form.smsTemplate.trim().length > 0 ? form.smsTemplate : null,
+    });
+  };
+
+  if (settingsQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (settingsQuery.error) {
+    return (
+      <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Failed to load CSAT settings. Please check your connection and try again.</span>
+        <button
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['csat-settings'] })}
+          className="ml-auto text-xs font-medium underline hover:no-underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const responses = responsesQuery.data?.responses ?? [];
+  const previewRange = `1–${form.scale}`;
+  const channelHelper = CSAT_CHANNEL_OPTIONS.find((c) => c.value === form.channel)?.helper ?? '';
+  const templatePreview = (form.smsTemplate.trim() || 'Thanks for calling! How would you rate this call?')
+    + ` Reply ${previewRange} (1=poor, ${form.scale}=great). Reply STOP to opt out.`;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Customer Satisfaction Surveys</h2>
+        <p className="text-sm text-text-muted mt-0.5">
+          Automatically ask callers to rate their experience after a call. Responses feed your quality dashboard
+          and the cross-tenant CSAT benchmark.
+        </p>
+      </div>
+
+      {validationError && (
+        <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {validationError}
+        </div>
+      )}
+
+      {saved && (
+        <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          CSAT settings saved successfully
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl divide-y divide-border">
+        <div className="p-6 flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-text-primary">Enable post-call surveys</label>
+            <p className="text-xs text-text-muted mt-1 max-w-xl">
+              When on, qualifying completed calls automatically dispatch a CSAT survey through the channel below.
+              Calls shorter than the minimum duration are skipped.
+            </p>
+          </div>
+          <label className="inline-flex items-center cursor-pointer mt-1">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={form.enabled}
+              disabled={!isOwner}
+              onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+              aria-label="Enable post-call CSAT surveys"
+            />
+            <span className="relative inline-block w-11 h-6 rounded-full bg-border peer-checked:bg-primary transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:bg-white after:rounded-full after:shadow after:transition-transform peer-checked:after:translate-x-5 peer-disabled:opacity-50" />
+          </label>
+        </div>
+
+        <div className="p-6">
+          <label className="block text-sm font-medium text-text-primary mb-1.5">Survey channel</label>
+          <select
+            value={form.channel}
+            onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value as CsatSettingsPayload['channel'] }))}
+            disabled={!isOwner}
+            className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {CSAT_CHANNEL_OPTIONS.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">{channelHelper}</p>
+        </div>
+
+        <div className="p-6">
+          <label className="block text-sm font-medium text-text-primary mb-1.5">Rating scale</label>
+          <select
+            value={form.scale}
+            onChange={(e) => setForm((f) => ({ ...f, scale: parseInt(e.target.value, 10) }))}
+            disabled={!isOwner}
+            className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {CSAT_SCALE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">
+            Scores are normalized internally so you can compare across scales without re-rating prior responses.
+          </p>
+        </div>
+
+        <div className="p-6">
+          <label className="block text-sm font-medium text-text-primary mb-1.5">
+            <Clock className="h-4 w-4 inline-block mr-1.5 -mt-0.5 text-text-muted" />
+            Minimum call duration
+          </label>
+          <div className="flex items-center gap-2 max-w-md">
+            <input
+              type="number"
+              min={5}
+              max={600}
+              step={5}
+              value={form.minDurationSeconds}
+              onChange={(e) => setForm((f) => ({ ...f, minDurationSeconds: parseInt(e.target.value, 10) || 0 }))}
+              disabled={!isOwner}
+              className="w-32 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
+            />
+            <span className="text-sm text-text-muted">seconds</span>
+          </div>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">
+            Calls shorter than this won't trigger a survey — avoids surveying hangups and misdials. 5–600 seconds.
+          </p>
+        </div>
+
+        <div className="p-6">
+          <label className="block text-sm font-medium text-text-primary mb-1.5">SMS prompt template</label>
+          <textarea
+            value={form.smsTemplate}
+            onChange={(e) => setForm((f) => ({ ...f, smsTemplate: e.target.value }))}
+            disabled={!isOwner || form.channel !== 'sms'}
+            rows={3}
+            maxLength={320}
+            placeholder="Thanks for calling! How would you rate this call?"
+            className="w-full max-w-2xl px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed font-mono"
+          />
+          <div className="flex items-center justify-between max-w-2xl mt-1.5">
+            <p className="text-xs text-text-muted">
+              {form.channel === 'sms'
+                ? 'Customize the opening line. The rating prompt and STOP footer are appended automatically.'
+                : 'Only used when the survey channel is SMS.'}
+            </p>
+            <span className="text-xs text-text-muted">{form.smsTemplate.length}/320</span>
+          </div>
+          {form.channel === 'sms' && (
+            <div className="mt-3 max-w-2xl bg-surface-hover border border-border rounded-lg p-3">
+              <div className="text-xs uppercase tracking-wide text-text-muted mb-1">Preview</div>
+              <div className="text-sm text-text-primary whitespace-pre-wrap">{templatePreview}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isOwner ? (
+        <div className="flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={mutation.isPending}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
+          >
+            {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {mutation.isPending ? 'Saving...' : 'Save CSAT Settings'}
+          </button>
+        </div>
+      ) : (
+        <p className="text-sm text-text-muted">Contact your organization owner to change CSAT settings.</p>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl">
+        <div className="p-6 border-b border-border flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <Star className="h-4 w-4 text-primary" />
+              Recent CSAT responses
+            </h3>
+            <p className="text-xs text-text-muted mt-0.5">
+              Most recent {responses.length === 0 ? '20' : responses.length} customer ratings, newest first.
+            </p>
+          </div>
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['csat-recent-responses'] })}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {responsesQuery.isLoading ? (
+          <div className="p-6 flex items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
+          </div>
+        ) : responsesQuery.error ? (
+          <div className="p-6 text-sm text-danger flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" /> Failed to load recent responses.
+          </div>
+        ) : responses.length === 0 ? (
+          <div className="p-8 text-center text-sm text-text-muted">
+            No CSAT responses yet. Once surveys are enabled and customers reply, they'll show up here.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">When</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">Score</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">Channel</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">Comment</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">Call</th>
+                </tr>
+              </thead>
+              <tbody>
+                {responses.map((r) => (
+                  <tr key={r.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                    <td className="px-5 py-2.5 text-text-primary whitespace-nowrap">{formatCsatTimestamp(r.respondedAt)}</td>
+                    <td className="px-5 py-2.5 text-text-primary whitespace-nowrap">
+                      {r.scoreRaw != null && r.scoreScale != null ? (
+                        <span className="font-medium">{r.scoreRaw} / {r.scoreScale}</span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-5 py-2.5 text-text-muted whitespace-nowrap">
+                      {formatCsatChannel(r.responseChannel ?? r.requestChannel)}
+                    </td>
+                    <td className="px-5 py-2.5 text-text-muted max-w-md">
+                      {r.comment ? (
+                        <span className="line-clamp-2">{r.comment}</span>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5 whitespace-nowrap">
+                      <Link
+                        to={`/calls?highlight=${encodeURIComponent(r.callSessionId)}`}
+                        className="text-primary hover:underline text-xs"
+                      >
+                        View call
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TAB_COMPONENTS: Record<Tab, ComponentType> = {
   general: GeneralSettings,
   notifications: NotificationSettings,
+  csat: CsatSettings,
   roles: RolesPermissions,
   security: SecuritySettings,
   'api-keys': ApiKeys,

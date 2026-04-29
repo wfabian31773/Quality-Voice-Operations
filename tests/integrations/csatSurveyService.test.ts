@@ -19,6 +19,8 @@ import {
   tryRecordSmsCsatResponse,
   getTenantCsatAggregate,
   dispatchSmsCsatSurvey,
+  validateCsatSettingsUpdate,
+  updateTenantCsatSettings,
 } from '../../platform/analytics/CsatSurveyService';
 
 beforeEach(() => {
@@ -310,5 +312,145 @@ describe('dispatchSmsCsatSurvey', () => {
     expect(result.sent).toBe(false);
     expect(result.error).toBe('missing_numbers');
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('validateCsatSettingsUpdate', () => {
+  it('accepts an empty payload', () => {
+    expect(validateCsatSettingsUpdate({})).toBeNull();
+  });
+
+  it('accepts a fully-specified valid payload', () => {
+    expect(validateCsatSettingsUpdate({
+      enabled: true,
+      channel: 'sms',
+      scale: 5,
+      minDurationSeconds: 60,
+      smsTemplate: 'Rate us!',
+    })).toBeNull();
+  });
+
+  it('rejects an out-of-range scale', () => {
+    expect(validateCsatSettingsUpdate({ scale: 1 })).toMatch(/scale/i);
+    expect(validateCsatSettingsUpdate({ scale: 11 })).toMatch(/scale/i);
+    expect(validateCsatSettingsUpdate({ scale: 5.5 })).toMatch(/scale/i);
+  });
+
+  it('rejects a duration outside the allowed window', () => {
+    expect(validateCsatSettingsUpdate({ minDurationSeconds: 4 })).toMatch(/Duration|seconds/i);
+    expect(validateCsatSettingsUpdate({ minDurationSeconds: 601 })).toMatch(/Duration|seconds/i);
+  });
+
+  it('rejects an unknown channel value', () => {
+    expect(validateCsatSettingsUpdate({ channel: 'pigeon' as never })).toMatch(/channel/i);
+    // IVR is captured on response rows but is not a configurable dispatch channel.
+    expect(validateCsatSettingsUpdate({ channel: 'ivr' as never })).toMatch(/channel/i);
+  });
+
+  it('rejects an SMS template longer than 320 chars', () => {
+    expect(validateCsatSettingsUpdate({ smsTemplate: 'x'.repeat(321) })).toMatch(/320/);
+  });
+
+  it('rejects a non-boolean enabled flag', () => {
+    expect(validateCsatSettingsUpdate({ enabled: 'true' as never })).toMatch(/boolean/i);
+  });
+});
+
+describe('updateTenantCsatSettings', () => {
+  it('builds a SET clause containing only the supplied fields', async () => {
+    let updateSql: string | undefined;
+    let updateParams: unknown[] | undefined;
+    queryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
+      const t = sql.trim().toUpperCase();
+      if (t.startsWith('BEGIN') || t.startsWith('COMMIT') || t.startsWith('ROLLBACK')) return { rows: [] };
+      if (t.startsWith('UPDATE TENANTS')) {
+        updateSql = sql;
+        updateParams = params;
+        return { rows: [], rowCount: 1 };
+      }
+      // Final SELECT to re-read settings
+      if (t.startsWith('SELECT')) {
+        return {
+          rows: [{
+            csat_survey_enabled: true,
+            csat_survey_channel: 'sms',
+            csat_survey_scale: 7,
+            csat_survey_min_duration_seconds: 45,
+            csat_survey_sms_template: null,
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const result = await updateTenantCsatSettings('tenant-A', {
+      enabled: true,
+      scale: 7,
+      minDurationSeconds: 45,
+    });
+
+    expect(updateSql).toMatch(/csat_survey_enabled = \$2/);
+    expect(updateSql).toMatch(/csat_survey_scale = \$3/);
+    expect(updateSql).toMatch(/csat_survey_min_duration_seconds = \$4/);
+    // Channel/template not in the SET clause because they weren't supplied.
+    expect(updateSql).not.toMatch(/csat_survey_channel =/);
+    expect(updateSql).not.toMatch(/csat_survey_sms_template =/);
+    expect(updateParams?.[0]).toBe('tenant-A');
+    expect(updateParams?.[1]).toBe(true);
+    expect(updateParams?.[2]).toBe(7);
+    expect(updateParams?.[3]).toBe(45);
+    expect(result.scale).toBe(7);
+    expect(result.minDurationSeconds).toBe(45);
+  });
+
+  it('coerces an empty SMS template to null so the service-default copy is used', async () => {
+    let updateParams: unknown[] | undefined;
+    queryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
+      const t = sql.trim().toUpperCase();
+      if (t.startsWith('BEGIN') || t.startsWith('COMMIT') || t.startsWith('ROLLBACK')) return { rows: [] };
+      if (t.startsWith('UPDATE TENANTS')) {
+        updateParams = params;
+        return { rows: [], rowCount: 1 };
+      }
+      if (t.startsWith('SELECT')) {
+        return {
+          rows: [{
+            csat_survey_enabled: false,
+            csat_survey_channel: 'sms',
+            csat_survey_scale: 5,
+            csat_survey_min_duration_seconds: 30,
+            csat_survey_sms_template: null,
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+
+    await updateTenantCsatSettings('tenant-A', { smsTemplate: '   ' });
+    // tenantId at $1, then the template — empty string should become null.
+    expect(updateParams?.[1]).toBeNull();
+  });
+
+  it('skips the UPDATE entirely on an empty payload but still returns settings', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const t = sql.trim().toUpperCase();
+      if (t.startsWith('SELECT')) {
+        return {
+          rows: [{
+            csat_survey_enabled: false,
+            csat_survey_channel: 'sms',
+            csat_survey_scale: 5,
+            csat_survey_min_duration_seconds: 30,
+            csat_survey_sms_template: null,
+          }],
+        };
+      }
+      throw new Error(`Unexpected SQL on empty payload: ${t}`);
+    });
+
+    const result = await updateTenantCsatSettings('tenant-A', {});
+    expect(result.enabled).toBe(false);
+    // Only the SELECT (re-read) ran — no BEGIN/UPDATE.
+    expect(queryMock.mock.calls.every((c) => !String(c[0]).toUpperCase().startsWith('UPDATE'))).toBe(true);
   });
 });

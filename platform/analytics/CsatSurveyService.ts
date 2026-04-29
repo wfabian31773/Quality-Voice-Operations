@@ -503,6 +503,101 @@ export async function getCsatByDispatchToken(token: string): Promise<CsatRow | n
   });
 }
 
+export interface UpdateTenantCsatSettingsInput {
+  enabled?: boolean;
+  channel?: CsatChannel;
+  scale?: number;
+  minDurationSeconds?: number;
+  smsTemplate?: string | null;
+}
+
+/** Validate an update payload before it touches the DB. Returns null on
+ *  success, or a human-readable reason on the first invalid field so the
+ *  route can return a 400 with a useful message. */
+export function validateCsatSettingsUpdate(input: UpdateTenantCsatSettingsInput): string | null {
+  if (input.enabled !== undefined && typeof input.enabled !== 'boolean') {
+    return 'enabled must be a boolean';
+  }
+  if (input.channel !== undefined) {
+    // The DB CHECK on tenants only allows sms/web/email — IVR is captured
+    // on response rows but is not a tenant-configurable dispatch channel.
+    if (!['sms', 'web', 'email'].includes(input.channel)) {
+      return 'channel must be one of: sms, web, email';
+    }
+  }
+  if (input.scale !== undefined) {
+    if (!Number.isInteger(input.scale) || input.scale < 2 || input.scale > 10) {
+      return 'scale must be an integer between 2 and 10';
+    }
+  }
+  if (input.minDurationSeconds !== undefined) {
+    if (!Number.isInteger(input.minDurationSeconds) || input.minDurationSeconds < 5 || input.minDurationSeconds > 600) {
+      return 'minDurationSeconds must be an integer between 5 and 600';
+    }
+  }
+  if (input.smsTemplate !== undefined && input.smsTemplate !== null) {
+    if (typeof input.smsTemplate !== 'string') return 'smsTemplate must be a string or null';
+    if (input.smsTemplate.length > 320) return 'smsTemplate must be <= 320 characters';
+  }
+  return null;
+}
+
+/** Patch the per-tenant CSAT survey configuration. Only the fields present
+ *  in `input` are touched. Returns the post-update settings so the caller
+ *  can echo them back to the UI without a round-trip. */
+export async function updateTenantCsatSettings(
+  tenantId: string,
+  input: UpdateTenantCsatSettingsInput,
+): Promise<CsatTenantSettings> {
+  const updates: string[] = [];
+  const values: unknown[] = [tenantId];
+
+  if (input.enabled !== undefined) {
+    values.push(input.enabled);
+    updates.push(`csat_survey_enabled = $${values.length}`);
+  }
+  if (input.channel !== undefined) {
+    values.push(input.channel);
+    updates.push(`csat_survey_channel = $${values.length}`);
+  }
+  if (input.scale !== undefined) {
+    values.push(input.scale);
+    updates.push(`csat_survey_scale = $${values.length}`);
+  }
+  if (input.minDurationSeconds !== undefined) {
+    values.push(input.minDurationSeconds);
+    updates.push(`csat_survey_min_duration_seconds = $${values.length}`);
+  }
+  if (input.smsTemplate !== undefined) {
+    // Persist a null when the tenant explicitly cleared the override so
+    // the SMS body falls back to the service-default prompt.
+    const normalized = input.smsTemplate === null ? null
+      : input.smsTemplate.trim().length === 0 ? null
+      : input.smsTemplate;
+    values.push(normalized);
+    updates.push(`csat_survey_sms_template = $${values.length}`);
+  }
+
+  if (updates.length === 0) {
+    // Nothing to write — return the current settings unchanged.
+    return getTenantCsatSettings(tenantId);
+  }
+
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      `UPDATE tenants SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`,
+      values,
+    );
+  });
+
+  logger.info('Updated CSAT tenant settings', {
+    tenantId,
+    fields: updates.length,
+  });
+
+  return getTenantCsatSettings(tenantId);
+}
+
 /** Tenant-scoped read for admin views: most recent CSAT rows for display in
  *  the quality dashboard. */
 export async function listRecentCsatResponses(
