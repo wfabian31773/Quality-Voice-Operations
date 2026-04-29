@@ -36,6 +36,7 @@ import {
   type AgentBuilderTKey,
   type IndustryTemplateKey,
   makeBuilderT,
+  useBuilderUiT,
   getDefaultWelcomeGreeting,
   getDefaultSystemPrompt,
   isDefaultGreeting,
@@ -572,12 +573,26 @@ interface IndustryTemplateShapeNode {
   conditionField?: string;
 }
 
+interface IndustryTemplateShapeEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  /**
+   * Translation key for the edge label. Resolved at template-build time
+   * against the agent's language so the label persists consistently with
+   * the rest of the workflow data (which is also keyed by agent language).
+   */
+  labelKey?: AgentBuilderTKey;
+}
+
 interface IndustryTemplateShape {
   labelKey: AgentBuilderTKey;
   descriptionKey: AgentBuilderTKey;
   key: IndustryTemplateKey;
   nodes: IndustryTemplateShapeNode[];
-  edges: WorkflowEdge[];
+  edges: IndustryTemplateShapeEdge[];
 }
 
 const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
@@ -596,8 +611,8 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
       { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', label: 'Urgent' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', label: 'Routine' },
+      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelUrgent' },
+      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelRoutine' },
       { id: 'e4-6', source: '4', target: '6' },
       { id: 'e5-6', source: '5', target: '6' },
     ],
@@ -635,8 +650,8 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
       { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', label: 'Emergency' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', label: 'Routine' },
+      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelEmergency' },
+      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelRoutine' },
       { id: 'e4-6', source: '4', target: '6' },
       { id: 'e5-6', source: '5', target: '6' },
     ],
@@ -673,8 +688,8 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
       { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', label: 'Ticket' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', label: 'Callback' },
+      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelTicket' },
+      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelCallback' },
     ],
   },
   {
@@ -710,8 +725,8 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
     edges: [
       { id: 'e1-2', source: '1', target: '2' },
       { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', label: 'Available' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', label: 'Waitlist' },
+      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelAvailable' },
+      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelWaitlist' },
       { id: 'e4-6', source: '4', target: '6' },
       { id: 'e5-6', source: '5', target: '6' },
     ],
@@ -736,14 +751,24 @@ const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
   },
 ];
 
-function buildIndustryTemplates(t: BuilderT, language: string): IndustryTemplate[] {
+/**
+ * Build the industry templates for display.
+ *
+ * - `uiT` is bound to the viewer's UI language and is used for labels shown
+ *   in the picker (template name, description, node-library fallbacks).
+ * - `language` is the agent's spoken language. Workflow data that gets
+ *   persisted with the agent (node labels, edge labels) is localised against
+ *   this language so the saved workflow stays internally consistent.
+ */
+function buildIndustryTemplates(uiT: BuilderT, language: string): IndustryTemplate[] {
+  const agentT = makeBuilderT(language);
   return INDUSTRY_TEMPLATES_RAW.map((tpl) => {
     const copy = getIndustryTemplateCopy(language, tpl.key);
     const nodes: WorkflowNode[] = tpl.nodes.map((n) => {
       const nodeCopy = copy.nodes[n.id];
       const data: Record<string, unknown> = {
         nodeType: n.nodeType,
-        label: nodeCopy?.label ?? getNodeLabel(n.nodeType, t),
+        label: nodeCopy?.label ?? getNodeLabel(n.nodeType, agentT),
       };
       if (nodeCopy?.prompt) data.prompt = nodeCopy.prompt;
       if (nodeCopy?.toolConfig) data.toolConfig = nodeCopy.toolConfig;
@@ -755,14 +780,20 @@ function buildIndustryTemplates(t: BuilderT, language: string): IndustryTemplate
         data,
       };
     });
+    const edges: WorkflowEdge[] = tpl.edges.map((e) => {
+      const { labelKey, ...rest } = e;
+      const edge: WorkflowEdge = { ...rest };
+      if (labelKey) edge.label = agentT(labelKey);
+      return edge;
+    });
     return {
-      label: t(tpl.labelKey),
+      label: uiT(tpl.labelKey),
       labelKey: tpl.labelKey,
-      description: t(tpl.descriptionKey),
+      description: uiT(tpl.descriptionKey),
       descriptionKey: tpl.descriptionKey,
       key: tpl.key,
       nodes,
-      edges: tpl.edges,
+      edges,
       usedEnglishFallback: copy.usedEnglishFallback,
     };
   });
@@ -1480,7 +1511,7 @@ function TestConsolePanel({
       setTimeout(() => {
         const yesPath = getNextNodes(node.id, 'yes');
         if (yesPath.length > 0 && yesPath[0].node) {
-          setMessages((prev) => [...prev, { role: 'system', text: t('branch', { label: String(yesPath[0].label || 'Yes') }) }]);
+          setMessages((prev) => [...prev, { role: 'system', text: t('branch', { label: String(yesPath[0].label || t('edgeLabelYes')) }) }]);
           simulateNode(yesPath[0].node);
         }
       }, 800);
@@ -2234,6 +2265,13 @@ function AgentBuilderInner() {
     agent_type: '' as string,
   });
 
+  // Builder UI strings follow the user's interface language (i18n) so a
+  // Spanish operator sees the builder in Spanish even when configuring an
+  // English-speaking agent. Strings whose language must follow the agent
+  // (default greeting, system prompt template, persisted node/edge labels)
+  // continue to use `makeBuilderT(agentSettings.language)` explicitly.
+  const t = useBuilderUiT();
+
   const { data: workflowsData } = useQuery({
     queryKey: ['workflows'],
     queryFn: () => api.get<{ workflows: { id: string; name: string; description: string | null; steps: unknown[] }[] }>('/workflows?limit=100').catch(() => ({ workflows: [] })),
@@ -2326,10 +2364,15 @@ function AgentBuilderInner() {
         const srcType = (sourceNode.data.nodeType as string) || '';
         const tgtType = (targetNode.data.nodeType as string) || '';
         if (!isValidConnection(srcType, tgtType)) {
+          // Use the user's UI language for the toast (so a Spanish operator
+          // sees a Spanish error) but still resolve the source/target labels
+          // against the agent's language so they match what the operator
+          // sees on the persisted node tiles.
+          const agentT = makeBuilderT(agentSettings.language);
           setSaveMessage({
-            text: makeBuilderT(agentSettings.language)('cannotConnect', {
-              source: getNodeLabel(srcType, makeBuilderT(agentSettings.language)),
-              target: getNodeLabel(tgtType, makeBuilderT(agentSettings.language)),
+            text: t('cannotConnect', {
+              source: getNodeLabel(srcType, agentT),
+              target: getNodeLabel(tgtType, agentT),
             }),
             tone: 'error',
           });
@@ -2346,7 +2389,7 @@ function AgentBuilderInner() {
       );
       setHasChanges(true);
     },
-    [setEdges, nodes, agentSettings.language],
+    [setEdges, nodes, agentSettings.language, t],
   );
 
   const onDrop = useCallback(
@@ -2436,13 +2479,13 @@ function AgentBuilderInner() {
     },
     onSuccess: () => {
       setHasChanges(false);
-      setSaveMessage({ text: makeBuilderT(agentSettings.language)('saved'), tone: 'success' });
+      setSaveMessage({ text: t('saved'), tone: 'success' });
       queryClient.invalidateQueries({ queryKey: ['agent', id] });
       setTimeout(() => setSaveMessage(null), 2000);
     },
     onError: (err) => {
       setSaveMessage({
-        text: makeBuilderT(agentSettings.language)('saveError', { message: (err as Error).message }),
+        text: t('saveError', { message: (err as Error).message }),
         tone: 'error',
       });
       setTimeout(() => setSaveMessage(null), 3000);
@@ -2453,7 +2496,7 @@ function AgentBuilderInner() {
     mutationFn: () => api.post(`/agents/${id}/publish`),
     onSuccess: () => {
       refetchVersions();
-      setSaveMessage({ text: makeBuilderT(agentSettings.language)('published'), tone: 'success' });
+      setSaveMessage({ text: t('published'), tone: 'success' });
       setTimeout(() => setSaveMessage(null), 2000);
     },
   });
@@ -2463,7 +2506,7 @@ function AgentBuilderInner() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent', id] });
       refetchVersions();
-      setSaveMessage({ text: makeBuilderT(agentSettings.language)('rolledBack'), tone: 'success' });
+      setSaveMessage({ text: t('rolledBack'), tone: 'success' });
       setTimeout(() => setSaveMessage(null), 2000);
     },
   });
@@ -2505,12 +2548,12 @@ function AgentBuilderInner() {
       setHasChanges(false);
       queryClient.invalidateQueries({ queryKey: ['agent', id] });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      setSaveMessage({ text: makeBuilderT(agentSettings.language)('saved'), tone: 'success' });
+      setSaveMessage({ text: t('saved'), tone: 'success' });
       setTimeout(() => setSaveMessage(null), 2000);
     },
     onError: (err) => {
       setSaveMessage({
-        text: makeBuilderT(agentSettings.language)('saveError', { message: (err as Error).message }),
+        text: t('saveError', { message: (err as Error).message }),
         tone: 'error',
       });
       setTimeout(() => setSaveMessage(null), 3000);
@@ -2669,7 +2712,7 @@ function AgentBuilderInner() {
         setTranslationSuggestions((s) => ({ ...s, [field]: null }));
         setHasChanges(true);
         setSaveMessage({
-          text: makeBuilderT(suggestion.toLanguage)('translateSuccess', {
+          text: t('translateSuccess', {
             language: getAgentLanguageLabel(suggestion.toLanguage),
           }),
           tone: 'success',
@@ -2691,8 +2734,6 @@ function AgentBuilderInner() {
     },
     [],
   );
-
-  const t = useMemo(() => makeBuilderT(agentSettings.language), [agentSettings.language]);
 
   const industryTemplates = useMemo(
     () => buildIndustryTemplates(t, agentSettings.language),

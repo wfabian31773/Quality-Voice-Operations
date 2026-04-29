@@ -8,7 +8,7 @@ import {
 import { VOICES } from '../lib/agentVoices';
 import {
   type AgentBuilderTKey,
-  makeBuilderT,
+  useBuilderUiT,
 } from '../lib/agentBuilderI18n';
 
 type BuilderT = (
@@ -35,9 +35,13 @@ export default function VoicePicker({
   t: tProp,
   labelClassName,
 }: VoicePickerProps) {
+  // When a translator function isn't supplied by the parent, fall back to the
+  // user's UI language so a Spanish operator sees Spanish labels even when the
+  // agent itself is configured in another language.
+  const uiT = useBuilderUiT();
   const t = useMemo<BuilderT>(
-    () => tProp ?? makeBuilderT(language),
-    [tProp, language],
+    () => tProp ?? uiT,
+    [tProp, uiT],
   );
   const recommended = getRecommendedVoicesForLanguage(language);
   const recommendedSet = useMemo(() => new Set(recommended), [recommended]);

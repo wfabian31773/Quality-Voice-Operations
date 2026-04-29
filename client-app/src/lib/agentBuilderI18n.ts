@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AGENT_LANGUAGES, DEFAULT_AGENT_LANGUAGE } from './agentLanguages';
 import {
   buildLocalizedGreeting,
@@ -271,7 +273,16 @@ export type AgentBuilderTKey =
   | 'weaknessWorkflowEfficiency'
   | 'weaknessTone'
   | 'weaknessAccuracy'
-  | 'weaknessResolution';
+  | 'weaknessResolution'
+  | 'edgeLabelUrgent'
+  | 'edgeLabelRoutine'
+  | 'edgeLabelEmergency'
+  | 'edgeLabelTicket'
+  | 'edgeLabelCallback'
+  | 'edgeLabelAvailable'
+  | 'edgeLabelWaitlist'
+  | 'edgeLabelYes'
+  | 'edgeLabelNo';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -541,6 +552,15 @@ const EN: Record<AgentBuilderTKey, string> = {
   weaknessTone: 'Tone',
   weaknessAccuracy: 'Accuracy',
   weaknessResolution: 'Resolution',
+  edgeLabelUrgent: 'Urgent',
+  edgeLabelRoutine: 'Routine',
+  edgeLabelEmergency: 'Emergency',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Callback',
+  edgeLabelAvailable: 'Available',
+  edgeLabelWaitlist: 'Waitlist',
+  edgeLabelYes: 'Yes',
+  edgeLabelNo: 'No',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -811,6 +831,15 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "Conexión cancelada",
   connectModeCompleted: "Conectado {source} → {target}",
   connectModeDuplicate: "{source} → {target} ya están conectados",
+  edgeLabelUrgent: 'Urgente',
+  edgeLabelRoutine: 'Rutina',
+  edgeLabelEmergency: 'Emergencia',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Devolver llamada',
+  edgeLabelAvailable: 'Disponible',
+  edgeLabelWaitlist: 'Lista de espera',
+  edgeLabelYes: 'Sí',
+  edgeLabelNo: 'No',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1081,6 +1110,15 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "Connexion annulée",
   connectModeCompleted: "Connecté {source} → {target}",
   connectModeDuplicate: "{source} → {target} sont déjà connectés",
+  edgeLabelUrgent: 'Urgent',
+  edgeLabelRoutine: 'Routine',
+  edgeLabelEmergency: 'Urgence',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Rappel',
+  edgeLabelAvailable: 'Disponible',
+  edgeLabelWaitlist: "Liste d'attente",
+  edgeLabelYes: 'Oui',
+  edgeLabelNo: 'Non',
 };
 
 const DE: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1351,6 +1389,15 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "Verbindung abgebrochen",
   connectModeCompleted: "Verbunden {source} → {target}",
   connectModeDuplicate: "{source} → {target} sind bereits verbunden",
+  edgeLabelUrgent: 'Dringend',
+  edgeLabelRoutine: 'Routine',
+  edgeLabelEmergency: 'Notfall',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Rückruf',
+  edgeLabelAvailable: 'Verfügbar',
+  edgeLabelWaitlist: 'Warteliste',
+  edgeLabelYes: 'Ja',
+  edgeLabelNo: 'Nein',
 };
 
 const PT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1621,6 +1668,15 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "Conexão cancelada",
   connectModeCompleted: "Conectado {source} → {target}",
   connectModeDuplicate: "{source} → {target} já estão conectados",
+  edgeLabelUrgent: 'Urgente',
+  edgeLabelRoutine: 'Rotina',
+  edgeLabelEmergency: 'Emergência',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Retornar ligação',
+  edgeLabelAvailable: 'Disponível',
+  edgeLabelWaitlist: 'Lista de espera',
+  edgeLabelYes: 'Sim',
+  edgeLabelNo: 'Não',
 };
 
 const IT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1891,6 +1947,15 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "Connessione annullata",
   connectModeCompleted: "Connesso {source} → {target}",
   connectModeDuplicate: "{source} → {target} sono già connessi",
+  edgeLabelUrgent: 'Urgente',
+  edgeLabelRoutine: 'Routine',
+  edgeLabelEmergency: 'Emergenza',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Richiamo',
+  edgeLabelAvailable: 'Disponibile',
+  edgeLabelWaitlist: "Lista d'attesa",
+  edgeLabelYes: 'Sì',
+  edgeLabelNo: 'No',
 };
 
 const NL: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2161,6 +2226,15 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "Verbinding geannuleerd",
   connectModeCompleted: "Verbonden {source} → {target}",
   connectModeDuplicate: "{source} → {target} zijn al verbonden",
+  edgeLabelUrgent: 'Spoedeisend',
+  edgeLabelRoutine: 'Routine',
+  edgeLabelEmergency: 'Noodgeval',
+  edgeLabelTicket: 'Ticket',
+  edgeLabelCallback: 'Terugbellen',
+  edgeLabelAvailable: 'Beschikbaar',
+  edgeLabelWaitlist: 'Wachtlijst',
+  edgeLabelYes: 'Ja',
+  edgeLabelNo: 'Nee',
 };
 
 const ZH: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2431,6 +2505,15 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "连接已取消",
   connectModeCompleted: "已连接 {source} → {target}",
   connectModeDuplicate: "{source} → {target} 已经连接",
+  edgeLabelUrgent: '紧急',
+  edgeLabelRoutine: '常规',
+  edgeLabelEmergency: '紧急情况',
+  edgeLabelTicket: '工单',
+  edgeLabelCallback: '回拨',
+  edgeLabelAvailable: '可用',
+  edgeLabelWaitlist: '等候名单',
+  edgeLabelYes: '是',
+  edgeLabelNo: '否',
 };
 
 const JA: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2701,6 +2784,15 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "接続をキャンセルしました",
   connectModeCompleted: "{source} → {target} を接続しました",
   connectModeDuplicate: "{source} → {target} はすでに接続されています",
+  edgeLabelUrgent: '緊急',
+  edgeLabelRoutine: '通常',
+  edgeLabelEmergency: '緊急事態',
+  edgeLabelTicket: 'チケット',
+  edgeLabelCallback: '折り返し',
+  edgeLabelAvailable: '利用可能',
+  edgeLabelWaitlist: 'ウェイトリスト',
+  edgeLabelYes: 'はい',
+  edgeLabelNo: 'いいえ',
 };
 
 const KO: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2971,6 +3063,15 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "연결이 취소되었습니다",
   connectModeCompleted: "{source} → {target} 연결됨",
   connectModeDuplicate: "{source} → {target}이(가) 이미 연결되어 있습니다",
+  edgeLabelUrgent: '긴급',
+  edgeLabelRoutine: '일반',
+  edgeLabelEmergency: '비상',
+  edgeLabelTicket: '티켓',
+  edgeLabelCallback: '콜백',
+  edgeLabelAvailable: '가능',
+  edgeLabelWaitlist: '대기 목록',
+  edgeLabelYes: '예',
+  edgeLabelNo: '아니오',
 };
 
 const AR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -3241,6 +3342,15 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "تم إلغاء الاتصال",
   connectModeCompleted: "تم الربط {source} → {target}",
   connectModeDuplicate: "{source} → {target} مرتبطان بالفعل",
+  edgeLabelUrgent: 'عاجل',
+  edgeLabelRoutine: 'روتيني',
+  edgeLabelEmergency: 'طوارئ',
+  edgeLabelTicket: 'تذكرة',
+  edgeLabelCallback: 'إعادة الاتصال',
+  edgeLabelAvailable: 'متاح',
+  edgeLabelWaitlist: 'قائمة الانتظار',
+  edgeLabelYes: 'نعم',
+  edgeLabelNo: 'لا',
 };
 
 const HI: Partial<Record<AgentBuilderTKey, string>> = {
@@ -3511,6 +3621,15 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   connectModeCancelled: "कनेक्शन रद्द कर दिया गया",
   connectModeCompleted: "{source} → {target} कनेक्ट हो गए",
   connectModeDuplicate: "{source} → {target} पहले से ही कनेक्टेड हैं",
+  edgeLabelUrgent: 'तत्काल',
+  edgeLabelRoutine: 'नियमित',
+  edgeLabelEmergency: 'आपातकाल',
+  edgeLabelTicket: 'टिकट',
+  edgeLabelCallback: 'कॉलबैक',
+  edgeLabelAvailable: 'उपलब्ध',
+  edgeLabelWaitlist: 'प्रतीक्षा सूची',
+  edgeLabelYes: 'हाँ',
+  edgeLabelNo: 'नहीं',
 };
 
 const TRANSLATIONS: Record<string, Partial<Record<AgentBuilderTKey, string>>> = {
@@ -3570,10 +3689,55 @@ export function tBuilder(
 /**
  * Build a `t` function bound to a single language. Convenience for components
  * that consume many keys.
+ *
+ * Use this when the language is determined by data (e.g. the agent's spoken
+ * language) rather than by the viewer's UI preference. For UI strings shown
+ * in the builder chrome, prefer `useBuilderUiT` so a Spanish user sees the
+ * builder in Spanish even when configuring an English agent.
  */
 export function makeBuilderT(language: string | undefined) {
   return (key: AgentBuilderTKey, params?: Record<string, string | number>) =>
     tBuilder(language, key, params);
+}
+
+/**
+ * React hook that returns a builder `t` function bound to the current user's
+ * UI language (from i18next). This is the right choice for chrome strings —
+ * labels, helpers, validation messages, save banners, etc. — so the builder
+ * UI follows the user's preferred language regardless of what language the
+ * agent itself is configured to speak.
+ *
+ * For strings whose language must follow the agent (default greetings,
+ * system prompt templates, persisted node labels), pass the agent's language
+ * explicitly via `makeBuilderT`.
+ */
+export function useBuilderUiT() {
+  const { i18n } = useTranslation();
+  const uiLanguage = normalizeUiLanguageForBuilder(i18n.language);
+  // Memoise so reference equality holds across renders when the language
+  // hasn't changed. Components that depend on `t` in their effect/memo deps
+  // shouldn't be re-running on every parent render.
+  return useMemo(
+    () =>
+      (key: AgentBuilderTKey, params?: Record<string, string | number>) =>
+        tBuilder(uiLanguage, key, params),
+    [uiLanguage],
+  );
+}
+
+/**
+ * Map the user's UI language code (from react-i18next, e.g. `en`, `es`,
+ * `pt-BR`, `fr`, `de`) to the closest supported AGENT_LANGUAGES code. The
+ * builder's translation dictionaries are keyed by agent-language codes, so
+ * we collapse `pt-BR` → `pt` and unknown codes → English.
+ */
+function normalizeUiLanguageForBuilder(uiLanguage: string | undefined): string {
+  if (!uiLanguage) return DEFAULT_AGENT_LANGUAGE;
+  if (SUPPORTED_CODES.has(uiLanguage)) return uiLanguage;
+  // Strip a region tag (e.g. `pt-BR` → `pt`, `en-US` → `en`) and retry.
+  const base = uiLanguage.split('-')[0];
+  if (SUPPORTED_CODES.has(base)) return base;
+  return DEFAULT_AGENT_LANGUAGE;
 }
 
 // ===== Default greeting & system-prompt starters per language =====
