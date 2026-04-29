@@ -363,6 +363,13 @@ interface HubSpotPipelineSummary {
   stages: Array<{ id: string; label: string }>;
 }
 
+interface CalendarOption {
+  id: string;
+  name: string;
+  primary?: boolean;
+  isDefault?: boolean;
+}
+
 interface PipedrivePipelineSummary {
   id: number;
   name: string;
@@ -632,6 +639,9 @@ function ConnectModal({
   const isHubspot = definition.provider === 'hubspot';
   const isPipedrive = definition.provider === 'pipedrive';
   const supportsPipelinePicker = isHubspot || isPipedrive;
+  const isGoogleCalendar = definition.provider === 'google-calendar';
+  const isOutlookCalendar = definition.provider === 'outlook-calendar';
+  const supportsCalendarPicker = isGoogleCalendar || isOutlookCalendar;
   const [hubspotPipelines, setHubspotPipelines] = useState<HubSpotPipelineSummary[] | null>(null);
   const [pipedrivePipelines, setPipedrivePipelines] = useState<PipedrivePipelineSummary[] | null>(null);
   const [pipelinesLoading, setPipelinesLoading] = useState(false);
@@ -641,6 +651,11 @@ function ConnectModal({
   const [defaultPipelineId, setDefaultPipelineId] = useState<string>('');
   const [defaultStageId, setDefaultStageId] = useState<string>('');
   const [originallySetPipelineKeys, setOriginallySetPipelineKeys] = useState<Set<string>>(new Set());
+  const [calendarId, setCalendarId] = useState<string>('');
+  const [calendarOptions, setCalendarOptions] = useState<CalendarOption[] | null>(null);
+  const [calendarsLoading, setCalendarsLoading] = useState(false);
+  const [calendarsError, setCalendarsError] = useState<string | null>(null);
+  const [calendarOriginallySet, setCalendarOriginallySet] = useState(false);
 
   useEffect(() => {
     if (!supportsPipelinePicker || !existingConnector) return;
@@ -754,6 +769,49 @@ function ConnectModal({
       });
     return () => { cancelled = true; };
   }, [isSalesforce, existingConnector]);
+
+  useEffect(() => {
+    if (!supportsCalendarPicker || !existingConnector) return;
+    let cancelled = false;
+    api
+      .get<{ settings: { calendarId?: string | null } }>(
+        `/connectors/${existingConnector.integrationId}/settings`,
+      )
+      .then((data) => {
+        if (cancelled) return;
+        const saved = data?.settings?.calendarId;
+        if (typeof saved === 'string' && saved.trim()) {
+          setCalendarId(saved);
+          setCalendarOriginallySet(true);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [supportsCalendarPicker, existingConnector]);
+
+  useEffect(() => {
+    if (!supportsCalendarPicker || !existingConnector) return;
+    let cancelled = false;
+    setCalendarsLoading(true);
+    setCalendarsError(null);
+    const path = isGoogleCalendar
+      ? `/connectors/${existingConnector.integrationId}/google-calendar/calendars`
+      : `/connectors/${existingConnector.integrationId}/outlook-calendar/calendars`;
+    api
+      .get<{ calendars: CalendarOption[] }>(path)
+      .then((data) => {
+        if (cancelled) return;
+        setCalendarOptions(Array.isArray(data?.calendars) ? data.calendars : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCalendarsError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setCalendarsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [supportsCalendarPicker, isGoogleCalendar, existingConnector]);
 
   useEffect(() => {
     if (!supportsPipelinePicker || !existingConnector) return;
@@ -919,6 +977,15 @@ function ConnectModal({
         if (pipeline && !pipeline.stages.some((s) => s.id === appointmentStageId.trim())) {
           return { error: 'The selected appointment stage does not belong to the selected pipeline.' };
         }
+      }
+    }
+    if (supportsCalendarPicker) {
+      const trimmed = calendarId.trim();
+      if (trimmed) {
+        creds.calendar_id = trimmed;
+      } else {
+        delete creds.calendar_id;
+        if (calendarOriginallySet) credentialsToDelete.push('calendar_id');
       }
     }
     if (isPipedrive) {
@@ -1089,7 +1156,9 @@ function ConnectModal({
             className="space-y-4"
           >
             <div className="space-y-3">
-              {definition.fields.map((field) => (
+              {definition.fields
+                .filter((field) => !(supportsCalendarPicker && field.key === 'calendar_id'))
+                .map((field) => (
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-text-primary mb-1">
                     {field.label}
@@ -1295,6 +1364,73 @@ function ConnectModal({
                     })()}
                   </div>
                 )}
+              </div>
+            )}
+
+            {supportsCalendarPicker && (
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-text-primary">Calendar</h4>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {isGoogleCalendar
+                      ? 'Choose which Google calendar the AI agent should write appointments to. Leave on Primary to use your default calendar.'
+                      : 'Choose which Outlook calendar the AI agent should write appointments to. Leave on Default to use your default calendar.'}
+                  </p>
+                  {!existingConnector ? (
+                    <p className="text-[11px] text-text-secondary mt-2">
+                      Calendars load after the initial connection. You can come back to set this once {definition.name} is connected.
+                    </p>
+                  ) : calendarsLoading ? (
+                    <p className="text-[11px] text-text-secondary mt-2">Loading calendars from {definition.name}…</p>
+                  ) : calendarsError ? (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                      Could not load calendars ({calendarsError}). You can still paste a raw calendar ID below.
+                    </p>
+                  ) : null}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-primary mb-1">Calendar</label>
+                  {existingConnector && calendarOptions && calendarOptions.length > 0 ? (
+                    (() => {
+                      const knownIds = new Set(calendarOptions.map((c) => c.id));
+                      const trimmed = calendarId.trim();
+                      const showOrphan = !!trimmed && trimmed.toLowerCase() !== 'primary' && !knownIds.has(trimmed);
+                      const defaultLabel = isGoogleCalendar
+                        ? '— Primary calendar —'
+                        : '— Default calendar —';
+                      return (
+                        <select
+                          value={trimmed && (trimmed.toLowerCase() === 'primary' || knownIds.has(trimmed) || showOrphan) ? trimmed : ''}
+                          onChange={(e) => setCalendarId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          <option value="">{defaultLabel}</option>
+                          {calendarOptions.map((c) => {
+                            const flagged = isGoogleCalendar ? c.primary : c.isDefault;
+                            return (
+                              <option key={c.id} value={c.id}>
+                                {flagged ? `${c.name} (default)` : c.name}
+                              </option>
+                            );
+                          })}
+                          {showOrphan && (
+                            <option value={trimmed}>
+                              {trimmed} (saved — no longer in {definition.name})
+                            </option>
+                          )}
+                        </select>
+                      );
+                    })()
+                  ) : (
+                    <input
+                      type="text"
+                      value={calendarId}
+                      onChange={(e) => setCalendarId(e.target.value)}
+                      placeholder={isGoogleCalendar ? 'primary' : 'Leave blank for default'}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  )}
+                </div>
               </div>
             )}
 

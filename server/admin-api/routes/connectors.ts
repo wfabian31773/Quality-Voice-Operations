@@ -776,6 +776,64 @@ router.get('/connectors/:integrationId/pipedrive/pipelines', requireAuth, async 
   }
 });
 
+router.get('/connectors/:integrationId/google-calendar/calendars', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { integrationId } = req.params;
+  try {
+    const meta = await getConnectorById(tenantId, integrationId);
+    if (!meta) {
+      return res.status(404).json({ error: 'Connector not found' });
+    }
+    if (meta.provider !== 'google-calendar') {
+      return res.status(400).json({ error: 'Calendar fetch is only available for Google Calendar connectors' });
+    }
+    const config = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
+    if (!config) {
+      return res.status(404).json({ error: 'Google Calendar connector configuration not found' });
+    }
+    const calendars = await fetchGoogleCalendarList(tenantId, config);
+    const sorted = [...calendars].sort((a, b) => {
+      if (a.primary && !b.primary) return -1;
+      if (!a.primary && b.primary) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    return res.json({ calendars: sorted });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to fetch Google calendars', { tenantId, integrationId, error: message });
+    return res.status(502).json({ error: message });
+  }
+});
+
+router.get('/connectors/:integrationId/outlook-calendar/calendars', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const { integrationId } = req.params;
+  try {
+    const meta = await getConnectorById(tenantId, integrationId);
+    if (!meta) {
+      return res.status(404).json({ error: 'Connector not found' });
+    }
+    if (meta.provider !== 'outlook-calendar') {
+      return res.status(400).json({ error: 'Calendar fetch is only available for Outlook Calendar connectors' });
+    }
+    const config = await getConnectorConfig(tenantId, meta.connectorType, meta.provider);
+    if (!config) {
+      return res.status(404).json({ error: 'Outlook Calendar connector configuration not found' });
+    }
+    const calendars = await fetchOutlookCalendarList(tenantId, config);
+    const sorted = [...calendars].sort((a, b) => {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    return res.json({ calendars: sorted });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to fetch Outlook calendars', { tenantId, integrationId, error: message });
+    return res.status(502).json({ error: message });
+  }
+});
+
 router.delete('/connectors/:integrationId', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const { integrationId } = req.params;
