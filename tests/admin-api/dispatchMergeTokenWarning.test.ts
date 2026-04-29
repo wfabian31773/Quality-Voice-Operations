@@ -371,6 +371,9 @@ describe('notification template handlers reject unknown merge tokens', () => {
     const router = await loadRouter();
     const handler = findHandler(router, 'post', '/dispatch/notification-templates');
 
+    // 1) tenant SMS segment-limit lookup (null = unlimited);
+    // 2) the actual INSERT.
+    queryMock.mockResolvedValueOnce({ rows: [{ n: null }] });
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-1' }] });
 
     const req = {
@@ -390,7 +393,7 @@ describe('notification template handlers reject unknown merge tokens', () => {
     await handler(req, res, () => {});
 
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(queryMock).toHaveBeenCalledTimes(2);
   });
 
   it('PUT /dispatch/notification-templates/:id returns 400 for an unknown body token', async () => {
@@ -419,6 +422,10 @@ describe('notification template handlers reject unknown merge tokens', () => {
     const router = await loadRouter();
     const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
 
+    // 1) tenant SMS segment-limit lookup (null = unlimited, so the
+    //    cap check is skipped entirely);
+    // 2) the actual UPDATE.
+    queryMock.mockResolvedValueOnce({ rows: [{ n: null }] });
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-1' }] });
 
     const req = {
@@ -431,7 +438,300 @@ describe('notification template handlers reject unknown merge tokens', () => {
     await handler(req, res, () => {});
 
     expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(res.json).toHaveBeenCalledWith({ template: { id: 'tpl-1' } });
+  });
+});
+
+// Task #844: when the tenant has opted into a per-tenant SMS segment
+// cap (`tenants.dispatch_sms_segment_limit`), the notification template
+// API must hard-block save attempts whose rendered preview would exceed
+// the cap. Mirrors the editor's disable-Save behavior so dispatchers
+// can't bypass the warning by curl-ing the API.
+describe('notification template handlers enforce the SMS segment cap', () => {
+  // 161 GSM-7 chars renders to 2 segments, which a cap of 1 should
+  // reject. The body uses `{{contact_name}}` so we also exercise the
+  // shared renderer path (sample value 'Jane Doe' lengthens it
+  // further, just like it would in production).
+  const BODY_OVER_CAP = 'a'.repeat(161);
+  // 159-char body is comfortably under one GSM-7 segment.
+  const BODY_UNDER_CAP = 'b'.repeat(159);
+
+  it('POST returns 400 with the segment count when the rendered body exceeds the cap', async () => {
+    const router = await loadRouter();
+    const handler = findHandler(router, 'post', '/dispatch/notification-templates');
+
+    // tenant cap = 1
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      body: {
+        name: 'Long SMS',
+        trigger_event: 'en_route',
+        channel: 'sms',
+        subject: '',
+        body_template: BODY_OVER_CAP,
+        is_active: true,
+      },
+      params: {},
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    // No INSERT must run for a rejected save.
     expect(queryMock).toHaveBeenCalledTimes(1);
+    const payload = res.json.mock.calls[0][0] as {
+      error: string;
+      segments: number;
+      limit: number;
+      characters: number;
+    };
+    expect(payload.segments).toBe(2);
+    expect(payload.limit).toBe(1);
+    expect(payload.characters).toBe(161);
+    expect(payload.error).toMatch(/2 segments/);
+    expect(payload.error).toMatch(/caps dispatch SMS templates at 1/);
+  });
+
+  it('POST inserts when the rendered body is at or below the tenant cap', async () => {
+    const router = await loadRouter();
+    const handler = findHandler(router, 'post', '/dispatch/notification-templates');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] }); // tenant cap = 1
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-9' }] }); // INSERT
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      body: {
+        name: 'Short SMS',
+        trigger_event: 'en_route',
+        channel: 'sms',
+        subject: '',
+        body_template: BODY_UNDER_CAP,
+        is_active: true,
+      },
+      params: {},
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('POST skips the cap check entirely for email-only templates', async () => {
+    // The cap is about SMS billing — pasting a 200-char welcome
+    // email shouldn't be blocked because the channel doesn't even
+    // ship over carriers.
+    const router = await loadRouter();
+    const handler = findHandler(router, 'post', '/dispatch/notification-templates');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-2' }] });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      body: {
+        name: 'Long email',
+        trigger_event: 'en_route',
+        channel: 'email',
+        subject: 'Heads up',
+        body_template: BODY_OVER_CAP,
+        is_active: true,
+      },
+      params: {},
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('POST allows over-cap SMS bodies when the tenant has not opted in (unlimited)', async () => {
+    // Default behavior — `dispatch_sms_segment_limit` is NULL so an
+    // existing 200-char template keeps working unchanged.
+    const router = await loadRouter();
+    const handler = findHandler(router, 'post', '/dispatch/notification-templates');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: null }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-3' }] });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      body: {
+        name: 'Long SMS',
+        trigger_event: 'en_route',
+        channel: 'sms',
+        subject: '',
+        body_template: BODY_OVER_CAP,
+        is_active: true,
+      },
+      params: {},
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it('PUT returns 400 when a body-only patch would exceed the cap (looks up existing channel)', async () => {
+    const router = await loadRouter();
+    const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
+
+    // 1) tenant cap lookup; 2) existing-row lookup for channel/body
+    //    fallback (the patch only sets body_template).
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+    queryMock.mockResolvedValueOnce({
+      rows: [{ channel: 'sms', body_template: 'irrelevant' }],
+    });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      params: { id: 'tpl-1' },
+      body: { body_template: BODY_OVER_CAP },
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    const payload = res.json.mock.calls[0][0] as {
+      segments: number;
+      limit: number;
+    };
+    expect(payload.segments).toBe(2);
+    expect(payload.limit).toBe(1);
+  });
+
+  it('PUT skips the cap check when the existing row is email-only and channel is not patched', async () => {
+    const router = await loadRouter();
+    const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] }); // tenant cap = 1
+    queryMock.mockResolvedValueOnce({
+      rows: [{ channel: 'email', body_template: 'old' }],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-1' }] }); // UPDATE
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      params: { id: 'tpl-1' },
+      body: { body_template: BODY_OVER_CAP },
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ template: { id: 'tpl-1' } });
+  });
+
+  it('PUT skips the cap check entirely when the tenant has not opted in', async () => {
+    const router = await loadRouter();
+    const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
+
+    // Cap is NULL — we should NOT issue the existing-row lookup,
+    // jumping straight to the UPDATE.
+    queryMock.mockResolvedValueOnce({ rows: [{ n: null }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-1' }] });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      params: { id: 'tpl-1' },
+      body: { body_template: BODY_OVER_CAP, channel: 'sms' },
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('PUT 404s when the existing-row lookup finds no template for this tenant', async () => {
+    const router = await loadRouter();
+    const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      params: { id: 'missing' },
+      body: { body_template: BODY_OVER_CAP },
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('PUT rejects metadata-only patches (e.g. rename) on an already-over-cap template', async () => {
+    // Closes the bypass where a dispatcher edits only `name` or
+    // `is_active` to "save" an existing oversize template after the
+    // tenant flipped on the cap. The handler must always validate
+    // the effective post-update row when the cap is set, even if
+    // body/channel are absent from the patch.
+    const router = await loadRouter();
+    const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] }); // tenant cap = 1
+    queryMock.mockResolvedValueOnce({
+      rows: [{ channel: 'sms', body_template: BODY_OVER_CAP }],
+    });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      params: { id: 'tpl-1' },
+      body: { name: 'Renamed but still oversized' },
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    // Crucially: no UPDATE fired, so the row stays unchanged in the
+    // DB and the dispatcher is forced to trim before the rename
+    // sticks.
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    const payload = res.json.mock.calls[0][0] as {
+      segments: number;
+      limit: number;
+    };
+    expect(payload.segments).toBe(2);
+    expect(payload.limit).toBe(1);
+  });
+
+  it('PUT allows metadata-only patches on an under-cap SMS template', async () => {
+    // The mirror of the bypass test: renaming an in-bounds template
+    // must still succeed even though the cap is on.
+    const router = await loadRouter();
+    const handler = findHandler(router, 'put', '/dispatch/notification-templates/:id');
+
+    queryMock.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+    queryMock.mockResolvedValueOnce({
+      rows: [{ channel: 'sms', body_template: BODY_UNDER_CAP }],
+    });
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'tpl-1' }] });
+
+    const req = {
+      user: { tenantId: 'tenant-A' },
+      params: { id: 'tpl-1' },
+      body: { name: 'Friendly rename' },
+    } as unknown as Request;
+    const res = buildRes();
+
+    await handler(req, res, () => {});
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ template: { id: 'tpl-1' } });
   });
 });

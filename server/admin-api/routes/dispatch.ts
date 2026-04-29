@@ -38,7 +38,9 @@ import {
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import {
   DISPATCH_MERGE_TOKENS,
+  countSmsSegments,
   findUnknownDispatchMergeTokens,
+  renderDispatchTemplate,
 } from '../../../shared/dispatch/mergeTokens';
 
 const router = Router();
@@ -447,14 +449,23 @@ const DISPATCH_BAD_ARRIVAL_THRESHOLD_M_MAX = 5000;
 // live customer ETA so dispatchers can spot stuck or stalled trucks
 // at a glance — the duration badge stays grey below this value, flips
 // amber once it crosses, and turns red once it doubles. Matches the
-// column default in migration 092.
+// column default in migration 092 (long-en-route).
 const LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT = 30;
 
-// CHECK constraint range from migration 092. Mirrored here so the
-// settings endpoint rejects out-of-range writes with a 400 instead of
-// bubbling a Postgres constraint error to the client.
+// CHECK constraint range from migration 092 (long-en-route). Mirrored
+// here so the settings endpoint rejects out-of-range writes with a
+// 400 instead of bubbling a Postgres constraint error to the client.
 const DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN = 5;
 const DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX = 480;
+
+// CHECK constraint range from migration 092 (sms-segment-limit). The
+// dispatch SMS segment cap is opt-in (NULL means "unlimited" — the
+// historical behavior), and when set must be a positive integer up
+// to the editor's offered max of 10. Carriers stop concatenating
+// long messages well before then, so anything higher would be
+// effectively no cap at all.
+const DISPATCH_SMS_SEGMENT_LIMIT_MIN = 1;
+const DISPATCH_SMS_SEGMENT_LIMIT_MAX = 10;
 
 // Cap how many history rows we keep per resource. The live map only needs
 // the most recent fix; the breadcrumb is a "last hour or so" replay tool.
@@ -1023,6 +1034,41 @@ async function readDispatchLongEnRouteThresholdMinutes(
 }
 
 /**
+ * Read the per-tenant SMS segment cap for dispatch notification
+ * templates. Returns `null` when the tenant has not opted in
+ * (column NULL) — that's "unlimited", which preserves the historical
+ * behavior so adding the column doesn't retroactively break templates
+ * already in production.
+ *
+ * On a transient lookup failure we also return `null` rather than a
+ * default cap: the worst case for "unlimited" is unchanged behavior,
+ * whereas defaulting to a low cap on read-error would silently start
+ * rejecting valid template saves.
+ */
+async function readDispatchSmsSegmentLimit(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+): Promise<number | null> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT dispatch_sms_segment_limit AS n
+         FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    const raw = rows[0]?.n;
+    if (raw === null || raw === undefined) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.floor(n);
+  } catch (err) {
+    logger.warn('Failed to read tenants.dispatch_sms_segment_limit, treating as unlimited', {
+      tenantId, error: String(err),
+    });
+    return null;
+  }
+}
+
+/**
  * Compute the closest distance (in meters) the technician's GPS breadcrumbs
  * came to the geocoded customer address for a single job, then — if it
  * exceeds the tenant's configured "bad arrival" threshold — auto-create a
@@ -1156,9 +1202,10 @@ export const getDispatchSettingsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const pool = getPlatformPool();
   try {
-    const [m, longEnRouteMin] = await Promise.all([
+    const [m, longEnRouteMin, smsLimit] = await Promise.all([
       readDispatchBadArrivalThresholdM(pool, tenantId),
       readDispatchLongEnRouteThresholdMinutes(pool, tenantId),
+      readDispatchSmsSegmentLimit(pool, tenantId),
     ]);
     return res.json({
       settings: {
@@ -1170,6 +1217,9 @@ export const getDispatchSettingsHandler: RequestHandler = async (req, res) => {
         long_en_route_threshold_minutes_min: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN,
         long_en_route_threshold_minutes_max: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX,
         long_en_route_threshold_minutes_default: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
+        sms_segment_limit: smsLimit,
+        sms_segment_limit_min: DISPATCH_SMS_SEGMENT_LIMIT_MIN,
+        sms_segment_limit_max: DISPATCH_SMS_SEGMENT_LIMIT_MAX,
       },
     });
   } catch (err) {
@@ -1225,6 +1275,31 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
     updates.push(`dispatch_long_en_route_threshold_minutes = $${values.length}`);
   }
 
+  if (body.sms_segment_limit !== undefined) {
+    // `null` is the explicit way to opt back out of the cap (returns
+    // the tenant to "unlimited" without touching the other settings).
+    // Any other value must be a positive integer in range.
+    const raw = body.sms_segment_limit;
+    if (raw === null) {
+      values.push(null);
+      updates.push(`dispatch_sms_segment_limit = $${values.length}`);
+    } else {
+      const n = Number(raw);
+      if (
+        !Number.isFinite(n)
+        || !Number.isInteger(n)
+        || n < DISPATCH_SMS_SEGMENT_LIMIT_MIN
+        || n > DISPATCH_SMS_SEGMENT_LIMIT_MAX
+      ) {
+        return res.status(400).json({
+          error: `sms_segment_limit must be null or an integer between ${DISPATCH_SMS_SEGMENT_LIMIT_MIN} and ${DISPATCH_SMS_SEGMENT_LIMIT_MAX}`,
+        });
+      }
+      values.push(n);
+      updates.push(`dispatch_sms_segment_limit = $${values.length}`);
+    }
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No supported settings provided' });
   }
@@ -1234,9 +1309,10 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
       `UPDATE tenants SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`,
       values,
     );
-    const [m, longEnRouteMin] = await Promise.all([
+    const [m, longEnRouteMin, smsLimit] = await Promise.all([
       readDispatchBadArrivalThresholdM(pool, tenantId),
       readDispatchLongEnRouteThresholdMinutes(pool, tenantId),
+      readDispatchSmsSegmentLimit(pool, tenantId),
     ]);
     return res.json({
       settings: {
@@ -1248,6 +1324,9 @@ export const updateDispatchSettingsHandler: RequestHandler = async (req, res) =>
         long_en_route_threshold_minutes_min: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MIN,
         long_en_route_threshold_minutes_max: DISPATCH_LONG_EN_ROUTE_THRESHOLD_MIN_MAX,
         long_en_route_threshold_minutes_default: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
+        sms_segment_limit: smsLimit,
+        sms_segment_limit_min: DISPATCH_SMS_SEGMENT_LIMIT_MIN,
+        sms_segment_limit_max: DISPATCH_SMS_SEGMENT_LIMIT_MAX,
       },
     });
   } catch (err) {
@@ -4538,6 +4617,48 @@ const listNotificationTemplatesHandler: RequestHandler = async (req, res) => {
   }
 };
 
+// Channels whose body actually ships as an SMS, so the per-tenant
+// segment cap applies. Email-only templates are unaffected.
+const SMS_CHANNELS = new Set(['sms', 'both']);
+
+/**
+ * Enforce the per-tenant SMS segment cap (task #844). Returns a 400
+ * payload when the rendered preview would exceed the cap so the
+ * caller can `return res.status(400).json(violation)` directly. The
+ * preview is rendered with the same sample values the editor uses, so
+ * a dispatcher hitting the API by hand sees the same segment count
+ * the editor showed before they hit Save.
+ */
+function checkSmsSegmentLimit(args: {
+  channel: string;
+  body_template: string;
+  limit: number | null;
+}):
+  | null
+  | {
+      error: string;
+      segments: number;
+      characters: number;
+      encoding: 'GSM-7' | 'UCS-2';
+      limit: number;
+    } {
+  if (args.limit == null) return null;
+  if (!SMS_CHANNELS.has(args.channel)) return null;
+  const rendered = renderDispatchTemplate(String(args.body_template ?? ''));
+  const info = countSmsSegments(rendered);
+  if (info.segments <= args.limit) return null;
+  return {
+    error:
+      `SMS body would render to ${info.segments} segments, but this tenant caps `
+      + `dispatch SMS templates at ${args.limit} segment${args.limit === 1 ? '' : 's'}. `
+      + `Trim the body or raise the cap from Dispatch → Admin → Settings.`,
+    segments: info.segments,
+    characters: info.characters,
+    encoding: info.encoding,
+    limit: args.limit,
+  };
+}
+
 const createNotificationTemplateHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { name, trigger_event, channel, subject, body_template, is_active } = req.body;
@@ -4561,11 +4682,21 @@ const createNotificationTemplateHandler: RequestHandler = async (req, res) => {
       knownTokens: DISPATCH_MERGE_TOKENS,
     });
   }
+  const effectiveChannel = channel || 'sms';
+  const segmentLimit = await readDispatchSmsSegmentLimit(pool, tenantId);
+  const violation = checkSmsSegmentLimit({
+    channel: effectiveChannel,
+    body_template,
+    limit: segmentLimit,
+  });
+  if (violation) {
+    return res.status(400).json(violation);
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO dispatch_notification_templates (tenant_id, name, trigger_event, channel, subject, body_template, is_active)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [tenantId, name, trigger_event, channel || 'sms', subject || '', body_template, is_active !== false],
+      [tenantId, name, trigger_event, effectiveChannel, subject || '', body_template, is_active !== false],
     );
     return res.status(201).json({ template: rows[0] });
   } catch (err) {
@@ -4595,6 +4726,43 @@ const updateNotificationTemplateHandler: RequestHandler = async (req, res) => {
       knownTokens: DISPATCH_MERGE_TOKENS,
     });
   }
+
+  // The segment-limit check needs both the channel and the body the
+  // patched row will end up with. When the tenant has opted in to a
+  // cap we ALWAYS validate the effective post-update shape — even
+  // when the patch only touches metadata like `name` or `is_active`
+  // — because saving an already-over-cap template (without trimming
+  // the body) silently keeps the violation alive on the next send,
+  // which is exactly what task #844 is meant to prevent. Direct API
+  // callers shouldn't be able to bypass the editor disable by
+  // PATCHing around the body.
+  const segmentLimit = await readDispatchSmsSegmentLimit(pool, tenantId);
+  if (segmentLimit !== null) {
+    let effectiveChannel: string | undefined = channel;
+    let effectiveBody: string | undefined = body_template;
+    if (effectiveChannel === undefined || effectiveBody === undefined) {
+      const { rows: existing } = await pool.query(
+        `SELECT channel, body_template
+           FROM dispatch_notification_templates
+          WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [id, tenantId],
+      );
+      if (existing.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      effectiveChannel = effectiveChannel ?? String(existing[0].channel ?? 'sms');
+      effectiveBody = effectiveBody ?? String(existing[0].body_template ?? '');
+    }
+    const violation = checkSmsSegmentLimit({
+      channel: effectiveChannel ?? 'sms',
+      body_template: effectiveBody ?? '',
+      limit: segmentLimit,
+    });
+    if (violation) {
+      return res.status(400).json(violation);
+    }
+  }
+
   try {
     const updates: string[] = ['updated_at = NOW()'];
     const values: unknown[] = [];

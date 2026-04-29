@@ -213,6 +213,15 @@ interface DispatchSettings {
   long_en_route_threshold_minutes_min: number;
   long_en_route_threshold_minutes_max: number;
   long_en_route_threshold_minutes_default: number;
+  // Per-tenant cap on the number of SMS segments a saved dispatch
+  // notification template body is allowed to render to. `null` is the
+  // historical default — "unlimited", so existing templates that
+  // already render to 2+ segments keep working unchanged. When set,
+  // the template editor disables Save and the API rejects POST/PUT
+  // attempts that would exceed it (task #844).
+  sms_segment_limit: number | null;
+  sms_segment_limit_min: number;
+  sms_segment_limit_max: number;
 }
 
 // Platform default for the "long en route" badge tone threshold —
@@ -391,6 +400,9 @@ export default function Dispatch() {
     long_en_route_threshold_minutes_min: 5,
     long_en_route_threshold_minutes_max: 480,
     long_en_route_threshold_minutes_default: LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT,
+    sms_segment_limit: null,
+    sms_segment_limit_min: 1,
+    sms_segment_limit_max: 10,
   });
 
   const fetchDispatchSettings = useCallback(async () => {
@@ -3666,6 +3678,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
 
       {showForm && (
         <AdminFormModal formType={formType} formData={formData} setFormData={setFormData}
+          smsSegmentLimit={dispatchSettings.sms_segment_limit}
           onClose={() => setShowForm(false)} onSave={saveForm} />
       )}
     </div>
@@ -3704,6 +3717,12 @@ function DispatchSettingsPanel({ isReadOnly, dispatchSettings, setDispatchSettin
         max={dispatchSettings.long_en_route_threshold_minutes_max}
         bodyKey="long_en_route_threshold_minutes"
         isReadOnly={isReadOnly}
+        setDispatchSettings={setDispatchSettings}
+        onError={onError}
+      />
+      <DispatchSmsSegmentLimitCard
+        isReadOnly={isReadOnly}
+        dispatchSettings={dispatchSettings}
         setDispatchSettings={setDispatchSettings}
         onError={onError}
       />
@@ -3806,9 +3825,145 @@ function DispatchThresholdField({
   );
 }
 
-function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
+// Dispatch SMS segment cap (task #844). Distinct from
+// DispatchThresholdField because the setting is tri-state — `null`
+// means "unlimited" (historical behavior, off by default), and
+// flipping the toggle off must persist `null` even when a number is
+// in the input. Lives next to the numeric thresholds in the settings
+// panel so all dispatch tunables sit under one section.
+function DispatchSmsSegmentLimitCard({
+  isReadOnly, dispatchSettings, setDispatchSettings, onError,
+}: {
+  isReadOnly: boolean;
+  dispatchSettings: DispatchSettings;
+  setDispatchSettings: React.Dispatch<React.SetStateAction<DispatchSettings>>;
+  onError: (msg: string | null) => void;
+}) {
+  const [smsLimitEnabled, setSmsLimitEnabled] = useState<boolean>(
+    dispatchSettings.sms_segment_limit !== null,
+  );
+  const [smsLimitDraft, setSmsLimitDraft] = useState<string>(
+    dispatchSettings.sms_segment_limit !== null
+      ? String(dispatchSettings.sms_segment_limit)
+      : '1',
+  );
+  const [smsSaving, setSmsSaving] = useState(false);
+  const [smsSavedAt, setSmsSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSmsLimitEnabled(dispatchSettings.sms_segment_limit !== null);
+    if (dispatchSettings.sms_segment_limit !== null) {
+      setSmsLimitDraft(String(dispatchSettings.sms_segment_limit));
+    }
+  }, [dispatchSettings.sms_segment_limit]);
+
+  const smsMin = dispatchSettings.sms_segment_limit_min;
+  const smsMax = dispatchSettings.sms_segment_limit_max;
+  const smsParsed = Number(smsLimitDraft);
+  const smsValid = Number.isInteger(smsParsed) && smsParsed >= smsMin && smsParsed <= smsMax;
+  const desiredSmsLimit: number | null = smsLimitEnabled ? (smsValid ? smsParsed : null) : null;
+  const smsDirty = desiredSmsLimit !== dispatchSettings.sms_segment_limit;
+  const smsSaveDisabled =
+    smsSaving || !smsDirty || (smsLimitEnabled && !smsValid);
+
+  const saveSmsLimit = async () => {
+    if (smsLimitEnabled && !smsValid) return;
+    try {
+      setSmsSaving(true);
+      onError(null);
+      const data = await api.put<{ settings: DispatchSettings }>('/dispatch/settings', {
+        sms_segment_limit: smsLimitEnabled ? smsParsed : null,
+      });
+      setDispatchSettings(data.settings);
+      setSmsSavedAt(Date.now());
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : 'Failed to save dispatch settings');
+    } finally {
+      setSmsSaving(false);
+    }
+  };
+
+  return (
+    <div
+      data-testid="dispatch-sms-segment-limit-card"
+      className="bg-surface border border-border rounded-xl p-4 max-w-xl space-y-3"
+    >
+      <div>
+        <h3 className="text-sm font-semibold text-heading">Dispatch SMS segment cap</h3>
+        <p className="text-xs text-muted mt-1">
+          Carriers bill per SMS segment (160 GSM-7 chars / 70 Unicode chars in the
+          first segment, then 153 / 67 each after). Capping the rendered template
+          keeps a stray paste from doubling your dispatch SMS bill. Off by default
+          so existing templates aren&apos;t broken.
+        </p>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-heading">
+        <input
+          type="checkbox"
+          checked={smsLimitEnabled}
+          disabled={isReadOnly || smsSaving}
+          onChange={e => setSmsLimitEnabled(e.target.checked)}
+          data-testid="dispatch-sms-segment-limit-toggle"
+          className="h-3.5 w-3.5"
+        />
+        Block saves above the segment cap
+      </label>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted w-40 shrink-0">Max segments</label>
+        <input
+          type="number"
+          min={smsMin}
+          max={smsMax}
+          step={1}
+          value={smsLimitDraft}
+          disabled={isReadOnly || smsSaving || !smsLimitEnabled}
+          onChange={e => setSmsLimitDraft(e.target.value)}
+          data-testid="dispatch-sms-segment-limit-input"
+          className="w-24 px-2 py-1.5 text-xs border border-border rounded bg-surface-secondary text-heading disabled:opacity-50"
+        />
+        <span className="text-[10px] text-muted">
+          Allowed: {smsMin}–{smsMax} segment{smsMax === 1 ? '' : 's'}
+        </span>
+      </div>
+      {smsLimitEnabled && !smsValid && smsLimitDraft !== '' && (
+        <p className="text-[11px] text-red-600">
+          Enter a whole number between {smsMin} and {smsMax}.
+        </p>
+      )}
+      {!isReadOnly && (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={saveSmsLimit}
+            disabled={smsSaveDisabled}
+            data-testid="dispatch-sms-segment-limit-save"
+            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {smsSaving ? 'Saving…' : 'Save'}
+          </button>
+          {smsSavedAt && !smsDirty && (
+            <span className="text-[11px] text-green-600">Saved.</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Exported for the segment-cap regression test in
+// tests/components/dispatchAdminFormModal.test.tsx (task #844). The
+// component is otherwise internal to the Dispatch page; the export
+// is intentional so the test can exercise the editor disable
+// behavior without spinning up the full route.
+export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimit, onClose, onSave }: {
   formType: string; formData: Record<string, unknown>;
   setFormData: (d: Record<string, unknown>) => void;
+  // Tenant-configured cap on the rendered SMS segment count for
+  // dispatch notification templates. `null` means "unlimited" — the
+  // historical behavior. When set, exceeding it disables Save and
+  // surfaces the same affordance the unknown-merge-token warning uses
+  // (task #844).
+  smsSegmentLimit: number | null;
   onClose: () => void; onSave: () => void;
 }) {
   const titles: Record<string, string> = { territory: 'Territory', skill: 'Skill Type', notification: 'Notification Template', rule: 'Assignment Rule' };
@@ -3856,6 +4011,17 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
     [previewBody],
   );
   const showSegmentWarning = previewSegmentInfo.segments > 1;
+  // The tenant cap (task #844) only applies to channels that actually
+  // ship as SMS — email-only templates are unaffected. When the cap is
+  // null the historical "unlimited" behavior holds and Save stays
+  // enabled even at 2+ segments.
+  const channelEmitsSms = previewChannel === 'sms' || previewChannel === 'both';
+  const exceedsSegmentLimit =
+    formType === 'notification'
+    && channelEmitsSms
+    && smsSegmentLimit !== null
+    && previewBody.length > 0
+    && previewSegmentInfo.segments > smsSegmentLimit;
   return (
     <Modal open onClose={onClose} ariaLabel={`${formData.id ? 'Edit' : 'New'} ${titles[formType]}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -4044,6 +4210,17 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
                               : '. Trim to 160 characters to send as one.'}
                           </span>
                         )}
+                        {exceedsSegmentLimit && smsSegmentLimit !== null && (
+                          <span
+                            role="alert"
+                            data-testid="notification-template-preview-segments-blocked"
+                            className="text-[11px] font-medium text-red-700 dark:text-red-400"
+                          >
+                            — exceeds the tenant cap of {smsSegmentLimit}{' '}
+                            segment{smsSegmentLimit === 1 ? '' : 's'}. Saving is
+                            blocked until you trim the body.
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -4081,8 +4258,14 @@ function AdminFormModal({ formType, formData, setFormData, onClose, onSave }: {
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
           <button
             onClick={onSave}
-            disabled={hasUnknownTokens}
-            title={hasUnknownTokens ? 'Fix the unknown merge tokens before saving.' : undefined}
+            disabled={hasUnknownTokens || exceedsSegmentLimit}
+            title={
+              hasUnknownTokens
+                ? 'Fix the unknown merge tokens before saving.'
+                : exceedsSegmentLimit && smsSegmentLimit !== null
+                ? `SMS body would render to ${previewSegmentInfo.segments} segments, but this tenant caps dispatch SMS templates at ${smsSegmentLimit} segment${smsSegmentLimit === 1 ? '' : 's'}.`
+                : undefined
+            }
             data-testid="admin-form-save"
             className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
           >
