@@ -523,7 +523,7 @@ export async function listEnabledConnectorConfigs(
           `SELECT id, integration_type, provider, is_enabled, config,
                   fallback_connector_type, fallback_provider
            FROM integrations
-           WHERE tenant_id = $1 AND is_enabled = TRUE AND integration_type = ANY($2::text[])`,
+           WHERE tenant_id = $1 AND is_enabled = TRUE AND integration_type = ANY($2::integration_type[])`,
           [tenantId, connectorTypes],
         )
       : await client.query(
@@ -548,7 +548,7 @@ export async function listEnabledConnectorConfigs(
     const { rows: configRows } = await client.query(
       `SELECT integration_id, config_key, encrypted_value
        FROM connector_configs
-       WHERE tenant_id = $1 AND integration_id = ANY($2::uuid[])`,
+       WHERE tenant_id = $1 AND integration_id = ANY($2::text[])`,
       [tenantId, integrationIds],
     );
 
@@ -669,7 +669,7 @@ export async function listRefreshableConnectorConfigs(
         const { rows: configRows } = await client.query(
           `SELECT integration_id, config_key, encrypted_value
              FROM connector_configs
-            WHERE tenant_id = $1 AND integration_id = ANY($2::uuid[])`,
+            WHERE tenant_id = $1 AND integration_id = ANY($2::text[])`,
           [tenantId, integrationIds],
         );
 
@@ -819,7 +819,7 @@ export async function listConnectorTokenHealth(
           `SELECT integration_id, config_key, encrypted_value
              FROM connector_configs
             WHERE tenant_id = $1
-              AND integration_id = ANY($2::uuid[])
+              AND integration_id = ANY($2::text[])
               AND config_key = ANY($3::text[])`,
           [tenantId, integrationIds, Array.from(TRACKING_KEYS)],
         );
