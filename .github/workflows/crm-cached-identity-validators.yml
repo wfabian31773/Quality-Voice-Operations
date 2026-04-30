@@ -26,6 +26,9 @@ on:
 
 permissions:
   contents: read
+  # Needed so the alert step can open / update / close the tracking
+  # issue used as the on-call notification surface for this job.
+  issues: write
 
 concurrency:
   group: crm-cached-identity-validators
@@ -210,6 +213,188 @@ jobs:
               console.log("::warning::Zero CRM cached-identity validator blocks ran — every provider is currently skipped. See docs/runbooks/crm-sandbox-credentials.md to wire the first provider.");
             }
           '
+
+      # ─── Alert the on-call channel on failure ─────────────────────────────
+      # Vitest itself fails the job on a real provider failure (upstream shape
+      # drift, stale fixture, mint-step credential rotation needed, etc.).
+      # A red checkmark on a daily cron is easy to miss, so we also open (or
+      # update) a single deduplicated GitHub tracking issue labelled
+      # `crm-cached-identity-drift`. The label is wired into the on-call
+      # notification routing so the integrations on-call sees a real ping
+      # instead of having to remember to inspect the daily Actions tab.
+      #
+      # When a subsequent run comes back green, the auto-close step closes
+      # any open tracking issue from a previous drift run so the team isn't
+      # left chasing already-resolved alerts.
+      #
+      # Mirrors the pattern used by `check-openai-realtime-voices.yml`.
+      # Triggers on ANY job failure, not just vitest's — a failed Salesforce
+      # / Zoho mint step is itself an actionable signal (long-lived inputs
+      # stale) that the on-call needs to see, and if that step blows up
+      # vitest never runs so `steps.vitest.outcome` would be 'skipped'.
+      - name: Build tracking-issue body on failure
+        if: failure()
+        run: |
+          mkdir -p .ci-out
+          {
+            echo "The daily live CRM sandbox validator suite failed."
+            echo
+            echo "This means at least one provider's \`validate*CachedIdentity\` parser disagrees with what its CRM sandbox is actually returning right now, **or** the workflow's per-run access-token mint step (Salesforce / Zoho) couldn't exchange the long-lived inputs for a fresh access token. Until this clears, \`CrmCallerIdentityRevalidationScheduler\` may stop scrubbing deleted records for the affected provider in production — tenants will start seeing reactivated stale contact links in their pipelines."
+            echo
+            echo "**First responder checklist** (full runbook: \`docs/runbooks/crm-sandbox-credentials.md\`):"
+            echo
+            echo "1. Open the workflow run linked below and identify which step failed."
+            echo "2. **Mint step failed** (Salesforce / Zoho) → rotate the corresponding long-lived credential per the provider's section in the runbook and re-run."
+            echo "3. **Vitest 401 / token-expired** (HubSpot / Pipedrive) → rotate the static sandbox token per the runbook and re-run."
+            echo "4. **Vitest parser mismatch** (e.g. HubSpot 404 body shape moved, Zoho 200-wrapper changed, Salesforce key prefix changed) → patch the corresponding \`validate*CachedIdentity\` function in \`platform/integrations/connectors/adapters/\` and add a regression case to \`validateCachedIdentity.test.ts\`."
+            echo "5. **Vitest reports the deleted fixture as alive** → the fixture was reseeded or undeleted; re-delete it (and purge from the Recycle Bin for Salesforce) per the runbook."
+            echo
+            echo "## Vitest step outcome"
+            echo
+            echo "\`steps.vitest.outcome\` = \`${{ steps.vitest.outcome }}\` (\`skipped\` means the failure was upstream of vitest, e.g. the mint step)."
+            echo
+            echo "## Provider pre-flight"
+            echo
+            cat .ci-out/providers.md 2>/dev/null || echo "_(provider pre-flight summary unavailable)_"
+            echo
+            echo "## vitest summary"
+            echo
+            echo '```json'
+            cat .ci-out/vitest.json 2>/dev/null || echo "(vitest.json missing — see workflow log for raw output; this is expected when the failure happened before vitest ran)"
+            echo '```'
+            echo
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > .ci-out/issue-body.md
+
+      - name: Open or update tracking issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('.ci-out/issue-body.md', 'utf8');
+            const title = 'CRM cached-identity validator suite is failing against live sandboxes';
+            const label = 'crm-cached-identity-drift';
+
+            // Best-effort: ensure our tracking label exists so the
+            // de-duplication search is reliable on first run.
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+              });
+            } catch (err) {
+              if (err.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: 'd73a4a',
+                  description: 'Tracking issue for the daily live CRM sandbox validator suite. Routed to integrations on-call.',
+                });
+              } else {
+                throw err;
+              }
+            }
+
+            // De-duplicate: if there's already an open issue with our
+            // label, update its body and add a comment so the on-call
+            // channel pings again on consecutive failures.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+
+            if (existing.data.length > 0) {
+              const issue = existing.data[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Re-detected on ${new Date().toISOString()} — see updated body above. ` +
+                  `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              core.notice(`Updated existing tracking issue #${issue.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened tracking issue #${created.data.number}.`);
+            }
+
+      - name: Auto-close tracking issue when suite is back in sync
+        if: success() && steps.vitest.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // When vitest succeeds we close any open tracking issue from
+            // a previous drift run so on-call isn't left chasing an
+            // already-resolved alert. Comment first so the audit trail
+            // links to the run that verified the fix.
+            //
+            // Guard: a "successful" vitest run with zero passed tests
+            // means every provider block was skipped (no sandbox secrets
+            // configured) — that is NOT evidence the drift is resolved,
+            // so we must not auto-close in that case. The "Warn if zero
+            // provider blocks ran" step already surfaces the
+            // zero-coverage condition; auto-closing on top of it would
+            // hide a real, still-failing parser behind a green-because-
+            // skipped run.
+            const fs = require('fs');
+            let passed = 0;
+            try {
+              const j = JSON.parse(fs.readFileSync('.ci-out/vitest.json', 'utf8'));
+              passed = j.numPassedTests ?? 0;
+            } catch (err) {
+              core.warning(`Could not read vitest.json to verify provider coverage: ${err.message}. Skipping auto-close as a precaution.`);
+              return;
+            }
+            if (passed === 0) {
+              core.warning('Vitest succeeded but zero provider blocks ran — refusing to auto-close any open `crm-cached-identity-drift` tracking issue, since "green because skipped" is not evidence the drift is resolved.');
+              return;
+            }
+            const label = 'crm-cached-identity-drift';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Live CRM sandbox validator suite is back in sync as of ${new Date().toISOString()} — ` +
+                  `auto-closing. Workflow run: ` +
+                  `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.notice(`Auto-closed tracking issue #${issue.number}.`);
+            }
 
       - name: Upload vitest output on failure
         if: failure()

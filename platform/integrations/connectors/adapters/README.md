@@ -219,6 +219,16 @@ making "no providers wired" visible at a glance on every run; once the
 first sandbox is provisioned, vitest itself fails the job on real test
 failures or upstream drift.
 
+On failure the workflow opens (or updates) a single deduplicated GitHub
+tracking issue labelled `crm-cached-identity-drift`, with a first-responder
+checklist, the provider pre-flight table, the vitest JSON summary, and a
+link back to the run. The label is the on-call routing key — subscribing
+the integrations on-call to issues with that label is what turns a daily
+red checkmark into an actual page. When a subsequent run comes back green
+the tracking issue is auto-closed (with an audit-trail comment linking to
+the run that verified the fix), so on-call isn't left chasing
+already-resolved alerts.
+
 Provisioning each sandbox, producing the hard-deleted fixture records,
 storing the resulting secrets, and rotating before token expiry is
 documented in detail in the runbook

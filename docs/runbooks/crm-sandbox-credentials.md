@@ -427,6 +427,40 @@ should link to this runbook.
 
 ---
 
+## How alerts are routed
+
+The workflow's failure surface is **a deduplicated GitHub tracking issue
+labelled `crm-cached-identity-drift`** in this repo. On a failed run, the
+job either opens a fresh tracking issue with that label or, if one is
+already open from a previous failed run, updates the body and adds a
+"re-detected on `<timestamp>`" comment so the on-call notification fires
+again. When a subsequent run comes back green, the same workflow comments
+on and auto-closes any open tracking issue with that label, so the
+backlog stays accurate without manual cleanup.
+
+To make sure failures actually reach a human:
+
+1. **Subscribe the integrations on-call rota** to issues with the
+   `crm-cached-identity-drift` label (GitHub → repo → Issues → Labels →
+   the label → "Subscribe", or via your team's notification routing /
+   PagerDuty integration). The label is the routing key — the issue
+   title and body are designed to be read by whoever is on rotation,
+   not by a single named owner.
+2. **Don't watch the whole repo** as your only hook here; this label is
+   a deliberately narrow firehose so the on-call only sees the live-CRM
+   suite drift, not unrelated repo activity.
+3. **Don't close the tracking issue manually as "won't fix"** — the
+   workflow will auto-close it the next time it sees a green run, and
+   the audit-trail comment links to the verifying run. Closing without
+   a fix just means the next failed run reopens the issue with no
+   context about what changed.
+
+The body of the tracking issue includes the first-responder checklist
+and a link to this runbook, so the on-call can land directly on the
+right section without having to remember the workflow file name.
+
+---
+
 ## CI failure triage
 
 When the daily run reports a failure, work top-to-bottom — most failures
