@@ -217,7 +217,10 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
       couponId: 'coupon_50_off',
       amountOffCents: 5_000,
       percentOff: null,
-      promotionCode: 'promo_string_only',
+      // Unexpanded promotion_code arrives as a bare id string, so it
+      // populates the forwardable id, not the human-readable label.
+      promotionCode: null,
+      promotionCodeId: 'promo_string_only',
     });
   });
 

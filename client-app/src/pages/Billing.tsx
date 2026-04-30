@@ -49,6 +49,15 @@ function invoiceMeta(status: string): StatusMeta {
   return { tone: 'neutral', icon: <FileText className="h-3 w-3" aria-hidden="true" />, tooltip: `Invoice status: ${status}` };
 }
 
+interface BillingDiscountSummary {
+  couponId: string | null;
+  name: string | null;
+  percentOff: number | null;
+  amountOffCents: number | null;
+  currency: string | null;
+  promotionCode: string | null;
+}
+
 interface Subscription {
   plan: string;
   status: string;
@@ -63,6 +72,7 @@ interface Subscription {
   overage_enabled: boolean;
   created_at: string;
   updated_at: string;
+  discount?: BillingDiscountSummary | null;
 }
 
 interface Invoice {
@@ -74,6 +84,7 @@ interface Invoice {
   invoice_pdf: string | null;
   number: string | null;
   description: string | null;
+  discount?: BillingDiscountSummary | null;
 }
 
 interface BudgetResult {
@@ -104,6 +115,28 @@ const COST_RATES = {
 function formatDate(d: string | null): string {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDiscountLabel(
+  discount: BillingDiscountSummary,
+  currencyCode: string,
+): string {
+  const parts: string[] = [];
+  if (discount.percentOff != null && Number.isFinite(discount.percentOff)) {
+    parts.push(`${Math.round(discount.percentOff)}% off`);
+  } else if (
+    discount.amountOffCents != null
+    && Number.isFinite(discount.amountOffCents)
+  ) {
+    const ccy = (discount.currency || currencyCode || 'USD').toUpperCase();
+    parts.push(
+      `${formatCurrency(discount.amountOffCents, { unit: 'cents', currency: ccy })} off`,
+    );
+  }
+  const labelTail = discount.promotionCode || discount.name;
+  if (labelTail) parts.push(labelTail);
+  if (parts.length === 0) return 'Discount applied';
+  return parts.join(' — ');
 }
 
 function InvoiceStatusBadge({ status }: { status: string }) {
@@ -834,6 +867,17 @@ export default function Billing() {
                 )}
               </div>
 
+              {sub?.discount && (
+                <div
+                  data-testid="billing-subscription-discount-badge"
+                  className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                  title="Active discount applied to your subscription. Shown on Stripe Checkout and on every invoice this discount applies to."
+                >
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
+                  <span>Active discount: {formatDiscountLabel(sub.discount, currency)}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-text-muted">Current Period</p>
@@ -1163,13 +1207,23 @@ export default function Billing() {
                             </span>
                             <InvoiceStatusBadge status={inv.status} />
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <Clock className="h-3 w-3 text-text-muted" />
                             <span className="text-xs text-text-muted">
                               {inv.date ? formatDate(inv.date) : '—'}
                             </span>
                             {inv.description && (
                               <span className="text-xs text-text-muted">· {inv.description}</span>
+                            )}
+                            {inv.discount && (
+                              <span
+                                data-testid="billing-invoice-discount-badge"
+                                className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success"
+                                title="A discount was applied to this invoice."
+                              >
+                                <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
+                                {formatDiscountLabel(inv.discount, inv.currency || currency)}
+                              </span>
                             )}
                           </div>
                         </div>

@@ -676,7 +676,10 @@ export interface UpgradeDiscount {
   percentOff: number | null;
   amountOffCents: number | null;
   currency: string | null;
+  /** Human-readable promotion code (e.g. "PROMO25") for display. */
   promotionCode: string | null;
+  /** Stripe `promo_*` id, suitable for forwarding to Checkout's `discounts`. */
+  promotionCodeId: string | null;
 }
 
 /**
@@ -775,8 +778,13 @@ interface CustomerLike {
  * `UpgradeDiscount` shape. Returns `null` when the discount has expired or
  * the underlying coupon is no longer valid so the preview never quotes a
  * stale promo.
+ *
+ * Exported so it can be reused by other Stripe surfaces (the
+ * `/billing/subscription` and `/billing/invoices` endpoints, and the
+ * Checkout session builder) that want to render the same coupon badge
+ * without re-implementing the validity / expiry checks.
  */
-function normalizeDiscount(
+export function normalizeDiscount(
   discount: DiscountLike | null | undefined,
 ): UpgradeDiscount | null {
   if (!discount) return null;
@@ -803,11 +811,15 @@ function normalizeDiscount(
   if (percentOff == null && amountOffCents == null) return null;
 
   let promotionCode: string | null = null;
+  let promotionCodeId: string | null = null;
   const promo = discount.promotion_code;
   if (typeof promo === 'string') {
-    promotionCode = promo;
+    // Unexpanded — Stripe returns just the `promo_*` id. Use it as the
+    // forwardable id; we don't have the human label.
+    promotionCodeId = promo;
   } else if (promo && typeof promo === 'object') {
-    promotionCode = promo.code ?? promo.id ?? null;
+    promotionCode = promo.code ?? null;
+    promotionCodeId = promo.id ?? null;
   }
 
   return {
@@ -817,6 +829,7 @@ function normalizeDiscount(
     amountOffCents,
     currency: (coupon.currency ?? null)?.toLowerCase() ?? null,
     promotionCode,
+    promotionCodeId,
   };
 }
 
@@ -854,6 +867,40 @@ function applyDiscountToPerMinute(
   // intentionally leave the metered rate alone here. The estimator already
   // shows the discounted base, which is where the credit gets reflected.
   return ratePerMinute;
+}
+
+/**
+ * Fetch the tenant's Stripe customer record and translate any active
+ * discount on it into our compact `UpgradeDiscount` shape. Returns
+ * `null` when there is no customer, when the customer has no discount,
+ * when the discount has expired, or when the Stripe call throws — every
+ * failure path degrades silently so a discount lookup never breaks the
+ * surface that called it.
+ *
+ * Used by the upgrade-preview path (via `getTenantUpgradePreview`), the
+ * `/billing/subscription` panel, and the Checkout session builder so all
+ * three render the same coupon badge from the same source of truth.
+ */
+export async function loadActiveCustomerDiscount(
+  stripe: Stripe,
+  customerId: string,
+  ctx: { tenantId: string; surface: string },
+): Promise<UpgradeDiscount | null> {
+  try {
+    const customer = (await stripe.customers.retrieve(customerId, {
+      expand: ['discount.promotion_code'],
+    })) as unknown as CustomerLike;
+    if (!customer || customer.deleted === true) return null;
+    return normalizeDiscount(customer.discount);
+  } catch (err) {
+    logger.warn('Failed to retrieve customer discount', {
+      tenantId: ctx.tenantId,
+      surface: ctx.surface,
+      customerId,
+      error: String(err),
+    });
+    return null;
+  }
 }
 
 export function isPlanTier(value: unknown): value is PlanTier {
@@ -1025,6 +1072,9 @@ export async function getTenantUpgradePreview(
   // 3. Fetch the tenant's Stripe customer to read any active discount.
   //    `customer.discount.promotion_code` can be a string id or an inline
   //    object — we expand it so we can surface the human-readable code.
+  //    The `loadActiveCustomerDiscount` helper centralises the same call
+  //    so the `/billing/subscription` panel and the Checkout session
+  //    builder render the identical badge from the same source of truth.
   let discount: UpgradeDiscount | null = null;
   if (customerId) {
     try {

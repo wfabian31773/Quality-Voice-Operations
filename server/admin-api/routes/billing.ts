@@ -5,7 +5,10 @@ import {
   getTenantEffectiveRate,
   getTenantUpgradePreview,
   isPlanTier,
+  loadActiveCustomerDiscount,
   nextUpgradeTier,
+  normalizeDiscount,
+  type UpgradeDiscount,
 } from '../../../platform/billing/stripe/effectiveRate';
 import {
   scheduleDowngrade,
@@ -29,13 +32,16 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
   const pool = getPlatformPool();
   const client = await pool.connect();
 
+  let subscriptionRow: Record<string, unknown> | null = null;
+  let stripeCustomerId: string | null = null;
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
       `SELECT plan, status, billing_interval, current_period_start, current_period_end,
               trial_end, cancelled_at, monthly_call_limit, monthly_sms_limit,
-              monthly_ai_minute_limit, overage_enabled, created_at, updated_at
+              monthly_ai_minute_limit, overage_enabled, stripe_customer_id,
+              created_at, updated_at
        FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
@@ -44,7 +50,10 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
     if (rows.length === 0) {
       return res.json({ subscription: null, plan: 'starter', status: 'none' });
     }
-    return res.json({ subscription: rows[0] });
+    const row = rows[0] as Record<string, unknown>;
+    stripeCustomerId = (row.stripe_customer_id as string | null) ?? null;
+    delete row.stripe_customer_id;
+    subscriptionRow = row;
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error('Failed to get subscription', { tenantId, error: String(err) });
@@ -52,6 +61,25 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
   } finally {
     client.release();
   }
+
+  let discount: UpgradeDiscount | null = null;
+  if (stripeCustomerId) {
+    try {
+      const { getStripeClient } = await import('../../../platform/billing/stripe/client');
+      const stripe = getStripeClient();
+      discount = await loadActiveCustomerDiscount(stripe, stripeCustomerId, {
+        tenantId,
+        surface: 'subscription_panel',
+      });
+    } catch (err) {
+      logger.warn('Could not resolve customer discount for subscription panel', {
+        tenantId,
+        error: String(err),
+      });
+    }
+  }
+
+  return res.json({ subscription: { ...subscriptionRow, discount } });
 });
 
 router.get('/billing/usage', requireAuth, async (req, res) => {
@@ -703,18 +731,51 @@ router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req,
     const stripeInvoices = await stripe.invoices.list({
       customer: customerId,
       limit: 10,
+      expand: ['data.discounts', 'data.discounts.promotion_code'],
     });
 
-    const invoices = stripeInvoices.data.map((inv) => ({
-      id: inv.id,
-      date: inv.created ? new Date(inv.created * 1000).toISOString() : null,
-      amount_cents: inv.status === 'paid' ? (inv.amount_paid ?? inv.total ?? 0) : (inv.amount_due ?? inv.total ?? 0),
-      currency: inv.currency ?? 'usd',
-      status: inv.status ?? 'unknown',
-      invoice_pdf: inv.invoice_pdf ?? null,
-      number: inv.number ?? null,
-      description: inv.description ?? (inv.lines?.data?.[0]?.description || null),
-    }));
+    const invoices = stripeInvoices.data.map((inv) => {
+      let discount: UpgradeDiscount | null = null;
+      const rawDiscounts = (inv as unknown as {
+        discounts?: Array<unknown> | null;
+      }).discounts ?? [];
+      for (const raw of rawDiscounts) {
+        if (typeof raw !== 'object' || raw === null) continue;
+        const normalized = normalizeDiscount(raw as Parameters<typeof normalizeDiscount>[0]);
+        if (normalized) {
+          discount = normalized;
+          break;
+        }
+      }
+      // Fallback for legacy invoices missing the expanded `discounts`
+      // array: surface a placeholder so the badge still renders.
+      if (
+        !discount
+        && Array.isArray((inv as unknown as { total_discount_amounts?: unknown }).total_discount_amounts)
+        && ((inv as unknown as { total_discount_amounts: unknown[] }).total_discount_amounts.length > 0)
+      ) {
+        discount = {
+          couponId: null,
+          name: null,
+          percentOff: null,
+          amountOffCents: null,
+          currency: (inv.currency ?? null)?.toLowerCase() ?? null,
+          promotionCode: null,
+          promotionCodeId: null,
+        };
+      }
+      return {
+        id: inv.id,
+        date: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+        amount_cents: inv.status === 'paid' ? (inv.amount_paid ?? inv.total ?? 0) : (inv.amount_due ?? inv.total ?? 0),
+        currency: inv.currency ?? 'usd',
+        status: inv.status ?? 'unknown',
+        invoice_pdf: inv.invoice_pdf ?? null,
+        number: inv.number ?? null,
+        description: inv.description ?? (inv.lines?.data?.[0]?.description || null),
+        discount,
+      };
+    });
 
     return res.json({ invoices });
   } catch (err) {

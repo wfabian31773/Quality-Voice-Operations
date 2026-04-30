@@ -4,6 +4,7 @@ import type { PlanTier } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import type { TenantId } from '../../core/types';
+import { loadActiveCustomerDiscount } from './effectiveRate';
 
 const logger = createLogger('STRIPE_CHECKOUT');
 
@@ -58,6 +59,24 @@ export async function createCheckoutSession(params: {
         }
       : {};
 
+    // Forward the customer's active discount so the hosted page shows
+    // the coupon line. Prefer promotion_code (carries the PROMO25 label)
+    // over coupon. Stripe rejects an empty `discounts: []`, so the key
+    // is omitted entirely when no discount applies.
+    let sessionDiscounts: Array<{ coupon?: string; promotion_code?: string }> | undefined;
+    if (existingCustomerId) {
+      const customerDiscount = await loadActiveCustomerDiscount(
+        stripe,
+        existingCustomerId,
+        { tenantId, surface: 'checkout_session' },
+      );
+      if (customerDiscount?.promotionCodeId) {
+        sessionDiscounts = [{ promotion_code: customerDiscount.promotionCodeId }];
+      } else if (customerDiscount?.couponId) {
+        sessionDiscounts = [{ coupon: customerDiscount.couponId }];
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -71,6 +90,7 @@ export async function createCheckoutSession(params: {
         metadata: { tenantId, plan },
         trial_period_days: plan === 'starter' ? 14 : undefined,
       },
+      ...(sessionDiscounts ? { discounts: sessionDiscounts } : {}),
     });
 
     logger.info('Checkout session created', { tenantId, plan, sessionId: session.id });
