@@ -14,14 +14,18 @@ const logger = createLogger('WEBSITE_CONVERSION');
 export type ConversionStage = SharedConversionStage;
 
 // Funnel report ordering — a *subset* of `ALL_CONVERSION_STAGES`
-// (e.g. `demo_completed`, `demo_requested`, `roi_report_requested`,
-// `trial_started` are tracked but not part of the canonical
-// website-funnel waterfall in the admin report). Keep in sync with
-// `getWebsiteFunnel` below.
+// (e.g. `demo_completed`, `trial_started` are tracked but not part
+// of the canonical website-funnel waterfall in the admin report).
+// `demo_requested` (Book a Demo form submit) and
+// `roi_report_requested` (ROI calculator email request) sit between
+// CTA click and signup as mid-funnel intent signals — see Task #1230.
+// Keep in sync with `getWebsiteFunnel` below.
 export const WEBSITE_FUNNEL_STAGES: ConversionStage[] = [
   CONVERSION_STAGE.PAGE_VIEW,
   CONVERSION_STAGE.CTA_CLICK,
   CONVERSION_STAGE.DEMO_STARTED,
+  CONVERSION_STAGE.DEMO_REQUESTED,
+  CONVERSION_STAGE.ROI_REPORT_REQUESTED,
   CONVERSION_STAGE.SIGNUP_STARTED,
   CONVERSION_STAGE.SIGNUP_COMPLETED,
   CONVERSION_STAGE.PAID,
