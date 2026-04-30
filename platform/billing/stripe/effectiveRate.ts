@@ -1,6 +1,6 @@
 import type Stripe from 'stripe';
 import { getStripeClient } from './client';
-import { getPlanFromPriceId } from './plans';
+import { getPlanFromPriceId, getPlanAiMinutesPriceId } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
@@ -551,12 +551,17 @@ export interface TenantUpgradePreview {
   basePriceCents: number;
   /**
    * Per-minute overage rate (in dollars) the tenant would pay on the target
-   * tier. We don't have a per-tier metered price configured yet, so this
-   * starts from the catalog rate for the target tier and applies any
-   * `percent_off` from the customer's discount (Stripe applies percentage
-   * coupons to the entire invoice, including metered usage). `amount_off`
-   * coupons only apply once to the invoice total and do NOT change the
-   * per-minute rate, so we leave the overage untouched in that case.
+   * tier. Resolved in this order:
+   *   1. The metered Stripe price id wired in via
+   *      `STRIPE_PRICE_<TIER>_AI_MINUTES` — when present and retrievable,
+   *      we use its `unit_amount_decimal` (sub-cent precision preserved)
+   *      so the upgrade overage matches what Stripe will actually invoice.
+   *   2. Otherwise the catalog `overageRatePerMinute` for the target tier.
+   * After base resolution we apply any `percent_off` from the customer's
+   * discount (Stripe applies percentage coupons to the entire invoice,
+   * including metered usage). `amount_off` coupons are flat invoice
+   * credits and do NOT change the per-minute rate, so we leave the
+   * overage untouched in that case.
    */
   overageRatePerMinute: number;
   currency: string;
@@ -565,6 +570,8 @@ export interface TenantUpgradePreview {
   overagePriceSource: 'stripe' | 'catalog';
   /** Stripe price id we used for the base (when applicable). */
   basePriceId: string | null;
+  /** Stripe metered price id we used for the overage (when applicable). */
+  overagePriceId: string | null;
   /** Discount we resolved off the customer record (when applicable). */
   discount: UpgradeDiscount | null;
 }
@@ -580,6 +587,7 @@ function catalogUpgradeFor(plan: PlanTier): TenantUpgradePreview {
     basePriceSource: 'catalog',
     overagePriceSource: 'catalog',
     basePriceId: null,
+    overagePriceId: null,
     discount: null,
   };
 }
@@ -721,12 +729,19 @@ export function nextUpgradeTier(currentPlan: PlanTier): PlanTier | null {
  *      it from Stripe, and use its `unit_amount` (normalized to monthly).
  *   2. Fall back to the catalog `monthlyPriceCents`.
  *
- * After we have the published base, we look at the tenant's Stripe customer
- * record for an active `discount` (a coupon or promotion-code redemption)
- * and apply it to the base. This is what lets Sales attach a custom
- * percent-off coupon to a tenant's customer in Stripe and have the bill
- * estimator show the *actual* upgrade quote instead of the catalog list
- * price.
+ * Resolution order for the per-minute overage rate:
+ *   1. Look up `STRIPE_PRICE_<TIER>_AI_MINUTES` (the metered Stripe price id
+ *      for AI minutes on the target tier), retrieve it from Stripe, and use
+ *      its `unit_amount_decimal` so we keep sub-cent precision (the live
+ *      Stripe rate is the most accurate quote we can give).
+ *   2. Fall back to the catalog `overageRatePerMinute` for the target tier.
+ *
+ * After we have the published base AND the metered overage, we look at the
+ * tenant's Stripe customer record for an active `discount` (a coupon or
+ * promotion-code redemption) and apply it. This is what lets Sales attach
+ * a custom percent-off coupon to a tenant's customer in Stripe and have
+ * the bill estimator show the *actual* upgrade quote instead of the
+ * catalog list price.
  *
  * Like `getTenantEffectiveRate`, this function NEVER throws — every Stripe
  * error degrades to the catalog defaults so the comparison-tier card
@@ -793,7 +808,71 @@ export async function getTenantUpgradePreview(
     }
   }
 
-  // 2. Fetch the tenant's Stripe customer to read any active discount.
+  // 2. Try to resolve the metered AI-minutes Stripe price id for the
+  //    target tier and use its `unit_amount_decimal` for the overage. This
+  //    is the analogue of how `getTenantEffectiveRate` reads the metered
+  //    line off the *active* subscription — the only difference here is
+  //    that we don't have a subscription on the target tier yet, so the
+  //    metered price has to be looked up by env-keyed id instead.
+  const meteredPriceId = getPlanAiMinutesPriceId(targetPlan);
+  let overageRatePerMinute = fallback.overageRatePerMinute;
+  let overagePriceSource: 'stripe' | 'catalog' = 'catalog';
+  let overagePriceId: string | null = null;
+  // Track whether the env var was configured but the lookup failed, so we
+  // can surface that as a `mixed` source (we tried for live data and only
+  // got partial coverage).
+  let meteredFetchAttemptedAndFailed = false;
+
+  if (meteredPriceId) {
+    try {
+      const meteredPrice = (await stripe.prices.retrieve(meteredPriceId)) as unknown as PriceLike;
+      // Defense-in-depth: the env value is operator-controlled, so confirm
+      // the retrieved price is actually a metered line before we trust its
+      // unit_amount as a per-minute rate. A licensed/recurring monthly
+      // price wired here by mistake would otherwise be quoted as an
+      // *overage* (e.g. "$399/min"), which is catastrophic for the
+      // estimator. We intentionally accept a generic metered line that
+      // isn't tagged with `metric=ai_minutes` / the AI minutes meter,
+      // matching `getTenantEffectiveRate`'s behaviour for grandfathered
+      // tenants — operators are expected to wire the right price id, and
+      // this check is just a guardrail against the obvious wrong-shape
+      // misconfiguration.
+      const { isMetered } = classifyPrice(meteredPrice);
+      const dollarsPerMin = isMetered
+        ? unitAmountToDollarsPerMinute(meteredPrice)
+        : null;
+      if (dollarsPerMin != null) {
+        overageRatePerMinute = dollarsPerMin;
+        overagePriceSource = 'stripe';
+        overagePriceId = meteredPrice.id ?? meteredPriceId;
+        if (meteredPrice.currency && currency === fallback.currency) {
+          currency = meteredPrice.currency.toLowerCase();
+        }
+      } else {
+        meteredFetchAttemptedAndFailed = true;
+        if (!isMetered) {
+          // Surface this loud-and-clear so ops sees the misconfiguration
+          // in logs even though the user-facing endpoint degrades silently.
+          logger.warn('Configured AI-minutes Stripe price is not metered — ignoring', {
+            tenantId,
+            targetPlan,
+            priceId: meteredPriceId,
+            usageType: meteredPrice.recurring?.usage_type ?? null,
+          });
+        }
+      }
+    } catch (err) {
+      meteredFetchAttemptedAndFailed = true;
+      logger.warn('Failed to retrieve upgrade target metered price from Stripe', {
+        tenantId,
+        targetPlan,
+        priceId: meteredPriceId,
+        error: String(err),
+      });
+    }
+  }
+
+  // 3. Fetch the tenant's Stripe customer to read any active discount.
   //    `customer.discount.promotion_code` can be a string id or an inline
   //    object — we expand it so we can surface the human-readable code.
   let discount: UpgradeDiscount | null = null;
@@ -820,20 +899,30 @@ export async function getTenantUpgradePreview(
 
   const discountedBase = applyDiscountToBaseCents(basePriceCents, discount);
   const discountedOverage = applyDiscountToPerMinute(
-    fallback.overageRatePerMinute,
+    overageRatePerMinute,
     discount,
   );
 
-  // The published catalog rate is the only thing we have for the metered
-  // line, so its source stays `catalog` even when we discount it — the
-  // discount provenance is surfaced separately via the `discount` field.
-  const overagePriceSource: 'stripe' | 'catalog' = 'catalog';
-
+  // Source semantics:
+  //   - `stripe`  → both the base AND the overage came from live Stripe
+  //                 data (or the overage is catalog-by-default because no
+  //                 metered env var was configured — i.e. there is no
+  //                 *better* answer available).
+  //   - `mixed`   → at least one field came from Stripe and the other had
+  //                 to fall back. A discount applied to a catalog base is
+  //                 also `mixed` (the discount itself is live Stripe data).
+  //   - `catalog` → nothing came from Stripe.
   let source: EffectiveRateSource;
-  if (basePriceSource === 'stripe' && discount) {
+  const baseFromStripe = basePriceSource === 'stripe';
+  const overageFromStripe = overagePriceSource === 'stripe';
+  if (baseFromStripe && overageFromStripe) {
     source = 'stripe';
-  } else if (basePriceSource === 'stripe' || discount) {
-    source = basePriceSource === 'stripe' ? 'stripe' : 'mixed';
+  } else if (baseFromStripe && !meteredFetchAttemptedAndFailed) {
+    // Legacy path: no metered env wired (yet) — base is the freshest data
+    // we could surface, so call it `stripe` rather than `mixed`.
+    source = 'stripe';
+  } else if (baseFromStripe || overageFromStripe || discount) {
+    source = 'mixed';
   } else {
     source = 'catalog';
   }
@@ -847,6 +936,7 @@ export async function getTenantUpgradePreview(
     basePriceSource,
     overagePriceSource,
     basePriceId,
+    overagePriceId,
     discount,
   };
 }

@@ -86,6 +86,33 @@ export function getPlanPriceId(tier: PlanTier, interval: 'monthly' | 'annual' = 
   return priceId;
 }
 
+/**
+ * Resolve the env var name that holds the metered (per-minute) AI-minutes
+ * Stripe price id for a given tier. Kept as a thin helper so callers stay
+ * consistent with the convention used by `getPlanPriceId` for the licensed
+ * monthly/annual base prices:
+ *
+ *   STRIPE_PRICE_<TIER>_AI_MINUTES   e.g. `STRIPE_PRICE_PRO_AI_MINUTES`
+ *
+ * The value is a Stripe metered Price id (`price_…`) created against the
+ * tier's metered Product. When unset, the upgrade preview falls back to
+ * `PLAN_CATALOG[tier].overageRatePerMinute` for the overage quote.
+ */
+export function getPlanAiMinutesPriceEnvKey(tier: PlanTier): string {
+  return `STRIPE_PRICE_${tier.toUpperCase()}_AI_MINUTES`;
+}
+
+/**
+ * Read the metered AI-minutes Stripe price id for a tier, or `null` when
+ * the env var is unset. Unlike `getPlanPriceId`, this is intentionally
+ * non-throwing: the metered price is an *upgrade* over the catalog default
+ * for the upgrade-preview overage quote, so a missing value is a soft fall
+ * back rather than a hard failure.
+ */
+export function getPlanAiMinutesPriceId(tier: PlanTier): string | null {
+  return process.env[getPlanAiMinutesPriceEnvKey(tier)] ?? null;
+}
+
 export function validateBillingConfig(): { valid: boolean; warnings: string[] } {
   const warnings: string[] = [];
   const tiers: PlanTier[] = ['starter', 'pro', 'enterprise'];

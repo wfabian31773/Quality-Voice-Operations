@@ -94,12 +94,22 @@ beforeEach(() => {
   queryHandler = async () => ({ rows: [] });
   process.env.STRIPE_PRICE_PRO_MONTHLY = 'price_pro_monthly_published';
   process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY = 'price_ent_monthly_published';
+  // Per-tier metered AI-minutes prices are intentionally unset by default
+  // so the existing test cases continue to assert the catalog-fallback
+  // behavior for the overage. Tests that exercise the metered Stripe path
+  // opt-in by setting the env var explicitly.
+  delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
 });
 
 afterEach(() => {
   vi.useRealTimers();
   delete process.env.STRIPE_PRICE_PRO_MONTHLY;
   delete process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY;
+  delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
 });
 
 describe('getTenantUpgradePreview — Stripe customer discount overrides', () => {
@@ -435,5 +445,233 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
     expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
     expect(result.basePriceSource).toBe('catalog');
     expect(result.source).toBe('catalog');
+  });
+});
+
+describe('getTenantUpgradePreview — metered AI-minutes price override', () => {
+  it('quotes the upgrade overage from the Stripe metered price (not the catalog) when STRIPE_PRICE_<TIER>_AI_MINUTES is configured', async () => {
+    // Wire the per-tier metered price id the way ops would in production.
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_minutes_metered';
+
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: 'sub_starter',
+      stripe_price_id: null,
+      stripe_customer_id: 'cus_with_metered_pro',
+    });
+
+    // Route prices.retrieve calls by id so we can serve BOTH the licensed
+    // base price AND the metered overage price in the same test — the
+    // production code path now retrieves both. Sub-cent precision (the
+    // whole reason we read `unit_amount_decimal`) is exercised here:
+    // 7.5 cents/minute = $0.075, which must NOT round to $0.08.
+    pricesRetrieve.mockImplementation(async (priceId: string) => {
+      if (priceId === 'price_pro_monthly_published') {
+        return {
+          id: 'price_pro_monthly_published',
+          unit_amount: 39_900,
+          unit_amount_decimal: '39900',
+          currency: 'usd',
+          recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+          metadata: {},
+        };
+      }
+      if (priceId === 'price_pro_ai_minutes_metered') {
+        return {
+          id: 'price_pro_ai_minutes_metered',
+          unit_amount: null,
+          unit_amount_decimal: '7.5', // $0.075/min — sub-cent, MUST NOT round
+          currency: 'usd',
+          recurring: {
+            usage_type: 'metered',
+            interval: 'month',
+            interval_count: 1,
+            meter: 'mtr_ai_min',
+          },
+          metadata: { metric: 'ai_minutes' },
+        };
+      }
+      throw new Error(`unexpected prices.retrieve call: ${priceId}`);
+    });
+
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_with_metered_pro',
+      deleted: false,
+      discount: null,
+    });
+
+    const result = await getTenantUpgradePreview(TENANT, 'pro');
+
+    // The metered Stripe price was retrieved by the configured env-keyed id.
+    expect(pricesRetrieve).toHaveBeenCalledWith('price_pro_ai_minutes_metered');
+    // Overage now reflects the live Stripe rate ($0.075/min), NOT the
+    // catalog default — and the precision survives intact (no cent-rounding).
+    expect(result.overageRatePerMinute).toBeCloseTo(0.075, 6);
+    expect(result.overageRatePerMinute).not.toBe(PLAN_CATALOG.pro.overageRatePerMinute);
+    // Provenance breadcrumbs flip to `stripe` so the BillingEstimator can
+    // render the "Live Stripe rate" badge on the upgrade card.
+    expect(result.overagePriceSource).toBe('stripe');
+    expect(result.overagePriceId).toBe('price_pro_ai_minutes_metered');
+    // Base is also from Stripe → the whole quote is `stripe`-sourced now.
+    expect(result.basePriceSource).toBe('stripe');
+    expect(result.source).toBe('stripe');
+    // No discount means the base stays at the published Stripe value.
+    expect(result.basePriceCents).toBe(39_900);
+    expect(result.discount).toBeNull();
+  });
+
+  it('applies a percent-off customer discount on top of the Stripe-sourced metered overage', async () => {
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_minutes_metered';
+
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: 'sub_starter',
+      stripe_price_id: null,
+      stripe_customer_id: 'cus_metered_with_discount',
+    });
+
+    pricesRetrieve.mockImplementation(async (priceId: string) => {
+      if (priceId === 'price_pro_monthly_published') {
+        return {
+          id: 'price_pro_monthly_published',
+          unit_amount: 39_900,
+          unit_amount_decimal: '39900',
+          currency: 'usd',
+          recurring: { usage_type: 'licensed', interval: 'month' },
+          metadata: {},
+        };
+      }
+      if (priceId === 'price_pro_ai_minutes_metered') {
+        return {
+          id: 'price_pro_ai_minutes_metered',
+          unit_amount: 10, // $0.10/min metered Stripe rate
+          unit_amount_decimal: '10',
+          currency: 'usd',
+          recurring: { usage_type: 'metered', interval: 'month' },
+          metadata: { metric: 'ai_minutes' },
+        };
+      }
+      throw new Error(`unexpected prices.retrieve call: ${priceId}`);
+    });
+
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_metered_with_discount',
+      deleted: false,
+      discount: {
+        coupon: {
+          id: 'coupon_20',
+          percent_off: 20,
+          valid: true,
+        },
+      },
+    });
+
+    const result = await getTenantUpgradePreview(TENANT, 'pro');
+
+    // Stripe metered rate ($0.10/min) - 20% = $0.08/min.
+    expect(result.overageRatePerMinute).toBeCloseTo(0.08, 6);
+    expect(result.overagePriceSource).toBe('stripe');
+    expect(result.overagePriceId).toBe('price_pro_ai_minutes_metered');
+  });
+
+  it('rejects a non-metered price wired into STRIPE_PRICE_<TIER>_AI_MINUTES and falls back to catalog (guards against operator misconfiguration)', async () => {
+    // Operator points the AI minutes env var at a *licensed* monthly
+    // price by mistake. Without the metered guard we'd quote $399/min
+    // — instead the function must ignore it and fall back to catalog.
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_oops_licensed';
+
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: 'sub_starter',
+      stripe_price_id: null,
+      stripe_customer_id: 'cus_misconfigured',
+    });
+
+    pricesRetrieve.mockImplementation(async (priceId: string) => {
+      if (priceId === 'price_pro_monthly_published') {
+        return {
+          id: 'price_pro_monthly_published',
+          unit_amount: 39_900,
+          unit_amount_decimal: '39900',
+          currency: 'usd',
+          recurring: { usage_type: 'licensed', interval: 'month' },
+          metadata: {},
+        };
+      }
+      if (priceId === 'price_oops_licensed') {
+        // The wrong-shape price: a recurring LICENSED line, NOT metered.
+        return {
+          id: 'price_oops_licensed',
+          unit_amount: 39_900, // Would be $399/min if naively trusted
+          unit_amount_decimal: '39900',
+          currency: 'usd',
+          recurring: { usage_type: 'licensed', interval: 'month' },
+          metadata: {},
+        };
+      }
+      throw new Error(`unexpected prices.retrieve call: ${priceId}`);
+    });
+
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_misconfigured',
+      deleted: false,
+      discount: null,
+    });
+
+    const result = await getTenantUpgradePreview(TENANT, 'pro');
+
+    // The guard kicked in: we did NOT quote $399/min from the licensed
+    // price — overage stays at the catalog Pro rate.
+    expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
+    expect(result.overagePriceSource).toBe('catalog');
+    expect(result.overagePriceId).toBeNull();
+    // Base still came from the (correctly configured) Stripe monthly
+    // price, but the metered lookup attempted+failed, so source = 'mixed'.
+    expect(result.basePriceSource).toBe('stripe');
+    expect(result.source).toBe('mixed');
+  });
+
+  it('falls back to the catalog overage rate when the metered price retrieval throws, and marks the source as mixed', async () => {
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_minutes_metered';
+
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: 'sub_starter',
+      stripe_price_id: null,
+      stripe_customer_id: 'cus_metered_503',
+    });
+
+    pricesRetrieve.mockImplementation(async (priceId: string) => {
+      if (priceId === 'price_pro_monthly_published') {
+        return {
+          id: 'price_pro_monthly_published',
+          unit_amount: 39_900,
+          unit_amount_decimal: '39900',
+          currency: 'usd',
+          recurring: { usage_type: 'licensed', interval: 'month' },
+          metadata: {},
+        };
+      }
+      if (priceId === 'price_pro_ai_minutes_metered') {
+        throw new Error('Stripe 503');
+      }
+      throw new Error(`unexpected prices.retrieve call: ${priceId}`);
+    });
+
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_metered_503',
+      deleted: false,
+      discount: null,
+    });
+
+    const result = await getTenantUpgradePreview(TENANT, 'pro');
+
+    // Overage falls back to the catalog default for the target tier.
+    expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
+    expect(result.overagePriceSource).toBe('catalog');
+    expect(result.overagePriceId).toBeNull();
+    // Base still came from Stripe, but overage failed → mixed (not stripe).
+    expect(result.basePriceSource).toBe('stripe');
+    expect(result.source).toBe('mixed');
   });
 });

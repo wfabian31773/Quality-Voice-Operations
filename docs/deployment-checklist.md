@@ -66,6 +66,7 @@
 | `CALENDLY_WEBHOOK_ALLOW_UNSIGNED` | unset | **Dev/staging only.** Set to `1` to accept unsigned Calendly webhook requests when `CALENDLY_WEBHOOK_SECRET` is not configured. Has no effect when `NODE_ENV=production` or `APP_ENV=production` — production always fails closed. |
 | `SALES_EMAIL` | none | Legacy fallback for `SALES_NOTIFICATION_EMAIL`. Prefer the latter. |
 | `OPS_SLACK_WEBHOOK_URL` | none | Default Slack incoming-webhook URL used for sales-alert messages when the in-app Slack channel is enabled and no per-instance webhook override has been configured in **Admin → Sales Inbox → Alert settings**. |
+| `STRIPE_PRICE_STARTER_AI_MINUTES` / `STRIPE_PRICE_PRO_AI_MINUTES` / `STRIPE_PRICE_ENTERPRISE_AI_MINUTES` | unset | Stripe metered Price ID for the per-minute AI overage on each tier. When set, `GET /billing/upgrade-preview` quotes the overage rate from the Stripe price (sub-cent precision via `unit_amount_decimal`) so the upgrade card matches what Stripe will actually invoice. When unset, the endpoint falls back to the catalog rate in `shared/billing/planCatalog.ts`. Configure these alongside `STRIPE_METER_EVENT_AI_MINUTES` once per-tier metered prices exist in Stripe. |
 | `PLATFORM_ADMIN_BASE_URL` | falls back to `ADMIN_PUBLIC_URL` → `APP_PUBLIC_URL` → `ADMIN_API_BASE_URL` | Public origin used to build deep links inside sales-alert emails / Slack messages (e.g. `https://app.example.com/admin/sales-inbox#lead-42`). Set this to the URL admins use to reach the SPA, not the raw API origin, when those differ. |
 
 ## 2. Pre-deployment Validation

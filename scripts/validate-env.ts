@@ -25,6 +25,9 @@ const ENV_VARS: EnvVar[] = [
   { name: 'STRIPE_PRICE_ENTERPRISE_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Enterprise monthly plan' },
   { name: 'STRIPE_PRICE_ENTERPRISE_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Enterprise annual plan' },
   { name: 'STRIPE_METER_EVENT_CALLS', required: 'production', purpose: 'Stripe meter event name for call usage' },
+  // STRIPE_PRICE_<TIER>_AI_MINUTES (starter/pro/enterprise) is optional —
+  // the upgrade-preview endpoint falls back to the catalog overage rate
+  // when the metered price id is not configured. See OPTIONAL_VARS below.
   { name: 'STRIPE_METER_EVENT_AI_MINUTES', required: 'production', purpose: 'Stripe meter event name for AI minute usage' },
   { name: 'VOICE_GATEWAY_BASE_URL', required: 'production', purpose: 'Public URL of the voice gateway (for Twilio webhooks)' },
   { name: 'ADMIN_API_BASE_URL', required: 'production', purpose: 'Public URL of the admin API' },
@@ -68,6 +71,9 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'CALENDLY_WEBHOOK_SECRET', required: 'development', purpose: 'HMAC-SHA256 secret for verifying Calendly webhook requests (handled by both the unified /book-demo/calendar-webhook and the dedicated /book-demo/calendly-webhook routes). Conditionally required in production when VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly"' },
   { name: 'CALENDLY_WEBHOOK_TOLERANCE_SECONDS', required: 'development', purpose: 'Optional override (default 300) for Calendly signature timestamp replay window' },
   { name: 'CALENDLY_WEBHOOK_ALLOW_UNSIGNED', required: 'development', purpose: 'Dev/staging only. Set to "1" to accept unsigned Calendly webhook requests when CALENDLY_WEBHOOK_SECRET is not configured. Production always fails closed' },
+  { name: 'STRIPE_PRICE_STARTER_AI_MINUTES', required: 'development', purpose: 'Optional. Stripe metered Price ID for Starter per-minute AI overage. When set, the upgrade-preview endpoint quotes the overage rate from this Stripe price (sub-cent precision); when unset it falls back to the catalog rate.' },
+  { name: 'STRIPE_PRICE_PRO_AI_MINUTES', required: 'development', purpose: 'Optional. Stripe metered Price ID for Pro per-minute AI overage. When set, the upgrade-preview endpoint quotes the overage rate from this Stripe price (sub-cent precision); when unset it falls back to the catalog rate.' },
+  { name: 'STRIPE_PRICE_ENTERPRISE_AI_MINUTES', required: 'development', purpose: 'Optional. Stripe metered Price ID for Enterprise per-minute AI overage. When set, the upgrade-preview endpoint quotes the overage rate from this Stripe price (sub-cent precision); when unset it falls back to the catalog rate.' },
 ];
 
 /**
