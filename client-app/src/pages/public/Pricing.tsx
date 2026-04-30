@@ -290,7 +290,18 @@ export default function Pricing() {
                     </span>
                   </div>
                 )}
-                <h3 className="font-display text-xl font-bold text-text-primary mb-1">{tier.name}</h3>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <h3 className="font-display text-xl font-bold text-text-primary">{tier.name}</h3>
+                  {isAnnual && (
+                    <span
+                      data-testid={`pricing-tier-${tier.key}-save-badge`}
+                      aria-label={t('pricing.tier_card.save_badge_aria', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
+                      className="inline-flex items-center text-[11px] font-semibold font-body bg-success/10 text-success px-2 py-0.5 rounded-full uppercase tracking-wide"
+                    >
+                      {t('pricing.tier_card.save_badge', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-text-primary/50 font-body mb-5">{tier.desc}</p>
                 <div className="mb-2">
                   {isAnnual && (

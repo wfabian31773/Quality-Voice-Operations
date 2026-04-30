@@ -478,7 +478,9 @@
       "start_trial": "Start free trial",
       "recommended": "RECOMMENDED",
       "billed_monthly": "Billed monthly · cancel anytime",
-      "billed_annually": "Billed annually · save 20%"
+      "billed_annually": "Billed annually · save 20%",
+      "save_badge": "Save {{percent}}%",
+      "save_badge_aria": "Save {{percent}}% with annual billing"
     },
     "billing_toggle": {
       "monthly": "Monthly",

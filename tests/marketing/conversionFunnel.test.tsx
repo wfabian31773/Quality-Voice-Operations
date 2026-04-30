@@ -101,6 +101,7 @@ import Landing from '../../client-app/src/pages/public/Landing';
 import Pricing from '../../client-app/src/pages/public/Pricing';
 import BookDemo from '../../client-app/src/pages/public/BookDemo';
 import CaseStudies from '../../client-app/src/pages/public/CaseStudies';
+import Signup from '../../client-app/src/pages/public/Signup';
 // Canonical CTA names — assertions reference these so the test stays in sync
 // with the single source of truth used by the marketing pages.
 import { CTA } from '../../client-app/src/lib/analyticsCtas';
@@ -423,6 +424,44 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     ).toBe('true');
   });
 
+  it('only shows the "Save 20%" tier-card badge when Annual is selected', () => {
+    render(
+      <FunnelHarness
+        initialPath="/pricing"
+        pageRoutePath="/pricing"
+        pageElement={<Pricing />}
+      />,
+    );
+
+    const tiers: ReadonlyArray<'starter' | 'pro' | 'enterprise'> = [
+      'starter',
+      'pro',
+      'enterprise',
+    ];
+
+    // Default (monthly): no save badges should be in the DOM.
+    for (const tier of tiers) {
+      expect(screen.queryByTestId(`pricing-tier-${tier}-save-badge`)).toBeNull();
+    }
+
+    // Toggle Annual on the pricing page.
+    fireEvent.click(screen.getByTestId('pricing-billing-annual'));
+
+    // Each tier card now exposes a "Save 20%" badge derived from
+    // ANNUAL_DISCOUNT so the percentage stays in sync if it ever changes.
+    for (const tier of tiers) {
+      const badge = screen.getByTestId(`pricing-tier-${tier}-save-badge`);
+      expect(badge).toBeTruthy();
+      expect(badge.textContent).toMatch(/20%/);
+    }
+
+    // Toggling back to Monthly removes them again.
+    fireEvent.click(screen.getByTestId('pricing-billing-monthly'));
+    for (const tier of tiers) {
+      expect(screen.queryByTestId(`pricing-tier-${tier}-save-badge`)).toBeNull();
+    }
+  });
+
   it('mirrors a toggle change on the calculator back into plan-card signup links', () => {
     render(
       <FunnelHarness
@@ -443,6 +482,46 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     expect(
       screen.getByTestId('pricing-billing-annual').getAttribute('aria-pressed'),
     ).toBe('true');
+  });
+});
+
+describe('Marketing conversion funnel: Signup plan badges', () => {
+  it('shows the "Save 20%" badge on each plan button only when interval=annual', () => {
+    // Default landing on /signup (no interval param) → Monthly is selected,
+    // so the per-plan save badges should NOT be in the DOM.
+    const { unmount } = render(
+      <FunnelHarness
+        initialPath="/signup"
+        pageRoutePath="/signup"
+        pageElement={<Signup />}
+      />,
+    );
+
+    const tiers: ReadonlyArray<'starter' | 'pro' | 'enterprise'> = [
+      'starter',
+      'pro',
+      'enterprise',
+    ];
+    for (const tier of tiers) {
+      expect(screen.queryByTestId(`signup-plan-${tier}-save-badge`)).toBeNull();
+    }
+    unmount();
+    cleanup();
+
+    // Deep-linking with ?interval=annual should pre-select Annual and
+    // surface a small "Save 20%" badge on every plan button.
+    render(
+      <FunnelHarness
+        initialPath="/signup?interval=annual"
+        pageRoutePath="/signup"
+        pageElement={<Signup />}
+      />,
+    );
+    for (const tier of tiers) {
+      const badge = screen.getByTestId(`signup-plan-${tier}-save-badge`);
+      expect(badge).toBeTruthy();
+      expect(badge.textContent).toMatch(/20%/);
+    }
   });
 });
 

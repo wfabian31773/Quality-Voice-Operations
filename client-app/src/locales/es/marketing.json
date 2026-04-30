@@ -478,7 +478,9 @@
       "start_trial": "Iniciar prueba gratis",
       "recommended": "RECOMENDADO",
       "billed_monthly": "Facturación mensual · cancela cuando quieras",
-      "billed_annually": "Facturación anual · ahorra 20%"
+      "billed_annually": "Facturación anual · ahorra 20%",
+      "save_badge": "Ahorra {{percent}}%",
+      "save_badge_aria": "Ahorra {{percent}}% con facturación anual"
     },
     "billing_toggle": {
       "monthly": "Mensual",

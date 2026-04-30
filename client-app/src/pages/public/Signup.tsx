@@ -16,7 +16,7 @@ import { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPri
 const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
 
 export default function Signup() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'marketing']);
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -298,6 +298,15 @@ export default function Signup() {
                         )}
                         <span className="block text-sm font-semibold text-text-primary">{p.name}</span>
                         <span className="block text-xs text-text-primary/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
+                        {isAnnual && (
+                          <span
+                            data-testid={`signup-plan-${p.key}-save-badge`}
+                            aria-label={t('marketing:pricing.tier_card.save_badge_aria', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
+                            className="inline-block mt-1 text-[9px] font-semibold bg-success/10 text-success px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                          >
+                            {t('marketing:pricing.tier_card.save_badge', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>

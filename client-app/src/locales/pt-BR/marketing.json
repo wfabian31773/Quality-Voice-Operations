@@ -478,7 +478,9 @@
       "start_trial": "Iniciar teste gratuito",
       "recommended": "RECOMENDADO",
       "billed_monthly": "Cobrança mensal · cancele quando quiser",
-      "billed_annually": "Cobrança anual · economize 20%"
+      "billed_annually": "Cobrança anual · economize 20%",
+      "save_badge": "Economize {{percent}}%",
+      "save_badge_aria": "Economize {{percent}}% com cobrança anual"
     },
     "billing_toggle": {
       "monthly": "Mensal",

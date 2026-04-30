@@ -478,7 +478,9 @@
       "start_trial": "Kostenlose Testphase starten",
       "recommended": "EMPFOHLEN",
       "billed_monthly": "Monatliche Abrechnung · jederzeit kündbar",
-      "billed_annually": "Jährliche Abrechnung · 20% sparen"
+      "billed_annually": "Jährliche Abrechnung · 20% sparen",
+      "save_badge": "{{percent}}% sparen",
+      "save_badge_aria": "Mit jährlicher Abrechnung {{percent}}% sparen"
     },
     "billing_toggle": {
       "monthly": "Monatlich",
