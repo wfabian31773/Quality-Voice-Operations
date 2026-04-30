@@ -134,36 +134,65 @@ env vars are missing. To enable a provider, set its env vars in the CI job
 
 ### Per-provider env vars
 
-For each provider, you need (a) a sandbox access token the adapter can use
-and (b) at least one record ID that has been **hard-deleted** (or in
-Salesforce's case, deleted *and* purged from the Recycle Bin so the API
-returns `ENTITY_IS_DELETED`). You can supply any subset of the per-slot
-deleted IDs (contact / account / opportunity); the test asserts on
-exactly the slots you supplied.
+The test reads `*_SANDBOX_ACCESS_TOKEN` (and the provider-specific extras
+like `*_INSTANCE_URL` / `*_API_DOMAIN`) directly out of the environment.
+For providers whose token expires fast (Salesforce, Zoho), the CI workflow
+mints a fresh access token from long-lived credentials at the start of
+each run and writes the resulting access token into the environment for
+the test step — so the matrix below splits "what runs locally" from "what
+CI stores as long-lived secrets".
 
-| Provider     | Required env vars                                                                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HubSpot      | `HUBSPOT_SANDBOX_ACCESS_TOKEN`, **plus at least one of** `HUBSPOT_SANDBOX_DELETED_CONTACT_ID` / `..._DELETED_COMPANY_ID` / `..._DELETED_DEAL_ID`            |
-| Salesforce   | `SALESFORCE_SANDBOX_ACCESS_TOKEN`, `SALESFORCE_SANDBOX_INSTANCE_URL`, **plus at least one of** `SALESFORCE_SANDBOX_DELETED_CONTACT_ID` (must start with `003`), `..._DELETED_ACCOUNT_ID` (`001`), `..._DELETED_OPPORTUNITY_ID` (`006`) |
-| Pipedrive    | `PIPEDRIVE_SANDBOX_ACCESS_TOKEN` *or* `PIPEDRIVE_SANDBOX_API_TOKEN` (optional `PIPEDRIVE_SANDBOX_COMPANY_DOMAIN` for company-scoped API base), **plus at least one of** `PIPEDRIVE_SANDBOX_DELETED_PERSON_ID` / `..._DELETED_ORG_ID` / `..._DELETED_DEAL_ID` |
-| Zoho         | `ZOHO_SANDBOX_ACCESS_TOKEN`, `ZOHO_SANDBOX_API_DOMAIN` (e.g. `https://www.zohoapis.com`), **plus at least one of** `ZOHO_SANDBOX_DELETED_CONTACT_ID` / `..._DELETED_ACCOUNT_ID` / `..._DELETED_DEAL_ID` |
+For each provider you also need at least one record ID that has been
+**hard-deleted** (or in Salesforce's case, deleted *and* purged from the
+Recycle Bin so the API returns `ENTITY_IS_DELETED`). You can supply any
+subset of the per-slot deleted IDs (contact / account / opportunity); the
+test asserts on exactly the slots you supplied.
 
-Sandbox tokens supplied this way must be long-lived enough for the test
+| Provider     | What the test reads at runtime                                                                                                                              | What CI stores as long-lived secrets (mint-per-run for short-lived providers)                                                                                                                                                                |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HubSpot      | `HUBSPOT_SANDBOX_ACCESS_TOKEN` + at least one of `HUBSPOT_SANDBOX_DELETED_CONTACT_ID` / `..._DELETED_COMPANY_ID` / `..._DELETED_DEAL_ID`                    | Same — HubSpot private-app tokens never auto-expire.                                                                                                                                                                                       |
+| Salesforce   | `SALESFORCE_SANDBOX_ACCESS_TOKEN`, `SALESFORCE_SANDBOX_INSTANCE_URL` + at least one deleted ID (`..._CONTACT_ID` `003…`, `..._ACCOUNT_ID` `001…`, `..._OPPORTUNITY_ID` `006…`) | `SALESFORCE_SANDBOX_CLIENT_ID`, `..._CLIENT_SECRET`, `..._USERNAME`, `..._PASSWORD`, `..._SECURITY_TOKEN` (optional `..._LOGIN_URL`). CI runs the OAuth password flow on every run and writes a fresh `..._ACCESS_TOKEN` + `..._INSTANCE_URL` into `$GITHUB_ENV`. |
+| Pipedrive    | `PIPEDRIVE_SANDBOX_ACCESS_TOKEN` *or* `PIPEDRIVE_SANDBOX_API_TOKEN` (optional `PIPEDRIVE_SANDBOX_COMPANY_DOMAIN`) + at least one of `..._DELETED_PERSON_ID` / `..._DELETED_ORG_ID` / `..._DELETED_DEAL_ID` | Same — personal API tokens never auto-expire.                                                                                                                                                                                              |
+| Zoho         | `ZOHO_SANDBOX_ACCESS_TOKEN`, `ZOHO_SANDBOX_API_DOMAIN` + at least one of `..._DELETED_CONTACT_ID` / `..._DELETED_ACCOUNT_ID` / `..._DELETED_DEAL_ID`        | `ZOHO_SANDBOX_REFRESH_TOKEN`, `ZOHO_SANDBOX_CLIENT_ID`, `ZOHO_SANDBOX_CLIENT_SECRET` (optional `ZOHO_SANDBOX_ACCOUNTS_URL`). CI runs the refresh-token flow on every run and writes a fresh `..._ACCESS_TOKEN` + `..._API_DOMAIN` into `$GITHUB_ENV`. |
+
+Tokens supplied directly to the test must be long-lived enough for the
 run — the integration suite intentionally does not perform OAuth refresh
 (no `token_expires_at` is set on the synthetic config), so a stale token
 will surface as a non-stale 401 and the test will fail loudly rather than
-silently rotating credentials.
+silently rotating credentials. The CI workflow's per-run mint steps for
+Salesforce + Zoho are what keep that contract honest under a daily cron.
 
 ### Wiring it into CI
 
-Provision the per-provider secrets in your CI environment, then add a job
-(or a step in the existing test job, gated on the secrets being present)
-that runs:
+This is automated via the
+[`CRM cached-identity validators (live sandbox drift)`](../../../../.github/workflows/crm-cached-identity-validators.yml)
+GitHub Actions workflow. It runs the integration suite:
+
+- **Daily** at 04:23 UTC, against whichever providers have their secrets
+  configured at the time.
+- **On push to `main`** when any of the per-provider adapters, the
+  validator file pair, the connector types, or the workflow itself
+  changes.
+- **On manual `workflow_dispatch`**, for re-checking immediately after a
+  token rotation.
+
+The job posts a "which providers will run" table to the run summary so
+operators can see at a glance which secrets it picked up. Each provider's
+block is independent — you can ship one provider at a time as sandboxes
+get provisioned without breaking the build for the others. A post-run
+step emits a `::warning::` annotation when zero blocks ran, which keeps
+the workflow green during the initial provisioning phase while still
+making "no providers wired" visible at a glance on every run; once the
+first sandbox is provisioned, vitest itself fails the job on real test
+failures or upstream drift.
+
+Provisioning each sandbox, producing the hard-deleted fixture records,
+storing the resulting secrets, and rotating before token expiry is
+documented in detail in the runbook
+[`docs/runbooks/crm-sandbox-credentials.md`](../../../../docs/runbooks/crm-sandbox-credentials.md).
+Run the suite locally the same way the CI step does — export the env
+vars listed above into your shell and:
 
 ```sh
 npx vitest run platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts
 ```
-
-Each provider's block is independent — you can ship one provider at a
-time as sandboxes get provisioned without breaking the build for the
-others.

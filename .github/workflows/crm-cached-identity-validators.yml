@@ -1,0 +1,221 @@
+name: CRM cached-identity validators (live sandbox drift)
+
+# Daily drift check for `validateCachedIdentity.integration.test.ts` against
+# the real HubSpot, Salesforce, Pipedrive, and Zoho sandboxes. The unit suite
+# (`validateCachedIdentity.test.ts`) covers our parser; this job catches
+# upstream shape changes before they silently disable
+# `CrmCallerIdentityRevalidationScheduler` in production.
+#
+# Provisioning, fixture-record creation, secret naming, and rotation are
+# documented in docs/runbooks/crm-sandbox-credentials.md.
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  push:
+    branches: [main, master]
+    paths:
+      - "platform/integrations/connectors/adapters/hubspot.ts"
+      - "platform/integrations/connectors/adapters/salesforce.ts"
+      - "platform/integrations/connectors/adapters/pipedrive.ts"
+      - "platform/integrations/connectors/adapters/zoho.ts"
+      - "platform/integrations/connectors/adapters/validateCachedIdentity*.ts"
+      - "platform/integrations/connectors/types.ts"
+      - ".github/workflows/crm-cached-identity-validators.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crm-cached-identity-validators
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate cached-identity validators against live CRM sandboxes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # HubSpot — private-app token, never auto-expires.
+      HUBSPOT_SANDBOX_ACCESS_TOKEN: ${{ secrets.HUBSPOT_SANDBOX_ACCESS_TOKEN }}
+      HUBSPOT_SANDBOX_DELETED_CONTACT_ID: ${{ secrets.HUBSPOT_SANDBOX_DELETED_CONTACT_ID }}
+      HUBSPOT_SANDBOX_DELETED_COMPANY_ID: ${{ secrets.HUBSPOT_SANDBOX_DELETED_COMPANY_ID }}
+      HUBSPOT_SANDBOX_DELETED_DEAL_ID: ${{ secrets.HUBSPOT_SANDBOX_DELETED_DEAL_ID }}
+
+      # Salesforce — short-lived access token, minted per run from these
+      # credentials so the daily cron can't outlive the session policy. The
+      # mint step writes `SALESFORCE_SANDBOX_ACCESS_TOKEN` and
+      # `SALESFORCE_SANDBOX_INSTANCE_URL` into $GITHUB_ENV for vitest to read.
+      SALESFORCE_SANDBOX_CLIENT_ID: ${{ secrets.SALESFORCE_SANDBOX_CLIENT_ID }}
+      SALESFORCE_SANDBOX_CLIENT_SECRET: ${{ secrets.SALESFORCE_SANDBOX_CLIENT_SECRET }}
+      SALESFORCE_SANDBOX_USERNAME: ${{ secrets.SALESFORCE_SANDBOX_USERNAME }}
+      SALESFORCE_SANDBOX_PASSWORD: ${{ secrets.SALESFORCE_SANDBOX_PASSWORD }}
+      SALESFORCE_SANDBOX_SECURITY_TOKEN: ${{ secrets.SALESFORCE_SANDBOX_SECURITY_TOKEN }}
+      SALESFORCE_SANDBOX_LOGIN_URL: ${{ secrets.SALESFORCE_SANDBOX_LOGIN_URL }}
+      SALESFORCE_SANDBOX_DELETED_CONTACT_ID: ${{ secrets.SALESFORCE_SANDBOX_DELETED_CONTACT_ID }}
+      SALESFORCE_SANDBOX_DELETED_ACCOUNT_ID: ${{ secrets.SALESFORCE_SANDBOX_DELETED_ACCOUNT_ID }}
+      SALESFORCE_SANDBOX_DELETED_OPPORTUNITY_ID: ${{ secrets.SALESFORCE_SANDBOX_DELETED_OPPORTUNITY_ID }}
+
+      # Pipedrive — personal API token (or OAuth access token); does not
+      # auto-expire.
+      PIPEDRIVE_SANDBOX_ACCESS_TOKEN: ${{ secrets.PIPEDRIVE_SANDBOX_ACCESS_TOKEN }}
+      PIPEDRIVE_SANDBOX_API_TOKEN: ${{ secrets.PIPEDRIVE_SANDBOX_API_TOKEN }}
+      PIPEDRIVE_SANDBOX_COMPANY_DOMAIN: ${{ secrets.PIPEDRIVE_SANDBOX_COMPANY_DOMAIN }}
+      PIPEDRIVE_SANDBOX_DELETED_PERSON_ID: ${{ secrets.PIPEDRIVE_SANDBOX_DELETED_PERSON_ID }}
+      PIPEDRIVE_SANDBOX_DELETED_ORG_ID: ${{ secrets.PIPEDRIVE_SANDBOX_DELETED_ORG_ID }}
+      PIPEDRIVE_SANDBOX_DELETED_DEAL_ID: ${{ secrets.PIPEDRIVE_SANDBOX_DELETED_DEAL_ID }}
+
+      # Zoho — access tokens expire after ~1 hour, so we store the long-lived
+      # refresh token + OAuth app credentials and mint per run. The mint step
+      # writes `ZOHO_SANDBOX_ACCESS_TOKEN` and `ZOHO_SANDBOX_API_DOMAIN` into
+      # $GITHUB_ENV.
+      ZOHO_SANDBOX_REFRESH_TOKEN: ${{ secrets.ZOHO_SANDBOX_REFRESH_TOKEN }}
+      ZOHO_SANDBOX_CLIENT_ID: ${{ secrets.ZOHO_SANDBOX_CLIENT_ID }}
+      ZOHO_SANDBOX_CLIENT_SECRET: ${{ secrets.ZOHO_SANDBOX_CLIENT_SECRET }}
+      ZOHO_SANDBOX_ACCOUNTS_URL: ${{ secrets.ZOHO_SANDBOX_ACCOUNTS_URL }}
+      ZOHO_SANDBOX_DELETED_CONTACT_ID: ${{ secrets.ZOHO_SANDBOX_DELETED_CONTACT_ID }}
+      ZOHO_SANDBOX_DELETED_ACCOUNT_ID: ${{ secrets.ZOHO_SANDBOX_DELETED_ACCOUNT_ID }}
+      ZOHO_SANDBOX_DELETED_DEAL_ID: ${{ secrets.ZOHO_SANDBOX_DELETED_DEAL_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      # ─── Per-run token minting for short-lived providers ──────────────────
+      # Salesforce sessions expire on the connected app's policy; Zoho access
+      # tokens expire in ~1h. Mint a fresh one at the top of each run from
+      # long-lived credentials so the daily cron can't outlive the session.
+
+      - name: Mint Salesforce sandbox access token
+        if: env.SALESFORCE_SANDBOX_CLIENT_ID != '' && env.SALESFORCE_SANDBOX_CLIENT_SECRET != '' && env.SALESFORCE_SANDBOX_USERNAME != '' && env.SALESFORCE_SANDBOX_PASSWORD != ''
+        run: |
+          login_url="${SALESFORCE_SANDBOX_LOGIN_URL:-https://test.salesforce.com}"
+          # Salesforce password-flow concatenates password + security token.
+          password_with_token="${SALESFORCE_SANDBOX_PASSWORD}${SALESFORCE_SANDBOX_SECURITY_TOKEN}"
+          response="$(curl -sS -X POST "${login_url}/services/oauth2/token" \
+            --data-urlencode "grant_type=password" \
+            --data-urlencode "client_id=${SALESFORCE_SANDBOX_CLIENT_ID}" \
+            --data-urlencode "client_secret=${SALESFORCE_SANDBOX_CLIENT_SECRET}" \
+            --data-urlencode "username=${SALESFORCE_SANDBOX_USERNAME}" \
+            --data-urlencode "password=${password_with_token}")"
+          access_token="$(node -e 'const j=JSON.parse(process.argv[1]); if(!j.access_token){console.error("no access_token in response:", JSON.stringify(j)); process.exit(1)} process.stdout.write(j.access_token)' "$response")"
+          instance_url="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.instance_url || "")' "$response")"
+          echo "::add-mask::$access_token"
+          {
+            echo "SALESFORCE_SANDBOX_ACCESS_TOKEN=${access_token}"
+            echo "SALESFORCE_SANDBOX_INSTANCE_URL=${instance_url}"
+          } >> "$GITHUB_ENV"
+          echo "Salesforce sandbox token minted (instance_url=${instance_url})."
+
+      - name: Mint Zoho sandbox access token
+        if: env.ZOHO_SANDBOX_REFRESH_TOKEN != '' && env.ZOHO_SANDBOX_CLIENT_ID != '' && env.ZOHO_SANDBOX_CLIENT_SECRET != ''
+        run: |
+          accounts_url="${ZOHO_SANDBOX_ACCOUNTS_URL:-https://accounts.zoho.com}"
+          response="$(curl -sS -X POST "${accounts_url}/oauth/v2/token" \
+            --data-urlencode "grant_type=refresh_token" \
+            --data-urlencode "client_id=${ZOHO_SANDBOX_CLIENT_ID}" \
+            --data-urlencode "client_secret=${ZOHO_SANDBOX_CLIENT_SECRET}" \
+            --data-urlencode "refresh_token=${ZOHO_SANDBOX_REFRESH_TOKEN}")"
+          access_token="$(node -e 'const j=JSON.parse(process.argv[1]); if(!j.access_token){console.error("no access_token in response:", JSON.stringify(j)); process.exit(1)} process.stdout.write(j.access_token)' "$response")"
+          api_domain="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.api_domain || "https://www.zohoapis.com")' "$response")"
+          echo "::add-mask::$access_token"
+          {
+            echo "ZOHO_SANDBOX_ACCESS_TOKEN=${access_token}"
+            echo "ZOHO_SANDBOX_API_DOMAIN=${api_domain}"
+          } >> "$GITHUB_ENV"
+          echo "Zoho sandbox token minted (api_domain=${api_domain})."
+
+      # ─── Pre-flight summary ───────────────────────────────────────────────
+      - name: Report which provider blocks will run
+        run: |
+          set -u
+          mkdir -p .ci-out
+          {
+            echo "## CRM cached-identity validator providers"
+            echo ""
+            echo "| Provider   | Token | Required extras   | At least one deleted ID | Will run? |"
+            echo "| ---------- | ----- | ----------------- | ----------------------- | --------- |"
+
+            tok=$([ -n "${HUBSPOT_SANDBOX_ACCESS_TOKEN:-}" ] && echo yes || echo no)
+            ids=$( { [ -n "${HUBSPOT_SANDBOX_DELETED_CONTACT_ID:-}" ] || [ -n "${HUBSPOT_SANDBOX_DELETED_COMPANY_ID:-}" ] || [ -n "${HUBSPOT_SANDBOX_DELETED_DEAL_ID:-}" ]; } && echo yes || echo no)
+            run=$( { [ "$tok" = "yes" ] && [ "$ids" = "yes" ]; } && echo yes || echo no)
+            echo "| HubSpot    | $tok   | n/a               | $ids                     | $run       |"
+
+            tok=$([ -n "${SALESFORCE_SANDBOX_ACCESS_TOKEN:-}" ] && echo yes || echo no)
+            inst=$([ -n "${SALESFORCE_SANDBOX_INSTANCE_URL:-}" ] && echo yes || echo no)
+            ids=$( { [ -n "${SALESFORCE_SANDBOX_DELETED_CONTACT_ID:-}" ] || [ -n "${SALESFORCE_SANDBOX_DELETED_ACCOUNT_ID:-}" ] || [ -n "${SALESFORCE_SANDBOX_DELETED_OPPORTUNITY_ID:-}" ]; } && echo yes || echo no)
+            run=$( { [ "$tok" = "yes" ] && [ "$inst" = "yes" ] && [ "$ids" = "yes" ]; } && echo yes || echo no)
+            echo "| Salesforce | $tok   | instance_url=$inst | $ids                     | $run       |"
+
+            tok=$( { [ -n "${PIPEDRIVE_SANDBOX_ACCESS_TOKEN:-}" ] || [ -n "${PIPEDRIVE_SANDBOX_API_TOKEN:-}" ]; } && echo yes || echo no)
+            ids=$( { [ -n "${PIPEDRIVE_SANDBOX_DELETED_PERSON_ID:-}" ] || [ -n "${PIPEDRIVE_SANDBOX_DELETED_ORG_ID:-}" ] || [ -n "${PIPEDRIVE_SANDBOX_DELETED_DEAL_ID:-}" ]; } && echo yes || echo no)
+            run=$( { [ "$tok" = "yes" ] && [ "$ids" = "yes" ]; } && echo yes || echo no)
+            echo "| Pipedrive  | $tok   | n/a               | $ids                     | $run       |"
+
+            tok=$([ -n "${ZOHO_SANDBOX_ACCESS_TOKEN:-}" ] && echo yes || echo no)
+            dom=$([ -n "${ZOHO_SANDBOX_API_DOMAIN:-}" ] && echo yes || echo no)
+            ids=$( { [ -n "${ZOHO_SANDBOX_DELETED_CONTACT_ID:-}" ] || [ -n "${ZOHO_SANDBOX_DELETED_ACCOUNT_ID:-}" ] || [ -n "${ZOHO_SANDBOX_DELETED_DEAL_ID:-}" ]; } && echo yes || echo no)
+            run=$( { [ "$tok" = "yes" ] && [ "$dom" = "yes" ] && [ "$ids" = "yes" ]; } && echo yes || echo no)
+            echo "| Zoho       | $tok   | api_domain=$dom    | $ids                     | $run       |"
+
+            echo ""
+            echo "Provider rotation runbook: \`docs/runbooks/crm-sandbox-credentials.md\`"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > .ci-out/providers.md
+
+      - name: Run live-sandbox integration suite
+        id: vitest
+        run: |
+          mkdir -p .ci-out
+          npx vitest run \
+            platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts \
+            --reporter=default \
+            --reporter=json \
+            --outputFile=.ci-out/vitest.json
+
+      # When zero blocks ran (no provider secrets configured yet), surface a
+      # warning instead of failing — operations brings each provider online
+      # one at a time per the runbook, and the workflow needs to land green
+      # before the first sandbox is provisioned. Vitest itself fails the job
+      # on real test failures.
+      #
+      # TODO(once all four providers are provisioned): tighten this to a hard
+      # failure (exit 1 instead of `::warning::`), or assert
+      # `passed >= EXPECTED_PROVIDER_COUNT`, so drift coverage cannot silently
+      # regress back to zero if a secret store gets wiped.
+      - name: Warn if zero provider blocks ran
+        if: always() && steps.vitest.outcome == 'success'
+        run: |
+          if [ ! -f .ci-out/vitest.json ]; then
+            echo "::warning::vitest.json missing — could not verify how many blocks ran."
+            exit 0
+          fi
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync(".ci-out/vitest.json","utf8"));
+            const passed = j.numPassedTests ?? 0;
+            const failed = j.numFailedTests ?? 0;
+            const pending = j.numPendingTests ?? 0;
+            console.log(`vitest: passed=${passed} failed=${failed} pending(skipped)=${pending}`);
+            if (passed === 0 && failed === 0) {
+              console.log("::warning::Zero CRM cached-identity validator blocks ran — every provider is currently skipped. See docs/runbooks/crm-sandbox-credentials.md to wire the first provider.");
+            }
+          '
+
+      - name: Upload vitest output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-cached-identity-validators
+          path: .ci-out/
+          if-no-files-found: ignore
+          retention-days: 14
