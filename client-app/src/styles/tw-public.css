@@ -151,6 +151,9 @@
   -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 4px 24px rgba(18, 48, 71, 0.06), 0 1px 3px rgba(18, 48, 71, 0.04);
 }
+.dark .demo-glass-card {
+  background: var(--color-surface);
+}
 
 .demo-waveform-bar {
   animation: demo-waveform ease-in-out infinite;
@@ -294,27 +297,6 @@
     animation: none;
   }
 }
-
-/* =================================================================
- * PUBLIC MARKETING SURFACE — DARK MODE ADAPTERS
- * Scoped to `.public-surface` so dark mode in marketing chrome doesn't
- * leak into in-app surfaces. Adapts Tailwind built-ins (bg-white,
- * text-white opacity variants used inside content cards) that don't
- * resolve to design tokens.
- * ================================================================= */
-.dark .public-surface .bg-white { background-color: var(--color-surface); }
-.dark .public-surface .bg-white\/50 { background-color: rgba(255, 255, 255, 0.04); }
-.dark .public-surface .bg-white\/60 { background-color: rgba(255, 255, 255, 0.05); }
-.dark .public-surface .bg-white\/70 { background-color: rgba(255, 255, 255, 0.06); }
-.dark .public-surface .bg-white\/80 { background-color: var(--color-surface); }
-.dark .public-surface .bg-white\/90 { background-color: var(--color-surface); }
-.dark .public-surface .bg-white\/95 { background-color: var(--color-surface); }
-
-/* Card hover surfaces inside marketing content sections */
-.dark .public-surface .hover\:bg-white:hover { background-color: var(--color-surface-hover); }
-
-/* Demo glass cards adapt to dark surface so contrast probes resolve to opaque ancestor */
-.dark .public-surface .demo-glass-card { background: var(--color-surface); }
 
 /* Primary CTA glow on harbor sections — keeps brand presence in dark */
 .public-surface .btn-primary-glow {
