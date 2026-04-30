@@ -44,7 +44,8 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
       `SELECT plan, status, billing_interval, current_period_start, current_period_end,
               trial_end, cancelled_at, monthly_call_limit, monthly_sms_limit,
               monthly_ai_minute_limit, overage_enabled, stripe_customer_id,
-              stripe_subscription_id, created_at, updated_at
+              stripe_subscription_id, created_at, updated_at,
+              downgrade_completed_at, downgrade_completed_to_plan
        FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
@@ -545,6 +546,55 @@ router.post('/billing/schedule-downgrade', requireAuth, requireRole('manager'), 
   } catch (err) {
     logger.error('Schedule downgrade failed', { tenantId, plan, interval, error: String(err) });
     return res.status(500).json({ error: 'Failed to schedule downgrade' });
+  }
+});
+
+/**
+ * `POST /billing/acknowledge-downgrade-completion`
+ *
+ * Clears the `downgrade_completed_at` / `downgrade_completed_to_plan`
+ * marker on the tenant's subscription row so the matching one-time
+ * "Your downgrade to <Plan> is now active" banner on /billing stops
+ * firing on subsequent visits.
+ *
+ * The marker is set by `handleSubscriptionUpdated` when Stripe applies
+ * a strict tier downgrade (typically the second-phase swap on a
+ * Subscription Schedule queued by /billing/schedule-downgrade). The
+ * client renders the banner once it sees the marker and POSTs here when
+ * the user dismisses it. Idempotent: nulling already-null columns is a
+ * no-op, so a duplicate call from a flaky network costs nothing.
+ *
+ * Tenant-scoped through RLS — no need to validate ownership in the
+ * route since the WHERE clause is bound to the authenticated tenant.
+ */
+router.post('/billing/acknowledge-downgrade-completion', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    await client.query(
+      `UPDATE subscriptions
+         SET downgrade_completed_at = NULL,
+             downgrade_completed_to_plan = NULL,
+             updated_at = NOW()
+       WHERE tenant_id = $1
+         AND (downgrade_completed_at IS NOT NULL
+              OR downgrade_completed_to_plan IS NOT NULL)`,
+      [tenantId],
+    );
+    await client.query('COMMIT');
+    return res.json({ acknowledged: true });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to acknowledge downgrade completion', {
+      tenantId,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to acknowledge downgrade completion' });
+  } finally {
+    client.release();
   }
 });
 

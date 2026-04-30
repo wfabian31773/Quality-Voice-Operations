@@ -78,6 +78,18 @@ interface Subscription {
   discount?: BillingDiscountSummary | null;
   /** Full list of discounts active on the subscription, de-duped server-side. */
   discounts?: BillingDiscountSummary[];
+  /**
+   * Stamped by the Stripe webhook when a strict tier downgrade lands on
+   * the local subscription (typically the second-phase swap on a
+   * Subscription Schedule queued by /billing/schedule-downgrade). The
+   * Billing UI uses these to render a one-time
+   * "Your downgrade to <Plan> is now active" banner on the next visit;
+   * dismissing it POSTs `/billing/acknowledge-downgrade-completion`
+   * which nulls both fields server-side. Optional for backward-compat
+   * with older API responses that pre-date this field.
+   */
+  downgrade_completed_at?: string | null;
+  downgrade_completed_to_plan?: string | null;
 }
 
 interface Invoice {
@@ -179,6 +191,82 @@ function clearAnnualSwitchMarker(): void {
     // Best-effort.
   }
 }
+
+// Tier-upgrade confirmation banner (Task #1366). Mirrors the
+// annual-switch marker contract: stamped by handleUpgrade before the
+// Stripe redirect on a *strict* tier upgrade (e.g. starter → pro,
+// pro → enterprise) and hydrated only on the ?checkout=success return,
+// so the banner is bound to a tenant-initiated tier change rather than
+// firing on unrelated visits or portal-driven changes.
+const TIER_UPGRADE_MARKER_KEY = 'billing-tier-upgrade-pending';
+// Polling budget for the webhook to flip the local plan after the
+// success redirect; cleared after this if the flip never lands.
+const TIER_UPGRADE_MAX_WAIT_MS = 30_000;
+// Markers older than this are ignored on read so an abandoned tab
+// can't fire the banner on a much later unrelated visit.
+const TIER_UPGRADE_MARKER_MAX_AGE_MS = 30 * 60_000;
+
+const TIER_UPGRADE_PLANS = new Set<PlanTier>(['starter', 'pro', 'enterprise']);
+
+type TierUpgradeMarker = {
+  previousPlan: PlanTier;
+  targetPlan: PlanTier;
+  initiatedAt: number;
+};
+
+function readTierUpgradeMarker(): TierUpgradeMarker | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(TIER_UPGRADE_MARKER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<TierUpgradeMarker> | null;
+    if (
+      !parsed
+      || typeof parsed.previousPlan !== 'string'
+      || typeof parsed.targetPlan !== 'string'
+      || !TIER_UPGRADE_PLANS.has(parsed.previousPlan as PlanTier)
+      || !TIER_UPGRADE_PLANS.has(parsed.targetPlan as PlanTier)
+      || parsed.previousPlan === parsed.targetPlan
+      || typeof parsed.initiatedAt !== 'number'
+      || Date.now() - parsed.initiatedAt > TIER_UPGRADE_MARKER_MAX_AGE_MS
+    ) {
+      window.sessionStorage.removeItem(TIER_UPGRADE_MARKER_KEY);
+      return null;
+    }
+    return {
+      previousPlan: parsed.previousPlan as PlanTier,
+      targetPlan: parsed.targetPlan as PlanTier,
+      initiatedAt: parsed.initiatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeTierUpgradeMarker(marker: TierUpgradeMarker): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(TIER_UPGRADE_MARKER_KEY, JSON.stringify(marker));
+  } catch {
+    // sessionStorage may be unavailable (private mode / quota).
+  }
+}
+
+function clearTierUpgradeMarker(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(TIER_UPGRADE_MARKER_KEY);
+  } catch {
+    // Best-effort.
+  }
+}
+
+// Tier rank used to decide whether a checkout target is a strict
+// upgrade vs a same-tier interval change vs a downgrade. Mirrors the
+// server-side `TIER_ORDER` in `planChange.ts`. A target with a higher
+// rank than the tenant's current plan triggers the tier-upgrade banner
+// after Stripe Checkout completes.
+const TIER_RANK: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2 };
 
 const COST_RATES = {
   twilioCostPerMinuteCents: 2,
@@ -414,6 +502,26 @@ export default function Billing() {
     useState<number | null>(null);
   const [annualSwitchAcknowledged, setAnnualSwitchAcknowledged] = useState(false);
   const [annualSwitchDismissed, setAnnualSwitchDismissed] = useState(false);
+  // Tier-upgrade banner state. Mirrors the annual-switch lifecycle:
+  // marker is only hydrated on the ?checkout=success URL so a stale
+  // sessionStorage value can't fire the banner on unrelated visits.
+  // `returnedAt` bounds the webhook-lag polling.
+  const [tierUpgradeMarker, setTierUpgradeMarker] =
+    useState<TierUpgradeMarker | null>(null);
+  const [tierUpgradeReturnedAt, setTierUpgradeReturnedAt] =
+    useState<number | null>(null);
+  const [tierUpgradeAcknowledged, setTierUpgradeAcknowledged] = useState(false);
+  const [tierUpgradeDismissed, setTierUpgradeDismissed] = useState(false);
+  // Downgrade-completion banner state. The marker itself lives on the
+  // server (subscriptions.downgrade_completed_at / _to_plan) so it
+  // survives a fresh device + first visit after the schedule fires.
+  // Local dismissal is mirrored here so the banner disappears
+  // immediately when the user clicks X, without waiting for the
+  // POST /billing/acknowledge-downgrade-completion round-trip to
+  // complete and the subsequent /billing/subscription refetch to
+  // return cleared columns.
+  const [downgradeCompletionDismissed, setDowngradeCompletionDismissed] =
+    useState(false);
   // Monthly / Annual upgrade-interval toggle. Authoritative store is the
   // per-user `users.preferences` JSONB blob (key `billing_upgrade_interval`)
   // so the choice follows the user across browsers and devices. localStorage
@@ -610,30 +718,45 @@ export default function Billing() {
         predicate: (query) => query.queryKey[0] === 'billing-usage-trailing',
       });
       queryClient.invalidateQueries({ queryKey: ['billing-upgrade-preview'] });
-      // Hydrate the annual-switch marker only on the success redirect
-      // (not on plain visits). This is the only signal that the tenant
-      // just came back from Stripe Checkout. Also stamp the return
-      // time so the polling budget below is measured from now, not
-      // from when the original click happened (Checkout itself can
-      // take longer than the polling budget).
-      const marker = readAnnualSwitchMarker();
-      if (marker) {
-        setAnnualSwitchMarker(marker);
+      // Hydrate the annual-switch and tier-upgrade markers only on the
+      // success redirect (not on plain visits). The redirect is the
+      // only signal that the tenant just came back from Stripe
+      // Checkout. We stamp the return time so each polling budget is
+      // measured from now, not from when the original click happened
+      // (Checkout itself can take longer than the polling budget).
+      //
+      // The two markers are mutually exclusive at write time
+      // (handleUpgrade clears the annual marker when it stamps a tier
+      // marker) — a strict tier upgrade is the bigger story and
+      // shouldn't be hidden behind the smaller annual-switch banner.
+      const annualMarker = readAnnualSwitchMarker();
+      const tierMarker = readTierUpgradeMarker();
+      if (annualMarker) {
+        setAnnualSwitchMarker(annualMarker);
         setAnnualSwitchReturnedAt((prev) => prev ?? Date.now());
-        // Leave ?checkout=success in the URL until the banner renders
-        // (or the polling budget expires). This way a reload before
-        // the webhook lands re-runs this effect and resumes polling
-        // instead of silently dropping the marker.
-      } else {
-        // Marker missing (or expired) — nothing to wait for.
+      }
+      if (tierMarker) {
+        setTierUpgradeMarker(tierMarker);
+        setTierUpgradeReturnedAt((prev) => prev ?? Date.now());
+      }
+      if (!annualMarker && !tierMarker) {
+        // No markers to wait on — strip the param immediately so a
+        // reload doesn't re-fire the success-side effects.
         const url = new URL(window.location.href);
         url.searchParams.delete('checkout');
         window.history.replaceState({}, '', url.toString());
       }
+      // Otherwise we leave ?checkout=success in the URL until at least
+      // one banner resolves (renders or polling gives up); a reload
+      // before the webhook lands re-runs this effect and resumes
+      // polling instead of silently dropping the marker.
     } else if (checkoutParam === 'cancelled') {
       clearAnnualSwitchMarker();
+      clearTierUpgradeMarker();
       setAnnualSwitchMarker(null);
       setAnnualSwitchReturnedAt(null);
+      setTierUpgradeMarker(null);
+      setTierUpgradeReturnedAt(null);
       const url = new URL(window.location.href);
       url.searchParams.delete('checkout');
       window.history.replaceState({}, '', url.toString());
@@ -659,6 +782,33 @@ export default function Billing() {
     clearAnnualSwitchMarker();
     stripCheckoutParamFromUrl();
   }, [stripCheckoutParamFromUrl]);
+
+  const dismissTierUpgradeBanner = useCallback(() => {
+    setTierUpgradeDismissed(true);
+    setTierUpgradeMarker(null);
+    clearTierUpgradeMarker();
+    stripCheckoutParamFromUrl();
+  }, [stripCheckoutParamFromUrl]);
+
+  // Dismiss the downgrade-completion banner. We hide locally first
+  // (so the X feels instant) and POST the acknowledge endpoint
+  // fire-and-forget — failures don't matter because the next visit
+  // will re-render the banner if the columns weren't actually nulled
+  // server-side, which is the safest fallback.
+  const dismissDowngradeCompletionBanner = useCallback(() => {
+    setDowngradeCompletionDismissed(true);
+    api
+      .post('/billing/acknowledge-downgrade-completion', {})
+      .then(() => {
+        // Refetch so the cached subscription drops the cleared columns
+        // and the banner stays gone on a soft reload.
+        queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      })
+      .catch(() => {
+        // Best-effort; the banner is already hidden in this tab and
+        // the server-side columns will get cleared on the next call.
+      });
+  }, [queryClient]);
 
   // Records impression / click events from the BillingEstimator banner.
   // Completion is attributed server-side from the Stripe webhook, so
@@ -992,17 +1142,46 @@ export default function Billing() {
     discount?: { couponId: string | null; promotionCode: string | null },
   ) => {
     setUpgradeLoading(plan);
-    // Stamp the annual-switch marker before the Stripe redirect, but
-    // only for an actual monthly→annual switch. Other initiations
-    // clear any stale marker so it can't bleed into this checkout.
+    // Determine whether this checkout is a *strict* tier upgrade
+    // (e.g. starter → pro, pro → enterprise). When it is, stamp the
+    // tier-upgrade marker so the post-redirect banner can fire and
+    // proactively clear any annual-switch marker — the two banners
+    // compete for the same slot on the page and the tier change is
+    // the bigger story (it actually expands the tenant's limits).
+    //
+    // For pure interval changes (same tier, monthly → annual) we keep
+    // the existing annual-switch marker semantics. Anything else
+    // (downgrades go through handleDowngrade, but be defensive)
+    // clears both markers so a stale one can't bleed into this
+    // checkout.
     const currentInterval = sub?.billing_interval ?? 'none';
-    if (interval === 'annual' && currentInterval === 'monthly') {
+    const currentPlan = sub?.plan ?? 'starter';
+    const targetPlan = plan;
+    const isKnownTier = (p: string): p is PlanTier =>
+      p === 'starter' || p === 'pro' || p === 'enterprise';
+    const isStrictTierUpgrade =
+      isKnownTier(currentPlan)
+      && isKnownTier(targetPlan)
+      && TIER_RANK[targetPlan] > TIER_RANK[currentPlan];
+
+    if (isStrictTierUpgrade && isKnownTier(currentPlan) && isKnownTier(targetPlan)) {
+      writeTierUpgradeMarker({
+        previousPlan: currentPlan,
+        targetPlan,
+        initiatedAt: Date.now(),
+      });
+      // Tier change supersedes any pending annual-switch banner so we
+      // don't render two stacked confirmations on return.
+      clearAnnualSwitchMarker();
+    } else if (interval === 'annual' && currentInterval === 'monthly') {
       writeAnnualSwitchMarker({
         previousInterval: 'monthly',
         initiatedAt: Date.now(),
       });
+      clearTierUpgradeMarker();
     } else {
       clearAnnualSwitchMarker();
+      clearTierUpgradeMarker();
     }
     checkoutMutation.mutate({ plan, interval, recommendation, discount });
   };
@@ -1123,6 +1302,62 @@ export default function Billing() {
     annualSwitchMarker,
     annualSwitchReturnedAt,
     sub?.billing_interval,
+    queryClient,
+    stripCheckoutParamFromUrl,
+  ]);
+
+  // Tier-upgrade acknowledgement: once the local subscription reflects
+  // the new (higher) tier, drop the sessionStorage marker and the URL
+  // param so reloads/fresh visits don't re-fire the banner. The
+  // in-memory marker stays until the user dismisses, so the banner
+  // remains rendered. Idempotent via `tierUpgradeAcknowledged`.
+  useEffect(() => {
+    if (tierUpgradeAcknowledged) return;
+    if (!tierUpgradeMarker) return;
+    if (sub?.plan !== tierUpgradeMarker.targetPlan) return;
+    if (status !== 'active' && status !== 'trialing') return;
+    clearTierUpgradeMarker();
+    stripCheckoutParamFromUrl();
+    setTierUpgradeAcknowledged(true);
+  }, [
+    tierUpgradeAcknowledged,
+    tierUpgradeMarker,
+    sub?.plan,
+    status,
+    stripCheckoutParamFromUrl,
+  ]);
+
+  // Webhook-lag polling for the tier-upgrade banner. Same shape as
+  // the annual-switch loop above; runs while the marker is pending
+  // and the local plan hasn't caught up to the target yet.
+  useEffect(() => {
+    if (!tierUpgradeMarker) return;
+    if (tierUpgradeReturnedAt === null) return;
+    if (sub?.plan === tierUpgradeMarker.targetPlan) return;
+    let cancelled = false;
+    let handle: number | undefined;
+    const tick = () => {
+      if (cancelled) return;
+      if (Date.now() - tierUpgradeReturnedAt > TIER_UPGRADE_MAX_WAIT_MS) {
+        clearTierUpgradeMarker();
+        setTierUpgradeMarker(null);
+        setTierUpgradeReturnedAt(null);
+        stripCheckoutParamFromUrl();
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
+      handle = window.setTimeout(tick, 3_000);
+    };
+    handle = window.setTimeout(tick, 3_000);
+    return () => {
+      cancelled = true;
+      if (handle !== undefined) window.clearTimeout(handle);
+    };
+  }, [
+    tierUpgradeMarker,
+    tierUpgradeReturnedAt,
+    sub?.plan,
     queryClient,
     stripCheckoutParamFromUrl,
   ]);
@@ -1302,6 +1537,93 @@ export default function Billing() {
               data-testid="billing-annual-switch-success-dismiss"
               className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
               aria-label="Dismiss annual billing confirmation"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* One-time tier-upgrade confirmation banner. Gating + lifecycle
+          live in the effects above; see TIER_UPGRADE_MARKER_KEY. Only
+          renders once the local subscription plan has caught up to the
+          marker's target tier so we don't claim "you're now on Pro"
+          before the webhook has actually flipped the row. */}
+      {(() => {
+        const showBanner =
+          tierUpgradeMarker !== null
+          && !tierUpgradeDismissed
+          && sub?.plan === tierUpgradeMarker.targetPlan
+          && (status === 'active' || status === 'trialing');
+        if (!showBanner || !tierUpgradeMarker) return null;
+        const newPlanLabel = PLAN_LABELS[tierUpgradeMarker.targetPlan] ?? tierUpgradeMarker.targetPlan;
+        return (
+          <div
+            role="status"
+            data-testid="billing-tier-upgrade-success-banner"
+            className="bg-success/10 border border-success/30 text-text-primary text-sm px-4 py-3 rounded-lg flex items-start gap-3"
+          >
+            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-success">
+                You're now on {newPlanLabel}
+              </p>
+              <p className="text-sm mt-0.5 text-text-muted">
+                Your usage limits just expanded. Welcome to {newPlanLabel}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissTierUpgradeBanner}
+              data-testid="billing-tier-upgrade-success-dismiss"
+              className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+              aria-label="Dismiss tier upgrade confirmation"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* One-time downgrade-completion banner. The marker lives on the
+          server (subscriptions.downgrade_completed_*), set by the
+          Stripe webhook when the deferred Subscription Schedule swap
+          actually applies the lower tier. Persisted server-side so it
+          survives a fresh device / first visit after the schedule
+          fires. Dismiss POSTs the acknowledge endpoint to null the
+          columns; we also hide locally for instant feedback. */}
+      {(() => {
+        const completedAt = sub?.downgrade_completed_at;
+        const completedToPlan = sub?.downgrade_completed_to_plan;
+        const showBanner =
+          !downgradeCompletionDismissed
+          && typeof completedAt === 'string'
+          && completedAt.length > 0
+          && typeof completedToPlan === 'string'
+          && completedToPlan.length > 0;
+        if (!showBanner) return null;
+        const newPlanLabel = PLAN_LABELS[completedToPlan as string] ?? (completedToPlan as string);
+        return (
+          <div
+            role="status"
+            data-testid="billing-downgrade-completion-banner"
+            className="bg-success/10 border border-success/30 text-text-primary text-sm px-4 py-3 rounded-lg flex items-start gap-3"
+          >
+            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-success">
+                Your downgrade to {newPlanLabel} is now active
+              </p>
+              <p className="text-sm mt-0.5 text-text-muted">
+                Your scheduled downgrade has applied. You're now on the {newPlanLabel} plan with its updated limits and pricing.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissDowngradeCompletionBanner}
+              data-testid="billing-downgrade-completion-dismiss"
+              className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+              aria-label="Dismiss downgrade confirmation"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>

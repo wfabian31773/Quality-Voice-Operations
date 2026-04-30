@@ -60,7 +60,7 @@ interface CapturedUpdate {
   values: unknown[];
 }
 
-function captureSubscriptionUpdate(): {
+function captureSubscriptionUpdate(options: { priorPlan?: string } = {}): {
   updates: CapturedUpdate[];
   inserts: CapturedUpdate[];
 } {
@@ -72,6 +72,15 @@ function captureSubscriptionUpdate(): {
     // The webhook resolves customer→tenant via this SELECT.
     if (/SELECT tenant_id FROM subscriptions WHERE stripe_customer_id/i.test(sql)) {
       return { rows: [{ tenant_id: 'tenant-1' }], rowCount: 1 };
+    }
+    // Pre-UPDATE prior-plan read used by the tier-downgrade detection
+    // in handleSubscriptionUpdated. Must match BEFORE the generic
+    // `SELECT ... FROM subscriptions` fallback so the downgrade test
+    // can inject a higher-tier prior plan.
+    if (/SELECT\s+plan\s+FROM\s+subscriptions\s+WHERE\s+tenant_id/i.test(sql)) {
+      return options.priorPlan
+        ? { rows: [{ plan: options.priorPlan }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
     }
     // checkout.session.completed branch reads back the tenant status to
     // decide whether to provision; return 'active' so it skips that path.
@@ -242,6 +251,96 @@ describe('handleStripeEvent — customer.subscription.updated', () => {
     expect(values).toContain(PLAN_LIMITS.pro.monthlyCallLimit);
     expect(values).toContain(PLAN_LIMITS.pro.monthlySmsLimit);
     expect(values).toContain(PLAN_LIMITS.pro.monthlyAiMinuteLimit);
+  });
+
+  // -- Task #1366 — downgrade-completion banner signal ----------------
+  // The webhook stamps `downgrade_completed_at` and
+  // `downgrade_completed_to_plan` when a strict tier downgrade
+  // (rank decrease) lands on the local subscription row, so the
+  // Billing UI can fire a one-time "Your downgrade to <Plan> is now
+  // active" banner.
+
+  it('stamps downgrade_completed_at + downgrade_completed_to_plan on a strict tier downgrade (enterprise→pro)', async () => {
+    const { updates } = captureSubscriptionUpdate({ priorPlan: 'enterprise' });
+
+    await handleStripeEvent(
+      makeUpdatedEvent('price_pro_annual_test', 'year', { id: 'evt_strict_tier_downgrade' }),
+    );
+
+    expect(updates).toHaveLength(1);
+    const { sql, values } = updates[0];
+
+    // Both columns must update — they're consumed together by the
+    // banner's renderer and the acknowledge endpoint nulls them as a
+    // pair, so partial population would leave the UI in a wedged state.
+    expect(sql).toMatch(/downgrade_completed_at\s*=\s*NOW\(\)/);
+    expect(sql).toMatch(/downgrade_completed_to_plan\s*=\s*\$\d+/);
+    expect(values).toContain('pro');
+  });
+
+  it('stamps the downgrade-completed columns on pro→starter as well', async () => {
+    const { updates } = captureSubscriptionUpdate({ priorPlan: 'pro' });
+
+    await handleStripeEvent(
+      makeUpdatedEvent('price_starter_monthly_test', 'month', { id: 'evt_pro_to_starter' }),
+    );
+
+    expect(updates).toHaveLength(1);
+    const { sql, values } = updates[0];
+    expect(sql).toMatch(/downgrade_completed_at\s*=\s*NOW\(\)/);
+    expect(sql).toMatch(/downgrade_completed_to_plan\s*=\s*\$\d+/);
+    expect(values).toContain('starter');
+  });
+
+  it('does NOT stamp the downgrade-completed columns on a same-tier interval-only swap (pro monthly→annual)', async () => {
+    // The most common non-downgrade event: Stripe transitions a
+    // schedule's interval phase but the tier rank is unchanged. The
+    // banner must not fire for these or the user would see an
+    // erroneous "downgrade is now active" message after switching
+    // to annual billing on the same plan.
+    const { updates } = captureSubscriptionUpdate({ priorPlan: 'pro' });
+
+    await handleStripeEvent(
+      makeUpdatedEvent('price_pro_annual_test', 'year', { id: 'evt_pro_interval_swap' }),
+    );
+
+    expect(updates).toHaveLength(1);
+    const { sql } = updates[0];
+    expect(sql).not.toMatch(/downgrade_completed_at/);
+    expect(sql).not.toMatch(/downgrade_completed_to_plan/);
+  });
+
+  it('does NOT stamp the downgrade-completed columns on a strict tier upgrade (starter→pro)', async () => {
+    // Defensive: a webhook with a higher-tier new price than the
+    // prior local plan should never look like a downgrade. The
+    // tier-upgrade banner is driven entirely by the client-side
+    // sessionStorage marker, not these columns.
+    const { updates } = captureSubscriptionUpdate({ priorPlan: 'starter' });
+
+    await handleStripeEvent(
+      makeUpdatedEvent('price_pro_monthly_test', 'month', { id: 'evt_starter_to_pro' }),
+    );
+
+    expect(updates).toHaveLength(1);
+    const { sql } = updates[0];
+    expect(sql).not.toMatch(/downgrade_completed_at/);
+    expect(sql).not.toMatch(/downgrade_completed_to_plan/);
+  });
+
+  it('does NOT stamp the downgrade-completed columns when the prior plan is unknown', async () => {
+    // Without a prior plan we can't tell whether this is a downgrade
+    // — defensively skip the stamp rather than risk firing the
+    // banner spuriously on a fresh row.
+    const { updates } = captureSubscriptionUpdate(); // no priorPlan
+
+    await handleStripeEvent(
+      makeUpdatedEvent('price_starter_monthly_test', 'month', { id: 'evt_no_prior_plan' }),
+    );
+
+    expect(updates).toHaveLength(1);
+    const { sql } = updates[0];
+    expect(sql).not.toMatch(/downgrade_completed_at/);
+    expect(sql).not.toMatch(/downgrade_completed_to_plan/);
   });
 });
 

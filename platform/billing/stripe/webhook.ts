@@ -640,6 +640,14 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId
   logger.info('Subscription cancelled', { tenantId, subscriptionId: sub.id });
 }
 
+// Tier rank used by `handleSubscriptionUpdated` to detect a *strict*
+// tier downgrade landing on the local subscriptions row (typically the
+// scheduled second-phase swap fired by /billing/schedule-downgrade).
+// Mirrors `TIER_ORDER` in `planChange.ts` — kept inline here so the
+// webhook stays self-contained and a future change to the rank order
+// can't silently desynchronize the two paths.
+const PLAN_TIER_RANK: Record<string, number> = { starter: 0, pro: 1, enterprise: 2 };
+
 async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
   const customerId = sub.customer as string;
   const tenantId = await getTenantByCustomer(customerId);
@@ -668,6 +676,25 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
   const billingInterval = normalizeBillingInterval(stripeIntervalRaw) ?? undefined;
 
   await withTenant(tenantId, async (client) => {
+    // Capture the prior plan BEFORE the UPDATE below overwrites it. We
+    // need this to detect a strict tier downgrade applied by the webhook
+    // (typically the second-phase swap on a Subscription Schedule fired
+    // by /billing/schedule-downgrade). When detected we stamp
+    // `downgrade_completed_at` / `downgrade_completed_to_plan` so the
+    // Billing UI can render a one-time "Your downgrade to <Plan> is now
+    // active" banner on the tenant's next visit (Task #1366).
+    let priorPlanForDowngrade: string | null = null;
+    try {
+      const { rows: priorRows } = await client.query(
+        `SELECT plan FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        [tenantId],
+      );
+      const prior = priorRows[0]?.plan;
+      if (typeof prior === 'string') priorPlanForDowngrade = prior;
+    } catch {
+      priorPlanForDowngrade = null;
+    }
+
     const updateFields: string[] = ['updated_at = NOW()'];
     const values: unknown[] = [tenantId];
 
@@ -682,6 +709,24 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     if (billingInterval) {
       values.push(billingInterval);
       updateFields.push(`billing_interval = $${values.length}::billing_interval`);
+    }
+
+    // Strict tier-downgrade detection. We require both plans to be in
+    // the rank table — an unknown prior plan (or unmapped new price)
+    // could otherwise spuriously trigger the banner. Idempotent on
+    // retry: once the local row reflects the new lower tier, the prior
+    // plan equals the new plan and this branch is skipped.
+    const isStrictTierDowngrade =
+      typeof plan === 'string' &&
+      priorPlanForDowngrade !== null &&
+      priorPlanForDowngrade !== plan &&
+      Object.prototype.hasOwnProperty.call(PLAN_TIER_RANK, priorPlanForDowngrade) &&
+      Object.prototype.hasOwnProperty.call(PLAN_TIER_RANK, plan) &&
+      PLAN_TIER_RANK[priorPlanForDowngrade] > PLAN_TIER_RANK[plan];
+    if (isStrictTierDowngrade && plan) {
+      updateFields.push('downgrade_completed_at = NOW()');
+      values.push(plan);
+      updateFields.push(`downgrade_completed_to_plan = $${values.length}`);
     }
 
     const rawSub = sub as unknown as Record<string, unknown>;
