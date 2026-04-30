@@ -35,6 +35,7 @@
     "check:design-tokens": "node scripts/check-design-tokens-sync.mjs",
     "check:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "check:public-hero-visual": "tsx tests/e2e/publicHeroVisualRegression.spec.ts",
+    "check:pricing-live-rate-badge": "tsx tests/e2e/pricingLiveRateBadge.spec.ts",
     "check:design": "bash scripts/ci-design-checks.sh",
     "check:i18n-keys": "node scripts/check-i18n-keys.mjs",
     "check:sitemap-coverage": "node scripts/check-sitemap-coverage.mjs",

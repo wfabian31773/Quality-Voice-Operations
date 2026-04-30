@@ -18,13 +18,22 @@
 #      that the contrast probe can miss when no text sits on the
 #      offending layer).
 #
+#   4. `check:pricing-live-rate-badge` — Playwright-based regression
+#      (Task #1304) for the public Pricing page's "Live Stripe rate"
+#      pill in the calculator's annual mode. Mocks
+#      `/api/billing/effective-rate` and asserts the pill is present
+#      when annual base price is Stripe-sourced and absent when only
+#      catalog-sourced. Catches the original "annual badge silently
+#      uses catalog discount" regression on every PR.
+#
 # Designed to run from `scripts/post-merge.sh` and from any future CI
 # pipeline. Boots an ephemeral vite dev server on :5000 only if one is not
 # already responding, and tears it down on exit.
 #
 # Env vars:
 #   SKIP_DARK_MODE_CHECK=1  — skip the browser-based checks (the dark-mode
-#                             contrast probe AND the hero visual-regression
+#                             contrast probe, the hero visual-regression
+#                             check, AND the pricing live-rate badge
 #                             check), e.g. in a headless container without
 #                             chromium installed.
 #   E2E_BASE_URL            — override the URL the browser-based checks hit
@@ -39,7 +48,7 @@ echo "→ check:design-tokens (static)"
 npm run --silent check:design-tokens
 
 if [[ "${SKIP_DARK_MODE_CHECK:-0}" == "1" ]]; then
-  echo "↷ check:public-dark-mode + check:public-hero-visual skipped (SKIP_DARK_MODE_CHECK=1)"
+  echo "↷ check:public-dark-mode + check:public-hero-visual + check:pricing-live-rate-badge skipped (SKIP_DARK_MODE_CHECK=1)"
   exit 0
 fi
 
@@ -93,3 +102,6 @@ E2E_BASE_URL="$BASE_URL" npm run --silent check:public-dark-mode
 
 echo "→ check:public-hero-visual (browser, ${BASE_URL})"
 E2E_BASE_URL="$BASE_URL" npm run --silent check:public-hero-visual
+
+echo "→ check:pricing-live-rate-badge (browser, ${BASE_URL})"
+E2E_BASE_URL="$BASE_URL" npm run --silent check:pricing-live-rate-badge
