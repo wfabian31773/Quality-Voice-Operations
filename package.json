@@ -19,6 +19,7 @@
     "test:e2e:onboarding-progress-dots-no-skip-ahead": "tsx tests/e2e/onboardingProgressDotsNoSkipAhead.spec.ts",
     "test:e2e:onboarding-template-updates-agent": "tsx tests/e2e/onboardingTemplateUpdatesAgent.spec.ts",
     "test:e2e:onboarding-template-update-failure-surfaces": "tsx tests/e2e/onboardingTemplateUpdateFailureSurfaces.spec.ts",
+    "test:e2e:billing-recommendation-checkout": "tsx tests/e2e/billingRecommendationCheckout.spec.ts",
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "test:e2e:public-hero-visual": "tsx tests/e2e/publicHeroVisualRegression.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"widget/**/*.{js,ts,tsx}\" \"server/**/*.{ts,tsx}\" \"shared/**/*.{ts,tsx}\"",
