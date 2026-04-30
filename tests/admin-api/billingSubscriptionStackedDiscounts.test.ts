@@ -349,6 +349,60 @@ describe('GET /billing/subscription — stacked discounts', () => {
     expect(sub.discounts).toEqual([]);
   });
 
+  // Pins the multi-discount response shape consumed by the
+  // post-checkout success-redirect banner.
+  it('returns the post-checkout success-redirect chips: customer + stacked subscription discounts', async () => {
+    stubSubscriptionRow();
+    customersRetrieveMock.mockResolvedValueOnce({
+      id: 'cus_test',
+      discount: {
+        coupon: {
+          id: 'coupon_recurring',
+          name: 'Recurring 10% Off',
+          percent_off: 10,
+          valid: true,
+        },
+        promotion_code: { id: 'promo_recurring', code: 'LOYAL10' },
+        end: null,
+      },
+    });
+    subscriptionsRetrieveMock.mockResolvedValueOnce({
+      id: 'sub_test',
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_upgrade_promo',
+            name: 'Annual Upgrade 20% Off',
+            percent_off: 20,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_upgrade', code: 'UPGRADE20' },
+          end: null,
+        },
+      ],
+    });
+
+    const res = await request(buildApp()).get('/billing/subscription');
+    expect(res.status).toBe(200);
+
+    const sub = res.body.subscription;
+    expect(sub.discounts).toHaveLength(2);
+    expect(sub.discounts[0]).toMatchObject({
+      couponId: 'coupon_recurring',
+      percentOff: 10,
+      promotionCode: 'LOYAL10',
+    });
+    expect(sub.discounts[1]).toMatchObject({
+      couponId: 'coupon_upgrade_promo',
+      percentOff: 20,
+      promotionCode: 'UPGRADE20',
+    });
+    expect(sub.discount).toMatchObject({
+      couponId: 'coupon_recurring',
+      promotionCode: 'LOYAL10',
+    });
+  });
+
   it('falls back to the legacy `subscription.discount` when `discounts` array is missing', async () => {
     stubSubscriptionRow();
     customersRetrieveMock.mockResolvedValueOnce({ id: 'cus_test', discount: null });

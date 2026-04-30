@@ -1243,6 +1243,17 @@ export default function Billing() {
         const annualSavingsCents = hasSavings
           ? (monthlyCents - annualEquivCents) * 12
           : 0;
+        // Prefer `discounts`; fall back to legacy `discount` for
+        // older server builds.
+        const discountList: BillingDiscountSummary[] =
+          sub?.discounts && sub.discounts.length > 0
+            ? sub.discounts
+            : sub?.discount
+              ? [sub.discount]
+              : [];
+        const discountTooltip = discountList.length > 1
+          ? `${discountList.length} discounts are stacked on your new subscription. Each is shown on Stripe Checkout and on every invoice it applies to.`
+          : 'Active discount applied to your new subscription. Shown on Stripe Checkout and on every invoice this discount applies to.';
         return (
           <div
             role="status"
@@ -1269,6 +1280,21 @@ export default function Billing() {
                   </>
                 )}
               </p>
+              {discountList.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {discountList.map((d, idx) => (
+                    <span
+                      key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
+                      data-testid="billing-annual-switch-success-discount-badge"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                      title={discountTooltip}
+                    >
+                      <Sparkles className="h-3 w-3" aria-hidden="true" />
+                      <span>Active discount: {formatDiscountLabel(d, currency)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               type="button"
