@@ -261,6 +261,68 @@ function clearTierUpgradeMarker(): void {
   }
 }
 
+// Generic checkout-success confirmation banner (Task #1382). Mirrors
+// the annual-switch / tier-upgrade marker contract: stamped by
+// handleUpgrade before EVERY Stripe Checkout redirect (regardless of
+// whether the change is also a strict tier upgrade or a monthly→annual
+// switch) and hydrated only on the ?checkout=success return. The
+// resulting banner is suppressed when one of the more specific banners
+// is already rendering (annual-switch / tier-upgrade) so we never
+// stack two confirmations for the same checkout. For everything else
+// (brand-new checkouts, same-tier same-interval re-checkouts that
+// attach a discount, etc.) it surfaces a generic "Your new plan is
+// active" callout with one chip per discount on `sub.discounts`.
+const CHECKOUT_SUCCESS_MARKER_KEY = 'billing-checkout-success-pending';
+// Polling budget for the webhook to flip the local subscription into
+// active/trialing after the success redirect; cleared after this if
+// the flip never lands.
+const CHECKOUT_SUCCESS_MAX_WAIT_MS = 30_000;
+// Markers older than this are ignored on read so an abandoned tab
+// can't fire the banner on a much later unrelated visit.
+const CHECKOUT_SUCCESS_MARKER_MAX_AGE_MS = 30 * 60_000;
+
+type CheckoutSuccessMarker = {
+  initiatedAt: number;
+};
+
+function readCheckoutSuccessMarker(): CheckoutSuccessMarker | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(CHECKOUT_SUCCESS_MARKER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CheckoutSuccessMarker> | null;
+    if (
+      !parsed
+      || typeof parsed.initiatedAt !== 'number'
+      || Date.now() - parsed.initiatedAt > CHECKOUT_SUCCESS_MARKER_MAX_AGE_MS
+    ) {
+      window.sessionStorage.removeItem(CHECKOUT_SUCCESS_MARKER_KEY);
+      return null;
+    }
+    return { initiatedAt: parsed.initiatedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeCheckoutSuccessMarker(marker: CheckoutSuccessMarker): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(CHECKOUT_SUCCESS_MARKER_KEY, JSON.stringify(marker));
+  } catch {
+    // sessionStorage may be unavailable (private mode / quota).
+  }
+}
+
+function clearCheckoutSuccessMarker(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(CHECKOUT_SUCCESS_MARKER_KEY);
+  } catch {
+    // Best-effort.
+  }
+}
+
 // Tier rank used to decide whether a checkout target is a strict
 // upgrade vs a same-tier interval change vs a downgrade. Mirrors the
 // server-side `TIER_ORDER` in `planChange.ts`. A target with a higher
@@ -512,6 +574,18 @@ export default function Billing() {
     useState<number | null>(null);
   const [tierUpgradeAcknowledged, setTierUpgradeAcknowledged] = useState(false);
   const [tierUpgradeDismissed, setTierUpgradeDismissed] = useState(false);
+  // Generic checkout-success banner state. Marker is only hydrated on
+  // the ?checkout=success URL so a stale sessionStorage value can't
+  // fire the banner on unrelated visits. `returnedAt` bounds the
+  // webhook-lag polling. The banner is suppressed at render time when
+  // the annual-switch or tier-upgrade banner is already showing for
+  // the same checkout — see the IIFE below.
+  const [checkoutSuccessMarker, setCheckoutSuccessMarker] =
+    useState<CheckoutSuccessMarker | null>(null);
+  const [checkoutSuccessReturnedAt, setCheckoutSuccessReturnedAt] =
+    useState<number | null>(null);
+  const [checkoutSuccessAcknowledged, setCheckoutSuccessAcknowledged] = useState(false);
+  const [checkoutSuccessDismissed, setCheckoutSuccessDismissed] = useState(false);
   // Downgrade-completion banner state. The marker itself lives on the
   // server (subscriptions.downgrade_completed_at / _to_plan) so it
   // survives a fresh device + first visit after the schedule fires.
@@ -731,6 +805,7 @@ export default function Billing() {
       // shouldn't be hidden behind the smaller annual-switch banner.
       const annualMarker = readAnnualSwitchMarker();
       const tierMarker = readTierUpgradeMarker();
+      const checkoutMarker = readCheckoutSuccessMarker();
       if (annualMarker) {
         setAnnualSwitchMarker(annualMarker);
         setAnnualSwitchReturnedAt((prev) => prev ?? Date.now());
@@ -739,7 +814,11 @@ export default function Billing() {
         setTierUpgradeMarker(tierMarker);
         setTierUpgradeReturnedAt((prev) => prev ?? Date.now());
       }
-      if (!annualMarker && !tierMarker) {
+      if (checkoutMarker) {
+        setCheckoutSuccessMarker(checkoutMarker);
+        setCheckoutSuccessReturnedAt((prev) => prev ?? Date.now());
+      }
+      if (!annualMarker && !tierMarker && !checkoutMarker) {
         // No markers to wait on — strip the param immediately so a
         // reload doesn't re-fire the success-side effects.
         const url = new URL(window.location.href);
@@ -753,10 +832,13 @@ export default function Billing() {
     } else if (checkoutParam === 'cancelled') {
       clearAnnualSwitchMarker();
       clearTierUpgradeMarker();
+      clearCheckoutSuccessMarker();
       setAnnualSwitchMarker(null);
       setAnnualSwitchReturnedAt(null);
       setTierUpgradeMarker(null);
       setTierUpgradeReturnedAt(null);
+      setCheckoutSuccessMarker(null);
+      setCheckoutSuccessReturnedAt(null);
       const url = new URL(window.location.href);
       url.searchParams.delete('checkout');
       window.history.replaceState({}, '', url.toString());
@@ -787,6 +869,13 @@ export default function Billing() {
     setTierUpgradeDismissed(true);
     setTierUpgradeMarker(null);
     clearTierUpgradeMarker();
+    stripCheckoutParamFromUrl();
+  }, [stripCheckoutParamFromUrl]);
+
+  const dismissCheckoutSuccessBanner = useCallback(() => {
+    setCheckoutSuccessDismissed(true);
+    setCheckoutSuccessMarker(null);
+    clearCheckoutSuccessMarker();
     stripCheckoutParamFromUrl();
   }, [stripCheckoutParamFromUrl]);
 
@@ -1089,7 +1178,17 @@ export default function Billing() {
         ...(params.discount ? { discount: params.discount } : {}),
       }),
     onSuccess: (data) => { window.location.href = data.url; },
-    onError: () => setUpgradeLoading(null),
+    onError: () => {
+      setUpgradeLoading(null);
+      // Checkout never reached Stripe so the success-redirect markers
+      // stamped by handleUpgrade are now stale. Clear them so a future
+      // unrelated visit to /billing?checkout=success (e.g. a different
+      // completed checkout) can't hydrate them and fire the wrong
+      // banner before they age out of sessionStorage.
+      clearAnnualSwitchMarker();
+      clearTierUpgradeMarker();
+      clearCheckoutSuccessMarker();
+    },
   });
 
   // Downgrades go through a dedicated server endpoint that uses Stripe
@@ -1182,6 +1281,14 @@ export default function Billing() {
       clearAnnualSwitchMarker();
       clearTierUpgradeMarker();
     }
+    // Always stamp the generic checkout-success marker so the
+    // post-redirect banner can fire for cases the more specific
+    // markers don't cover (brand-new checkouts, same-tier same-interval
+    // re-checkouts that attach a discount, etc.). At render time the
+    // generic banner is suppressed when the annual-switch or
+    // tier-upgrade banner is already showing for the same checkout, so
+    // stamping it unconditionally here doesn't risk stacked banners.
+    writeCheckoutSuccessMarker({ initiatedAt: Date.now() });
     checkoutMutation.mutate({ plan, interval, recommendation, discount });
   };
 
@@ -1240,12 +1347,21 @@ export default function Billing() {
   // sessionStorage marker and the URL param so reloads/fresh visits
   // don't re-fire it. The in-memory marker keeps the banner visible
   // until dismiss. Idempotent via `annualSwitchAcknowledged`.
+  //
+  // Also drop the generic checkout-success marker here so the
+  // fallback banner doesn't surface later (e.g. after the user
+  // dismisses the annual banner) for the same checkout — the annual
+  // case already has its own confirmation.
   useEffect(() => {
     if (annualSwitchAcknowledged) return;
     if (!annualSwitchMarker) return;
     if (sub?.billing_interval !== 'annual') return;
     if (status !== 'active' && status !== 'trialing') return;
     clearAnnualSwitchMarker();
+    clearCheckoutSuccessMarker();
+    setCheckoutSuccessMarker(null);
+    setCheckoutSuccessReturnedAt(null);
+    setCheckoutSuccessAcknowledged(true);
     stripCheckoutParamFromUrl();
     setAnnualSwitchAcknowledged(true);
   }, [
@@ -1299,12 +1415,21 @@ export default function Billing() {
   // param so reloads/fresh visits don't re-fire the banner. The
   // in-memory marker stays until the user dismisses, so the banner
   // remains rendered. Idempotent via `tierUpgradeAcknowledged`.
+  //
+  // Also drop the generic checkout-success marker here so the
+  // fallback banner doesn't surface later (e.g. after the user
+  // dismisses the tier-upgrade banner) for the same checkout — the
+  // tier-upgrade case already has its own confirmation.
   useEffect(() => {
     if (tierUpgradeAcknowledged) return;
     if (!tierUpgradeMarker) return;
     if (sub?.plan !== tierUpgradeMarker.targetPlan) return;
     if (status !== 'active' && status !== 'trialing') return;
     clearTierUpgradeMarker();
+    clearCheckoutSuccessMarker();
+    setCheckoutSuccessMarker(null);
+    setCheckoutSuccessReturnedAt(null);
+    setCheckoutSuccessAcknowledged(true);
     stripCheckoutParamFromUrl();
     setTierUpgradeAcknowledged(true);
   }, [
@@ -1346,6 +1471,86 @@ export default function Billing() {
     tierUpgradeMarker,
     tierUpgradeReturnedAt,
     sub?.plan,
+    queryClient,
+    stripCheckoutParamFromUrl,
+  ]);
+
+  // Generic checkout-success acknowledgement: once the local
+  // subscription is loaded, active/trialing AND has been touched by
+  // the webhook since the user clicked checkout, drop the
+  // sessionStorage marker and the URL param so reloads/fresh visits
+  // don't re-fire the banner. The in-memory marker stays until the
+  // user dismisses, so the banner remains rendered. Idempotent via
+  // `checkoutSuccessAcknowledged`.
+  //
+  // The freshness check (`sub.updated_at` newer than the marker's
+  // `initiatedAt`) is critical for existing customers doing a
+  // same-plan re-checkout (e.g. attaching a discount). Their
+  // subscription is already `active` before checkout, so without it
+  // the acknowledgement would fire immediately on return — polling
+  // would stop and stale `sub.discounts` (without the new discount
+  // chips) could render forever. Allow ~60s of client/server clock
+  // skew on the comparison; checkout always takes at least a few
+  // seconds, so this won't false-positive against pre-checkout state.
+  useEffect(() => {
+    if (checkoutSuccessAcknowledged) return;
+    if (!checkoutSuccessMarker) return;
+    if (status !== 'active' && status !== 'trialing') return;
+    if (!sub?.updated_at) return;
+    const subUpdatedMs = Date.parse(sub.updated_at);
+    if (Number.isNaN(subUpdatedMs)) return;
+    if (subUpdatedMs < checkoutSuccessMarker.initiatedAt - 60_000) return;
+    clearCheckoutSuccessMarker();
+    stripCheckoutParamFromUrl();
+    setCheckoutSuccessAcknowledged(true);
+  }, [
+    checkoutSuccessAcknowledged,
+    checkoutSuccessMarker,
+    status,
+    sub?.updated_at,
+    stripCheckoutParamFromUrl,
+  ]);
+
+  // Webhook-lag polling for the generic checkout-success banner. Same
+  // shape as the annual-switch / tier-upgrade loops above. Runs until
+  // acknowledgement (the freshness check above succeeds) OR the
+  // budget measured from `returnedAt` is exhausted.
+  //
+  // Notably we do NOT skip on `status === active/trialing` — existing
+  // customers re-checking out for a discount are already active, but
+  // the new `sub.discounts` row only lands when the webhook fires.
+  // Skipping polling there would leave the banner stuck without
+  // chips. We also do not skip when an annual-switch / tier-upgrade
+  // marker is also pending: react-query dedupes simultaneous refetches
+  // of the same query, so the duplicate `invalidateQueries` calls per
+  // tick are effectively a no-op, and either of those markers
+  // acknowledging will clear our marker (see their effects above) and
+  // tear this loop down on the next render.
+  useEffect(() => {
+    if (!checkoutSuccessMarker) return;
+    if (checkoutSuccessReturnedAt === null) return;
+    let cancelled = false;
+    let handle: number | undefined;
+    const tick = () => {
+      if (cancelled) return;
+      if (Date.now() - checkoutSuccessReturnedAt > CHECKOUT_SUCCESS_MAX_WAIT_MS) {
+        clearCheckoutSuccessMarker();
+        setCheckoutSuccessMarker(null);
+        setCheckoutSuccessReturnedAt(null);
+        stripCheckoutParamFromUrl();
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      handle = window.setTimeout(tick, 3_000);
+    };
+    handle = window.setTimeout(tick, 3_000);
+    return () => {
+      cancelled = true;
+      if (handle !== undefined) window.clearTimeout(handle);
+    };
+  }, [
+    checkoutSuccessMarker,
+    checkoutSuccessReturnedAt,
     queryClient,
     stripCheckoutParamFromUrl,
   ]);
@@ -1545,6 +1750,18 @@ export default function Billing() {
           && (status === 'active' || status === 'trialing');
         if (!showBanner || !tierUpgradeMarker) return null;
         const newPlanLabel = PLAN_LABELS[tierUpgradeMarker.targetPlan] ?? tierUpgradeMarker.targetPlan;
+        // Same discount-chip logic as the annual-switch banner: prefer
+        // the full `discounts` array, fall back to the legacy single
+        // `discount` field for older server builds.
+        const discountList: BillingDiscountSummary[] =
+          sub?.discounts && sub.discounts.length > 0
+            ? sub.discounts
+            : sub?.discount
+              ? [sub.discount]
+              : [];
+        const discountTooltip = discountList.length > 1
+          ? `${discountList.length} discounts are stacked on your new subscription. Each is shown on Stripe Checkout and on every invoice it applies to.`
+          : 'Active discount applied to your new subscription. Shown on Stripe Checkout and on every invoice this discount applies to.';
         return (
           <div
             role="status"
@@ -1559,6 +1776,21 @@ export default function Billing() {
               <p className="text-sm mt-0.5 text-text-muted">
                 {tenantT('billing.tier_upgrade_banner.body', { plan: newPlanLabel })}
               </p>
+              {discountList.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {discountList.map((d, idx) => (
+                    <span
+                      key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
+                      data-testid="billing-tier-upgrade-success-discount-badge"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                      title={discountTooltip}
+                    >
+                      <Sparkles className="h-3 w-3" aria-hidden="true" />
+                      <span>Active discount: {formatDiscountLabel(d, currency)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -1566,6 +1798,87 @@ export default function Billing() {
               data-testid="billing-tier-upgrade-success-dismiss"
               className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
               aria-label={tenantT('billing.tier_upgrade_banner.dismiss_aria')}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Generic post-checkout confirmation banner (Task #1382).
+          Renders for any successful checkout completion that isn't
+          already covered by the more specific annual-switch or
+          tier-upgrade banners above (brand-new checkouts, same-tier
+          same-interval re-checkouts that attach a discount, etc.).
+          Gating + lifecycle live in the effects above; see
+          CHECKOUT_SUCCESS_MARKER_KEY. */}
+      {(() => {
+        // Mirror the show conditions of the two more specific banners
+        // so we can suppress the generic one when either is rendering
+        // — the generic banner is meant as a fallback, not a stack.
+        const annualShown =
+          annualSwitchMarker !== null
+          && !annualSwitchDismissed
+          && sub?.billing_interval === 'annual'
+          && (status === 'active' || status === 'trialing');
+        const tierShown =
+          tierUpgradeMarker !== null
+          && !tierUpgradeDismissed
+          && sub?.plan === tierUpgradeMarker.targetPlan
+          && (status === 'active' || status === 'trialing');
+        const showBanner =
+          checkoutSuccessMarker !== null
+          && !checkoutSuccessDismissed
+          && (status === 'active' || status === 'trialing')
+          && !annualShown
+          && !tierShown;
+        if (!showBanner) return null;
+        const planLabel = PLAN_LABELS[plan] ?? plan;
+        const discountList: BillingDiscountSummary[] =
+          sub?.discounts && sub.discounts.length > 0
+            ? sub.discounts
+            : sub?.discount
+              ? [sub.discount]
+              : [];
+        const discountTooltip = discountList.length > 1
+          ? `${discountList.length} discounts are stacked on your new subscription. Each is shown on Stripe Checkout and on every invoice it applies to.`
+          : 'Active discount applied to your new subscription. Shown on Stripe Checkout and on every invoice this discount applies to.';
+        return (
+          <div
+            role="status"
+            data-testid="billing-checkout-success-banner"
+            className="bg-success/10 border border-success/30 text-text-primary text-sm px-4 py-3 rounded-lg flex items-start gap-3"
+          >
+            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-success">
+                Your new plan is active
+              </p>
+              <p className="text-sm mt-0.5 text-text-muted">
+                Your {planLabel} plan is set up and ready to go.
+              </p>
+              {discountList.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {discountList.map((d, idx) => (
+                    <span
+                      key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
+                      data-testid="billing-checkout-success-discount-badge"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                      title={discountTooltip}
+                    >
+                      <Sparkles className="h-3 w-3" aria-hidden="true" />
+                      <span>Active discount: {formatDiscountLabel(d, currency)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={dismissCheckoutSuccessBanner}
+              data-testid="billing-checkout-success-dismiss"
+              className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+              aria-label="Dismiss checkout confirmation"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
