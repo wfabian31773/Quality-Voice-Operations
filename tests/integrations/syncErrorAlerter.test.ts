@@ -17,6 +17,11 @@ vi.mock('../../platform/email', () => ({
     html: 'h',
     text: 't',
   }),
+  // Production strips angle brackets off the message id before persisting it
+  // for the email-status webhook. Without a stub here the call throws and
+  // every "sent" outcome silently degrades to "failed".
+  normaliseMessageId: (id?: string | null) =>
+    typeof id === 'string' && id.length > 0 ? id.replace(/^<|>$/g, '') : null,
 }));
 
 const originalFetch = globalThis.fetch;
@@ -27,15 +32,10 @@ beforeEach(() => {
   fetchMock.mockReset();
   sendEmailMock.mockReset();
   sendEmailMock.mockResolvedValue({ success: true });
-  // Intentional anti-flake fallback: any query the test did not explicitly
-  // enqueue (e.g. a fire-and-forget audit INSERT inside a swallowing
-  // try/catch) returns an empty rowset instead of `undefined`, which would
-  // crash production code that destructures `.rows`. Per-test
-  // `mockResolvedValueOnce` chains take priority; this only kicks in once
-  // they're exhausted. Trade-off: tests that care about EXACT query
-  // sequencing must back the chain with explicit
-  // `expect(queryMock).toHaveBeenCalledTimes(...)` or SQL-substring
-  // assertions so future production changes don't silently slide past.
+  // Default fallback: any query a test did not explicitly script returns
+  // an empty rowset instead of `undefined`, which would crash production
+  // code that destructures `.rows`. Tests opt into a richer world via
+  // `mockScenario(...)`.
   queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   process.env.TWILIO_ACCOUNT_SID = 'AC_test';
@@ -43,25 +43,288 @@ beforeEach(() => {
   process.env.TWILIO_SMS_FROM = '+15555550100';
 });
 
-/**
- * Enqueue `count` empty acks for the per-recipient
- * `INSERT INTO connector_alert_recipients` calls that
- * `recordRecipientAudit` makes between the SMS / email send loop and
- * the in-app fan-out. Without these the fan-out's later queries get
- * fed the wrong mocks and silently drop inserts. Centralising this
- * here means a future column addition to the audit row only needs one
- * place updated.
- */
-function ackRecipientAudits(count: number): void {
-  for (let i = 0; i < count; i += 1) {
-    queryMock.mockResolvedValueOnce({ rows: [] });
-  }
-}
-
 afterEach(() => {
   globalThis.fetch = originalFetch;
   process.env = { ...originalEnv };
 });
+
+// ---------------------------------------------------------------------------
+// Scenario-based query dispatcher
+//
+// Tests describe the world the alerter is running against (which users the
+// tenant has, who's an admin recipient, what preferences they hold, what
+// throttle markers are stamped, etc.) instead of enumerating every database
+// query in call order. The dispatcher answers each query the production code
+// makes by SQL fingerprint, NOT by call order, so production-side changes
+// (an extra audit INSERT, a new column on a SELECT, an internal helper that
+// runs another lookup) only require touching this helper instead of
+// re-counting every test's `mockResolvedValueOnce` chain.
+//
+// Tests then assert OUTCOMES (Twilio called, email sent, the right INSERT
+// happened) by filtering `queryMock.mock.calls` / `fetchMock.mock.calls`
+// with the same SQL substrings used here.
+// ---------------------------------------------------------------------------
+
+interface ScenarioEmailRecipient {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+interface ScenarioPhoneRecipient {
+  id: string;
+  phone: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+}
+
+interface MockScenario {
+  /** Connector mute lookup: when true, every alert is suppressed. */
+  muted?: boolean;
+  /** Tenant lookup. `null` = tenant row does not exist. */
+  tenant?: { name?: string | null; smsAlertsDisabled?: boolean } | null;
+  /** Admin recipients returned by the shared email helper. */
+  emailRecipients?: ScenarioEmailRecipient[];
+  /** Emails (case-insensitive) whose `email` pref is OFF. */
+  emailOptOuts?: string[];
+  /** Admin recipients returned by the shared phone helper. */
+  phoneRecipients?: ScenarioPhoneRecipient[];
+  /** Tenant users returned for the in-app fanout audience. */
+  tenantUsers?: string[];
+  /** User IDs whose `in_app` pref is OFF for the queried category. */
+  inAppOptOuts?: string[];
+  /** Existing per-event email throttle row in `tenant_notifications`. */
+  emailThrottleHit?: boolean;
+  /** Existing per-integration SMS throttle row in `tenant_notifications`. */
+  smsThrottleHit?: boolean;
+  /**
+   * Recovery throttle marker on the integrations row. `'absent'` means the
+   * row is missing entirely; null/undefined means present with no marker.
+   */
+  recoveryAlertSentAt?: Date | string | null | 'absent';
+  /** When true, tenant has digest mode on (suppresses per-event email). */
+  digestMode?: boolean;
+  /** rowCount returned by the auth_alert_sent_at UPDATE. Default 1. */
+  stampAuthAlertRowCount?: number;
+  /** rowCount returned by the recovery_alert_sent_at UPDATE. Default 1. */
+  stampRecoveryRowCount?: number;
+  /** When true, the recovery_alert_sent_at UPDATE throws. */
+  stampRecoveryThrows?: boolean;
+  /** Latest-failed candidates returned by the resend dispatcher query. */
+  resendCandidates?: Array<{
+    user_id: string | null;
+    recipient_name: string | null;
+    recipient_email: string | null;
+    recipient_phone: string | null;
+    delivery_status: string;
+  }>;
+}
+
+function mockScenario(scenario: MockScenario = {}): void {
+  const tenantUsers = scenario.tenantUsers ?? [];
+  const inAppOptOuts = new Set(scenario.inAppOptOuts ?? []);
+  const emailOptOuts = new Set(
+    (scenario.emailOptOuts ?? []).map((e) => e.toLowerCase()),
+  );
+
+  queryMock.mockImplementation(async (sqlIn: unknown, params?: unknown) => {
+    const sql = String(sqlIn);
+    const args = (params as unknown[] | undefined) ?? [];
+
+    // Connector mute lookup.
+    if (sql.includes('FROM connector_alert_mutes')) {
+      return scenario.muted
+        ? { rows: [{ scope: 'provider', target: 'salesforce' }] }
+        : { rows: [] };
+    }
+
+    // Sustained-SMS tenant lookup (carries `sms_alerts_disabled`).
+    if (sql.includes('sms_alerts_disabled') && sql.includes('FROM tenants')) {
+      if (scenario.tenant === null) return { rows: [] };
+      return {
+        rows: [
+          {
+            name: scenario.tenant?.name ?? 'Acme',
+            sms_alerts_disabled: !!scenario.tenant?.smsAlertsDisabled,
+          },
+        ],
+      };
+    }
+
+    // Plain tenant name lookup (failure / recovery paths). Match on the
+    // table + predicate rather than the exact SELECT projection so adding
+    // a new column to the tenant lookup doesn't fall through to the
+    // default empty-rows fallback.
+    if (sql.includes('FROM tenants') && sql.includes('WHERE id = $1')) {
+      if (scenario.tenant === null) return { rows: [] };
+      return { rows: [{ name: scenario.tenant?.name ?? 'Acme' }] };
+    }
+
+    // Per-event sync error throttle (keyed by provider in metadata).
+    if (
+      sql.includes('FROM tenant_notifications') &&
+      sql.includes("metadata ->> 'provider'")
+    ) {
+      return { rows: scenario.emailThrottleHit ? [{ id: 'prev-email' }] : [] };
+    }
+
+    // Per-integration SMS throttle (keyed by integrationId in metadata).
+    if (
+      sql.includes('FROM tenant_notifications') &&
+      sql.includes("metadata ->> 'integrationId'")
+    ) {
+      return { rows: scenario.smsThrottleHit ? [{ id: 'prev-sms' }] : [] };
+    }
+
+    // Recovery throttle marker on integrations.
+    if (sql.includes('SELECT recovery_alert_sent_at FROM integrations')) {
+      if (scenario.recoveryAlertSentAt === 'absent') return { rows: [] };
+      return {
+        rows: [
+          {
+            recovery_alert_sent_at: scenario.recoveryAlertSentAt ?? null,
+          },
+        ],
+      };
+    }
+
+    // Email-recipient helper query (shared LEFT JOIN user_roles UNION-style
+    // gating).
+    if (
+      sql.includes('FROM users u') &&
+      sql.includes('LEFT JOIN user_roles ur') &&
+      sql.includes('u.email') &&
+      !sql.includes('u.phone_number')
+    ) {
+      const list = scenario.emailRecipients ?? [];
+      return {
+        rows: list.map((r) => ({
+          id: r.id,
+          email: r.email,
+          first_name: r.firstName ?? null,
+          last_name: r.lastName ?? null,
+          created_at: null,
+        })),
+      };
+    }
+
+    // Phone-recipient helper query (same shared gating, returns phone_number).
+    if (
+      sql.includes('FROM users u') &&
+      sql.includes('LEFT JOIN user_roles ur') &&
+      sql.includes('u.phone_number')
+    ) {
+      const list = scenario.phoneRecipients ?? [];
+      return {
+        rows: list.map((r) => ({
+          id: r.id,
+          phone_number: r.phone,
+          first_name: r.firstName ?? null,
+          last_name: r.lastName ?? null,
+          email: r.email ?? null,
+          created_at: null,
+        })),
+      };
+    }
+
+    // Email pref filter (filterEmailRecipientsByPreference).
+    if (
+      sql.includes('user_notification_preferences') &&
+      sql.includes('LOWER(u.email)')
+    ) {
+      const cleaned = (args[1] as string[] | undefined) ?? [];
+      const rows = cleaned
+        .filter((e) => emailOptOuts.has(e.toLowerCase()))
+        .map((e) => ({ email: e.toLowerCase(), enabled: false }));
+      return { rows };
+    }
+
+    // user_id pref filter (filterUserIdsByPreference).
+    if (
+      sql.includes('SELECT user_id, enabled') &&
+      sql.includes('FROM user_notification_preferences')
+    ) {
+      const ids = (args[2] as string[] | undefined) ?? [];
+      const rows = ids
+        .filter((id) => inAppOptOuts.has(id))
+        .map((id) => ({ user_id: id, enabled: false }));
+      return { rows };
+    }
+
+    // Fanout audience: tenant users.
+    if (
+      sql.includes('SELECT id FROM users') &&
+      sql.includes('tenant_id = $1') &&
+      sql.includes('is_active')
+    ) {
+      return { rows: tenantUsers.map((id) => ({ id })) };
+    }
+
+    // INSERT into tenant_notifications (per-user fanout).
+    if (sql.includes('INSERT INTO tenant_notifications')) {
+      return { rows: [] };
+    }
+
+    // INSERT into connector_alert_recipients (per-recipient audit).
+    if (sql.includes('INSERT INTO connector_alert_recipients')) {
+      return { rows: [] };
+    }
+
+    // UPDATE integrations SET auth_alert_sent_at.
+    if (
+      sql.includes('UPDATE integrations') &&
+      sql.includes('auth_alert_sent_at')
+    ) {
+      return { rows: [], rowCount: scenario.stampAuthAlertRowCount ?? 1 };
+    }
+
+    // UPDATE integrations SET recovery_alert_sent_at.
+    if (
+      sql.includes('UPDATE integrations') &&
+      sql.includes('recovery_alert_sent_at')
+    ) {
+      if (scenario.stampRecoveryThrows) {
+        throw new Error('db down');
+      }
+      return { rows: [], rowCount: scenario.stampRecoveryRowCount ?? 1 };
+    }
+
+    // connector_alert_settings (digest mode).
+    if (sql.includes('FROM connector_alert_settings')) {
+      if (scenario.digestMode) {
+        return {
+          rows: [
+            {
+              digest_mode: true,
+              digest_last_sent_at: null,
+              updated_at: null,
+              updated_by: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+
+    // Resend dispatcher: latest-failed candidates per (email, phone).
+    if (sql.includes('FROM connector_alert_recipients')) {
+      return { rows: scenario.resendCandidates ?? [] };
+    }
+
+    return { rows: [], rowCount: 0 };
+  });
+}
+
+/** Calls to `queryMock` whose SQL contains `needle`. */
+function callsMatching(needle: string): unknown[][] {
+  return queryMock.mock.calls.filter((c) => String(c[0]).includes(needle));
+}
+
+// ---------------------------------------------------------------------------
+// Pure helper tests — no DB.
+// ---------------------------------------------------------------------------
 
 describe('normalizeE164', () => {
   it('accepts already-normalized E.164 numbers', async () => {
@@ -106,6 +369,10 @@ describe('isRevenueCriticalProvider', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// notifySustainedConnectorFailure
+// ---------------------------------------------------------------------------
+
 describe('notifySustainedConnectorFailure', () => {
   const baseParams = {
     tenantId: 'tenant-1',
@@ -115,13 +382,8 @@ describe('notifySustainedConnectorFailure', () => {
     errorMessage: 'API rate limit',
   };
 
-  // The alerter now begins by checking connector_alert_mutes; tests below
-  // mock it as "not muted" so they can exercise the rest of the flow.
-  beforeEach(() => {
-    queryMock.mockResolvedValueOnce({ rows: [] });
-  });
-
   it('skips non-revenue-critical providers', async () => {
+    mockScenario();
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -135,6 +397,7 @@ describe('notifySustainedConnectorFailure', () => {
   });
 
   it('skips when firstFailedAt is missing', async () => {
+    mockScenario();
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -144,6 +407,7 @@ describe('notifySustainedConnectorFailure', () => {
   });
 
   it('skips when outage is shorter than the sustained-failure threshold', async () => {
+    mockScenario();
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -156,8 +420,9 @@ describe('notifySustainedConnectorFailure', () => {
   });
 
   it('skips when tenant has SMS alerts disabled', async () => {
-    queryMock.mockResolvedValueOnce({
-      rows: [{ name: 'Acme', sms_alerts_disabled: true }],
+    mockScenario({
+      tenant: { name: 'Acme', smsAlertsDisabled: true },
+      phoneRecipients: [{ id: 'user-a', phone: '+15551234567' }],
     });
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -166,17 +431,17 @@ describe('notifySustainedConnectorFailure', () => {
       ...baseParams,
       firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
-    // Mute lookup + tenant lookup were issued; nothing else.
-    expect(queryMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(callsMatching('INSERT INTO connector_alert_recipients')).toHaveLength(0);
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
   });
 
   it('respects the per-integration 24h SMS throttle', async () => {
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [{ id: 'prev-sms' }] }); // throttle hit
+    mockScenario({
+      tenant: { name: 'Acme' },
+      smsThrottleHit: true,
+      phoneRecipients: [{ id: 'user-a', phone: '+15551234567' }],
+    });
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -184,18 +449,13 @@ describe('notifySustainedConnectorFailure', () => {
       ...baseParams,
       firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
-    expect(queryMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(callsMatching('INSERT INTO connector_alert_recipients')).toHaveLength(0);
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
   });
 
   it('logs and records when no admin phone numbers are on file', async () => {
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({ rows: [] }); // admin phones empty
-
+    mockScenario({ tenant: { name: 'Acme' }, phoneRecipients: [] });
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -207,33 +467,14 @@ describe('notifySustainedConnectorFailure', () => {
   });
 
   it('sends an SMS to each admin phone and records the dispatch', async () => {
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'user-a', phone_number: '+15551234567' },
-          { id: 'user-b', phone_number: '+15557654321' },
-        ],
-      })
-      // filterUserIdsByPreference for SMS phones — nobody opted out.
-      .mockResolvedValueOnce({ rows: [] });
-    // Per-recipient `INSERT INTO connector_alert_recipients` audit rows
-    // fire after each Twilio send and BEFORE the in-app fan-out.
-    ackRecipientAudits(2);
-    queryMock
-      // fanoutInAppNotification: load tenant users
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a' }, { id: 'user-b' }],
-      })
-      // fanoutInAppNotification: filterUserIdsByPreference for in_app
-      .mockResolvedValueOnce({ rows: [] })
-      // Per-user inserts (one per opted-in user).
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
-
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [
+        { id: 'user-a', phone: '+15551234567' },
+        { id: 'user-b', phone: '+15557654321' },
+      ],
+      tenantUsers: ['user-a', 'user-b'],
+    });
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
@@ -265,11 +506,9 @@ describe('notifySustainedConnectorFailure', () => {
     expect(body).toContain('%2Fconnectors%3Fprovider%3Dsalesforce');
     expect(body).not.toContain('%2Fconnectors%3Fintegration%3D');
 
-    // The dispatch is now fanned out per-user — every insert should target
-    // the SMS notification type with the integration metadata.
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    // Per-recipient fanned-out SMS notification rows: one per active user
+    // (none of them opted out of the 'sms' in_app pref).
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(2);
     for (const call of insertCalls) {
       const args = call[1] as unknown[];
@@ -283,36 +522,20 @@ describe('notifySustainedConnectorFailure', () => {
   });
 
   it('passes Twilio statusCallback URL and records the returned message SID for live tracking', async () => {
-    // This is the wiring the new /twilio/sms-status webhook depends on:
+    // This is the wiring the /twilio/sms-status webhook depends on:
     //   1. We must include a StatusCallback in the form body so Twilio
     //      posts back delivery progress (queued -> sent -> delivered/failed).
     //   2. We must persist the returned Message SID into
     //      connector_alert_recipients.twilio_message_sid so the webhook can
     //      find this row when those callbacks land.
-    // Regressing either side silently kills the live-tracking UI: the
-    // panel would still render, but the badge would never update past
-    // 'sent'.
+    // Regressing either side silently kills the live-tracking UI.
     process.env.VOICE_GATEWAY_BASE_URL = 'https://voice.example.test';
 
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a', phone_number: '+15551234567' }],
-      })
-      // filterUserIdsByPreference for SMS phones — nobody opted out.
-      .mockResolvedValueOnce({ rows: [] })
-      // fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // fanoutInAppNotification: filterUserIdsByPreference for in_app
-      .mockResolvedValueOnce({ rows: [] })
-      // INSERT tenant_notifications
-      .mockResolvedValueOnce({ rows: [] })
-      // INSERT connector_alert_recipients (recordRecipientAudit)
-      .mockResolvedValueOnce({ rows: [] });
-
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [{ id: 'user-a', phone: '+15551234567' }],
+      tenantUsers: ['user-a'],
+    });
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
@@ -337,44 +560,24 @@ describe('notifySustainedConnectorFailure', () => {
     // 2. The returned SID must land in the recipient audit row, in the
     //    13th positional slot (matches the INSERT column order in
     //    `recordRecipientAudit`).
-    const auditCall = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
-    );
+    const auditCall = callsMatching('INSERT INTO connector_alert_recipients')[0];
     expect(auditCall).toBeDefined();
-    const auditArgs = auditCall![1] as unknown[];
+    const auditArgs = auditCall[1] as unknown[];
     expect(auditArgs[12]).toBe('SM_live_tracking_sid_123');
   });
 
   it('skips SMS sends to admins who opted out of the sms category', async () => {
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'user-a', phone_number: '+15551234567' },
-          { id: 'user-b', phone_number: '+15557654321' },
-        ],
-      })
-      // filterUserIdsByPreference for SMS phones — user-a opted out.
-      .mockResolvedValueOnce({
-        rows: [{ user_id: 'user-a', enabled: false }],
-      });
-    // Audit row for the one recipient (user-b) we actually paged.
-    ackRecipientAudits(1);
-    queryMock
-      // fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a' }, { id: 'user-b' }],
-      })
-      // fanoutInAppNotification: filterUserIdsByPreference (in_app sms)
-      // user-a has the sms in_app channel off.
-      .mockResolvedValueOnce({
-        rows: [{ user_id: 'user-a', enabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }); // insert for user-b only
-
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [
+        { id: 'user-a', phone: '+15551234567' },
+        { id: 'user-b', phone: '+15557654321' },
+      ],
+      tenantUsers: ['user-a', 'user-b'],
+      // user-a has the 'sms' in_app channel off, which doubles as the
+      // SMS-recipient gating preference.
+      inAppOptOuts: ['user-a'],
+    });
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
@@ -396,30 +599,20 @@ describe('notifySustainedConnectorFailure', () => {
     expect(body).not.toContain('To=%2B15551234567');
 
     // And only one in-app row was inserted (for user-b).
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(1);
     expect((insertCalls[0][1] as unknown[])[1]).toBe('user-b');
   });
 
   it('does NOT record a throttle entry when Twilio is configured but every send fails', async () => {
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'user-a', phone_number: '+15551234567' },
-          { id: 'user-b', phone_number: '+15557654321' },
-        ],
-      })
-      // filterUserIdsByPreference for SMS phones — nobody opted out.
-      .mockResolvedValueOnce({ rows: [] });
-    // No further queries — the fan-out into tenant_notifications must be
-    // skipped when every Twilio send fails so the next sync error can retry.
-
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [
+        { id: 'user-a', phone: '+15551234567' },
+        { id: 'user-b', phone: '+15557654321' },
+      ],
+      tenantUsers: ['user-a', 'user-b'],
+    });
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
@@ -435,14 +628,11 @@ describe('notifySustainedConnectorFailure', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // Only the five pre-send queries (mute lookup, tenant lookup, throttle
-    // check, phones, SMS-pref filter) should have been issued — no
-    // tenant_notifications insert.
-    expect(queryMock).toHaveBeenCalledTimes(5);
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
-    expect(insertCalls.length).toBe(0);
+    // Neither the in-app fan-out nor the per-recipient audit rows should
+    // be written when every Twilio send fails — that lets the next sync
+    // error retry instead of being suppressed for 24h.
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
+    expect(callsMatching('INSERT INTO connector_alert_recipients')).toHaveLength(0);
   });
 
   it('still records the dispatch (for throttling) when Twilio is not configured', async () => {
@@ -451,22 +641,11 @@ describe('notifySustainedConnectorFailure', () => {
     delete process.env.TWILIO_SMS_FROM;
     delete process.env.TWILIO_PHONE_NUMBER;
 
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      .mockResolvedValueOnce({ rows: [] }) // throttle empty
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a', phone_number: '+15551234567' }] })
-      // filterUserIdsByPreference for SMS phones — nobody opted out.
-      .mockResolvedValueOnce({ rows: [] });
-    // Audit row for user-a's "skipped" outcome (Twilio not configured).
-    ackRecipientAudits(1);
-    queryMock
-      // fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // fanoutInAppNotification: filterUserIdsByPreference
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] }); // insert
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [{ id: 'user-a', phone: '+15551234567' }],
+      tenantUsers: ['user-a'],
+    });
 
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -477,9 +656,7 @@ describe('notifySustainedConnectorFailure', () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(1);
     const metadata = JSON.parse((insertCalls[0][1] as unknown[])[5] as string);
     expect(metadata.twilioConfigured).toBe(false);
@@ -488,34 +665,18 @@ describe('notifySustainedConnectorFailure', () => {
 
   it('SMSes a sustained-failure recipient who only holds the tenant_owner role via user_roles', async () => {
     // Regression test (mirrors the notifyConnectorSyncError user_roles test):
-    // sustained-failure SMS now goes through the shared recipient helper
+    // sustained-failure SMS goes through the shared recipient helper
     // (getTenantAlertPhoneRecipients), which UNIONs the legacy `users.role`
     // column with the canonical `user_roles` join. If a future refactor
     // re-narrows this lookup back to `role IN ('admin','owner')`, tenant
     // owners / operations managers whose role only lives in user_roles
     // would silently stop being paged on outages. This test pins both the
     // SQL shape and the actual Twilio dispatch.
-    queryMock
-      // tenant lookup (name + sms_alerts_disabled)
-      .mockResolvedValueOnce({
-        rows: [{ name: 'Acme', sms_alerts_disabled: false }],
-      })
-      // SMS throttle — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // shared recipient helper query — return a tenant_owner whose legacy
-      // users.role is something else but who matches via user_roles.
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-owner', phone_number: '+15551234567' }],
-      })
-      // filterUserIdsByPreference for SMS phones — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-owner' }] })
-      // fanoutInAppNotification: in_app pref filter
-      .mockResolvedValueOnce({ rows: [] })
-      // INSERT for user-owner
-      .mockResolvedValueOnce({ rows: [] });
-
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [{ id: 'user-owner', phone: '+15551234567' }],
+      tenantUsers: ['user-owner'],
+    });
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
@@ -560,6 +721,10 @@ describe('notifySustainedConnectorFailure', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// notifyConnectorRecovery
+// ---------------------------------------------------------------------------
+
 describe('notifyConnectorRecovery', () => {
   const baseParams = {
     tenantId: 'tenant-1',
@@ -569,12 +734,8 @@ describe('notifyConnectorRecovery', () => {
     outageDurationMs: 90 * 60 * 1000,
   };
 
-  // Recovery now also runs the mute check first; mock it as not muted.
-  beforeEach(() => {
-    queryMock.mockResolvedValueOnce({ rows: [] });
-  });
-
   it('skips non-revenue-critical providers', async () => {
+    mockScenario();
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -585,43 +746,32 @@ describe('notifyConnectorRecovery', () => {
 
   it('respects the 24h throttle from integrations.recovery_alert_sent_at', async () => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    queryMock.mockResolvedValueOnce({
-      rows: [{ recovery_alert_sent_at: oneHourAgo }],
-    });
+    mockScenario({ recoveryAlertSentAt: oneHourAgo });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
     await notifyConnectorRecovery(baseParams);
 
-    // Mute lookup + throttle check; nothing else.
-    expect(queryMock).toHaveBeenCalledTimes(2);
-    const throttleArgs = queryMock.mock.calls[1];
-    expect(String(throttleArgs[0])).toContain('recovery_alert_sent_at');
-    expect(String(throttleArgs[0])).toContain('FROM integrations');
+    const throttleCalls = callsMatching('SELECT recovery_alert_sent_at FROM integrations');
+    expect(throttleCalls).toHaveLength(1);
     // Must scope by both id and tenant_id so two HubSpot connectors for
     // the same tenant don't suppress each other.
-    expect(throttleArgs[1]).toEqual(['int-1', 'tenant-1']);
+    expect(throttleCalls[0][1]).toEqual(['int-1', 'tenant-1']);
     expect(sendEmailMock).not.toHaveBeenCalled();
+    // Bailed before any further work.
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
+    expect(callsMatching('UPDATE integrations')).toHaveLength(0);
   });
 
   it('proceeds when the recovery throttle marker is older than the window', async () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-    queryMock
-      .mockResolvedValueOnce({
-        rows: [{ recovery_alert_sent_at: twoDaysAgo }],
-      })
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
-      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      // admins — `id` required so the shared helper's `r.id && r.email`
-      // filter keeps the row.
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
-      })
-      .mockResolvedValueOnce({ rows: [] }); // email pref filter
+    mockScenario({
+      recoveryAlertSentAt: twoDaysAgo,
+      tenantUsers: ['user-a'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-admin', email: 'admin@acme.test' }],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -632,41 +782,22 @@ describe('notifyConnectorRecovery', () => {
   });
 
   it('records an in-app notification and emails admins on recovery', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle marker absent
-      // fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a' }, { id: 'user-b' }],
-      })
-      // fanoutInAppNotification: filterUserIdsByPreference (in_app)
-      .mockResolvedValueOnce({ rows: [] })
-      // Per-user INSERTs into tenant_notifications
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      // UPDATE integrations SET recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
-      // tenant name lookup
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // admin email lookup — `id` required by getTenantAlertEmailRecipients'
-      // `r.id && r.email` filter; missing it silently empties the list and
-      // suppresses both email recipients.
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'user-admin', email: 'admin@acme.test' },
-          { id: 'user-owner', email: 'owner@acme.test' },
-        ],
-      })
-      // filterEmailRecipientsByPreference for integration_recovery email
-      .mockResolvedValueOnce({ rows: [] });
+    mockScenario({
+      recoveryAlertSentAt: null,
+      tenantUsers: ['user-a', 'user-b'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [
+        { id: 'user-admin', email: 'admin@acme.test' },
+        { id: 'user-owner', email: 'owner@acme.test' },
+      ],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
     await notifyConnectorRecovery(baseParams);
 
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(2);
     for (const call of insertCalls) {
       const args = call[1] as unknown[];
@@ -683,12 +814,12 @@ describe('notifyConnectorRecovery', () => {
     }
 
     // The throttle marker must have been stamped.
-    const stampCall = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('UPDATE integrations') &&
-      String(c[0]).includes('recovery_alert_sent_at'),
-    );
-    expect(stampCall).toBeDefined();
-    expect(stampCall![1]).toEqual(['int-1', 'tenant-1']);
+    const stampCalls = queryMock.mock.calls.filter((c) => {
+      const sql = String(c[0]);
+      return sql.includes('UPDATE integrations') && sql.includes('recovery_alert_sent_at');
+    });
+    expect(stampCalls.length).toBe(1);
+    expect(stampCalls[0][1]).toEqual(['int-1', 'tenant-1']);
 
     expect(sendEmailMock).toHaveBeenCalledTimes(2);
     const recipients = sendEmailMock.mock.calls.map(
@@ -700,17 +831,12 @@ describe('notifyConnectorRecovery', () => {
   });
 
   it('still notifies after a long outage (>7 days)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // throttle: no integration row found
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
-      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
-      }) // admins (id required)
-      .mockResolvedValueOnce({ rows: [] }); // email pref filter
+    mockScenario({
+      recoveryAlertSentAt: 'absent',
+      tenantUsers: ['user-a'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-admin', email: 'admin@acme.test' }],
+    });
 
     const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
     const { notifyConnectorRecovery } = await import(
@@ -718,53 +844,39 @@ describe('notifyConnectorRecovery', () => {
     );
     await notifyConnectorRecovery({ ...baseParams, outageDurationMs: tenDaysMs });
 
-    const insertCall = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCall = callsMatching('INSERT INTO tenant_notifications')[0];
     expect(insertCall).toBeDefined();
-    const metadata = JSON.parse((insertCall![1] as unknown[])[5] as string);
+    const metadata = JSON.parse((insertCall[1] as unknown[])[5] as string);
     expect(metadata.outageDurationMs).toBe(tenDaysMs);
     expect(metadata.outageDescription).toMatch(/day/);
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 
   it('still records the in-app notification when no admin emails are on file', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
-      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({ rows: [] }); // no admin emails
+    mockScenario({
+      recoveryAlertSentAt: null,
+      tenantUsers: ['user-a'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
     await notifyConnectorRecovery({ ...baseParams, outageDurationMs: null });
 
-    const insertCall = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
-    expect(insertCall).toBeDefined();
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(1);
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
   it('suppresses recovery email when all admins opted out of integration_recovery email but still inserts in-app entry', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // throttle absent
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
-      }) // admin emails (id required)
-      // filterEmailRecipientsByPreference: admin@acme.test opted OUT of recovery email
-      .mockResolvedValueOnce({
-        rows: [{ email: 'admin@acme.test', enabled: false }],
-      });
+    mockScenario({
+      recoveryAlertSentAt: 'absent',
+      tenantUsers: ['user-a'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      emailOptOuts: ['admin@acme.test'],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -772,9 +884,7 @@ describe('notifyConnectorRecovery', () => {
     await notifyConnectorRecovery(baseParams);
 
     // The in-app notification should still have been recorded.
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(1);
     expect((insertCalls[0][1] as unknown[])[2]).toBe('integration_recovery');
 
@@ -796,18 +906,13 @@ describe('notifyConnectorRecovery', () => {
     // of the in_app channel for integration_recovery, so fanout produces
     // zero rows. The throttle marker MUST still be stamped so a second
     // call within the window does not re-send the email.
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // throttle absent (1st call)
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      // in_app pref filter — user-a explicitly OFF
-      .mockResolvedValueOnce({ rows: [{ user_id: 'user-a', enabled: false }] })
-      // No per-user INSERT happens because eligible list is empty.
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] }) // tenant lookup
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
-      }) // admins (id required)
-      .mockResolvedValueOnce({ rows: [] }); // email pref filter — nobody opted out
+    mockScenario({
+      recoveryAlertSentAt: 'absent',
+      tenantUsers: ['user-a'],
+      inAppOptOuts: ['user-a'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-admin', email: 'admin@acme.test' }],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -815,16 +920,13 @@ describe('notifyConnectorRecovery', () => {
     await notifyConnectorRecovery(baseParams);
 
     // No in-app rows inserted (everyone opted out).
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
-    expect(insertCalls.length).toBe(0);
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
 
     // Throttle marker stamped despite zero in-app inserts.
-    const stampCall = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('UPDATE integrations') &&
-      String(c[0]).includes('recovery_alert_sent_at'),
-    );
+    const stampCall = queryMock.mock.calls.find((c) => {
+      const sql = String(c[0]);
+      return sql.includes('UPDATE integrations') && sql.includes('recovery_alert_sent_at');
+    });
     expect(stampCall).toBeDefined();
 
     // Email DID go out (only in_app was muted, not email).
@@ -832,12 +934,11 @@ describe('notifyConnectorRecovery', () => {
   });
 
   it('does not send email if the throttle stamp matches zero rows (e.g. integration deleted mid-flight)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
-      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // UPDATE matched 0 rows
+    mockScenario({
+      recoveryAlertSentAt: null,
+      tenantUsers: ['user-a'],
+      stampRecoveryRowCount: 0,
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -848,12 +949,11 @@ describe('notifyConnectorRecovery', () => {
   });
 
   it('does not send email if stamping the throttle marker fails (avoids unbounded retries)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] }) // tenant users
-      .mockResolvedValueOnce({ rows: [] }) // in_app pref filter
-      .mockResolvedValueOnce({ rows: [] }) // INSERT for user-a
-      .mockRejectedValueOnce(new Error('db down')); // UPDATE recovery_alert_sent_at FAILS
+    mockScenario({
+      recoveryAlertSentAt: null,
+      tenantUsers: ['user-a'],
+      stampRecoveryThrows: true,
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -871,27 +971,13 @@ describe('notifyConnectorRecovery', () => {
     // column with the canonical `user_roles` join. If a future refactor
     // re-narrows this lookup back to `role IN ('admin','owner')`, tenant
     // owners / operations managers whose role only lives in user_roles
-    // would silently stop receiving the "back online" email. This test
-    // pins both the SQL shape and the actual email send.
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ recovery_alert_sent_at: null }] }) // throttle absent
-      // fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-owner' }] })
-      // fanoutInAppNotification: in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // INSERT for user-owner
-      .mockResolvedValueOnce({ rows: [] })
-      // UPDATE integrations SET recovery_alert_sent_at
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
-      // tenant name lookup
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // shared recipient helper query — return a tenant_owner whose
-      // legacy users.role is something else but who matches via user_roles.
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-owner', email: 'owner-via-roles@acme.test' }],
-      })
-      // filterEmailRecipientsByPreference — nobody opted out
-      .mockResolvedValueOnce({ rows: [] });
+    // would silently stop receiving the "back online" email.
+    mockScenario({
+      recoveryAlertSentAt: null,
+      tenantUsers: ['user-owner'],
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-owner', email: 'owner-via-roles@acme.test' }],
+    });
 
     const { notifyConnectorRecovery } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -934,22 +1020,11 @@ describe('notifyConnectorRecovery', () => {
   });
 });
 
-describe('notifyConnectorSyncError', () => {
-  // Query order in notifyConnectorSyncError:
-  //  1. SELECT id FROM tenant_notifications ... (throttle check)
-  //  2. fanoutInAppNotification:
-  //       a. SELECT id FROM users WHERE tenant_id = $1 ... (tenant users)
-  //       b. SELECT user_id, enabled FROM user_notification_preferences ... (in_app pref filter)
-  //       c. INSERT INTO tenant_notifications ... (per opted-in user)
-  //  3. SELECT name FROM tenants WHERE id = $1
-  //  4. SELECT DISTINCT u.id, u.email FROM users u LEFT JOIN user_roles ur ...
-  //     (shared helper — accepts the canonical tenant_owner /
-  //     operations_manager roles via user_roles in addition to the legacy
-  //     users.role values, so SyncErrorAlerter agrees with the auth-alert
-  //     scheduler on who counts as a notification recipient)
-  //  5. filterEmailRecipientsByPreference (SELECT ... LEFT JOIN user_notification_preferences)
-  //  6. UPDATE integrations SET auth_alert_sent_at = NOW() ... (stamp marker)
+// ---------------------------------------------------------------------------
+// notifyConnectorSyncError
+// ---------------------------------------------------------------------------
 
+describe('notifyConnectorSyncError', () => {
   const baseParams = {
     tenantId: 'tenant-1',
     integrationId: 'int-1',
@@ -959,6 +1034,7 @@ describe('notifyConnectorSyncError', () => {
   };
 
   it('skips non-revenue-critical providers (no throttle check, no fan-out, no email)', async () => {
+    mockScenario();
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -968,42 +1044,16 @@ describe('notifyConnectorSyncError', () => {
   });
 
   it('honors per-user opt-outs: drops in-app for users with integration in_app off and drops email for opted-out admins', async () => {
-    queryMock
-      // 0. isConnectorMuted — not muted
-      .mockResolvedValueOnce({ rows: [] })
-      // 1. throttle check — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // 2. tenant name (fetched up-front so metadata can carry recipient counts)
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. admin email lookup — `id` required by the shared helper's
-      //    `r.id && r.email` filter; without it the recipient list is
-      //    silently emptied and the function bails before sending.
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'user-owner', email: 'owner@acme.test' },
-          { id: 'user-admin', email: 'admin@acme.test' },
-        ],
-      })
-      // 4. filterEmailRecipientsByPreference — admin@acme.test opted OUT of
-      //    integration email channel.
-      .mockResolvedValueOnce({
-        rows: [{ email: 'admin@acme.test', enabled: false }],
-      })
-      // 5a. fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a' }, { id: 'user-b' }],
-      })
-      // 5b. fanoutInAppNotification: in_app pref filter — user-a opted OUT
-      //     of integration in_app channel.
-      .mockResolvedValueOnce({
-        rows: [{ user_id: 'user-a', enabled: false }],
-      })
-      // 5c. INSERT for user-b only (user-a was filtered out)
-      .mockResolvedValueOnce({ rows: [] })
-      // 6. getConnectorAlertSettings — digest mode disabled
-      .mockResolvedValueOnce({ rows: [] })
-      // 7. UPDATE integrations SET auth_alert_sent_at
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockScenario({
+      tenant: { name: 'Acme' },
+      emailRecipients: [
+        { id: 'user-owner', email: 'owner@acme.test' },
+        { id: 'user-admin', email: 'admin@acme.test' },
+      ],
+      emailOptOuts: ['admin@acme.test'],
+      tenantUsers: ['user-a', 'user-b'],
+      inAppOptOuts: ['user-a'],
+    });
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1011,9 +1061,7 @@ describe('notifyConnectorSyncError', () => {
     await notifyConnectorSyncError(baseParams);
 
     // In-app: only one row inserted, and it must target user-b (user-a opted out).
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(1);
     const insertArgs = insertCalls[0][1] as unknown[];
     expect(insertArgs[1]).toBe('user-b');
@@ -1023,8 +1071,7 @@ describe('notifyConnectorSyncError', () => {
     expect(metadata.provider).toBe('salesforce');
     // Regression: per-event in-app reconnect link must be the provider-keyed
     // form (`/connectors?provider=<provider>`) so it still resolves to the
-    // right connector card after the integration row is deleted. Mirrors
-    // the dashboard "needs reconnect" badge link form.
+    // right connector card after the integration row is deleted.
     expect(metadata.link).toBe('/connectors?provider=salesforce');
 
     // Email: only owner@acme.test should receive it (admin@acme.test opted out).
@@ -1041,32 +1088,12 @@ describe('notifyConnectorSyncError', () => {
   });
 
   it('suppresses email entirely (and logs) when every admin has opted out of integration email', async () => {
-    queryMock
-      // 0. isConnectorMuted — not muted
-      .mockResolvedValueOnce({ rows: [] })
-      // 1. throttle check — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // 2. tenant name
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. admin emails (id required by shared helper's `r.id && r.email`
-      //    filter — without it the recipient list is silently emptied).
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
-      })
-      // 4. filterEmailRecipientsByPreference: admin opted OUT
-      .mockResolvedValueOnce({
-        rows: [{ email: 'admin@acme.test', enabled: false }],
-      })
-      // 5a. tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // 5b. in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // 5c. INSERT for user-a
-      .mockResolvedValueOnce({ rows: [] })
-      // 6. getConnectorAlertSettings — digest mode disabled
-      .mockResolvedValueOnce({ rows: [] });
-    // No UPDATE expected — recipients list is empty after the email pref
-    // filter, so the function bails before stamping auth_alert_sent_at.
+    mockScenario({
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      emailOptOuts: ['admin@acme.test'],
+      tenantUsers: ['user-a'],
+    });
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1074,10 +1101,7 @@ describe('notifyConnectorSyncError', () => {
     await notifyConnectorSyncError(baseParams);
 
     // In-app row still recorded for user-a.
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
-    expect(insertCalls.length).toBe(1);
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(1);
 
     // No email sent.
     expect(sendEmailMock).not.toHaveBeenCalled();
@@ -1091,30 +1115,12 @@ describe('notifyConnectorSyncError', () => {
   });
 
   it('suppresses in-app entirely when every active user has opted out of integration in_app, but still emails admins who allow integration email', async () => {
-    queryMock
-      // 0. isConnectorMuted — not muted
-      .mockResolvedValueOnce({ rows: [] })
-      // 1. throttle check — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // 2. tenant name
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. admin emails (id required by shared helper's filter)
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-admin', email: 'admin@acme.test' }],
-      })
-      // 4. email pref filter — nobody opted out of email
-      .mockResolvedValueOnce({ rows: [] })
-      // 5a. tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // 5b. in_app pref filter — user-a OFF
-      .mockResolvedValueOnce({
-        rows: [{ user_id: 'user-a', enabled: false }],
-      })
-      // 5c. (no INSERT — eligible list empty)
-      // 6. getConnectorAlertSettings — digest mode disabled
-      .mockResolvedValueOnce({ rows: [] })
-      // 7. UPDATE integrations SET auth_alert_sent_at
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockScenario({
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-admin', email: 'admin@acme.test' }],
+      tenantUsers: ['user-a'],
+      inAppOptOuts: ['user-a'],
+    });
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1122,10 +1128,7 @@ describe('notifyConnectorSyncError', () => {
     await notifyConnectorSyncError(baseParams);
 
     // No in-app rows inserted — every active user opted out of in_app.
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
-    expect(insertCalls.length).toBe(0);
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
 
     // Email still went out — opt-outs are per (category, channel).
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
@@ -1147,41 +1150,17 @@ describe('notifyConnectorSyncError', () => {
     // fan-out (or drops one of these fields), the alerts UI silently shows
     // 0 recipients / "—" outage forever after; this test is the canary.
     const firstFailedAtIso = new Date(Date.now() - 45 * 60 * 1000).toISOString();
-    queryMock
-      // 0. isConnectorMuted — not muted
-      .mockResolvedValueOnce({ rows: [] })
-      // 1. throttle check — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // 2. tenant name
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. shared recipient helper — two admin emails on file
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'user-a', email: 'a@acme.test' },
-          { id: 'user-b', email: 'b@acme.test' },
-          { id: 'user-c', email: 'c@acme.test' },
-        ],
-      })
-      // 4. filterEmailRecipientsByPreference — c@acme.test opted OUT, leaving 2
-      .mockResolvedValueOnce({
-        rows: [{ email: 'c@acme.test', enabled: false }],
-      })
-      // 5a. fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a' }, { id: 'user-b' }, { id: 'user-c' }],
-      })
-      // 5b. in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // 5c. INSERT for user-a
-      .mockResolvedValueOnce({ rows: [] })
-      // 5c. INSERT for user-b
-      .mockResolvedValueOnce({ rows: [] })
-      // 5c. INSERT for user-c
-      .mockResolvedValueOnce({ rows: [] })
-      // 6. getConnectorAlertSettings — digest disabled
-      .mockResolvedValueOnce({ rows: [] })
-      // 7. UPDATE integrations SET auth_alert_sent_at
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockScenario({
+      tenant: { name: 'Acme' },
+      emailRecipients: [
+        { id: 'user-a', email: 'a@acme.test' },
+        { id: 'user-b', email: 'b@acme.test' },
+        { id: 'user-c', email: 'c@acme.test' },
+      ],
+      // c@acme.test opted OUT, leaving 2 email recipients.
+      emailOptOuts: ['c@acme.test'],
+      tenantUsers: ['user-a', 'user-b', 'user-c'],
+    });
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1191,9 +1170,7 @@ describe('notifyConnectorSyncError', () => {
       firstFailedAt: firstFailedAtIso,
     });
 
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     // One fanned-out row per active tenant user (the in_app filter didn't
     // drop anyone in this test).
     expect(insertCalls.length).toBe(3);
@@ -1229,31 +1206,12 @@ describe('notifyConnectorSyncError', () => {
     // their metadata must record the zero/null values explicitly so the
     // alerts UI distinguishes "no email recipients" from "old alert
     // missing the field".
-    queryMock
-      // 0. isConnectorMuted — not muted
-      .mockResolvedValueOnce({ rows: [] })
-      // 1. throttle check — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // 2. tenant name
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. shared recipient helper — one admin
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-a', email: 'a@acme.test' }],
-      })
-      // 4. filterEmailRecipientsByPreference — admin opted OUT
-      .mockResolvedValueOnce({
-        rows: [{ email: 'a@acme.test', enabled: false }],
-      })
-      // 5a. fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-a' }] })
-      // 5b. in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // 5c. INSERT for user-a
-      .mockResolvedValueOnce({ rows: [] })
-      // 6. getConnectorAlertSettings — digest disabled
-      .mockResolvedValueOnce({ rows: [] });
-    // No UPDATE — the function bails before stamping auth_alert_sent_at
-    // because every email recipient opted out.
+    mockScenario({
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-a', email: 'a@acme.test' }],
+      emailOptOuts: ['a@acme.test'],
+      tenantUsers: ['user-a'],
+    });
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1263,9 +1221,7 @@ describe('notifyConnectorSyncError', () => {
       firstFailedAt: null,
     });
 
-    const insertCalls = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO tenant_notifications'),
-    );
+    const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(1);
     const metadata = JSON.parse((insertCalls[0][1] as unknown[])[5] as string);
     expect(metadata.recipientCount).toBe(0);
@@ -1287,31 +1243,11 @@ describe('notifyConnectorSyncError', () => {
     // the recipient query is now the shared helper's JOIN — accepting role
     // values from user_roles — and that an email actually goes out to a
     // user who only holds the role there.
-    queryMock
-      // 0. isConnectorMuted — not muted
-      .mockResolvedValueOnce({ rows: [] })
-      // 1. throttle check — empty
-      .mockResolvedValueOnce({ rows: [] })
-      // 2. tenant name lookup
-      .mockResolvedValueOnce({ rows: [{ name: 'Acme' }] })
-      // 3. shared recipient helper query — return a tenant_owner whose
-      //    legacy users.role is something else (e.g. NULL/regular agent)
-      //    but who matches via the user_roles JOIN.
-      .mockResolvedValueOnce({
-        rows: [{ id: 'user-owner', email: 'owner-via-roles@acme.test' }],
-      })
-      // 4. filterEmailRecipientsByPreference — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // 5a. fanoutInAppNotification: tenant users
-      .mockResolvedValueOnce({ rows: [{ id: 'user-owner' }] })
-      // 5b. fanoutInAppNotification: in_app pref filter — nobody opted out
-      .mockResolvedValueOnce({ rows: [] })
-      // 5c. INSERT for user-owner
-      .mockResolvedValueOnce({ rows: [] })
-      // 6. getConnectorAlertSettings — digest mode disabled
-      .mockResolvedValueOnce({ rows: [] })
-      // 7. UPDATE integrations SET auth_alert_sent_at
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockScenario({
+      tenant: { name: 'Acme' },
+      emailRecipients: [{ id: 'user-owner', email: 'owner-via-roles@acme.test' }],
+      tenantUsers: ['user-owner'],
+    });
 
     const { notifyConnectorSyncError } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1351,40 +1287,30 @@ describe('notifyConnectorSyncError', () => {
   });
 });
 
-describe('resendConnectorAlertToFailedRecipients', () => {
-  // Common shape: candidate row dispatcher + audit-insert capture.
-  function installResendDispatcher(rows: Array<Record<string, unknown>>): void {
-    queryMock.mockImplementation(async (sql: string) => {
-      const text = String(sql);
-      // Latest-failed candidate query.
-      if (text.includes('FROM connector_alert_recipients')) {
-        return { rows };
-      }
-      // Per-recipient INSERT in recordRecipientAudit.
-      if (text.includes('INSERT INTO connector_alert_recipients')) {
-        return { rows: [] };
-      }
-      return { rows: [] };
-    });
-  }
+// ---------------------------------------------------------------------------
+// resendConnectorAlertToFailedRecipients
+// ---------------------------------------------------------------------------
 
+describe('resendConnectorAlertToFailedRecipients', () => {
   it('resends an email to each failed recipient and writes new audit rows under the same dispatchId', async () => {
-    installResendDispatcher([
-      {
-        user_id: 'user-a',
-        recipient_name: 'Ada Lovelace',
-        recipient_email: 'ada@acme.test',
-        recipient_phone: null,
-        delivery_status: 'failed',
-      },
-      {
-        user_id: 'user-b',
-        recipient_name: 'Grace Hopper',
-        recipient_email: 'grace@acme.test',
-        recipient_phone: null,
-        delivery_status: 'skipped',
-      },
-    ]);
+    mockScenario({
+      resendCandidates: [
+        {
+          user_id: 'user-a',
+          recipient_name: 'Ada Lovelace',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: null,
+          delivery_status: 'failed',
+        },
+        {
+          user_id: 'user-b',
+          recipient_name: 'Grace Hopper',
+          recipient_email: 'grace@acme.test',
+          recipient_phone: null,
+          delivery_status: 'skipped',
+        },
+      ],
+    });
 
     const { resendConnectorAlertToFailedRecipients } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1422,9 +1348,7 @@ describe('resendConnectorAlertToFailedRecipients', () => {
     // Each candidate also produced a new INSERT into
     // connector_alert_recipients carrying the SAME dispatch_id and channel
     // 'email' so the timeline view shows the retry attempts.
-    const inserts = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
-    );
+    const inserts = callsMatching('INSERT INTO connector_alert_recipients');
     expect(inserts).toHaveLength(2);
     for (const call of inserts) {
       const params = call[1] as unknown[];
@@ -1438,15 +1362,17 @@ describe('resendConnectorAlertToFailedRecipients', () => {
   });
 
   it('records failed delivery (with the error) and counts it under failed in the outcome', async () => {
-    installResendDispatcher([
-      {
-        user_id: 'user-a',
-        recipient_name: 'Ada',
-        recipient_email: 'ada@acme.test',
-        recipient_phone: null,
-        delivery_status: 'failed',
-      },
-    ]);
+    mockScenario({
+      resendCandidates: [
+        {
+          user_id: 'user-a',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: null,
+          delivery_status: 'failed',
+        },
+      ],
+    });
     sendEmailMock.mockResolvedValueOnce({ success: false, error: 'SMTP 550' });
 
     const { resendConnectorAlertToFailedRecipients } = await import(
@@ -1466,17 +1392,15 @@ describe('resendConnectorAlertToFailedRecipients', () => {
     expect(outcome.attempted).toBe(1);
     expect(outcome.succeeded).toBe(0);
     expect(outcome.failed).toBe(1);
-    const insert = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
-    );
+    const insert = callsMatching('INSERT INTO connector_alert_recipients')[0];
     expect(insert).toBeDefined();
-    const params = insert![1] as unknown[];
+    const params = insert[1] as unknown[];
     expect(params[9]).toBe('failed'); // delivery_status
     expect(params[10]).toBe('SMTP 550'); // delivery_error
   });
 
   it('returns candidates=0 and never sends when no failed/skipped recipients remain', async () => {
-    installResendDispatcher([]);
+    mockScenario({ resendCandidates: [] });
 
     const { resendConnectorAlertToFailedRecipients } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1496,25 +1420,24 @@ describe('resendConnectorAlertToFailedRecipients', () => {
     expect(outcome.attempted).toBe(0);
     expect(sendEmailMock).not.toHaveBeenCalled();
     // Should NOT issue any audit-insert when there's nothing to retry.
-    const inserts = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
-    );
-    expect(inserts).toHaveLength(0);
+    expect(callsMatching('INSERT INTO connector_alert_recipients')).toHaveLength(0);
   });
 
   it('skips SMS recipients (and records skipped audit rows) when Twilio is not configured', async () => {
     delete process.env.TWILIO_ACCOUNT_SID;
     delete process.env.TWILIO_AUTH_TOKEN;
     delete process.env.TWILIO_SMS_FROM;
-    installResendDispatcher([
-      {
-        user_id: 'user-a',
-        recipient_name: 'Ada',
-        recipient_email: 'ada@acme.test',
-        recipient_phone: '+15551234567',
-        delivery_status: 'failed',
-      },
-    ]);
+    mockScenario({
+      resendCandidates: [
+        {
+          user_id: 'user-a',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: '+15551234567',
+          delivery_status: 'failed',
+        },
+      ],
+    });
 
     const { resendConnectorAlertToFailedRecipients } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1538,10 +1461,8 @@ describe('resendConnectorAlertToFailedRecipients', () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     // The audit row records why we couldn't send.
-    const insert = queryMock.mock.calls.find((c) =>
-      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
-    );
-    const params = insert![1] as unknown[];
+    const insert = callsMatching('INSERT INTO connector_alert_recipients')[0];
+    const params = insert[1] as unknown[];
     expect(params[3]).toBe('integration_sms');
     expect(params[4]).toBe('sms');
     expect(params[9]).toBe('skipped'); // delivery_status
@@ -1549,22 +1470,24 @@ describe('resendConnectorAlertToFailedRecipients', () => {
   });
 
   it('sends an SMS via Twilio for each failed phone recipient and records sent/failed outcomes', async () => {
-    installResendDispatcher([
-      {
-        user_id: 'user-a',
-        recipient_name: 'Ada',
-        recipient_email: 'ada@acme.test',
-        recipient_phone: '+15551111111',
-        delivery_status: 'failed',
-      },
-      {
-        user_id: 'user-b',
-        recipient_name: 'Grace',
-        recipient_email: 'grace@acme.test',
-        recipient_phone: '+15552222222',
-        delivery_status: 'skipped',
-      },
-    ]);
+    mockScenario({
+      resendCandidates: [
+        {
+          user_id: 'user-a',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: '+15551111111',
+          delivery_status: 'failed',
+        },
+        {
+          user_id: 'user-b',
+          recipient_name: 'Grace',
+          recipient_email: 'grace@acme.test',
+          recipient_phone: '+15552222222',
+          delivery_status: 'skipped',
+        },
+      ],
+    });
     fetchMock
       .mockResolvedValueOnce({ ok: true, status: 201 })
       .mockResolvedValueOnce({ ok: false, status: 400 });
@@ -1593,9 +1516,7 @@ describe('resendConnectorAlertToFailedRecipients', () => {
 
     // Both SMS attempts produced a new audit row under the original
     // dispatch_id with channel='sms'.
-    const inserts = queryMock.mock.calls.filter((c) =>
-      String(c[0]).includes('INSERT INTO connector_alert_recipients'),
-    );
+    const inserts = callsMatching('INSERT INTO connector_alert_recipients');
     expect(inserts).toHaveLength(2);
     const statuses = inserts.map((c) => (c[1] as unknown[])[9]);
     expect(statuses).toEqual(expect.arrayContaining(['sent', 'failed']));
