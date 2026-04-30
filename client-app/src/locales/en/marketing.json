@@ -503,6 +503,10 @@
       "description_more": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo more than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
       "overage_line_less": "Your {{tierName}} overage is billed at {{currentRate}} — {{deltaRate}} less than the current {{catalogRate}} published rate.",
       "overage_line_more": "Your {{tierName}} overage is billed at {{currentRate}} — {{deltaRate}} more than the current {{catalogRate}} published rate.",
+      "title_annual_less": "You're on a custom annual rate below today's published rate",
+      "title_annual_more": "You're on a custom annual rate above today's published rate",
+      "description_annual_less": "Your account pays {{annualCurrentPrice}}/yr for {{tierName}} — that's {{annualDeltaPrice}}/yr less than the current {{annualCatalogPrice}}/yr published annual rate. Switching to a current plan would change your bill.",
+      "description_annual_more": "Your account pays {{annualCurrentPrice}}/yr for {{tierName}} — that's {{annualDeltaPrice}}/yr more than the current {{annualCatalogPrice}}/yr published annual rate. Switching to a current plan would change your bill.",
       "manage_link": "Manage subscription"
     },
     "compare": {

@@ -32,6 +32,7 @@ import {
   screen,
   cleanup,
   waitFor,
+  fireEvent,
 } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
@@ -351,6 +352,103 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     });
 
     expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
+  });
+
+  it('re-frames the callout to /yr terms when the calculator is toggled to Annual mode', async () => {
+    mockUser = { tenantId: 'tenant-grandfathered-annual-toggle' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Annual at $3,000/yr ($250/mo); catalog annual = $3,830/yr.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 25000,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const monthlyCallout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(monthlyCallout.getAttribute('data-frame')).toBe('monthly');
+    expect(monthlyCallout.getAttribute('data-direction')).toBe('less');
+    const monthlyText =
+      screen.getByTestId('pricing-override-callout-description').textContent ?? '';
+    expect(monthlyText).toContain('$250');
+    expect(monthlyText).toContain('/mo');
+
+    fireEvent.click(screen.getByTestId('pricing-billing-annual'));
+
+    await waitFor(() => {
+      const callout = screen.getByTestId('pricing-override-callout');
+      expect(callout.getAttribute('data-frame')).toBe('annual');
+    });
+    const annualCallout = screen.getByTestId('pricing-override-callout');
+    expect(annualCallout.getAttribute('data-direction')).toBe('less');
+    const annualText =
+      screen.getByTestId('pricing-override-callout-description').textContent ?? '';
+    expect(annualText).toContain('$3,000');
+    expect(annualText).toContain('$3,830');
+    expect(annualText).toContain('$830');
+    expect(annualText).toContain('/yr');
+    expect(annualText).not.toContain('/mo');
+  });
+
+  it('suppresses the callout in Annual mode when the annual side matches catalog', async () => {
+    mockUser = { tenantId: 'tenant-custom-monthly-only' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            basePriceCents: 35000,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 35000,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 31920,
+            annualBasePriceSource: 'catalog',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pricing-override-callout')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('pricing-billing-annual'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
+    });
   });
 
   it('renders the callout against the ANNUAL catalog reference for an annual tenant on a negotiated rate (task #1210)', async () => {
@@ -840,9 +938,13 @@ describe('computeCustomRateDelta', () => {
     expect(delta).toEqual({
       tier: 'pro',
       tierName: 'Pro',
+      frame: 'monthly',
       currentMonthlyDollars: 250,
       catalogMonthlyDollars: 399,
       deltaDollars: 149,
+      annualCurrentDollars: null,
+      annualCatalogDollars: null,
+      annualDeltaDollars: null,
       isLess: true,
     });
   });
@@ -859,9 +961,13 @@ describe('computeCustomRateDelta', () => {
     expect(delta).toEqual({
       tier: 'starter',
       tierName: 'Starter',
+      frame: 'monthly',
       currentMonthlyDollars: 149,
       catalogMonthlyDollars: 99,
       deltaDollars: 50,
+      annualCurrentDollars: null,
+      annualCatalogDollars: null,
+      annualDeltaDollars: null,
       isLess: false,
     });
   });
@@ -1084,5 +1190,118 @@ describe('computeCustomRateDelta', () => {
       overagePriceSource: 'stripe',
     });
     expect(delta).toBeNull();
+  });
+});
+
+describe('computeCustomRateDelta — annual framing', () => {
+  it('produces an annual-framed delta for an annual-billed tenant on a negotiated rate', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta(
+      {
+        plan: 'pro',
+        // $3,000/yr ($250/mo); catalog annual ≈ $319/mo ($3,830/yr).
+        basePriceCents: 25000,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'catalog',
+        monthlyBasePriceCents: 39900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 25000,
+        annualBasePriceSource: 'stripe',
+      },
+      'annual',
+    );
+    expect(delta).not.toBeNull();
+    expect(delta?.frame).toBe('annual');
+    expect(delta?.tier).toBe('pro');
+    expect(delta?.tierName).toBe('Pro');
+    expect(delta?.currentMonthlyDollars).toBe(250);
+    expect(delta?.catalogMonthlyDollars).toBe(319);
+    expect(delta?.deltaDollars).toBe(69);
+    expect(delta?.annualCurrentDollars).toBe(3000);
+    expect(delta?.annualCatalogDollars).toBe(3830);
+    expect(delta?.annualDeltaDollars).toBe(830);
+    expect(delta?.isLess).toBe(true);
+  });
+
+  it('flips to "more" when the tenant pays above the published annual rate', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta(
+      {
+        plan: 'starter',
+        // $1,500/yr ($125/mo); catalog annual ≈ $79.20/mo ($950/yr rounded).
+        basePriceCents: 12500,
+        overageRatePerMinute: 0.15,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'catalog',
+        monthlyBasePriceCents: 9900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 12500,
+        annualBasePriceSource: 'stripe',
+      },
+      'annual',
+    );
+    expect(delta).not.toBeNull();
+    expect(delta?.frame).toBe('annual');
+    expect(delta?.isLess).toBe(false);
+    expect(delta?.annualCurrentDollars).toBe(1500);
+    expect(delta?.annualCatalogDollars).toBe(950);
+    expect(delta?.annualDeltaDollars).toBe(550);
+  });
+
+  it('suppresses the callout in annual mode when the annual side matches catalog', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta(
+      {
+        plan: 'pro',
+        basePriceCents: 35000,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'catalog',
+        monthlyBasePriceCents: 35000,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 31920,
+        annualBasePriceSource: 'catalog',
+      },
+      'annual',
+    );
+    expect(delta).toBeNull();
+  });
+
+  it('falls back to monthly framing when annualBasePriceCents is absent', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta(
+      {
+        plan: 'pro',
+        basePriceCents: 25000,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'catalog',
+      },
+      'annual',
+    );
+    expect(delta).not.toBeNull();
+    expect(delta?.frame).toBe('monthly');
+    expect(delta?.currentMonthlyDollars).toBe(250);
+    expect(delta?.catalogMonthlyDollars).toBe(399);
+    expect(delta?.annualCurrentDollars).toBeNull();
+    expect(delta?.annualDeltaDollars).toBeNull();
+  });
+
+  it('defaults to monthly framing when billingPeriod is omitted', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'catalog',
+      monthlyBasePriceCents: 25000,
+      monthlyBasePriceSource: 'stripe',
+      annualBasePriceCents: 31920,
+      annualBasePriceSource: 'catalog',
+    });
+    expect(delta?.frame).toBe('monthly');
+    expect(delta?.deltaDollars).toBe(149);
   });
 });

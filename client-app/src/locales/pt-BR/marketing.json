@@ -503,6 +503,10 @@
       "description_more": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a mais que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
       "overage_line_less": "Seu excedente do {{tierName}} é cobrado a {{currentRate}} — {{deltaRate}} a menos que a tarifa pública atual de {{catalogRate}}.",
       "overage_line_more": "Seu excedente do {{tierName}} é cobrado a {{currentRate}} — {{deltaRate}} a mais que a tarifa pública atual de {{catalogRate}}.",
+      "title_annual_less": "Você tem uma tarifa anual personalizada abaixo da tarifa pública atual",
+      "title_annual_more": "Você tem uma tarifa anual personalizada acima da tarifa pública atual",
+      "description_annual_less": "Sua conta paga {{annualCurrentPrice}}/ano por {{tierName}} — isso é {{annualDeltaPrice}}/ano a menos que a tarifa anual pública atual de {{annualCatalogPrice}}/ano. Mudar para um plano atual alteraria sua fatura.",
+      "description_annual_more": "Sua conta paga {{annualCurrentPrice}}/ano por {{tierName}} — isso é {{annualDeltaPrice}}/ano a mais que a tarifa anual pública atual de {{annualCatalogPrice}}/ano. Mudar para um plano atual alteraria sua fatura.",
       "manage_link": "Gerenciar assinatura"
     },
     "compare": {

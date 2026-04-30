@@ -74,6 +74,17 @@ export function getDiscountedAnnualMonthlyDollars(monthlyDollars: number): numbe
   return Math.round(monthlyDollars * (1 - ANNUAL_DISCOUNT));
 }
 
+/**
+ * Catalog reference price for the annual billing interval, expressed in
+ * cents per month (i.e. annual yearly price ÷ 12). Mirrors the rounding
+ * convention used everywhere else we project the discounted annual rate
+ * so the public pricing card, the calculator, and the custom-rate
+ * callout all reason about the same per-month cents figure.
+ */
+export function getAnnualMonthlyPriceCents(tier: PlanTier): number {
+  return Math.round(PLAN_CATALOG[tier].monthlyPriceCents * (1 - ANNUAL_DISCOUNT));
+}
+
 export const PLAN_MONTHLY_PRICE_CENTS: Record<PlanTier, number> = {
   starter: PLAN_CATALOG.starter.monthlyPriceCents,
   pro: PLAN_CATALOG.pro.monthlyPriceCents,

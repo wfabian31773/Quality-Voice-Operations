@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck, BadgePercent } from 'lucide-react';
 import SEO from '../../components/SEO';
@@ -18,6 +18,7 @@ import {
   PLAN_CATALOG,
   PLAN_TIERS,
   centsToWholeDollars,
+  getAnnualMonthlyPriceCents,
   getDiscountedAnnualMonthlyDollars,
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
@@ -87,6 +88,7 @@ export interface CustomRateOverageDelta {
 export interface CustomRateDelta {
   tier: PlanTier;
   tierName: string;
+  frame: 'monthly' | 'annual';
   currentMonthlyDollars: number;
   catalogMonthlyDollars: number;
   /**
@@ -96,6 +98,10 @@ export interface CustomRateDelta {
    * the base sentence so it doesn't read as "$0/mo less than $399".
    */
   deltaDollars: number;
+  /** Per-year projection. Populated only when `frame === 'annual'`. */
+  annualCurrentDollars: number | null;
+  annualCatalogDollars: number | null;
+  annualDeltaDollars: number | null;
   /** True when the tenant pays *less* than the current published rate. */
   isLess: boolean;
   /**
@@ -149,14 +155,14 @@ function catalogReferenceCents(
   tier: PlanTier,
   interval: 'monthly' | 'annual',
 ): number {
-  const monthly = PLAN_CATALOG[tier].monthlyPriceCents;
   return interval === 'annual'
-    ? Math.round(monthly * (1 - ANNUAL_DISCOUNT))
-    : monthly;
+    ? getAnnualMonthlyPriceCents(tier)
+    : PLAN_CATALOG[tier].monthlyPriceCents;
 }
 
 export function computeCustomRateDelta(
   payload: EffectiveRateResponse | null | undefined,
+  billingPeriod: BillingPeriod = 'monthly',
 ): CustomRateDelta | null {
   if (!payload) return null;
   if (!(PLAN_TIERS as readonly string[]).includes(payload.plan)) return null;
@@ -173,6 +179,35 @@ export function computeCustomRateDelta(
   if (!isStripeSourced) return null;
 
   const tier = payload.plan;
+
+  // Annual framing: compare the tenant's annual rate against the catalog
+  // annual reference and project the delta over a year. Falls through to
+  // monthly framing when `annualBasePriceCents` is unavailable.
+  if (
+    billingPeriod === 'annual'
+    && payload.annualBasePriceCents != null
+    && Number.isFinite(payload.annualBasePriceCents)
+  ) {
+    const tenantAnnualMonthlyCents = payload.annualBasePriceCents;
+    const catalogAnnualMonthlyCents = catalogReferenceCents(tier, 'annual');
+    const deltaMonthlyCents = catalogAnnualMonthlyCents - tenantAnnualMonthlyCents;
+    if (Math.abs(deltaMonthlyCents) < RENDER_THRESHOLD_CENTS) return null;
+
+    const absMonthlyCents = Math.abs(deltaMonthlyCents);
+    return {
+      tier,
+      tierName: PLAN_CATALOG[tier].name,
+      frame: 'annual',
+      currentMonthlyDollars: centsToWholeDollars(tenantAnnualMonthlyCents),
+      catalogMonthlyDollars: centsToWholeDollars(catalogAnnualMonthlyCents),
+      deltaDollars: centsToWholeDollars(absMonthlyCents),
+      annualCurrentDollars: centsToWholeDollars(tenantAnnualMonthlyCents * 12),
+      annualCatalogDollars: centsToWholeDollars(catalogAnnualMonthlyCents * 12),
+      annualDeltaDollars: centsToWholeDollars(absMonthlyCents * 12),
+      isLess: deltaMonthlyCents > 0,
+    };
+  }
+
   const interval = inferTenantInterval(payload);
   // Ambiguous interval — we'd risk picking the wrong catalog reference
   // and showing a misleading delta. Skip the banner rather than guess.
@@ -217,12 +252,16 @@ export function computeCustomRateDelta(
   return {
     tier,
     tierName: PLAN_CATALOG[tier].name,
+    frame: 'monthly',
     currentMonthlyDollars: centsToWholeDollars(tenantCents),
     catalogMonthlyDollars: centsToWholeDollars(catalogCents),
     // When base matches catalog within rounding noise, zero out the
     // headline delta so the renderer skips the base sentence rather
     // than printing "$0/mo less than $399".
     deltaDollars: baseMeaningful ? centsToWholeDollars(Math.abs(baseDeltaCents)) : 0,
+    annualCurrentDollars: null,
+    annualCatalogDollars: null,
+    annualDeltaDollars: null,
     isLess: baseMeaningful ? baseDeltaCents > 0 : false,
     ...(overage ? { overage } : {}),
   };
@@ -357,6 +396,69 @@ interface CustomRateCalloutProps {
 }
 
 function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
+  const isAnnualFrame = delta.frame === 'annual';
+
+  // Annual framing renders a single annual-framed sentence and skips
+  // the base+overage compositional path — overage rendering only
+  // exists in monthly framing.
+  if (isAnnualFrame) {
+    const interp = {
+      tierName: delta.tierName,
+      annualCurrentPrice: formatWholeDollars(delta.annualCurrentDollars ?? 0),
+      annualCatalogPrice: formatWholeDollars(delta.annualCatalogDollars ?? 0),
+      annualDeltaPrice: formatWholeDollars(delta.annualDeltaDollars ?? 0),
+    };
+    const titleKey = delta.isLess
+      ? 'pricing.override_callout.title_annual_less'
+      : 'pricing.override_callout.title_annual_more';
+    const descriptionKey = delta.isLess
+      ? 'pricing.override_callout.description_annual_less'
+      : 'pricing.override_callout.description_annual_more';
+    const tone = delta.isLess
+      ? {
+          wrapper: 'border-success/30 bg-success/[0.06]',
+          accent: 'text-success',
+          iconBg: 'bg-success/15',
+        }
+      : {
+          wrapper: 'border-warning/30 bg-warning/[0.06]',
+          accent: 'text-warning',
+          iconBg: 'bg-warning/15',
+        };
+    return (
+      <div
+        data-testid="pricing-override-callout"
+        data-direction={delta.isLess ? 'less' : 'more'}
+        data-frame="annual"
+        role="status"
+        className={`mb-6 flex flex-col sm:flex-row sm:items-start gap-3 rounded-xl border p-4 sm:p-5 ${tone.wrapper}`}
+      >
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.iconBg} ${tone.accent}`}>
+          <BadgePercent className="h-4.5 w-4.5" aria-hidden="true" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`font-display text-sm font-semibold ${tone.accent}`}>
+            {t(titleKey)}
+          </p>
+          <p
+            data-testid="pricing-override-callout-description"
+            className="text-sm font-body text-text-primary/80 mt-1"
+          >
+            {t(descriptionKey, interp)}
+          </p>
+        </div>
+        <Link
+          to="/billing"
+          data-testid="pricing-override-callout-link"
+          className={`inline-flex items-center gap-1 self-start sm:self-center font-display text-sm font-semibold whitespace-nowrap hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-2 rounded ${tone.accent}`}
+        >
+          {t('pricing.override_callout.manage_link')}
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+      </div>
+    );
+  }
+
   const baseInterp = {
     tierName: delta.tierName,
     currentPrice: formatWholeDollars(delta.currentMonthlyDollars),
@@ -424,6 +526,7 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
     <div
       data-testid="pricing-override-callout"
       data-direction={headlineIsLess ? 'less' : 'more'}
+      data-frame="monthly"
       data-has-base={baseMeaningful ? 'true' : 'false'}
       data-has-overage={overage ? 'true' : 'false'}
       role="status"
@@ -491,20 +594,15 @@ export default function Pricing() {
   // anonymous visitor, just to power one optional teaser badge for the
   // logged-in subset.
   const tenantId = user?.tenantId ?? null;
-  const [currentPlanOverride, setCurrentPlanOverride] =
-    useState<CurrentPlanOverride | undefined>(undefined);
-  // The legacy/grandfathered-pricing callout above the calculator needs
-  // the original API response (specifically the interval-agnostic
-  // `basePriceCents` field) to compute a tenant-vs-catalog delta — the
-  // override structure deliberately remaps it for calculator purposes.
-  // Keep both so the two consumers don't share a leaky abstraction.
-  const [customRateDelta, setCustomRateDelta] =
-    useState<CustomRateDelta | null>(null);
+  // Cache the raw payload so the calculator override and the custom-rate
+  // callout can each derive from it; the callout re-derives when the
+  // billing toggle flips without needing a refetch.
+  const [effectiveRatePayload, setEffectiveRatePayload] =
+    useState<EffectiveRateResponse | null>(null);
 
   useEffect(() => {
     if (!tenantId) {
-      setCurrentPlanOverride(undefined);
-      setCustomRateDelta(null);
+      setEffectiveRatePayload(null);
       return;
     }
     let cancelled = false;
@@ -512,15 +610,11 @@ export default function Pricing() {
       try {
         const payload = await api.get<EffectiveRateResponse>('/billing/effective-rate');
         if (cancelled) return;
-        setCurrentPlanOverride(buildOverride(payload));
-        setCustomRateDelta(computeCustomRateDelta(payload));
+        setEffectiveRatePayload(payload);
       } catch {
         // Silently ignore — the calculator just falls back to catalog
         // rates, which is exactly what anonymous visitors already see.
-        if (!cancelled) {
-          setCurrentPlanOverride(undefined);
-          setCustomRateDelta(null);
-        }
+        if (!cancelled) setEffectiveRatePayload(null);
       }
     })();
     return () => {
@@ -531,6 +625,15 @@ export default function Pricing() {
     // new tenant. Unlikely on a public marketing page, but cheap and
     // correct.
   }, [tenantId]);
+
+  const currentPlanOverride = useMemo<CurrentPlanOverride | undefined>(
+    () => (effectiveRatePayload ? buildOverride(effectiveRatePayload) : undefined),
+    [effectiveRatePayload],
+  );
+  const customRateDelta = useMemo<CustomRateDelta | null>(
+    () => computeCustomRateDelta(effectiveRatePayload, billingPeriod),
+    [effectiveRatePayload, billingPeriod],
+  );
 
   const tUnlimited = t('pricing.features_list.unlimited');
   const tUpTo3 = t('pricing.features_list.up_to_3');

@@ -503,6 +503,10 @@
       "description_more": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat mehr als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
       "overage_line_less": "Ihre Übernutzung für {{tierName}} wird zu {{currentRate}} abgerechnet — {{deltaRate}} weniger als der aktuelle Listenpreis von {{catalogRate}}.",
       "overage_line_more": "Ihre Übernutzung für {{tierName}} wird zu {{currentRate}} abgerechnet — {{deltaRate}} mehr als der aktuelle Listenpreis von {{catalogRate}}.",
+      "title_annual_less": "Sie haben einen individuellen Jahrestarif unter dem aktuellen Listenpreis",
+      "title_annual_more": "Sie haben einen individuellen Jahrestarif über dem aktuellen Listenpreis",
+      "description_annual_less": "Ihr Konto zahlt {{annualCurrentPrice}}/Jahr für {{tierName}} — das ist {{annualDeltaPrice}}/Jahr weniger als der aktuelle Listenpreis von {{annualCatalogPrice}}/Jahr. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
+      "description_annual_more": "Ihr Konto zahlt {{annualCurrentPrice}}/Jahr für {{tierName}} — das ist {{annualDeltaPrice}}/Jahr mehr als der aktuelle Listenpreis von {{annualCatalogPrice}}/Jahr. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
       "manage_link": "Abonnement verwalten"
     },
     "compare": {
