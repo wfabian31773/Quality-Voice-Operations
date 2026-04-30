@@ -70,6 +70,7 @@ interface EffectiveRateFixture {
 
 let handlers: Record<string, () => unknown> = {};
 let checkoutCalls: Array<{ method: string; body: unknown }> = [];
+let recommendationEventCalls: Array<{ method: string; body: unknown }> = [];
 
 function defaultHandlers(
   sub: SubscriptionFixture,
@@ -119,6 +120,7 @@ beforeEach(() => {
   localStorage.clear();
   handlers = {};
   checkoutCalls = [];
+  recommendationEventCalls = [];
 
   Object.defineProperty(window, 'location', {
     configurable: true,
@@ -157,6 +159,17 @@ beforeEach(() => {
           JSON.stringify({ url: 'https://checkout.stripe.test/session-1' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
+      }
+
+      if (path === '/billing/recommendation-event' && method === 'POST') {
+        let parsed: unknown = null;
+        try {
+          parsed = init?.body ? JSON.parse(String(init.body)) : null;
+        } catch {
+          parsed = null;
+        }
+        recommendationEventCalls.push({ method, body: parsed });
+        return new Response(null, { status: 204 });
       }
 
       for (const prefix of Object.keys(handlers)) {
@@ -465,6 +478,164 @@ describe('Billing annual-savings callout', () => {
     await waitFor(() => {
       expect(window.location.href).toBe('https://checkout.stripe.test/session-1');
     });
+  });
+
+  it('records an annual-nudge analytics ping when the in-callout CTA is clicked', async () => {
+    handlers = defaultHandlers(
+      { plan: 'pro', billing_interval: 'monthly' },
+      {
+        basePriceCents: 39_900,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'stripe',
+        monthlyBasePriceCents: 39_900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 31_900,
+        annualBasePriceSource: 'stripe',
+      },
+    );
+    loginAsOwner();
+    await renderBilling();
+
+    const button = await screen.findByTestId('billing-annual-savings-switch-button');
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(checkoutCalls.length).toBe(1);
+    });
+    await waitFor(() => {
+      expect(recommendationEventCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const calloutPing = recommendationEventCalls.find((call) => {
+      const body = call.body as { metadata?: { source?: string } } | null;
+      return body?.metadata?.source === 'callout';
+    });
+    expect(calloutPing).toBeTruthy();
+
+    const body = calloutPing!.body as Record<string, unknown>;
+    expect(body.eventType).toBe('click');
+    expect(body.pitch).toBe('annual-only');
+    expect(body.currentTier).toBe('pro');
+    expect(body.recommendedTier).toBe('pro');
+    // ($39,900 - $31,900) × 12 = $96,000/yr; monthly equivalent = $8,000.
+    expect(body.monthlySavingsCents).toBe(8_000);
+
+    const metadata = body.metadata as Record<string, unknown>;
+    expect(metadata.source).toBe('callout');
+    expect(metadata.annualSavingsCents).toBe(96_000);
+    expect(metadata.liveRateBadgeVisible).toBe(true);
+  });
+
+  it('records liveRateBadgeVisible=false in analytics when the badge was not shown (catalog fallback)', async () => {
+    handlers = defaultHandlers(
+      { plan: 'starter', billing_interval: 'monthly' },
+      {
+        basePriceCents: 9_900,
+        overageRatePerMinute: 0.15,
+        basePriceSource: 'catalog',
+        overagePriceSource: 'catalog',
+        monthlyBasePriceCents: 9_900,
+        monthlyBasePriceSource: 'catalog',
+        annualBasePriceCents: 7_920,
+        annualBasePriceSource: 'catalog',
+      },
+    );
+    loginAsOwner();
+    await renderBilling();
+
+    const button = await screen.findByTestId('billing-annual-savings-switch-button');
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(recommendationEventCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const calloutPing = recommendationEventCalls.find((call) => {
+      const body = call.body as { metadata?: { source?: string } } | null;
+      return body?.metadata?.source === 'callout';
+    });
+    expect(calloutPing).toBeTruthy();
+    const metadata = (calloutPing!.body as { metadata: Record<string, unknown> }).metadata;
+    expect(metadata.liveRateBadgeVisible).toBe(false);
+    expect(metadata.source).toBe('callout');
+  });
+
+  it('records an upgrade-card-source analytics ping when the same-tier annual switch card is clicked', async () => {
+    handlers = defaultHandlers(
+      { plan: 'pro', billing_interval: 'monthly' },
+      {
+        basePriceCents: 39_900,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'stripe',
+        monthlyBasePriceCents: 39_900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 31_900,
+        annualBasePriceSource: 'stripe',
+      },
+    );
+    loginAsOwner();
+    await renderBilling();
+
+    // Flip the interval toggle so the same-tier switch_annual card renders.
+    const annualToggle = await screen.findByTestId('billing-upgrade-interval-annual');
+    fireEvent.click(annualToggle);
+
+    const switchCard = await screen.findByTestId('billing-upgrade-card-pro');
+    expect(switchCard.getAttribute('data-card-kind')).toBe('switch_annual');
+    const cardButton = switchCard.querySelector('button');
+    expect(cardButton).toBeTruthy();
+    fireEvent.click(cardButton!);
+
+    await waitFor(() => {
+      expect(recommendationEventCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const upgradeCardPing = recommendationEventCalls.find((call) => {
+      const body = call.body as { metadata?: { source?: string } } | null;
+      return body?.metadata?.source === 'upgrade-card';
+    });
+    expect(upgradeCardPing).toBeTruthy();
+
+    const body = upgradeCardPing!.body as Record<string, unknown>;
+    expect(body.eventType).toBe('click');
+    expect(body.pitch).toBe('annual-only');
+    expect(body.currentTier).toBe('pro');
+    expect(body.recommendedTier).toBe('pro');
+
+    const metadata = body.metadata as Record<string, unknown>;
+    expect(metadata.source).toBe('upgrade-card');
+    expect(metadata.liveRateBadgeVisible).toBe(false);
+  });
+
+  it('does not record an annual-nudge ping when the callout is not shown (already on annual)', async () => {
+    handlers = defaultHandlers(
+      { plan: 'pro', billing_interval: 'annual' },
+      {
+        basePriceCents: 31_900,
+        overageRatePerMinute: 0.10,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'stripe',
+        monthlyBasePriceCents: 39_900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 31_900,
+        annualBasePriceSource: 'stripe',
+      },
+    );
+    loginAsOwner();
+    await renderBilling();
+
+    await waitFor(() => {
+      expect(screen.getByText('Subscription')).toBeTruthy();
+    });
+
+    const nudgePings = recommendationEventCalls.filter((call) => {
+      const body = call.body as { metadata?: { source?: string } } | null;
+      const src = body?.metadata?.source;
+      return src === 'callout' || src === 'upgrade-card';
+    });
+    expect(nudgePings.length).toBe(0);
   });
 
   it('hides the "Switch to annual" button for read-only roles (viewer)', async () => {

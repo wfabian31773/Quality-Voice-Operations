@@ -578,6 +578,43 @@ export default function Billing() {
       });
   }, []);
 
+  // Annual-savings nudge click. Recorded under the existing
+  // `annual-only` pitch (current_tier === recommended_tier); the
+  // `metadata.source` field separates the in-callout CTA from the
+  // same-tier upgrade card so conversion paths can be compared.
+  const handleAnnualNudgeClick = useCallback(
+    (event: {
+      source: 'callout' | 'upgrade-card';
+      currentTier: PlanTier;
+      annualSavingsCents: number;
+      liveRateBadgeVisible: boolean;
+    }) => {
+      const safeAnnualSavings = Number.isFinite(event.annualSavingsCents)
+        ? Math.max(0, Math.round(event.annualSavingsCents))
+        : 0;
+      // Stored as monthly to stay comparable with the banner's rows;
+      // the original annual figure is preserved in metadata.
+      const monthlySavingsCents = Math.round(safeAnnualSavings / 12);
+      api
+        .post('/billing/recommendation-event', {
+          eventType: 'click',
+          currentTier: event.currentTier,
+          recommendedTier: event.currentTier,
+          monthlySavingsCents,
+          pitch: 'annual-only',
+          metadata: {
+            source: event.source,
+            annualSavingsCents: safeAnnualSavings,
+            liveRateBadgeVisible: event.liveRateBadgeVisible,
+          },
+        })
+        .catch(() => {
+          // Analytics failures must not block the upgrade flow.
+        });
+    },
+    [],
+  );
+
   const { data: subData, isLoading: subLoading, error: subError } = useQuery({
     queryKey: ['billing-subscription'],
     queryFn: () => api.get<{ subscription: Subscription | null; plan?: string; status?: string }>('/billing/subscription'),
@@ -1141,7 +1178,15 @@ export default function Billing() {
                         {isAdmin && (
                           <button
                             data-testid="billing-annual-savings-switch-button"
-                            onClick={() => handleUpgrade(plan, 'annual')}
+                            onClick={() => {
+                              handleAnnualNudgeClick({
+                                source: 'callout',
+                                currentTier: plan as PlanTier,
+                                annualSavingsCents,
+                                liveRateBadgeVisible: liveRate,
+                              });
+                              handleUpgrade(plan, 'annual');
+                            }}
                             disabled={upgradeLoading === plan}
                             className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary hover:bg-primary-hover text-white disabled:opacity-50"
                           >
@@ -1645,6 +1690,16 @@ export default function Billing() {
                         if (kind === 'downgrade') {
                           handleDowngrade(tier, cardInterval, downgradePreview);
                           return;
+                        }
+                        if (kind === 'switch_annual') {
+                          // The upgrade-card surface never renders the
+                          // "Live rate" badge, so it's always false here.
+                          handleAnnualNudgeClick({
+                            source: 'upgrade-card',
+                            currentTier: plan as PlanTier,
+                            annualSavingsCents,
+                            liveRateBadgeVisible: false,
+                          });
                         }
                         if (upgradeDiscountPayload) {
                           handleDiscountEvent({
