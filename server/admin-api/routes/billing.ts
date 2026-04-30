@@ -919,7 +919,12 @@ router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req,
     });
 
     const invoices = stripeInvoices.data.map((inv) => {
-      let discount: UpgradeDiscount | null = null;
+      // A Stripe invoice can carry multiple stacked discounts (e.g. a
+      // customer-level coupon plus a one-off invoice-level coupon). Surface
+      // every usable one so tenants don't get confused when Sales stacks
+      // an upgrade promo on top of an existing recurring discount and only
+      // one chip shows up.
+      const discounts: UpgradeDiscount[] = [];
       const rawDiscounts = (inv as unknown as {
         discounts?: Array<unknown> | null;
       }).discounts ?? [];
@@ -927,18 +932,17 @@ router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req,
         if (typeof raw !== 'object' || raw === null) continue;
         const normalized = normalizeDiscount(raw as Parameters<typeof normalizeDiscount>[0]);
         if (normalized) {
-          discount = normalized;
-          break;
+          discounts.push(normalized);
         }
       }
       // Fallback for legacy invoices missing the expanded `discounts`
       // array: surface a placeholder so the badge still renders.
       if (
-        !discount
+        discounts.length === 0
         && Array.isArray((inv as unknown as { total_discount_amounts?: unknown }).total_discount_amounts)
         && ((inv as unknown as { total_discount_amounts: unknown[] }).total_discount_amounts.length > 0)
       ) {
-        discount = {
+        discounts.push({
           couponId: null,
           name: null,
           percentOff: null,
@@ -946,7 +950,7 @@ router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req,
           currency: (inv.currency ?? null)?.toLowerCase() ?? null,
           promotionCode: null,
           promotionCodeId: null,
-        };
+        });
       }
       return {
         id: inv.id,
@@ -957,7 +961,11 @@ router.get('/billing/invoices', requireAuth, requireRole('manager'), async (req,
         invoice_pdf: inv.invoice_pdf ?? null,
         number: inv.number ?? null,
         description: inv.description ?? (inv.lines?.data?.[0]?.description || null),
-        discount,
+        // `discount` is preserved for backward-compat with any older
+        // client build still in flight; new clients should consume the
+        // full `discounts` array so stacked coupons stay visible.
+        discount: discounts[0] ?? null,
+        discounts,
       };
     });
 

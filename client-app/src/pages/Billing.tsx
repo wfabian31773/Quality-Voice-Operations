@@ -85,7 +85,20 @@ interface Invoice {
   invoice_pdf: string | null;
   number: string | null;
   description: string | null;
+  /**
+   * Legacy single-discount field. New servers also send the full
+   * `discounts` array; old servers send only `discount`. The row falls
+   * back to this when `discounts` is missing so an in-flight rollout
+   * doesn't drop the badge.
+   */
   discount?: BillingDiscountSummary | null;
+  /**
+   * All discounts applied to the invoice. A Stripe invoice can stack
+   * multiple coupons (e.g. customer-level promo + invoice-level
+   * one-off), so each one is rendered as its own chip below the
+   * invoice metadata.
+   */
+  discounts?: BillingDiscountSummary[];
 }
 
 interface BudgetResult {
@@ -1381,16 +1394,37 @@ export default function Billing() {
                             {inv.description && (
                               <span className="text-xs text-text-muted">· {inv.description}</span>
                             )}
-                            {inv.discount && (
-                              <span
-                                data-testid="billing-invoice-discount-badge"
-                                className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success"
-                                title="A discount was applied to this invoice."
-                              >
-                                <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
-                                {formatDiscountLabel(inv.discount, inv.currency || currency)}
-                              </span>
-                            )}
+                            {(() => {
+                              // Prefer the new `discounts` array (which
+                              // contains every coupon stacked on the
+                              // invoice). Fall back to the legacy
+                              // single-discount field so an older server
+                              // build still renders one chip during a
+                              // rollout. Both fields are never combined
+                              // — `discounts` already supersedes
+                              // `discount` when present.
+                              const list: BillingDiscountSummary[] =
+                                inv.discounts && inv.discounts.length > 0
+                                  ? inv.discounts
+                                  : inv.discount
+                                    ? [inv.discount]
+                                    : [];
+                              if (list.length === 0) return null;
+                              const tooltip = list.length > 1
+                                ? `${list.length} discounts were applied to this invoice.`
+                                : 'A discount was applied to this invoice.';
+                              return list.map((d, idx) => (
+                                <span
+                                  key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
+                                  data-testid="billing-invoice-discount-badge"
+                                  className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success"
+                                  title={tooltip}
+                                >
+                                  <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
+                                  {formatDiscountLabel(d, inv.currency || currency)}
+                                </span>
+                              ));
+                            })()}
                           </div>
                         </div>
                       </div>
