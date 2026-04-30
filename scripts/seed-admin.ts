@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs';
 const ADMIN_TENANT_ID = 'admin-org';
 const ADMIN_TENANT_SLUG = 'admin-org';
 
+// Stable id+subject for the fixture ticket used by
+// tests/e2e/tenantPagesSmoke.spec.ts (Ticket Detail page check).
+// Keep these strings in sync with PAGES in that spec.
+const SMOKE_TICKET_ID = 'admin-org-smoke-ticket';
+const SMOKE_TICKET_SUBJECT = 'Smoke Test Ticket';
+
 async function main() {
   const env = process.env.APP_ENV ?? 'development';
 
@@ -91,6 +97,30 @@ async function main() {
         [userId, ADMIN_TENANT_ID],
       );
     }
+
+    // Seed a fixture ticket for tenantPagesSmoke.spec.ts to hit
+    // /tickets/:id with a stable, known id+subject. Without this row
+    // the smoke spec would have to scrape the list page for any id,
+    // which makes it brittle against ordering or list-fetch changes.
+    // The tickets table has tenant RLS, so we set the GUC for this
+    // transaction in case the seed user is not bypassing RLS.
+    console.log('[SEED-ADMIN] Upserting smoke-test fixture ticket...');
+    await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [ADMIN_TENANT_ID]);
+    await client.query(
+      `INSERT INTO tickets (id, tenant_id, subject, description, status, priority, source)
+       VALUES ($1, $2, $3, $4, 'open', 'medium', 'manual')
+       ON CONFLICT (id) DO UPDATE SET
+         subject = EXCLUDED.subject,
+         description = EXCLUDED.description,
+         status = 'open',
+         updated_at = NOW()`,
+      [
+        SMOKE_TICKET_ID,
+        ADMIN_TENANT_ID,
+        SMOKE_TICKET_SUBJECT,
+        'Auto-created by seed-admin for tenantPagesSmoke.spec.ts. Safe to delete in production.',
+      ],
+    );
 
     await client.query('COMMIT');
     console.log('[SEED-ADMIN] Admin user seeded successfully.');

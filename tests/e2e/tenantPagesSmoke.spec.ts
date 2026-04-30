@@ -113,6 +113,20 @@ const PAGES: PageCheck[] = [
   // analytics endpoints.
   { path: '/tickets/reporting', slug: 'tenant-tickets-reporting', expect: { kind: 'heading', text: 'Ticket Reports' } },
 
+  // Ticket Admin — RoleGuard minRole="manager" (admin-org tenant_owner clears
+  // it). TicketAdmin.tsx renders an explicit `<h1>Ticket Administration</h1>`
+  // and fans out to ~8 /api/ticket-* config endpoints in parallel on mount.
+  // Historically broke silently when one of those route handlers returned
+  // an unexpected shape (the page would stay on its loading spinner).
+  { path: '/tickets/admin', slug: 'tenant-tickets-admin', expect: { kind: 'heading', text: 'Ticket Administration' } },
+
+  // Ticket Detail — TicketDetail.tsx fetches /api/tickets/:id on mount and
+  // renders an `<h1>` with the ticket subject. Needs a real id, so
+  // scripts/seed-admin.ts seeds a fixture row with a stable id+subject
+  // ("admin-org-smoke-ticket" / "Smoke Test Ticket") on the admin-org
+  // tenant — keep the values here in sync with that script.
+  { path: '/tickets/admin-org-smoke-ticket', slug: 'tenant-ticket-detail', expect: { kind: 'heading', text: 'Smoke Test Ticket' } },
+
   // Scheduling — PageHeader title="Scheduling". Enterprise appointment
   // management; pulls from multiple endpoints (appointments, types,
   // reminders) on mount.
