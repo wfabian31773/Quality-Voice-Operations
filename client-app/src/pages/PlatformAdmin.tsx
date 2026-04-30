@@ -164,8 +164,8 @@ function DocsFeedbackAutoRetryBadge({
       ? 'px-1 py-0.5 text-[9px]'
       : 'px-1.5 py-0.5 text-[10px]';
   const palette = exhausted
-    ? 'border-amber-300 bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'
-    : 'border-red-300 bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900';
+    ? 'border-warning/40 bg-warning-light text-warning'
+    : 'border-danger/40 bg-danger-light text-danger';
   return (
     <span
       className={`rounded border uppercase tracking-wide font-medium ${sizing} ${palette}`}
@@ -388,9 +388,9 @@ function readPositiveSeconds(body: unknown, key: string): number | null {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    suspended: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    active: 'bg-success-light text-success',
+    pending: 'bg-warning-light text-warning',
+    suspended: 'bg-danger-light text-danger',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
@@ -404,15 +404,15 @@ function StatusBadge({ status }: { status: string }) {
 // list without needing to mouse over the tooltip.
 const RETRY_SKIPPED_TONE_CLASSES: Record<RetrySkippedTone, string> = {
   hard_bounce:
-    'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+    'bg-warning-light text-warning border-warning/40',
   suppression:
-    'bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900',
+    'bg-accent-light text-accent border-accent/40',
   manual_cancel:
-    'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700',
+    'bg-surface-secondary text-text-secondary border-border',
   unsubscribed:
-    'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900',
+    'bg-danger-light text-danger border-danger/40',
   unknown:
-    'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800/60 dark:text-gray-200 dark:border-gray-700',
+    'bg-surface-secondary text-text-muted border-border',
 };
 
 /**
@@ -449,9 +449,9 @@ function RetrySkippedBadge({
 
 function PlanBadge({ plan }: { plan: string }) {
   const colors: Record<string, string> = {
-    starter: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    pro: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    enterprise: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    starter: 'bg-info-light text-info',
+    pro: 'bg-accent-light text-accent',
+    enterprise: 'bg-warning-light text-warning',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[plan] ?? 'bg-surface-hover text-text-secondary'}`}>
@@ -462,9 +462,9 @@ function PlanBadge({ plan }: { plan: string }) {
 
 function VersionStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    draft: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    published: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    deprecated: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    draft: 'bg-warning-light text-warning',
+    published: 'bg-success-light text-success',
+    deprecated: 'bg-danger-light text-danger',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
@@ -513,7 +513,7 @@ function OwnerOnboardingBadge({
   const { t: adminT } = useTranslation('admin');
   if (completed) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-light text-success">
         <CheckCircle className="h-3 w-3" />
         {adminT('platform_admin.badges.onboarding_completed')}
       </span>
@@ -521,7 +521,7 @@ function OwnerOnboardingBadge({
   }
   const label = getOnboardingStepLabel(step, adminT as any);
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning">
       <AlertCircle className="h-3 w-3" />
       {adminT('platform_admin.badges.onboarding_step_n', { step, total: ONBOARDING_TOTAL_STEPS, label })}
     </span>
@@ -682,7 +682,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
         />
       </div>
       {createMutation.isError && (
-        <div className="text-sm text-red-600 dark:text-red-400">
+        <div className="text-sm text-danger">
           {(createMutation.error as Error).message}
         </div>
       )}
@@ -766,13 +766,13 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
       )}
 
       {publishMutation.isError && (
-        <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+        <div className="text-sm text-danger bg-danger-light p-2 rounded">
           {(publishMutation.error as Error).message}
         </div>
       )}
 
       {publishMutation.isSuccess && (
-        <div className="text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded flex items-center gap-2">
+        <div className="text-sm text-success bg-success-light p-2 rounded flex items-center gap-2">
           <CheckCircle className="h-4 w-4" /> Version published successfully
         </div>
       )}
@@ -806,7 +806,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                         }
                       }}
                       disabled={publishMutation.isPending}
-                      className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-text-muted hover:text-green-600"
+                      className="p-1.5 rounded hover:bg-success-light text-text-muted hover:text-success"
                       title="Publish"
                     >
                       <Play className="h-4 w-4" />
@@ -821,7 +821,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                       }
                     }}
                     disabled={deprecateMutation.isPending}
-                    className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-text-muted hover:text-red-600"
+                    className="p-1.5 rounded hover:bg-danger-light text-text-muted hover:text-danger"
                     title="Deprecate"
                   >
                     <Archive className="h-4 w-4" />
@@ -840,14 +840,14 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
               <div className="mt-2 border-t border-border pt-2 space-y-1">
                 <div className="flex items-center gap-1 text-xs font-medium">
                   {validationResults[v.id].valid ? (
-                    <><CheckCircle className="h-3.5 w-3.5 text-green-500" /> Validation passed</>
+                    <><CheckCircle className="h-3.5 w-3.5 text-success" /> Validation passed</>
                   ) : (
-                    <><AlertCircle className="h-3.5 w-3.5 text-red-500" /> Validation failed</>
+                    <><AlertCircle className="h-3.5 w-3.5 text-danger" /> Validation failed</>
                   )}
                 </div>
                 {validationResults[v.id].checks.map((check, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
-                    <span className={check.passed ? 'text-green-500' : 'text-red-500'}>
+                    <span className={check.passed ? 'text-success' : 'text-danger'}>
                       {check.passed ? '\u2713' : '\u2717'}
                     </span>
                     <span className="text-text-muted">{check.message}</span>
@@ -1065,7 +1065,7 @@ function ConnectorHealthPanel() {
 
   if (error || !data) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-danger">
         {adminT('platform_admin.connector_health.load_failed', { error: error ? (error as Error).message : adminT('platform_admin.connector_health.no_data_error') })}
       </div>
     );
@@ -1128,13 +1128,13 @@ function ConnectorHealthPanel() {
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_reconnect_needed')}</div>
-          <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+          <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-warning' : ''}`}>
             {summary.needsReconnect}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_sync_errors')}</div>
-          <div className={`text-2xl font-bold ${summary.syncError > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+          <div className={`text-2xl font-bold ${summary.syncError > 0 ? 'text-danger' : ''}`}>
             {summary.syncError}
           </div>
         </div>
@@ -1142,7 +1142,7 @@ function ConnectorHealthPanel() {
           <div className="text-xs text-text-muted" title={adminT('platform_admin.connector_health.stat_expiring_soon_title', { hours: expiringSoonHours })}>
             {adminT('platform_admin.connector_health.stat_expiring_soon')}
           </div>
-          <div className={`text-2xl font-bold ${expiringSoonCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+          <div className={`text-2xl font-bold ${expiringSoonCount > 0 ? 'text-warning' : ''}`}>
             {expiringSoonCount}
           </div>
           <div className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.connector_health.stat_expiring_in_hours', { hours: expiringSoonHours })}</div>
@@ -1152,7 +1152,7 @@ function ConnectorHealthPanel() {
           title={adminT('platform_admin.connector_health.stat_stuck_outbox_title')}
         >
           <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_stuck_outbox')}</div>
-          <div className={`text-2xl font-bold ${stuckTotal > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+          <div className={`text-2xl font-bold ${stuckTotal > 0 ? 'text-danger' : ''}`}>
             {stuckTotal}
           </div>
           <div className="text-xs text-text-muted mt-0.5">
@@ -1161,7 +1161,7 @@ function ConnectorHealthPanel() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_healthy')}</div>
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">{summary.healthy}</div>
+          <div className="text-2xl font-bold text-success">{summary.healthy}</div>
           <div className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.connector_health.stat_healthy_sub', { total: summary.totalEnabled })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
@@ -1206,7 +1206,7 @@ function ConnectorHealthPanel() {
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-sm flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertTriangle className="h-4 w-4 text-warning" />
               {adminT('platform_admin.connector_health.recent_failures_title')}
             </h3>
             <p className="text-xs text-text-muted mt-0.5">
@@ -1244,7 +1244,7 @@ function ConnectorHealthPanel() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-xs font-medium capitalize">{ev.provider ?? adminT('platform_admin.common.em_dash')}</td>
-                    <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[420px]">
+                    <td className="px-4 py-2 text-xs text-danger font-mono break-all max-w-[420px]">
                       {ev.errorMessage ?? adminT('platform_admin.common.em_dash')}
                     </td>
                   </tr>
@@ -1335,7 +1335,7 @@ function PushDeliveryHealthPanel() {
 
   if (error || !data) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-danger">
         Failed to load push delivery health: {error ? (error as Error).message : 'no data'}
       </div>
     );
@@ -1395,7 +1395,7 @@ function PushDeliveryHealthPanel() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">Accepted</div>
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="text-2xl font-bold text-success">
             {totals.accepted}
           </div>
           <div className="text-xs text-text-muted mt-0.5">
@@ -1407,7 +1407,7 @@ function PushDeliveryHealthPanel() {
           title="Devices Expo flagged as DeviceNotRegistered or InvalidCredentials and that PushDispatcher flipped push_enabled = FALSE on"
         >
           <div className="text-xs text-text-muted">Retired</div>
-          <div className={`text-2xl font-bold ${totals.retired > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+          <div className={`text-2xl font-bold ${totals.retired > 0 ? 'text-warning' : ''}`}>
             {totals.retired}
           </div>
           <div className="text-xs text-text-muted mt-0.5">devices</div>
@@ -1417,14 +1417,14 @@ function PushDeliveryHealthPanel() {
           title="Devices we attempted to deliver to but Expo neither accepted nor retired (HTTP 5xx, network blip, transient ticket error, etc.)"
         >
           <div className="text-xs text-text-muted">Dropped</div>
-          <div className={`text-2xl font-bold ${totals.dropped > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+          <div className={`text-2xl font-bold ${totals.dropped > 0 ? 'text-danger' : ''}`}>
             {totals.dropped}
           </div>
           <div className="text-xs text-text-muted mt-0.5">devices</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="text-xs text-text-muted">Failed attempts</div>
-          <div className={`text-2xl font-bold ${totals.failureCount > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+          <div className={`text-2xl font-bold ${totals.failureCount > 0 ? 'text-danger' : ''}`}>
             {totals.failureCount}
           </div>
           <div className="text-xs text-text-muted mt-0.5">of {totals.attempts}</div>
@@ -1487,13 +1487,13 @@ function PushDeliveryHealthPanel() {
                           <span className="text-text-muted ml-1">({rate}%)</span>
                         )}
                       </td>
-                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.retired > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
+                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.retired > 0 ? 'text-warning font-semibold' : ''}`}>
                         {r.retired}
                       </td>
-                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.dropped > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.dropped > 0 ? 'text-danger font-semibold' : ''}`}>
                         {r.dropped}
                       </td>
-                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.failureCount > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                      <td className={`px-4 py-2 text-xs text-right tabular-nums ${r.failureCount > 0 ? 'text-danger' : ''}`}>
                         {r.failureCount}
                       </td>
                       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
@@ -1513,7 +1513,7 @@ function PushDeliveryHealthPanel() {
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <AlertTriangle className="h-4 w-4 text-warning" />
             Recent push delivery failures
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
@@ -1559,13 +1559,13 @@ function PushDeliveryHealthPanel() {
                     </td>
                     <td className="px-4 py-2 text-xs text-right tabular-nums">{row.attempted}</td>
                     <td className="px-4 py-2 text-xs text-right tabular-nums">{row.accepted}</td>
-                    <td className={`px-4 py-2 text-xs text-right tabular-nums ${row.retired > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                    <td className={`px-4 py-2 text-xs text-right tabular-nums ${row.retired > 0 ? 'text-warning' : ''}`}>
                       {row.retired}
                     </td>
-                    <td className={`px-4 py-2 text-xs text-right tabular-nums ${row.dropped > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                    <td className={`px-4 py-2 text-xs text-right tabular-nums ${row.dropped > 0 ? 'text-danger font-semibold' : ''}`}>
                       {row.dropped}
                     </td>
-                    <td className="px-4 py-2 text-xs font-mono text-red-600 dark:text-red-400 break-all max-w-[280px]">
+                    <td className="px-4 py-2 text-xs font-mono text-danger break-all max-w-[280px]">
                       {row.failureReason ?? (row.dropped > 0 ? 'unknown' : '—')}
                     </td>
                   </tr>
@@ -1664,19 +1664,19 @@ function verifiedCallerStatusBadge(status: VerifiedCallerHealthStatus, t: (k: st
       return {
         label: t('platform_admin.verified_caller.status_revoked'),
         classes:
-          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800',
+          'bg-danger-light text-danger border border-danger/30',
       };
     case 'expired':
       return {
         label: t('platform_admin.verified_caller.status_expired'),
         classes:
-          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800',
+          'bg-danger-light text-danger border border-danger/30',
       };
     case 'expiring_soon':
       return {
         label: t('platform_admin.verified_caller.status_expiring'),
         classes:
-          'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
+          'bg-warning-light text-warning border border-warning/30',
       };
   }
 }
@@ -1707,21 +1707,21 @@ function VerifiedCallerDaysCell({
   if (daysRemaining < 0) {
     const ago = Math.abs(daysRemaining);
     return (
-      <span className="text-red-600 dark:text-red-400 font-medium">
+      <span className="text-danger font-medium">
         {adminT('platform_admin.verified_caller.expired_days_ago', { count: ago })}
       </span>
     );
   }
   if (daysRemaining === 0) {
     return (
-      <span className="text-red-600 dark:text-red-400 font-medium">
+      <span className="text-danger font-medium">
         {adminT('platform_admin.verified_caller.expires_today')}
       </span>
     );
   }
   const tone =
     status === 'expiring_soon' && daysRemaining <= 7
-      ? 'text-amber-700 dark:text-amber-300 font-medium'
+      ? 'text-warning font-medium'
       : 'text-text-primary';
   return <span className={tone}>{adminT('platform_admin.verified_caller.days_unit', { count: daysRemaining })}</span>;
 }
@@ -1744,17 +1744,17 @@ function VerifiedCallerDeliveryBadge({
     case 'sent':
       label = 'Delivered';
       classes =
-        'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800';
+        'bg-success-light text-success border border-success/30';
       break;
     case 'bounced':
       label = 'Bounced';
       classes =
-        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800';
+        'bg-danger-light text-danger border border-danger/30';
       break;
     case 'failed':
       label = permanentFailure ? 'Failed (permanent)' : 'Failed';
       classes =
-        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800';
+        'bg-warning-light text-warning border border-warning/30';
       break;
     case 'skipped':
       label = 'Skipped';
@@ -1840,7 +1840,7 @@ function VerifiedCallerAlertHistory({
   }
   if (error) {
     return (
-      <div className="px-4 py-3 text-xs text-red-600 dark:text-red-400">
+      <div className="px-4 py-3 text-xs text-danger">
         Failed to load alert history: {(error as Error).message}
       </div>
     );
@@ -1860,7 +1860,7 @@ function VerifiedCallerAlertHistory({
   return (
     <div className="px-4 py-3 space-y-3">
       {data?.truncated && (
-        <div className="text-[11px] text-amber-700 dark:text-amber-300">
+        <div className="text-[11px] text-warning">
           Showing the most recent {data.limit} recipient rows. Older history was
           truncated.
         </div>
@@ -1888,17 +1888,17 @@ function VerifiedCallerAlertHistory({
               </span>
               <span className="ml-auto flex items-center gap-2 text-[11px]">
                 {sentCount > 0 && (
-                  <span className="text-emerald-700 dark:text-emerald-300">
+                  <span className="text-success">
                     {sentCount} delivered
                   </span>
                 )}
                 {bouncedCount > 0 && (
-                  <span className="text-red-600 dark:text-red-400">
+                  <span className="text-danger">
                     {bouncedCount} bounced
                   </span>
                 )}
                 {failedCount > 0 && (
-                  <span className="text-amber-700 dark:text-amber-300">
+                  <span className="text-warning">
                     {failedCount} failed
                   </span>
                 )}
@@ -2012,12 +2012,12 @@ function VerifiedCallerHealthPanel() {
       <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <PhoneOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <PhoneOff className="h-4 w-4 text-warning" />
             {adminT('platform_admin.verified_caller.title')}
             <span
               className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 callers.length > 0
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  ? 'bg-warning-light text-warning'
                   : 'bg-surface-secondary text-text-muted border border-border'
               }`}
             >
@@ -2029,15 +2029,15 @@ function VerifiedCallerHealthPanel() {
           </p>
           {summary && summary.total > 0 && (
             <p className="text-xs text-text-muted mt-1">
-              <span className="text-red-600 dark:text-red-400 font-medium">
+              <span className="text-danger font-medium">
                 {adminT('platform_admin.verified_caller.summary_revoked', { count: summary.revoked })}
               </span>{' '}
               ·{' '}
-              <span className="text-red-600 dark:text-red-400 font-medium">
+              <span className="text-danger font-medium">
                 {adminT('platform_admin.verified_caller.summary_expired', { count: summary.expired })}
               </span>{' '}
               ·{' '}
-              <span className="text-amber-700 dark:text-amber-300 font-medium">
+              <span className="text-warning font-medium">
                 {adminT('platform_admin.verified_caller.summary_expiring', { count: summary.expiringSoon })}
               </span>{' '}
               · {adminT('platform_admin.verified_caller.summary_affected', { count: summary.affectedTenants })}
@@ -2058,7 +2058,7 @@ function VerifiedCallerHealthPanel() {
           {adminT('platform_admin.verified_caller.loading')}
         </div>
       ) : error ? (
-        <div className="px-4 py-6 text-center text-sm text-red-600 dark:text-red-400">
+        <div className="px-4 py-6 text-center text-sm text-danger">
           {adminT('platform_admin.verified_caller.load_failed', { error: (error as Error).message })}
         </div>
       ) : callers.length === 0 ? (
@@ -2138,7 +2138,7 @@ function VerifiedCallerHealthPanel() {
                         </span>
                         {lastAlert?.allBounced && (
                           <span
-                            className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800"
+                            className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-danger-light text-danger border border-danger/30"
                             title={adminT('platform_admin.verified_caller.all_bounced_title', { time: new Date(lastAlert.dispatchedAt).toLocaleString() })}
                           >
                             <MailX className="h-3 w-3" />
@@ -2190,16 +2190,16 @@ function VerifiedCallerHealthPanel() {
                               skipped: lastAlert.skippedCount,
                             })}
                           >
-                            <span className="text-emerald-700 dark:text-emerald-300">
+                            <span className="text-success">
                               {lastAlert.sentCount}↑
                             </span>
                             {lastAlert.bouncedCount > 0 && (
-                              <span className="ml-1 text-red-600 dark:text-red-400">
+                              <span className="ml-1 text-danger">
                                 {lastAlert.bouncedCount}✗
                               </span>
                             )}
                             {lastAlert.failedCount > 0 && (
-                              <span className="ml-1 text-amber-700 dark:text-amber-300">
+                              <span className="ml-1 text-warning">
                                 {lastAlert.failedCount}!
                               </span>
                             )}
@@ -2290,12 +2290,12 @@ function ConnectorExpiringSoonTable({
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <Clock className="h-4 w-4 text-warning" />
             {adminT('platform_admin.expiring_soon.title')}
             <span
               className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 rows.length > 0
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  ? 'bg-warning-light text-warning'
                   : 'bg-surface-secondary text-text-muted border border-border'
               }`}
             >
@@ -2353,7 +2353,7 @@ function ConnectorExpiringSoonTable({
                     </td>
                     <td className="px-4 py-2 text-xs whitespace-nowrap">
                       <div
-                        className="text-amber-700 dark:text-amber-300 font-medium"
+                        className="text-warning font-medium"
                         title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : adminT('platform_admin.common.unknown')}
                       >
                         {formatExpiresIn(r.expiresInMs, adminT)}
@@ -2404,8 +2404,8 @@ function ConnectorAttentionTable({
 }) {
   const { t: adminT } = useTranslation('admin');
   const accentClasses = accent === 'amber'
-    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    ? 'bg-warning-light text-warning'
+    : 'bg-danger-light text-danger';
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
@@ -2525,7 +2525,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
       </td>
       <td className="px-4 py-2 text-xs">
         <div
-          className="font-mono text-red-600 dark:text-red-400 break-all max-w-[360px]"
+          className="font-mono text-danger break-all max-w-[360px]"
           title={c.lastSyncError ?? ''}
         >
           {truncated ?? adminT('platform_admin.common.em_dash')}
@@ -2534,7 +2534,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
       <td className="px-4 py-2 text-xs whitespace-nowrap">
         {c.authAlertSentAt ? (
           <span
-            className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
+            className="inline-flex items-center gap-1 text-warning"
             title={adminT('platform_admin.connector_attention.email_sent_title', { time: new Date(c.authAlertSentAt).toLocaleString() })}
           >
             <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt, adminT)}
@@ -2588,8 +2588,8 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
             <div
               className={`text-xs px-2 py-1 rounded border max-w-[320px] break-words ${
                 feedback.kind === 'success'
-                  ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700/50 text-green-800 dark:text-green-200'
-                  : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700/50 text-red-800 dark:text-red-200'
+                  ? 'bg-success-light border-success/40 text-success'
+                  : 'bg-danger-light border-danger/40 text-danger'
               }`}
               role="status"
             >
@@ -2632,24 +2632,24 @@ function StuckOutboxEventsPanel({
       <div className="px-4 py-3 border-b border-border flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+            <AlertTriangle className="h-4 w-4 text-danger" />
             {adminT('platform_admin.stuck_outbox.title')}
             <span
               className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 total > 0
-                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                  ? 'bg-danger-light text-danger'
                   : 'bg-surface-secondary text-text-muted border border-border'
               }`}
             >
               {total}
             </span>
             {summary.deadLetter > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger">
                 {adminT('platform_admin.stuck_outbox.dead_letter_pill', { count: summary.deadLetter })}
               </span>
             )}
             {summary.failed > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning">
                 {adminT('platform_admin.stuck_outbox.retrying_pill', { count: summary.failed })}
               </span>
             )}
@@ -2763,8 +2763,8 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
         <span
           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
             isDeadLetter
-              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+              ? 'bg-danger-light text-danger'
+              : 'bg-warning-light text-warning'
           }`}
         >
           {isDeadLetter ? adminT('platform_admin.stuck_outbox.status_dead_letter') : adminT('platform_admin.stuck_outbox.status_failed')}
@@ -2774,7 +2774,7 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
         <span
           className={
             row.attempts >= row.maxAttempts
-              ? 'text-red-600 dark:text-red-400 font-medium'
+              ? 'text-danger font-medium'
               : 'text-text-primary'
           }
         >
@@ -2793,7 +2793,7 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
           </span>
         )}
       </td>
-      <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[360px]">
+      <td className="px-4 py-2 text-xs text-danger font-mono break-all max-w-[360px]">
         {truncatedError ?? adminT('platform_admin.common.em_dash')}
       </td>
       <td className="px-4 py-2 text-xs">
@@ -2832,8 +2832,8 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
             <div
               className={`text-[11px] ${
                 feedback.kind === 'success'
-                  ? 'text-green-700 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
+                  ? 'text-success'
+                  : 'text-danger'
               }`}
             >
               {feedback.message}
@@ -2887,7 +2887,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
             <Database className="h-4 w-4 text-primary" />
             CRM caller-identity revalidation
             {totalFailed > 0 && (
-              <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger">
                 {totalFailed} failed
               </span>
             )}
@@ -2905,7 +2905,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
           <div className="text-xs text-text-muted">Cycles run</div>
           <div className="text-2xl font-bold">{totals.cyclesRun}</div>
           {totals.cyclesThrew > 0 && (
-            <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+            <div className="text-xs text-danger mt-0.5">
               {totals.cyclesThrew} threw
             </div>
           )}
@@ -2916,7 +2916,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
         </div>
         <div className="bg-surface-secondary rounded-lg p-3">
           <div className="text-xs text-text-muted">Validated</div>
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="text-2xl font-bold text-success">
             {totals.validated}
           </div>
         </div>
@@ -2924,7 +2924,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
           <div className="text-xs text-text-muted" title="Cached IDs that no longer existed upstream and were cleared">
             Stale scrubbed
           </div>
-          <div className={`text-2xl font-bold ${totalScrubbed > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+          <div className={`text-2xl font-bold ${totalScrubbed > 0 ? 'text-warning' : ''}`}>
             {totalScrubbed}
           </div>
         </div>
@@ -2936,7 +2936,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
         </div>
         <div className="bg-surface-secondary rounded-lg p-3">
           <div className="text-xs text-text-muted">Failed</div>
-          <div className={`text-2xl font-bold ${totalFailed > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+          <div className={`text-2xl font-bold ${totalFailed > 0 ? 'text-danger' : ''}`}>
             {totalFailed}
           </div>
         </div>
@@ -2949,12 +2949,12 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
           </span>
           : scanned <strong>{lastCycle.scanned}</strong>, validated <strong>{lastCycle.validated}</strong>,
           scrubbed <strong>{lastCycle.staleScrubbed}</strong>, failed{' '}
-          <strong className={lastCycle.failed > 0 ? 'text-red-600 dark:text-red-400' : ''}>
+          <strong className={lastCycle.failed > 0 ? 'text-danger' : ''}>
             {lastCycle.failed}
           </strong>{' '}
           ({formatDurationMs(lastCycle.durationMs)})
           {lastCycle.threw && (
-            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-danger-light text-danger">
               cycle threw
             </span>
           )}
@@ -2977,7 +2977,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
           {metrics.perTenantTracked >= metrics.perTenantLimit ? '+' : ''})
         </button>
         {tenantsWithFailures.length > 0 && (
-          <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <span className="text-xs px-2 py-1 rounded bg-danger-light text-danger">
             {tenantsWithFailures.length} tenant{tenantsWithFailures.length === 1 ? '' : 's'} with
             repeated failures
           </span>
@@ -3012,20 +3012,20 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
                         {formatRelativeTime(c.finishedAt, adminT)}
                       </span>
                       {c.threw && (
-                        <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                        <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-light text-danger">
                           threw
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">{c.scanned}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-green-600 dark:text-green-400">
+                    <td className="px-4 py-2 text-right tabular-nums text-success">
                       {c.validated}
                     </td>
-                    <td className={`px-4 py-2 text-right tabular-nums ${c.staleScrubbed > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}>
+                    <td className={`px-4 py-2 text-right tabular-nums ${c.staleScrubbed > 0 ? 'text-warning font-medium' : ''}`}>
                       {c.staleScrubbed}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">{c.skippedNoConfig}</td>
-                    <td className={`px-4 py-2 text-right tabular-nums ${c.failed > 0 ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
+                    <td className={`px-4 py-2 text-right tabular-nums ${c.failed > 0 ? 'text-danger font-medium' : ''}`}>
                       {c.failed}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums text-text-muted">
@@ -3064,14 +3064,14 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
                     <tr key={t.tenantId} className="border-b border-border last:border-0">
                       <td className="px-4 py-2 text-xs font-mono break-all">{t.tenantId}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{t.scanned}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-green-600 dark:text-green-400">
+                      <td className="px-4 py-2 text-right tabular-nums text-success">
                         {t.validated}
                       </td>
-                      <td className={`px-4 py-2 text-right tabular-nums ${t.staleScrubbed > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}>
+                      <td className={`px-4 py-2 text-right tabular-nums ${t.staleScrubbed > 0 ? 'text-warning font-medium' : ''}`}>
                         {t.staleScrubbed}
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{t.skippedNoConfig}</td>
-                      <td className={`px-4 py-2 text-right tabular-nums ${t.failed > 0 ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
+                      <td className={`px-4 py-2 text-right tabular-nums ${t.failed > 0 ? 'text-danger font-medium' : ''}`}>
                         {t.failed}
                       </td>
                       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
@@ -3116,12 +3116,12 @@ function formatExpiresIn(ms: number | null, t: (k: string, opts?: any) => string
 function tokenStatusBadgeClasses(status: ConnectorTokenHealthStatus): string {
   switch (status) {
     case 'healthy':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
+      return 'bg-success-light text-success';
     case 'expiring':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+      return 'bg-warning-light text-warning';
     case 'expired':
     case 'needs_reconnect':
-      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+      return 'bg-danger-light text-danger';
     default:
       return 'bg-surface-secondary text-text-muted border border-border';
   }
@@ -3208,12 +3208,12 @@ function ConnectorTokenHealthPanel({
               {rows.length}
             </span>
             {expiringSoonCount > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning">
                 {adminT('platform_admin.token_health.expiring_pill', { count: expiringSoonCount })}
               </span>
             )}
             {staleCount > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger">
                 {adminT('platform_admin.token_health.stale_pill_count', { count: staleCount })}
               </span>
             )}
@@ -3318,9 +3318,9 @@ function ConnectorTokenHealthPanel({
                     <div
                       className={
                         r.expiresInMs !== null && r.expiresInMs < 0
-                          ? 'text-red-600 dark:text-red-400'
+                          ? 'text-danger'
                           : r.expiresInMs !== null && r.expiresInMs <= expiringHorizonMs
-                            ? 'text-amber-700 dark:text-amber-300'
+                            ? 'text-warning'
                             : 'text-text-muted'
                       }
                       title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : adminT('platform_admin.common.unknown')}
@@ -3347,7 +3347,7 @@ function ConnectorTokenHealthPanel({
                       </span>
                       {r.stale && (
                         <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger"
                           title={adminT('platform_admin.token_health.stale_pill_title', { count: staleCycleThreshold })}
                         >
                           <AlertTriangle className="h-3 w-3" /> {adminT('platform_admin.token_health.stale_label')}
@@ -3355,7 +3355,7 @@ function ConnectorTokenHealthPanel({
                       )}
                       {r.tokenDecryptFailed && (
                         <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning"
                           title={adminT('platform_admin.token_health.decrypt_failed_title')}
                         >
                           <ShieldAlert className="h-3 w-3" /> {adminT('platform_admin.token_health.decrypt_failed')}
@@ -3467,7 +3467,7 @@ function CallEventsRetentionPanel() {
 
   if (error || !data) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-danger">
         {adminT('platform_admin.retention.load_failed', { error: error ? (error as Error).message : adminT('platform_admin.common.no_data') })}
       </div>
     );
@@ -3476,12 +3476,12 @@ function CallEventsRetentionPanel() {
   const { status, lastRun, lastSuccessfulRun, recentRuns, partitions, expected, partitionsExist } = data;
 
   const headerToneClass = status.healthy
-    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700/50'
-    : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700/50';
+    ? 'bg-success-light border-success/40'
+    : 'bg-danger-light border-danger/40';
   const headerIcon = status.healthy ? (
-    <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+    <CheckCircle className="h-5 w-5 text-success" />
   ) : (
-    <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+    <AlertTriangle className="h-5 w-5 text-danger" />
   );
   const headerLabel = status.healthy
     ? adminT('platform_admin.retention.header_healthy')
@@ -3500,7 +3500,7 @@ function CallEventsRetentionPanel() {
               {adminT('platform_admin.retention.subtitle', { days: data.retentionDays })}
             </p>
             {status.reasons.length > 0 && (
-              <ul className="mt-2 text-xs text-red-700 dark:text-red-300 list-disc list-inside space-y-0.5">
+              <ul className="mt-2 text-xs text-danger list-disc list-inside space-y-0.5">
                 {status.reasons.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
@@ -3635,11 +3635,11 @@ function CallEventsRetentionPanel() {
                     </td>
                     <td className="px-4 py-2.5">
                       {run.status === 'success' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-light text-success">
                           <CheckCircle className="h-3 w-3" /> {adminT('platform_admin.retention.success')}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger">
                           <XCircle className="h-3 w-3" /> {adminT('platform_admin.retention.failure')}
                         </span>
                       )}
@@ -3668,7 +3668,7 @@ function CallEventsRetentionPanel() {
                           {run.dropped_partitions.map((p) => (
                             <code
                               key={p}
-                              className="text-xs font-mono px-2 py-0.5 rounded border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                              className="text-xs font-mono px-2 py-0.5 rounded border bg-warning-light border-warning/30 text-warning"
                             >
                               {p}
                             </code>
@@ -3678,7 +3678,7 @@ function CallEventsRetentionPanel() {
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {run.error_message ? (
-                        <span className="text-red-600 dark:text-red-400 break-words">{run.error_message}</span>
+                        <span className="text-danger break-words">{run.error_message}</span>
                       ) : (
                         <span className="text-text-muted">{adminT('platform_admin.retention.retention_window_days', { days: run.retention_days })}</span>
                       )}
@@ -3690,7 +3690,7 @@ function CallEventsRetentionPanel() {
           </table>
         </div>
         {lastRun && lastRun.status === 'failure' && (
-          <div className="px-4 py-2.5 border-t border-border bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300">
+          <div className="px-4 py-2.5 border-t border-border bg-danger-light text-xs text-danger">
             {adminT('platform_admin.retention.last_failed_banner', { time: formatRunTimestamp(lastRun.started_at) })}{' '}
             <code className="font-mono">CALL_EVENTS_RETENTION</code>.
           </div>
@@ -3751,7 +3751,7 @@ function IntegrationsStatusPanel() {
 
   if (error || !data) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-danger">
         {adminT('platform_admin.integrations_panel.load_failed', { error: error ? (error as Error).message : adminT('platform_admin.common.no_data') })}
       </div>
     );
@@ -3776,7 +3776,7 @@ function IntegrationsStatusPanel() {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm text-text-muted">
-            <span className="font-semibold text-green-600 dark:text-green-400">{data.summary.configured}</span>
+            <span className="font-semibold text-success">{data.summary.configured}</span>
             {' / '}
             {adminT('platform_admin.integrations_panel.configured_count_suffix', { total: data.summary.total })}
           </div>
@@ -3792,9 +3792,9 @@ function IntegrationsStatusPanel() {
       </div>
 
       {data.summary.missing > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-900 dark:text-amber-200">
+        <div className="bg-warning-light border border-warning/40 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-warning">
             <div className="font-medium">
               {adminT('platform_admin.integrations_panel.missing', { count: data.summary.missing })}
             </div>
@@ -3837,11 +3837,11 @@ function IntegrationsStatusPanel() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{p.label}</span>
                     {p.configured ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-light text-success">
                         <CheckCircle className="h-3 w-3" /> {adminT('platform_admin.integrations_panel.configured_pill')}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger">
                         <XCircle className="h-3 w-3" /> {adminT('platform_admin.integrations_panel.missing_pill')}
                       </span>
                     )}
@@ -3849,8 +3849,8 @@ function IntegrationsStatusPanel() {
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                           p.configured
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                            ? 'bg-info-light text-info'
+                            : 'bg-warning-light text-warning'
                         }`}
                         title={
                           p.configured
@@ -3869,7 +3869,7 @@ function IntegrationsStatusPanel() {
                     )}
                     {p.blockedAttemptCount > 0 && (
                       <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-danger-light text-danger"
                         title={adminT('platform_admin.integrations_panel.blocked_attempts_title', { count: p.blockedAttemptCount, vars: p.requiredEnv.join(' / ') })}
                       >
                         <AlertCircle className="h-3 w-3" />
@@ -3885,8 +3885,8 @@ function IntegrationsStatusPanel() {
                           key={env}
                           className={`text-xs font-mono px-2 py-0.5 rounded border ${
                             isMissing
-                              ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
-                              : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
+                              ? 'bg-danger-light text-danger border-danger/30'
+                              : 'bg-success-light text-success border-success/30'
                           }`}
                           title={isMissing ? adminT('platform_admin.integrations_panel.env_missing') : adminT('platform_admin.integrations_panel.env_set')}
                         >
@@ -3903,7 +3903,7 @@ function IntegrationsStatusPanel() {
                           key={env.name}
                           className={`text-xs font-mono px-2 py-0.5 rounded border ${
                             env.set
-                              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
+                              ? 'bg-success-light text-success border-success/30'
                               : 'bg-surface-hover text-text-muted border-border'
                           }`}
                           title={env.set ? adminT('platform_admin.integrations_panel.env_set') : adminT('platform_admin.integrations_panel.env_optional_unset')}
@@ -4699,7 +4699,7 @@ export default function PlatformAdmin() {
                                     statusMutation.mutate({ id: tenant.id, status: 'suspended' });
                                   }
                                 }}
-                                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-text-muted hover:text-red-600"
+                                className="p-1.5 rounded hover:bg-danger-light text-text-muted hover:text-danger"
                                 title={adminT('platform_admin.tenants.suspend_tenant')}
                               >
                                 <Ban className="h-4 w-4" />
@@ -4711,7 +4711,7 @@ export default function PlatformAdmin() {
                                     statusMutation.mutate({ id: tenant.id, status: 'active' });
                                   }
                                 }}
-                                className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-text-muted hover:text-green-600"
+                                className="p-1.5 rounded hover:bg-success-light text-text-muted hover:text-success"
                                 title={adminT('platform_admin.tenants.reactivate_tenant')}
                               >
                                 <CheckCircle className="h-4 w-4" />
@@ -4910,9 +4910,9 @@ function DocsFeedbackTab() {
                   const ratio = a.helpful_ratio;
                   const ratioColor =
                     ratio === null ? 'text-text-muted'
-                      : ratio >= 75 ? 'text-green-600'
-                      : ratio >= 50 ? 'text-yellow-600'
-                      : 'text-red-600';
+                      : ratio >= 75 ? 'text-success'
+                      : ratio >= 50 ? 'text-warning'
+                      : 'text-danger';
                   return (
                     <tr key={a.article_slug} className={`border-b border-border last:border-0 hover:bg-surface-secondary/50 ${selectedSlug === a.article_slug ? 'bg-surface-secondary/40' : ''}`}>
                       <td className="px-4 py-3 font-mono text-xs">{a.article_slug}</td>
@@ -4921,12 +4921,12 @@ function DocsFeedbackTab() {
                         <span className="text-text-muted font-normal ml-1">({a.total_votes})</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-green-600">
+                        <span className="inline-flex items-center gap-1 text-success">
                           <ThumbsUp className="h-3.5 w-3.5" /> {a.helpful_count}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-red-600">
+                        <span className="inline-flex items-center gap-1 text-danger">
                           <ThumbsDown className="h-3.5 w-3.5" /> {a.not_helpful_count}
                         </span>
                       </td>
@@ -4947,7 +4947,7 @@ function DocsFeedbackTab() {
                                 setSelectedSlug(a.article_slug);
                                 setStatusFilter('pending_reply');
                               }}
-                              className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-medium hover:bg-amber-100"
+                              className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded border border-warning/30 bg-warning-light text-warning text-[10px] font-medium hover:bg-warning/20"
                               title={adminT('platform_admin.docs_feedback.pending_reply_title')}
                             >
                               <Mail className="h-3 w-3" />
@@ -4995,9 +4995,9 @@ function DocsFeedbackTab() {
               onChange={(e) => setReplyStateFilter(e.target.value as DocsFeedbackReplyStateFilter)}
               className={`text-sm px-2 py-1.5 rounded border border-border bg-surface ${
                 replyStateFilter === 'hard_bounce'
-                  ? 'text-amber-800 font-medium'
+                  ? 'text-warning font-medium'
                   : replyStateFilter === 'failed'
-                    ? 'text-red-700 font-medium'
+                    ? 'text-danger font-medium'
                     : ''
               }`}
               title={adminT('platform_admin.docs_feedback.reply_state_title')}
@@ -5146,9 +5146,9 @@ function DocsFeedbackCommentRow({
       : adminT('platform_admin.docs_feedback.retry_send');
 
   const statusBadge =
-    c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
-      : c.status === 'hidden' ? 'bg-gray-100 text-gray-600 border-gray-200'
-      : 'bg-blue-100 text-blue-700 border-blue-200';
+    c.status === 'resolved' ? 'bg-success-light text-success border-success/30'
+      : c.status === 'hidden' ? 'bg-surface-secondary text-text-muted border-border'
+      : 'bg-info-light text-info border-info/30';
 
   const replies = repliesData?.replies ?? [];
   const lastReplyFailed = c.last_reply_failed === true;
@@ -5169,9 +5169,9 @@ function DocsFeedbackCommentRow({
     <div
       className={`px-4 py-3 ${
         lastReplyPermanent
-          ? 'border-l-4 border-l-amber-500 bg-amber-50/40'
+          ? 'border-l-4 border-l-warning bg-warning-light/40'
           : lastReplyFailed
-            ? 'border-l-4 border-l-red-500 bg-red-50/40'
+            ? 'border-l-4 border-l-danger bg-danger-light/40'
             : ''
       }`}
     >
@@ -5179,8 +5179,8 @@ function DocsFeedbackCommentRow({
         <div
           className={`mb-2 flex items-start gap-2 text-xs rounded px-2 py-1.5 border ${
             lastReplyPermanent
-              ? 'text-amber-800 bg-amber-100/60 border-amber-300'
-              : 'text-red-700 bg-red-100/60 border-red-200'
+              ? 'text-warning bg-warning-light/60 border-warning/40'
+              : 'text-danger bg-danger-light/60 border-danger/30'
           }`}
         >
           <Mail className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
@@ -5189,14 +5189,14 @@ function DocsFeedbackCommentRow({
               {lastReplyPermanent ? adminT('platform_admin.docs_feedback.hard_bounce_will_not_retry') : adminT('platform_admin.docs_feedback.last_reply_failed')}
               {lastReplyPermanent ? (
                 <span
-                  className="px-1.5 py-0.5 rounded border border-amber-400 bg-amber-100 text-amber-900 text-[10px] uppercase tracking-wide font-semibold"
+                  className="px-1.5 py-0.5 rounded border border-warning/50 bg-warning-light text-warning text-[10px] uppercase tracking-wide font-semibold"
                   title={adminT('platform_admin.docs_feedback.hard_bounce_title')}
                 >
                   {adminT('platform_admin.docs_feedback.hard_bounce_label')}
                 </span>
               ) : (
                 <span
-                  className="px-1.5 py-0.5 rounded border border-red-300 bg-red-100 text-red-800 text-[10px] uppercase tracking-wide font-medium"
+                  className="px-1.5 py-0.5 rounded border border-danger/40 bg-danger-light text-danger text-[10px] uppercase tracking-wide font-medium"
                   title={adminT('platform_admin.docs_feedback.transient_failed_title')}
                 >
                   {adminT('platform_admin.docs_feedback.failed_label_short')}
@@ -5230,11 +5230,11 @@ function DocsFeedbackCommentRow({
               />
             </div>
             {c.last_reply_error && (
-              <div className={lastReplyPermanent ? 'text-amber-700' : 'text-red-600'}>
+              <div className={lastReplyPermanent ? 'text-warning' : 'text-danger'}>
                 {c.last_reply_error}
               </div>
             )}
-            <div className={lastReplyPermanent ? 'text-amber-700/90' : 'text-red-600/80'}>
+            <div className={lastReplyPermanent ? 'text-warning/90' : 'text-danger/80'}>
               {lastReplyPermanent ? (
                 <>
                   {adminT('platform_admin.docs_feedback.hard_bounce_explainer_prefix')}{' '}
@@ -5242,7 +5242,7 @@ function DocsFeedbackCommentRow({
                     <a
                       href={`mailto:${c.reply_email}`}
                       title={adminT('platform_admin.docs_feedback.contact_email_title', { email: c.reply_email })}
-                      className="underline font-medium text-amber-900 hover:text-amber-950"
+                      className="underline font-medium text-warning hover:text-warning/80"
                     >
                       {adminT('platform_admin.docs_feedback.contact_email', { email: c.reply_email })}
                     </a>
@@ -5260,7 +5260,7 @@ function DocsFeedbackCommentRow({
           </div>
           {lastReplyPermanent ? (
             <span
-              className="ml-2 self-start px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[11px] whitespace-nowrap cursor-not-allowed"
+              className="ml-2 self-start px-2 py-1 rounded border border-warning/40 bg-warning-light text-warning text-[11px] whitespace-nowrap cursor-not-allowed"
               title={adminT('platform_admin.docs_feedback.retry_disabled_title')}
             >
               {adminT('platform_admin.docs_feedback.retry_disabled')}
@@ -5279,7 +5279,7 @@ function DocsFeedbackCommentRow({
                   ? adminT('platform_admin.docs_feedback.retry_cooldown_title', { seconds: retrySecondsLeft })
                   : undefined
               }
-              className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              className="ml-2 self-start px-2 py-1 rounded border border-danger/40 bg-surface text-danger hover:bg-danger-light disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {retryLabel}
             </button>
@@ -5288,9 +5288,9 @@ function DocsFeedbackCommentRow({
       )}
       <div className="flex items-center gap-2 text-xs text-text-muted mb-1 flex-wrap">
         {c.vote === 'helpful' ? (
-          <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.vote_helpful')}</span>
+          <span className="inline-flex items-center gap-1 text-success"><ThumbsUp className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.vote_helpful')}</span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.vote_not_helpful')}</span>
+          <span className="inline-flex items-center gap-1 text-danger"><ThumbsDown className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.vote_not_helpful')}</span>
         )}
         <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase tracking-wide font-medium ${statusBadge}`}>
           {c.status}
@@ -5298,7 +5298,7 @@ function DocsFeedbackCommentRow({
         <span className="font-mono">{c.article_slug}</span>
         {c.page_path && <span className="text-text-muted">· {c.page_path}</span>}
         {c.reply_count > 0 && (
-          <span className="inline-flex items-center gap-1 text-teal-700">
+          <span className="inline-flex items-center gap-1 text-primary">
             <Mail className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.replies', { count: c.reply_count })}
           </span>
         )}
@@ -5308,7 +5308,7 @@ function DocsFeedbackCommentRow({
       {c.reply_email && (
         <div className="mt-1 text-xs text-text-muted inline-flex items-center gap-1">
           <Mail className="h-3 w-3" />
-          <a href={`mailto:${c.reply_email}`} className="text-teal-700 hover:underline">{c.reply_email}</a>
+          <a href={`mailto:${c.reply_email}`} className="text-primary hover:underline">{c.reply_email}</a>
         </div>
       )}
       <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
@@ -5320,7 +5320,7 @@ function DocsFeedbackCommentRow({
               setError(null);
               setSuccess(null);
             }}
-            className="px-2 py-1 rounded border border-teal-200 text-teal-700 hover:bg-teal-50"
+            className="px-2 py-1 rounded border border-primary/30 text-primary hover:bg-primary-light"
           >
             {showReply ? adminT('platform_admin.docs_feedback.cancel_reply') : adminT('platform_admin.docs_feedback.reply_by_email')}
           </button>
@@ -5375,10 +5375,10 @@ function DocsFeedbackCommentRow({
         )}
       </div>
 
-      {success && <div className="mt-2 text-xs text-green-700">{success}</div>}
+      {success && <div className="mt-2 text-xs text-success">{success}</div>}
 
       {showReply && c.reply_email && (
-        <div className="mt-3 border border-teal-200 rounded-lg bg-teal-50/30 p-3 space-y-2">
+        <div className="mt-3 border border-primary/30 rounded-lg bg-primary-light/30 p-3 space-y-2">
           <div className="text-xs text-text-muted">
             {adminT('platform_admin.docs_feedback.reply_will_be_sent_prefix')} <span className="font-mono">{c.reply_email}</span>.
           </div>
@@ -5404,7 +5404,7 @@ function DocsFeedbackCommentRow({
             />
             {adminT('platform_admin.docs_feedback.mark_after_send')}
           </label>
-          {error && <div className="text-xs text-red-600">{error}</div>}
+          {error && <div className="text-xs text-danger">{error}</div>}
           <div className="flex gap-2">
             <button
               type="button"
@@ -5413,7 +5413,7 @@ function DocsFeedbackCommentRow({
                 setError(null);
                 sendReply.mutate();
               }}
-              className="px-3 py-1.5 text-sm rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm rounded bg-primary text-on-primary hover:bg-primary-hover disabled:opacity-50"
             >
               {sendReply.isPending ? adminT('platform_admin.docs_feedback.sending') : adminT('platform_admin.docs_feedback.send_reply')}
             </button>
@@ -5452,11 +5452,11 @@ function DocsFeedbackCommentRow({
                     <span>· {adminT('platform_admin.docs_feedback.to_label', { email: r.to_email })}</span>
                     {r.email_error
                       ? (
-                        <span className="text-red-600 inline-flex items-center gap-1">
+                        <span className="text-danger inline-flex items-center gap-1">
                           · {adminT('platform_admin.docs_feedback.failed_label', { error: r.email_error })}
                           {isHardBounce(r) && (
                             <span
-                              className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                              className="px-1 py-0.5 rounded border border-warning/40 bg-warning-light text-warning text-[9px] uppercase tracking-wide font-medium"
                               title={adminT('platform_admin.docs_feedback.hard_bounce_title_short')}
                             >
                               {adminT('platform_admin.docs_feedback.hard_bounce_label')}
@@ -5484,10 +5484,10 @@ function DocsFeedbackCommentRow({
                           />
                         </span>
                       )
-                      : <span className="text-green-700">· {adminT('platform_admin.docs_feedback.delivered')}</span>}
+                      : <span className="text-success">· {adminT('platform_admin.docs_feedback.delivered')}</span>}
                     {chain.retries.length > 0 && (
                       <span
-                        className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
+                        className="px-1.5 py-0.5 rounded border border-warning/30 bg-warning-light text-warning text-[10px] uppercase tracking-wide"
                         title={adminT('platform_admin.docs_feedback.attempts_chain_title', { count: chain.retries.length })}
                       >
                         {adminT('platform_admin.docs_feedback.attempts', { count: totalAttempts })}
@@ -5497,8 +5497,8 @@ function DocsFeedbackCommentRow({
                   <div className="text-sm font-medium mb-1">{r.subject}</div>
                   <div className="text-sm whitespace-pre-wrap">{r.body}</div>
                   {chain.retries.length > 0 && (
-                    <div className="mt-2 pl-3 border-l-2 border-amber-200 space-y-1">
-                      <div className="text-[10px] uppercase tracking-wide text-amber-700 font-semibold">
+                    <div className="mt-2 pl-3 border-l-2 border-warning/30 space-y-1">
+                      <div className="text-[10px] uppercase tracking-wide text-warning font-semibold">
                         {adminT('platform_admin.docs_feedback.retries_section')}
                       </div>
                       {chain.retries.map((retry, idx) => (
@@ -5507,7 +5507,7 @@ function DocsFeedbackCommentRow({
                           className="flex items-center gap-2 text-text-muted flex-wrap"
                         >
                           <span
-                            className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
+                            className="px-1.5 py-0.5 rounded border border-warning/30 bg-warning-light text-warning text-[10px] uppercase tracking-wide"
                             title={adminT('platform_admin.docs_feedback.retry_title', { time: new Date(r.created_at).toLocaleString() })}
                           >
                             {adminT('platform_admin.docs_feedback.retry_n', { n: idx + 1 })}
@@ -5516,11 +5516,11 @@ function DocsFeedbackCommentRow({
                           <span>· {adminT('platform_admin.docs_feedback.from_admin_label', { user: retry.sent_by ?? 'admin' })}</span>
                           {retry.email_error
                             ? (
-                              <span className="text-red-600 inline-flex items-center gap-1">
+                              <span className="text-danger inline-flex items-center gap-1">
                                 · {adminT('platform_admin.docs_feedback.failed_label', { error: retry.email_error })}
                                 {isHardBounce(retry) && (
                                   <span
-                                    className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                                    className="px-1 py-0.5 rounded border border-warning/40 bg-warning-light text-warning text-[9px] uppercase tracking-wide font-medium"
                                     title={adminT('platform_admin.docs_feedback.hard_bounce_title_short')}
                                   >
                                     {adminT('platform_admin.docs_feedback.hard_bounce_label')}
@@ -5536,7 +5536,7 @@ function DocsFeedbackCommentRow({
                                 />
                               </span>
                             )
-                            : <span className="text-green-700">· {adminT('platform_admin.docs_feedback.delivered')}</span>}
+                            : <span className="text-success">· {adminT('platform_admin.docs_feedback.delivered')}</span>}
                         </div>
                       ))}
                     </div>
@@ -5659,7 +5659,7 @@ function SupportInboxTab() {
   return (
     <div className="space-y-4">
       {failedCount > 0 && (
-        <div className="flex items-start gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-900">
+        <div className="flex items-start gap-3 p-3 rounded-lg border border-danger/40 bg-danger-light text-danger">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <div className="text-sm">
             <div className="font-medium">
@@ -5675,7 +5675,7 @@ function SupportInboxTab() {
         </div>
       )}
       {replyFailedCount > 0 && (
-        <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900">
+        <div className="flex items-start gap-3 p-3 rounded-lg border border-warning/40 bg-warning-light text-warning">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <div className="text-sm">
             <div className="font-medium">
@@ -5685,7 +5685,7 @@ function SupportInboxTab() {
               )}
               {hardBounceCount > 0 && (
                 <>
-                  {' '}<span className="font-normal text-amber-800">·</span>{' '}
+                  {' '}<span className="font-normal text-warning">·</span>{' '}
                   <span className="font-medium">
                     {adminT('platform_admin.support_inbox.banner_hard_bounce', { count: hardBounceCount })}
                   </span>
@@ -5728,7 +5728,7 @@ function SupportInboxTab() {
               checked={hardBounceOnly}
               onChange={(e) => setHardBounceOnly(e.target.checked)}
             />
-            <span className={hardBounceOnly ? 'text-red-700 font-medium' : ''}>
+            <span className={hardBounceOnly ? 'text-danger font-medium' : ''}>
               {adminT('platform_admin.support_inbox.hard_bounce_only')}
               {/* The count next to this label has to be the global hard-bounce
                   total (status-agnostic) — the stats endpoint isn't
@@ -5795,7 +5795,7 @@ function SupportInboxTab() {
                       <div className="font-mono text-xs">{t.id}</div>
                       {t.email_error && (
                         <div
-                          className="text-xs text-red-600 mt-1 flex items-center gap-1 flex-wrap"
+                          className="text-xs text-danger mt-1 flex items-center gap-1 flex-wrap"
                           title={t.email_error}
                         >
                           <AlertCircle className="h-3 w-3" />
@@ -5921,7 +5921,7 @@ function SuppressedBadge({
   const padding = size === 'xs' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-xs';
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border border-orange-300 bg-orange-50 text-orange-800 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900 ${padding}`}
+      className={`inline-flex items-center gap-1 rounded border border-warning/40 bg-warning-light text-warning ${padding}`}
       title={tooltipParts.join(' · ')}
     >
       <ShieldOff className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
@@ -6084,7 +6084,7 @@ function BouncedRecipientsPanel({
           {expanded
             ? <ChevronDown className="h-4 w-4 text-text-muted" />
             : <ChevronRight className="h-4 w-4 text-text-muted" />}
-          <ShieldAlert className="h-4 w-4 text-red-600" />
+          <ShieldAlert className="h-4 w-4 text-danger" />
           <div>
             <div className="text-sm font-medium">
               {adminT('platform_admin.support_inbox.bounced_title')}
@@ -6155,7 +6155,7 @@ function BouncedRecipientsPanel({
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-100 text-red-800">
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-danger-light text-danger">
                         <AlertCircle className="h-3 w-3" />
                         {r.occurrence_count}
                       </span>
@@ -6170,7 +6170,7 @@ function BouncedRecipientsPanel({
                       {r.alerted_at ? (
                         <div className="flex items-center gap-2">
                           <span
-                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800"
+                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-warning-light text-warning"
                             title={adminT('platform_admin.support_inbox.alerted_title', { time: new Date(r.alerted_at).toLocaleString() })}
                           >
                             <ShieldAlert className="h-3 w-3" />
@@ -6196,7 +6196,7 @@ function BouncedRecipientsPanel({
                         <span className="text-text-muted">{adminT('platform_admin.common.em_dash')}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-red-700 max-w-md truncate" title={r.last_error}>
+                    <td className="px-4 py-3 text-xs text-danger max-w-md truncate" title={r.last_error}>
                       {r.last_error}
                     </td>
                     <td className="px-4 py-3">
@@ -6238,7 +6238,7 @@ function BouncedRecipientsPanel({
                                     notes: draft.trim() ? draft.trim() : null,
                                   })
                                 }
-                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-warning-light text-warning border border-warning/40 hover:bg-warning/20 disabled:opacity-50 font-medium"
                               >
                                 <ShieldOff className="h-3 w-3" />
                                 {suppressing ? adminT('platform_admin.support_inbox.suppressing') : adminT('platform_admin.support_inbox.suppress_confirm')}
@@ -6258,7 +6258,7 @@ function BouncedRecipientsPanel({
                           <button
                             type="button"
                             onClick={() => setShowNoteFor(key)}
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900"
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-warning/40 bg-warning-light text-warning hover:bg-warning/20"
                             title={adminT('platform_admin.support_inbox.suppress_title')}
                           >
                             <ShieldOff className="h-3 w-3" />
@@ -6266,7 +6266,7 @@ function BouncedRecipientsPanel({
                           </button>
                         )}
                         {rowError && (
-                          <div className="text-[10px] text-red-600" title={rowError}>
+                          <div className="text-[10px] text-danger" title={rowError}>
                             {rowError}
                           </div>
                         )}
@@ -6300,7 +6300,7 @@ function BouncedRecipientsPanel({
                                   {new Date(tk.last_failure_at).toLocaleString()}
                                 </td>
                                 <td
-                                  className="py-1.5 pr-3 text-red-700 max-w-xs truncate"
+                                  className="py-1.5 pr-3 text-danger max-w-xs truncate"
                                   title={tk.last_error}
                                 >
                                   {tk.last_error}
@@ -6436,7 +6436,7 @@ function UnsubscribedAddressesPanel() {
           {expanded
             ? <ChevronDown className="h-4 w-4 text-text-muted" />
             : <ChevronRight className="h-4 w-4 text-text-muted" />}
-          <MailX className="h-4 w-4 text-amber-600" />
+          <MailX className="h-4 w-4 text-warning" />
           <div>
             <div className="text-sm font-medium">
               {adminT('platform_admin.support_inbox.unsubs_title')}
@@ -6818,7 +6818,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           notes: threadNoteDraft.trim() ? threadNoteDraft.trim() : null,
                         })
                       }
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-warning-light text-warning border border-warning/40 hover:bg-warning/20 disabled:opacity-50 font-medium"
                     >
                       <ShieldOff className="h-3 w-3" />
                       {suppressFromThread.isPending ? adminT('platform_admin.support_inbox.suppressing') : adminT('platform_admin.support_inbox.thread_confirm_suppress')}
@@ -6838,7 +6838,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 <button
                   type="button"
                   onClick={() => setThreadNoteOpen(true)}
-                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-warning/40 bg-warning-light text-warning hover:bg-warning/20"
                   title={adminT('platform_admin.support_inbox.suppress_title')}
                 >
                   <ShieldOff className="h-3 w-3" />
@@ -6846,7 +6846,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 </button>
               )}
               {threadSuppressError && (
-                <div className="text-[10px] text-red-600" title={threadSuppressError}>
+                <div className="text-[10px] text-danger" title={threadSuppressError}>
                   {threadSuppressError}
                 </div>
               )}
@@ -6856,7 +6856,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         {ticket.recent_errors && (
           <div>
             <div className="text-xs font-medium text-text-muted mb-1">{adminT('platform_admin.support_inbox.thread_recent_errors')}</div>
-            <pre className="whitespace-pre-wrap text-xs bg-red-50 dark:bg-red-950/20 p-3 rounded border border-border font-mono">{ticket.recent_errors}</pre>
+            <pre className="whitespace-pre-wrap text-xs bg-danger-light p-3 rounded border border-border font-mono">{ticket.recent_errors}</pre>
           </div>
         )}
         {ticket.context && Object.keys(ticket.context).length > 0 && (
@@ -6866,11 +6866,11 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
           </div>
         )}
         {ticket.email_error && (
-          <div className="text-xs text-red-600 flex items-center gap-1 flex-wrap">
+          <div className="text-xs text-danger flex items-center gap-1 flex-wrap">
             <span>{adminT('platform_admin.support_inbox.thread_initial_error', { error: ticket.email_error })}</span>
             {isHardBounce(ticket) && (
               <span
-                className="ml-1 px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                className="ml-1 px-1.5 py-0.5 rounded border border-warning/40 bg-warning-light text-warning text-[10px] uppercase tracking-wide font-medium"
                 title={adminT('platform_admin.support_inbox.thread_hard_bounce_title')}
               >
                 {adminT('platform_admin.support_inbox.thread_hard_bounce_label')}
@@ -6937,19 +6937,19 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                     ? {
                         label: adminT('platform_admin.support_inbox.badge_permanent_failure'),
                         className:
-                          'bg-red-200 text-red-900 border-red-500 dark:bg-red-900/60 dark:text-red-100 dark:border-red-700',
+                          'bg-danger-light text-danger border-danger/60 font-semibold',
                         title: adminT('platform_admin.support_inbox.badge_permanent_failure_title'),
                       }
                     : {
                         label: adminT('platform_admin.support_inbox.badge_failed'),
                         className:
-                          'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
+                          'bg-danger-light text-danger border-danger/40',
                         title: r.email_error,
                       };
                 } else if (r.email_message_id) {
                   badge = {
                     label: adminT('platform_admin.support_inbox.badge_sent'),
-                    className: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900',
+                    className: 'bg-success-light text-success border-success/40',
                     title: adminT('platform_admin.support_inbox.badge_sent_title', { id: r.email_message_id }),
                   };
                 } else {
@@ -6996,7 +6996,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   className={`p-3 rounded border ${
                     isOutbound
                       ? r.email_error
-                        ? 'bg-red-50 border-red-300 dark:bg-red-950/20 dark:border-red-900'
+                        ? 'bg-danger-light border-danger/40'
                         : 'bg-primary/5 border-primary/20'
                       : 'bg-surface border-border'
                   }`}
@@ -7034,7 +7034,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                               ? adminT('platform_admin.support_inbox.retry_cooldown_title', { seconds: retrySecondsLeft })
                               : adminT('platform_admin.support_inbox.retry_resend_title', { email: ticket.user_email })
                           }
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-red-300 dark:border-red-900 bg-white dark:bg-red-950/20 text-red-700 dark:text-red-300 text-[11px] font-medium hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-danger/40 bg-surface text-danger text-[11px] font-medium hover:bg-danger-light disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <RotateCw className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`} />
                           {retryLabel}
@@ -7056,25 +7056,25 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   </div>
                   <div className="whitespace-pre-wrap text-sm">{r.body}</div>
                   {r.email_error && (
-                    <div className="text-xs text-red-600 mt-1">
+                    <div className="text-xs text-danger mt-1">
                       {adminT('platform_admin.support_inbox.email_delivery_error', { error: r.email_error })}
                       {isPermanentFailure && (
-                        <div className="text-amber-700 dark:text-amber-400 mt-0.5">
+                        <div className="text-warning mt-0.5">
                           {adminT('platform_admin.support_inbox.permanent_classification')}
                         </div>
                       )}
                     </div>
                   )}
                   {isPermanentFailure && (
-                    <div className="text-xs text-red-700 dark:text-red-300 mt-1">
+                    <div className="text-xs text-danger mt-1">
                       {adminT('platform_admin.support_inbox.wont_retry_long')}
                     </div>
                   )}
                   {retryError && (
-                    <div className="text-xs text-red-600 mt-1">{adminT('platform_admin.support_inbox.retry_failed_inline', { error: retryError })}</div>
+                    <div className="text-xs text-danger mt-1">{adminT('platform_admin.support_inbox.retry_failed_inline', { error: retryError })}</div>
                   )}
                   {cancelErrors[r.id] && (
-                    <div className="text-xs text-red-600 mt-1">
+                    <div className="text-xs text-danger mt-1">
                       {adminT('platform_admin.support_inbox.cancel_failed_inline', { error: cancelErrors[r.id] })}
                     </div>
                   )}
@@ -7124,11 +7124,11 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
             </div>
           </div>
           {changeStatus.error instanceof Error && (
-            <div className="text-xs text-red-600">{changeStatus.error.message}</div>
+            <div className="text-xs text-danger">{changeStatus.error.message}</div>
           )}
-          {sendError && <div className="text-xs text-red-600">{sendError}</div>}
+          {sendError && <div className="text-xs text-danger">{sendError}</div>}
           {lastReply && !sendError && (
-            <div className="text-xs text-green-600">
+            <div className="text-xs text-success">
               {lastReply.email_delivered ? adminT('platform_admin.support_inbox.reply_sent_ok') : adminT('platform_admin.support_inbox.reply_sent_fail')}
             </div>
           )}
@@ -7165,9 +7165,9 @@ const DIRECTION_LABELS: Record<keyof CheckoutDirectionTotals, string> = {
 };
 
 const DIRECTION_BAR_COLOR: Record<keyof CheckoutDirectionTotals, string> = {
-  upgrade: 'bg-green-500',
-  downgrade: 'bg-red-500',
-  interval_change: 'bg-blue-500',
+  upgrade: 'bg-success',
+  downgrade: 'bg-danger',
+  interval_change: 'bg-info',
   same: 'bg-text-muted/40',
   new: 'bg-primary',
   unknown: 'bg-text-muted/30',
@@ -7232,7 +7232,7 @@ function PlanChangeDirectionsPanel() {
         {isLoading ? (
           <div className="text-center py-8 text-text-muted">Loading plan-change data...</div>
         ) : isError ? (
-          <div className="text-center py-8 text-red-600">Failed to load plan-change data.</div>
+          <div className="text-center py-8 text-danger">Failed to load plan-change data.</div>
         ) : !data || grandTotal === 0 ? (
           <div className="text-center py-8 text-text-muted">
             No checkouts recorded in the last {data?.windowDays ?? days} days.
@@ -7384,11 +7384,11 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
             </div>
             <div>
               <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.revenue_per_call')}</div>
-              <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.economics.revenuePerCallCents))}</div>
+              <div className="text-lg font-bold text-success">{formatCents(String(m.economics.revenuePerCallCents))}</div>
             </div>
             <div>
               <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.margin_per_call')}</div>
-              <div className={`text-lg font-bold ${m.economics.marginPerCallCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              <div className={`text-lg font-bold ${m.economics.marginPerCallCents >= 0 ? 'text-success' : 'text-danger'}`}>
                 {formatCents(String(m.economics.marginPerCallCents))}
               </div>
             </div>
@@ -7421,7 +7421,7 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
           </div>
           <div>
             <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.revenue')}</div>
-            <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.monthly.revenueCents))}</div>
+            <div className="text-lg font-bold text-success">{formatCents(String(m.monthly.revenueCents))}</div>
           </div>
         </div>
       </div>
@@ -7625,7 +7625,7 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
         <div className="bg-surface border border-border rounded-xl p-5">
           <h3 className="font-semibold text-sm mb-1">{adminT('platform_admin.template_analytics.call_volume_by_template')}</h3>
           <p className="text-xs text-text-muted mb-4">{adminT('platform_admin.template_analytics.call_volume_subtitle')}</p>
-          <BarChart data={[...templates].sort((a, b) => b.callsLast30d - a.callsLast30d).slice(0, 10)} labelKey="displayName" valueKey="callsLast30d" barColor="bg-green-500" />
+          <BarChart data={[...templates].sort((a, b) => b.callsLast30d - a.callsLast30d).slice(0, 10)} labelKey="displayName" valueKey="callsLast30d" barColor="bg-success" />
         </div>
       </div>
 
@@ -7665,19 +7665,19 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
                   <td className="px-4 py-3 text-right tabular-nums">{t.totalInstalls}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.activeInstalls}</td>
                   <td className="px-4 py-3 text-right">
-                    <span className={`inline-flex items-center gap-1 ${t.activationRate >= 70 ? 'text-green-600 dark:text-green-400' : t.activationRate >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                    <span className={`inline-flex items-center gap-1 ${t.activationRate >= 70 ? 'text-success' : t.activationRate >= 40 ? 'text-warning' : 'text-danger'}`}>
                       {t.activationRate >= 70 ? <TrendingUp className="h-3 w-3" /> : t.activationRate < 40 ? <TrendingDown className="h-3 w-3" /> : null}
                       {t.activationRate}%
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    <span className={`inline-flex items-center gap-1 ${t.upgradeAdoption >= 50 ? 'text-green-600 dark:text-green-400' : t.upgradeAdoption >= 20 ? 'text-yellow-600 dark:text-yellow-400' : 'text-text-muted'}`}>
+                    <span className={`inline-flex items-center gap-1 ${t.upgradeAdoption >= 50 ? 'text-success' : t.upgradeAdoption >= 20 ? 'text-warning' : 'text-text-muted'}`}>
                       {t.upgradeAdoption}%
                       <span className="text-text-muted/60">({t.upgradeCount})</span>
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    <span className={t.uninstallRate > 30 ? 'text-red-600 dark:text-red-400' : ''}>{adminT('platform_admin.template_analytics.uninstall_inline', { count: t.uninstallCount, rate: t.uninstallRate })}</span>
+                    <span className={t.uninstallRate > 30 ? 'text-danger' : ''}>{adminT('platform_admin.template_analytics.uninstall_inline', { count: t.uninstallCount, rate: t.uninstallRate })}</span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.callsLast30d.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.totalCampaigns > 0 ? adminT('platform_admin.template_analytics.campaigns_inline', { completed: t.completedCampaigns, total: t.totalCampaigns }) : adminT('platform_admin.common.em_dash')}</td>
@@ -7721,15 +7721,15 @@ function MetricItem({ label, value, trend }: { label: string; value: string; tre
       <p className="text-xs text-text-muted mb-0.5">{label}</p>
       <div className="flex items-center gap-1">
         <span className="text-sm font-semibold">{value}</span>
-        {trend === 'up' && <TrendingUp className="h-3 w-3 text-green-500" />}
-        {trend === 'down' && <TrendingDown className="h-3 w-3 text-red-500" />}
+        {trend === 'up' && <TrendingUp className="h-3 w-3 text-success" />}
+        {trend === 'down' && <TrendingDown className="h-3 w-3 text-danger" />}
       </div>
     </div>
   );
 }
 
 function MilestoneIcon({ done }: { done: boolean }) {
-  if (done) return <CheckCircle className="h-4 w-4 text-green-500" />;
+  if (done) return <CheckCircle className="h-4 w-4 text-success" />;
   return <AlertCircle className="h-4 w-4 text-text-muted" />;
 }
 
@@ -7802,7 +7802,7 @@ function OnboardingFunnelCards() {
           </div>
           <div className="border border-border rounded-lg p-3">
             <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.step_1_provisioning')}</div>
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+            <div className="text-2xl font-bold text-warning">
               {funnel?.step_1 ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
@@ -7811,7 +7811,7 @@ function OnboardingFunnelCards() {
           </div>
           <div className="border border-border rounded-lg p-3">
             <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.step_2_template')}</div>
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+            <div className="text-2xl font-bold text-warning">
               {funnel?.step_2 ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
@@ -7820,7 +7820,7 @@ function OnboardingFunnelCards() {
           </div>
           <div className="border border-border rounded-lg p-3">
             <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.step_3_phone')}</div>
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+            <div className="text-2xl font-bold text-warning">
               {funnel?.step_3 ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
@@ -7829,7 +7829,7 @@ function OnboardingFunnelCards() {
           </div>
           <div className="border border-border rounded-lg p-3">
             <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.completed')}</div>
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+            <div className="text-2xl font-bold text-success">
               {funnel?.completed ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
@@ -7904,7 +7904,7 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="text-sm text-text-muted mb-1">{adminT('platform_admin.activation_metrics.stuck_tenants')}</div>
-          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stuckTenants.length}</div>
+          <div className="text-2xl font-bold text-warning">{stuckTenants.length}</div>
           <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.activation_metrics.stuck_subtitle')}</div>
         </div>
       </div>
@@ -7953,9 +7953,9 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                       <div className="w-16 bg-surface-hover rounded-full h-2">
                         <div
                           className={`h-2 rounded-full ${
-                            m.milestones_completed >= 5 ? 'bg-green-500' :
-                            m.milestones_completed >= 3 ? 'bg-blue-500' :
-                            m.milestones_completed >= 1 ? 'bg-amber-500' : 'bg-gray-400'
+                            m.milestones_completed >= 5 ? 'bg-success' :
+                            m.milestones_completed >= 3 ? 'bg-info' :
+                            m.milestones_completed >= 1 ? 'bg-warning' : 'bg-text-muted/40'
                           }`}
                           style={{ width: `${Math.round((m.milestones_completed / TOTAL_MILESTONES) * 100)}%` }}
                         />
