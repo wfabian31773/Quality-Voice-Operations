@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, waitFor, screen } from '@testing-library/react';
+import { render, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -37,6 +37,20 @@ function loginAsOwner() {
   );
 }
 
+function loginAsViewer() {
+  localStorage.setItem(
+    'auth_token',
+    makeFakeJwt({
+      sub: 'user-2',
+      tenantId: 'tenant-1',
+      email: 'viewer@acme.test',
+      role: 'viewer',
+      isPlatformAdmin: false,
+      exp: Math.floor(Date.now() / 1000) + 60 * 60,
+    }),
+  );
+}
+
 interface SubscriptionFixture {
   plan: 'starter' | 'pro' | 'enterprise';
   billing_interval: 'monthly' | 'annual';
@@ -55,6 +69,7 @@ interface EffectiveRateFixture {
 }
 
 let handlers: Record<string, () => unknown> = {};
+let checkoutCalls: Array<{ method: string; body: unknown }> = [];
 
 function defaultHandlers(
   sub: SubscriptionFixture,
@@ -103,6 +118,7 @@ function defaultHandlers(
 beforeEach(() => {
   localStorage.clear();
   handlers = {};
+  checkoutCalls = [];
 
   Object.defineProperty(window, 'location', {
     configurable: true,
@@ -127,6 +143,20 @@ beforeEach(() => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
+      }
+
+      if (path === '/billing/checkout' && method === 'POST') {
+        let parsed: unknown = null;
+        try {
+          parsed = init?.body ? JSON.parse(String(init.body)) : null;
+        } catch {
+          parsed = null;
+        }
+        checkoutCalls.push({ method, body: parsed });
+        return new Response(
+          JSON.stringify({ url: 'https://checkout.stripe.test/session-1' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
       }
 
       for (const prefix of Object.keys(handlers)) {
@@ -395,5 +425,70 @@ describe('Billing annual-savings callout', () => {
     });
 
     expect(screen.queryByTestId('billing-annual-savings-callout')).toBeNull();
+  });
+
+  it('clicking the in-callout "Switch to annual" button kicks off Stripe Checkout for the same tier on annual', async () => {
+    handlers = defaultHandlers(
+      { plan: 'pro', billing_interval: 'monthly' },
+      {
+        basePriceCents: 39_900,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'stripe',
+        monthlyBasePriceCents: 39_900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 31_900,
+        annualBasePriceSource: 'stripe',
+      },
+    );
+    loginAsOwner();
+    await renderBilling();
+
+    const button = await screen.findByTestId('billing-annual-savings-switch-button');
+    expect(button.textContent).toMatch(/Switch to annual/);
+
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(checkoutCalls.length).toBe(1);
+    });
+
+    const body = checkoutCalls[0].body as Record<string, unknown>;
+    expect(body.plan).toBe('pro');
+    expect(body.interval).toBe('annual');
+    // Stripe Checkout flow uses the same success/cancel URLs the
+    // existing same-tier annual switch card relies on.
+    expect(typeof body.successUrl).toBe('string');
+    expect(typeof body.cancelUrl).toBe('string');
+    // Browser is redirected to the Stripe-hosted checkout URL the
+    // server returned.
+    await waitFor(() => {
+      expect(window.location.href).toBe('https://checkout.stripe.test/session-1');
+    });
+  });
+
+  it('hides the "Switch to annual" button for read-only roles (viewer)', async () => {
+    handlers = defaultHandlers(
+      { plan: 'pro', billing_interval: 'monthly' },
+      {
+        basePriceCents: 39_900,
+        overageRatePerMinute: 0.12,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'stripe',
+        monthlyBasePriceCents: 39_900,
+        monthlyBasePriceSource: 'stripe',
+        annualBasePriceCents: 31_900,
+        annualBasePriceSource: 'stripe',
+      },
+    );
+    loginAsViewer();
+    await renderBilling();
+
+    // The callout itself still renders for viewers — they should see the
+    // savings opportunity — but the CTA stays hidden until an admin acts.
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-annual-savings-callout')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('billing-annual-savings-switch-button')).toBeNull();
   });
 });

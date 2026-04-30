@@ -1117,6 +1117,17 @@ export default function Billing() {
                           </span>
                           {' '}({Math.round(((monthlyCents - annualEquivCents) / monthlyCents) * 100)}% off).
                         </p>
+                        {isAdmin && (
+                          <button
+                            data-testid="billing-annual-savings-switch-button"
+                            onClick={() => handleUpgrade(plan, 'annual')}
+                            disabled={upgradeLoading === plan}
+                            className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary hover:bg-primary-hover text-white disabled:opacity-50"
+                          >
+                            {upgradeLoading === plan ? 'Redirecting...' : 'Switch to annual'}
+                            <ArrowUpRight className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
