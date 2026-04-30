@@ -297,7 +297,7 @@ export default function TicketReporting() {
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Target className="h-4 w-4 text-green-500" />
+            <Target className="h-4 w-4 text-green-500 dark:text-green-400" />
             <span className="text-xs text-muted">SLA Response</span>
           </div>
           <div className="text-2xl font-bold text-heading">{slaResponsePct}%</div>
@@ -305,7 +305,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Target className="h-4 w-4 text-blue-500" />
+            <Target className="h-4 w-4 text-blue-500 dark:text-blue-400" />
             <span className="text-xs text-muted">SLA Resolution</span>
           </div>
           <div className="text-2xl font-bold text-heading">{slaResolutionPct}%</div>
@@ -313,7 +313,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Timer className="h-4 w-4 text-cyan-500" />
+            <Timer className="h-4 w-4 text-cyan-500 dark:text-cyan-400" />
             <span className="text-xs text-muted">Avg Response</span>
           </div>
           <div className="text-2xl font-bold text-heading">{formatDuration(avgResponse)}</div>
@@ -321,7 +321,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Timer className="h-4 w-4 text-teal-500" />
+            <Timer className="h-4 w-4 text-teal-500 dark:text-teal-400" />
             <span className="text-xs text-muted">Avg Resolution</span>
           </div>
           <div className="text-2xl font-bold text-heading">{formatDuration(avgResolution)}</div>
@@ -329,7 +329,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <RotateCcw className="h-4 w-4 text-orange-500" />
+            <RotateCcw className="h-4 w-4 text-orange-500 dark:text-orange-400" />
             <span className="text-xs text-muted">Reopen Rate</span>
           </div>
           <div className="text-2xl font-bold text-heading">{reopenPct}%</div>
@@ -337,7 +337,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Clock className="h-4 w-4 text-purple-500" />
+            <Clock className="h-4 w-4 text-purple-500 dark:text-purple-400" />
             <span className="text-xs text-muted">Backlog</span>
           </div>
           <div className="text-2xl font-bold text-heading">
@@ -356,7 +356,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-medium text-heading mb-3 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-green-500" /> Tickets Resolved
+            <TrendingUp className="h-4 w-4 text-green-500 dark:text-green-400" /> Tickets Resolved
           </h3>
           <MiniLineChart data={resolvedChartData} />
         </div>
@@ -365,7 +365,7 @@ export default function TicketReporting() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-medium text-heading mb-3 flex items-center gap-2">
-            <Timer className="h-4 w-4 text-cyan-500" /> First Response Time
+            <Timer className="h-4 w-4 text-cyan-500 dark:text-cyan-400" /> First Response Time
           </h3>
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div className="text-center">
@@ -399,7 +399,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-medium text-heading mb-3 flex items-center gap-2">
-            <Timer className="h-4 w-4 text-teal-500" /> Resolution Time
+            <Timer className="h-4 w-4 text-teal-500 dark:text-teal-400" /> Resolution Time
           </h3>
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div className="text-center">
@@ -498,7 +498,7 @@ export default function TicketReporting() {
                       <tr key={a.email} className="border-b border-border">
                         <td className="px-3 py-2 text-sm text-heading">{a.email}</td>
                         <td className="px-3 py-2 text-sm text-heading text-right">{total}</td>
-                        <td className="px-3 py-2 text-sm text-green-600 text-right">{resolved}</td>
+                        <td className="px-3 py-2 text-sm text-green-600 dark:text-green-400 text-right">{resolved}</td>
                         <td className="px-3 py-2">
                           <div className="h-3 bg-surface-hover rounded-full overflow-hidden w-32">
                             <div className="h-full rounded-full bg-primary" style={{ width: `${(total / workloadMax) * 100}%` }} />
@@ -514,7 +514,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-medium text-heading mb-3 flex items-center gap-2">
-            <Timer className="h-4 w-4 text-cyan-500" /> Response Time by Agent
+            <Timer className="h-4 w-4 text-cyan-500 dark:text-cyan-400" /> Response Time by Agent
           </h3>
           {(data.responseTimeByAgent || []).length === 0 ? (
             <EmptyState

@@ -2202,7 +2202,7 @@ function ConnectedCard({
           </button>
           <button
             onClick={onDisconnect}
-            className="flex-1 text-xs font-medium text-danger hover:text-red-700 transition px-3 py-1.5 rounded-lg border border-border hover:border-danger/30 inline-flex items-center justify-center gap-1"
+            className="flex-1 text-xs font-medium text-danger hover:text-danger-hover transition px-3 py-1.5 rounded-lg border border-border hover:border-danger/30 inline-flex items-center justify-center gap-1"
           >
             <Unplug className="h-3 w-3" /> Disconnect
           </button>

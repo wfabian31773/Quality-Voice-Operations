@@ -927,7 +927,7 @@ function CampaignListPrimaryRate({ campaignId, campaignType }: { campaignId: str
   }
 
   const rate = data.typeMetrics.primaryRate;
-  const color = rate >= 0.5 ? 'text-green-600' : rate >= 0.25 ? 'text-amber-600' : 'text-text-muted';
+  const color = rate >= 0.5 ? 'text-green-600 dark:text-green-400' : rate >= 0.25 ? 'text-amber-600 dark:text-amber-400' : 'text-text-muted';
 
   return (
     <span className={`text-sm font-medium ${color}`}>

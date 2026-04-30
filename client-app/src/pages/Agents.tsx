@@ -246,7 +246,7 @@ function ToolsConfigSection({ agentId, t }: { agentId: string; t: TFunction }) {
                 type="button"
                 onClick={() => handleToggle(tool.name)}
                 className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  tool.enabled ? 'bg-primary' : 'bg-gray-300'
+                  tool.enabled ? 'bg-primary' : 'bg-border'
                 }`}
               >
                 <span

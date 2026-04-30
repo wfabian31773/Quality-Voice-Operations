@@ -63,9 +63,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; icon: typeof ArrowUp; description: string }> = {
   low: { label: 'Low', color: 'text-text-secondary', icon: ArrowDown, description: 'Low priority' },
-  medium: { label: 'Medium', color: 'text-blue-500', icon: Minus, description: 'Medium priority' },
-  high: { label: 'High', color: 'text-orange-500', icon: ArrowUp, description: 'High priority' },
-  urgent: { label: 'Urgent', color: 'text-red-500', icon: ChevronsUp, description: 'Urgent priority' },
+  medium: { label: 'Medium', color: 'text-blue-500 dark:text-blue-400', icon: Minus, description: 'Medium priority' },
+  high: { label: 'High', color: 'text-orange-500 dark:text-orange-400', icon: ArrowUp, description: 'High priority' },
+  urgent: { label: 'Urgent', color: 'text-red-500 dark:text-red-400', icon: ChevronsUp, description: 'Urgent priority' },
 };
 
 const QUEUE_TABS = [
@@ -229,10 +229,10 @@ export default function Tickets() {
     if (!ticket.sla_instance) return null;
     const sla = ticket.sla_instance;
     if (sla.resolution_met === false || (sla.resolution_due_at && new Date(sla.resolution_due_at) < new Date() && sla.resolution_met === null)) {
-      return <span title="SLA Breached" className="inline-flex"><AlertTriangle className="h-3.5 w-3.5 text-red-500" /></span>;
+      return <span title="SLA Breached" className="inline-flex"><AlertTriangle className="h-3.5 w-3.5 text-red-500 dark:text-red-400" /></span>;
     }
     if (sla.resolution_due_at && new Date(sla.resolution_due_at).getTime() - Date.now() < 7200000 && sla.resolution_met === null) {
-      return <span title="SLA At Risk" className="inline-flex"><Shield className="h-3.5 w-3.5 text-yellow-500" /></span>;
+      return <span title="SLA At Risk" className="inline-flex"><Shield className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400" /></span>;
     }
     return null;
   };
@@ -276,13 +276,13 @@ export default function Tickets() {
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
           {[
-            { label: 'Open', value: stats.statusCounts.open || 0, color: 'text-blue-600' },
-            { label: 'In Progress', value: stats.statusCounts.in_progress || 0, color: 'text-yellow-600' },
-            { label: 'Pending', value: stats.statusCounts.pending || 0, color: 'text-purple-600' },
+            { label: 'Open', value: stats.statusCounts.open || 0, color: 'text-blue-600 dark:text-blue-400' },
+            { label: 'In Progress', value: stats.statusCounts.in_progress || 0, color: 'text-yellow-600 dark:text-yellow-400' },
+            { label: 'Pending', value: stats.statusCounts.pending || 0, color: 'text-purple-600 dark:text-purple-400' },
             { label: 'Unassigned', value: stats.unassignedCount, color: 'text-text-secondary' },
-            { label: 'SLA At Risk', value: stats.slaAtRisk, color: 'text-yellow-600' },
-            { label: 'SLA Breached', value: stats.slaBreached, color: 'text-red-600' },
-            { label: 'Avg Resolution', value: `${stats.avgResolutionHours}h`, color: 'text-green-600' },
+            { label: 'SLA At Risk', value: stats.slaAtRisk, color: 'text-yellow-600 dark:text-yellow-400' },
+            { label: 'SLA Breached', value: stats.slaBreached, color: 'text-red-600 dark:text-red-400' },
+            { label: 'Avg Resolution', value: `${stats.avgResolutionHours}h`, color: 'text-green-600 dark:text-green-400' },
           ].map(s => (
             <div key={s.label} className="bg-surface border border-border rounded-xl p-3 text-center">
               <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>

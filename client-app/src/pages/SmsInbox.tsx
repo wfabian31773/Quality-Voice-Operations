@@ -145,8 +145,8 @@ function ConversationStatusBadge({ status, sizeClass = 'text-[10px]' }: { status
 }
 
 const PRIORITY_ICONS: Record<string, { icon: typeof Flag; color: string }> = {
-  urgent: { icon: AlertTriangle, color: 'text-red-500' },
-  high: { icon: Flag, color: 'text-orange-500' },
+  urgent: { icon: AlertTriangle, color: 'text-red-500 dark:text-red-400' },
+  high: { icon: Flag, color: 'text-orange-500 dark:text-orange-400' },
   normal: { icon: Flag, color: 'text-text-muted' },
 };
 
@@ -706,7 +706,7 @@ function InboxView({
                           title={`${conv.unreadCount} unread message${conv.unreadCount === 1 ? '' : 's'} in this conversation`}
                         >{conv.unreadCount}</span>
                       )}
-                      {conv.followUp && <Bell className="h-3 w-3 text-yellow-500 shrink-0" />}
+                      {conv.followUp && <Bell className="h-3 w-3 text-yellow-500 dark:text-yellow-400 shrink-0" />}
                     </div>
                     {conv.contactName && (
                       <div className="text-[11px] text-muted">{conv.remoteNumber}</div>
@@ -790,7 +790,7 @@ function InboxView({
               </button>
               <button
                 onClick={() => updateConversation({ followUp: !selectedConv.followUp })}
-                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.followUp ? 'text-yellow-500' : 'text-muted'}`}
+                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.followUp ? 'text-yellow-500 dark:text-yellow-400' : 'text-muted'}`}
                 title="Follow-up"
               >
                 <Bell className="h-4 w-4" />
@@ -852,7 +852,7 @@ function InboxView({
                   {(selectedConv.assigneeUserId || selectedConv.assigneeTeam) && (
                     <button
                       onClick={() => updateConversation({ assigneeUserId: null, assigneeTeam: null })}
-                      className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-surface-secondary"
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-500 dark:text-red-400 hover:bg-surface-secondary"
                     >
                       Unassign
                     </button>
@@ -1283,7 +1283,7 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
               {isManager && (
                 <div className="flex gap-1">
                   <button onClick={() => startEdit(t)} className="p-1 text-muted hover:text-heading"><Edit className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => deleteTemplate(t.id)} className="p-1 text-muted hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => deleteTemplate(t.id)} className="p-1 text-muted hover:text-red-500 dark:hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
@@ -1516,7 +1516,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
                 </p>
               </div>
               {isManager && (
-                <button onClick={() => deleteAutoRule(rule.id)} className="p-1.5 text-muted hover:text-red-500">
+                <button onClick={() => deleteAutoRule(rule.id)} className="p-1.5 text-muted hover:text-red-500 dark:hover:text-red-400">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
@@ -1574,7 +1574,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
                 </p>
               </div>
               {isManager && (
-                <button onClick={() => deleteAssignRule(rule.id)} className="p-1.5 text-muted hover:text-red-500">
+                <button onClick={() => deleteAssignRule(rule.id)} className="p-1.5 text-muted hover:text-red-500 dark:hover:text-red-400">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
@@ -1607,16 +1607,16 @@ function AnalyticsView({ analytics, loadAnalytics }: { analytics: Analytics | nu
   }
 
   const statCards = [
-    { label: 'Total Conversations', value: analytics.conversationVolume.total, icon: MessageSquare, color: 'text-blue-500' },
-    { label: 'Open', value: analytics.conversationVolume.open, icon: Inbox, color: 'text-green-500' },
-    { label: 'Escalated', value: analytics.conversationVolume.escalated, icon: AlertTriangle, color: 'text-red-500' },
+    { label: 'Total Conversations', value: analytics.conversationVolume.total, icon: MessageSquare, color: 'text-blue-500 dark:text-blue-400' },
+    { label: 'Open', value: analytics.conversationVolume.open, icon: Inbox, color: 'text-green-500 dark:text-green-400' },
+    { label: 'Escalated', value: analytics.conversationVolume.escalated, icon: AlertTriangle, color: 'text-red-500 dark:text-red-400' },
     { label: 'Messages Sent', value: analytics.messageStats.totalSent, icon: Send, color: 'text-primary' },
-    { label: 'Messages Received', value: analytics.messageStats.totalReceived, icon: ArrowUpRight, color: 'text-purple-500' },
-    { label: 'Delivered', value: analytics.messageStats.delivered, icon: CheckCircle, color: 'text-green-500' },
-    { label: 'Failed', value: analytics.messageStats.failed, icon: XCircle, color: 'text-red-500' },
-    { label: 'Avg Response (min)', value: analytics.avgResponseTimeMinutes ?? 'N/A', icon: Clock, color: 'text-yellow-500' },
-    { label: 'Avg Resolution (min)', value: analytics.avgResolutionTimeMinutes ?? 'N/A', icon: CheckCircle, color: 'text-teal-500' },
-    { label: 'Opt-out Rate', value: analytics.optOutRate !== null ? `${analytics.optOutRate}%` : 'N/A', icon: XCircle, color: 'text-orange-500' },
+    { label: 'Messages Received', value: analytics.messageStats.totalReceived, icon: ArrowUpRight, color: 'text-purple-500 dark:text-purple-400' },
+    { label: 'Delivered', value: analytics.messageStats.delivered, icon: CheckCircle, color: 'text-green-500 dark:text-green-400' },
+    { label: 'Failed', value: analytics.messageStats.failed, icon: XCircle, color: 'text-red-500 dark:text-red-400' },
+    { label: 'Avg Response (min)', value: analytics.avgResponseTimeMinutes ?? 'N/A', icon: Clock, color: 'text-yellow-500 dark:text-yellow-400' },
+    { label: 'Avg Resolution (min)', value: analytics.avgResolutionTimeMinutes ?? 'N/A', icon: CheckCircle, color: 'text-teal-500 dark:text-teal-400' },
+    { label: 'Opt-out Rate', value: analytics.optOutRate !== null ? `${analytics.optOutRate}%` : 'N/A', icon: XCircle, color: 'text-orange-500 dark:text-orange-400' },
   ];
 
   return (
@@ -1732,7 +1732,7 @@ function AdminView({ isManager }: { isManager: boolean }) {
               <div className="mt-3 space-y-1">
                 {consentHistory.map((entry, i) => (
                   <div key={i} className="flex items-center gap-3 bg-surface-secondary rounded p-2 text-xs">
-                    <span className={`font-medium ${entry.action === 'opt_out' ? 'text-red-600' : 'text-green-600'}`}>
+                    <span className={`font-medium ${entry.action === 'opt_out' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                       {entry.action === 'opt_out' ? 'Opted Out' : 'Opted In'}
                     </span>
                     {entry.keyword && <span className="text-muted">Keyword: {entry.keyword}</span>}

@@ -133,7 +133,7 @@ function StepCard({
           </h3>
           <p className="text-xs text-text-muted mt-0.5">{step.description}</p>
           {step.completed && step.completedAt && (
-            <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
               {t('post_install.step_card.completed_at', { date: new Date(step.completedAt).toLocaleDateString() })}
             </p>
           )}

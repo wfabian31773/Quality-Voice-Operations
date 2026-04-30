@@ -263,7 +263,7 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
     if (autosaveStatus === 'saved' && lastSavedAt) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-          <Check className="h-3 w-3 text-green-600" /> Saved at {formatSavedAt(lastSavedAt)}
+          <Check className="h-3 w-3 text-green-600 dark:text-green-400" /> Saved at {formatSavedAt(lastSavedAt)}
         </span>
       );
     }
@@ -853,7 +853,7 @@ export default function KnowledgeBase() {
                           {doc.status}
                         </span>
                         {doc.status === 'processing' && (
-                          <RefreshCw className="inline h-3 w-3 ml-1 text-yellow-500 animate-spin" />
+                          <RefreshCw className="inline h-3 w-3 ml-1 text-yellow-500 dark:text-yellow-400 animate-spin" />
                         )}
                       </td>
                       <td className="px-5 py-3 text-text-secondary text-xs hidden lg:table-cell">

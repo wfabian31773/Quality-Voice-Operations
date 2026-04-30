@@ -1115,7 +1115,7 @@ function TemplateDetailView({
           <div className="bg-surface border border-border rounded-xl p-5">
             {isInstalled ? (
               <div className="text-center">
-                <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                <CheckCircle className="h-8 w-8 text-green-500 dark:text-green-400 mx-auto mb-2" />
                 <p className="text-sm font-medium text-text-primary">Already Installed</p>
                 <p className="text-xs text-text-secondary mt-1">This template is active in your workspace.</p>
               </div>
@@ -1229,7 +1229,7 @@ function TemplateDetailView({
                   <div key={e.planTier} className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary capitalize">{e.planTier}</span>
                     {e.enabled ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" />
                     ) : (
                       <X className="h-4 w-4 text-text-muted" />
                     )}
@@ -1579,7 +1579,7 @@ export default function Marketplace() {
           {featuredData && featuredData.templates.length > 0 && !search && !selectedCategory && !selectedMktCategory && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-amber-500" />
+                <Sparkles className="h-5 w-5 text-amber-500 dark:text-amber-400" />
                 <h2 className="text-lg font-semibold text-text-primary">Featured</h2>
               </div>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

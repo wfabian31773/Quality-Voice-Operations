@@ -64,7 +64,7 @@ function OperationsPanel({ isReadOnly }: { isReadOnly: boolean }) {
           </button>
         )}
         {slaResult && (
-          <div className={`text-sm p-3 rounded-lg ${slaResult.breaches_processed < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600' : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
+          <div className={`text-sm p-3 rounded-lg ${slaResult.breaches_processed < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'}`}>
             {slaResult.breaches_processed < 0 ? 'Failed to process' : `Checked ${slaResult.tickets_checked} tickets, processed ${slaResult.breaches_processed} breaches`}
           </div>
         )}
@@ -89,7 +89,7 @@ function OperationsPanel({ isReadOnly }: { isReadOnly: boolean }) {
           </button>
         )}
         {closeResult && (
-          <div className={`text-sm p-3 rounded-lg ${closeResult.auto_closed < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600' : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
+          <div className={`text-sm p-3 rounded-lg ${closeResult.auto_closed < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'}`}>
             {closeResult.auto_closed < 0 ? 'Failed to process' : `Closed ${closeResult.auto_closed} tickets (${closeResult.resolved_closed} resolved, ${closeResult.pending_closed} pending)`}
           </div>
         )}
@@ -289,7 +289,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(c, 'ticket-categories')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-categories', c.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-categories', c.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -320,7 +320,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(p, 'ticket-sla-policies')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-sla-policies', p.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-sla-policies', p.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -349,7 +349,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(m, 'ticket-macros')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-macros', m.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-macros', m.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -378,7 +378,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(t, 'ticket-templates')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-templates', t.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-templates', t.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -409,7 +409,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(f, 'ticket-custom-fields')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-custom-fields', f.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-custom-fields', f.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -438,7 +438,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(r, 'ticket-workflow-rules')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-workflow-rules', r.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-workflow-rules', r.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -469,7 +469,7 @@ export default function TicketAdmin() {
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
                       <button onClick={() => openEdit(q, 'ticket-queue-configs')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                      <button onClick={() => deleteItem('ticket-queue-configs', q.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => deleteItem('ticket-queue-configs', q.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -501,7 +501,7 @@ export default function TicketAdmin() {
                     <td className="px-4 py-3 text-right">
                       {!isReadOnly && <>
                         <button onClick={() => openEdit(p, 'ticket-retention-policies')} className="text-xs text-primary hover:underline mr-2">Edit</button>
-                        <button onClick={() => deleteItem('ticket-retention-policies', p.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                        <button onClick={() => deleteItem('ticket-retention-policies', p.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">Delete</button>
                       </>}
                     </td>
                   </tr>

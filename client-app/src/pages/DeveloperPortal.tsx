@@ -487,27 +487,27 @@ function DocumentationSection() {
         </div>
         <div className="space-y-2 text-sm text-text-secondary">
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
             <p>Package name must be at least 3 characters and descriptive</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
             <p>Description must be at least 20 characters explaining functionality</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
             <p>Slug must use only lowercase letters, numbers, and hyphens</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
             <p>Version must follow semantic versioning (e.g., 1.0.0)</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
             <p>Manifest must include valid JSON with required fields</p>
           </div>
           <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
+            <AlertCircle className="h-4 w-4 text-yellow-500 dark:text-yellow-400 shrink-0 mt-0.5" />
             <p>All submissions undergo platform admin review before publication</p>
           </div>
         </div>

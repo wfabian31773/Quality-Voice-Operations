@@ -991,7 +991,7 @@ export default function Calls() {
                     <span className="truncate max-w-[240px]">{email}</span>
                     <button
                       onClick={() => handleRemoveSubscriber(view, email)}
-                      className="p-1 rounded-full text-text-muted hover:text-red-600 transition"
+                      className="p-1 rounded-full text-text-muted hover:text-red-600 dark:hover:text-red-400 transition"
                       title={tenantT('calls.subscribers_panel.remove_tooltip', { email })}
                       aria-label={tenantT('calls.subscribers_panel.remove_aria', { email, name: view.name })}
                     >
@@ -1051,7 +1051,7 @@ export default function Calls() {
               {tenantT('calls.save_view_panel.cancel')}
             </button>
           </div>
-          {saveError && <p className="text-xs text-red-600 mt-2">{saveError}</p>}
+          {saveError && <p className="text-xs text-red-600 dark:text-red-400 mt-2">{saveError}</p>}
         </div>
       )}
 
@@ -1157,7 +1157,7 @@ export default function Calls() {
                   onChange={(e) => setFilter('tool_failures_only', e.target.checked ? 'true' : '')}
                   className="rounded border-border"
                 />
-                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400" />
                 {tenantT('calls.filters.tool_failures_only')}
               </label>
             </div>

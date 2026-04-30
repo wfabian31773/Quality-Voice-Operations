@@ -715,7 +715,7 @@ export default function Scheduling() {
                   <button onClick={() => { setEditingProvider(p); setProviderFormData({ name: p.name, specialty: p.specialty, email: p.email, phone: p.phone, location: p.location }); setShowProviderForm(true); }}
                     className="p-1 rounded hover:bg-surface-secondary text-muted"><Edit2 className="h-3.5 w-3.5" /></button>
                   <button onClick={() => deleteProvider(p.id)}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
@@ -769,7 +769,7 @@ export default function Scheduling() {
                   <button onClick={() => { setEditingType(t); setTypeFormData({ name: t.name, description: t.description, duration_minutes: t.duration_minutes, buffer_minutes: t.buffer_minutes, capacity: t.capacity, color: t.color, allow_self_scheduling: t.allow_self_scheduling }); setShowTypeForm(true); }}
                     className="p-1 rounded hover:bg-surface-secondary text-muted"><Edit2 className="h-3.5 w-3.5" /></button>
                   <button onClick={() => deleteType(t.id)}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
@@ -778,7 +778,7 @@ export default function Scheduling() {
               <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{t.duration_minutes}min</span>
               {t.buffer_minutes > 0 && <span>+{t.buffer_minutes}min buffer</span>}
               <span>Cap: {t.capacity}</span>
-              {t.allow_self_scheduling && <span className="text-green-600">Self-schedule</span>}
+              {t.allow_self_scheduling && <span className="text-green-600 dark:text-green-400">Self-schedule</span>}
             </div>
           </div>
         ))}
@@ -825,13 +825,13 @@ export default function Scheduling() {
                   <button onClick={() => { setEditingResource(r); setResourceFormData({ name: r.name, type: r.type, location: r.location, capacity: r.capacity }); setShowResourceForm(true); }}
                     className="p-1 rounded hover:bg-surface-secondary text-muted"><Edit2 className="h-3.5 w-3.5" /></button>
                   <button onClick={() => deleteResource(r.id)}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
             <div className="flex gap-2 mt-2 text-[10px] text-muted">
               <span>Capacity: {r.capacity}</span>
-              <span className={r.is_active ? 'text-green-600' : 'text-text-secondary'}>{r.is_active ? 'Active' : 'Inactive'}</span>
+              <span className={r.is_active ? 'text-green-600 dark:text-green-400' : 'text-text-secondary'}>{r.is_active ? 'Active' : 'Inactive'}</span>
             </div>
           </div>
         ))}
@@ -882,7 +882,7 @@ export default function Scheduling() {
                 {w.status}
               </span>
               {!isReadOnly && (
-                <button onClick={() => removeFromWaitlist(w.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">
+                <button onClick={() => removeFromWaitlist(w.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -915,12 +915,12 @@ export default function Scheduling() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {[
             { label: 'Total', value: s.total_bookings, color: 'text-heading' },
-            { label: 'Completed', value: s.completed, color: 'text-blue-600' },
-            { label: 'Confirmed', value: s.confirmed, color: 'text-green-600' },
-            { label: 'Pending', value: s.pending, color: 'text-yellow-600' },
-            { label: 'Cancelled', value: s.cancelled, color: 'text-red-600' },
+            { label: 'Completed', value: s.completed, color: 'text-blue-600 dark:text-blue-400' },
+            { label: 'Confirmed', value: s.confirmed, color: 'text-green-600 dark:text-green-400' },
+            { label: 'Pending', value: s.pending, color: 'text-yellow-600 dark:text-yellow-400' },
+            { label: 'Cancelled', value: s.cancelled, color: 'text-red-600 dark:text-red-400' },
             { label: 'No Shows', value: s.no_shows, color: 'text-text-secondary' },
-            { label: 'Checked In', value: s.checked_in, color: 'text-purple-600' },
+            { label: 'Checked In', value: s.checked_in, color: 'text-purple-600 dark:text-purple-400' },
           ].map(stat => (
             <div key={stat.label} className="bg-surface border border-border rounded-xl p-3 text-center">
               <div className={`text-xl font-bold ${stat.color}`}>{stat.value}</div>
@@ -1180,12 +1180,12 @@ export default function Scheduling() {
                         {STATUS_LABELS[b.status] || b.status}
                       </span>
                       {!isReadOnly && b.status === 'pending' && (
-                        <button onClick={() => transitionBooking(b.id, 'confirm')} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600" title="Confirm">
+                        <button onClick={() => transitionBooking(b.id, 'confirm')} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400" title="Confirm">
                           <CheckCircle2 className="h-4 w-4" />
                         </button>
                       )}
                       {!isReadOnly && b.status === 'confirmed' && (
-                        <button onClick={() => transitionBooking(b.id, 'check_in')} className="p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-600" title="Check In">
+                        <button onClick={() => transitionBooking(b.id, 'check_in')} className="p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400" title="Check In">
                           <UserCheck className="h-4 w-4" />
                         </button>
                       )}
@@ -1352,23 +1352,23 @@ export default function Scheduling() {
                 <div><span className="text-xs text-muted">Notes:</span><p className="text-sm text-heading mt-0.5">{showDetailModal.notes}</p></div>
               )}
               {showDetailModal.cancellation_reason && (
-                <div><span className="text-xs text-red-600">Cancellation Reason:</span><p className="text-sm text-heading mt-0.5">{showDetailModal.cancellation_reason}</p></div>
+                <div><span className="text-xs text-red-600 dark:text-red-400">Cancellation Reason:</span><p className="text-sm text-heading mt-0.5">{showDetailModal.cancellation_reason}</p></div>
               )}
 
               {!isReadOnly && (
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
                   {showDetailModal.status === 'pending' && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'confirm')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'confirm')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50">
                       <CheckCircle2 className="h-3 w-3" /> Confirm
                     </button>
                   )}
                   {showDetailModal.status === 'confirmed' && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'check_in')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'check_in')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50">
                       <UserCheck className="h-3 w-3" /> Check In
                     </button>
                   )}
                   {['checked_in', 'confirmed'].includes(showDetailModal.status) && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'complete')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'complete')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50">
                       <CheckCircle2 className="h-3 w-3" /> Complete
                     </button>
                   )}
@@ -1384,12 +1384,12 @@ export default function Scheduling() {
                     <button onClick={() => {
                       const reason = prompt('Cancellation reason:');
                       if (reason !== null) transitionBooking(showDetailModal.id, 'cancel', { cancellation_reason: reason });
-                    }} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300">
+                    }} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50">
                       <XCircle className="h-3 w-3" /> Cancel
                     </button>
                   )}
                   {['cancelled', 'no_show', 'completed'].includes(showDetailModal.status) && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'reopen')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'reopen')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50">
                       <RotateCcw className="h-3 w-3" /> Reopen
                     </button>
                   )}
@@ -1398,7 +1398,7 @@ export default function Scheduling() {
                     <Edit2 className="h-3 w-3" /> Edit
                   </button>
                   <button onClick={() => { if (confirm(tenantT('common.confirms.delete_booking'))) deleteBooking(showDetailModal.id); }}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400">
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40">
                     <Trash2 className="h-3 w-3" /> Delete
                   </button>
                 </div>

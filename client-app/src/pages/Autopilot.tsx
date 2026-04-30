@@ -389,14 +389,14 @@ export default function Autopilot() {
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => approveMutation.mutate(rec.id)}
-                                className="p-1.5 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-md transition-colors"
+                                className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-md transition-colors"
                                 title="Approve"
                               >
                                 <ThumbsUp className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => rejectMutation.mutate({ id: rec.id })}
-                                className="p-1.5 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                                className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors"
                                 title="Reject"
                               >
                                 <ThumbsDown className="h-3.5 w-3.5" />
@@ -450,7 +450,7 @@ export default function Autopilot() {
                         <div className="flex items-center gap-3 mt-1.5 text-xs text-text-secondary">
                           <span>{run.insightsDetected} insights</span>
                           <span>{run.recommendationsGenerated} recommendations</span>
-                          {run.errors > 0 && <span className="text-red-500">{run.errors} errors</span>}
+                          {run.errors > 0 && <span className="text-red-500 dark:text-red-400">{run.errors} errors</span>}
                         </div>
                       </div>
                     ))}
@@ -464,7 +464,7 @@ export default function Autopilot() {
             <div className="bg-surface border border-border rounded-xl">
               <div className="px-5 py-4 border-b border-border">
                 <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
                   Recent Insights
                 </h3>
               </div>
@@ -728,9 +728,9 @@ export default function Autopilot() {
                     <div className={`w-2.5 h-2.5 rounded-full ${
                       action.status === 'completed' ? 'bg-green-500' :
                       action.status === 'failed' ? 'bg-red-500' :
-                      action.status === 'rolled_back' ? 'bg-gray-400' :
+                      action.status === 'rolled_back' ? 'bg-border-strong' :
                       action.status === 'executing' ? 'bg-amber-500 animate-pulse' :
-                      'bg-gray-300'
+                      'bg-border'
                     }`} />
                     <div>
                       <p className="text-sm font-medium text-text-primary">
@@ -859,21 +859,21 @@ function PoliciesPanel() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-green-50 dark:bg-green-900/10 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <ShieldCheck className="h-4 w-4 text-green-600" />
+              <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
               <span className="text-sm font-medium text-green-700 dark:text-green-400">Low Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Auto-executed without approval. Alerts, notifications, task creation.</p>
           </div>
           <div className="bg-amber-50 dark:bg-amber-900/10 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <Shield className="h-4 w-4 text-amber-600" />
+              <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               <span className="text-sm font-medium text-amber-700 dark:text-amber-400">Medium Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Requires manager approval. Workflow changes, schedule adjustments.</p>
           </div>
           <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <ShieldAlert className="h-4 w-4 text-red-600" />
+              <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
               <span className="text-sm font-medium text-red-700 dark:text-red-400">High Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Requires admin approval. Campaign launches, routing changes, agent activation.</p>

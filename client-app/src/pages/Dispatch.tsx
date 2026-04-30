@@ -3073,7 +3073,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               <p className="text-sm text-muted">Generating pairing code…</p>
             )}
             {pairingModal.status === 'error' && (
-              <p className="text-sm text-red-600">{pairingModal.error}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">{pairingModal.error}</p>
             )}
             {pairingModal.status === 'success' && (
               <>
@@ -3316,7 +3316,7 @@ function ApproachQualityCard({
             <div className="text-[10px] text-muted mt-1">within 50 m</div>
           </div>
           <div>
-            <div className="text-2xl font-semibold text-red-500 leading-none">{approach.bad_rate}%</div>
+            <div className="text-2xl font-semibold text-red-500 dark:text-red-400 leading-none">{approach.bad_rate}%</div>
             <div className="text-[10px] text-muted mt-1">over 250 m</div>
           </div>
         </div>
@@ -3713,7 +3713,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                       <td className="p-2">
                         <div className="flex gap-1">
                           <button onClick={() => openForm('rule', r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
-                          <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-red-600 hover:bg-red-50">Delete</button>
+                          <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
                         </div>
                       </td>
                     )}
@@ -3873,7 +3873,7 @@ function DispatchThresholdField({
         <span className="text-[10px] text-muted">Allowed: {min}–{max} {unitShort}</span>
       </div>
       {!valid && draft !== '' && (
-        <p className="text-[11px] text-red-600">Enter a whole number between {min} and {max}.</p>
+        <p className="text-[11px] text-red-600 dark:text-red-400">Enter a whole number between {min} and {max}.</p>
       )}
       {!isReadOnly && (
         <div className="flex items-center gap-2 pt-1">
@@ -3886,7 +3886,7 @@ function DispatchThresholdField({
             {saving ? 'Saving…' : 'Save'}
           </button>
           {savedAt && !dirty && (
-            <span className="text-[11px] text-green-600">Saved.</span>
+            <span className="text-[11px] text-green-600 dark:text-green-400">Saved.</span>
           )}
         </div>
       )}
@@ -3995,7 +3995,7 @@ function DispatchSmsSegmentLimitCard({
         </span>
       </div>
       {smsLimitEnabled && !smsValid && smsLimitDraft !== '' && (
-        <p className="text-[11px] text-red-600">
+        <p className="text-[11px] text-red-600 dark:text-red-400">
           Enter a whole number between {smsMin} and {smsMax}.
         </p>
       )}
@@ -4011,7 +4011,7 @@ function DispatchSmsSegmentLimitCard({
             {smsSaving ? 'Saving…' : 'Save'}
           </button>
           {smsSavedAt && !smsDirty && (
-            <span className="text-[11px] text-green-600">Saved.</span>
+            <span className="text-[11px] text-green-600 dark:text-green-400">Saved.</span>
           )}
         </div>
       )}
@@ -4644,7 +4644,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               <PriorityBadge priority={job.priority} />
               {job.is_follow_up && (
                 <span
-                  className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded"
+                  className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded"
                   title="This job is a follow-up to an earlier visit"
                   aria-label="Follow-up job — created from a previous visit"
                 >Follow-up</span>
@@ -4668,7 +4668,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             })}
             {(job.status === 'incomplete' || job.status === 'completed') && (
               <button onClick={() => setShowFollowUpForm(true)}
-                className="text-xs px-2.5 py-1 rounded bg-purple-100 text-purple-700 hover:opacity-80 ml-auto">
+                className="text-xs px-2.5 py-1 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 hover:opacity-80 ml-auto">
                 Create Follow-up
               </button>
             )}
@@ -4803,7 +4803,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               <div className="flex items-center justify-between flex-wrap gap-2">
                 {!isReadOnly && (
                   <button onClick={() => setShowExceptionForm(true)}
-                    className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 flex items-center gap-1">
+                    className="px-3 py-1.5 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-lg text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" /> Report Exception
                   </button>
                 )}
@@ -4882,12 +4882,12 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                             </span>
                           )}
                         </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
                           {e.resolved_at ? 'Resolved' : 'Open'}
                         </span>
                       </div>
                       <p className="text-xs text-muted mt-1">{e.reason}</p>
-                      {e.resolution && <p className="text-xs text-green-700 mt-1">Resolution: {e.resolution}</p>}
+                      {e.resolution && <p className="text-xs text-green-700 dark:text-green-400 mt-1">Resolution: {e.resolution}</p>}
                       <p className="text-[10px] text-muted mt-1">
                         {new Date(e.created_at).toLocaleString()}
                         {isAuto && <span className="ml-1">· system-flagged</span>}
@@ -4904,7 +4904,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             <div className="space-y-3">
               {!isReadOnly && (
                 <button onClick={() => setShowAttachmentForm(true)}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 flex items-center gap-1">
+                  className="px-3 py-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/30 flex items-center gap-1">
                   <FileText className="h-3 w-3" /> Add Note / Attachment
                 </button>
               )}
@@ -4937,7 +4937,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                       <div className="flex items-center gap-2">
                         <FileText className="h-3.5 w-3.5 text-muted" />
                         <span className="text-xs font-medium text-heading">{a.title || a.attachment_type.replace(/_/g, ' ')}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
                         {a.file_size_bytes ? (
                           <span className="text-[10px] text-muted">{Math.round(a.file_size_bytes / 1024)} KB</span>
                         ) : null}
@@ -4953,7 +4953,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                         </a>
                       )}
                       {!isImage && a.object_path && fileUrl && (
-                        <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 mt-2 inline-flex items-center gap-1">
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 dark:text-blue-400 mt-2 inline-flex items-center gap-1">
                           <FileText className="h-3 w-3" /> Download file
                         </a>
                       )}

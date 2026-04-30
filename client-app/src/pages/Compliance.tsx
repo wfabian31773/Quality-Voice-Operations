@@ -306,7 +306,7 @@ function ApiKeysTab() {
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
           <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">API Key Created - Copy it now! It won't be shown again.</p>
           <code className="text-xs bg-green-100 dark:bg-green-900/40 px-3 py-2 rounded block break-all">{createdKey}</code>
-          <button onClick={() => setCreatedKey(null)} className="mt-2 text-xs text-green-600 hover:text-green-800">Dismiss</button>
+          <button onClick={() => setCreatedKey(null)} className="mt-2 text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300">Dismiss</button>
         </div>
       )}
 
@@ -377,7 +377,7 @@ function ApiKeysTab() {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => { if (confirm(tenantT('common.confirms.revoke_api_key'))) revokeMutation.mutate(key.id); }}
-                      className="text-red-500 hover:text-red-700 text-xs font-medium"
+                      className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs font-medium"
                     >
                       Revoke
                     </button>
@@ -514,7 +514,7 @@ function RolesTab() {
                             revokeRoleMutation.mutate(r.id);
                         }}
                         disabled={revokeRoleMutation.isPending}
-                        className="text-xs text-red-500 font-medium hover:text-red-700"
+                        className="text-xs text-red-500 dark:text-red-400 font-medium hover:text-red-700 dark:hover:text-red-300"
                       >
                         Revoke
                       </button>
@@ -557,9 +557,9 @@ function EncryptionTab() {
         <div className="bg-surface border border-border rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             {data?.encryptionEnabled ? (
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400" />
             ) : (
-              <AlertCircle className="h-5 w-5 text-yellow-500" />
+              <AlertCircle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
             )}
             <h3 className="font-semibold">Encryption Status</h3>
           </div>
@@ -661,9 +661,9 @@ function Soc2Tab() {
             .map((item) => (
               <div key={item.id} className="bg-surface border border-border rounded-lg p-4 flex items-start gap-4">
                 {item.status === 'implemented' ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
                 ) : (
-                  <AlertCircle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                  <AlertCircle className="h-5 w-5 text-yellow-500 dark:text-yellow-400 shrink-0 mt-0.5" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -762,7 +762,7 @@ function GdprTab() {
 
         <div className="bg-surface border border-border rounded-xl p-6">
           <div className="flex items-center gap-2 mb-3">
-            <Trash2 className="h-5 w-5 text-red-500" />
+            <Trash2 className="h-5 w-5 text-red-500 dark:text-red-400" />
             <h3 className="font-semibold">Right to Erasure</h3>
           </div>
           <p className="text-sm text-muted mb-4">Permanently delete or anonymize all PII for a user. This action cannot be undone.</p>
@@ -796,7 +796,7 @@ function GdprTab() {
             </div>
           )}
           {eraseMutation.isSuccess && (
-            <p className="text-sm text-green-600 mt-2">User data has been erased</p>
+            <p className="text-sm text-green-600 dark:text-green-400 mt-2">User data has been erased</p>
           )}
         </div>
       </div>
