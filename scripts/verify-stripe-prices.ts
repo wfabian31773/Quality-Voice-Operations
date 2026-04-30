@@ -1,21 +1,23 @@
 import {
   verifyStripePrices,
   formatUsdCents,
+  formatPerMinuteRate,
   type PriceCheckResult,
 } from '../platform/billing/stripe/verifyPrices';
 
-function printRow(r: PriceCheckResult): void {
+function printBaseRow(r: PriceCheckResult): void {
   const ok = r.status === 'ok';
   const icon = ok ? 'OK ' : 'FAIL';
   const mark = ok ? '\u2713' : '\u2717';
   const monthlyEq = r.monthlyEquivalentCents;
+  const catalog = r.catalogMonthlyCents;
   const catalogCmp =
-    monthlyEq != null
-      ? `monthly_eq=${formatUsdCents(monthlyEq)} catalog=${formatUsdCents(r.catalogMonthlyCents)}`
+    monthlyEq != null && catalog != null
+      ? `monthly_eq=${formatUsdCents(monthlyEq)} catalog=${formatUsdCents(catalog)}`
       : '';
   console.log(
     `[${icon}] ${mark} ${r.envKey.padEnd(34)} plan=${r.plan.padEnd(10)} ` +
-      `interval=${r.interval.padEnd(7)} priceId=${r.priceId ?? '(unset)'}`,
+      `interval=${(r.interval ?? '-').padEnd(7)} priceId=${r.priceId ?? '(unset)'}`,
   );
   if (ok) {
     console.log(
@@ -23,6 +25,36 @@ function printRow(r: PriceCheckResult): void {
     );
   } else {
     console.log(`       ${r.message}`);
+  }
+}
+
+function printMeteredRow(r: PriceCheckResult): void {
+  const ok = r.status === 'ok';
+  const icon = ok ? 'OK ' : 'FAIL';
+  const mark = ok ? '\u2713' : '\u2717';
+  console.log(
+    `[${icon}] ${mark} ${r.envKey.padEnd(34)} plan=${r.plan.padEnd(10)} ` +
+      `kind=metered priceId=${r.priceId ?? '(unset)'}`,
+  );
+  if (ok) {
+    const catalogStr =
+      r.catalogOverageRatePerMinute != null
+        ? `catalog=$${r.catalogOverageRatePerMinute.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}/min`
+        : '';
+    console.log(
+      `       rate=${formatPerMinuteRate(r.unitAmountCents, r.unitAmountDecimal)} ${catalogStr} ` +
+        `usage_type=${r.actualUsageType ?? '(unset)'} meter=${r.actualMeter ?? '(unset)'}`,
+    );
+  } else {
+    console.log(`       ${r.message}`);
+  }
+}
+
+function printRow(r: PriceCheckResult): void {
+  if (r.kind === 'metered-ai-minutes') {
+    printMeteredRow(r);
+  } else {
+    printBaseRow(r);
   }
 }
 
@@ -37,8 +69,27 @@ async function main(): Promise<void> {
   console.log('');
   console.log('STRIPE PRICE BACKFILL VERIFICATION');
   console.log('===================================');
-  for (const r of report.results) {
-    printRow(r);
+
+  const baseRows = report.results.filter((r) => r.kind === 'base');
+  const meteredRows = report.results.filter((r) => r.kind === 'metered-ai-minutes');
+
+  if (baseRows.length > 0) {
+    console.log('');
+    console.log('-- Base prices (STRIPE_PRICE_<TIER>_<INTERVAL>) --');
+    for (const r of baseRows) printRow(r);
+  }
+
+  if (meteredRows.length > 0) {
+    console.log('');
+    console.log(
+      '-- Metered AI-minute prices (STRIPE_PRICE_<TIER>_AI_MINUTES, gated on STRIPE_METER_EVENT_AI_MINUTES; recurring.meter compared to STRIPE_METER_AI_MINUTES) --',
+    );
+    for (const r of meteredRows) printRow(r);
+  } else {
+    console.log('');
+    console.log(
+      '-- Metered AI-minute prices skipped: STRIPE_METER_EVENT_AI_MINUTES is not set (deployment has not opted in to per-tier metered AI billing yet). --',
+    );
   }
 
   console.log('');

@@ -1695,19 +1695,30 @@ type BillingPriceCheckStatus =
   | 'missing-env'
   | 'stripe-error'
   | 'wrong-interval'
-  | 'no-amount';
+  | 'no-amount'
+  | 'wrong-usage-type'
+  | 'wrong-meter';
+
+type BillingPriceCheckKind = 'base' | 'metered-ai-minutes';
 
 interface BillingPriceCheckResult {
   envKey: string;
   plan: 'starter' | 'pro' | 'enterprise';
-  interval: 'monthly' | 'annual';
+  kind: BillingPriceCheckKind;
+  interval: 'monthly' | 'annual' | null;
   status: BillingPriceCheckStatus;
   priceId: string | null;
-  expectedInterval: 'month' | 'year';
+  expectedInterval: 'month' | 'year' | null;
   actualInterval: string | null;
+  expectedUsageType: 'licensed' | 'metered';
+  actualUsageType: string | null;
+  expectedMeter: string | null;
+  actualMeter: string | null;
   unitAmountCents: number | null;
+  unitAmountDecimal: string | null;
   monthlyEquivalentCents: number | null;
-  catalogMonthlyCents: number;
+  catalogMonthlyCents: number | null;
+  catalogOverageRatePerMinute: number | null;
   message?: string;
 }
 
@@ -1753,7 +1764,34 @@ function billingStatusLabel(s: BillingPriceCheckStatus): string {
       return 'Wrong interval';
     case 'no-amount':
       return 'No unit amount';
+    case 'wrong-usage-type':
+      return 'Not metered';
+    case 'wrong-meter':
+      return 'Wrong meter';
   }
+}
+
+function fmtPerMinuteRate(
+  unitAmountCents: number | null,
+  unitAmountDecimal: string | null,
+): string {
+  if (unitAmountDecimal != null) {
+    const decimalCents = Number.parseFloat(unitAmountDecimal);
+    if (Number.isFinite(decimalCents)) {
+      // eslint-disable-next-line local/no-cents-divided-by-100 -- sub-cent display
+      const dollars = decimalCents / 100;
+      return `$${dollars.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}/min`;
+    }
+  }
+  if (unitAmountCents != null) {
+    return `${fmtCentsAsUsd(unitAmountCents)}/min`;
+  }
+  return '—';
+}
+
+function fmtCatalogPerMin(catalog: number | null): string {
+  if (catalog == null) return '—';
+  return `$${catalog.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}/min`;
 }
 
 /**
@@ -1788,6 +1826,8 @@ function BillingConfigHealthPanel() {
 
   const { summary, results, generatedAt, lastScheduledRun } = data;
   const generated = new Date(generatedAt).toLocaleString();
+  const baseRows = results.filter((r) => r.kind === 'base');
+  const meteredRows = results.filter((r) => r.kind === 'metered-ai-minutes');
 
   const summaryTone =
     summary.status === 'ok'
@@ -1911,7 +1951,7 @@ function BillingConfigHealthPanel() {
         <div className="px-4 py-3 border-b border-border">
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <Activity className="h-4 w-4 text-primary" />
-            Per-price verification
+            Base prices
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
             One row per <code className="font-mono">STRIPE_PRICE_&lt;TIER&gt;_&lt;INTERVAL&gt;</code> env var.
@@ -1919,11 +1959,11 @@ function BillingConfigHealthPanel() {
             apples-to-apples.
           </p>
         </div>
-        {results.length === 0 ? (
+        {baseRows.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-text-muted">
             {summary.status === 'no-stripe-key'
               ? 'STRIPE_SECRET_KEY is not set on this Admin API host — set it in the deployment secrets and re-run.'
-              : 'No prices configured.'}
+              : 'No base prices configured.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1941,7 +1981,7 @@ function BillingConfigHealthPanel() {
                 </tr>
               </thead>
               <tbody>
-                {results.map((r) => {
+                {baseRows.map((r) => {
                   const ok = r.status === 'ok';
                   const StatusIcon = ok ? CheckCircle : XCircle;
                   const statusTone = ok ? 'text-success' : 'text-danger';
@@ -1968,6 +2008,92 @@ function BillingConfigHealthPanel() {
                       </td>
                       <td className="px-4 py-2 text-xs text-right tabular-nums text-text-muted">
                         {fmtCentsAsUsd(r.catalogMonthlyCents)}
+                      </td>
+                      <td className={`px-4 py-2 text-xs ${statusTone}`}>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <StatusIcon className="h-3.5 w-3.5" />
+                          {billingStatusLabel(r.status)}
+                        </div>
+                        {r.message && (
+                          <div className="text-[11px] text-text-muted mt-0.5">{r.message}</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Metered AI-minute prices
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Checked only when <code className="font-mono">STRIPE_METER_EVENT_AI_MINUTES</code> is
+            set. Asserts <code className="font-mono">recurring.usage_type=metered</code> and that
+            <code className="font-mono"> recurring.meter</code> matches{' '}
+            <code className="font-mono">STRIPE_METER_AI_MINUTES</code> (the meter id, distinct
+            from the event name).
+          </p>
+        </div>
+        {meteredRows.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-text-muted">
+            <code className="font-mono">STRIPE_METER_EVENT_AI_MINUTES</code> is not set — per-tier
+            metered AI billing is not active on this deployment.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Env var</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Plan</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Stripe price id</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Per-minute rate</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Catalog</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Meter</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {meteredRows.map((r) => {
+                  const ok = r.status === 'ok';
+                  const StatusIcon = ok ? CheckCircle : XCircle;
+                  const statusTone = ok ? 'text-success' : 'text-danger';
+                  const meterMismatch =
+                    r.actualMeter != null
+                    && r.expectedMeter != null
+                    && r.actualMeter !== r.expectedMeter;
+                  return (
+                    <tr key={r.envKey} className="border-b border-border last:border-0 align-top">
+                      <td className="px-4 py-2 text-xs font-mono">{r.envKey}</td>
+                      <td className="px-4 py-2 text-xs capitalize">{r.plan}</td>
+                      <td className="px-4 py-2 text-xs font-mono break-all">
+                        {r.priceId ?? <span className="text-text-muted italic">unset</span>}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums">
+                        {fmtPerMinuteRate(r.unitAmountCents, r.unitAmountDecimal)}
+                        {r.actualUsageType && r.actualUsageType !== 'metered' && (
+                          <div className="text-[11px] text-danger mt-0.5">
+                            usage_type: {r.actualUsageType}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums text-text-muted">
+                        {fmtCatalogPerMin(r.catalogOverageRatePerMinute)}
+                      </td>
+                      <td className="px-4 py-2 text-xs font-mono break-all">
+                        {r.actualMeter ?? <span className="text-text-muted italic">unset</span>}
+                        {meterMismatch && (
+                          <div className="text-[11px] text-danger mt-0.5">
+                            expected {r.expectedMeter}
+                          </div>
+                        )}
                       </td>
                       <td className={`px-4 py-2 text-xs ${statusTone}`}>
                         <div className="flex items-center gap-1.5 font-medium">
