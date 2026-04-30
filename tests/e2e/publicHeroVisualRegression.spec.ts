@@ -69,6 +69,11 @@
  *   HERO_RGB_TOLERANCE        default 32  (max per-channel RGB delta)
  *   HERO_DARK_MAX_LUMA        default 0.5 (dark theme dominant must be ≤ this)
  *   HERO_ZONE_HEIGHT          default 600 (sample-band height, in CSS pixels)
+ *   HERO_PARALLELISM          default 4   (route+theme combinations probed
+ *                                          concurrently, each in its own
+ *                                          `browser.newContext()`. Output
+ *                                          ordering is still grouped by
+ *                                          route for readability.)
  *
  * Regenerating baselines after an intentional design change:
  *
@@ -88,6 +93,20 @@ const UPDATE_BASELINES = process.env.UPDATE_HERO_BASELINES === '1';
 const RGB_TOLERANCE = Number(process.env.HERO_RGB_TOLERANCE ?? '32');
 const DARK_MAX_LUMA = Number(process.env.HERO_DARK_MAX_LUMA ?? '0.5');
 const HERO_ZONE_HEIGHT = Number(process.env.HERO_ZONE_HEIGHT ?? '600');
+// How many route+theme combinations to probe concurrently. Each task
+// runs in its own `browser.newContext()` so they don't share state.
+// Defaults to 4 and falls back to 4 when the env var is unset, blank,
+// non-numeric, or non-positive — anything else would silently leave
+// the worker pool empty and hang the drainer waiting on never-resolved
+// per-task deferreds. Fractional values are floored to an integer.
+function parseParallelism(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return 4;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 4;
+  const floored = Math.floor(n);
+  return floored >= 1 ? floored : 4;
+}
+const PARALLELISM = parseParallelism(process.env.HERO_PARALLELISM);
 
 const VIEWPORT = { width: 1280, height: 900 };
 const SAMPLE_GRID_X = 16;
@@ -594,11 +613,82 @@ async function run(): Promise<void> {
   const results: RouteResult[] = [];
 
   try {
+    // Build the full task list (route × theme) and probe up to
+    // PARALLELISM combinations concurrently. Each task uses its own
+    // `browser.newContext()` (see `probeRouteThemeAllZones`) so no
+    // shared page state leaks between concurrent probes.
+    //
+    // Output ordering is still grouped by route for readability: a
+    // sequential "drainer" awaits each task's deferred promise in the
+    // canonical PUBLIC_ROUTES × ['light', 'dark'] order and prints
+    // its zone results in a contiguous block, while workers in the
+    // background continue probing later tasks.
+    type Task = { route: string; theme: Theme };
+    type Deferred = {
+      promise: Promise<RouteResult[]>;
+      resolve: (v: RouteResult[]) => void;
+    };
+    const tasks: Task[] = [];
+    const deferreds = new Map<string, Deferred>();
+    const taskKey = (route: string, theme: Theme) => `${route}|${theme}`;
+    for (const route of PUBLIC_ROUTES) {
+      for (const theme of ['light', 'dark'] as const) {
+        tasks.push({ route, theme });
+        let resolve!: (v: RouteResult[]) => void;
+        const promise = new Promise<RouteResult[]>((r) => {
+          resolve = r;
+        });
+        deferreds.set(taskKey(route, theme), { promise, resolve });
+      }
+    }
+
+    let nextIdx = 0;
+    const runWorker = async (): Promise<void> => {
+      while (true) {
+        const idx = nextIdx++;
+        if (idx >= tasks.length) return;
+        const t = tasks[idx];
+        const key = taskKey(t.route, t.theme);
+        try {
+          const r = await probeRouteThemeAllZones(browser, t.route, t.theme);
+          deferreds.get(key)!.resolve(r);
+        } catch (err) {
+          // probeRouteThemeAllZones already converts navigation /
+          // probe errors into per-zone failure results, so reaching
+          // this catch means something truly unexpected happened
+          // (e.g. browser context creation itself failed). Surface
+          // it as a failure for every zone so the run still produces
+          // a complete table.
+          const reason = `worker error: ${(err as Error).message}`;
+          deferreds.get(key)!.resolve(
+            ZONES.map((zone) => ({
+              route: t.route,
+              theme: t.theme,
+              zone,
+              passed: false,
+              reason,
+            })),
+          );
+        }
+      }
+    };
+
+    const poolSize = Math.min(PARALLELISM, tasks.length);
+    const workerPromises: Promise<void>[] = [];
+    for (let i = 0; i < poolSize; i++) {
+      workerPromises.push(runWorker());
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `  (probing ${tasks.length} route+theme combinations, up to ${poolSize} in parallel)`,
+    );
+
     for (const route of PUBLIC_ROUTES) {
       collected[route] = collected[route] ?? {};
       for (const theme of ['light', 'dark'] as const) {
         process.stdout.write(`  → ${theme.padEnd(5)} ${route}\n`);
-        const zoneResults = await probeRouteThemeAllZones(browser, route, theme);
+        const zoneResults = await deferreds.get(taskKey(route, theme))!.promise;
         for (const result of zoneResults) {
           collected[route][result.zone] = collected[route][result.zone] ?? {
             light: [0, 0, 0],
@@ -667,6 +757,11 @@ async function run(): Promise<void> {
         }
       }
     }
+    // All tasks have already been awaited via the per-task deferreds
+    // above, but settle the worker promises too so any unexpected
+    // rejection inside a worker (outside the try/catch around
+    // probeRouteThemeAllZones) still surfaces deterministically.
+    await Promise.all(workerPromises);
   } finally {
     await browser.close();
   }
