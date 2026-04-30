@@ -57,7 +57,7 @@ export function withLocalePrefix(locale, p) {
  * `Disallow`s them, so listing them in the sitemap would just send crawlers
  * into a redirect loop.
  */
-const STATIC_ROUTES = [
+export const STATIC_ROUTES = [
   { path: '/',                                           changefreq: 'weekly',  priority: '1.0' },
   { path: '/product',                                    changefreq: 'weekly',  priority: '0.8' },
   { path: '/product/federated-ingest',                   changefreq: 'monthly', priority: '0.7' },

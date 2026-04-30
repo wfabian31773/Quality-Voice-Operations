@@ -38,3 +38,6 @@ jobs:
 
       - name: Run i18n key sync check
         run: npm run check:i18n-keys
+
+      - name: Run sitemap coverage check
+        run: npm run check:sitemap-coverage

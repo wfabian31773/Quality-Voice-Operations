@@ -15,6 +15,9 @@ npm run --silent typecheck:client
 echo "Running i18n key + same-as-English value check..."
 npm run --silent check:i18n-keys
 
+echo "Running sitemap coverage check..."
+npm run --silent check:sitemap-coverage
+
 echo "Running client-app unit tests (vitest)..."
 pnpm --filter client-app test
 
