@@ -7,7 +7,7 @@ import {
   Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, Shield,
   BookOpen, MessageCircle, PlayCircle, Star,
   Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
-  ShoppingCart, Filter,
+  ShoppingCart, Filter, Receipt, BadgePercent,
 } from 'lucide-react';
 import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
 import { PageHeader } from '../components/ui';
@@ -153,6 +153,37 @@ interface CategoryInfo {
   templateCount: number;
 }
 
+/**
+ * Coupon-aware "Discount applied" badge mirrored from the
+ * `invoice.finalized` webhook onto each marketplace purchase row so
+ * the in-app history view can render the same chip the receipt PDF
+ * carries (Task #1373). All fields are nullable — the row only carries
+ * a value when Stripe actually applied a coupon to the underlying
+ * invoice.
+ */
+interface PurchaseDiscountSummary {
+  couponId: string | null;
+  name: string | null;
+  promotionCode: string | null;
+  percentOff: number | null;
+  amountOffCents: number | null;
+  currency: string | null;
+}
+
+interface PurchaseHistoryRow {
+  id: string;
+  templateId: string;
+  templateName: string | null;
+  amountCents: number;
+  currency: string;
+  priceModel: string;
+  status: string;
+  subscriptionStatus: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  discount: PurchaseDiscountSummary | null;
+}
+
 interface Installation {
   id: string;
   tenant_id: string;
@@ -209,6 +240,38 @@ const SORT_OPTIONS = [
   { value: 'price_low', label: 'Price: Low to High' },
   { value: 'price_high', label: 'Price: High to Low' },
 ];
+
+/**
+ * Render a coupon-aware discount badge label that mirrors the wording
+ * the receipt PDF (`formatDiscountFooter` on the server) uses, so a
+ * buyer comparing what they paid in-app vs. the downloaded receipt
+ * sees the same coupon attribution. Keeps to the compact "X off —
+ * <code>" shape Billing.tsx already uses for invoice rows.
+ */
+function formatPurchaseDiscountLabel(
+  discount: PurchaseDiscountSummary,
+  rowCurrency: string,
+): string {
+  const parts: string[] = [];
+  if (discount.percentOff != null && Number.isFinite(discount.percentOff)) {
+    const pct = Number.isInteger(discount.percentOff)
+      ? discount.percentOff
+      : Math.round(discount.percentOff * 100) / 100;
+    parts.push(`${pct}% off`);
+  } else if (
+    discount.amountOffCents != null
+    && Number.isFinite(discount.amountOffCents)
+  ) {
+    const ccy = (discount.currency || rowCurrency || 'usd').toUpperCase();
+    parts.push(
+      `${formatCentsHelper(discount.amountOffCents, { currency: ccy })} off`,
+    );
+  }
+  const tail = discount.promotionCode || discount.name;
+  if (tail) parts.push(tail);
+  if (parts.length === 0) return 'Discount applied';
+  return parts.join(' — ');
+}
 
 function formatPrice(priceCents: number, priceModel: string, currency: string): string {
   if (priceModel === 'free' || priceCents === 0) return 'Free';
@@ -1261,6 +1324,168 @@ interface PhoneNumberAssignment {
   friendly_name: string | null;
 }
 
+/**
+ * In-app marketplace purchase history. Lists every paid marketplace
+ * order for the current tenant (newest first) along with the same
+ * coupon-aware "Discount applied" badge the receipt PDF carries
+ * (Task #1373) so a buyer comparing what they paid vs. what's listed
+ * doesn't have to dig through Stripe email receipts. Both one-off and
+ * subscription purchases are included; the badge surfaces whenever the
+ * underlying invoice had a coupon (subscriptions can keep showing the
+ * badge across renewal invoices since each finalized invoice mirrors
+ * its current discount back to the same `marketplace_purchases` row).
+ */
+function PurchasesView({ onViewTemplate }: { onViewTemplate: (id: string) => void }) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['marketplace-purchases'],
+    queryFn: () => api.get<{ purchases: PurchaseHistoryRow[] }>('/marketplace/purchases'),
+  });
+  const tenantCurrency = useTenantCurrency();
+  const purchases = data?.purchases ?? [];
+
+  if (isLoading) {
+    return <SkeletonGrid count={3} className="grid gap-4" cardClassName="h-24" />;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        title="Failed to load purchases"
+        error={error}
+        onRetry={() => refetch()}
+      />
+    );
+  }
+
+  if (purchases.length === 0) {
+    return (
+      <div className="bg-surface border border-border rounded-xl">
+        <EmptyState
+          icon={Receipt}
+          title="No purchases yet"
+          description="Paid marketplace templates you buy will appear here with their receipt details."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {purchases.map((p) => {
+        const ccy = (p.currency || tenantCurrency || 'usd').toUpperCase();
+        const amount = formatCentsHelper(p.amountCents, { currency: ccy });
+        const recurring = p.priceModel === 'monthly_subscription';
+        const usageBased = p.priceModel === 'usage_based';
+        const dateStr = (p.completedAt || p.createdAt)
+          ? new Date(p.completedAt || p.createdAt).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric',
+            })
+          : '—';
+        const isPending = p.status === 'pending';
+        const statusTone = p.status === 'completed'
+          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+          : p.status === 'refunded'
+          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+          : p.status === 'failed'
+          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+          : 'bg-surface-hover text-text-secondary';
+
+        const discount = p.discount;
+        // Per Task #1373, the chip's tooltip ("hover/expand reveals
+        // coupon name + percent/amount off") must surface the human
+        // coupon NAME alongside the percent/amount, not just the
+        // promo code label that fits on the chip itself. Append the
+        // coupon name when distinct from the promo code so the
+        // tooltip stays informative for finance reconciliation.
+        const discountTooltip = (() => {
+          if (!discount) return '';
+          const base = `Discount applied: ${formatPurchaseDiscountLabel(discount, p.currency)}`;
+          if (discount.name && discount.name !== discount.promotionCode) {
+            return `${base} (coupon: ${discount.name})`;
+          }
+          return base;
+        })();
+
+        return (
+          <div
+            key={p.id}
+            className={`bg-surface border border-border rounded-xl p-4 shadow-sm ${
+              isPending ? 'opacity-70' : ''
+            }`}
+            data-testid="marketplace-purchase-row"
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Receipt className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <button
+                    type="button"
+                    onClick={() => onViewTemplate(p.templateId)}
+                    className="font-semibold text-text-primary hover:text-primary text-left transition-colors"
+                  >
+                    {p.templateName ?? p.templateId}
+                  </button>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${statusTone}`}>
+                    {p.status}
+                  </span>
+                  {recurring && (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-text-secondary">
+                      Subscription
+                    </span>
+                  )}
+                  {usageBased && (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-text-secondary">
+                      Usage-based
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+                  <span>{dateStr}</span>
+                  {p.subscriptionStatus && (
+                    <span className="capitalize">
+                      Sub: {p.subscriptionStatus.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
+                {discount && (
+                  // Coupon-aware "Discount applied" chip mirrored from the
+                  // invoice metadata stamped by handleInvoiceFinalized
+                  // (Task #1351 → #1373). Hover surfaces the full
+                  // coupon name + percent/amount off, matching the
+                  // wording on the downloaded receipt PDF.
+                  <span
+                    className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                    title={discountTooltip}
+                    aria-label={discountTooltip}
+                    data-testid="marketplace-purchase-discount-badge"
+                  >
+                    <BadgePercent className="h-3 w-3" />
+                    Discount applied:{' '}
+                    {discount.promotionCode ?? discount.name ?? 'coupon'}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className="text-sm font-semibold text-text-primary">
+                  {amount}
+                  {recurring ? '/mo' : ''}
+                </span>
+                {discount && (
+                  <span className="text-[11px] text-text-muted">
+                    {formatPurchaseDiscountLabel(discount, p.currency)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => void }) {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace-installations'],
@@ -1396,7 +1621,7 @@ function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
   );
 }
 
-type MarketplaceView = 'browse' | 'installed' | 'detail';
+type MarketplaceView = 'browse' | 'installed' | 'purchases' | 'detail';
 
 export default function Marketplace() {
   const params = useParams();
@@ -1405,6 +1630,8 @@ export default function Marketplace() {
 
   const view: MarketplaceView = location.pathname === '/marketplace/installed'
     ? 'installed'
+    : location.pathname === '/marketplace/purchases'
+    ? 'purchases'
     : params.id
     ? 'detail'
     : 'browse';
@@ -1494,6 +1721,14 @@ export default function Marketplace() {
           {installations.length > 0 && (
             <span className="px-1.5 py-0.5 rounded-full text-xs bg-primary/10 text-primary">{installations.length}</span>
           )}
+        </button>
+        <button
+          onClick={() => navigate('/marketplace/purchases')}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px inline-flex items-center gap-1.5 ${
+            view === 'purchases' ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Purchases
         </button>
       </div>
 
@@ -1638,6 +1873,7 @@ export default function Marketplace() {
       )}
 
       {view === 'installed' && <InstalledView onViewTemplate={handleViewTemplate} />}
+      {view === 'purchases' && <PurchasesView onViewTemplate={handleViewTemplate} />}
     </div>
   );
 }

@@ -2,8 +2,39 @@ import { randomUUID } from 'node:crypto';
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import type { TenantId } from '../core/types';
+import type { UpgradeDiscount } from '../billing/stripe/effectiveRate';
 
 const logger = createLogger('MARKETPLACE_PURCHASES');
+
+/**
+ * Compact view of a coupon applied to a marketplace purchase, mirrored
+ * from the discount badge metadata that `handleInvoiceFinalized` stamps
+ * on the underlying Stripe invoice. Sent to the in-app purchase history
+ * view so it can render the same "Discount applied" badge that lands on
+ * the receipt PDF (Task #1351).
+ */
+export interface PurchaseDiscountSummary {
+  couponId: string | null;
+  name: string | null;
+  promotionCode: string | null;
+  percentOff: number | null;
+  amountOffCents: number | null;
+  currency: string | null;
+}
+
+export interface PurchaseHistoryRow {
+  id: string;
+  templateId: string;
+  templateName: string | null;
+  amountCents: number;
+  currency: string;
+  priceModel: string;
+  status: string;
+  subscriptionStatus: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  discount: PurchaseDiscountSummary | null;
+}
 
 export interface PurchaseInput {
   tenantId: TenantId;
@@ -286,6 +317,127 @@ export async function completePurchase(
     await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to complete purchase', { purchaseId, error: String(err) });
     return { success: false, error: 'Failed to complete purchase' };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Persist the coupon-aware discount badge fields on the matching
+ * `marketplace_purchases` row. Called from `handleInvoiceFinalized`
+ * once it resolves a discount on a marketplace_purchase invoice so the
+ * in-app purchase history view can render the same badge that lands on
+ * the receipt PDF without an extra Stripe round-trip per row.
+ *
+ * Uses raw `getPlatformPool().query` (no `withTenantContext`) on
+ * purpose: the webhook runs without a tenant session, and the
+ * `purchaseId` is already a globally-unique UUID we just looked up via
+ * the invoice's own metadata stamped at session creation. Idempotent —
+ * later finalize retries just rewrite the same fields.
+ */
+export async function applyInvoiceDiscountToPurchase(
+  purchaseId: string,
+  discount: UpgradeDiscount,
+): Promise<void> {
+  const pool = getPlatformPool();
+  try {
+    await pool.query(
+      `UPDATE marketplace_purchases
+         SET discount_badge_applied = TRUE,
+             discount_coupon_id = $2,
+             discount_promotion_code = $3,
+             discount_name = $4,
+             discount_percent_off = $5,
+             discount_amount_off_cents = $6,
+             discount_currency = $7
+       WHERE id = $1`,
+      [
+        purchaseId,
+        discount.couponId,
+        discount.promotionCode,
+        discount.name,
+        discount.percentOff,
+        discount.amountOffCents,
+        discount.currency,
+      ],
+    );
+  } catch (err) {
+    logger.warn('Failed to persist discount badge on marketplace purchase', {
+      purchaseId, error: String(err),
+    });
+  }
+}
+
+/**
+ * Return the tenant's marketplace purchases (newest first) with the
+ * coupon-aware discount badge fields the in-app history view renders.
+ * Includes `pending` rows so a buyer who just kicked off checkout can
+ * see the in-flight order; the UI greys those out.
+ */
+export async function listPurchasesForTenant(
+  tenantId: TenantId,
+): Promise<PurchaseHistoryRow[]> {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT mp.id,
+              mp.template_id,
+              mp.amount_cents,
+              COALESCE(mp.currency, 'usd') AS currency,
+              mp.price_model,
+              mp.status,
+              mp.subscription_status,
+              mp.created_at,
+              mp.completed_at,
+              mp.discount_badge_applied,
+              mp.discount_coupon_id,
+              mp.discount_promotion_code,
+              mp.discount_name,
+              mp.discount_percent_off,
+              mp.discount_amount_off_cents,
+              mp.discount_currency,
+              tr.display_name AS template_name
+         FROM marketplace_purchases mp
+         LEFT JOIN template_registry tr ON tr.id = mp.template_id
+        WHERE mp.tenant_id = $1
+        ORDER BY COALESCE(mp.completed_at, mp.created_at) DESC`,
+      [tenantId],
+    );
+
+    return rows.map((r) => {
+      const badged = r.discount_badge_applied === true;
+      const percentOff = r.discount_percent_off != null
+        ? Number(r.discount_percent_off)
+        : null;
+      const amountOffCents = r.discount_amount_off_cents != null
+        ? Number(r.discount_amount_off_cents)
+        : null;
+      const discount: PurchaseDiscountSummary | null = badged
+        ? {
+            couponId: (r.discount_coupon_id as string | null) ?? null,
+            name: (r.discount_name as string | null) ?? null,
+            promotionCode: (r.discount_promotion_code as string | null) ?? null,
+            percentOff,
+            amountOffCents,
+            currency: (r.discount_currency as string | null) ?? null,
+          }
+        : null;
+      return {
+        id: r.id as string,
+        templateId: r.template_id as string,
+        templateName: (r.template_name as string | null) ?? null,
+        amountCents: r.amount_cents as number,
+        currency: (r.currency as string).toLowerCase(),
+        priceModel: r.price_model as string,
+        status: r.status as string,
+        subscriptionStatus: (r.subscription_status as string | null) ?? null,
+        createdAt: r.created_at as string,
+        completedAt: (r.completed_at as string | null) ?? null,
+        discount,
+      };
+    });
   } finally {
     client.release();
   }

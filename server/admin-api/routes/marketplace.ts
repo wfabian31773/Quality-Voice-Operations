@@ -40,6 +40,7 @@ import {
   checkPurchaseAccess,
   getRevenueStats,
   reportUsage,
+  listPurchasesForTenant,
 } from '../../../platform/marketplace/MarketplacePurchaseService';
 import {
   createSubmission,
@@ -1668,6 +1669,21 @@ router.post('/marketplace/templates/:id/purchase', requireAuth, requireRole('man
   } catch (err) {
     logger.error('Failed to initiate purchase', { tenantId, templateId, error: String(err) });
     return res.status(500).json({ error: 'Failed to initiate purchase' });
+  }
+});
+
+// List the tenant's marketplace purchase history (newest first), each
+// row enriched with the coupon-aware "Discount applied" badge fields
+// mirrored from `invoice.finalized` so the in-app history view renders
+// the same chip the receipt PDF carries (Task #1373).
+router.get('/marketplace/purchases', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const purchases = await listPurchasesForTenant(tenantId);
+    return res.json({ purchases });
+  } catch (err) {
+    logger.error('Failed to list marketplace purchases', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to list marketplace purchases' });
   }
 });
 

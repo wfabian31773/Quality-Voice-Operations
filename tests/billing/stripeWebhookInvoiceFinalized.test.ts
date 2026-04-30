@@ -22,20 +22,29 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const {
   invoicesRetrieveMock,
   invoicesUpdateMock,
+  poolQueryMock,
+  applyInvoiceDiscountToPurchaseMock,
 } = vi.hoisted(() => ({
   invoicesRetrieveMock: vi.fn(),
   invoicesUpdateMock: vi.fn(),
+  poolQueryMock: vi.fn(),
+  applyInvoiceDiscountToPurchaseMock: vi.fn(),
 }));
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({
-    query: vi.fn(),
+    query: poolQueryMock,
     connect: vi.fn(),
   }),
   withTenantContext: vi.fn(
     async (_client: unknown, _tenantId: string, fn: () => Promise<void>) =>
       fn(),
   ),
+}));
+
+vi.mock('../../platform/marketplace/MarketplacePurchaseService', () => ({
+  completePurchase: vi.fn(),
+  applyInvoiceDiscountToPurchase: applyInvoiceDiscountToPurchaseMock,
 }));
 
 vi.mock('../../platform/core/logger', () => ({
@@ -85,6 +94,10 @@ beforeEach(() => {
   invoicesRetrieveMock.mockReset();
   invoicesUpdateMock.mockReset();
   invoicesUpdateMock.mockResolvedValue({ id: 'in_123' });
+  poolQueryMock.mockReset();
+  poolQueryMock.mockResolvedValue({ rows: [] });
+  applyInvoiceDiscountToPurchaseMock.mockReset();
+  applyInvoiceDiscountToPurchaseMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -447,6 +460,143 @@ describe('handleInvoiceFinalized — one-off / marketplace invoices', () => {
     );
     expect(invoicesRetrieveMock).not.toHaveBeenCalled();
     expect(invoicesUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('mirrors the discount onto the marketplace_purchases row via metadata.purchaseId (Task #1373)', async () => {
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_oneoff_123',
+      subscription: null,
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_market10',
+            name: 'Marketplace Promo',
+            percent_off: 10,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_market', code: 'MARKET10' },
+        },
+      ],
+    });
+
+    await handleInvoiceFinalized(
+      makeOneOffInvoice({
+        metadata: {
+          tenantId: 'tenant_42',
+          purchaseId: 'mkt_purchase_abc',
+          type: 'marketplace_purchase',
+        },
+      }),
+    );
+
+    expect(applyInvoiceDiscountToPurchaseMock).toHaveBeenCalledTimes(1);
+    const [purchaseId, discount] = applyInvoiceDiscountToPurchaseMock.mock.calls[0];
+    expect(purchaseId).toBe('mkt_purchase_abc');
+    expect(discount).toMatchObject({
+      couponId: 'coupon_market10',
+      name: 'Marketplace Promo',
+      percentOff: 10,
+      promotionCode: 'MARKET10',
+    });
+    // The subscription-id fallback lookup must NOT fire when the
+    // one-off purchaseId metadata already resolves the row — otherwise
+    // every marketplace invoice would issue an extra DB round-trip.
+    expect(poolQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('mirrors the discount onto a subscription marketplace purchase via stripe_subscription_id', async () => {
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_sub_456',
+      subscription: 'sub_marketplace_xyz',
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_loyal',
+            name: 'Loyalty 20',
+            percent_off: 20,
+            valid: true,
+          },
+          promotion_code: null,
+        },
+      ],
+    });
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: 'mkt_sub_purchase_999' }],
+    });
+
+    await handleInvoiceFinalized({
+      ...makeOneOffInvoice({ id: 'in_sub_456' }),
+      // Subscription invoices carry no `purchaseId` metadata — the
+      // mirror must fall back to the subscription-id join key.
+      subscription: 'sub_marketplace_xyz',
+      subscription_details: { metadata: null },
+      billing_reason: 'subscription_cycle',
+      metadata: {},
+    } as unknown as Stripe.Invoice);
+
+    expect(poolQueryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = poolQueryMock.mock.calls[0];
+    expect(String(sql)).toContain('stripe_subscription_id');
+    expect(params).toEqual(['sub_marketplace_xyz']);
+
+    expect(applyInvoiceDiscountToPurchaseMock).toHaveBeenCalledTimes(1);
+    const [purchaseId, discount] = applyInvoiceDiscountToPurchaseMock.mock.calls[0];
+    expect(purchaseId).toBe('mkt_sub_purchase_999');
+    expect(discount).toMatchObject({
+      couponId: 'coupon_loyal',
+      percentOff: 20,
+    });
+  });
+
+  it('does not mirror when no purchaseId metadata and no matching subscription row exists', async () => {
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_sub_orphan',
+      subscription: 'sub_unknown',
+      discounts: [
+        {
+          coupon: { id: 'c1', percent_off: 10, valid: true },
+          promotion_code: null,
+        },
+      ],
+    });
+    poolQueryMock.mockResolvedValueOnce({ rows: [] });
+
+    await handleInvoiceFinalized({
+      ...makeOneOffInvoice({ id: 'in_sub_orphan' }),
+      subscription: 'sub_unknown',
+      metadata: {},
+    } as unknown as Stripe.Invoice);
+
+    // The PDF stamp still happens — but the mirror is a no-op because
+    // there's no marketplace_purchases row to update.
+    expect(invoicesUpdateMock).toHaveBeenCalledTimes(1);
+    expect(applyInvoiceDiscountToPurchaseMock).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when the marketplace mirror call fails (PDF stamp is the source of truth)', async () => {
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_oneoff_123',
+      discounts: [
+        {
+          coupon: { id: 'coupon_x', percent_off: 5, valid: true },
+          promotion_code: null,
+        },
+      ],
+    });
+    applyInvoiceDiscountToPurchaseMock.mockRejectedValueOnce(
+      new Error('db down'),
+    );
+
+    await expect(
+      handleInvoiceFinalized(
+        makeOneOffInvoice({
+          metadata: { purchaseId: 'mkt_p_99', type: 'marketplace_purchase' },
+        }),
+      ),
+    ).resolves.toBeUndefined();
+    // PDF still got stamped — mirror failure must never poison the
+    // primary receipt-PDF flow.
+    expect(invoicesUpdateMock).toHaveBeenCalledTimes(1);
   });
 
   it('handles an unexpanded promotion_code (string id only) on a marketplace invoice', async () => {

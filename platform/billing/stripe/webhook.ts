@@ -546,6 +546,73 @@ export async function handleInvoiceFinalized(invoice: Stripe.Invoice): Promise<v
       error: String(err),
     });
   }
+
+  // Mirror the badge onto the originating `marketplace_purchases` row so
+  // the in-app marketplace purchase history view can render the same
+  // "Discount applied: <coupon>" chip the receipt PDF carries (Task
+  // #1373) without a per-row Stripe round-trip. We match the invoice
+  // back to a purchase via:
+  //   1. One-off purchases — `invoice.metadata.purchaseId`, stamped on
+  //      `invoice_creation.invoice_data.metadata` when the Checkout
+  //      session was created (see `MarketplacePurchaseService`).
+  //   2. Subscription purchases — `invoice.subscription`, which
+  //      `completePurchase` writes back to
+  //      `marketplace_purchases.stripe_subscription_id` on first
+  //      checkout.completion. Subscription metadata isn't inherited by
+  //      Stripe-issued invoices, so the subscription id is the only
+  //      stable join key for renewal invoices.
+  let purchaseIdToBadge: string | null = null;
+  const metaPurchaseId = invoice.metadata?.purchaseId;
+  if (typeof metaPurchaseId === 'string' && metaPurchaseId.length > 0) {
+    purchaseIdToBadge = metaPurchaseId;
+  } else {
+    // `subscription` was removed from the typed `Stripe.Invoice` shape
+    // in newer Stripe API versions (it's reachable via parent objects),
+    // but the JSON payload still carries the raw `subscription` field
+    // for backwards compatibility — read it as `unknown` to stay
+    // resilient to future Stripe SDK upgrades.
+    const rawSubscription = (invoice as unknown as {
+      subscription?: string | { id?: string } | null;
+    }).subscription;
+    const subId =
+      typeof rawSubscription === 'string'
+        ? rawSubscription
+        : rawSubscription && typeof rawSubscription === 'object'
+          ? rawSubscription.id ?? null
+          : null;
+    if (subId) {
+      try {
+        const pool = getPlatformPool();
+        const { rows } = await pool.query(
+          `SELECT id FROM marketplace_purchases
+            WHERE stripe_subscription_id = $1
+            ORDER BY completed_at DESC NULLS LAST
+            LIMIT 1`,
+          [subId],
+        );
+        if (rows.length > 0) {
+          purchaseIdToBadge = rows[0].id as string;
+        }
+      } catch (err) {
+        logger.warn('Failed to resolve marketplace purchase from subscription', {
+          invoiceId, subscriptionId: subId, error: String(err),
+        });
+      }
+    }
+  }
+
+  if (purchaseIdToBadge) {
+    try {
+      const { applyInvoiceDiscountToPurchase } = await import(
+        '../../marketplace/MarketplacePurchaseService'
+      );
+      await applyInvoiceDiscountToPurchase(purchaseIdToBadge, discount);
+    } catch (err) {
+      logger.warn('Failed to mirror discount badge to marketplace purchase', {
+        invoiceId, purchaseId: purchaseIdToBadge, error: String(err),
+      });
+    }
+  }
 }
 
 /**

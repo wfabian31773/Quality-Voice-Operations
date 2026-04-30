@@ -200,6 +200,7 @@ export default function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/installed" element={<Marketplace />} />
+        <Route path="/marketplace/purchases" element={<Marketplace />} />
         <Route path="/marketplace/:id" element={<Marketplace />} />
         <Route path="/marketplace/updates" element={<UpdateCenter />} />
         <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
