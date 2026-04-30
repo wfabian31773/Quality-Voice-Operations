@@ -86,6 +86,68 @@ export function passwordResetEmail(params: {
   return { subject: 'Reset your password', html, text };
 }
 
+/**
+ * Monthly digest sent to a tenant owner when their actual trailing AI-minute
+ * usage shows that a cheaper published plan would have saved them money over
+ * the lookback window (default 3 months). Mirrors the `/billing` in-app
+ * recommendation card, so the messaging stays consistent for tenants who
+ * never visit the portal.
+ *
+ * Sent only when the recommendation is non-trivial — the scheduler skips
+ * tenants who are already on the optimal plan and tenants whose owners have
+ * opted out of `billing` email notifications.
+ */
+export function planRecommendationEmail(params: {
+  tenantName?: string;
+  ownerName?: string | null;
+  /** Display name of the plan the tenant is currently on (e.g. "Pro"). */
+  currentPlanName: string;
+  /** Display name of the cheaper plan we recommend (e.g. "Starter"). */
+  recommendedPlanName: string;
+  /** Whole-dollar trailing average AI minutes per month. */
+  averageMinutes: number;
+  /** Number of trailing months the average covers (default 3). */
+  monthsConsidered: number;
+  /** Projected monthly savings in whole dollars. */
+  monthlySavings: number;
+  /** Projected annual savings in whole dollars (12 × monthly). */
+  annualSavings: number;
+  /** Absolute deep link back to the tenant's /billing page. */
+  billingUrl: string;
+}): { subject: string; html: string; text: string } {
+  const greeting = params.ownerName ? `Hi ${params.ownerName},` : 'Hi there,';
+  const org = params.tenantName ?? 'your organization';
+  const months = Math.max(1, Math.round(params.monthsConsidered));
+  const monthsLabel = months === 1 ? 'month' : 'months';
+  const monthlyFmt = `$${params.monthlySavings.toLocaleString('en-US')}`;
+  const annualFmt = `$${params.annualSavings.toLocaleString('en-US')}`;
+  const minutesFmt = params.averageMinutes.toLocaleString('en-US');
+
+  const subject = `You could save ${monthlyFmt}/mo by switching from ${params.currentPlanName} to ${params.recommendedPlanName}`;
+
+  const html = baseLayout(`
+    <p>${greeting}</p>
+    <p><strong>${org}</strong> averaged <strong>${minutesFmt} AI minute${params.averageMinutes === 1 ? '' : 's'}</strong> per month over the last ${months} ${monthsLabel}. Based on actual usage, the <strong>${params.recommendedPlanName}</strong> plan would be cheaper than your current <strong>${params.currentPlanName}</strong> plan.</p>
+    <div class="alert-warn">
+      <p style="margin:0"><strong>Projected savings</strong></p>
+      <p style="margin:4px 0 0">${monthlyFmt}/month — about ${annualFmt}/year — if you switched to ${params.recommendedPlanName}.</p>
+    </div>
+    <p>Open Billing to review the full breakdown and switch plans whenever you're ready. The recommendation is based only on what you've already used — there's no commitment.</p>
+    <p><a href="${params.billingUrl}" class="btn">Review Billing</a></p>
+    <p class="muted">You're getting this because the cheaper plan would have saved ${org} more than $0 over the trailing ${months} ${monthsLabel}. We send this digest at most once per month, and you can turn off billing emails in Settings → Notifications.</p>
+  `);
+
+  const text =
+    `${greeting}\n\n` +
+    `${org} averaged ${minutesFmt} AI minute${params.averageMinutes === 1 ? '' : 's'} per month over the last ${months} ${monthsLabel}. ` +
+    `Based on actual usage, the ${params.recommendedPlanName} plan would be cheaper than your current ${params.currentPlanName} plan.\n\n` +
+    `Projected savings: ${monthlyFmt}/month (about ${annualFmt}/year) if you switched to ${params.recommendedPlanName}.\n\n` +
+    `Review Billing: ${params.billingUrl}\n\n` +
+    `We send this digest at most once per month. You can turn off billing emails in Settings → Notifications.`;
+
+  return { subject, html, text };
+}
+
 export function billingAlertEmail(params: {
   alertType: 'usage_warning' | 'usage_critical' | 'payment_failed';
   tenantName?: string;

@@ -44,6 +44,7 @@ import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler } f
 import { startTenantIsolationScheduler, stopTenantIsolationScheduler } from '../../platform/security/TenantIsolationScheduler';
 import { startEncryptionReminderScheduler, stopEncryptionReminderScheduler } from '../../platform/security/EncryptionReminderScheduler';
 import { startRouteExportArchiveCleanupScheduler, stopRouteExportArchiveCleanupScheduler } from '../../platform/dispatch/RouteExportArchiveCleanupScheduler';
+import { startPlanRecommendationDigestScheduler, stopPlanRecommendationDigestScheduler } from '../../platform/billing/PlanRecommendationDigestScheduler';
 
 const logger = createLogger('ADMIN_API');
 
@@ -126,6 +127,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startTenantIsolationScheduler();
   startEncryptionReminderScheduler();
   startRouteExportArchiveCleanupScheduler();
+  startPlanRecommendationDigestScheduler();
   startFederalDncSyncScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
 });
@@ -166,6 +168,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopTenantIsolationScheduler();
   stopEncryptionReminderScheduler();
   stopRouteExportArchiveCleanupScheduler();
+  stopPlanRecommendationDigestScheduler();
   stopFederalDncSyncScheduler();
   stopMetricsRollup();
   stopSystemMetricsWriter();
