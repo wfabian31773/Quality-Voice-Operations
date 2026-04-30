@@ -1138,4 +1138,117 @@ describe('BillingEstimator', () => {
       ).toBeTruthy();
     });
   });
+
+  describe('current-tier annual-equivalent line', () => {
+    it('renders the annual-equivalent line on the current-tier card for tenants on monthly billing', () => {
+      // Pro: $399/mo monthly, $319/mo annual-equivalent →
+      // savings = ($399 − $319) × 12 = $960/yr
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          currentBillingInterval="monthly"
+          monthlyBasePriceCents={39_900}
+          annualBasePriceCents={31_900}
+        />,
+      );
+      const row = screen.getByTestId('billing-estimator-annual-equivalent-pro');
+      expect(row.textContent).toContain('$319');
+      expect(row.textContent).toMatch(/save\s+\$960/i);
+      expect(row.getAttribute('data-annual-monthly-cents')).toBe('31900');
+      expect(row.getAttribute('data-annual-savings-cents')).toBe('96000');
+    });
+
+    it('does not render the annual-equivalent line on the comparison-tier card', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          currentBillingInterval="monthly"
+          monthlyBasePriceCents={39_900}
+          annualBasePriceCents={31_900}
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-annual-equivalent-starter'),
+      ).toBeNull();
+    });
+
+    it('hides the annual-equivalent line for tenants already on annual billing', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          currentBillingInterval="annual"
+          monthlyBasePriceCents={39_900}
+          annualBasePriceCents={31_900}
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-annual-equivalent-pro'),
+      ).toBeNull();
+    });
+
+    it('hides the annual-equivalent line when no current billing interval was provided', () => {
+      // Defensive: a call site that hasn't yet plumbed
+      // currentBillingInterval should not opt into the new line.
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          monthlyBasePriceCents={39_900}
+          annualBasePriceCents={31_900}
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-annual-equivalent-pro'),
+      ).toBeNull();
+    });
+
+    it("hides the annual-equivalent line when the annual quote isn't cheaper than the monthly quote", () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          currentBillingInterval="monthly"
+          monthlyBasePriceCents={39_900}
+          annualBasePriceCents={39_900}
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-annual-equivalent-pro'),
+      ).toBeNull();
+    });
+
+    it('hides the annual-equivalent line when the monthly/annual base price fields are absent', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          currentBillingInterval="monthly"
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-annual-equivalent-pro'),
+      ).toBeNull();
+    });
+
+    it('renders the annual-equivalent amounts in the tenant billing currency', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          currentBillingInterval="monthly"
+          monthlyBasePriceCents={39_900}
+          annualBasePriceCents={31_900}
+          currency="EUR"
+        />,
+      );
+      const row = screen.getByTestId('billing-estimator-annual-equivalent-pro');
+      const text = (row.textContent ?? '').replace(/\u00a0/g, ' ');
+      expect(text).toContain('€319');
+      expect(text).toContain('€960');
+      expect(text).not.toContain('$');
+    });
+  });
 });

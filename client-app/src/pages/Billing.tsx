@@ -1168,13 +1168,15 @@ export default function Billing() {
           <BillingEstimator
             currentPlan={plan}
             monthToDateAiMinutes={aiMinutesUsed}
-            // BillingEstimator models the *current invoice* — what the
-            // tenant is being billed right now — so we use the
-            // interval-agnostic `basePriceCents` (already normalised to
-            // a monthly equivalent of the tenant's actual subscription).
-            // The new `monthlyBasePriceCents`/`annualBasePriceCents`
-            // fields are intentionally not consumed here; they exist for
-            // the public pricing calculator's monthly/annual toggle.
+            // The interval-agnostic `basePriceCents` drives the
+            // current-invoice math (already normalised to a monthly
+            // equivalent of the tenant's actual subscription). The
+            // separate `monthlyBasePriceCents`/`annualBasePriceCents`
+            // pair is forwarded below so the current-tier card can
+            // render the in-card "or $Y/mo billed annually · save
+            // $Z/yr" line — same source the Subscription card's
+            // annual-savings callout (and the public pricing
+            // calculator's monthly/annual toggle) already use.
             rateOverride={effectiveRateData
               ? {
                   basePriceCents:
@@ -1270,6 +1272,13 @@ export default function Billing() {
             currentBillingInterval={
               sub?.billing_interval === 'monthly' ? 'monthly' : 'annual'
             }
+            // Monthly + annual base-price quotes for the in-card
+            // annual-equivalent line. The component handles all the
+            // gating (monthly billing only, annual quote actually
+            // cheaper, fields present), so we forward whatever
+            // `/billing/effective-rate` returned and let it decide.
+            monthlyBasePriceCents={effectiveRateData?.monthlyBasePriceCents ?? null}
+            annualBasePriceCents={effectiveRateData?.annualBasePriceCents ?? null}
             trailingMonthlyAiMinutes={
               // Only feed the recommendation card when at least one of
               // the trailing months actually had AI usage. A brand-new

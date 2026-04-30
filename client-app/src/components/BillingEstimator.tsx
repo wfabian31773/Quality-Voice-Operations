@@ -283,8 +283,30 @@ interface BillingEstimatorProps {
    * suppressed when the current tier's pricing was sourced from a
    * Stripe override (we have no way to fabricate an annual quote on a
    * negotiated rate).
+   *
+   * Also gates the in-card "or $Y/mo billed annually · save $Z/yr"
+   * line on the current-tier card so a tenant reasoning about minutes
+   * in the estimator sees the same annual comparison the parent
+   * Subscription card surfaces above.
    */
   currentBillingInterval?: BillingPeriod;
+  /**
+   * Tenant's current monthly base-price quote (in cents) for their
+   * tier, sourced from `/billing/effective-rate.monthlyBasePriceCents`.
+   * Paired with `annualBasePriceCents` to render the annual-equivalent
+   * line under the current-tier card's base-plan row. Omit (or pass
+   * `null`) to hide the line — that's how this stays backwards-
+   * compatible with call sites that don't yet plumb the fields.
+   */
+  monthlyBasePriceCents?: number | null;
+  /**
+   * Tenant's annual-billed quote, normalised to a per-month equivalent
+   * (in cents), from `/billing/effective-rate.annualBasePriceCents`.
+   * Companion to `monthlyBasePriceCents`. The annual-equivalent line
+   * is hidden when this isn't strictly cheaper than the monthly quote
+   * so we don't render a misleading "save $0/yr" callout.
+   */
+  annualBasePriceCents?: number | null;
 }
 
 /**
@@ -565,6 +587,7 @@ function TierEstimate({
   currentPlan,
   tenantId,
   onDiscountEvent,
+  annualEquivalent,
 }: {
   tier: TierSpec;
   minutes: number;
@@ -576,6 +599,17 @@ function TierEstimate({
   currentPlan?: PlanTier;
   tenantId?: string | null;
   onDiscountEvent?: (event: DiscountEvent) => void;
+  /**
+   * When provided, renders an "or $Y/mo billed annually · save $Z/yr"
+   * line under the base-plan row. The parent (`BillingEstimator`) is
+   * responsible for the gating (monthly billing only, annual quote
+   * actually cheaper, fields present); this card just renders the
+   * pre-computed numbers when the prop is set.
+   */
+  annualEquivalent?: {
+    monthlyEquivCents: number;
+    savingsPerYearCents: number;
+  } | null;
 }) {
   const monthlyCost = calculateMonthlyCost(tier, minutes);
   const overageMinutes = Math.max(0, minutes - tier.includedMinutes);
@@ -729,6 +763,24 @@ function TierEstimate({
           <dt className="text-text-muted">Base plan</dt>
           <dd className="text-text-primary font-medium">{formatMoney(tier.basePrice)}/mo</dd>
         </div>
+        {annualEquivalent && (
+          <div
+            data-testid={`billing-estimator-annual-equivalent-${tier.key}`}
+            data-annual-monthly-cents={annualEquivalent.monthlyEquivCents}
+            data-annual-savings-cents={annualEquivalent.savingsPerYearCents}
+            className="flex justify-between text-[11px] text-text-muted"
+          >
+            <dt>or billed annually</dt>
+            <dd>
+              <span className="text-text-primary font-medium">
+                {formatMoney(centsToWholeDollars(annualEquivalent.monthlyEquivCents))}/mo
+              </span>
+              <span className="ml-1 text-success font-medium">
+                · save {formatMoney(centsToWholeDollars(annualEquivalent.savingsPerYearCents))}/yr
+              </span>
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between">
           <dt className="text-text-muted">Minutes included</dt>
           <dd className="text-text-primary font-medium">
@@ -1469,6 +1521,8 @@ export default function BillingEstimator({
   onDiscountEvent,
   tenantId,
   currentBillingInterval,
+  monthlyBasePriceCents,
+  annualBasePriceCents,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
@@ -1532,6 +1586,33 @@ export default function BillingEstimator({
     () => toTierSpec(currentTierKey, rateOverride),
     [currentTierKey, rateOverride],
   );
+
+  // Annual-equivalent quote for the current-tier card. Mirrors the
+  // gating the parent Subscription card uses for its annual-savings
+  // callout so the two surfaces stay consistent — only render when the
+  // tenant is on monthly billing AND both monthly/annual base-price
+  // fields are present AND the annual quote is meaningfully cheaper.
+  // Anything else returns `null` so the line stays hidden rather than
+  // rendering a misleading "save $0/yr" or "save $NaN/yr".
+  const currentTierAnnualEquivalent = useMemo(() => {
+    if (currentBillingInterval !== 'monthly') return null;
+    const monthlyCents = monthlyBasePriceCents;
+    const annualEquivCents = annualBasePriceCents;
+    if (
+      typeof monthlyCents !== 'number'
+      || typeof annualEquivCents !== 'number'
+      || !Number.isFinite(monthlyCents)
+      || !Number.isFinite(annualEquivCents)
+    ) {
+      return null;
+    }
+    const savingsPerYearCents = (monthlyCents - annualEquivCents) * 12;
+    if (savingsPerYearCents <= 0) return null;
+    return {
+      monthlyEquivCents: annualEquivCents,
+      savingsPerYearCents,
+    };
+  }, [currentBillingInterval, monthlyBasePriceCents, annualBasePriceCents]);
 
   const comparisonDirection: ComparisonDirection =
     currentTierKey === 'starter' ? 'up' : 'down';
@@ -1723,6 +1804,7 @@ export default function BillingEstimator({
           label="Current plan"
           formatMoney={formatMoney}
           formatPerMinute={formatPerMinute}
+          annualEquivalent={currentTierAnnualEquivalent}
         />
         {comparisonTier ? (
           <TierEstimate
