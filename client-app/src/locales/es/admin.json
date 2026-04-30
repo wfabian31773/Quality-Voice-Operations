@@ -956,7 +956,9 @@
       "revenue_30d": "Ingresos (30 d)",
       "revenue_total_sub": "{{amount}} en total",
       "bounced_label": "Destinatarios con rebote duro",
-      "bounced_sub": "+{{week}} en 7 d · +{{month}} en 30 d"
+      "bounced_sub": "+{{week}} en 7 d · +{{month}} en 30 d",
+      "recommendation_label": "Cambios de plan desde el banner (30 d)",
+      "recommendation_sub": "{{impressions}} impresiones · {{clicks}} clics"
     },
     "aria_tablist": "Secciones de administración de la plataforma",
     "common_loading": "Cargando...",

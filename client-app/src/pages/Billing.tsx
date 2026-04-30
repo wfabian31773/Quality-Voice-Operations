@@ -598,15 +598,20 @@ export default function Billing() {
               : undefined}
             projectionMultiplier={projectionMultiplier}
             currency={currency}
-            // Recommendation banner reuses the same Stripe Checkout
-            // flow as the upgrade cards, pre-selected to monthly billing
-            // (the interval the recommendation math uses). The
-            // recommendation snapshot is forwarded so checkout can stamp
-            // it into Stripe metadata for server-side attribution.
-            // Gated on `isAdmin` so read-only roles don't see the CTA —
-            // BillingEstimator hides it when `onSwitchPlan` is omitted.
+            // The recommendation banner's "Switch to <Plan>" CTA reuses
+            // the same Stripe Checkout flow as the upgrade cards below.
+            // The banner exposes its own monthly/annual toggle so the
+            // tenant can pick the interval they want before we hand off
+            // to Stripe — the chosen interval is forwarded here and the
+            // headline savings copy in the banner stays in sync. The
+            // recommendation snapshot is forwarded too so Stripe
+            // checkout can stamp it into session metadata for
+            // server-side attribution. Gated on `isAdmin` so read-only
+            // roles never even see the button — the BillingEstimator
+            // hides the CTA (and the toggle) when `onSwitchPlan` is
+            // omitted.
             onSwitchPlan={isAdmin
-              ? (tier, recommendation) => handleUpgrade(tier, 'monthly', recommendation)
+              ? (tier, interval, recommendation) => handleUpgrade(tier, interval, recommendation)
               : undefined}
             switchingPlan={(upgradeLoading as PlanTier | null) ?? null}
             trailingWindow={trailingWindow}

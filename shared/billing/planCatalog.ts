@@ -36,6 +36,15 @@ export const PLAN_CATALOG: Record<PlanTier, PlanCatalogEntry> = {
 
 export const PLAN_TIERS: PlanTier[] = ['starter', 'pro', 'enterprise'];
 
+/**
+ * Discount applied to the published monthly base price when a tenant
+ * commits to annual billing (e.g. 0.2 == 20% off). Lives in the shared
+ * catalog so the public pricing page, the in-app billing estimator, and
+ * the plan-recommendation engine can all reason about annual pricing
+ * with the same constant.
+ */
+export const ANNUAL_DISCOUNT = 0.2;
+
 export function getPlan(tier: PlanTier): PlanCatalogEntry {
   return PLAN_CATALOG[tier];
 }

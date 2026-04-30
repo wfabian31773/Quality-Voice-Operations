@@ -956,7 +956,9 @@
       "revenue_30d": "Umsatz (30 T.)",
       "revenue_total_sub": "{{amount}} insgesamt",
       "bounced_label": "Empfänger mit Hard-Bounce",
-      "bounced_sub": "+{{week}} in 7 T. · +{{month}} in 30 T."
+      "bounced_sub": "+{{week}} in 7 T. · +{{month}} in 30 T.",
+      "recommendation_label": "Tarifwechsel über Banner (30 T.)",
+      "recommendation_sub": "{{impressions}} Aufrufe · {{clicks}} Klicks"
     },
     "aria_tablist": "Bereiche der Plattformverwaltung",
     "common_loading": "Wird geladen...",

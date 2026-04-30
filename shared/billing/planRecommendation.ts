@@ -8,6 +8,7 @@
  * vitest specs can all import the same arithmetic and stay drift-free.
  */
 import {
+  ANNUAL_DISCOUNT,
   PLAN_CATALOG,
   PLAN_TIERS,
   type PlanCatalogEntry,
@@ -40,6 +41,16 @@ export interface PlanCostBreakdown {
   includedMinutes: number;
   /** Cost in whole dollars at `minutes` of monthly usage. */
   monthlyCost: number;
+  /**
+   * Same as `monthlyCost` but with the standard annual discount applied
+   * to the base price (overage is unaffected). Lets the UI quote both
+   * monthly and annual options for the recommended tier without having
+   * to know about the discount constant. For tiers whose pricing was
+   * sourced from a Stripe override (i.e. the tenant's *current* plan)
+   * this falls back to `monthlyCost` because we have no way to project
+   * a custom/negotiated price onto a different billing interval.
+   */
+  annualMonthlyCost: number;
   /** True when this tier's pricing was sourced from the override (Stripe), not the catalog. */
   sourcedFromStripe: boolean;
 }
@@ -58,6 +69,29 @@ export interface PlanRecommendation {
   monthlySavings: number;
   /** Same savings extrapolated to a full year, in whole dollars. */
   annualSavings: number;
+  /**
+   * Annual-billing variant of the recommendation. Quotes the recommended
+   * tier at its annual-discounted monthly rate so the UI can offer both
+   * a "switch on monthly" and a "switch on annual" CTA from the same
+   * recommendation card without recomputing the discount itself.
+   *
+   * The savings figures compare the discounted recommended cost to the
+   * tenant's *current* monthly cost (which is what they're paying right
+   * now). When the current tier is already optimal at this volume, the
+   * annual savings are still surfaced as the 20%-off-base figure so the
+   * caller can decide whether to pitch "switch your current plan to
+   * annual to save 20%" — but for an overridden current tier this
+   * collapses to zero because we have no way to project a custom price
+   * onto a different billing interval.
+   */
+  annualOption: {
+    /** Recommended tier's monthly cost when billed annually, in whole dollars. */
+    monthlyCost: number;
+    /** Savings/mo vs. the current plan when picking annual, in whole dollars. */
+    monthlySavings: number;
+    /** Same savings extrapolated to a full year, in whole dollars. */
+    annualSavings: number;
+  };
   /** True when the current plan already has the lowest cost (or is tied). */
   isAlreadyOptimal: boolean;
 }
@@ -83,6 +117,18 @@ function toBreakdown(
 
   const basePrice = overrideBase ?? centsToWholeDollars(plan.monthlyPriceCents);
   const overageRate = overrideOverage ?? plan.overageRatePerMinute;
+  const sourcedFromStripe = overrideBase != null || overrideOverage != null;
+
+  const monthlyCost = planCost(plan, minutes, basePrice, overageRate);
+  // Annual cost reuses the same overage line — only the base price gets
+  // the discount. For overridden (Stripe-sourced) tiers we deliberately
+  // skip the discount because the override IS the rate the tenant pays
+  // today; we have no way to project a custom/negotiated price onto a
+  // different billing interval, so quoting `base * 0.8` would be a lie.
+  const annualBase = sourcedFromStripe
+    ? basePrice
+    : basePrice * (1 - ANNUAL_DISCOUNT);
+  const annualMonthlyCost = planCost(plan, minutes, annualBase, overageRate);
 
   return {
     tier: plan.key,
@@ -90,8 +136,9 @@ function toBreakdown(
     basePrice,
     overageRate,
     includedMinutes: plan.includedMinutes,
-    monthlyCost: planCost(plan, minutes, basePrice, overageRate),
-    sourcedFromStripe: overrideBase != null || overrideOverage != null,
+    monthlyCost,
+    annualMonthlyCost,
+    sourcedFromStripe,
   };
 }
 
@@ -134,13 +181,29 @@ export function recommendCheapestPlan(
 
   const monthlySavings = Math.max(0, current.monthlyCost - cheapest.monthlyCost);
   const isAlreadyOptimal = cheapest.tier === current.tier || monthlySavings <= 0;
+  const recommended = isAlreadyOptimal ? current : cheapest;
+
+  // Annual variant compares the discounted recommended cost to whatever
+  // the tenant is paying right now (current.monthlyCost). If the current
+  // plan was sourced from a Stripe override, recommended.annualMonthlyCost
+  // collapses to its monthlyCost in the optimal-current case — which
+  // correctly yields zero savings rather than fabricating a discount.
+  const annualMonthlySavings = Math.max(
+    0,
+    current.monthlyCost - recommended.annualMonthlyCost,
+  );
 
   return {
     averageMinutes: minutes,
     current,
-    recommended: isAlreadyOptimal ? current : cheapest,
+    recommended,
     monthlySavings,
     annualSavings: monthlySavings * 12,
+    annualOption: {
+      monthlyCost: recommended.annualMonthlyCost,
+      monthlySavings: annualMonthlySavings,
+      annualSavings: annualMonthlySavings * 12,
+    },
     isAlreadyOptimal,
   };
 }

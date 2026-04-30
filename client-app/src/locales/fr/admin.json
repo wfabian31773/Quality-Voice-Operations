@@ -956,7 +956,9 @@
       "revenue_30d": "Revenu (30 j)",
       "revenue_total_sub": "{{amount}} au total",
       "bounced_label": "Destinataires ayant déjà rebondi (hard bounce)",
-      "bounced_sub": "+{{week}} sur 7 j · +{{month}} sur 30 j"
+      "bounced_sub": "+{{week}} sur 7 j · +{{month}} sur 30 j",
+      "recommendation_label": "Changements de plan via la bannière (30 j)",
+      "recommendation_sub": "{{impressions}} impressions · {{clicks}} clics"
     },
     "aria_tablist": "Sections d’administration de la plateforme",
     "common_loading": "Chargement...",

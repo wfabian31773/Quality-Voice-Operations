@@ -358,6 +358,142 @@ describe('BillingEstimator', () => {
       expect(screen.queryByTestId('billing-estimator-recommendation')).toBeNull();
     });
 
+    describe('interval toggle (monthly vs annual)', () => {
+      it('hides the interval toggle when no onSwitchPlan callback is wired', () => {
+        // Without a CTA to forward the choice to, the toggle has nothing
+        // to do — and we don't want read-only roles teasing an option
+        // they can't act on.
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[300, 300, 300]}
+          />,
+        );
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-interval-toggle'),
+        ).toBeNull();
+      });
+
+      it('renders the interval toggle next to the CTA, defaulting to monthly', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[300, 300, 300]}
+            onSwitchPlan={() => undefined}
+          />,
+        );
+        expect(
+          screen.getByTestId('billing-estimator-recommendation-interval-toggle'),
+        ).toBeTruthy();
+        expect(
+          screen
+            .getByTestId('billing-estimator-recommendation-interval-monthly')
+            .getAttribute('aria-pressed'),
+        ).toBe('true');
+        expect(
+          screen
+            .getByTestId('billing-estimator-recommendation-interval-annual')
+            .getAttribute('aria-pressed'),
+        ).toBe('false');
+        // CTA defaults to monthly billing in its data attribute and
+        // tooltip — that matches the headline savings copy.
+        const cta = screen.getByTestId('billing-estimator-recommendation-cta');
+        expect(cta.getAttribute('data-recommendation-cta-interval')).toBe('monthly');
+        expect(cta.getAttribute('title')).toMatch(/monthly billing/i);
+      });
+
+      it('updates the headline savings copy when annual is selected', () => {
+        // Pro tenant @ 300 min: monthly headline is $300/mo savings on
+        // Starter ($99). Annual variant: Starter base $99 * 0.8 = $79.2,
+        // savings vs. Pro $399 = $319.8/mo, $3,837.6/yr → rounded.
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[300, 300, 300]}
+            onSwitchPlan={() => undefined}
+          />,
+        );
+        // Sanity-check the monthly headline first.
+        expect(
+          screen.getByTestId('billing-estimator-recommendation-savings').textContent,
+        ).toContain('$300');
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-annual-tag'),
+        ).toBeNull();
+
+        fireEvent.click(
+          screen.getByTestId('billing-estimator-recommendation-interval-annual'),
+        );
+
+        // Headline savings reflect the annual figure (rounded for display).
+        const savingsAnnual =
+          screen.getByTestId('billing-estimator-recommendation-savings').textContent ?? '';
+        expect(savingsAnnual).toContain('$320');
+        // Annual badge appears in the headline so the tenant knows the
+        // savings number is the discounted variant.
+        expect(
+          screen.getByTestId('billing-estimator-recommendation-annual-tag'),
+        ).toBeTruthy();
+        // Subtitle shows the discounted recommended monthly cost.
+        expect(
+          screen
+            .getByTestId('billing-estimator-recommendation-recommended-cost')
+            .textContent,
+        ).toContain('$79');
+        // Annual savings line reflects the annualised discount.
+        expect(
+          screen
+            .getByTestId('billing-estimator-recommendation-annual-savings')
+            .textContent,
+        ).toContain('$3,838');
+      });
+
+      it('forwards the chosen interval to onSwitchPlan when the CTA is clicked', () => {
+        const calls: Array<{ tier: string; interval: string }> = [];
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[300, 300, 300]}
+            onSwitchPlan={(tier, interval) => calls.push({ tier, interval })}
+          />,
+        );
+
+        // Monthly is the default.
+        fireEvent.click(screen.getByTestId('billing-estimator-recommendation-cta'));
+        expect(calls).toEqual([{ tier: 'starter', interval: 'monthly' }]);
+
+        // Pick annual and click again — the second call should reflect it.
+        fireEvent.click(
+          screen.getByTestId('billing-estimator-recommendation-interval-annual'),
+        );
+        fireEvent.click(screen.getByTestId('billing-estimator-recommendation-cta'));
+        expect(calls).toEqual([
+          { tier: 'starter', interval: 'monthly' },
+          { tier: 'starter', interval: 'annual' },
+        ]);
+      });
+
+      it('does not show the interval toggle on the "already optimal" variant', () => {
+        // We don't pitch a switch when the current plan is the cheapest,
+        // so there's no recommended tier to bill annually either.
+        render(
+          <BillingEstimator
+            currentPlan="starter"
+            monthToDateAiMinutes={50}
+            trailingMonthlyAiMinutes={[80, 120, 100]}
+            onSwitchPlan={() => undefined}
+          />,
+        );
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-interval-toggle'),
+        ).toBeNull();
+      });
+    });
+
     it('honors a custom availableTrailingWindows prop', () => {
       render(
         <BillingEstimator

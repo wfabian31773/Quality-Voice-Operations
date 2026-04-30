@@ -2,12 +2,20 @@ import { useMemo, useState } from 'react';
 import { Calculator, Sparkles } from 'lucide-react';
 import { formatDollars } from '../lib/formatCurrency';
 import {
+  ANNUAL_DISCOUNT,
   PLAN_CATALOG,
   PLAN_TIERS,
   centsToWholeDollars,
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
+
+/**
+ * Re-exported from the shared catalog so existing imports
+ * (`import { ANNUAL_DISCOUNT } from '.../MinutesPricingCalculator'`) keep
+ * working. The single source of truth lives in `shared/billing/planCatalog`.
+ */
+export { ANNUAL_DISCOUNT };
 
 interface CalculatorTier {
   key: PlanTier;
@@ -44,7 +52,6 @@ export interface CurrentPlanOverride {
 export type BillingPeriod = 'monthly' | 'annual';
 
 const POPULAR_TIER: PlanTier = 'pro';
-export const ANNUAL_DISCOUNT = 0.2;
 
 const CALC_TIERS: CalculatorTier[] = PLAN_TIERS.map((key) => {
   const plan = PLAN_CATALOG[key];

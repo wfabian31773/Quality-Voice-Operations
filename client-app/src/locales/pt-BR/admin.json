@@ -956,7 +956,9 @@
       "revenue_30d": "Receita (30 d)",
       "revenue_total_sub": "{{amount}} no total",
       "bounced_label": "Destinatários com hard-bounce",
-      "bounced_sub": "+{{week}} em 7 d · +{{month}} em 30 d"
+      "bounced_sub": "+{{week}} em 7 d · +{{month}} em 30 d",
+      "recommendation_label": "Trocas de plano pelo banner (30 d)",
+      "recommendation_sub": "{{impressions}} impressões · {{clicks}} cliques"
     },
     "aria_tablist": "Seções de administração da plataforma",
     "common_loading": "Carregando...",

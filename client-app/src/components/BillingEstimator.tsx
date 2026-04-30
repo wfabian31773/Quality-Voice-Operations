@@ -25,6 +25,8 @@ import {
 import {
   calculateMonthlyCost,
   calculateEffectiveRate,
+  ANNUAL_DISCOUNT,
+  type BillingPeriod,
 } from './MinutesPricingCalculator';
 import { formatDollars } from '../lib/formatCurrency';
 
@@ -91,13 +93,21 @@ interface BillingEstimatorProps {
   /**
    * Invoked when the tenant clicks the recommendation banner's
    * "Switch to <Plan>" CTA. The parent kicks off a Stripe Checkout flow
-   * for the recommended tier (monthly interval). The recommendation
+   * for the recommended tier on the chosen billing interval. The
+   * interval is selected via a small monthly/annual toggle inside the
+   * recommendation card and defaults to monthly so the headline savings
+   * copy lines up with the recommendation arithmetic. The recommendation
    * snapshot is passed alongside so the parent can stamp it into the
    * Stripe session metadata for server-side attribution.
-   * When this callback is omitted the CTA is hidden — that's how we
-   * gate the action for read-only roles.
+   * When this callback is omitted the CTA (and the toggle) are hidden —
+   * that's how we gate the action for read-only roles without leaking
+   * it into the markup.
    */
-  onSwitchPlan?: (tier: PlanTier, recommendation: RecommendationAttribution) => void;
+  onSwitchPlan?: (
+    tier: PlanTier,
+    interval: BillingPeriod,
+    recommendation: RecommendationAttribution,
+  ) => void;
   /**
    * Invoked when the banner generates an instrumentation event:
    *   - `impression`: fired once per (currentTier, recommendedTier,
@@ -441,17 +451,48 @@ function RecommendationCard({
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
   formatMoney: (value: number) => string;
-  onSwitchPlan?: (tier: PlanTier, recommendation: RecommendationAttribution) => void;
+  onSwitchPlan?: (
+    tier: PlanTier,
+    interval: BillingPeriod,
+    recommendation: RecommendationAttribution,
+  ) => void;
   switchingPlan?: PlanTier | null;
   trailingWindow?: TrailingWindow;
   onTrailingWindowChange?: (months: TrailingWindow) => void;
   availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
   onRecommendationEvent?: (event: RecommendationEvent) => void;
 }) {
-  const { current, recommended, monthlySavings, annualSavings, isAlreadyOptimal, averageMinutes } = recommendation;
+  const {
+    current,
+    recommended,
+    monthlySavings,
+    annualSavings,
+    annualOption,
+    isAlreadyOptimal,
+    averageMinutes,
+  } = recommendation;
   // Math.round guards against floating-point drift since the
-  // recommendation math operates in dollars.
+  // recommendation math operates in dollars. The attribution snapshot
+  // tracks the canonical monthly savings projection, independent of
+  // the user's later monthly/annual choice in the CTA toggle.
   const monthlySavingsCents = Math.max(0, Math.round(monthlySavings * 100));
+
+  // Local interval choice for the recommendation CTA. Defaults to
+  // monthly because the headline arithmetic at first render is the
+  // monthly comparison ("you'd save $X/mo on Recommended"); flipping
+  // to annual swaps the headline and the recommended cost shown in
+  // the subtitle to the discounted figures from `annualOption`.
+  const [interval, setIntervalState] = useState<BillingPeriod>('monthly');
+  const isAnnual = interval === 'annual';
+  const headlineMonthlySavings = isAnnual
+    ? annualOption.monthlySavings
+    : monthlySavings;
+  const headlineAnnualSavings = isAnnual
+    ? annualOption.annualSavings
+    : annualSavings;
+  const recommendedMonthlyCostForCopy = isAnnual
+    ? annualOption.monthlyCost
+    : recommended.monthlyCost;
 
   // Dedup impressions per (currentTier, recommendedTier, savings) per
   // browser tab so re-renders from slider / window toggles don't get
@@ -484,6 +525,7 @@ function RecommendationCard({
     trailingWindow,
   ]);
 
+
   const monthsLabel = monthsConsidered === 1
     ? 'last complete month'
     : `last ${monthsConsidered} complete months`;
@@ -498,6 +540,9 @@ function RecommendationCard({
   const ctaLabel = isSwitchingThisTier
     ? 'Redirecting...'
     : `${isDowngrade ? 'Downgrade to' : 'Switch to'} ${recommended.name}`;
+  const ctaTitle = `${isDowngrade ? 'Downgrade' : 'Switch'} to the ${recommended.name} plan (${
+    isAnnual ? 'annual' : 'monthly'
+  } billing)`;
 
   const showWindowToggle =
     typeof trailingWindow === 'number'
@@ -561,57 +606,152 @@ function RecommendationCard({
               data-testid="billing-estimator-recommendation-savings"
               className="text-primary"
             >
-              {formatMoney(monthlySavings)}/mo
+              {formatMoney(headlineMonthlySavings)}/mo
             </span>{' '}
             on{' '}
             <span data-testid="billing-estimator-recommendation-tier" className="text-primary">
               {recommended.name}
-            </span>{' '}
+            </span>
+            {isAnnual && (
+              <>
+                {' '}
+                <span
+                  data-testid="billing-estimator-recommendation-annual-tag"
+                  className="text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-1.5 py-0.5 rounded-full align-middle"
+                >
+                  billed annually
+                </span>
+              </>
+            )}{' '}
             based on your {monthsLabel}.
           </p>
           <p className="text-xs text-text-muted mt-0.5">
             You averaged {averageMinutes.toLocaleString()} AI min/mo. {current.name} would have billed{' '}
             {formatMoney(current.monthlyCost)}/mo at that volume; {recommended.name} comes out to{' '}
-            {formatMoney(recommended.monthlyCost)}/mo — about{' '}
-            <span className="font-medium text-text-primary">{formatMoney(annualSavings)}/yr</span>{' '}
+            <span data-testid="billing-estimator-recommendation-recommended-cost">
+              {formatMoney(recommendedMonthlyCostForCopy)}/mo
+            </span>
+            {isAnnual && ' on annual'} — about{' '}
+            <span
+              data-testid="billing-estimator-recommendation-annual-savings"
+              className="font-medium text-text-primary"
+            >
+              {formatMoney(headlineAnnualSavings)}/yr
+            </span>{' '}
             back in your pocket.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           {windowToggle}
           {onSwitchPlan && (
-            <button
-              type="button"
-              data-testid="billing-estimator-recommendation-cta"
-              data-recommendation-cta-tier={recommended.tier}
-              onClick={() => {
-                const attribution: RecommendationAttribution = {
-                  currentTier: current.tier,
-                  recommendedTier: recommended.tier,
-                  monthlySavingsCents,
-                  trailingWindowMonths: trailingWindow,
-                };
-                if (onRecommendationEvent) {
-                  onRecommendationEvent({ type: 'click', ...attribution });
-                }
-                onSwitchPlan(recommended.tier, attribution);
-              }}
-              disabled={isSwitchingThisTier}
-              className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title={`${isDowngrade ? 'Downgrade' : 'Switch'} to the ${recommended.name} plan (monthly billing)`}
-            >
-              {isSwitchingThisTier ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : isDowngrade ? (
-                <ArrowDownRight className="h-3 w-3" aria-hidden="true" />
-              ) : (
-                <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-              )}
-              {ctaLabel}
-            </button>
+            <>
+              <RecommendationIntervalToggle
+                value={interval}
+                onChange={setIntervalState}
+              />
+              <button
+                type="button"
+                data-testid="billing-estimator-recommendation-cta"
+                data-recommendation-cta-tier={recommended.tier}
+                data-recommendation-cta-interval={interval}
+                onClick={() => {
+                  const attribution: RecommendationAttribution = {
+                    currentTier: current.tier,
+                    recommendedTier: recommended.tier,
+                    monthlySavingsCents,
+                    trailingWindowMonths: trailingWindow,
+                  };
+                  if (onRecommendationEvent) {
+                    onRecommendationEvent({ type: 'click', ...attribution });
+                  }
+                  onSwitchPlan(recommended.tier, interval, attribution);
+                }}
+                disabled={isSwitchingThisTier}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={ctaTitle}
+              >
+                {isSwitchingThisTier ? (
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                ) : isDowngrade ? (
+                  <ArrowDownRight className="h-3 w-3" aria-hidden="true" />
+                ) : (
+                  <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                )}
+                {ctaLabel}
+              </button>
+            </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Compact monthly/annual toggle shown next to the recommendation CTA.
+ * Mirrors the look of the trailing-window toggle so the two controls
+ * read as a pair, but is a separate component because the labels and
+ * the discount badge differ. Hidden when there's no `onSwitchPlan`
+ * callback — without a CTA to forward the choice to, the toggle has
+ * nothing to do.
+ */
+function RecommendationIntervalToggle({
+  value,
+  onChange,
+}: {
+  value: BillingPeriod;
+  onChange: (interval: BillingPeriod) => void;
+}) {
+  const options: Array<{ key: BillingPeriod; label: string; title: string }> = [
+    {
+      key: 'monthly',
+      label: 'Monthly',
+      title: 'Bill the recommended plan monthly',
+    },
+    {
+      key: 'annual',
+      label: 'Annual',
+      title: `Save ${Math.round(ANNUAL_DISCOUNT * 100)}% by committing to annual billing`,
+    },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Billing interval for plan recommendation"
+      data-testid="billing-estimator-recommendation-interval-toggle"
+      className="inline-flex items-center bg-surface border border-border rounded-md p-0.5 text-[11px]"
+    >
+      {options.map((opt) => {
+        const selected = opt.key === value;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            data-testid={`billing-estimator-recommendation-interval-${opt.key}`}
+            aria-pressed={selected}
+            onClick={() => {
+              if (!selected) onChange(opt.key);
+            }}
+            className={`px-2.5 py-1 rounded font-semibold transition-colors inline-flex items-center gap-1 ${
+              selected
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+            title={opt.title}
+          >
+            {opt.label}
+            {opt.key === 'annual' && (
+              <span
+                className={`text-[9px] font-semibold px-1 py-0.5 rounded-full ${
+                  selected ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                }`}
+              >
+                −{Math.round(ANNUAL_DISCOUNT * 100)}%
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
