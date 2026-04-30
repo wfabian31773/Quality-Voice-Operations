@@ -139,6 +139,15 @@ interface BillingEstimatorProps {
    */
   trailingMonthlyBreakdown?: ReadonlyArray<{ month: string; aiMinutes: number }>;
   /**
+   * Prior-year companion to `trailingMonthlyBreakdown`, aligned 1:1.
+   * `aiMinutes: null` means no prior-year data for that month and
+   * suppresses the overlay + YoY tooltip for that slot.
+   */
+  trailingMonthlyPriorYearBreakdown?: ReadonlyArray<{
+    month: string;
+    aiMinutes: number | null;
+  }>;
+  /**
    * Invoked when the tenant clicks the recommendation banner's
    * "Switch to <Plan>" CTA. The parent kicks off a Stripe Checkout flow
    * for the recommended tier on the chosen billing interval. The
@@ -571,6 +580,13 @@ function formatMonthLabel(monthIso: string): string {
   }
 }
 
+function formatYoyDelta(delta: number): string {
+  if (!Number.isFinite(delta)) return '0';
+  if (delta === 0) return 'flat';
+  const sign = delta > 0 ? '+' : '−';
+  return `${sign}${Math.abs(delta).toLocaleString()}`;
+}
+
 /**
  * Inline bar chart that visualises the trailing monthly AI-minute usage
  * behind the recommendation. Bars are scaled against the largest month
@@ -586,15 +602,31 @@ function formatMonthLabel(monthIso: string): string {
  */
 function TrailingMonthlyChart({
   data,
+  priorYearData,
 }: {
   data: ReadonlyArray<{ month: string; aiMinutes: number }>;
+  priorYearData?: ReadonlyArray<{ month: string; aiMinutes: number | null }>;
 }) {
-  // Backend returns newest-first; flip to chronological so the chart
-  // reads left-to-right like a calendar timeline.
   const ordered = useMemo(() => [...data].reverse(), [data]);
-  const maxMinutes = useMemo(
-    () => ordered.reduce((acc, m) => Math.max(acc, m.aiMinutes), 0),
-    [ordered],
+  const orderedPrior = useMemo(
+    () => (priorYearData ? [...priorYearData].reverse() : null),
+    [priorYearData],
+  );
+  const maxMinutes = useMemo(() => {
+    let max = 0;
+    for (const m of ordered) max = Math.max(max, m.aiMinutes);
+    if (orderedPrior) {
+      for (const m of orderedPrior) {
+        if (m.aiMinutes != null) max = Math.max(max, m.aiMinutes);
+      }
+    }
+    return max;
+  }, [ordered, orderedPrior]);
+  // Mirror the overlay's render condition (priorMinutes > 0) so the
+  // legend never points at slots that drew nothing.
+  const hasAnyPriorYearData = useMemo(
+    () => Boolean(orderedPrior?.some((m) => m.aiMinutes != null && m.aiMinutes > 0)),
+    [orderedPrior],
   );
 
   if (ordered.length === 0) return null;
@@ -605,6 +637,7 @@ function TrailingMonthlyChart({
   return (
     <div
       data-testid="billing-estimator-recommendation-chart"
+      data-has-prior-year={hasAnyPriorYearData ? 'true' : 'false'}
       className="mt-3 pt-3 border-t border-primary/20"
     >
       <div className="flex items-center justify-between mb-1.5">
@@ -618,21 +651,33 @@ function TrailingMonthlyChart({
       <div
         className="flex items-end gap-1 h-14"
         role="img"
-        aria-label={`Monthly AI minutes from ${firstLabel} to ${lastLabel}`}
+        aria-label={
+          hasAnyPriorYearData
+            ? `Monthly AI minutes from ${firstLabel} to ${lastLabel} with prior-year comparison`
+            : `Monthly AI minutes from ${firstLabel} to ${lastLabel}`
+        }
       >
-        {ordered.map((entry) => {
+        {ordered.map((entry, i) => {
           const isZero = entry.aiMinutes <= 0;
-          // Scale to a percent of the window's peak. The 6% floor keeps
-          // a non-zero bar visible even when it's tiny relative to the
-          // peak; zero bars render as a flat dashed slot instead so the
-          // visual distinction (had-usage vs. didn't) stays sharp.
           const heightPct = isZero
             ? 0
             : maxMinutes > 0
               ? Math.max(6, Math.round((entry.aiMinutes / maxMinutes) * 100))
               : 6;
           const monthLabel = formatMonthLabel(entry.month);
-          const tooltip = `${monthLabel}: ${entry.aiMinutes.toLocaleString()} AI min`;
+
+          const prior = orderedPrior?.[i] ?? null;
+          const priorMinutes = prior?.aiMinutes ?? null;
+          const hasPrior = priorMinutes != null;
+          const priorHeightPct = hasPrior && maxMinutes > 0
+            ? Math.max(6, Math.round((priorMinutes / maxMinutes) * 100))
+            : 0;
+          const priorLabel = prior ? formatMonthLabel(prior.month) : '';
+          const yoyDelta = hasPrior ? entry.aiMinutes - priorMinutes : null;
+          const yoyText = formatYoyDelta(yoyDelta ?? 0);
+          const tooltip = hasPrior
+            ? `${monthLabel}: ${entry.aiMinutes.toLocaleString()} AI min · YoY ${yoyText}${yoyText === 'flat' ? '' : ' AI min'} vs ${priorLabel} (${priorMinutes.toLocaleString()} AI min)`
+            : `${monthLabel}: ${entry.aiMinutes.toLocaleString()} AI min`;
           return (
             <div
               key={entry.month}
@@ -640,15 +685,30 @@ function TrailingMonthlyChart({
               data-month={entry.month}
               data-ai-minutes={entry.aiMinutes}
               data-zero={isZero ? 'true' : 'false'}
+              {...(hasPrior
+                ? {
+                    'data-prior-month': prior!.month,
+                    'data-prior-ai-minutes': String(priorMinutes),
+                    'data-yoy-delta': String(yoyDelta),
+                  }
+                : {})}
               title={tooltip}
               aria-label={tooltip}
               className="group relative flex-1 min-w-[6px] h-full flex items-end"
             >
+              {hasPrior && priorMinutes > 0 && (
+                <div
+                  data-testid={`billing-estimator-recommendation-chart-prior-${entry.month}`}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 rounded-sm border border-dashed border-primary/40 bg-primary/[0.03]"
+                  style={{ height: `${priorHeightPct}%` }}
+                />
+              )}
               {isZero ? (
-                <div className="w-full h-1.5 rounded-sm border border-dashed border-primary/30 bg-primary/[0.04] group-hover:bg-primary/10 transition-colors" />
+                <div className="relative w-full h-1.5 rounded-sm border border-dashed border-primary/30 bg-primary/[0.04] group-hover:bg-primary/10 transition-colors" />
               ) : (
                 <div
-                  className="w-full rounded-sm bg-primary/50 group-hover:bg-primary transition-colors"
+                  className="relative w-full rounded-sm bg-primary/50 group-hover:bg-primary transition-colors"
                   style={{ height: `${heightPct}%` }}
                 />
               )}
@@ -656,8 +716,20 @@ function TrailingMonthlyChart({
           );
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-text-muted mt-1">
+      <div className="flex items-center justify-between text-[10px] text-text-muted mt-1">
         <span>{firstLabel}</span>
+        {hasAnyPriorYearData && (
+          <span
+            data-testid="billing-estimator-recommendation-chart-legend"
+            className="inline-flex items-center gap-1"
+          >
+            <span
+              aria-hidden="true"
+              className="inline-block w-3 h-2 rounded-sm border border-dashed border-primary/40 bg-primary/[0.03]"
+            />
+            <span>vs. last year</span>
+          </span>
+        )}
         {ordered.length > 1 && <span>{lastLabel}</span>}
       </div>
     </div>
@@ -717,6 +789,7 @@ function RecommendationCard({
   availableTrailingWindows,
   onRecommendationEvent,
   trailingMonthlyBreakdown,
+  trailingMonthlyPriorYearBreakdown,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
@@ -732,6 +805,10 @@ function RecommendationCard({
   availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
   onRecommendationEvent?: (event: RecommendationEvent) => void;
   trailingMonthlyBreakdown?: ReadonlyArray<{ month: string; aiMinutes: number }>;
+  trailingMonthlyPriorYearBreakdown?: ReadonlyArray<{
+    month: string;
+    aiMinutes: number | null;
+  }>;
 }) {
   const {
     current,
@@ -831,9 +908,16 @@ function RecommendationCard({
 
   // Reuse the same chart in both card variants so tenants get the same
   // visual context whether they're being nudged to switch plans or
-  // reassured they're already on the cheapest one.
+  // reassured they're already on the cheapest one. The prior-year
+  // series is forwarded only when supplied; the chart itself drops the
+  // overlay per-month when individual entries are null.
   const chart = trailingMonthlyBreakdown && trailingMonthlyBreakdown.length > 0
-    ? <TrailingMonthlyChart data={trailingMonthlyBreakdown} />
+    ? (
+      <TrailingMonthlyChart
+        data={trailingMonthlyBreakdown}
+        priorYearData={trailingMonthlyPriorYearBreakdown}
+      />
+    )
     : null;
 
   if (isAlreadyOptimal) {
@@ -1045,6 +1129,7 @@ export default function BillingEstimator({
   currency = 'USD',
   trailingMonthlyAiMinutes,
   trailingMonthlyBreakdown,
+  trailingMonthlyPriorYearBreakdown,
   onSwitchPlan,
   switchingPlan,
   trailingWindow,
@@ -1226,6 +1311,7 @@ export default function BillingEstimator({
           availableTrailingWindows={availableTrailingWindows}
           onRecommendationEvent={onRecommendationEvent}
           trailingMonthlyBreakdown={trailingMonthlyBreakdown}
+          trailingMonthlyPriorYearBreakdown={trailingMonthlyPriorYearBreakdown}
         />
       )}
 

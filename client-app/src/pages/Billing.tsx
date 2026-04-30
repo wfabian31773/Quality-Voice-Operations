@@ -411,8 +411,9 @@ export default function Billing() {
       months: number;
       monthsWithData: number;
       monthly: Array<{ month: string; aiMinutes: number }>;
+      monthlyPriorYear?: Array<{ month: string; aiMinutes: number | null }>;
       averageAiMinutes: number;
-    }>(`/billing/usage/trailing?months=${trailingWindow}`),
+    }>(`/billing/usage/trailing?months=${trailingWindow}&compareToPriorYear=true`),
     staleTime: 60 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
@@ -820,6 +821,11 @@ export default function Billing() {
               // remain visible in the bar chart inside the card.
               trailingUsageData && trailingUsageData.monthsWithData > 0
                 ? trailingUsageData.monthly
+                : undefined
+            }
+            trailingMonthlyPriorYearBreakdown={
+              trailingUsageData && trailingUsageData.monthsWithData > 0
+                ? trailingUsageData.monthlyPriorYear
                 : undefined
             }
           />

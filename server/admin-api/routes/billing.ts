@@ -352,36 +352,71 @@ router.get('/billing/usage/trailing', requireAuth, async (req, res) => {
     ? requested
     : 3;
 
+  // When true, the response also carries `monthlyPriorYear` aligned 1:1
+  // with `monthly`. Prior-year minutes are nullable so the client can
+  // tell "no data" from "real zero".
+  const compareToPriorYear =
+    req.query.compareToPriorYear === '1'
+    || req.query.compareToPriorYear === 'true';
+
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `WITH window_months AS (
-         SELECT generate_series(
-           date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month'),
-           date_trunc('month', NOW()) - INTERVAL '1 month',
-           INTERVAL '1 month'
-         ) AS month_start
-       ),
-       monthly_totals AS (
-         SELECT
-           date_trunc('month', period_start) AS month_start,
-           SUM(quantity)::bigint AS minutes
-         FROM usage_metrics
-         WHERE tenant_id = $1
-           AND metric_type = 'ai_minutes'
-           AND period_start >= date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month')
-           AND period_start < date_trunc('month', NOW())
-         GROUP BY date_trunc('month', period_start)
-       )
-       SELECT
-         to_char(w.month_start, 'YYYY-MM') AS month,
-         COALESCE(t.minutes, 0)::bigint AS minutes
-       FROM window_months w
-       LEFT JOIN monthly_totals t ON t.month_start = w.month_start
-       ORDER BY w.month_start DESC`,
+      compareToPriorYear
+        ? `WITH window_months AS (
+             SELECT generate_series(
+               date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month'),
+               date_trunc('month', NOW()) - INTERVAL '1 month',
+               INTERVAL '1 month'
+             ) AS month_start
+           ),
+           monthly_totals AS (
+             SELECT
+               date_trunc('month', period_start) AS month_start,
+               SUM(quantity)::bigint AS minutes
+             FROM usage_metrics
+             WHERE tenant_id = $1
+               AND metric_type = 'ai_minutes'
+               AND period_start >= date_trunc('month', NOW()) - (($2::int + 12) * INTERVAL '1 month')
+               AND period_start < date_trunc('month', NOW())
+             GROUP BY date_trunc('month', period_start)
+           )
+           SELECT
+             to_char(w.month_start, 'YYYY-MM') AS month,
+             COALESCE(t.minutes, 0)::bigint AS minutes,
+             to_char(w.month_start - INTERVAL '12 month', 'YYYY-MM') AS prior_month,
+             pt.minutes AS prior_minutes
+           FROM window_months w
+           LEFT JOIN monthly_totals t ON t.month_start = w.month_start
+           LEFT JOIN monthly_totals pt ON pt.month_start = w.month_start - INTERVAL '12 month'
+           ORDER BY w.month_start DESC`
+        : `WITH window_months AS (
+             SELECT generate_series(
+               date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month'),
+               date_trunc('month', NOW()) - INTERVAL '1 month',
+               INTERVAL '1 month'
+             ) AS month_start
+           ),
+           monthly_totals AS (
+             SELECT
+               date_trunc('month', period_start) AS month_start,
+               SUM(quantity)::bigint AS minutes
+             FROM usage_metrics
+             WHERE tenant_id = $1
+               AND metric_type = 'ai_minutes'
+               AND period_start >= date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month')
+               AND period_start < date_trunc('month', NOW())
+             GROUP BY date_trunc('month', period_start)
+           )
+           SELECT
+             to_char(w.month_start, 'YYYY-MM') AS month,
+             COALESCE(t.minutes, 0)::bigint AS minutes
+           FROM window_months w
+           LEFT JOIN monthly_totals t ON t.month_start = w.month_start
+           ORDER BY w.month_start DESC`,
       [tenantId, months],
     );
     await client.query('COMMIT');
@@ -397,12 +432,27 @@ router.get('/billing/usage/trailing', requireAuth, async (req, res) => {
     const average = monthly.length > 0 ? total / monthly.length : 0;
     const monthsWithData = monthly.filter((m) => m.aiMinutes > 0).length;
 
-    return res.json({
+    const responseBody: {
+      months: number;
+      monthsWithData: number;
+      monthly: Array<{ month: string; aiMinutes: number }>;
+      monthlyPriorYear?: Array<{ month: string; aiMinutes: number | null }>;
+      averageAiMinutes: number;
+    } = {
       months,
       monthsWithData,
       monthly,
       averageAiMinutes: average,
-    });
+    };
+
+    if (compareToPriorYear) {
+      responseBody.monthlyPriorYear = rows.map((r) => ({
+        month: r.prior_month as string,
+        aiMinutes: r.prior_minutes == null ? null : Number(r.prior_minutes),
+      }));
+    }
+
+    return res.json(responseBody);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to get trailing usage', { tenantId, error: String(err) });

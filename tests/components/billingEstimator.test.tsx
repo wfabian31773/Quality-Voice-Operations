@@ -791,6 +791,236 @@ describe('BillingEstimator', () => {
       });
     });
 
+    describe('year-over-year overlay', () => {
+      it('does not render any prior-year overlays when no prior-year breakdown is supplied', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        expect(chart.getAttribute('data-has-prior-year')).toBe('false');
+        expect(
+          chart.querySelector(
+            '[data-testid^="billing-estimator-recommendation-chart-prior-"]',
+          ),
+        ).toBeNull();
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-chart-legend'),
+        ).toBeNull();
+        const jan = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-01"]',
+        ) as HTMLElement;
+        expect(jan.getAttribute('title')).toBe('Jan 2026: 300 AI min');
+      });
+
+      it('renders a prior-year overlay element and YoY tooltip for each month with comparison data', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+            trailingMonthlyPriorYearBreakdown={[
+              { month: '2025-03', aiMinutes: 230 },
+              { month: '2025-02', aiMinutes: 320 },
+              { month: '2025-01', aiMinutes: 360 },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        expect(chart.getAttribute('data-has-prior-year')).toBe('true');
+
+        const mar = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-03"]',
+        ) as HTMLElement;
+        expect(mar.getAttribute('data-prior-month')).toBe('2025-03');
+        expect(mar.getAttribute('data-prior-ai-minutes')).toBe('230');
+        expect(mar.getAttribute('data-yoy-delta')).toBe('50');
+        expect(mar.getAttribute('title')).toBe(
+          'Mar 2026: 280 AI min · YoY +50 AI min vs Mar 2025 (230 AI min)',
+        );
+        expect(
+          chart.querySelector(
+            '[data-testid="billing-estimator-recommendation-chart-prior-2026-03"]',
+          ),
+        ).toBeTruthy();
+
+        const jan = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-01"]',
+        ) as HTMLElement;
+        expect(jan.getAttribute('data-yoy-delta')).toBe('-60');
+        // Negative delta uses a Unicode minus sign for symmetry with `+`.
+        expect(jan.getAttribute('title')).toBe(
+          'Jan 2026: 300 AI min · YoY −60 AI min vs Jan 2025 (360 AI min)',
+        );
+
+        const feb = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-02"]',
+        ) as HTMLElement;
+        expect(feb.getAttribute('data-yoy-delta')).toBe('0');
+        expect(feb.getAttribute('title')).toBe(
+          'Feb 2026: 320 AI min · YoY flat vs Feb 2025 (320 AI min)',
+        );
+
+        expect(
+          screen.getByTestId('billing-estimator-recommendation-chart-legend')
+            .textContent,
+        ).toMatch(/vs\.\s*last year/i);
+      });
+
+      it('falls back gracefully (no overlay element, no YoY in tooltip) for months without prior-year data', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+            trailingMonthlyPriorYearBreakdown={[
+              { month: '2025-03', aiMinutes: 230 },
+              { month: '2025-02', aiMinutes: null },
+              { month: '2025-01', aiMinutes: null },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        expect(chart.getAttribute('data-has-prior-year')).toBe('true');
+
+        expect(
+          chart.querySelector(
+            '[data-testid="billing-estimator-recommendation-chart-prior-2026-03"]',
+          ),
+        ).toBeTruthy();
+        expect(
+          chart.querySelector(
+            '[data-testid="billing-estimator-recommendation-chart-prior-2026-02"]',
+          ),
+        ).toBeNull();
+        expect(
+          chart.querySelector(
+            '[data-testid="billing-estimator-recommendation-chart-prior-2026-01"]',
+          ),
+        ).toBeNull();
+        const feb = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-02"]',
+        ) as HTMLElement;
+        expect(feb.getAttribute('title')).toBe('Feb 2026: 320 AI min');
+        expect(feb.getAttribute('data-prior-month')).toBeNull();
+        expect(feb.getAttribute('data-yoy-delta')).toBeNull();
+      });
+
+      it('hides the legend when EVERY prior-year entry is null (e.g. first-year tenant)', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+            trailingMonthlyPriorYearBreakdown={[
+              { month: '2025-03', aiMinutes: null },
+              { month: '2025-02', aiMinutes: null },
+              { month: '2025-01', aiMinutes: null },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        expect(chart.getAttribute('data-has-prior-year')).toBe('false');
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-chart-legend'),
+        ).toBeNull();
+        expect(
+          chart.querySelector(
+            '[data-testid^="billing-estimator-recommendation-chart-prior-"]',
+          ),
+        ).toBeNull();
+      });
+
+      it('hides the legend and overlay elements when EVERY prior-year entry is zero (no visible comparison)', () => {
+        // All-zero prior-year series has no overlay to point at, so the
+        // legend must stay hidden — same outcome as all-null. The tooltip
+        // still includes the YoY delta where prior data exists.
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+            trailingMonthlyPriorYearBreakdown={[
+              { month: '2025-03', aiMinutes: 0 },
+              { month: '2025-02', aiMinutes: 0 },
+              { month: '2025-01', aiMinutes: 0 },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        expect(chart.getAttribute('data-has-prior-year')).toBe('false');
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-chart-legend'),
+        ).toBeNull();
+        expect(
+          chart.querySelector(
+            '[data-testid^="billing-estimator-recommendation-chart-prior-"]',
+          ),
+        ).toBeNull();
+      });
+
+      it('does not render an overlay for months with prior-year aiMinutes === 0 (avoids fabricated baseline)', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+            trailingMonthlyPriorYearBreakdown={[
+              { month: '2025-03', aiMinutes: 230 },
+              { month: '2025-02', aiMinutes: 0 },
+              { month: '2025-01', aiMinutes: 0 },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        const feb = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-02"]',
+        ) as HTMLElement;
+        expect(feb.getAttribute('data-prior-ai-minutes')).toBe('0');
+        expect(feb.getAttribute('title')).toBe(
+          'Feb 2026: 320 AI min · YoY +320 AI min vs Feb 2025 (0 AI min)',
+        );
+        expect(
+          chart.querySelector(
+            '[data-testid="billing-estimator-recommendation-chart-prior-2026-02"]',
+          ),
+        ).toBeNull();
+      });
+    });
+
     it('honors a custom availableTrailingWindows prop', () => {
       render(
         <BillingEstimator

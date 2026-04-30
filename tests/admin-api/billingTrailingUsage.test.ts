@@ -222,6 +222,123 @@ describe('GET /billing/usage/trailing', () => {
     }
   });
 
+  describe('compareToPriorYear=true (year-over-year overlay)', () => {
+    it('omits monthlyPriorYear and uses the original SQL when the param is absent', async () => {
+      stubTrailing({
+        rows: [
+          { month: '2026-03', minutes: '300' },
+          { month: '2026-02', minutes: '250' },
+          { month: '2026-01', minutes: '200' },
+        ],
+      });
+
+      const res = await request(buildApp()).get('/billing/usage/trailing?months=3');
+
+      expect(res.status).toBe(200);
+      expect(res.body.monthlyPriorYear).toBeUndefined();
+      const trailingSql = queryMock.mock.calls
+        .map(([sql]) => String(sql))
+        .find((s) => /window_months/i.test(s));
+      expect(trailingSql).toBeDefined();
+      expect(trailingSql).not.toMatch(/prior_minutes/i);
+      expect(trailingSql).not.toMatch(/\$2::int \+ 12/);
+    });
+
+    it('returns monthlyPriorYear aligned 1:1 with monthly when compareToPriorYear=true', async () => {
+      stubTrailing({
+        rows: [
+          { month: '2026-03', minutes: '300', prior_month: '2025-03', prior_minutes: '250' },
+          { month: '2026-02', minutes: '320', prior_month: '2025-02', prior_minutes: '180' },
+          { month: '2026-01', minutes: '280', prior_month: '2025-01', prior_minutes: '210' },
+        ],
+      });
+
+      const res = await request(buildApp()).get(
+        '/billing/usage/trailing?months=3&compareToPriorYear=true',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.monthly).toEqual([
+        { month: '2026-03', aiMinutes: 300 },
+        { month: '2026-02', aiMinutes: 320 },
+        { month: '2026-01', aiMinutes: 280 },
+      ]);
+      expect(res.body.monthlyPriorYear).toEqual([
+        { month: '2025-03', aiMinutes: 250 },
+        { month: '2025-02', aiMinutes: 180 },
+        { month: '2025-01', aiMinutes: 210 },
+      ]);
+    });
+
+    it('passes through null prior_minutes as aiMinutes: null (no fabricated zero)', async () => {
+      stubTrailing({
+        rows: [
+          { month: '2026-03', minutes: '300', prior_month: '2025-03', prior_minutes: '250' },
+          { month: '2026-02', minutes: '320', prior_month: '2025-02', prior_minutes: null },
+          { month: '2026-01', minutes: '280', prior_month: '2025-01', prior_minutes: null },
+        ],
+      });
+
+      const res = await request(buildApp()).get(
+        '/billing/usage/trailing?months=3&compareToPriorYear=true',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.monthlyPriorYear).toEqual([
+        { month: '2025-03', aiMinutes: 250 },
+        { month: '2025-02', aiMinutes: null },
+        { month: '2025-01', aiMinutes: null },
+      ]);
+    });
+
+    it('uses the widened SQL (12+N month window, prior_minutes column) when YoY is requested', async () => {
+      stubTrailing({ rows: [] });
+
+      await request(buildApp()).get(
+        '/billing/usage/trailing?months=6&compareToPriorYear=1',
+      );
+
+      const trailingSql = queryMock.mock.calls
+        .map(([sql]) => String(sql))
+        .find((s) => /window_months/i.test(s));
+      expect(trailingSql).toBeDefined();
+      expect(trailingSql).toMatch(/prior_minutes/i);
+      expect(trailingSql).toMatch(/\(\$2::int \+ 12\)/);
+      expect(trailingSql).toMatch(/LEFT JOIN monthly_totals pt/i);
+    });
+
+    it('accepts compareToPriorYear=true and compareToPriorYear=1 as truthy', async () => {
+      for (const value of ['true', '1']) {
+        queryMock.mockReset();
+        stubTrailing({
+          rows: [
+            { month: '2026-03', minutes: '300', prior_month: '2025-03', prior_minutes: '100' },
+          ],
+        });
+        const res = await request(buildApp()).get(
+          `/billing/usage/trailing?months=1&compareToPriorYear=${value}`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.monthlyPriorYear).toEqual([
+          { month: '2025-03', aiMinutes: 100 },
+        ]);
+      }
+    });
+
+    it('treats other compareToPriorYear values as falsy (no overlay)', async () => {
+      stubTrailing({
+        rows: [
+          { month: '2026-03', minutes: '300' },
+        ],
+      });
+      const res = await request(buildApp()).get(
+        '/billing/usage/trailing?months=1&compareToPriorYear=yes',
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.monthlyPriorYear).toBeUndefined();
+    });
+  });
+
   it('rolls back and 500s when the query throws (no leaked client)', async () => {
     queryMock.mockImplementation(async (sql: string) => {
       if (/^(BEGIN|COMMIT)\b/i.test(sql)) return { rows: [], rowCount: 0 };
