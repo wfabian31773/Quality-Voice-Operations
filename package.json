@@ -8,6 +8,7 @@
     "test:watch": "vitest",
     "test:e2e:sales-inbox-filters": "tsx tests/e2e/salesInboxFilters.spec.ts",
     "test:e2e:admin-pages-smoke": "tsx tests/e2e/adminPagesSmoke.spec.ts",
+    "test:e2e:platform-admin-billing-health": "tsx tests/e2e/platformAdminBillingHealth.spec.ts",
     "test:e2e:tenant-pages-smoke": "tsx tests/e2e/tenantPagesSmoke.spec.ts",
     "test:e2e:tenant-visual-smoke": "tsx tests/e2e/tenantVisualSmoke.spec.ts",
     "test:e2e:ops-pages-smoke": "tsx tests/e2e/opsPagesSmoke.spec.ts",
