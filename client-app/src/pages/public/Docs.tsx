@@ -3,15 +3,20 @@ import { Link } from 'react-router-dom';
 import { Search, ArrowRight, Sparkles } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { DocsSidebar } from '../../components/DocsSidebar';
-import { docCategories, docArticles, searchDocs } from '../../data/docs';
+import { docCategories, docArticles } from '../../data/docs';
 import {
   useArticleMetaTranslator,
   useDocCategoryTranslator,
+  useSearchDocs,
 } from '../../lib/translateDoc';
 
 export default function Docs() {
   const [query, setQuery] = useState('');
-  const results = useMemo(() => (query ? searchDocs(query).slice(0, 12) : []), [query]);
+  const searchDocs = useSearchDocs();
+  const results = useMemo(
+    () => (query ? searchDocs(query).slice(0, 12) : []),
+    [query, searchDocs],
+  );
   const translateMeta = useArticleMetaTranslator();
   const translateCategory = useDocCategoryTranslator();
 
