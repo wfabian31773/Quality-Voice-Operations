@@ -960,6 +960,23 @@
       "recommendation_label": "Cambios de plan desde el banner (30 d)",
       "recommendation_sub": "{{impressions}} impresiones · {{clicks}} clics"
     },
+    "recommendation_breakdown": {
+      "title": "Embudo de recomendación por plan (30 d)",
+      "savings_summary": "{{amount}}/mes ahorrados en {{count}} cambios completados",
+      "toggle_close": "Ocultar detalle",
+      "col_tier": "Plan recomendado",
+      "col_impressions": "Impresiones",
+      "col_clicks": "Clics",
+      "col_completed": "Completados",
+      "col_savings": "Ahorro / mes",
+      "totals_label": "Totales",
+      "tier_starter": "Starter",
+      "tier_pro": "Pro",
+      "tier_enterprise": "Enterprise",
+      "pair_heading": "Principales rutas de conversión",
+      "pair_row": "{{from}} → {{to}}: {{count}} cambios, {{amount}}/mes ahorrados",
+      "empty_pairs": "Aún no hay cambios completados en los últimos 30 días."
+    },
     "aria_tablist": "Secciones de administración de la plataforma",
     "common_loading": "Cargando...",
     "activation_metrics": {

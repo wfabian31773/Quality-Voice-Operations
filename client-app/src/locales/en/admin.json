@@ -960,6 +960,23 @@
       "recommendation_label": "Plan switches from banner (30d)",
       "recommendation_sub": "{{impressions}} impressions · {{clicks}} clicks"
     },
+    "recommendation_breakdown": {
+      "title": "Recommendation funnel by tier (30d)",
+      "savings_summary": "{{amount}}/mo realised across {{count}} completed switches",
+      "toggle_close": "Hide breakdown",
+      "col_tier": "Recommended tier",
+      "col_impressions": "Impressions",
+      "col_clicks": "Clicks",
+      "col_completed": "Completed",
+      "col_savings": "Savings / mo",
+      "totals_label": "Totals",
+      "tier_starter": "Starter",
+      "tier_pro": "Pro",
+      "tier_enterprise": "Enterprise",
+      "pair_heading": "Top conversion paths",
+      "pair_row": "{{from}} → {{to}}: {{count}} switches, {{amount}}/mo saved",
+      "empty_pairs": "No completed switches in the last 30 days yet."
+    },
     "aria_tablist": "Platform admin sections",
     "common_loading": "Loading...",
     "activation_metrics": {

@@ -3943,6 +3943,214 @@ type PlatformAdminTab =
   | 'push-health'
   | 'retention';
 
+type RecommendationTier = 'starter' | 'pro' | 'enterprise';
+const RECOMMENDATION_TIERS_ORDER: readonly RecommendationTier[] = [
+  'starter',
+  'pro',
+  'enterprise',
+];
+
+interface RecommendationStatsShape {
+  windowDays: number;
+  impressions: number;
+  clicks: number;
+  completedSwitches: number;
+  totalMonthlySavingsCents: number;
+  tenantsClicked: number;
+  tenantsSwitched: number;
+  clickThroughRate: number;
+  completionRate: number;
+  byRecommendedTier: Array<{
+    recommendedTier: RecommendationTier;
+    impressions: number;
+    clicks: number;
+    completedSwitches: number;
+    monthlySavingsCents: number;
+  }>;
+  switchPairs: Array<{
+    currentTier: RecommendationTier;
+    recommendedTier: RecommendationTier;
+    completedSwitches: number;
+    monthlySavingsCents: number;
+  }>;
+}
+
+// Drawer rendered just below the platform stats grid when an admin clicks
+// the recommendation tile. Splits the trailing-30d funnel by recommended
+// tier so we can answer "which recommendation is actually moving MRR" —
+// not just "did anyone click the banner".
+function RecommendationBreakdownPanel({
+  stats,
+  loading,
+  onClose,
+}: {
+  stats: RecommendationStatsShape | undefined;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const { t: adminT } = useTranslation('admin');
+  const tierLabel = (tier: RecommendationTier): string =>
+    adminT(`platform_admin.recommendation_breakdown.tier_${tier}`);
+
+  const tierRowsByKey = new Map(
+    (stats?.byRecommendedTier ?? []).map((row) => [row.recommendedTier, row]),
+  );
+  // Always render every known tier in a stable order so the table doesn't
+  // shuffle as data changes; missing tiers render as zero rows.
+  const tierRows = RECOMMENDATION_TIERS_ORDER.map(
+    (tier) =>
+      tierRowsByKey.get(tier) ?? {
+        recommendedTier: tier,
+        impressions: 0,
+        clicks: 0,
+        completedSwitches: 0,
+        monthlySavingsCents: 0,
+      },
+  );
+
+  const totalCompleted = stats?.completedSwitches ?? 0;
+  const totalSavings = stats?.totalMonthlySavingsCents ?? 0;
+  const switchPairs = stats?.switchPairs ?? [];
+
+  return (
+    <section
+      className="bg-surface border border-border rounded-xl p-5 shadow-[var(--elevation-1)]"
+      aria-label={adminT('platform_admin.recommendation_breakdown.title')}
+    >
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">
+            {adminT('platform_admin.recommendation_breakdown.title')}
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            {loading
+              ? adminT('platform_admin.common_loading')
+              : adminT(
+                  'platform_admin.recommendation_breakdown.savings_summary',
+                  {
+                    amount: formatCents(totalSavings),
+                    count: totalCompleted,
+                  },
+                )}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs font-medium text-text-muted hover:text-text-primary inline-flex items-center gap-1"
+          aria-label={adminT(
+            'platform_admin.recommendation_breakdown.toggle_close',
+          )}
+        >
+          <XCircle className="h-4 w-4" />
+          {adminT('platform_admin.recommendation_breakdown.toggle_close')}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
+              <th className="py-2 pr-4 font-medium">
+                {adminT('platform_admin.recommendation_breakdown.col_tier')}
+              </th>
+              <th className="py-2 pr-4 font-medium text-right">
+                {adminT(
+                  'platform_admin.recommendation_breakdown.col_impressions',
+                )}
+              </th>
+              <th className="py-2 pr-4 font-medium text-right">
+                {adminT('platform_admin.recommendation_breakdown.col_clicks')}
+              </th>
+              <th className="py-2 pr-4 font-medium text-right">
+                {adminT(
+                  'platform_admin.recommendation_breakdown.col_completed',
+                )}
+              </th>
+              <th className="py-2 pr-0 font-medium text-right">
+                {adminT('platform_admin.recommendation_breakdown.col_savings')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {tierRows.map((row) => (
+              <tr
+                key={row.recommendedTier}
+                className="border-b border-border last:border-b-0"
+              >
+                <td className="py-2 pr-4 font-medium text-text-primary">
+                  {tierLabel(row.recommendedTier)}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                  {row.impressions}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                  {row.clicks}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-text-primary">
+                  {row.completedSwitches}
+                </td>
+                <td className="py-2 pr-0 text-right tabular-nums text-text-primary">
+                  {formatCents(row.monthlySavingsCents)}
+                </td>
+              </tr>
+            ))}
+            <tr className="text-text-primary font-semibold">
+              <td className="py-2 pr-4">
+                {adminT(
+                  'platform_admin.recommendation_breakdown.totals_label',
+                )}
+              </td>
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {stats?.impressions ?? 0}
+              </td>
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {stats?.clicks ?? 0}
+              </td>
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {totalCompleted}
+              </td>
+              <td className="py-2 pr-0 text-right tabular-nums">
+                {formatCents(totalSavings)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-text-primary">
+          {adminT('platform_admin.recommendation_breakdown.pair_heading')}
+        </h3>
+        {switchPairs.length === 0 ? (
+          <p className="text-xs text-text-muted mt-1">
+            {adminT('platform_admin.recommendation_breakdown.empty_pairs')}
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-1.5">
+            {switchPairs.map((pair) => (
+              <li
+                key={`${pair.currentTier}->${pair.recommendedTier}`}
+                className="text-sm text-text-secondary"
+              >
+                {adminT(
+                  'platform_admin.recommendation_breakdown.pair_row',
+                  {
+                    from: tierLabel(pair.currentTier),
+                    to: tierLabel(pair.recommendedTier),
+                    count: pair.completedSwitches,
+                    amount: formatCents(pair.monthlySavingsCents),
+                  },
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: typeof Building2 }[] = [
   { key: 'tenants', labelKey: 'platform_admin.tabs.tenants', icon: Building2 },
   { key: 'templates', labelKey: 'platform_admin.tabs.templates', icon: Package },
@@ -3984,7 +4192,10 @@ export default function PlatformAdmin() {
     refetchInterval: 60_000,
   });
 
-  // 30d funnel for the BillingEstimator recommendation banner.
+  // 30d funnel for the BillingEstimator recommendation banner. The per-tier
+  // breakdown lets the admin see *which* recommendations are converting and
+  // how much MRR the banner has actually moved, not just the aggregate
+  // funnel counts.
   const { data: recommendationStats, isLoading: recommendationStatsLoading } =
     useQuery({
       queryKey: ['platform-billing-recommendations'],
@@ -3994,13 +4205,29 @@ export default function PlatformAdmin() {
           impressions: number;
           clicks: number;
           completedSwitches: number;
+          totalMonthlySavingsCents: number;
           tenantsClicked: number;
           tenantsSwitched: number;
           clickThroughRate: number;
           completionRate: number;
+          byRecommendedTier: Array<{
+            recommendedTier: 'starter' | 'pro' | 'enterprise';
+            impressions: number;
+            clicks: number;
+            completedSwitches: number;
+            monthlySavingsCents: number;
+          }>;
+          switchPairs: Array<{
+            currentTier: 'starter' | 'pro' | 'enterprise';
+            recommendedTier: 'starter' | 'pro' | 'enterprise';
+            completedSwitches: number;
+            monthlySavingsCents: number;
+          }>;
         }>('/platform/billing-recommendations'),
       refetchInterval: 60_000,
     });
+  const [showRecommendationDetails, setShowRecommendationDetails] =
+    useState(false);
 
   const { data: tenantsData, isLoading: tenantsLoading } = useQuery({
     queryKey: ['platform-tenants'],
@@ -4118,7 +4345,10 @@ export default function PlatformAdmin() {
             });
           }}
         />
-        {/* 30d funnel for the BillingEstimator recommendation banner. */}
+        {/* 30d funnel for the BillingEstimator recommendation banner.
+            Clicking the tile toggles a per-recommended-tier breakdown
+            (rendered just below the stats grid) so admins can see *which*
+            tier the banner is moving MRR for, not just the global funnel. */}
         <StatCard
           icon={TrendingUp}
           label={adminT('platform_admin.stats.recommendation_label')}
@@ -4135,8 +4365,17 @@ export default function PlatformAdmin() {
                   clicks: recommendationStats?.clicks ?? 0,
                 })
           }
+          onClick={() => setShowRecommendationDetails((v) => !v)}
         />
       </div>
+
+      {showRecommendationDetails && (
+        <RecommendationBreakdownPanel
+          stats={recommendationStats}
+          loading={recommendationStatsLoading}
+          onClose={() => setShowRecommendationDetails(false)}
+        />
+      )}
 
       <div
         role="tablist"

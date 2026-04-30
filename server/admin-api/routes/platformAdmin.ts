@@ -1512,33 +1512,141 @@ router.put('/platform/demo-scheduler-settings', requireAuth, requirePlatformAdmi
 // banner. Counts are sourced from `billing_recommendation_events`:
 // impressions/clicks come from the tenant-facing route, switch_completed
 // is written by the Stripe webhook for server-attributed conversions.
+//
+// In addition to the global funnel we expose:
+//   * `byRecommendedTier` — per-recommended-tier (starter / pro / enterprise)
+//     impressions, clicks, completed switches, and the realised
+//     `monthly_savings_cents` sum for completed switches. This lets admins
+//     see *which* tier the banner is actually moving MRR for.
+//   * `switchPairs` — completed-switch counts and savings broken down by
+//     (current_tier → recommended_tier) so the admin can see e.g.
+//     "12 of 18 completed switches were Pro → Starter, $4.2k/mo saved".
+//   * `totalMonthlySavingsCents` — sum of `monthly_savings_cents` across
+//     every `switch_completed` row in the window.
+const RECOMMENDATION_TIERS = ['starter', 'pro', 'enterprise'] as const;
+type RecommendationTier = (typeof RECOMMENDATION_TIERS)[number];
+const isRecommendationTier = (value: unknown): value is RecommendationTier =>
+  typeof value === 'string' &&
+  (RECOMMENDATION_TIERS as readonly string[]).includes(value);
+
 router.get(
   '/platform/billing-recommendations',
   requireAuth,
   requirePlatformAdmin,
   async (_req, res) => {
     try {
-      const { rows } = await withPrivilegedClient(async (client) => {
+      // Per-recommended-tier funnel + savings. A single grouped query with
+      // FILTER aggregates so we don't have to round-trip three times.
+      const { rows: tierRows } = await withPrivilegedClient(async (client) => {
         return client.query(
-          `SELECT event_type, COUNT(*)::bigint AS count
+          `SELECT
+             recommended_tier,
+             COUNT(*) FILTER (WHERE event_type = 'impression')::bigint
+               AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'click')::bigint
+               AS clicks,
+             COUNT(*) FILTER (WHERE event_type = 'switch_completed')::bigint
+               AS completed_switches,
+             COALESCE(
+               SUM(monthly_savings_cents)
+                 FILTER (WHERE event_type = 'switch_completed'),
+               0
+             )::bigint AS monthly_savings_cents
              FROM billing_recommendation_events
             WHERE created_at >= NOW() - INTERVAL '30 days'
-            GROUP BY event_type`,
+            GROUP BY recommended_tier`,
         );
       });
 
-      let impressions = 0;
-      let clicks = 0;
-      let completedSwitches = 0;
-      for (const row of rows as Array<{ event_type: string; count: string }>) {
-        const count = Number(row.count) || 0;
-        if (row.event_type === 'impression') impressions = count;
-        else if (row.event_type === 'click') clicks = count;
-        else if (row.event_type === 'switch_completed') completedSwitches = count;
+      // Always render the three known tiers in a stable order, even when no
+      // events exist for one of them, so the UI can render a deterministic
+      // table without conditionally hiding rows.
+      const tierIndex = new Map<RecommendationTier, {
+        impressions: number;
+        clicks: number;
+        completedSwitches: number;
+        monthlySavingsCents: number;
+      }>();
+      for (const raw of tierRows as Array<{
+        recommended_tier: string;
+        impressions: string;
+        clicks: string;
+        completed_switches: string;
+        monthly_savings_cents: string;
+      }>) {
+        if (!isRecommendationTier(raw.recommended_tier)) continue;
+        tierIndex.set(raw.recommended_tier, {
+          impressions: Number(raw.impressions) || 0,
+          clicks: Number(raw.clicks) || 0,
+          completedSwitches: Number(raw.completed_switches) || 0,
+          monthlySavingsCents: Number(raw.monthly_savings_cents) || 0,
+        });
       }
+      const byRecommendedTier = RECOMMENDATION_TIERS.map((tier) => ({
+        recommendedTier: tier,
+        impressions: tierIndex.get(tier)?.impressions ?? 0,
+        clicks: tierIndex.get(tier)?.clicks ?? 0,
+        completedSwitches: tierIndex.get(tier)?.completedSwitches ?? 0,
+        monthlySavingsCents: tierIndex.get(tier)?.monthlySavingsCents ?? 0,
+      }));
+
+      const totals = byRecommendedTier.reduce(
+        (acc, row) => ({
+          impressions: acc.impressions + row.impressions,
+          clicks: acc.clicks + row.clicks,
+          completedSwitches: acc.completedSwitches + row.completedSwitches,
+          monthlySavingsCents:
+            acc.monthlySavingsCents + row.monthlySavingsCents,
+        }),
+        {
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+      );
+
+      // Completed-switch breakdown by (current_tier → recommended_tier) so
+      // the drawer can surface the dominant migration direction (e.g. the
+      // "Pro → Starter" downgrade story).
+      const { rows: pairRows } = await withPrivilegedClient(async (client) => {
+        return client.query(
+          `SELECT
+             current_tier,
+             recommended_tier,
+             COUNT(*)::bigint AS completed_switches,
+             COALESCE(SUM(monthly_savings_cents), 0)::bigint
+               AS monthly_savings_cents
+             FROM billing_recommendation_events
+            WHERE event_type = 'switch_completed'
+              AND created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY current_tier, recommended_tier
+            ORDER BY completed_switches DESC, monthly_savings_cents DESC`,
+        );
+      });
+      const switchPairs = (pairRows as Array<{
+        current_tier: string;
+        recommended_tier: string;
+        completed_switches: string;
+        monthly_savings_cents: string;
+      }>)
+        .filter(
+          (r) =>
+            isRecommendationTier(r.current_tier) &&
+            isRecommendationTier(r.recommended_tier),
+        )
+        .map((r) => ({
+          currentTier: r.current_tier as RecommendationTier,
+          recommendedTier: r.recommended_tier as RecommendationTier,
+          completedSwitches: Number(r.completed_switches) || 0,
+          monthlySavingsCents: Number(r.monthly_savings_cents) || 0,
+        }));
 
       // Unique-tenant counts let the tile show how many distinct tenants
-      // engaged, not just total event volume.
+      // engaged, not just total event volume. Distinct counts cannot be
+      // safely derived from the per-tier query (a tenant who clicks on two
+      // different recommendations would be double-counted), so this stays a
+      // separate query.
       const { rows: tenantRows } = await withPrivilegedClient(async (client) => {
         return client.query(
           `SELECT
@@ -1555,14 +1663,21 @@ router.get(
 
       return res.json({
         windowDays: 30,
-        impressions,
-        clicks,
-        completedSwitches,
+        impressions: totals.impressions,
+        clicks: totals.clicks,
+        completedSwitches: totals.completedSwitches,
+        totalMonthlySavingsCents: totals.monthlySavingsCents,
         tenantsClicked,
         tenantsSwitched,
         // Computed server-side so consumers agree on divide-by-zero handling.
-        clickThroughRate: impressions > 0 ? clicks / impressions : 0,
-        completionRate: clicks > 0 ? completedSwitches / clicks : 0,
+        clickThroughRate:
+          totals.impressions > 0 ? totals.clicks / totals.impressions : 0,
+        completionRate:
+          totals.clicks > 0
+            ? totals.completedSwitches / totals.clicks
+            : 0,
+        byRecommendedTier,
+        switchPairs,
       });
     } catch (err) {
       logger.error('Failed to load billing recommendation metrics', {

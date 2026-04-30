@@ -960,6 +960,23 @@
       "recommendation_label": "Changements de plan via la bannière (30 j)",
       "recommendation_sub": "{{impressions}} impressions · {{clicks}} clics"
     },
+    "recommendation_breakdown": {
+      "title": "Entonnoir de la recommandation par offre (30 j)",
+      "savings_summary": "{{amount}}/mois économisés sur {{count}} changements terminés",
+      "toggle_close": "Masquer le détail",
+      "col_tier": "Offre recommandée",
+      "col_impressions": "Impressions",
+      "col_clicks": "Clics",
+      "col_completed": "Terminés",
+      "col_savings": "Économies / mois",
+      "totals_label": "Totaux",
+      "tier_starter": "Starter",
+      "tier_pro": "Pro",
+      "tier_enterprise": "Enterprise",
+      "pair_heading": "Principaux parcours de conversion",
+      "pair_row": "{{from}} → {{to}} : {{count}} changements, {{amount}}/mois économisés",
+      "empty_pairs": "Aucun changement terminé sur les 30 derniers jours."
+    },
     "aria_tablist": "Sections d’administration de la plateforme",
     "common_loading": "Chargement...",
     "activation_metrics": {

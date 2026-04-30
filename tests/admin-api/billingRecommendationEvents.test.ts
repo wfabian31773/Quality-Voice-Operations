@@ -253,17 +253,53 @@ describe('GET /platform/billing-recommendations', () => {
     queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
-  it('aggregates trailing-30-day event_type counts into the tile payload', async () => {
-    // Match each SELECT by SQL shape so a future refactor that merges
-    // the two queries doesn't break ordering assumptions.
+  it('aggregates trailing-30-day per-tier counts and savings into the tile payload', async () => {
+    // Match each SELECT by SQL shape so a future refactor that swaps the
+    // queries around doesn't quietly break ordering assumptions.
     queryMock.mockImplementation(async (sql: string) => {
       const s = String(sql);
-      if (/GROUP BY event_type/i.test(s)) {
+      if (/GROUP BY recommended_tier\b/i.test(s)) {
         return {
           rows: [
-            { event_type: 'impression', count: '120' },
-            { event_type: 'click', count: '18' },
-            { event_type: 'switch_completed', count: '4' },
+            {
+              recommended_tier: 'starter',
+              impressions: '60',
+              clicks: '15',
+              completed_switches: '12',
+              monthly_savings_cents: '420000',
+            },
+            {
+              recommended_tier: 'pro',
+              impressions: '50',
+              clicks: '3',
+              completed_switches: '2',
+              monthly_savings_cents: '50000',
+            },
+            {
+              recommended_tier: 'enterprise',
+              impressions: '10',
+              clicks: '0',
+              completed_switches: '0',
+              monthly_savings_cents: '0',
+            },
+          ],
+        };
+      }
+      if (/GROUP BY current_tier, recommended_tier/i.test(s)) {
+        return {
+          rows: [
+            {
+              current_tier: 'pro',
+              recommended_tier: 'starter',
+              completed_switches: '12',
+              monthly_savings_cents: '420000',
+            },
+            {
+              current_tier: 'enterprise',
+              recommended_tier: 'pro',
+              completed_switches: '2',
+              monthly_savings_cents: '50000',
+            },
           ],
         };
       }
@@ -282,18 +318,59 @@ describe('GET /platform/billing-recommendations', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       windowDays: 30,
+      // Totals are derived from the per-tier breakdown so the math always
+      // ties out: 60+50+10 = 120 impressions, 15+3+0 = 18 clicks,
+      // 12+2+0 = 14 completed switches, $4,700/mo saved.
       impressions: 120,
       clicks: 18,
-      completedSwitches: 4,
+      completedSwitches: 14,
+      totalMonthlySavingsCents: 470000,
       tenantsClicked: 11,
       tenantsSwitched: 3,
-      // CTR = 18 / 120 = 0.15; completion = 4 / 18 ≈ 0.222...
+      // CTR = 18 / 120 = 0.15; completion = 14 / 18 ≈ 0.777...
       clickThroughRate: 0.15,
-      completionRate: 4 / 18,
+      completionRate: 14 / 18,
+      byRecommendedTier: [
+        {
+          recommendedTier: 'starter',
+          impressions: 60,
+          clicks: 15,
+          completedSwitches: 12,
+          monthlySavingsCents: 420000,
+        },
+        {
+          recommendedTier: 'pro',
+          impressions: 50,
+          clicks: 3,
+          completedSwitches: 2,
+          monthlySavingsCents: 50000,
+        },
+        {
+          recommendedTier: 'enterprise',
+          impressions: 10,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+      ],
+      switchPairs: [
+        {
+          currentTier: 'pro',
+          recommendedTier: 'starter',
+          completedSwitches: 12,
+          monthlySavingsCents: 420000,
+        },
+        {
+          currentTier: 'enterprise',
+          recommendedTier: 'pro',
+          completedSwitches: 2,
+          monthlySavingsCents: 50000,
+        },
+      ],
     });
   });
 
-  it('returns zeros (and zero ratios) when no events have been recorded yet', async () => {
+  it('returns zeros (and an all-zero per-tier breakdown) when no events have been recorded yet', async () => {
     const res = await request(buildPlatformAdminApp()).get(
       '/platform/billing-recommendations',
     );
@@ -304,19 +381,124 @@ describe('GET /platform/billing-recommendations', () => {
       impressions: 0,
       clicks: 0,
       completedSwitches: 0,
+      totalMonthlySavingsCents: 0,
       tenantsClicked: 0,
       tenantsSwitched: 0,
       clickThroughRate: 0,
       completionRate: 0,
+      // Even with no events the three known tiers must show up so the UI
+      // renders a stable table — only the values change.
+      byRecommendedTier: [
+        {
+          recommendedTier: 'starter',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+        {
+          recommendedTier: 'pro',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+        {
+          recommendedTier: 'enterprise',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+      ],
+      switchPairs: [],
     });
+  });
+
+  it('drops rows with non-whitelisted recommended_tier values from the per-tier breakdown', async () => {
+    // The DB schema doesn't constrain recommended_tier to the known plan
+    // names; if a stray value sneaks in (e.g. a renamed plan, a test
+    // fixture) we should silently ignore it rather than surface it on the
+    // tile.
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (/GROUP BY recommended_tier\b/i.test(s)) {
+        return {
+          rows: [
+            {
+              recommended_tier: 'starter',
+              impressions: '4',
+              clicks: '1',
+              completed_switches: '1',
+              monthly_savings_cents: '1000',
+            },
+            {
+              recommended_tier: 'legacy-mystery-plan',
+              impressions: '99',
+              clicks: '99',
+              completed_switches: '99',
+              monthly_savings_cents: '999999',
+            },
+          ],
+        };
+      }
+      if (/GROUP BY current_tier, recommended_tier/i.test(s)) {
+        return {
+          rows: [
+            {
+              current_tier: 'pro',
+              recommended_tier: 'legacy-mystery-plan',
+              completed_switches: '99',
+              monthly_savings_cents: '999999',
+            },
+            {
+              current_tier: 'pro',
+              recommended_tier: 'starter',
+              completed_switches: '1',
+              monthly_savings_cents: '1000',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations',
+    );
+
+    expect(res.status).toBe(200);
+    // Totals are derived from the whitelisted breakdown — the mystery row
+    // should not contribute to either the per-tier table or the totals.
+    expect(res.body.impressions).toBe(4);
+    expect(res.body.clicks).toBe(1);
+    expect(res.body.completedSwitches).toBe(1);
+    expect(res.body.totalMonthlySavingsCents).toBe(1000);
+    expect(
+      (res.body.byRecommendedTier as Array<{ recommendedTier: string }>).map(
+        (r) => r.recommendedTier,
+      ),
+    ).toEqual(['starter', 'pro', 'enterprise']);
+    expect(res.body.switchPairs).toEqual([
+      {
+        currentTier: 'pro',
+        recommendedTier: 'starter',
+        completedSwitches: 1,
+        monthlySavingsCents: 1000,
+      },
+    ]);
   });
 
   it('queries the trailing-30-day window via NOW() - INTERVAL so we never have to backfill timestamps in the test', async () => {
     await request(buildPlatformAdminApp()).get('/platform/billing-recommendations');
     const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
-    const recSql = sqls.find((s) => /billing_recommendation_events/i.test(s));
-    expect(recSql).toBeDefined();
-    expect(recSql).toMatch(/NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i);
+    const recSqls = sqls.filter((s) =>
+      /billing_recommendation_events/i.test(s),
+    );
+    expect(recSqls.length).toBeGreaterThan(0);
+    for (const sql of recSqls) {
+      expect(sql).toMatch(/NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i);
+    }
   });
 });
 

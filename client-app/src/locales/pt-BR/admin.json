@@ -960,6 +960,23 @@
       "recommendation_label": "Trocas de plano pelo banner (30 d)",
       "recommendation_sub": "{{impressions}} impressões · {{clicks}} cliques"
     },
+    "recommendation_breakdown": {
+      "title": "Funil da recomendação por plano (30 d)",
+      "savings_summary": "{{amount}}/mês economizados em {{count}} trocas concluídas",
+      "toggle_close": "Ocultar detalhes",
+      "col_tier": "Plano recomendado",
+      "col_impressions": "Impressões",
+      "col_clicks": "Cliques",
+      "col_completed": "Concluídas",
+      "col_savings": "Economia / mês",
+      "totals_label": "Totais",
+      "tier_starter": "Starter",
+      "tier_pro": "Pro",
+      "tier_enterprise": "Enterprise",
+      "pair_heading": "Principais caminhos de conversão",
+      "pair_row": "{{from}} → {{to}}: {{count}} trocas, {{amount}}/mês economizados",
+      "empty_pairs": "Nenhuma troca concluída nos últimos 30 dias."
+    },
     "aria_tablist": "Seções de administração da plataforma",
     "common_loading": "Carregando...",
     "activation_metrics": {
