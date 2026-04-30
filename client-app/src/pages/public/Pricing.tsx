@@ -18,6 +18,7 @@ import {
   PLAN_CATALOG,
   PLAN_TIERS,
   centsToWholeDollars,
+  getDiscountedAnnualMonthlyDollars,
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../../shared/billing/planCatalog';
@@ -566,7 +567,7 @@ export default function Pricing() {
             <div className="grid md:grid-cols-3 gap-6">
             {tiers.map((tier) => {
               const monthlyPrice = getPlanMonthlyPriceWholeDollars(tier.key);
-              const annualMonthlyPrice = Math.round(monthlyPrice * (1 - ANNUAL_DISCOUNT));
+              const annualMonthlyPrice = getDiscountedAnnualMonthlyDollars(monthlyPrice);
               const displayedPrice = isAnnual ? annualMonthlyPrice : monthlyPrice;
               // Annual savings = the dollar gap between the two displayed
               // prices, projected over a year — keeps the math visibly

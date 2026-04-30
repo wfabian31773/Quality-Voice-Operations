@@ -6,6 +6,7 @@ import {
   PLAN_CATALOG,
   PLAN_TIERS,
   centsToWholeDollars,
+  getDiscountedAnnualMonthlyDollars,
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
@@ -91,6 +92,19 @@ export function getDiscountedBasePrice(basePrice: number, period: BillingPeriod)
   return period === 'annual' ? basePrice * (1 - ANNUAL_DISCOUNT) : basePrice;
 }
 
+/**
+ * Catalog annual base price for a tier displayed *in dollars*. Mirrors
+ * the rounded annual figure shown on the /pricing tier card so the
+ * "Saves $X/yr" line below the calculator reconciles to the
+ * strikethrough/discounted price pair on the card above it. Falls back
+ * to the unrounded monthly figure when the period is monthly.
+ */
+function getDisplayAnnualBaseDollars(monthlyDollars: number, period: BillingPeriod): number {
+  return period === 'annual'
+    ? getDiscountedAnnualMonthlyDollars(monthlyDollars)
+    : monthlyDollars;
+}
+
 export interface MinutesPricingCalculatorProps {
   billingPeriod?: BillingPeriod;
   onBillingPeriodChange?: (period: BillingPeriod) => void;
@@ -165,7 +179,11 @@ export default function MinutesPricingCalculator({
         ? overrideOverage
         : null;
 
-      const catalogBase = getDiscountedBasePrice(tier.basePrice, billingPeriod);
+      // Catalog base in display units. Annual mode rounds the
+      // discounted figure so the "Saves $X/yr vs monthly billing" line
+      // below stays in lockstep with the strikethrough/discounted pair
+      // shown on the matching /pricing tier card (which also rounds).
+      const catalogBase = getDisplayAnnualBaseDollars(tier.basePrice, billingPeriod);
       const effectiveBase = baseFromOverride ?? catalogBase;
       const overageRate = overageFromOverride ?? tier.overageRate;
       const billingTier = {

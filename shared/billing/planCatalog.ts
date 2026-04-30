@@ -59,6 +59,21 @@ export function getPlanMonthlyPriceWholeDollars(tier: PlanTier): number {
   return centsToWholeDollars(PLAN_CATALOG[tier].monthlyPriceCents);
 }
 
+/**
+ * Discount the published monthly price by ANNUAL_DISCOUNT and round to a
+ * whole-dollar figure. Used wherever we display the annual-billing
+ * monthly-equivalent price (the strikethrough/discounted pair on the
+ * /pricing tier card and on the in-page MinutesPricingCalculator). The
+ * rounding is what makes the per-tier annual savings — `(monthly −
+ * annualMonthly) × 12` — render as a clean dollar amount ($240 / $960 /
+ * $2,400 at catalog prices) instead of a fractional carry-through like
+ * $237.60. Centralising it here keeps the marketing card and the
+ * calculator in lockstep so the two figures never drift.
+ */
+export function getDiscountedAnnualMonthlyDollars(monthlyDollars: number): number {
+  return Math.round(monthlyDollars * (1 - ANNUAL_DISCOUNT));
+}
+
 export const PLAN_MONTHLY_PRICE_CENTS: Record<PlanTier, number> = {
   starter: PLAN_CATALOG.starter.monthlyPriceCents,
   pro: PLAN_CATALOG.pro.monthlyPriceCents,

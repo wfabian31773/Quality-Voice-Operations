@@ -116,10 +116,33 @@ describe('MinutesPricingCalculator annual toggle', () => {
 
     fireEvent.click(screen.getByTestId('calc-billing-annual'));
 
-    // Pro savings = ($399 - $319.20) * 12 ≈ $958
+    // Pro savings = ($399 - $319) * 12 = $960 — matches the rounded
+    // strikethrough/discounted pair on the /pricing tier card above
+    // (shared `getDiscountedAnnualMonthlyDollars` helper).
     const proSavings = screen.getByTestId('calc-savings-pro').textContent ?? '';
     expect(proSavings.toLowerCase()).toContain('vs monthly');
-    expect(proSavings).toMatch(/\$95[78]/);
+    expect(proSavings).toContain('$960');
+  });
+
+  it('matches the per-tier annual savings shown on the /pricing tier cards', () => {
+    // Source of truth: the rounded annual savings on each /pricing tier
+    // card is `(monthly − round(monthly × 0.8)) × 12`. At catalog prices
+    // that's $240 / $960 / $2,400. The calculator's "Saves $X/yr"
+    // microcopy must reconcile to the same dollar amount per tier so the
+    // two figures don't visibly disagree on the same page.
+    render(<MinutesPricingCalculator />);
+    fireEvent.click(screen.getByTestId('calc-billing-annual'));
+
+    const expected: Record<'starter' | 'pro' | 'enterprise', string> = {
+      starter: '$240',
+      pro: '$960',
+      enterprise: '$2,400',
+    };
+    for (const tier of ['starter', 'pro', 'enterprise'] as const) {
+      const text = screen.getByTestId(`calc-savings-${tier}`).textContent ?? '';
+      expect(text).toContain(expected[tier]);
+      expect(text).toMatch(/\/yr/);
+    }
   });
 });
 
@@ -266,6 +289,13 @@ describe('MinutesPricingCalculator currentPlanOverride (logged-in tenant teaser)
       // And not the published-catalog-of-$399 minus 20% = $319 either —
       // it just happens to equal that here, which is exactly the point:
       // the calculator stops needing to know which one to compute.
+
+      // The "Saves $X/yr vs monthly billing" line is gated on the card
+      // NOT being Stripe-sourced (because the savings calc is a
+      // catalog-only monthly→annual transform). On a Stripe-overridden
+      // annual card it should stay hidden — a Stripe-quoted figure has
+      // no catalog monthly counterpart to subtract from.
+      expect(screen.queryByTestId('calc-savings-pro')).toBeNull();
     });
 
     it('does not show the override on other tiers in annual mode (only the matching tier)', () => {
