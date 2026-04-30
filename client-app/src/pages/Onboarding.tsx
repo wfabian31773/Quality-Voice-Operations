@@ -45,14 +45,14 @@ const AGENT_TEMPLATE_VALUES = [
  * Maps an onboarding template slug (the agent `type` we save on the starter
  * agent) to the industry template key used by `getIndustryTemplateCopy`. Slugs
  * not listed here keep the agent's existing greeting/system prompt — that's
- * the case for `answering-service` (the provisioning default) and
- * `property-management` (no industry copy authored yet). Mirrors
+ * the case for `answering-service` (the provisioning default). Mirrors
  * `AGENT_TYPE_TO_TEMPLATE` in `client-app/src/pages/Agents.tsx` so the wizard
  * seeds the same copy as the Agents page quick-create.
  */
 const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
   'medical-after-hours': 'medical',
   'dental': 'dental',
+  'property-management': 'propertymanagement',
   'home-services': 'hvac',
   'legal': 'legal',
   'real-estate': 'realestate',

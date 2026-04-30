@@ -3879,7 +3879,8 @@ export type IndustryTemplateKey =
   | 'support'
   | 'realestate'
   | 'restaurant'
-  | 'salon';
+  | 'salon'
+  | 'propertymanagement';
 
 export const INDUSTRY_TEMPLATE_KEYS: readonly IndustryTemplateKey[] = [
   'medical',
@@ -3890,6 +3891,7 @@ export const INDUSTRY_TEMPLATE_KEYS: readonly IndustryTemplateKey[] = [
   'realestate',
   'restaurant',
   'salon',
+  'propertymanagement',
 ];
 
 interface IndustryTemplateNodeCopy {
@@ -5202,6 +5204,96 @@ const INDUSTRY_TEMPLATE_COPY: Record<
         '4': { label: 'विवरण की पुष्टि', prompt: 'सेवा, स्टाइलिस्ट, तारीख, समय और अनुमानित क़ीमत दोहराएँ।' },
         '5': { label: 'SMS रिमाइंडर', toolConfig: 'अभी पुष्टि भेजें और अपॉइंटमेंट से 24 घंटे पहले रिमाइंडर भेजें' },
       },
+    },
+  },
+  // No matching entry exists in INDUSTRY_TEMPLATES_RAW for property management,
+  // so node copy is intentionally empty — the welcome greeting + system prompt
+  // suffix are what get applied during onboarding when a tenant picks the
+  // Property Management template.
+  propertymanagement: {
+    en: {
+      welcomeGreeting:
+        'Thanks for calling. Are you a current resident, looking to lease, or following up on a maintenance request?',
+      systemPromptSuffix:
+        'You are a property management front desk assistant.\n- Identify whether the caller is a current resident, prospective tenant, or vendor.\n- For maintenance requests, capture the unit number, the issue, and the urgency before logging the work order.\n- Treat floods, gas leaks, no heat or AC, and lockouts as emergencies and escalate immediately.\n- Never quote rent or release lease terms — book a tour or callback with the leasing office instead.',
+      nodes: {},
+    },
+    es: {
+      welcomeGreeting:
+        'Gracias por llamar. ¿Es residente actual, busca alquilar o hace seguimiento a una solicitud de mantenimiento?',
+      systemPromptSuffix:
+        'Eres asistente de recepción de una administración de propiedades.\n- Identifica si quien llama es residente actual, posible inquilino o proveedor.\n- En solicitudes de mantenimiento, registra el número de unidad, el problema y la urgencia antes de abrir la orden de trabajo.\n- Trata como emergencias las inundaciones, fugas de gas, falta de calefacción o aire acondicionado y los bloqueos de cerradura, y escala de inmediato.\n- Nunca cotices el alquiler ni divulgues los términos del contrato; ofrece agendar una visita o que la oficina de alquileres devuelva la llamada.',
+      nodes: {},
+    },
+    fr: {
+      welcomeGreeting:
+        "Merci de votre appel. Êtes-vous résident actuel, à la recherche d'une location, ou souhaitez-vous suivre une demande d'entretien ?",
+      systemPromptSuffix:
+        "Vous êtes l'assistant d'accueil d'une société de gestion immobilière.\n- Identifiez si l'appelant est résident actuel, locataire potentiel ou prestataire.\n- Pour les demandes d'entretien, notez le numéro de logement, le problème et l'urgence avant de créer l'ordre de travail.\n- Traitez les inondations, fuites de gaz, panne de chauffage ou de climatisation et clés enfermées comme des urgences, et faites remonter immédiatement.\n- Ne donnez jamais le loyer ni les conditions du bail ; proposez plutôt une visite ou un rappel par le service location.",
+      nodes: {},
+    },
+    de: {
+      welcomeGreeting:
+        'Danke für Ihren Anruf. Sind Sie aktueller Mieter, möchten Sie mieten oder verfolgen Sie eine Reparaturanfrage?',
+      systemPromptSuffix:
+        'Sie sind die Empfangsassistenz einer Hausverwaltung.\n- Klären Sie, ob der Anrufer aktueller Mieter, Mietinteressent oder Dienstleister ist.\n- Erfassen Sie bei Reparaturanfragen die Wohnungsnummer, das Problem und die Dringlichkeit, bevor Sie den Auftrag anlegen.\n- Behandeln Sie Überschwemmungen, Gaslecks, Ausfall von Heizung oder Klimaanlage und Aussperrungen als Notfälle und eskalieren Sie sofort.\n- Nennen Sie nie Miete oder Mietvertragsbedingungen; bieten Sie stattdessen eine Besichtigung oder einen Rückruf vom Vermietungsbüro an.',
+      nodes: {},
+    },
+    pt: {
+      welcomeGreeting:
+        'Obrigado por ligar. Você é morador atual, procura alugar ou está acompanhando uma solicitação de manutenção?',
+      systemPromptSuffix:
+        'Você é o assistente de recepção de uma administradora de imóveis.\n- Identifique se quem liga é morador atual, possível inquilino ou fornecedor.\n- Para solicitações de manutenção, registre o número da unidade, o problema e a urgência antes de abrir a ordem de serviço.\n- Trate como emergências as inundações, vazamentos de gás, falta de aquecimento ou ar-condicionado e arrombamentos, e encaminhe imediatamente.\n- Nunca informe o valor do aluguel nem as condições do contrato; ofereça agendar uma visita ou um retorno do escritório de locação.',
+      nodes: {},
+    },
+    it: {
+      welcomeGreeting:
+        'Grazie per la chiamata. È un residente attuale, cerca un affitto o sta seguendo una richiesta di manutenzione?',
+      systemPromptSuffix:
+        "Sei l'assistente di reception di una società di gestione immobiliare.\n- Identifica se chi chiama è un residente attuale, un potenziale inquilino o un fornitore.\n- Per le richieste di manutenzione, annota il numero dell'unità, il problema e l'urgenza prima di aprire l'ordine di lavoro.\n- Tratta come emergenze allagamenti, fughe di gas, assenza di riscaldamento o aria condizionata e blocchi della serratura, ed escala immediatamente.\n- Non comunicare mai il canone né le condizioni del contratto; offri invece una visita o un richiamo dell'ufficio locazioni.",
+      nodes: {},
+    },
+    nl: {
+      welcomeGreeting:
+        'Bedankt voor uw oproep. Bent u huidige bewoner, zoekt u een woning of belt u over een onderhoudsverzoek?',
+      systemPromptSuffix:
+        'Je bent de receptie-assistent van een vastgoedbeheerder.\n- Bepaal of de beller huidige bewoner, mogelijke huurder of leverancier is.\n- Noteer bij onderhoudsverzoeken het unitnummer, het probleem en de urgentie voordat je de werkorder aanmaakt.\n- Behandel overstromingen, gaslekken, uitval van verwarming of airco en buitengesloten bewoners als noodgevallen en escaleer direct.\n- Noem nooit de huurprijs of de huurvoorwaarden; bied in plaats daarvan een bezichtiging of terugbelafspraak met de verhuurafdeling aan.',
+      nodes: {},
+    },
+    zh: {
+      welcomeGreeting:
+        '感谢您来电。请问您是现住租户、想要租房,还是想跟进一笔报修?',
+      systemPromptSuffix:
+        '您是物业管理前台助理。\n- 先判别来电者是现住租户、潜在租客还是供应商。\n- 处理报修请求时,先记录房号、故障描述和紧急程度,再创建工单。\n- 漏水、漏气、暖气或空调故障以及反锁等情况按紧急事件处理并立即上报。\n- 切勿报价租金或泄露租约条款,改为邀请安排看房或由租赁办公室回拨。',
+      nodes: {},
+    },
+    ja: {
+      welcomeGreeting:
+        'お電話ありがとうございます。現在の入居者の方ですか?ご入居をご検討中ですか?それとも修繕依頼のフォローアップでしょうか?',
+      systemPromptSuffix:
+        'あなたは不動産管理会社の窓口アシスタントです。\n- 入居者・入居検討者・業者のいずれであるかを最初に確認してください。\n- 修繕依頼では、部屋番号・症状・緊急度を聞き取ったうえで作業オーダーを作成してください。\n- 漏水・ガス漏れ・暖房や冷房の故障・締め出しは緊急扱いとし、直ちにエスカレーションしてください。\n- 家賃や賃貸条件は決して提示せず、内見予約または賃貸窓口からの折り返しを提案してください。',
+      nodes: {},
+    },
+    ko: {
+      welcomeGreeting:
+        '전화 주셔서 감사합니다. 현재 입주자이신가요? 임대 문의이신가요? 아니면 수리 요청 후속 연락이신가요?',
+      systemPromptSuffix:
+        '당신은 부동산 관리 회사의 안내 어시스턴트입니다.\n- 통화자가 현재 입주자, 임대 희망자, 협력업체 중 누구인지 먼저 확인하세요.\n- 수리 요청은 호수, 증상, 긴급도를 확인한 뒤 작업 지시를 등록하세요.\n- 누수, 가스 누출, 난방·냉방 고장, 잠금 사고는 긴급으로 처리하고 즉시 에스컬레이션하세요.\n- 임대료나 계약 조건은 절대 안내하지 말고, 임대 오피스의 방문 예약 또는 콜백을 제안하세요.',
+      nodes: {},
+    },
+    ar: {
+      welcomeGreeting:
+        'شكرًا لاتصالك. هل أنت ساكن حالي، أم تبحث عن إيجار، أم تتابع طلب صيانة؟',
+      systemPromptSuffix:
+        'أنت مساعد استقبال في إدارة عقارات.\n- حدّد ما إذا كان المتصل ساكنًا حاليًا أو مستأجرًا محتملاً أو مزودًا.\n- في طلبات الصيانة، سجّل رقم الوحدة، والمشكلة، ودرجة الإلحاح قبل إنشاء أمر العمل.\n- اعتبر الفيضانات وتسرب الغاز وتعطل التدفئة أو التكييف وحالات الإغلاق خارج المنزل حالات طارئة وصعّدها فورًا.\n- لا تحدد قيمة الإيجار أو شروط العقد أبدًا، واقترح بدلًا من ذلك حجز جولة أو معاودة الاتصال من مكتب التأجير.',
+      nodes: {},
+    },
+    hi: {
+      welcomeGreeting:
+        'कॉल करने के लिए धन्यवाद। क्या आप मौजूदा निवासी हैं, किराया लेना चाहते हैं, या किसी मेंटेनेंस रिक्वेस्ट का फ़ॉलो-अप कर रहे हैं?',
+      systemPromptSuffix:
+        'आप एक प्रॉपर्टी मैनेजमेंट फ्रंट डेस्क असिस्टेंट हैं।\n- पहले पहचानें कि कॉलर मौजूदा निवासी हैं, संभावित किरायेदार हैं या वेंडर।\n- मेंटेनेंस रिक्वेस्ट के लिए वर्क ऑर्डर बनाने से पहले यूनिट नंबर, समस्या और अर्जेंसी दर्ज करें।\n- बाढ़, गैस लीक, हीटिंग या एसी ख़राब होना और लॉकआउट को आपातकाल मानें और तुरंत एस्केलेट करें।\n- किराया या लीज़ की शर्तें कभी न बताएं — इसके बजाय शोइंग या लीज़िंग ऑफ़िस से कॉलबैक का प्रस्ताव दें।',
+      nodes: {},
     },
   },
 };

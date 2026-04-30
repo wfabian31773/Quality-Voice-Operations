@@ -37,6 +37,7 @@ import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
 const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
   'medical-after-hours': 'medical',
   'dental': 'dental',
+  'property-management': 'propertymanagement',
   'home-services': 'hvac',
   'legal': 'legal',
   'customer-support': 'support',
